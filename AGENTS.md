@@ -38,8 +38,9 @@ doctrine section `3bb51d3e-2661-4ea2-a585-053540545b5d`.
 
 ## Current state
 
-No application code has been migrated. The first implementation task is a
-read-only inventory and migration manifest for the existing DoctorCRE/workspace
-code in `carr-system`, preserving completed v5 evidence and separating CARR
-runtime responsibilities from application responsibilities before moving any
-file.
+The initial product source was isolated from `carr-system` commit
+`b1f393190a4633c37219099ae883f09f3135f58d`. The app remains a no-build static
+module. `DealRoomClient` is its CARR seam, with live HTTP/MCP and in-memory
+fixture adapters. The repository contains synthetic fixtures only; real deal
+records remain in CARR. Source isolation did not change CARR runtime or
+deployment.
