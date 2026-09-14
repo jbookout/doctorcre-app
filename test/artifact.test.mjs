@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,15 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.equal(a.manifest.files.length, 61);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
+  assert.deepEqual(await readFile(join(first, "site", "workspace.html")), await readFile(join(ROOT, "workspace.html")));
+});
+
+test("the deployment directory is rebuilt without stale files", async () => {
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-site-clean-"));
+  await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  await writeFile(join(outDir, "site", "stale-secret.txt"), "must disappear");
+  await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  await assert.rejects(readFile(join(outDir, "site", "stale-secret.txt")), /ENOENT/);
 });
 
 test("verification binds every payload file and rejects changed bytes", async () => {

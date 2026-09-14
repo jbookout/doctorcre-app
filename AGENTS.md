@@ -41,8 +41,8 @@ doctrine section `3bb51d3e-2661-4ea2-a585-053540545b5d`.
 ## Current state
 
 The initial product source was isolated from `carr-system` commit
-`b1f393190a4633c37219099ae883f09f3135f58d`. The app remains a no-build static
-module. `DealRoomClient` is its CARR seam, with live HTTP/MCP and in-memory
-fixture adapters. The repository contains synthetic fixtures only; real deal
-records remain in CARR. Source isolation did not change CARR runtime or
-deployment.
+`b1f393190a4633c37219099ae883f09f3135f58d`. The app remains a no-framework
+static module behind a small app-owned edge Worker. `DealRoomClient` is its CARR
+seam, with live HTTP/MCP and in-memory fixture adapters. The repository contains
+synthetic fixtures only; real deal records remain in CARR. Source isolation did
+not change CARR runtime or deployment.

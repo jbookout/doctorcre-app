@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "doctorcre-app",
+  "main": "src/worker.js",
+  "account_id": "12ccca77eb49142a6be8eb84c0d6a3a0",
+  "compatibility_date": "2026-09-14",
+  "compatibility_flags": ["global_fetch_strictly_public"],
+  "workers_dev": false,
+  "routes": [],
+  "assets": { "directory": "./dist/site", "binding": "ASSETS", "run_worker_first": true },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  "vars": { "APP_ENV": "production" },
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "doctorcre-app-staging",
+      "workers_dev": true,
+      "routes": [],
+      "assets": { "directory": "./dist/site", "binding": "ASSETS", "run_worker_first": true },
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      "vars": { "APP_ENV": "staging" },
+      "services": [{ "binding": "CARR", "service": "carr-mcp-staging" }]
+    }
+  }
+}

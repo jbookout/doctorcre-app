@@ -1,13 +1,14 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "b1f393190a4633c37219099ae883f09f3135f58d"
+    "source_commit": "e7f4f1514568d03e269bda336a4c7d28f24f5810"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
     "origin": "same-origin",
+    "edge_transport": "private Cloudflare Worker service binding",
     "authentication": "server-issued host-only session",
     "writes": "MCP JSON-RPC tools/call with idempotency keys",
     "database_access": "forbidden"
