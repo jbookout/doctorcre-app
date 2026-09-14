@@ -6,10 +6,12 @@
   "compatibility_date": "2026-09-14",
   "compatibility_flags": ["global_fetch_strictly_public"],
   "workers_dev": false,
+  "preview_urls": true,
   "routes": [],
   "assets": { "directory": "./dist/site", "binding": "ASSETS", "run_worker_first": true },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": { "APP_ENV": "production" },
+  "services": [{ "binding": "CARR", "service": "carr-mcp" }],
   "observability": { "enabled": true },
   "env": {
     "staging": {
