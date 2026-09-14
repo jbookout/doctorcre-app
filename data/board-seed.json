@@ -1,0 +1,42 @@
+{
+  "fixture": {
+    "schema": "doctorcre-demo-board.v1",
+    "synthetic": true,
+    "purpose": "Local development and automated tests only",
+    "notice": "All organizations, events, dates, and identifiers in this file are fictional."
+  },
+  "actors": {"self":"joe","partner":"dell"},
+  "as_of": "2026-01-15",
+  "last_call_at": "2026-01-14T16:00:00Z",
+  "deals": [
+    {"id":"d01","name":"Demo Dental North","type":"Relocation","phase":"On Deck","owner":"joe","attention":true,"last_touch":"2026-01-14","next_step":"Confirm fictional requirements","next_date":"2026-01-20","segment":"Dental","market":"Demo City"},
+    {"id":"d02","name":"Demo Pediatrics East","type":"Renewal","phase":"Research","owner":"dell","attention":false,"last_touch":"2026-01-13","next_step":"Review sample options","next_date":"2026-01-22","segment":"Pediatrics","market":"Example Bay"},
+    {"id":"d03","name":"Demo Therapy Group","type":"Expansion","phase":"Negotiation","owner":"joe","attention":false,"last_touch":"2026-01-12","next_step":"Compare fictional proposals","next_date":"2026-01-24","segment":"Therapy","market":"Sample Point"},
+    {"id":"d04","name":"Demo Vision Center","type":"Purchase","phase":"Legal","owner":"dell","attention":true,"last_touch":"2026-01-10","next_step":"Review sample documents","next_date":"2026-01-18","segment":"Vision","market":"Test Harbor"},
+    {"id":"d05","name":"Demo Family Clinic","type":"Relocation","phase":"Closing","owner":"dell","attention":true,"last_touch":"2026-01-14","next_step":"Obtain fictional signature","next_date":"2026-01-19","segment":"Primary Care","market":"Example Bay"},
+    {"id":"d06","name":"Demo Orthodontics South","type":"Startup","phase":"Research","owner":"joe","attention":false,"last_touch":"2026-01-09","next_step":"Classify sample opportunity","next_date":null,"segment":"Dental","market":"Demo City"},
+    {"id":"d07","name":"Demo Imaging West","type":"Other","phase":"On Deck","owner":null,"attention":false,"last_touch":null,"next_step":"Confirm whether sample is active","next_date":null,"segment":"Imaging","market":"Test Harbor"},
+    {"id":"d08","name":"Demo Counseling Studio","type":"Renewal","phase":"On Deck","owner":"dell","attention":false,"last_touch":"2026-01-02","next_step":"Classify sample status","next_date":null,"segment":"Behavioral Health","market":"Sample Point"},
+    {"id":"d14","name":"Demo Surgical Practice","type":"Relocation","phase":"Legal","owner":"joe","attention":false,"last_touch":"2026-01-14","next_step":"Confirm fictional commencement","next_date":"2026-02-01","segment":"Surgery","market":"Demo City"},
+    {"id":"d20","name":"Demo Osteopathic Office","type":"Expansion","phase":"Diligence","owner":"dell","attention":false,"last_touch":"2026-01-11","next_step":"Review sample inspection","next_date":"2026-01-26","segment":"Primary Care","market":"Example Bay"},
+    {"id":"d23","name":"Demo Specialty Clinic","type":"Renewal","phase":"Negotiation","owner":"joe","attention":true,"last_touch":"2026-01-14","next_step":"Resolve fictional rate term","next_date":"2026-01-17","segment":"Specialty","market":"Test Harbor"}
+  ],
+  "threads": {
+    "d05": [{"id":"n-d05-1","kind":"note","actor":"dell","text":"Fictional landlord response recorded for demo purposes.","recorded_at":"2026-01-14T15:30:00Z"}],
+    "d14": [
+      {"id":"n-d14-1","kind":"note","actor":"joe","text":"Fictional commencement date confirmed in the demo scenario.","recorded_at":"2026-01-14T14:20:00Z"},
+      {"id":"n-d14-2","kind":"note","actor":"dell","text":"Synthetic benefit summary follows the sample move-in.","recorded_at":"2026-01-13T11:05:00Z"}
+    ]
+  },
+  "history": {
+    "d14": [
+      {"id":"h-d14-1","actor":"joe","summary":"set fictional next step","recorded_at":"2026-01-14T14:20:00Z"},
+      {"id":"h-d14-2","actor":"joe","summary":"moved demo deal from Negotiation to Legal","recorded_at":"2026-01-10T16:00:00Z"}
+    ]
+  },
+  "seed_events": [
+    {"id":"e-seed-0","recorded_at":"2026-01-10T16:00:00Z","actor":"joe","verb":"patch-deal-field","subject_type":"deal","subject_id":"d14","field":"phase","old_value":"Negotiation","new_value":"Legal"},
+    {"id":"e-seed-1","recorded_at":"2026-01-14T14:20:00Z","actor":"joe","verb":"set-next-step","subject_type":"deal","subject_id":"d14","field":"next_step","old_value":"Review fictional redlines","new_value":"Confirm fictional commencement"},
+    {"id":"e-seed-2","recorded_at":"2026-01-14T15:30:00Z","actor":"dell","verb":"add-deal-note","subject_type":"deal","subject_id":"d05","field":null,"old_value":null,"new_value":"Fictional landlord response recorded for demo purposes."}
+  ]
+}

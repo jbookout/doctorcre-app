@@ -1,0 +1,54 @@
+{
+  "schema": "doctorcre-carr-interface.v1",
+  "version": "1.0.0",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "b1f393190a4633c37219099ae883f09f3135f58d"
+  },
+  "consumer": "jbookout/doctorcre-app",
+  "transport": {
+    "origin": "same-origin",
+    "authentication": "server-issued host-only session",
+    "writes": "MCP JSON-RPC tools/call with idempotency keys",
+    "database_access": "forbidden"
+  },
+  "mcp_operations": [
+    "add-deal-note",
+    "capture-queue",
+    "create-national-account",
+    "create-national-market-deal",
+    "deal-room-board",
+    "end-deal-review",
+    "get-call-context",
+    "get-deal-room",
+    "new-deal",
+    "patch-deal-field",
+    "presence-lease",
+    "resolve-candidate",
+    "resolve-conflict",
+    "resolve-post-call-candidate",
+    "revert-deal-field",
+    "review-deal",
+    "set-lead",
+    "set-market-agent",
+    "set-national-account-owner",
+    "set-next-step",
+    "start-deal-review"
+  ],
+  "http_surfaces": [
+    "/pipeline/changes",
+    "/api/v1/business/*",
+    "/api/v1/command-center",
+    "/api/room/*",
+    "/api/system-work/*",
+    "/api/share/*",
+    "/api/tours/*"
+  ],
+  "invariants": [
+    "The browser never receives database credentials.",
+    "The browser never selects its actor, tenant, sponsor, or authority class.",
+    "A refused write and an unanswered write remain distinct states.",
+    "Retries reuse the same idempotency key and reconcile against CARR.",
+    "Fixture data is synthetic and cannot become production state."
+  ]
+}
