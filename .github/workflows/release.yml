@@ -1,0 +1,37 @@
+name: Release static artifact
+
+on:
+  push:
+    tags: ["app-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+        env:
+          DOCTORCRE_SOURCE_COMMIT: ${{ github.sha }}
+      - run: npm run artifact:verify
+      - name: Publish content-addressed inputs and digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          dist/doctorcre-app.tar
+          dist/doctorcre-app.manifest.json
+          dist/doctorcre-app.tar.sha256
+          --verify-tag
+          --title "DoctorCRE $GITHUB_REF_NAME"
+          --notes "Deterministic static artifact built from $GITHUB_SHA. Consumers must pin both this tag and the published SHA-256 digest."
