@@ -4,6 +4,7 @@
 export const REVIEWED_DEALROOM_HOSTS = Object.freeze([
   "app.doctorcre.com",
   "carr-mcp-staging.joe-bookout-carr-us.workers.dev",
+  "doctorcre-app-staging.joe-bookout-carr-us.workers.dev",
 ]);
 const LIVE_HOSTS = new Set(REVIEWED_DEALROOM_HOSTS);
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);

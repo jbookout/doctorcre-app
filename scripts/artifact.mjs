@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { join, posix } from "node:path";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
   "business.html", "index.html", "leads.html", "manifest.webmanifest",
@@ -103,12 +103,18 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
 
   const payload = [];
   const files = new Map();
+  const siteDir = join(outDir, "site");
+  await rm(siteDir, { recursive: true, force: true });
+  await mkdir(siteDir, { recursive: true });
   for (const path of paths) {
     const sourcePath = join(root, ...path.split("/"));
     const info = await stat(sourcePath);
     if (!info.isFile()) throw new Error(`artifact input is not a file: ${path}`);
     const content = await readFile(sourcePath);
     files.set(path, content);
+    const deploymentPath = join(siteDir, ...path.split("/"));
+    await mkdir(dirname(deploymentPath), { recursive: true });
+    await writeFile(deploymentPath, content);
     payload.push({ path, bytes: content.length, sha256: digest(content) });
   }
 

@@ -4,13 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { deploymentIdentity, resolveDealroomBoot } from '../js/boot-mode.js';
 
 test('reviewed DoctorCRE hosts boot as live and identify the production surface', () => {
-  const boot = resolveDealroomBoot({ hostname: 'app.doctorcre.com', search: '' });
-  assert.equal(boot.mode, 'live');
-  assert.deepEqual(deploymentIdentity(boot.mode), {
-    label: 'LIVE · DoctorCRE',
-    detail: 'Connected to the live DoctorCRE Deal Room',
-    mode: 'live',
-  });
+  for (const hostname of ['app.doctorcre.com', 'doctorcre-app-staging.joe-bookout-carr-us.workers.dev']) {
+    const boot = resolveDealroomBoot({ hostname, search: '' });
+    assert.equal(boot.mode, 'live');
+    assert.deepEqual(deploymentIdentity(boot.mode), {
+      label: 'LIVE · DoctorCRE',
+      detail: 'Connected to the live DoctorCRE Deal Room',
+      mode: 'live',
+    });
+  }
 });
 
 test('the legacy Deal Room hostname stays outside the live boot allowlist', () => {
