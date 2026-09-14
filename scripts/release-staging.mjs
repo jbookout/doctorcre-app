@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 
 const run = (command, args, { capture = false, ...options } = {}) => execFileSync(command, args, {
   cwd: new URL("../", import.meta.url),
@@ -22,8 +22,19 @@ run("npm", ["run", "artifact:verify"]);
 
 const versionTag = `staging-${sourceCommit.slice(0, 12)}`;
 const message = `DoctorCRE staging ${sourceCommit}`;
-run("npx", ["wrangler", "versions", "upload", "--env", "staging", "--strict", "--tag", versionTag,
-  "--message", message, "--var", `GIT_SHA:${sourceCommit}`]);
-run("npx", ["wrangler", "versions", "deploy", "--env", "staging", "--version-tag", `${versionTag}@100%`,
-  "--message", message, "--yes"]);
+const deploymentStatus = spawnSync("npx", ["wrangler", "deployments", "status", "--env", "staging", "--json"], {
+  cwd: new URL("../", import.meta.url), encoding: "utf8", env: { ...process.env, NO_COLOR: "1" },
+});
+const providerOutput = `${deploymentStatus.stdout || ""}\n${deploymentStatus.stderr || ""}`;
+if (deploymentStatus.status === 0) {
+  run("npx", ["wrangler", "versions", "upload", "--env", "staging", "--strict", "--tag", versionTag,
+    "--message", message, "--var", `GIT_SHA:${sourceCommit}`]);
+  run("npx", ["wrangler", "versions", "deploy", "--env", "staging", "--version-tag", `${versionTag}@100%`,
+    "--message", message, "--yes"]);
+} else if (/code:\s*10007/.test(providerOutput)) {
+  run("npx", ["wrangler", "deploy", "--env", "staging", "--strict", "--tag", versionTag,
+    "--message", message, "--var", `GIT_SHA:${sourceCommit}`]);
+} else {
+  throw new Error("could not establish the current DoctorCRE staging deployment state");
+}
 run("npx", ["wrangler", "deployments", "status", "--env", "staging", "--json"]);
