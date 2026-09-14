@@ -22,9 +22,10 @@ npm run dev:staging
 ```
 
 `npm run release:staging` accepts only a clean checkout whose `HEAD` exactly
-matches `origin/main`, builds with that commit identity, uploads an immutable
-Worker version, and moves staging to it. `npm run rollback:staging -- <version-id>`
-restores one explicit earlier staging version.
+matches `origin/main`, builds with that commit identity, creates the staging
+Worker on first use, and otherwise uploads and promotes an immutable version.
+`npm run rollback:staging -- <version-id>` restores one explicit earlier staging
+version.
 
 `npm run build` produces a deterministic `dist/doctorcre-app.tar`, its complete
 file-and-contract manifest, a SHA-256 sidecar, and the exact `dist/site` static
