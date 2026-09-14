@@ -1,5 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 
+import { uploadedVersionId } from "./provider-version.mjs";
+
 const run = (command, args, { capture = false, ...options } = {}) => execFileSync(command, args, {
   cwd: new URL("../", import.meta.url),
   encoding: "utf8",
@@ -27,9 +29,11 @@ const deploymentStatus = spawnSync("npx", ["wrangler", "deployments", "status", 
 });
 const providerOutput = `${deploymentStatus.stdout || ""}\n${deploymentStatus.stderr || ""}`;
 if (deploymentStatus.status === 0) {
-  run("npx", ["wrangler", "versions", "upload", "--env", "staging", "--strict", "--tag", versionTag,
-    "--message", message, "--var", `GIT_SHA:${sourceCommit}`]);
-  run("npx", ["wrangler", "versions", "deploy", "--env", "staging", "--version-tag", `${versionTag}@100%`,
+  const uploadOutput = run("npx", ["wrangler", "versions", "upload", "--env", "staging", "--strict",
+    "--tag", versionTag, "--message", message, "--var", `GIT_SHA:${sourceCommit}`], { capture: true });
+  process.stdout.write(uploadOutput);
+  const providerVersionId = uploadedVersionId(uploadOutput);
+  run("npx", ["wrangler", "versions", "deploy", `${providerVersionId}@100%`, "--env", "staging",
     "--message", message, "--yes"]);
 } else if (/code:\s*10007/.test(providerOutput)) {
   run("npx", ["wrangler", "deploy", "--env", "staging", "--strict", "--tag", versionTag,
