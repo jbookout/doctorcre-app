@@ -374,9 +374,8 @@ test("hidden kind filters cannot suppress the conversation (the false-empty trap
 });
 
 test("a pathologically nested receipt flattens without overflowing the stack", () => {
-  let nested = { leaf: "value" };
-  for (let i = 0; i < 5000; i += 1) nested = { wrap: nested };
-  const lines = describeReceipt(JSON.stringify({ deep_probe: nested }), NOW);
+  const body = `{"deep_probe":${'{"wrap":'.repeat(5000)}{"leaf":"value"}${"}".repeat(5000)}}`;
+  const lines = describeReceipt(body, NOW);
   assert.ok(lines.length >= 1, "returns lines rather than throwing");
   assert.match(lines.join("\n"), /deeper detail in the machine view/);
 });
