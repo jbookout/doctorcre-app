@@ -30,6 +30,8 @@ doctrine section `3bb51d3e-2661-4ea2-a585-053540545b5d`.
 - Treat contracts, schemas, migrations, adapters, entry points, and tests as
   first-class change surfaces.
 - Bind cross-repository changes to exact revisions and versioned contracts.
+- Publish deployment input as the deterministic static artifact produced by
+  `npm run build`; consumers pin its source commit and SHA-256 digest.
 - Use an isolated branch or worktree, relevant local checks, a pull request,
   green hosted CI, merge, and delivery verification.
 - Durable application knowledge belongs in the future DoctorCRE project record
