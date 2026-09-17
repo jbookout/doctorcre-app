@@ -99,11 +99,6 @@
               <label for="quickAddDate">Due date</label>
               <input id="quickAddDate" type="date">
             </div>
-            <div class="field">
-              <label for="quickAddDateTyped">Or type the date</label>
-              <input id="quickAddDateTyped" type="text" autocomplete="off" placeholder="Sep 18, 2026 or 9/18/2026" aria-describedby="quickAddDateHint">
-              <p class="field-hint" id="quickAddDateHint">The picker and the typed date agree; either one wins last.</p>
-            </div>
           </div>
           <div class="compare parsed" id="quickAddParsed" aria-live="polite">
             <div><span>Action</span><i>unknown</i></div><div><span>Owner</span><i>unknown</i></div><div><span>Due</span><i>none</i></div><div><span>Related</span><i>none</i></div>
@@ -182,7 +177,6 @@
         <label class="evidence-option"><input type="radio" name="evidence" value="doc"> <span><b>Doc retrieves</b> the authorized evidence or prepares what is missing</span></label>
         <div class="field-grid">
           <div class="field"><label for="completionDate">Effective date</label><input id="completionDate" type="date"></div>
-          <div class="field"><label for="completionDateTyped">Or type the date</label><input id="completionDateTyped" type="text" autocomplete="off" placeholder="Sep 18, 2026"><p class="field-hint" id="completionDateHint">Either control fills the other.</p></div>
         </div>
       </div>
       <footer><button class="btn btn-quiet" type="submit" value="cancel">Cancel, keep phase</button><button class="btn btn-primary" type="submit" value="confirm">Move with this evidence</button></footer>

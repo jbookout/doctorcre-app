@@ -208,9 +208,10 @@ test("the business prototype lists its actual items, opens popups for them, and 
   assert.match(html, /<aside id="recordPanel" class="side-panel glass"[^>]*data-pinned="false"/);
   assert.match(html, /id="panelPin" aria-pressed="false"/);
   assert.match(html, /id="completionDate" type="date"/, "the completion dialog uses a real calendar picker");
-  assert.match(html, /id="completionDateTyped" type="text"/, "with a typed-date fallback");
+  assert.doesNotMatch(html, /completionDateTyped/, "and no separate typed-date box");
   assert.match(html, /id="quickAddDate" type="date"/, "quick add uses a real calendar picker");
-  assert.match(html, /id="quickAddDateTyped" type="text"/, "with a typed-date fallback");
+  assert.doesNotMatch(html, /Or type the date/, "the typed-date fallback is gone from the page");
+  assert.doesNotMatch(html, /quickAddDateTyped/, "and no separate typed-date box");
   assert.match(html, /<h2 id="quickTitle">Quick add<\/h2>/, "Quick add is spaced and cased as words");
   assert.match(html, /placeholder="Call Dr\. Patel Friday 10 AM about the Crestview LOI"/);
   assert.match(html, /<h2 id="workTitle">Activity<\/h2>/, "the team review title is short");
