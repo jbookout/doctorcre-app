@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   NO_CADENCE_REASON, TILES, canonicalHref, coverageLine, dashboardTiles, groupedIncidents,
-  incidentFilters, notInReleaseBlocks, readPhase, sinceChangeLabel, stallCandidates,
+  incidentFilters, notInReleaseBlocks, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates,
   validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload,
   workInProgressLine, STUCK_SILENCE_HOURS,
 } from "../js/control-room-model.js";
@@ -232,8 +232,9 @@ test("an incident resolves to the same canonical identity from the tile and from
   const fromTile = groupedIncidents(INCIDENTS.incidents, { severity: "SEV-1" })[0].incidents[0];
   assert.equal(fromTile.ref, fromQueue.ref);
   assert.equal(fromTile.href, fromQueue.href);
-  // An operational incident has no page in this application, so no link is invented.
-  assert.equal(canonicalHref(INCIDENTS.incidents[0]), null);
+  // V5-UX-C14 gave an operational incident its own page, so the queue links to
+  // it. Everything that is neither a work request nor an incident still has none.
+  assert.equal(canonicalHref(INCIDENTS.incidents[0]), "/incidents?ref=INC-20260915-01");
   assert.equal(canonicalHref(WORK.current[0]), "/system-work.html");
   assert.equal(canonicalHref({ human_ref: "not a ref" }), null);
 });
@@ -249,6 +250,38 @@ test("every prototype panel without a producer is a named scope statement", () =
     assert.match(block.slice, /^V5-UX-C[0-9]/, `${block.id} names no owning slice`);
     assert.ok(block.reason.length > 0);
   }
+});
+
+// V5-UX-C14 — the Operations section. Neither card may carry a digit: there is
+// no read behind either of them, so any number would be invented.
+test("the two Operations cards name their missing read and render no number", () => {
+  const blocks = operationsBlocks();
+  assert.deepEqual(blocks.map((block) => block.id), ["approvals", "automation"]);
+  const approvals = blocks[0];
+  const automation = blocks[1];
+  assert.equal(approvals.title, "Approvals of production effects");
+  assert.equal(automation.title, "Scheduled automation");
+  for (const verb of ["accept-ready-plan", "accept-workflow", "issue-execution-envelope"]) {
+    assert.ok(approvals.body.includes(verb), `${verb} is not named`);
+  }
+  assert.match(approvals.body, /partner-only and hash-pinned/);
+  assert.match(approvals.body, /no read lists what is pending/);
+  assert.match(approvals.rule, /^Reconcile before retry is already how every command on this app behaves/);
+  assert.match(automation.body, /No read exposes scheduled jobs, last or next runs/);
+  assert.match(automation.body, /no pause, run or stop verb/);
+  assert.equal(automation.rule, null);
+  for (const block of blocks) {
+    assert.match(block.body, /^Not in this release\./);
+    assert.doesNotMatch(`${block.title} ${block.body} ${block.rule || ""}`, /\d/, `${block.id} renders a number`);
+  }
+});
+
+test("the Control Room page mounts the Operations section on the Dashboard tab", () => {
+  const dashboard = /<section class="tabpanel" id="panelDashboard"[\s\S]*?<\/section>\s*<section class="tabpanel" id="panelAttention"/.exec(html)?.[0] || "";
+  assert.match(dashboard, /<section class="card glass" data-section="operations"/, "Operations is not on the Dashboard tab");
+  assert.match(dashboard, /<div id="operationsBlocks"><\/div>/);
+  assert.doesNotMatch(html, /role="tab"[^>]*>Operations</, "Operations is a section, not a new tab");
+  assert.match(pageJs, /operationsBlocks\(\)/, "the page does not render the model's blocks");
 });
 
 test("a stale answer that overtakes a newer read is dropped", () => {
@@ -292,11 +325,12 @@ test("the fixture serves the three reads in the record layer's own shapes, and o
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.7.0");
-  assert.equal(contract.version, "1.7.0");
-  for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) {
+  assert.equal(routes.version, "1.8.0");
+  assert.equal(contract.version, "1.8.0");
+  for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
+  assert.equal(routes.routes["/incidents"], "incidents.html", "the incident queue links to a route that exists");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 

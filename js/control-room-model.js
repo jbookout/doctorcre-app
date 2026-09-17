@@ -58,6 +58,7 @@ export const STUCK_SILENCE_HOURS = 48;
 
 const SEVERITY = /^SEV-[0-9]$/;
 const WORK_REQUEST_REF = /^WR-[0-9]{1,12}$/;
+const INCIDENT_REF = /^INC-[0-9]{8}-[0-9]{2}$/;
 const HELD_STATES = Object.freeze(["claimed", "in_progress", "verification", "needs_joe", "blocked"]);
 
 const isInteger = (value) => Number.isInteger(value);
@@ -332,14 +333,16 @@ export function incidentFilters(incidents) {
 }
 
 /**
- * The canonical page for a record, or null. A work request has one; an
- * operational incident has no page in this application, and a link invented for
- * it would lead nowhere.
+ * The canonical page for a record, or null. A work request has one, and since
+ * V5-UX-C14 an operational incident has one too: `/incidents?ref=<ref>`. Every
+ * other kind still has none, and a link invented for it would lead nowhere.
  */
 export function canonicalHref(item) {
   const ref = item && typeof item === "object" ? (item.human_ref || item.ref) : item;
   if (typeof ref !== "string") return null;
-  return WORK_REQUEST_REF.test(ref) ? "/system-work.html" : null;
+  if (WORK_REQUEST_REF.test(ref)) return "/system-work.html";
+  if (INCIDENT_REF.test(ref)) return `/incidents?ref=${encodeURIComponent(ref)}`;
+  return null;
 }
 
 export const NO_CANONICAL_PAGE = "This record has no page in this application yet.";
@@ -359,5 +362,40 @@ export function notInReleaseBlocks() {
     { id: "resources", title: "Resources: not in this release", slice: "V5-UX-C02 through V5-UX-C06", reason: "resource metering is read in those slices" },
     { id: "model_room", title: "Model Room: not in this release", slice: "V5-UX-C12 and V5-UX-C13", reason: "the ticket board and its history ship there" },
     { id: "atlas", title: "Atlas: not in this release", slice: "V5-UX-C07 through V5-UX-C09", reason: "the atlas renderer is a later phase" },
+  ];
+}
+
+/**
+ * V5-UX-C14 Operations: the two questions this section is asked and cannot
+ * honestly answer yet, each naming the missing READ rather than a missing
+ * intention.
+ *
+ * Neither card carries a number, and that is the point. There is no read that
+ * lists pending approvals of production effects — the approval verbs that
+ * exist are partner-only and hash-pinned, so hosting them in a browser would
+ * be the app claiming a gate CARR does not give it — and no read exposes a
+ * schedule, a last run or a next run, so a count here would be invented.
+ *
+ * The `rule` on the approvals card is a statement about behaviour that is
+ * already true of every command on this app, not a promise: the command kernel
+ * re-checks an unknown outcome under its own key before anything is sent
+ * again, which is what CR-AC-22 and C23 ask for.
+ */
+export function operationsBlocks() {
+  return [
+    {
+      id: "approvals",
+      title: "Approvals of production effects",
+      body: "Not in this release. The approval verbs that exist (accept-ready-plan, accept-workflow, issue-execution-envelope) are partner-only and hash-pinned, and no read lists what is pending, so this card will appear when a pending-approvals read exists.",
+      rule: "Reconcile before retry is already how every command on this app behaves: an unknown outcome is re-checked under its own key before anything is sent again.",
+      slice: "V5-UX-C14",
+    },
+    {
+      id: "automation",
+      title: "Scheduled automation",
+      body: "Not in this release. No read exposes scheduled jobs, last or next runs, and there is no pause, run or stop verb; this card will appear when a schedule read exists.",
+      rule: null,
+      slice: "V5-UX-C14",
+    },
   ];
 }

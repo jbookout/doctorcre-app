@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e7f4f1514568d03e269bda336a4c7d28f24f5810"
@@ -29,7 +29,9 @@
     "engineering-passport",
     "get-call-context",
     "get-deal-room",
+    "get-incident",
     "incident-board",
+    "link-incident-work-request",
     "loop-board",
     "loop-headers",
     "new-deal",

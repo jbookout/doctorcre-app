@@ -438,6 +438,51 @@ export async function createFixtureClient(opts = {}) {
     incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
     incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
   ];
+  /* --------------------------------------------- incident detail fixtures (C14)
+   * The synthetic twin of `get-incident`, in the verb's OWN shape: the row,
+   * then FOUR separate lists. Facts and hypotheses are separate arrays here for
+   * the same reason they are separate regions on the page — a hypothesis drawn
+   * as a fact is the failure that surface exists to prevent — and every fact
+   * carries its own source and its own clock.
+   */
+  const incidentDetails = new Map([
+    ['INC-20260915-01', {
+      facts: [
+        { statement: 'The demo export writer exited before the nightly generation was written', source: 'demo export log', observed_at: '2026-09-13T04:10:00.000Z' },
+        { statement: 'No demo generation row exists for the 13th', source: 'demo generation ledger', observed_at: '2026-09-13T05:02:00.000Z' },
+      ],
+      hypotheses: [
+        { statement: 'The demo writer lost its lease when the demo host restarted', status: 'under investigation', recorded_at: '2026-09-13T06:15:00.000Z' },
+      ],
+      occurrences: [
+        { observed_at: '2026-09-13T04:10:00.000Z', note: 'First demo failure recorded' },
+        { observed_at: '2026-09-16T04:11:00.000Z', note: 'Demo failure repeated on the nightly run' },
+      ],
+      links: [{ kind: 'work_request', ref: 'WR-000901', label: 'Demo bounded request: reconcile the demo vendor rows' }],
+    }],
+    ['INC-20260916-02', {
+      facts: [
+        { statement: 'The demo search read answered above its demo budget on every sample', source: 'demo read sampler', observed_at: '2026-09-15T11:25:00.000Z' },
+      ],
+      hypotheses: [
+        { statement: 'The demo cache is cold after the demo deploy', status: 'likely', recorded_at: '2026-09-15T12:00:00.000Z' },
+        { statement: 'A demo index is missing on the demo search path', status: 'not assessed', recorded_at: '2026-09-15T12:05:00.000Z' },
+      ],
+      occurrences: [{ observed_at: '2026-09-15T11:25:00.000Z', note: 'Demo slow read observed under demo load' }],
+      links: [{ kind: 'run', ref: 'RUN-demo-0042', label: 'Demo load run 0042' }],
+    }],
+    ['INC-20260916-03', {
+      facts: [
+        { statement: 'The demo staging deploy failed once and the retry succeeded', source: 'demo deploy log', observed_at: '2026-09-16T09:40:00.000Z' },
+      ],
+      hypotheses: [
+        { statement: 'A transient demo provider error caused the first attempt to fail', status: 'probable', recorded_at: '2026-09-16T09:55:00.000Z' },
+      ],
+      occurrences: [{ observed_at: '2026-09-16T09:40:00.000Z', note: 'Demo deploy retried once' }],
+      links: [],
+    }],
+  ]);
+
   const held = (row) => ({
     human_ref: row.human_ref, title: row.title, state: row.state, owner: row.owner,
     executor: row.executor, done_predicate: row.done_predicate, blocker: row.blocker || null,
@@ -973,6 +1018,42 @@ export async function createFixtureClient(opts = {}) {
         ready_to_close: rows.filter((row) => row.ready_to_close).length,
         incidents: rows.map((row) => ({ ...row })),
       };
+    },
+
+    // ------------------------------------------------- incident detail (C14)
+    // `get-incident` keeps facts and hypotheses apart, so this does too. An
+    // unknown reference is `incident_not_found`, the ledger's own code, rather
+    // than an empty detail that would look like an incident with nothing in it.
+    async getIncident({ ref, fact_limit = 50 } = {}) {
+      refuseIfOutage('incidents', 'get-incident');
+      const row = incidents.find((candidate) => candidate.ref === String(ref));
+      const detail = incidentDetails.get(String(ref));
+      if (!row || !detail) refuse('get-incident', 'incident_not_found', { incident_ref: ref });
+      return {
+        ok: true,
+        incident: { ...row },
+        facts: detail.facts.slice(0, Number.isInteger(fact_limit) ? fact_limit : 50).map((fact) => ({ ...fact })),
+        hypotheses: detail.hypotheses.map((hypothesis) => ({ ...hypothesis })),
+        occurrences: detail.occurrences.map((occurrence) => ({ ...occurrence })),
+        links: detail.links.map((link) => ({ ...link })),
+      };
+    },
+
+    // The one write the incident page offers. It validates exactly the two
+    // patterns the verb declares, refuses a link that already exists, and
+    // replays under a reused key like every other fixture write.
+    async linkIncidentWorkRequest({ idempotency_key, incident_ref, work_request }) {
+      return withIdem(idempotency_key, () => {
+        if (!/^INC-[0-9]{8}-[0-9]{2}$/.test(String(incident_ref))) refuse('link-incident-work-request', 'invalid_incident_ref', { incident_ref });
+        if (!/^WR-[0-9]{1,12}$/.test(String(work_request))) refuse('link-incident-work-request', 'invalid_work_request', { work_request });
+        const detail = incidentDetails.get(String(incident_ref));
+        if (!detail) refuse('link-incident-work-request', 'incident_not_found', { incident_ref });
+        if (detail.links.some((link) => link.ref === String(work_request))) {
+          refuse('link-incident-work-request', 'already_linked', { incident_ref, work_request });
+        }
+        detail.links.push({ kind: 'work_request', ref: String(work_request), label: `Linked work request ${work_request}` });
+        return { ok: true, incident_ref: String(incident_ref), work_request: String(work_request), links: detail.links.length };
+      });
     },
 
     async currentWorkItem() {

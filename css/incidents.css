@@ -1,0 +1,46 @@
+/* V5-UX-C14 incident page — page layer over css/system.css.
+ *
+ * The shared sheet is contract-bound, so nothing here invents a colour or a
+ * type scale. This page adds only what the shared sheet leaves to a page:
+ *
+ *  1. The hero row, the reference in a monospace face, and the one headline
+ *     sentence that says who can clear the incident.
+ *  2. The 44px floor on every control this page adds, and wrapping so a long
+ *     fact reads on a 375px screen.
+ *  3. The visible separation of the hypotheses region. A guess drawn like a
+ *     finding is the one failure this page exists to prevent, so that card is
+ *     dashed, quieter, and carries its own eyebrow.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hero-card { display: grid; gap: 12px; }
+
+.headline { margin: 0; font: 600 20px/1.3 var(--display); }
+.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.02em; }
+
+.chip-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { min-height: var(--touch); overflow-wrap: anywhere; }
+.btn { min-height: var(--touch); }
+.work-item h3 { overflow-wrap: anywhere; }
+.work-meta span { overflow-wrap: anywhere; }
+
+[data-section="hypotheses"] { border-style: dashed; }
+[data-section="hypotheses"] .work-item { color: var(--quiet); }
+[data-section="hypotheses"] #hypothesesEyebrow { font-weight: 700; }
+
+.field input { min-height: var(--touch); }
+.field-hint { margin: 4px 0 0; color: var(--quiet); font-size: 11px; }
+
+.state-block[data-state="unknown"], .state-block[data-state="empty"] {
+  border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; color: var(--quiet);
+}
+
+@media (max-width: 480px) {
+  .hero { flex-direction: column; align-items: stretch; }
+  .hero-meta { justify-content: flex-start; }
+}

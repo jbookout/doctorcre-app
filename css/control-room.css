@@ -54,6 +54,9 @@
 
 /* Permanent scope, not an outage and not a zero. */
 .state-block[data-state="not_in_release"] { border-style: dashed; border-color: var(--line-strong); }
+/* V5-UX-C14: the rule under the Approvals card states behaviour that is
+ * already true of every command here, so it reads as a statement, not a note. */
+.state-block[data-operations] .operations-rule { margin: 6px 0 0; font-size: 12px; color: var(--text); }
 .state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
 .state-block + .state-block { margin-top: 10px; }
 

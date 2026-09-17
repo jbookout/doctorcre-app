@@ -89,6 +89,17 @@ test("the independent status page is served without a CARR call", async () => {
   assert.equal((await handleDoctorcreRequest(request("/leads", { method: "POST" }), env)).status, 405);
 });
 
+// V5-UX-C14: the incident page is an ordinary GATED page. It is served through
+// the normal APP_ROUTES branch, so a signed-out request reaches the CARR gate
+// exactly as /control-room does; nothing about it is ungated.
+test("the incident page is served on the gated route", async () => {
+  let carrCalls = 0;
+  const env = environment({ carr: { fetch: async () => { carrCalls += 1; return new Response(); } } });
+  assert.equal(await (await handleDoctorcreRequest(request("/incidents"), env)).text(), "asset:/incidents.html");
+  assert.equal(carrCalls, 1, "the incident page goes through the CARR gate");
+  assert.equal((await handleDoctorcreRequest(request("/incidents", { method: "POST" }), env)).status, 405);
+});
+
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
   const share = await handleDoctorcreRequest(request("/share?tour=T-1"), environment());
   assert.equal(share.status, 302);
@@ -98,7 +109,7 @@ test("share links remain on the isolated reports host and release identity is ex
     service: "doctorcre-app", environment: "staging", source_commit: "1".repeat(40),
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
-    carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.7.0" },
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.7.0" },
+    carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.8.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.8.0" },
   });
 });
