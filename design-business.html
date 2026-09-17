@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <meta name="description" content="DoctorCRE business workspace prototype: Home, Team Review, Pipeline, record panel, Doc and Quick Add on synthetic data">
+  <meta name="description" content="DoctorCRE business workspace prototype: Home, Work, Pipeline and Doc history tabs on synthetic data">
   <title>Business prototype · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
@@ -17,106 +17,127 @@
 <body data-prototype="business">
   <a class="skip" href="#main">Skip to Home</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark">C</span><span>DoctorCRE <small>prototype</small></span></a>
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>prototype</small></span></a>
     <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="#home" aria-current="page">Home</a>
-      <a href="#work">Work</a>
-      <a href="#pipeline">Pipeline</a>
-      <a href="#clients">Clients</a>
-      <a href="#vendors">Vendors</a>
-      <a href="#calendar">Calendar</a>
-      <a href="#more">More</a>
+      <a href="/design/business" aria-current="page">Business</a>
+      <a href="/design/operations">Control Room</a>
+      <a href="/design">Visual system</a>
+      <a href="/work-inventory">Work Inventory</a>
     </nav>
-    <div class="global-controls">
-      <button class="btn" type="button" id="docOpen" aria-controls="docPanel">Doc</button>
-      <div class="btn-group" data-pref="theme" role="group" aria-label="Theme">
-        <button class="btn" type="button" data-value="dark" aria-pressed="true">Dark</button>
-        <button class="btn" type="button" data-value="light" aria-pressed="false">Light</button>
-      </div>
-      <div class="btn-group" data-pref="density" role="group" aria-label="Density">
-        <button class="btn" type="button" data-value="comfortable" aria-pressed="true">Comfortable</button>
-        <button class="btn" type="button" data-value="compact" aria-pressed="false">Compact</button>
-      </div>
-      <div class="btn-group" data-pref="motion" role="group" aria-label="Motion">
-        <button class="btn" type="button" data-value="full" aria-pressed="true">Motion</button>
-        <button class="btn" type="button" data-value="reduced" aria-pressed="false">Pause motion</button>
-      </div>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </header>
 
   <main id="main" class="shell">
-    <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Prototype for review. Synthetic examples; nothing here reads or changes a record. <a href="/design">Visual system</a> · <a href="/design/operations">Control Room prototype</a></p>
+    <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. No record is read or changed.</p>
     <div class="simulator glass">
-      <label for="outcomeSimulator">Simulate the outcome of the next command</label>
-      <select id="outcomeSimulator"><option value="confirm">Confirmed by the server</option><option value="refuse">Refused (stale version)</option><option value="timeout">Timeout (unknown outcome)</option></select>
+      <label for="outcomeSimulator">Next command outcome</label>
+      <select id="outcomeSimulator">
+        <option value="confirm">Confirmed by the server</option>
+        <option value="refuse">Refused (stale version)</option>
+        <option value="timeout">Timeout (unknown outcome)</option>
+      </select>
     </div>
 
-    <section id="home" class="hero" aria-labelledby="homeTitle">
-      <div>
-        <p class="eyebrow"><span class="orb" data-state="healthy" aria-hidden="true"></span> Team book · Joe and Dell</p>
-        <h1 id="homeTitle">Tuesday, needs you</h1>
-        <p class="intro">Action needed today, what changed since your last visit, and who you are waiting on. The pipeline follows, compact. Nobody is ranked.</p>
-      </div>
-      <div class="hero-meta">
-        <span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Live sync</span>
-        <span class="as-of">As of 14:02:11 · source CARR</span>
-      </div>
-    </section>
+    <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
+      <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
+      <button class="tab" type="button" role="tab" id="tabWork" aria-controls="panelWork" aria-selected="false">Work</button>
+      <button class="tab" type="button" role="tab" id="tabPipeline" aria-controls="panelPipeline" aria-selected="false">Pipeline</button>
+      <button class="tab" type="button" role="tab" id="tabDocHistory" aria-controls="panelDocHistory" aria-selected="false">Doc history</button>
+    </div>
 
-    <section class="home-grid" aria-label="Home">
-      <article class="card glass attention" aria-labelledby="todayTitle">
-        <div class="card-heading"><div><p class="eyebrow">Needs action today</p><h2 id="todayTitle">2 actions, 1 overdue</h2></div><span class="orb" data-state="attention" aria-hidden="true"></span></div>
-        <p class="small">Overdue first, then deadlines, then blocked. Each says why it is here.</p>
-        <a class="btn btn-secondary" href="#work">Open Work</a>
-      </article>
-      <article class="card glass" aria-labelledby="changedTitle">
-        <div class="card-heading"><div><p class="eyebrow">Changed since your last visit</p><h2 id="changedTitle">3 changes</h2></div><span class="orb" data-state="refreshing" aria-hidden="true"></span></div>
-        <ul class="change-list">
-          <li><b>Dell</b> moved Demo Crestview Derm to Engaged · 11:20</li>
-          <li><b>Doc</b> polished the note on Demo Pace Pediatrics · <a class="source-link" href="#pipeline">Original</a></li>
-          <li><b>Joe</b> handed “survey window” to Dell · 09:41</li>
-        </ul>
-      </article>
-      <article class="card glass" aria-labelledby="waitingTitle">
-        <div class="card-heading"><div><p class="eyebrow">Waiting on others</p><h2 id="waitingTitle">1 counterparty</h2></div><span class="orb" data-state="still" aria-hidden="true"></span></div>
-        <p class="small">Demo Coastal Surveying, survey window. Follow up 2026-09-17, Dell.</p>
-      </article>
-      <article class="card glass" aria-labelledby="pipeTitle">
-        <div class="card-heading"><div><p class="eyebrow">Pipeline · current</p><h2 id="pipeTitle">5 assignments</h2></div><span class="as-of">as of 14:02</span></div>
-        <div class="bars" role="list" aria-label="Assignments by phase; select a bar to open the filtered list">
-          <button class="bar-row" type="button" role="listitem"><span>Warm prospect</span><span class="bar" style="width:20%"></span><span class="num">1</span></button>
-          <button class="bar-row" type="button" role="listitem"><span>Engaged</span><span class="bar" style="width:20%"></span><span class="num">1</span></button>
-          <button class="bar-row" type="button" role="listitem"><span>Search</span><span class="bar" style="width:40%"></span><span class="num">2</span></button>
-          <button class="bar-row" type="button" role="listitem"><span>LOI</span><span class="bar" style="width:20%"></span><span class="num">1</span></button>
+    <section class="tabpanel" id="panelHome" role="tabpanel" aria-labelledby="tabHome" tabindex="0">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="healthy" aria-hidden="true"></span> Deals</p>
+          <h1 id="homeTitle">Priority Items</h1>
         </div>
-      </article>
+        <div class="hero-meta">
+          <span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Live sync</span>
+          <span class="as-of" id="homeAsOf">Source CARR</span>
+        </div>
+      </div>
+
+      <div class="home-grid" role="group" aria-label="Home tiles">
+        <article class="card glass attention" aria-labelledby="todayTitle">
+          <div class="card-heading"><div><p class="eyebrow">Needs action today</p><h2 id="todayTitle">2 actions, 1 overdue</h2></div><span class="orb" data-state="attention" aria-hidden="true"></span></div>
+          <ul class="tile-list" id="todayList"></ul>
+        </article>
+        <article class="card glass" aria-labelledby="changedTitle">
+          <div class="card-heading"><div><p class="eyebrow">Changes</p><h2 id="changedTitle">3 changes</h2></div><span class="orb" data-state="refreshing" aria-hidden="true"></span></div>
+          <ul class="tile-list" id="changeList"></ul>
+        </article>
+        <article class="card glass" aria-labelledby="waitingTitle">
+          <div class="card-heading"><div><p class="eyebrow">Waiting on others</p><h2 id="waitingTitle">2 waiting</h2></div><span class="orb" data-state="still" aria-hidden="true"></span></div>
+          <ul class="tile-list" id="waitingList"></ul>
+        </article>
+        <article class="card glass" aria-labelledby="pipeTitle">
+          <div class="card-heading"><div><p class="eyebrow">Pipeline</p><h2 id="pipeTitle">5 assignments</h2></div><span class="as-of" id="pipeAsOf"></span></div>
+          <ul class="tile-list" id="phaseList"></ul>
+        </article>
+      </div>
+
+      <section class="card glass" aria-labelledby="quickTitle">
+        <div class="card-heading"><div><p class="eyebrow">Capture</p><h2 id="quickTitle">Quick add</h2></div></div>
+        <form id="quickAddForm">
+          <div class="field">
+            <label for="quickAddInput">Sentence</label>
+            <input id="quickAddInput" type="text" autocomplete="off" placeholder="Call Dr. Patel Friday 10 AM about the Crestview LOI" aria-describedby="quickAddQuestion">
+          </div>
+          <div class="field-grid" style="margin-top:12px">
+            <div class="field">
+              <label for="quickAddDate">Due date</label>
+              <input id="quickAddDate" type="date">
+            </div>
+            <div class="field">
+              <label for="quickAddDateTyped">Or type the date</label>
+              <input id="quickAddDateTyped" type="text" autocomplete="off" placeholder="Sep 18, 2026 or 9/18/2026" aria-describedby="quickAddDateHint">
+              <p class="field-hint" id="quickAddDateHint">The picker and the typed date agree; either one wins last.</p>
+            </div>
+          </div>
+          <div class="compare parsed" id="quickAddParsed" aria-live="polite">
+            <div><span>Action</span><i>unknown</i></div><div><span>Owner</span><i>unknown</i></div><div><span>Due</span><i>none</i></div><div><span>Related</span><i>none</i></div>
+          </div>
+          <p class="small" id="quickAddQuestion"></p>
+          <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button" id="quickAddDraft">Keep as draft</button></div>
+        </form>
+      </section>
     </section>
 
-    <section id="work" class="card glass" aria-labelledby="workTitle">
-      <div class="card-heading">
-        <div><p class="eyebrow">Work · Team Review</p><h2 id="workTitle">What the team is doing</h2></div>
-        <div class="scope-bar">
+    <section class="tabpanel" id="panelWork" role="tabpanel" aria-labelledby="tabWork" tabindex="0" hidden>
+      <section class="card glass" aria-labelledby="workTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Work</p><h2 id="workTitle">Activity</h2></div>
           <div class="btn-group" id="scopeSwitch" role="group" aria-label="Scope">
             <button class="btn" type="button" data-scope="team" aria-pressed="true">Team</button>
             <button class="btn" type="button" data-scope="mine" aria-pressed="false">My work</button>
           </div>
-          <p class="small" id="scopeNote">Showing the combined team book. Nobody is ranked.</p>
         </div>
-      </div>
-      <ul class="work-list" id="workList" aria-live="polite"></ul>
+        <ul class="work-list" id="workList" aria-live="polite"></ul>
+      </section>
     </section>
 
-    <section id="pipeline" class="pipeline-section" aria-labelledby="pipelineTitle">
+    <section class="tabpanel" id="panelPipeline" role="tabpanel" aria-labelledby="tabPipeline" tabindex="0" hidden>
       <div class="card-heading">
-        <div><p class="eyebrow">Pipeline</p><h2 id="pipelineTitle">Warm prospects and active client work, one board</h2></div>
-        <div class="chip-bar" aria-label="Active filters">
-          <button class="chip" type="button" aria-pressed="true">Warm prospects</button>
-          <button class="chip" type="button" aria-pressed="true">Active client work</button>
-          <button class="chip chip-reset" type="button">Reset</button>
+        <div><p class="eyebrow">Pipeline</p><h2 id="pipelineTitle">One board</h2></div>
+        <div class="chip-bar" id="boardChips" aria-label="Board filters">
+          <button class="chip" type="button" data-filter="prospect" aria-pressed="true">Warm prospects</button>
+          <button class="chip" type="button" data-filter="client" aria-pressed="true">Active client work</button>
+          <button class="chip chip-reset" type="button" data-filter="reset">Reset</button>
         </div>
       </div>
-      <p class="small">Every card has a Move menu. Drag is never the only way. Moves that need evidence open a completion panel; cancel leaves the confirmed phase.</p>
+      <p class="drag-hint" id="boardHint">Drag a card between columns, or focus a card and press Enter to lift it.</p>
+      <p class="sr-only" id="dragLive" aria-live="assertive"></p>
       <div class="pipeline-layout">
         <div class="kanban" id="kanban" aria-label="Pipeline by phase"></div>
         <aside id="recordPanel" class="side-panel glass" aria-labelledby="panelTitle" data-pinned="false" hidden>
@@ -128,99 +149,67 @@
             </div>
           </div>
           <div class="panel-section"><h3>Situation</h3><p id="panelSituation"></p></div>
-          <div class="panel-section"><h3>Next actions and owners</h3><p>Send LOI redline · Joe · due 2026-09-15</p></div>
-          <div class="panel-section"><h3>Critical dates</h3><p>Lease expiry 2027-03-31 · LOI response due 2026-09-19</p></div>
+          <div class="panel-section"><h3>Next action</h3><p>Send LOI redline · Joe · due Tue, Sep 15, 2026 · 5:00 PM</p></div>
+          <div class="panel-section"><h3>Critical dates</h3><p>Lease expiry Wed, Mar 31, 2027 · LOI response due Sat, Sep 19, 2026 · 2:00 PM</p></div>
           <div class="panel-section"><h3>Blockers</h3><p>None recorded.</p></div>
-          <div class="panel-section"><h3>Latest relevant communication</h3><p>Email from Demo Dr. Avery, 13:12: “Fine with the TI number.” <a class="source-link" href="#pipeline">Source</a></p></div>
-          <div class="panel-section"><h3>Doc work</h3><p>Preparing a tour packet request · needs your approval to send.</p></div>
-          <a class="btn" href="#pipeline">Open full record</a>
+          <div class="panel-section"><h3>Latest communication</h3><p>Email from Demo Dr. Avery, 1:12 PM: “Fine with the TI number.” <a class="source-link" href="/work-inventory" target="_blank" rel="noopener">Source (new tab)</a></p></div>
+          <div class="panel-section"><h3>Doc work</h3><p>Tour packet request · awaiting your approval.</p></div>
         </aside>
       </div>
     </section>
 
-    <section class="two-up">
-      <section class="card glass" aria-labelledby="quickTitle">
-        <div class="card-heading"><div><p class="eyebrow">Quick Add</p><h2 id="quickTitle">Say it in a sentence</h2></div></div>
-        <form id="quickAddForm">
-          <div class="field">
-            <label for="quickAddInput">Capture</label>
-            <input id="quickAddInput" type="text" autocomplete="off" placeholder="Send survey window to @dell by friday for Demo Pace Pediatrics" aria-describedby="quickAddQuestion">
-          </div>
-          <div class="compare parsed" id="quickAddParsed" aria-live="polite">
-            <div><span>Action</span><i>unknown</i></div><div><span>Owner</span><i>unknown</i></div><div><span>Due</span><i>none</i></div><div><span>Related</span><i>none</i></div>
-          </div>
-          <p class="small" id="quickAddQuestion">Incomplete thoughts stay drafts. Nothing books, builds or sends.</p>
-          <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button">Keep as draft</button></div>
-        </form>
-      </section>
-      <section class="card glass" aria-labelledby="calendarTitle" id="calendar">
-        <div class="card-heading"><div><p class="eyebrow">Calendar · Clients · Vendors · More</p><h2 id="calendarTitle">Same grammar, later slices</h2></div></div>
-        <p class="small">Clients and Vendors already ship in this grammar. Calendar reads an authorized schedule and never implies scheduling. More holds Ideas, Events, Reports and Settings; an interesting event is not a booked commitment.</p>
-        <div class="state-block" id="stateDemo" data-state="offline" aria-live="polite">
-          <h3>Offline</h3>
-          <p>Last verified at 13:41. Drafts stay local and are labelled until sync.</p>
-          <div class="skeleton-line" hidden></div>
-          <div class="compare" hidden><div class="original"><span>Original</span>Due 2026-09-18</div><div class="local"><span>Yours</span>Due 2026-09-19</div><div class="current"><span>Current</span>Due 2026-09-22</div></div>
-        </div>
-        <div class="btn-group state-picker" id="statePicker" role="group" aria-label="Show a data state">
-          <button class="btn" type="button" data-state="offline" aria-pressed="true">Offline</button>
-          <button class="btn" type="button" data-state="draft" aria-pressed="false">Draft</button>
-          <button class="btn" type="button" data-state="conflict" aria-pressed="false">Conflict</button>
-          <button class="btn" type="button" data-state="no_access" aria-pressed="false">No access</button>
-          <button class="btn" type="button" data-state="partial" aria-pressed="false">Partial</button>
-        </div>
+    <section class="tabpanel" id="panelDocHistory" role="tabpanel" aria-labelledby="tabDocHistory" tabindex="0" hidden>
+      <section class="card glass" aria-labelledby="docHistoryTitle">
+        <div class="card-heading"><div><p class="eyebrow">Doc</p><h2 id="docHistoryTitle">History</h2></div><span class="as-of">Personal until shared</span></div>
+        <ul class="tile-list" id="docHistoryList"></ul>
       </section>
     </section>
-    <p id="clients" class="sr-only">Clients and Vendors are live surfaces; this prototype links to the shared grammar only.</p>
-    <p id="vendors" class="sr-only"></p>
-    <p id="more" class="sr-only"></p>
   </main>
 
-  <aside id="docPanel" class="side-panel glass doc-panel" aria-labelledby="docTitle" hidden>
-    <div class="panel-head">
-      <div><p class="eyebrow">Doc · scoped</p><h2 id="docTitle">Doc</h2></div>
-      <button class="btn icon-btn" type="button" id="docClose" aria-label="Close Doc">×</button>
-    </div>
-    <p class="small" id="docContext">Scope: the board you are looking at.</p>
-    <div class="panel-section">
-      <h3>Suggestion</h3>
-      <p>Demo Gulf Breeze Dental: the LOI response is due Friday and the redline is overdue. Want me to draft the reminder for your review?</p>
-      <div class="row-wrap"><button class="btn btn-secondary" type="button">Act</button><button class="btn" type="button">Discuss</button><button class="btn btn-quiet" type="button">Snooze</button><button class="btn btn-quiet" type="button">Dismiss</button></div>
-    </div>
-    <div class="panel-section">
-      <h3>Job · tour packet request</h3>
-      <div class="dual-state"><div><span>Work</span><b class="work-state" data-state="awaiting_input">Awaiting your approval</b></div><div><span>Last update</span><b>14:01 · Claude</b></div></div>
-      <button class="btn" type="button">Open in app</button>
-    </div>
-    <form id="docForm" class="panel-section">
-      <h3>Type anything</h3>
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" placeholder="Explain, correct, or ask…"></div>
-      <div class="row-wrap"><button class="btn btn-primary" type="submit">Send to Doc</button></div>
-      <p class="small" id="docReply" aria-live="polite"></p>
-    </form>
-    <p class="small">Conversations are personal until you switch Shared on. History gets short titles with the date beside them.</p>
-  </aside>
+  <dialog id="detailDialog" class="dialog" aria-labelledby="detailTitle">
+    <article>
+      <header><div><p class="eyebrow" id="detailEyebrow">Detail</p><h2 id="detailTitle">Item</h2></div><button class="btn icon-btn" type="button" id="detailClose" aria-label="Close">×</button></header>
+      <div class="dialog-body" id="detailBody"></div>
+    </article>
+  </dialog>
 
   <dialog id="completionDialog" class="dialog" aria-labelledby="completionTitle">
     <form method="dialog">
       <header><div><p class="eyebrow">Completion</p><h2 id="completionTitle">Move</h2></div><button class="btn icon-btn" type="submit" value="cancel" aria-label="Cancel">×</button></header>
       <div class="dialog-body">
         <div class="completion-need"><b>What this move needs</b><span id="completionNeed"></span></div>
-        <label class="evidence-option"><input type="radio" name="evidence" value="etl" checked> <span><b>Existing evidence:</b> Signed ETL, Demo Navarre Ortho, uploaded 2026-09-12 by Dell</span></label>
-        <label class="evidence-option"><input type="radio" name="evidence" value="doc"> <span><b>Ask Doc</b> to retrieve authorized evidence or prepare what is missing</span></label>
+        <label class="evidence-option"><input type="radio" name="evidence" value="etl" checked> <span><b>Existing evidence:</b> Signed ETL, Demo Navarre Ortho, Sat, Sep 12, 2026</span></label>
+        <label class="evidence-option"><input type="radio" name="evidence" value="doc"> <span><b>Doc retrieves</b> the authorized evidence or prepares what is missing</span></label>
+        <div class="field-grid">
+          <div class="field"><label for="completionDate">Effective date</label><input id="completionDate" type="date"></div>
+          <div class="field"><label for="completionDateTyped">Or type the date</label><input id="completionDateTyped" type="text" autocomplete="off" placeholder="Sep 18, 2026"><p class="field-hint" id="completionDateHint">Either control fills the other.</p></div>
+        </div>
       </div>
       <footer><button class="btn btn-quiet" type="submit" value="cancel">Cancel, keep phase</button><button class="btn btn-primary" type="submit" value="confirm">Move with this evidence</button></footer>
     </form>
   </dialog>
 
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Business home</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="footer"><span>DoctorCRE · Business prototype</span><span>Synthetic examples. No record was read or changed.</span></footer>
   <nav class="mobile-nav" aria-label="Workspace shortcuts">
-    <a href="#home" aria-current="page"><span aria-hidden="true">⌂</span>Home</a>
-    <a href="#work"><span aria-hidden="true">☰</span>Work</a>
-    <a href="#pipeline"><span aria-hidden="true">◈</span>Pipeline</a>
-    <a href="#clients"><span aria-hidden="true">◍</span>Clients</a>
-    <a href="#more"><span aria-hidden="true">⋯</span>More</a>
+    <a href="#panelHome" data-tab="tabHome" aria-current="page"><span aria-hidden="true">⌂</span>Home</a>
+    <a href="#panelWork" data-tab="tabWork"><span aria-hidden="true">☰</span>Work</a>
+    <a href="#panelPipeline" data-tab="tabPipeline"><span aria-hidden="true">◈</span>Pipeline</a>
+    <a href="/design/operations"><span aria-hidden="true">◉</span>Ops</a>
   </nav>
   <script type="module" src="/js/design-prototype.js"></script>
 </body>

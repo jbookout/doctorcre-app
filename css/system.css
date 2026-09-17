@@ -17,9 +17,13 @@
  * Follow mode (a partner following the other's view) never touches these.
  *
  * MOTION IS A STATE CHANNEL and is always redundant with colour AND shape:
- * calm is a solid dot breathing at 3.5s, attention is a ring dot at 2s,
- * urgent is a double ring at 1s, still is a hollow dot that never moves.
+ * calm is a solid dot breathing at 5.25s, attention is a ring dot at 3s,
+ * urgent is a double ring at 1.5s, still is a hollow dot that never moves.
  * With motion reduced every state stays readable from the shape alone.
+ *
+ * Motion runs slow on purpose (2026-09-16 review): the state durations were
+ * lengthened about 1.5x and the old spinner is gone. Waiting is a ring that
+ * draws once and fades over --motion-ring, never a wheel that races forever.
  */
 
 :root {
@@ -88,12 +92,14 @@
   --pad: calc(var(--unit) * 5 * var(--density));
   --pad-card: calc(var(--unit) * 6 * var(--density));
   /* motion: named durations are the state vocabulary, not decoration */
-  --motion-calm: 3.5s;
-  --motion-attention: 2s;
-  --motion-urgent: 1s;
-  --motion-flow: 8s;
-  --motion-enter: 180ms;
-  --motion-move: 250ms;
+  --motion-calm: 5.25s;
+  --motion-attention: 3s;
+  --motion-urgent: 1.5s;
+  --motion-flow: 12s;
+  --motion-enter: 270ms;
+  --motion-move: 375ms;
+  --motion-ring: 3s;
+  --motion-toast: 4s;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -220,7 +226,11 @@ small, .small { font-size: 11px; color: var(--muted); }
 .btn-danger:hover { background: color-mix(in srgb, var(--red) 14%, transparent); }
 .btn[aria-pressed="true"] { border-color: color-mix(in srgb, var(--orange) 50%, transparent); background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--text); }
 .btn[aria-busy="true"] { color: transparent; position: relative; }
-.btn[aria-busy="true"]::after { position: absolute; width: 16px; height: 16px; border: 3px solid var(--orange); border-top-color: transparent; border-radius: 50%; content: ""; animation: spin var(--motion-urgent) linear infinite; }
+.btn[aria-busy="true"]::after { position: absolute; width: 18px; height: 18px; border-radius: 50%; content: ""; background: conic-gradient(var(--orange) var(--ring-sweep, 0turn), transparent 0); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); animation: ring-draw var(--motion-ring) var(--ease) infinite; }
+/* The one waiting shape in the system: a circular stroke that draws and fades. */
+.ring { position: relative; display: inline-block; width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(var(--cyan) var(--ring-sweep, 0turn), transparent 0); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px)); animation: ring-draw var(--motion-ring) var(--ease) infinite; }
+.ring[data-tone="orange"] { background: conic-gradient(var(--orange) var(--ring-sweep, 0turn), transparent 0); }
+:root[data-motion="reduced"] .ring, :root[data-motion="reduced"] .btn[aria-busy="true"]::after { background: conic-gradient(var(--cyan) 0.75turn, transparent 0); }
 .btn-group { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); }
 .btn-group .btn { border-color: transparent; min-height: 38px; }
 .icon-btn { padding: 0; width: var(--touch); }
@@ -280,7 +290,8 @@ small, .small { font-size: 11px; color: var(--muted); }
 .avatar { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 10px; font-weight: 800; border: 2px solid transparent; }
 .avatar[data-partner="joe"] { border-color: var(--orange); }
 .avatar[data-partner="dell"] { border-color: var(--cyan); }
-.work-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--line); color: var(--muted); }
+/* Status words are printed as written ("To do"), never machine-cased. */
+.work-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: none; border: 1px solid var(--line); color: var(--muted); }
 .work-status[data-status="todo"] { }
 .work-status[data-status="in_progress"] { border-color: color-mix(in srgb, var(--cyan) 50%, transparent); color: var(--cyan-text); }
 .work-status[data-status="waiting"] { border-color: color-mix(in srgb, var(--amber) 55%, transparent); color: var(--amber-text); border-style: dashed; }
@@ -304,11 +315,53 @@ small, .small { font-size: 11px; color: var(--muted); }
 .kanban-card .work-meta { font-size: 10px; }
 .card-actions { display: flex; gap: 6px; margin-top: 2px; }
 .card-actions .btn { min-height: 38px; padding: 6px 10px; font-size: 11px; }
-.move-menu { display: grid; gap: 2px; margin-top: 4px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--ground-1); box-shadow: var(--shadow-float); animation: receipt-in var(--motion-enter) var(--ease); }
-.move-menu button { display: flex; align-items: center; justify-content: space-between; min-height: var(--touch); padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font-size: 12px; font-weight: 700; text-align: left; }
-.move-menu button:hover, .move-menu button:focus-visible { background: color-mix(in srgb, var(--orange) 14%, transparent); }
-.move-menu button[aria-disabled="true"] { color: var(--quiet); }
-.move-menu button small { color: var(--quiet); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; }
+/* Cards move by mouse drag. The keyboard path is the same move, announced:
+   focus a card, Enter or Space lifts it, arrows choose a column, Enter drops,
+   Escape puts it back. Nothing in this system is drag-only. */
+.kanban-card[draggable="true"] { cursor: grab; }
+.kanban-card[data-dragging="true"] { opacity: 0.45; border-style: dashed; cursor: grabbing; }
+.kanban-card[data-lifted="true"] { border-color: var(--orange); box-shadow: 0 0 0 2px var(--orange), var(--shadow-float); transform: translateY(-3px) scale(1.01); }
+.kanban-card[data-lifted="true"]::before { content: "Lifted · arrows choose, Enter drops, Escape cancels"; display: block; color: var(--orange-text); font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.kanban-column[data-drop="true"] { outline: 3px dashed var(--orange); outline-offset: -3px; background: color-mix(in srgb, var(--orange) 10%, transparent); }
+.kanban-column[data-drop="blocked"] { outline: 3px dashed var(--violet); outline-offset: -3px; }
+.drag-hint { margin: 0; color: var(--quiet); font-size: 11px; }
+
+/* ------------------------------------------------------------- in-page tabs: one screen at a time */
+.tabs { display: flex; gap: 4px; overflow: auto; margin-bottom: 18px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.tab { display: inline-flex; align-items: center; min-height: var(--touch); padding: 8px 16px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--muted); font: 800 12px var(--body); white-space: nowrap; }
+.tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.tab[aria-selected="true"] { border-color: color-mix(in srgb, var(--orange) 55%, transparent); background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--text); box-shadow: inset 0 -2px var(--orange); }
+.tabpanel { display: grid; gap: 16px; }
+.tabpanel[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------- preference icons: filled on, hollow off */
+.pref-icons { display: flex; gap: 6px; }
+.pref-icon { display: grid; place-items: center; width: var(--touch); height: var(--touch); min-height: var(--touch); padding: 0; border: 1px solid var(--line-strong); border-radius: 12px; background: transparent; color: var(--muted); }
+.pref-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.pref-icon[aria-pressed="true"] { border-color: var(--orange); background: color-mix(in srgb, var(--orange) 20%, transparent); color: var(--orange-text); }
+.pref-icon[aria-pressed="true"] svg .fillable { fill: currentColor; }
+.pref-icon:hover { color: var(--text); border-color: color-mix(in srgb, var(--orange) 55%, transparent); }
+
+/* ------------------------------------------------------------- Doc: one floating icon, one chat window */
+.doc-fab { position: fixed; right: 18px; bottom: 18px; z-index: 45; display: grid; place-items: center; width: 56px; height: 56px; min-height: 56px; padding: 0; border: 1px solid color-mix(in srgb, var(--orange) 70%, transparent); border-radius: 50%; background: linear-gradient(150deg, var(--navy), var(--navy-deep)); color: var(--orange-text); font: 700 20px var(--display); box-shadow: 0 0 28px rgba(242, 138, 57, 0.28), var(--shadow-float); }
+.doc-fab:hover { border-color: var(--orange); }
+.doc-fab[aria-expanded="true"] { background: var(--orange); color: var(--on-accent); }
+.doc-chat { position: fixed; right: 18px; bottom: 86px; z-index: 46; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; width: min(390px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 120px)); border-radius: var(--radius-l); overflow: hidden; animation: receipt-in var(--motion-enter) var(--ease); }
+.doc-chat-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.doc-reading { margin: 0; color: var(--orange-text); font-size: 12px; font-weight: 700; }
+.doc-transcript { display: grid; gap: 10px; overflow: auto; padding: 14px 16px; }
+.doc-turn { padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--ground-2) 60%, transparent); font-size: 13px; line-height: 1.5; }
+.doc-turn[data-from="you"] { border-color: color-mix(in srgb, var(--cyan) 45%, transparent); }
+.doc-turn[data-from="doc"] { border-color: color-mix(in srgb, var(--orange) 45%, transparent); }
+.doc-turn span { display: block; margin-bottom: 3px; color: var(--quiet); font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.doc-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: end; padding: 12px 14px; border-top: 1px solid var(--line); }
+.doc-mic { grid-column: 1 / -1; justify-content: flex-start; }
+.doc-mic[aria-pressed="true"] { border-color: var(--cyan); background: color-mix(in srgb, var(--cyan) 16%, transparent); color: var(--cyan-text); }
+.doc-mic[aria-pressed="true"] .orb { animation: breathe var(--motion-attention) ease-in-out infinite; }
+
+/* ------------------------------------------------------------- toast: shows briefly, then fully gone */
+.toast { position: fixed; left: 50%; bottom: 96px; z-index: 50; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 11px 16px; border: 1px solid color-mix(in srgb, var(--green) 50%, transparent); border-radius: 999px; background: var(--ground-1); color: var(--text); font-size: 12px; font-weight: 700; box-shadow: var(--shadow-float); animation: toast-life var(--motion-toast) var(--ease) forwards; }
+:root[data-motion="reduced"] .toast { animation: none; }
 
 /* ------------------------------------------------------------- panels: nonmodal aside vs modal dialog */
 .side-panel { position: sticky; top: 84px; align-self: start; display: grid; gap: 12px; max-height: calc(100vh - 100px); overflow: auto; padding: var(--pad-card); border-radius: var(--radius-l); }
@@ -466,8 +519,10 @@ small, .small { font-size: 11px; color: var(--muted); }
 .bar-row .num { font-variant-numeric: tabular-nums; color: var(--muted); }
 
 /* ------------------------------------------------------------- keyframes */
+@property --ring-sweep { syntax: "<angle>"; inherits: false; initial-value: 0turn; }
 @keyframes breathe { 0%, 100% { filter: brightness(1); opacity: 0.9; } 50% { filter: brightness(1.25); opacity: 1; } }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ring-draw { 0% { --ring-sweep: 0turn; opacity: 0.2; } 55% { --ring-sweep: 1turn; opacity: 1; } 100% { --ring-sweep: 1turn; opacity: 0; } }
+@keyframes toast-life { 0% { opacity: 0; transform: translate(-50%, 8px); } 8%, 62% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; visibility: hidden; transform: translate(-50%, 0); } }
 @keyframes shimmer { to { background-position-x: -200%; } }
 @keyframes flow-dash { to { stroke-dashoffset: -144; } }
 @keyframes receipt-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -481,8 +536,17 @@ small, .small { font-size: 11px; color: var(--muted); }
   .shell { padding: 22px 14px 40px; }
   .side-panel { position: fixed; inset: 0; z-index: 35; max-height: none; border-radius: 0; }
   .dual-state { grid-template-columns: 1fr; }
-  .receipt-dock { right: 12px; left: 12px; bottom: 84px; width: auto; }
-  .mobile-nav { position: fixed; right: 12px; bottom: 12px; left: 12px; z-index: 25; display: grid; grid-template-columns: repeat(5, 1fr); padding: 7px max(7px, env(safe-area-inset-left)) max(7px, env(safe-area-inset-bottom)); border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--ground-0) 94%, transparent); backdrop-filter: blur(18px); box-shadow: var(--shadow-float); }
+  .receipt-dock { right: 12px; left: 12px; bottom: 150px; width: auto; }
+  /* Doc clears the mobile nav; the chat fills the screen below the topbar. */
+  .doc-fab { right: 14px; bottom: 82px; }
+  .doc-chat { right: 10px; left: 10px; bottom: 82px; width: auto; max-height: calc(100vh - 150px); }
+  .toast { left: 12px; right: 12px; bottom: 150px; transform: none; justify-content: center; }
+  @keyframes toast-life { 0% { opacity: 0; } 8%, 62% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+  .tabs { margin-bottom: 14px; }
+  .tab { padding: 8px 12px; }
+  /* The item count varies by surface (Doc is the floating button, never a nav
+     item), so the columns are derived rather than fixed at five. */
+  .mobile-nav { position: fixed; right: 12px; bottom: 12px; left: 12px; z-index: 25; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); padding: 7px max(7px, env(safe-area-inset-left)) max(7px, env(safe-area-inset-bottom)); border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--ground-0) 94%, transparent); backdrop-filter: blur(18px); box-shadow: var(--shadow-float); }
   .mobile-nav a { display: grid; justify-items: center; gap: 3px; min-height: var(--touch); padding: 6px 2px; border-radius: 10px; color: var(--quiet); font-size: 9px; font-weight: 800; text-decoration: none; }
   .mobile-nav a:hover, .mobile-nav a:focus-visible, .mobile-nav a[aria-current="page"] { background: color-mix(in srgb, var(--orange) 14%, transparent); color: var(--text); }
   .mobile-nav a span { font-size: 17px; line-height: 1; }

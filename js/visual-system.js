@@ -113,38 +113,142 @@ export function orderWork(items, now) {
 }
 
 /**
- * Quick Add reads one sentence and shows what it understood. It infers the
- * action, an owner (@joe or @dell), a due date (by YYYY-MM-DD or by <weekday>)
- * and a related record (for <name>). Anything it cannot see stays explicitly
- * unknown; an incomplete thought is still capturable as a draft.
+ * Clock and calendar formatting. Every time DoctorCRE prints is a 12-hour
+ * AM/PM time; 24-hour clocks are not in this product's vocabulary. Dates are
+ * printed as a calendar reads them, never as a bare ISO key. Both work in UTC
+ * so a fixture reads the same on every machine and in every test.
  */
-export function parseQuickAdd(sentence, now = Date.now()) {
-  const text = String(sentence || "").trim();
-  const owner = /@(joe|dell)\b/i.exec(text)?.[1]?.toLowerCase() || null;
-  let due = null;
-  const iso = /\bby\s+(\d{4}-\d{2}-\d{2})\b/i.exec(text);
-  if (iso) due = iso[1];
-  else {
-    const weekday = /\bby\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.exec(text);
-    if (weekday) {
-      const names = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-      const target = names.indexOf(weekday[1].toLowerCase());
-      const date = new Date(now);
-      const delta = ((target - date.getUTCDay()) + 7) % 7 || 7;
-      date.setUTCDate(date.getUTCDate() + delta);
-      due = date.toISOString().slice(0, 10);
-    }
+const WEEKDAYS = Object.freeze(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]);
+const MONTHS = Object.freeze(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]);
+
+function asDate(value) {
+  const date = value instanceof Date ? value : new Date(typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
+  return Number.isFinite(date.valueOf()) ? date : null;
+}
+
+/** "2:00 PM" — hour without a leading zero, minutes always two digits. */
+export function formatClock(value) {
+  const date = asDate(value);
+  if (!date) return null;
+  const hours = date.getUTCHours();
+  const suffix = hours < 12 ? "AM" : "PM";
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}:${String(date.getUTCMinutes()).padStart(2, "0")} ${suffix}`;
+}
+
+/** "Wed, Sep 16, 2026" — the calendar, in the order a calendar reads. */
+export function formatCalendarDate(value) {
+  const date = asDate(value);
+  if (!date) return null;
+  return `${WEEKDAYS[date.getUTCDay()].slice(0, 3)}, ${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+}
+
+/** "Wednesday" — the day a title names, taken from the fixture date. */
+export function weekdayName(value) {
+  const date = asDate(value);
+  return date ? WEEKDAYS[date.getUTCDay()] : null;
+}
+
+/** A calendar date plus an optional AM/PM time, joined the one way. */
+export function formatDueStamp(value, time = null) {
+  const calendar = formatCalendarDate(value);
+  if (!calendar) return null;
+  return time ? `${calendar} · ${time}` : calendar;
+}
+
+/**
+ * The typed fallback beside every <input type="date">: accept what a person
+ * types by hand and return the same ISO key the picker would have produced,
+ * or null when it is not a date at all.
+ */
+export function parseTypedDate(text, now = Date.now()) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  if (iso) return isoKey(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const slashed = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/.exec(value);
+  if (slashed) {
+    const year = slashed[3] ? Number(slashed[3].length === 2 ? `20${slashed[3]}` : slashed[3]) : new Date(now).getUTCFullYear();
+    return isoKey(year, Number(slashed[1]), Number(slashed[2]));
   }
-  const related = /\bfor\s+([A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*)*)/.exec(text)?.[1] || null;
+  const spelled = /^([a-z]{3,9})\s+(\d{1,2})(?:,?\s*(\d{4}))?$/i.exec(value);
+  if (spelled) {
+    const month = MONTHS.findIndex((name) => name.toLowerCase() === spelled[1].slice(0, 3).toLowerCase());
+    if (month >= 0) return isoKey(spelled[3] ? Number(spelled[3]) : new Date(now).getUTCFullYear(), month + 1, Number(spelled[2]));
+  }
+  const weekday = WEEKDAYS.findIndex((name) => name.toLowerCase() === value.toLowerCase());
+  if (weekday >= 0) return nextWeekday(weekday, now);
+  return null;
+}
+
+function isoKey(year, month, day) {
+  if (!(year >= 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.toISOString().slice(0, 10) : null;
+}
+
+function nextWeekday(target, now) {
+  const date = new Date(now);
+  const delta = ((target - date.getUTCDay()) + 7) % 7 || 7;
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Quick add reads one sentence and shows what it understood. It infers the
+ * action, an owner, a due date, a due time and the related record.
+ *
+ * Three rules came out of the 2026-09-16 review. An owner is never left
+ * unknown when the sentence does not name one: the viewer owns what the
+ * viewer captures, and the reply says it was defaulted. A time of day in the
+ * sentence ("Friday 10 AM") is read and printed as AM/PM. A related record is
+ * matched against the records actually on the board, so a distinctive word
+ * ("Crestview") finds "Demo Crestview Derm" without the word "for".
+ *
+ * @param {string} sentence
+ * @param {number|{now?: number, viewer?: string, records?: string[]}} options
+ *        a bare number is still accepted as `now`.
+ */
+export function parseQuickAdd(sentence, options = {}) {
+  const { now = Date.now(), viewer = "joe", records = [] } = typeof options === "number" ? { now: options } : (options || {});
+  const text = String(sentence || "").trim();
+
+  const named = /(?:@|\bto\s+|\bfor\s+)(joe|dell)\b/i.exec(text)?.[1]?.toLowerCase() || null;
+  const owner = named || (viewer === "dell" ? "dell" : "joe");
+  const ownerDefaulted = named === null;
+
+  let due = null;
+  const isoMatch = /\b(?:by|on|due)?\s*(\d{4}-\d{2}-\d{2})\b/i.exec(text);
+  const weekdayMatch = /\b(?:by\s+|on\s+|next\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.exec(text);
+  if (isoMatch) due = isoMatch[1];
+  else if (weekdayMatch) due = nextWeekday(WEEKDAYS.findIndex((n) => n.toLowerCase() === weekdayMatch[1].toLowerCase()), now);
+
+  const timeMatch = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(text);
+  const dueTime = timeMatch
+    ? `${Number(timeMatch[1]) % 12 === 0 ? 12 : Number(timeMatch[1]) % 12}:${timeMatch[2] || "00"} ${timeMatch[3].toUpperCase()}`
+    : null;
+
+  const haystack = text.toLowerCase();
+  const matched = records.find((name) => String(name).toLowerCase().split(/\s+/)
+    .filter((word) => word.length > 3 && word !== "demo")
+    .some((word) => haystack.includes(word)));
+  const related = matched || /\b(?:for|about|on)\s+((?:Demo\s+)?[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*)*)/.exec(text)?.[1] || null;
+
   const action = text
-    .replace(/@(joe|dell)\b/ig, "")
-    .replace(/\bby\s+(\d{4}-\d{2}-\d{2}|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/ig, "")
-    .replace(/\bfor\s+[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*)*/g, "")
+    .replace(/(?:@|\bto\s+|\bfor\s+)(joe|dell)\b/ig, " ")
+    .replace(/\b(?:by|on|due)?\s*\d{4}-\d{2}-\d{2}\b/ig, " ")
+    .replace(/\b(?:by\s+|on\s+|next\s+|this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/ig, " ")
+    .replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/ig, " ")
+    .replace(/\b(?:about|regarding)\s+(?:the\s+)?(?:Demo\s+)?[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*)*(?:\s+\w+)?$/g, " ")
+    .replace(/\bfor\s+(?:Demo\s+)?[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*)*/g, " ")
     .replace(/\s+/g, " ").trim() || null;
+
   const questions = [];
-  if (!owner) questions.push("Who owns this?");
   if (!action) questions.push("What is the action?");
-  return Object.freeze({ action, owner, due, related, questions, complete: questions.length === 0 });
+  return Object.freeze({
+    action, owner, ownerDefaulted, due, dueTime,
+    dueLabel: formatDueStamp(due, dueTime), related, questions, complete: questions.length === 0,
+  });
 }
 
 /**

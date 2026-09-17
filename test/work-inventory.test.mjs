@@ -253,8 +253,10 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   assert.match(html, /id="inventoryLive"[^>]*aria-live="polite"/);
   assert.match(html, /<html lang="en" data-theme="dark"/, "dark is the register's default and light rides the same attribute");
   assert.match(html, /\/css\/system\.css/);
-  assert.match(html, /data-pref="theme"/);
-  assert.match(html, /data-value="light"/);
+  // One icon button per preference: filled is on, hollow is off, and the only
+  // words are the accessible label and the tooltip (2026-09-16 review).
+  assert.match(html, /data-pref="theme" data-on="light" data-off="dark"/);
+  assert.match(html, /data-pref="motion" data-on="reduced" data-off="full"/);
   assert.doesNotMatch(html, /draggable="true"|ondragstart/, "no drag-only path exists on this surface");
   assert.doesNotMatch(js, /addEventListener\("(?:drag|mouseover)/);
   for (const id of ["kindChips", "statusFilter", "coverageStrip", "kindGroups", "loadMore", "inventoryState"]) {

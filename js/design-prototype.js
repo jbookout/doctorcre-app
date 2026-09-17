@@ -2,12 +2,21 @@
 // here reaches CARR, the network or a real record. The page attribute
 // data-prototype names which surface to wire; the pure decisions live in
 // visual-system.js so they can be tested without a browser.
+//
+// The 2026-09-16 review set the information design this file implements:
+// tabs and popups instead of one long scroll, tiles that list their actual
+// items, one floating Doc, drag-and-drop with a keyboard equivalent, AM/PM
+// times everywhere, calendar pickers for dates, and titles with no
+// description paragraph under them.
 import {
-  canDispatch, contrastRatio, createFeedback, feedbackLabel, orderWork, parseQuickAdd,
-  preferenceAttributes, resolvePreferences, transitionFeedback,
+  canDispatch, contrastRatio, createFeedback, feedbackLabel, formatCalendarDate, formatClock,
+  formatDueStamp, orderWork, parseQuickAdd, parseTypedDate, preferenceAttributes,
+  resolvePreferences, transitionFeedback, weekdayName,
 } from "./visual-system.js";
+import { mountDocDock } from "./doc-dock.js";
 
 const PREFS_KEY = "doctorcre.presentation.v1";
+const VIEWER = "joe";
 const $ = (id) => document.getElementById(id);
 const el = (tag, attrs = {}, children = []) => {
   const node = document.createElement(tag);
@@ -22,6 +31,8 @@ const el = (tag, attrs = {}, children = []) => {
 };
 
 // ---------------------------------------------------------------- preferences
+// Each preference is ONE icon button. Filled (aria-pressed=true) is on, hollow
+// is off; the only words are the accessible label and the tooltip.
 function readStoredPreferences() {
   try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
 }
@@ -31,28 +42,115 @@ function storePreferences(preferences) {
 function systemPreferences() {
   return { prefersReducedMotion: typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches };
 }
+const PREF_WORDS = {
+  theme: { light: "Light theme", dark: "Dark theme" },
+  density: { compact: "Compact density", comfortable: "Comfortable density" },
+  motion: { reduced: "Motion paused", full: "Motion on" },
+};
 export function applyPreferences(preferences) {
   for (const [name, value] of Object.entries(preferenceAttributes(preferences))) document.documentElement.setAttribute(name, value);
-  document.querySelectorAll("[data-pref]").forEach((group) => {
-    const key = group.getAttribute("data-pref");
-    group.querySelectorAll("button[data-value]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.value === preferences[key])));
+  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => {
+    const key = button.dataset.pref;
+    const on = preferences[key] === button.dataset.on;
+    button.setAttribute("aria-pressed", String(on));
+    const words = `${PREF_WORDS[key][preferences[key]]}. Switch to ${PREF_WORDS[key][on ? button.dataset.off : button.dataset.on].toLowerCase()}.`;
+    button.setAttribute("aria-label", words);
+    button.setAttribute("title", words);
   });
   const live = $("prefsLive");
-  if (live) live.textContent = `Theme ${preferences.theme}, density ${preferences.density}, motion ${preferences.motion}.`;
+  if (live) live.textContent = `${PREF_WORDS.theme[preferences.theme]}, ${PREF_WORDS.density[preferences.density]}, ${PREF_WORDS.motion[preferences.motion]}.`;
 }
 function wirePreferences() {
   let current = resolvePreferences(readStoredPreferences(), systemPreferences());
   applyPreferences(current);
-  document.querySelectorAll("[data-pref]").forEach((group) => {
-    const key = group.getAttribute("data-pref");
-    group.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-value]");
-      if (!button) return;
-      current = resolvePreferences({ ...current, [key]: button.dataset.value }, systemPreferences());
-      storePreferences(current);
-      applyPreferences(current);
-    });
+  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.pref;
+    const next = current[key] === button.dataset.on ? button.dataset.off : button.dataset.on;
+    current = resolvePreferences({ ...current, [key]: next }, systemPreferences());
+    storePreferences(current);
+    applyPreferences(current);
+  }));
+}
+
+// ---------------------------------------------------------------- tabs
+// One screen at a time. A "go to" link elsewhere on the page switches tabs
+// instead of scrolling; links to another surface open in a new browser tab.
+function wireTabs(listId) {
+  const strip = $(listId);
+  if (!strip) return null;
+  const tabs = [...strip.querySelectorAll('[role="tab"]')];
+  const select = (tab, focus = true) => {
+    for (const candidate of tabs) {
+      const chosen = candidate === tab;
+      candidate.setAttribute("aria-selected", String(chosen));
+      candidate.tabIndex = chosen ? 0 : -1;
+      const panel = $(candidate.getAttribute("aria-controls"));
+      if (panel) panel.hidden = !chosen;
+    }
+    if (focus) tab.focus();
+  };
+  strip.addEventListener("click", (event) => {
+    const tab = event.target.closest('[role="tab"]');
+    if (tab) select(tab);
   });
+  strip.addEventListener("keydown", (event) => {
+    const index = tabs.indexOf(document.activeElement);
+    if (index < 0) return;
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step) { event.preventDefault(); select(tabs[(index + step + tabs.length) % tabs.length]); }
+    if (event.key === "Home") { event.preventDefault(); select(tabs[0]); }
+    if (event.key === "End") { event.preventDefault(); select(tabs[tabs.length - 1]); }
+  });
+  select(tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0], false);
+  // Any in-page link that names a tab switches to it rather than scrolling.
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-tab]");
+    if (!link) return;
+    const tab = $(link.dataset.tab);
+    if (!tab) return;
+    event.preventDefault();
+    select(tab);
+    document.querySelectorAll(".mobile-nav a").forEach((item) => item.toggleAttribute("aria-current", item === link));
+    if (link.hasAttribute("aria-current")) link.setAttribute("aria-current", "page");
+  });
+  return { select: (id) => { const tab = $(id); if (tab) select(tab); } };
+}
+
+// ---------------------------------------------------------------- popups
+// One detail dialog per page. A read opens it nonmodal; a popup that asks for
+// input opens it modal. Either way focus returns to what opened it.
+let detailOpener = null;
+function openDetail({ eyebrow = "Detail", title, rows = [], body = [], form = null, links = [] }, trigger) {
+  const dialog = $("detailDialog");
+  if (!dialog) return;
+  detailOpener = trigger || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  $("detailEyebrow").textContent = eyebrow;
+  $("detailTitle").textContent = title;
+  const children = [];
+  if (rows.length) children.push(el("dl", { class: "detail-list" }, rows.flatMap(([term, value]) => [el("dt", { text: term }), el("dd", { text: value })])));
+  children.push(...[].concat(body));
+  if (form) children.push(form);
+  if (links.length) children.push(el("p", { class: "dialog-links" }, links.map(([text, href]) => el("a", { class: "btn btn-quiet", href, target: "_blank", rel: "noopener", text: `${text} (new tab)` }))));
+  $("detailBody").replaceChildren(...children);
+  if (dialog.open) dialog.close();
+  if (form) dialog.showModal(); else dialog.show();
+  (dialog.querySelector("input, select, textarea, button") || $("detailClose")).focus();
+}
+function wireDetailDialog() {
+  const dialog = $("detailDialog");
+  if (!dialog) return;
+  $("detailClose")?.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => { detailOpener?.focus(); detailOpener = null; });
+  dialog.addEventListener("keydown", (event) => { if (event.key === "Escape") dialog.close(); });
+}
+
+// ---------------------------------------------------------------- toast
+// Shows briefly, then is fully gone. With motion reduced it simply disappears.
+function showToast(text) {
+  document.querySelectorAll(".toast").forEach((node) => node.remove());
+  const toast = el("div", { class: "toast", role: "status" }, [el("span", { class: "orb", "data-state": "healthy", "aria-hidden": "true" }), document.createTextNode(text)]);
+  document.body.append(toast);
+  setTimeout(() => toast.remove(), 4100);
 }
 
 // ---------------------------------------------------------------- command feedback
@@ -109,12 +207,27 @@ const outcomeChoice = () => $("outcomeSimulator")?.value || "confirm";
 
 // ---------------------------------------------------------------- business fixtures
 const TODAY = "2026-09-16T14:00:00Z";
+const STATUS_WORDS = { todo: "To do", in_progress: "In progress", waiting: "Waiting", done: "Done" };
 const WORK = [
-  { id: "t1", action: "Send LOI redline to landlord counsel", record: "Demo Gulf Breeze Dental", owner: "joe", contact: "Demo Dr. Avery", due: "2026-09-15", status: "in_progress" },
-  { id: "t2", action: "Confirm survey window with vendor", record: "Demo Pace Pediatrics", owner: "dell", contact: "Demo Dr. Okafor", due: "2026-09-18", status: "waiting", waitingOn: "Demo Coastal Surveying", followUp: "2026-09-17" },
-  { id: "t3", action: "Assemble information request for the practice CPA", record: "Demo Navarre Ortho", owner: "joe", contact: "Demo Dr. Lin", blocked: true, blockedOn: "signed ETL", status: "todo" },
-  { id: "t4", action: "Research exhibitor list and pricing", record: "Demo Regional Health Summit (event)", owner: "dell", contact: "—", due: "2026-10-02", status: "todo" },
-  { id: "t5", action: "Property search refresh: 4,000–6,000 sf medical", record: "Demo Milton Family Care", owner: "joe", contact: "Demo Dr. Reyes", due: "2026-09-20", status: "todo", pinned: true },
+  { id: "t1", action: "Send LOI redline to landlord counsel", record: "Demo Gulf Breeze Dental", owner: "joe", contact: "Demo Dr. Avery", due: "2026-09-15", dueTime: "5:00 PM", status: "in_progress", ask: "What did counsel come back with?" },
+  { id: "t2", action: "Confirm survey window with vendor", record: "Demo Pace Pediatrics", owner: "dell", contact: "Demo Dr. Okafor", due: "2026-09-18", dueTime: "10:00 AM", status: "waiting", waitingOn: "Demo Coastal Surveying", followUp: "2026-09-17", followUpTime: "2:00 PM", ask: "Which window did the vendor offer?" },
+  { id: "t3", action: "Assemble information request for the practice CPA", record: "Demo Navarre Ortho", owner: "joe", contact: "Demo Dr. Lin", blocked: true, blockedOn: "signed ETL", status: "todo", ask: "What is still missing from the request?" },
+  { id: "t4", action: "Research exhibitor list and pricing", record: "Demo Regional Health Summit (event)", owner: "dell", contact: "—", due: "2026-10-02", dueTime: "9:00 AM", status: "todo", ask: "What did the exhibitor sheet say?" },
+  { id: "t5", action: "Property search refresh: 4,000–6,000 sf medical", record: "Demo Milton Family Care", owner: "joe", contact: "Demo Dr. Reyes", due: "2026-09-20", dueTime: "4:30 PM", status: "todo", pinned: true, ask: "Which buildings made the short list?" },
+];
+const CHANGES = [
+  { id: "ch1", who: "Dell", what: "Moved Demo Crestview Derm to Engaged", at: "11:20 AM", detail: "The phase moved from Warm prospect to Engaged on a signed ETL uploaded the same morning.", record: "Demo Crestview Derm" },
+  { id: "ch2", who: "Doc", what: "Polished the note on Demo Pace Pediatrics", at: "10:04 AM", detail: "Wording only. The dates, parties and amounts were not touched, and the previous version is kept.", record: "Demo Pace Pediatrics" },
+  { id: "ch3", who: "Joe", what: "Handed the survey window to Dell", at: "9:41 AM", detail: "Ownership of the survey-window follow-up moved from Joe to Dell. The due date did not change.", record: "Demo Pace Pediatrics" },
+];
+const WAITING = [
+  { id: "w1", label: "Waiting on: Demo Crestview landlord", what: "Counter due Thu 2:00 PM", detail: "The counter on the base rent was promised for Thursday at 2:00 PM. Dell sent the reminder Tuesday 9:15 AM.", owner: "dell" },
+  { id: "w2", label: "Waiting on: Demo Coastal Surveying", what: "Survey window, follow up Thu 2:00 PM", detail: "Two windows were requested. Nothing has come back since Monday 9:12 AM.", owner: "dell" },
+];
+const DOC_HISTORY = [
+  { id: "d1", title: "Crestview counter, what to ask for", at: "Wed, Sep 16, 2026 · 11:32 AM", detail: "Three questions for the landlord and the two numbers that decide the answer." },
+  { id: "d2", title: "Gulf Breeze redline, plain-language summary", at: "Tue, Sep 15, 2026 · 4:12 PM", detail: "What changed in the redline, in the order it matters to the practice." },
+  { id: "d3", title: "Pace Pediatrics survey window", at: "Mon, Sep 14, 2026 · 8:58 AM", detail: "Who to chase and when, with the vendor's last answer quoted." },
 ];
 const PHASES = ["Warm prospect", "Engaged", "Search", "LOI", "Lease", "Closed"];
 const CARDS = [
@@ -125,110 +238,286 @@ const CARDS = [
   { id: "c5", name: "Demo Crestview Derm", kind: "prospect", phase: "Engaged", owner: "dell" },
 ];
 const EVIDENCE_NEEDED = { Engaged: "a signed ETL or accepted equivalent", Lease: "the selected winning lease LOI" };
+const boardFilter = new Set(["prospect", "client"]);
+let phaseFocus = null;
 
 function partnerAvatar(owner) {
   return el("span", { class: "owner" }, [el("span", { class: "avatar", "data-partner": owner, "aria-hidden": "true", text: owner === "joe" ? "J" : "D" }), el("span", { text: owner === "joe" ? "Joe" : "Dell" })]);
 }
+const dueText = (item) => (item.due ? formatDueStamp(item.due, item.dueTime) : "no date recorded");
+
+// A tile row is a button; it opens the item's popup.
+const tileRow = (id, title, meta, trailing) => el("li", {}, [
+  el("button", { class: "tile-row", type: "button", "data-item": id }, [
+    el("span", { text: title }),
+    trailing ? el("b", { text: trailing }) : el("b", { text: "" }),
+    meta ? el("em", { text: meta }) : null,
+  ]),
+]);
+
+function renderHome() {
+  const title = $("homeTitle");
+  if (title) title.textContent = `${weekdayName(TODAY)} · Priority Items`;
+  const asOf = $("homeAsOf");
+  if (asOf) asOf.textContent = `As of ${formatClock(TODAY)} · source CARR`;
+  const pipeAsOf = $("pipeAsOf");
+  if (pipeAsOf) pipeAsOf.textContent = `as of ${formatClock(TODAY)}`;
+
+  const today = orderWork(WORK.filter((item) => item.priority !== "ordinary" || item.due), TODAY)
+    .filter((item) => item.priority !== "ordinary").slice(0, 4);
+  $("todayList")?.replaceChildren(...today.map((item) => tileRow(item.id, item.action, `for ${item.record}`, dueText(item))));
+  $("todayTitle") && ($("todayTitle").textContent = `${today.length} actions, ${today.filter((i) => i.priority === "overdue").length} overdue`);
+
+  $("changeList")?.replaceChildren(...CHANGES.map((change) => tileRow(change.id, change.what, change.who, change.at)));
+  $("changedTitle") && ($("changedTitle").textContent = `${CHANGES.length} changes`);
+
+  $("waitingList")?.replaceChildren(...WAITING.map((item) => tileRow(item.id, item.label, item.what, null)));
+  $("waitingTitle") && ($("waitingTitle").textContent = `${WAITING.length} waiting`);
+
+  const counts = PHASES.map((phase) => [phase, CARDS.filter((card) => card.phase === phase).length]).filter(([, count]) => count > 0);
+  $("phaseList")?.replaceChildren(...counts.map(([phase, count]) => tileRow(`phase:${phase}`, phase, null, `${count}`)));
+  $("pipeTitle") && ($("pipeTitle").textContent = `${CARDS.length} assignments`);
+
+  $("docHistoryList")?.replaceChildren(...DOC_HISTORY.map((entry) => tileRow(entry.id, entry.title, null, entry.at)));
+}
+
+function answerForm(item) {
+  const form = el("form", { class: "field-grid", id: "answerForm", "data-answer": item.id });
+  form.append(
+    el("div", { class: "field" }, [el("label", { for: "answerText", text: item.ask || "Your answer" }), el("input", { id: "answerText", type: "text", autocomplete: "off", placeholder: "Type what happened" })]),
+    el("div", { class: "field" }, [el("label", { for: "answerDate", text: "Effective date" }), el("input", { id: "answerDate", type: "date", value: item.due || "" })]),
+    el("div", { class: "field" }, [el("label", { for: "answerDateTyped", text: "Or type the date" }), el("input", { id: "answerDateTyped", type: "text", autocomplete: "off", placeholder: "Sep 18, 2026" })]),
+    el("div", { class: "row-wrap", style: "grid-column:1/-1" }, [el("button", { class: "btn btn-primary", type: "submit", text: "Save answer" }), el("button", { class: "btn btn-quiet", type: "button", "data-close-detail": true, text: "Cancel" })]),
+  );
+  return form;
+}
+
+function openWorkItem(item, trigger) {
+  openDetail({
+    eyebrow: "Needs action today",
+    title: item.action,
+    rows: [
+      ["Record", item.record],
+      ["Owner", item.owner === "joe" ? "Joe" : "Dell"],
+      ["Due", dueText(item)],
+      ["Status", STATUS_WORDS[item.status]],
+      ["Contact", item.contact],
+      item.blocked ? ["Blocked on", item.blockedOn] : null,
+      item.waitingOn ? ["Waiting on", `${item.waitingOn}, follow up ${formatDueStamp(item.followUp, item.followUpTime)}`] : null,
+    ].filter(Boolean),
+    form: answerForm(item),
+  }, trigger);
+}
+function openChange(change, trigger) {
+  openDetail({
+    eyebrow: "Change",
+    title: change.what,
+    rows: [["Who", change.who], ["When", change.at], ["Record", change.record], ["What it means", change.detail]],
+    links: [["Open the record", "/work-inventory"]],
+  }, trigger);
+}
+function openWaiting(item, trigger) {
+  openDetail({
+    eyebrow: "Waiting on others",
+    title: item.label,
+    rows: [["Expecting", item.what], ["Detail", item.detail], ["Owner", item.owner === "joe" ? "Joe" : "Dell"]],
+  }, trigger);
+}
+function openDocHistory(entry, trigger) {
+  openDetail({ eyebrow: "Doc history", title: entry.title, rows: [["When", entry.at], ["Summary", entry.detail]] }, trigger);
+}
+function openPhase(phase, trigger) {
+  phaseFocus = phase;
+  const cards = CARDS.filter((card) => card.phase === phase);
+  openDetail({
+    eyebrow: "Pipeline phase",
+    title: `${phase} · ${cards.length}`,
+    body: [
+      el("ul", { class: "tile-list" }, cards.map((card) => el("li", {}, [el("button", { class: "tile-row", type: "button", "data-item": card.id }, [el("span", { text: card.name }), el("b", { text: card.kind === "client" ? "Client" : "Prospect" })])]))),
+      el("div", { class: "row-wrap" }, [el("button", { class: "btn btn-secondary", type: "button", "data-goto-pipeline": phase }, [document.createTextNode("Open this phase on the board "), el("span", { "aria-hidden": "true", text: "›" })])]),
+    ],
+  }, trigger);
+}
+
 function renderWork(scope = "team") {
   const list = $("workList");
   if (!list) return;
-  const visible = WORK.filter((item) => scope === "team" || item.owner === "joe");
+  const visible = WORK.filter((item) => scope === "team" || item.owner === VIEWER);
   list.replaceChildren(...orderWork(visible, TODAY).map((item) => el("li", { class: "work-item", "data-priority": item.priority, "data-id": item.id }, [
     el("div", {}, [
       el("h3", {}, [item.pinned ? el("span", { class: "pin", "aria-label": "Pinned", text: "★ " }) : null, document.createTextNode(item.action)]),
       el("div", { class: "work-meta" }, [
         el("span", { html: `for <b>${item.record}</b>` }),
         el("span", { html: `contact <b>${item.contact}</b>` }),
-        item.waitingOn ? el("span", { html: `waiting on <b>${item.waitingOn}</b>, follow up ${item.followUp}` }) : null,
-        item.due ? el("span", { html: `due <b>${item.due}</b>` }) : el("span", { text: "no due date" }),
+        item.waitingOn ? el("span", { html: `waiting on <b>${item.waitingOn}</b>` }) : null,
+        el("span", { html: `due <b>${dueText(item)}</b>` }),
       ]),
-      item.reason ? el("p", { class: "why", text: `Why here: ${item.reason}` }) : null,
     ]),
-    el("div", { style: "display:grid;gap:8px;justify-items:end" }, [
+    el("div", { class: "stack-end" }, [
       partnerAvatar(item.owner),
-      el("span", { class: "work-status", "data-status": item.status, text: item.status.replace("_", " ") }),
-      el("button", { class: "btn btn-quiet", type: "button", "data-handover": item.id, text: `Hand over to ${item.owner === "joe" ? "Dell" : "Joe"}` }),
+      el("span", { class: "work-status", "data-status": item.status, text: STATUS_WORDS[item.status] }),
+      el("button", { class: "btn btn-secondary", type: "button", "data-handover": item.id }, [
+        document.createTextNode(`Hand over to ${item.owner === "joe" ? "Dell" : "Joe"} `), el("span", { "aria-hidden": "true", text: "›" }),
+      ]),
     ]),
   ])));
 }
-function renderKanban() {
-  const board = $("kanban");
-  if (!board) return;
-  board.replaceChildren(...PHASES.map((phase) => {
-    const cards = CARDS.filter((card) => card.phase === phase);
-    return el("section", { class: "kanban-column glass", "aria-label": `${phase}, ${cards.length} cards` }, [
-      el("h3", {}, [document.createTextNode(phase), el("small", { text: `${cards.length}` })]),
-      ...cards.map((card) => el("article", { class: "kanban-card", "data-kind": card.kind, "data-id": card.id, "data-pending": card.pending ? "true" : null, "aria-label": `${card.name}, ${card.kind}` }, [
-        el("h4", {}, [el("button", { class: "btn btn-quiet", type: "button", style: "min-height:32px;padding:2px 4px;font-size:14px;text-align:left", "data-open": card.id, text: card.name })]),
-        el("div", { class: "work-meta" }, [el("span", { class: "kanban-lane-label", text: card.kind === "client" ? "Active client work" : "Warm prospect" }), partnerAvatar(card.owner)]),
-        el("div", { class: "card-actions" }, [
-          el("button", { class: "btn", type: "button", "data-move": card.id, "aria-haspopup": "menu", "aria-expanded": "false", text: "Move" }),
-          el("button", { class: "btn btn-quiet", type: "button", "data-doc": card.id, text: "Ask Doc" }),
-        ]),
-      ])),
-    ]);
-  }));
-}
-function openMoveMenu(button) {
-  closeMenus();
-  const card = button.closest(".kanban-card");
-  const record = CARDS.find((c) => c.id === card.dataset.id);
-  const menu = el("div", { class: "move-menu", role: "menu", "aria-label": `Move ${record.name}` });
-  for (const phase of PHASES.filter((p) => p !== record.phase)) {
-    const need = EVIDENCE_NEEDED[phase];
-    const item = el("button", { type: "button", role: "menuitem", "data-to": phase, "aria-disabled": need ? "true" : null }, [document.createTextNode(phase), need ? el("small", { text: "needs evidence" }) : null]);
-    menu.append(item);
-  }
-  card.append(menu);
-  button.setAttribute("aria-expanded", "true");
-  menu.querySelector("button").focus();
-}
-function closeMenus() {
-  document.querySelectorAll(".move-menu").forEach((menu) => {
-    const button = menu.closest(".kanban-card")?.querySelector("[data-move]");
-    if (button) button.setAttribute("aria-expanded", "false");
-    menu.remove();
+
+// ---------------------------------------------------------------- Kanban: drag + keyboard
+// createBoard returns a board whose cards move by mouse drag and by keyboard.
+// The keyboard path is the accessible equivalent of the drag, announced
+// through an aria-live region: Enter or Space lifts, arrows choose a column,
+// Enter drops, Escape cancels.
+function createBoard({ boardId, liveId, columns, items, label, onMove, evidence = {}, describe }) {
+  const board = $(boardId);
+  const live = $(liveId);
+  if (!board) return null;
+  let lifted = null;
+  let target = null;
+
+  const announce = (text) => { if (live) live.textContent = text; };
+  const render = () => {
+    board.replaceChildren(...columns.map((column) => {
+      const cards = items().filter((item) => item.phase === column);
+      const section = el("section", { class: "kanban-column glass", "data-column": column, "aria-label": `${column}, ${cards.length} cards` }, [
+        el("h3", {}, [document.createTextNode(column), el("small", { text: `${cards.length}` })]),
+        ...cards.map((card) => el("article", {
+          class: "kanban-card", "data-kind": card.kind, "data-id": card.id, draggable: "true", tabindex: "0",
+          "data-pending": card.pending ? "true" : null, "data-lifted": lifted === card.id ? "true" : null,
+          "aria-label": `${card.name}, ${column}. Press Enter to lift and move.`,
+        }, [
+          el("h4", { text: card.name }),
+          el("div", { class: "work-meta" }, [el("span", { class: "kanban-lane-label", text: card.kind === "client" ? "Active client work" : "Warm prospect" }), partnerAvatar(card.owner)]),
+          describe ? el("p", { class: "small", text: describe(card) }) : null,
+        ])),
+      ]);
+      if (target === column) section.dataset.drop = evidence[column] ? "blocked" : "true";
+      return section;
+    }));
+  };
+
+  const drop = (cardId, column) => {
+    target = null; lifted = null;
+    const card = items().find((item) => item.id === cardId);
+    if (!card || card.phase === column) { render(); return; }
+    announce(`${card.name} dropped in ${column}.`);
+    onMove(card, column);
+  };
+
+  board.addEventListener("dragstart", (event) => {
+    const card = event.target.closest(".kanban-card");
+    if (!card) return;
+    card.dataset.dragging = "true";
+    event.dataTransfer.setData("text/plain", card.dataset.id);
+    event.dataTransfer.effectAllowed = "move";
   });
+  board.addEventListener("dragend", () => { board.querySelectorAll('[data-dragging="true"]').forEach((card) => card.removeAttribute("data-dragging")); target = null; render(); });
+  board.addEventListener("dragover", (event) => {
+    const column = event.target.closest(".kanban-column");
+    if (!column) return;
+    event.preventDefault();
+    if (target !== column.dataset.column) { target = column.dataset.column; render(); }
+  });
+  board.addEventListener("drop", (event) => {
+    const column = event.target.closest(".kanban-column");
+    if (!column) return;
+    event.preventDefault();
+    drop(event.dataTransfer.getData("text/plain"), column.dataset.column);
+  });
+
+  board.addEventListener("keydown", (event) => {
+    const card = event.target.closest(".kanban-card");
+    if (!card) return;
+    const id = card.dataset.id;
+    const record = items().find((item) => item.id === id);
+    if ((event.key === "Enter" || event.key === " ") && lifted !== id) {
+      event.preventDefault();
+      lifted = id; target = record.phase;
+      announce(`${record.name} lifted from ${record.phase}. Use the arrow keys to choose a column, Enter to drop, Escape to cancel.`);
+      render();
+      board.querySelector(`.kanban-card[data-id="${id}"]`)?.focus();
+      return;
+    }
+    if (lifted !== id) return;
+    if (event.key === "Escape") {
+      event.preventDefault(); lifted = null; target = null;
+      announce(`Move cancelled. ${record.name} stays in ${record.phase}.`);
+      render(); board.querySelector(`.kanban-card[data-id="${id}"]`)?.focus();
+      return;
+    }
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+    if (step) {
+      event.preventDefault();
+      const index = columns.indexOf(target ?? record.phase);
+      target = columns[(index + step + columns.length) % columns.length];
+      announce(`${target} selected${evidence[target] ? `, needs ${evidence[target]}` : ""}. Enter drops ${record.name} here.`);
+      render(); board.querySelector(`.kanban-card[data-id="${id}"]`)?.focus();
+      return;
+    }
+    if (event.key === "Enter") { event.preventDefault(); const chosen = target; drop(id, chosen); }
+  });
+
+  board.setAttribute("aria-label", label);
+  render();
+  return { render, announce, cancel: () => { lifted = null; target = null; render(); } };
 }
-function moveCard(cardId, toPhase, trigger) {
-  const record = CARDS.find((c) => c.id === cardId);
+
+let pipelineBoard = null;
+// The two kind chips and Reset really filter the board; a control that looks
+// interactive does something.
+function visibleCards() {
+  return CARDS.filter((card) => boardFilter.has(card.kind));
+}
+function movePipelineCard(record, toPhase) {
   const need = EVIDENCE_NEEDED[toPhase];
-  closeMenus();
-  if (need) { openCompletion(record, toPhase, need, trigger); return; }
+  if (need) { openCompletion(record, toPhase, need); return; }
   const from = record.phase;
-  record.phase = toPhase; record.pending = true; renderKanban();
+  record.phase = toPhase; record.pending = true; pipelineBoard.render();
+  const operation = `move:${record.id}:${toPhase}`;
   const handle = (event) => {
-    if (event.detail.operationId !== `move:${cardId}:${toPhase}`) return;
+    if (event.detail.operationId !== operation) return;
     if (event.detail.state === "refused") record.phase = from; // confirmed position restored, input kept
     if (event.detail.state !== "unknown") record.pending = false;
-    renderKanban();
+    pipelineBoard.render();
     document.removeEventListener("prototype:settled", handle);
   };
   document.addEventListener("prototype:settled", handle);
-  document.addEventListener("prototype:undone", (event) => { if (event.detail.operationId === `move:${cardId}:${toPhase}`) { record.phase = from; renderKanban(); } }, { once: true });
-  dispatchCommand(`move:${cardId}:${toPhase}`, `${record.name} → ${toPhase}`, outcomeChoice());
-  $("kanban")?.querySelector(`[data-move="${cardId}"]`)?.focus();
+  document.addEventListener("prototype:undone", (event) => { if (event.detail.operationId === operation) { record.phase = from; pipelineBoard.render(); } }, { once: true });
+  dispatchCommand(operation, `${record.name} → ${toPhase}`, outcomeChoice());
 }
-function openCompletion(record, toPhase, need, trigger) {
+function openCompletion(record, toPhase, need) {
   const dialog = $("completionDialog");
-  if (!dialog) return;
+  if (!dialog) { movePipelineCard({ ...record, phase: record.phase }, toPhase); return; }
   $("completionTitle").textContent = `Move ${record.name} to ${toPhase}`;
-  $("completionNeed").textContent = `This move needs ${need}. Existing evidence is listed first; cancel leaves the card at ${record.phase}.`;
+  $("completionNeed").textContent = `This move needs ${need}. Cancel leaves the card at ${record.phase}.`;
+  const date = $("completionDate");
+  if (date) date.value = TODAY.slice(0, 10);
   dialog.returnValue = "";
   dialog.showModal();
   dialog.addEventListener("close", () => {
-    if (dialog.returnValue === "confirm") { record.phase = toPhase; renderKanban(); dispatchCommand(`move:${record.id}:${toPhase}`, `${record.name} → ${toPhase} with evidence`, outcomeChoice()); }
-    (trigger || $("kanban")?.querySelector(`[data-move="${record.id}"]`))?.focus();
+    if (dialog.returnValue === "confirm") {
+      const effective = parseTypedDate($("completionDateTyped")?.value || "", Date.parse(TODAY)) || $("completionDate")?.value || TODAY.slice(0, 10);
+      record.phase = toPhase;
+      pipelineBoard.render();
+      dispatchCommand(`move:${record.id}:${toPhase}`, `${record.name} → ${toPhase}, effective ${formatCalendarDate(effective)}`, outcomeChoice());
+    } else {
+      pipelineBoard.cancel();
+      pipelineBoard.announce(`Move cancelled. ${record.name} stays in ${record.phase}.`);
+    }
+    document.querySelector(`.kanban-card[data-id="${record.id}"]`)?.focus();
   }, { once: true });
 }
+
 function openRecordPanel(cardId, trigger) {
   const panel = $("recordPanel");
   const record = CARDS.find((c) => c.id === cardId);
   if (!panel || !record) return;
   panel.hidden = false;
   $("panelTitle").textContent = record.name;
-  $("panelSituation").textContent = record.kind === "client" ? `Active client assignment at ${record.phase}. ${record.owner === "joe" ? "Joe" : "Dell"} covers the next action.` : `Warm prospect at ${record.phase}; a signed ETL would make this a client engagement.`;
-  panel.dataset.returnTo = trigger?.dataset.open || "";
+  $("panelSituation").textContent = record.kind === "client"
+    ? `Active client assignment at ${record.phase}. ${record.owner === "joe" ? "Joe" : "Dell"} covers the next action.`
+    : `Warm prospect at ${record.phase}; a signed ETL would make this a client engagement.`;
+  panel.dataset.returnTo = trigger?.dataset.id || "";
   $("panelClose").focus();
 }
 function closeRecordPanel() {
@@ -236,85 +525,157 @@ function closeRecordPanel() {
   if (!panel || panel.hidden) return;
   panel.hidden = true;
   const returnTo = panel.dataset.returnTo;
-  (returnTo ? document.querySelector(`[data-open="${returnTo}"]`) : null)?.focus();
+  (returnTo ? document.querySelector(`.kanban-card[data-id="${returnTo}"]`) : null)?.focus();
 }
+
+function renderQuickAdd() {
+  const input = $("quickAddInput");
+  if (!input) return;
+  const parsed = parseQuickAdd(input.value, { now: Date.parse(TODAY), viewer: VIEWER, records: CARDS.map((card) => card.name) });
+  const typed = parseTypedDate($("quickAddDateTyped")?.value || "", Date.parse(TODAY));
+  const picked = $("quickAddDate")?.value || null;
+  const due = typed || picked || parsed.due;
+  $("quickAddParsed").replaceChildren(
+    el("div", { html: `<span>Action</span>${parsed.action || "<i>unknown</i>"}` }),
+    el("div", { html: `<span>Owner</span>${parsed.owner === "joe" ? "Joe" : "Dell"}${parsed.ownerDefaulted ? " <i>(you, by default)</i>" : ""}` }),
+    el("div", { html: `<span>Due</span>${due ? formatDueStamp(due, parsed.dueTime) : "<i>none</i>"}` }),
+    el("div", { html: `<span>Related</span>${parsed.related || "<i>none</i>"}` }),
+  );
+  $("quickAddQuestion").textContent = parsed.complete
+    ? `Ready to save: ${parsed.action} · ${parsed.owner === "joe" ? "Joe" : "Dell"}${due ? ` · ${formatDueStamp(due, parsed.dueTime)}` : ""}${parsed.related ? ` · ${parsed.related}` : ""}`
+    : `Keep as a draft, or answer: ${parsed.questions.join(" ")}`;
+  return { parsed, due };
+}
+
 function wireBusiness() {
+  const tabs = wireTabs("businessTabs");
+  renderHome();
   renderWork("team");
-  renderKanban();
+  renderQuickAdd();
+  pipelineBoard = createBoard({
+    boardId: "kanban", liveId: "dragLive", columns: PHASES, items: visibleCards,
+    label: "Pipeline by phase. Drag a card to another column, or focus a card and press Enter to lift it.",
+    evidence: EVIDENCE_NEEDED, onMove: movePipelineCard,
+  });
+
+  const openItem = (id, trigger) => {
+    if (id.startsWith("phase:")) return openPhase(id.slice(6), trigger);
+    const work = WORK.find((item) => item.id === id);
+    if (work) return openWorkItem(work, trigger);
+    const change = CHANGES.find((item) => item.id === id);
+    if (change) return openChange(change, trigger);
+    const waiting = WAITING.find((item) => item.id === id);
+    if (waiting) return openWaiting(waiting, trigger);
+    const entry = DOC_HISTORY.find((item) => item.id === id);
+    if (entry) return openDocHistory(entry, trigger);
+    const card = CARDS.find((item) => item.id === id);
+    if (card) { $("detailDialog")?.close(); tabs?.select("tabPipeline"); openRecordPanel(card.id); }
+    return undefined;
+  };
+  document.addEventListener("click", (event) => {
+    const row = event.target.closest("button[data-item]");
+    if (row) { openItem(row.dataset.item, row); return; }
+    const goto = event.target.closest("button[data-goto-pipeline]");
+    if (goto) {
+      $("detailDialog")?.close();
+      tabs?.select("tabPipeline");
+      const phase = goto.dataset.gotoPipeline;
+      $("boardHint").textContent = `Drag a card between columns, or press Enter on a card to lift it. Showing every phase; ${phase} holds ${CARDS.filter((c) => c.phase === phase).length}.`;
+      return;
+    }
+    if (event.target.closest("[data-close-detail]")) $("detailDialog")?.close();
+  });
+  document.addEventListener("submit", (event) => {
+    const form = event.target.closest("form[data-answer]");
+    if (!form) return;
+    event.preventDefault();
+    const item = WORK.find((w) => w.id === form.dataset.answer);
+    const answer = form.querySelector("#answerText").value.trim() || "no detail given";
+    const effective = parseTypedDate(form.querySelector("#answerDateTyped").value, Date.parse(TODAY)) || form.querySelector("#answerDate").value || null;
+    $("detailDialog")?.close();
+    dispatchCommand(`answer:${item.id}:${Date.now()}`, `Answered “${item.action}”: ${answer.slice(0, 40)}${effective ? ` · ${formatCalendarDate(effective)}` : ""}`, outcomeChoice());
+  });
+
   $("scopeSwitch")?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-scope]");
     if (!button) return;
     $("scopeSwitch").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
     renderWork(button.dataset.scope);
-    $("scopeNote").textContent = button.dataset.scope === "team" ? "Showing the combined team book. Nobody is ranked." : "Showing work recorded as yours. The team book is unchanged.";
   });
   $("workList")?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-handover]");
     if (!button) return;
     const item = WORK.find((w) => w.id === button.dataset.handover);
     const to = item.owner === "joe" ? "dell" : "joe";
-    dispatchCommand(`handover:${item.id}:${to}`, `Hand over "${item.action}" to ${to === "joe" ? "Joe" : "Dell"}`, outcomeChoice());
+    const operation = `handover:${item.id}:${to}`;
+    dispatchCommand(operation, `Hand over “${item.action}” to ${to === "joe" ? "Joe" : "Dell"}`, outcomeChoice());
     document.addEventListener("prototype:settled", function handle(e) {
-      if (e.detail.operationId !== `handover:${item.id}:${to}`) return;
-      if (e.detail.state === "confirmed") { item.owner = to; renderWork($("scopeSwitch")?.querySelector('[aria-pressed="true"]')?.dataset.scope || "team"); }
+      if (e.detail.operationId !== operation) return;
+      if (e.detail.state === "confirmed") {
+        item.owner = to;
+        renderWork($("scopeSwitch")?.querySelector('[aria-pressed="true"]')?.dataset.scope || "team");
+        showToast(`Handed over to ${to === "joe" ? "Joe" : "Dell"}`);
+      }
       document.removeEventListener("prototype:settled", handle);
     });
   });
-  const board = $("kanban");
-  board?.addEventListener("click", (event) => {
-    const move = event.target.closest("button[data-move]");
-    if (move) { move.getAttribute("aria-expanded") === "true" ? closeMenus() : openMoveMenu(move); return; }
-    const to = event.target.closest(".move-menu button[data-to]");
-    if (to) { moveCard(to.closest(".kanban-card").dataset.id, to.dataset.to, to.closest(".kanban-card").querySelector("[data-move]")); return; }
-    const open = event.target.closest("button[data-open]");
-    if (open) { openRecordPanel(open.dataset.open, open); return; }
-    const doc = event.target.closest("button[data-doc]");
-    if (doc) { $("docPanel").hidden = false; $("docContext").textContent = `Scope: ${CARDS.find((c) => c.id === doc.dataset.doc).name} (one card).`; $("docInput").focus(); }
+
+  $("boardChips")?.addEventListener("click", (event) => {
+    const chip = event.target.closest("button[data-filter]");
+    if (!chip) return;
+    if (chip.dataset.filter === "reset") {
+      boardFilter.clear(); boardFilter.add("prospect"); boardFilter.add("client"); phaseFocus = null;
+      $("boardChips").querySelectorAll("button[data-filter]:not(.chip-reset)").forEach((c) => c.setAttribute("aria-pressed", "true"));
+    } else {
+      const on = chip.getAttribute("aria-pressed") !== "true";
+      chip.setAttribute("aria-pressed", String(on));
+      if (on) boardFilter.add(chip.dataset.filter); else boardFilter.delete(chip.dataset.filter);
+    }
+    pipelineBoard.render();
+    pipelineBoard.announce(`Board shows ${visibleCards().length} of ${CARDS.length} cards.`);
   });
-  board?.addEventListener("keydown", (event) => {
-    const menu = event.target.closest(".move-menu");
-    if (event.key === "Escape") { const card = event.target.closest(".kanban-card"); closeMenus(); card?.querySelector("[data-move]")?.focus(); }
-    if (!menu) return;
-    const items = [...menu.querySelectorAll("button")];
-    const index = items.indexOf(document.activeElement);
-    if (event.key === "ArrowDown") { event.preventDefault(); items[(index + 1) % items.length].focus(); }
-    if (event.key === "ArrowUp") { event.preventDefault(); items[(index - 1 + items.length) % items.length].focus(); }
+
+  $("kanban")?.addEventListener("dblclick", (event) => {
+    const card = event.target.closest(".kanban-card");
+    if (card) openRecordPanel(card.dataset.id, card);
   });
-  document.addEventListener("click", (event) => { if (!event.target.closest(".kanban-card")) closeMenus(); });
   $("panelClose")?.addEventListener("click", closeRecordPanel);
-  $("panelPin")?.addEventListener("click", (event) => { const panel = $("recordPanel"); const pinned = panel.dataset.pinned !== "true"; panel.dataset.pinned = String(pinned); event.currentTarget.setAttribute("aria-pressed", String(pinned)); });
-  $("docClose")?.addEventListener("click", () => { $("docPanel").hidden = true; });
-  $("docOpen")?.addEventListener("click", () => { $("docPanel").hidden = false; $("docContext").textContent = "Scope: the filtered board you are looking at."; $("docInput").focus(); });
-  $("docForm")?.addEventListener("submit", (event) => { event.preventDefault(); $("docReply").textContent = "Doc (prototype): I would fetch the authorized evidence for that card and propose the next action. Nothing was sent or changed."; });
-  $("quickAddInput")?.addEventListener("input", (event) => {
-    const parsed = parseQuickAdd(event.target.value, Date.parse(TODAY));
-    $("quickAddParsed").replaceChildren(
-      el("div", { html: `<span>Action</span>${parsed.action || "<i>unknown</i>"}` }),
-      el("div", { html: `<span>Owner</span>${parsed.owner ? (parsed.owner === "joe" ? "Joe" : "Dell") : "<i>unknown</i>"}` }),
-      el("div", { html: `<span>Due</span>${parsed.due || "<i>none</i>"}` }),
-      el("div", { html: `<span>Related</span>${parsed.related || "<i>none</i>"}` }),
-    );
-    $("quickAddQuestion").textContent = parsed.complete ? "Ready to save as a task." : `Keep as a draft, or answer: ${parsed.questions.join(" ")}`;
+  $("panelPin")?.addEventListener("click", (event) => {
+    const panel = $("recordPanel");
+    const pinned = panel.dataset.pinned !== "true";
+    panel.dataset.pinned = String(pinned);
+    event.currentTarget.setAttribute("aria-pressed", String(pinned));
   });
-  $("quickAddForm")?.addEventListener("submit", (event) => { event.preventDefault(); dispatchCommand(`quickadd:${Date.now()}`, `Captured "${$("quickAddInput").value.slice(0, 40)}"`, outcomeChoice()); });
-  wireStateGallery();
+
+  for (const id of ["quickAddInput", "quickAddDate", "quickAddDateTyped"]) $(id)?.addEventListener("input", renderQuickAdd);
+  $("quickAddDate")?.addEventListener("change", renderQuickAdd);
+  $("quickAddForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const { parsed, due } = renderQuickAdd();
+    dispatchCommand(`quickadd:${Date.now()}`, `Captured “${parsed.action || "draft"}” · ${parsed.owner === "joe" ? "Joe" : "Dell"}${due ? ` · ${formatDueStamp(due, parsed.dueTime)}` : ""}${parsed.related ? ` · ${parsed.related}` : ""}`, outcomeChoice());
+  });
+  $("quickAddDraft")?.addEventListener("click", () => {
+    const { parsed } = renderQuickAdd();
+    dispatchCommand(`draft:${Date.now()}`, `Draft kept: “${parsed.action || "empty"}”`, outcomeChoice());
+  });
+  mountDocDock("Business home");
 }
 
-// ---------------------------------------------------------------- state gallery (both pages)
+// ---------------------------------------------------------------- state gallery (/design only)
 const STATE_COPY = {
-  loading: ["Loading the team book", "Reading verified state. Nothing here is a count yet."],
-  refreshing: ["Refreshing", "Showing the last verified read, as of 14:02. New data replaces it only when it lands."],
-  empty: ["No records yet", "There is nothing recorded in this view. Capture the first one."],
-  no_match: ["No matches", "Three filters are active. Clear one, or reset all."],
-  no_access: ["Not available to you", "This record is outside your access. Ask the owner, or open what you can see."],
-  offline: ["Offline", "Last verified at 13:41. Drafts stay local and are labelled until sync."],
-  draft: ["Draft, not saved", "Your typing is kept through partner updates and navigation."],
-  refused: ["Refused", "Stale version. Your input is kept; compare and resubmit."],
-  conflict: ["Conflicting edits", "Original, yours and the current value are shown side by side. Nothing was lost."],
-  unknown: ["Unknown outcome", "The save was sent but not proven. Checking before any retry."],
-  partial: ["Partly complete", "Two of three steps succeeded. Only the remaining step can be retried."],
-  stale: ["Stale", "This read is older than its contract allows. Refresh to trust it."],
-  permission_changed: ["Access changed", "Revalidating what you may see. Anything now outside your access is removed."],
+  loading: ["Loading", "Reading verified state."],
+  refreshing: ["Refreshing", "Showing the last verified read, as of 2:02 PM."],
+  empty: ["No records yet", "Nothing is recorded in this view."],
+  no_match: ["No matches", "Three filters are active."],
+  no_access: ["Not available to you", "This record is outside your access."],
+  offline: ["Offline", "Last verified at 1:41 PM. Drafts stay local until sync."],
+  draft: ["Draft, not saved", "Your typing is kept through partner updates."],
+  refused: ["Refused", "Stale version. Your input is kept."],
+  conflict: ["Conflicting edits", "Before, yours and current are shown side by side."],
+  unknown: ["Unknown outcome", "The save was sent but not proven."],
+  partial: ["Partly complete", "Two of three steps succeeded."],
+  stale: ["Stale", "This read is older than its contract allows."],
+  permission_changed: ["Access changed", "Revalidating what you may see."],
 };
 function wireStateGallery() {
   const picker = $("statePicker");
@@ -343,7 +704,70 @@ const COMPONENTS = [
   { id: "doc", label: "DOC", sub: "model routes", cat: "execution", x: 660, y: 260, health: "ok", purpose: "Qualified model routing.", deps: ["verbs"], pending: "F04 live" },
 ];
 const EDGES = [["records", "verbs", "healthy"], ["records", "rules", "healthy"], ["verbs", "worker", "stopped"], ["rules", "worker", "stopped"], ["worker", "app", "stopped"], ["verbs", "doc", "healthy"], ["doc", "app", "inferred"]];
-const HEALTH_COPY = { ok: "Healthy, verified 2 min ago", failed: "Failed: 42501 permission denied on deal-room-board (fact)", blocked: "Blocked downstream: this component is healthy but starved of input (hypothesis)", degraded: "Degraded", unknown: "Unknown: collector silent since 13:10" };
+const HEALTH_COPY = { ok: "Healthy, verified 2 min ago", failed: "Failed: 42501 permission denied on deal-room-board (fact)", blocked: "Blocked downstream: this component is healthy but starved of input (hypothesis)", degraded: "Degraded", unknown: "Unknown: collector silent since 1:10 PM" };
+
+// Every dashboard tile is a briefing button. The tile carries a number and a
+// state; the reasoning, the evidence and what to do about it live in the popup.
+const DASHBOARD_TILES = [
+  {
+    id: "broken", eyebrow: "Broken", value: "1", tone: "urgent", status: "Since 1:58 PM",
+    title: "CARR Worker read refused",
+    rows: [["What", "deal-room-board refused with 42501 for every reader."], ["Since", "1:58 PM"], ["Impact", "The Deals page cannot load the board. System Work still loads."], ["Certainty", "Fact from the refusal itself; the cause is a hypothesis."], ["What to do", "Point the read at v_deal_room_event, add a role-realistic test, deploy under production authority."]],
+    links: [["Open the work inventory", "/work-inventory"], ["Open the business prototype", "/design/business"]],
+  },
+  {
+    id: "running", eyebrow: "Running", value: "3 jobs", tone: "healthy", status: "Fresh",
+    title: "Three jobs running",
+    rows: [["Sol", "Reviewing the F09 tail · last event 1:44 PM"], ["Claude", "UX-S01 prototype revision · last event 2:01 PM"], ["Nightly export", "Complete 5:30 AM · receipt archived"], ["What to do", "Nothing. Contact state and work state are tracked separately."]],
+    links: [["Open the work inventory", "/work-inventory"]],
+  },
+  {
+    id: "stuck", eyebrow: "Stuck", value: "0", tone: "still", status: "None",
+    title: "Nothing suspected stalled",
+    rows: [["Basis", "Quiet work and disconnection are distinguished; neither is present."], ["Coverage", "7 of 8 collectors reporting."], ["What to do", "Re-run the GitHub usage collector so the eighth leg reports."]],
+  },
+  {
+    id: "repaired", eyebrow: "Detected and repaired", value: "1", tone: "healthy", status: "9:14 AM",
+    title: "Standing-context round trips was detected · repaired 9:14 AM",
+    rows: [
+      ["What was broken", "standing-context issued one database round trip per rule pack, so a cold read took 1.9 seconds."],
+      ["How it was found", "The read-latency budget failed its own check at 8:41 AM, before a partner noticed."],
+      ["Why this fix", "Batching the pack reads into one statement keeps the same rows and the same authority; widening a grant or caching the result would have changed what the read means."],
+      ["How it is better now", "The same read returns in 130 ms, verified at 8:47 AM and again at 9:14 AM. Nothing was approved or declined: the repair had to preserve the read, or it would not have been applied."],
+    ],
+    links: [["Open the work inventory", "/work-inventory"]],
+  },
+  {
+    id: "changed", eyebrow: "Changed", value: "4 releases", tone: "refreshing", status: "Last 24h",
+    title: "Four releases in the last day",
+    rows: [["Migration", "0515"], ["Worker", "9cab"], ["App", "6aa0"], ["Registry", "v26"], ["What to do", "Nothing. Each release carries its own receipt."]],
+    links: [["Open the work inventory", "/work-inventory"]],
+  },
+];
+
+const MODEL_COLUMNS = ["Assigned", "In progress", "Blocked", "Done"];
+const MODEL_TICKETS = [
+  {
+    id: "m1", name: "UX-S01 prototype revision", phase: "In progress", kind: "client", owner: "joe", model: "Claude · Opus 5",
+    trail: [["Assigned", "Joe · Wed, Sep 16, 2026 · 9:30 AM"], ["Picked up", "Claude b4981d76 · 9:34 AM"], ["Current status", "In progress · last event 2:01 PM"], ["Outcome", "not yet reported"]],
+  },
+  {
+    id: "m2", name: "F09 census tail review", phase: "In progress", kind: "prospect", owner: "dell", model: "Sol · GPT-5.6",
+    trail: [["Assigned", "Session 8384f25a · Wed, Sep 16, 2026 · 11:02 AM"], ["Picked up", "Sol f3cd9a10 · 11:05 AM"], ["Current status", "In progress · last event 1:44 PM"], ["Outcome", "not yet reported"]],
+  },
+  {
+    id: "m3", name: "Worker release rehearsal", phase: "Blocked", kind: "client", owner: "joe", model: "Terra · GPT-5.6",
+    trail: [["Assigned", "Joe · Tue, Sep 15, 2026 · 3:15 PM"], ["Picked up", "Terra 5cc1a2b8 · 3:20 PM"], ["Current status", "Blocked on an outside reviewer since Tue, Sep 15, 2026 · 6:40 PM"], ["Outcome", "pending"]],
+  },
+  {
+    id: "m4", name: "Nightly export receipt check", phase: "Done", kind: "client", owner: "dell", model: "launchd · system",
+    trail: [["Assigned", "Schedule · Wed, Sep 16, 2026 · 5:00 AM"], ["Worked", "launchd · 5:30 AM"], ["Outcome", "12 generations kept, receipt archived"], ["Current status", "Done · verified 5:31 AM"]],
+  },
+  {
+    id: "m5", name: "Collector re-run for Actions minutes", phase: "Assigned", kind: "prospect", owner: "joe", model: "unassigned model",
+    trail: [["Assigned", "Joe · Wed, Sep 16, 2026 · 1:15 PM"], ["Current status", "Assigned, not yet picked up"], ["Outcome", "pending"]],
+  },
+];
 
 function renderAtlas() {
   const svg = $("atlasSvg");
@@ -384,21 +808,80 @@ function focusComponent(id, push = true) {
   if (c && drawer) {
     drawer.hidden = false;
     $("componentTitle").textContent = c.label;
-    $("componentBody").replaceChildren(
-      el("dl", { class: "incident", style: "border-left:0;padding:0;background:none" }, [
-        el("dt", { text: "Purpose" }), el("dd", { text: c.purpose }),
-        el("dt", { text: "Status" }), el("dd", { text: HEALTH_COPY[c.health] }),
-        el("dt", { text: "Depends on" }), el("dd", { text: c.deps.join(", ") }),
-        el("dt", { text: "Unfinished" }), el("dd", { text: c.pending }),
-        el("dt", { text: "Basis" }), el("dd", { text: "Declared wiring (services.json); observed run 2026-09-16T13:58Z" }),
-      ]),
-    );
+    $("componentBody").replaceChildren(el("dl", { class: "detail-list" }, [
+      el("dt", { text: "Purpose" }), el("dd", { text: c.purpose }),
+      el("dt", { text: "Status" }), el("dd", { text: HEALTH_COPY[c.health] }),
+      el("dt", { text: "Depends on" }), el("dd", { text: c.deps.join(", ") }),
+      el("dt", { text: "Unfinished" }), el("dd", { text: c.pending }),
+      el("dt", { text: "Basis" }), el("dd", { text: "Declared wiring (services.json); observed run at 1:58 PM" }),
+    ]));
   }
   renderAtlasIndex();
   $("atlasBack")?.toggleAttribute("disabled", focusHistory.length === 0);
 }
+
+function renderDashboardTiles() {
+  const grid = $("dashboardTiles");
+  if (!grid) return;
+  grid.replaceChildren(...DASHBOARD_TILES.map((tile) => el("article", { class: `card glass${tile.tone === "urgent" ? " urgent" : tile.tone === "healthy" ? " healthy" : ""}` }, [
+    el("p", { class: "eyebrow", text: tile.eyebrow }),
+    el("h2", { text: tile.value }),
+    el("span", { class: "status", "data-state": tile.tone }, [el("span", { class: "orb", "data-state": tile.tone, "aria-hidden": "true" }), document.createTextNode(` ${tile.status}`)]),
+    el("button", { class: "btn btn-secondary", type: "button", "data-briefing": tile.id }, [document.createTextNode("Briefing "), el("span", { "aria-hidden": "true", text: "›" })]),
+  ])));
+}
+
+let modelBoard = null;
+function renderModelHistory() {
+  const list = $("modelHistory");
+  if (!list) return;
+  list.replaceChildren(...MODEL_TICKETS.flatMap((ticket) => ticket.trail.map(([stage, detail]) => el("li", {}, [
+    el("b", { text: `${ticket.name} · ${stage}` }),
+    el("span", { text: detail }),
+    el("time", { text: `${ticket.model} · ${ticket.phase}` }),
+  ]))));
+}
+
 function wireOperations() {
+  const tabs = wireTabs("operationsTabs");
   renderAtlas();
+  renderDashboardTiles();
+  renderModelHistory();
+  modelBoard = createBoard({
+    boardId: "modelKanban", liveId: "modelLive", columns: MODEL_COLUMNS, items: () => MODEL_TICKETS,
+    label: "Model tickets by column. Drag a ticket to another column, or focus a ticket and press Enter to lift it.",
+    describe: (ticket) => ticket.model,
+    onMove: (ticket, column) => {
+      const from = ticket.phase;
+      ticket.phase = column; ticket.pending = true; modelBoard.render(); renderModelHistory();
+      const operation = `ticket:${ticket.id}:${column}`;
+      document.addEventListener("prototype:settled", function handle(event) {
+        if (event.detail.operationId !== operation) return;
+        if (event.detail.state === "refused") ticket.phase = from;
+        if (event.detail.state !== "unknown") ticket.pending = false;
+        modelBoard.render(); renderModelHistory();
+        document.removeEventListener("prototype:settled", handle);
+      });
+      dispatchCommand(operation, `${ticket.name} → ${column}`, outcomeChoice());
+    },
+  });
+
+  document.addEventListener("click", (event) => {
+    const briefing = event.target.closest("button[data-briefing]");
+    if (briefing) {
+      const tile = DASHBOARD_TILES.find((t) => t.id === briefing.dataset.briefing);
+      openDetail({ eyebrow: `Briefing · ${tile.eyebrow}`, title: tile.title, rows: tile.rows, links: tile.links || [] }, briefing);
+      return;
+    }
+    if (event.target.closest("[data-close-detail]")) $("detailDialog")?.close();
+  });
+  $("modelKanban")?.addEventListener("dblclick", (event) => {
+    const card = event.target.closest(".kanban-card");
+    if (!card) return;
+    const ticket = MODEL_TICKETS.find((t) => t.id === card.dataset.id);
+    openDetail({ eyebrow: "Model ticket", title: ticket.name, rows: [["Model", ticket.model], ...ticket.trail] }, card);
+  });
+
   $("atlasSvg")?.addEventListener("click", (event) => { const node = event.target.closest(".atlas-node"); if (node) focusComponent(node.dataset.id); });
   $("atlasSvg")?.addEventListener("keydown", (event) => { const node = event.target.closest(".atlas-node"); if (node && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); focusComponent(node.dataset.id); } });
   $("atlasIndex")?.addEventListener("click", (event) => { const button = event.target.closest("button[data-focus]"); if (button) { focusComponent(button.dataset.focus); document.querySelector(`.atlas-node[data-id="${button.dataset.focus}"]`)?.focus(); } });
@@ -415,20 +898,30 @@ function wireOperations() {
     const button = event.target.closest("button[data-time]");
     if (!button) return;
     $("timeSwitch").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
-    $("timeLive").textContent = button.dataset.time === "live" ? "Live. Observed 14:02:11." : "Historical: 2026-09-14 11:07. You have left live mode; Return to live is one keystroke away.";
+    $("timeLive").textContent = button.dataset.time === "live" ? "Live. Observed 2:02 PM." : "Historical: Mon, Sep 14, 2026 · 11:07 AM. You have left live mode.";
   });
-  $("approvalChange")?.addEventListener("click", () => { const card = $("approvalCard"); card.dataset.state = "stale"; $("approvalNote").textContent = "The target changed since this proposal (Worker 5d81 → 9cab). The old approval is void; a refreshed proposal is required before anything executes."; $("approvalApprove").disabled = true; });
-  $("approvalApprove")?.addEventListener("click", () => dispatchCommand("approve:fix-42501", "Approve: repair deal-room-board read", outcomeChoice()));
-  $("ackIncident")?.addEventListener("click", (event) => { event.currentTarget.setAttribute("aria-pressed", "true"); $("ackNote").textContent = "Acknowledged by Joe at 14:03. The incident stays open until recovery is verified."; });
-  $("composerForm")?.addEventListener("submit", (event) => { event.preventDefault(); const text = $("composerInput").value; dispatchCommand(`msg:${Date.now()}`, `Message to Sol (session f3cd…): "${text.slice(0, 32)}"`, outcomeChoice()); $("composerState").textContent = "Sent means transport accepted it. Delivered, acknowledged and acted on are shown separately when evidence arrives."; });
-  wireStateGallery();
+  $("approvalChange")?.addEventListener("click", () => {
+    $("approvalCard").dataset.state = "stale";
+    $("approvalNote").textContent = "The target changed since this proposal (Worker 5d81 → 9cab). The old approval is void; a refreshed proposal is required before anything executes.";
+    $("approvalApprove").disabled = true;
+  });
+  $("approvalApprove")?.addEventListener("click", () => dispatchCommand("approve:census-sixth-source", "Approve: widen the census read", outcomeChoice()));
+  $("ackIncident")?.addEventListener("click", (event) => {
+    event.currentTarget.setAttribute("aria-pressed", "true");
+    $("ackNote").textContent = "Acknowledged by Joe at 2:03 PM. The incident stays open until recovery is verified.";
+  });
+  $("composerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    dispatchCommand(`msg:${Date.now()}`, `Message to Sol (session f3cd…): “${$("composerInput").value.slice(0, 32)}”`, outcomeChoice());
+  });
+  void tabs;
+  mountDocDock("Control Room dashboard");
 }
 
 // ---------------------------------------------------------------- index page: token audit
 function wireIndex() {
   const table = $("contrastTable");
   if (!table) return;
-  const style = getComputedStyle(document.documentElement);
   const pairs = JSON.parse(table.dataset.pairs || "[]");
   const toHex = (value) => {
     const probe = document.createElement("span"); probe.style.color = value; document.body.append(probe);
@@ -444,13 +937,13 @@ function wireIndex() {
   };
   render();
   new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  void style;
 }
 
 // ---------------------------------------------------------------- boot
 wirePreferences();
 wireReceipts();
+wireDetailDialog();
 const surface = document.body.dataset.prototype;
 if (surface === "business") wireBusiness();
 if (surface === "operations") wireOperations();
-if (surface === "index") { wireIndex(); wireStateGallery(); }
+if (surface === "index") { wireTabs("systemTabs"); wireIndex(); wireStateGallery(); mountDocDock("Visual system"); }

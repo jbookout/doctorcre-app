@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <meta name="description" content="DoctorCRE Control Room prototype: dashboard, System Atlas, incidents, Model Room and approvals on synthetic data">
+  <meta name="description" content="DoctorCRE Control Room prototype: Dashboard, Atlas, Model Room and Sessions tabs on synthetic data">
   <title>Control Room prototype · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
@@ -17,200 +17,209 @@
 <body data-prototype="operations">
   <a class="skip" href="#main">Skip to the dashboard</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark">C</span><span>Control Room <small>prototype</small></span></a>
-    <nav class="primary-nav" aria-label="Control Room navigation">
-      <a href="#dashboard" aria-current="page">Dashboard</a>
-      <a href="#atlas">System Atlas</a>
-      <a href="#inventory">Work Inventory</a>
-      <a href="#modelroom">Model Room</a>
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>Control Room <small>prototype</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/design/business">Business</a>
+      <a href="/design/operations" aria-current="page">Control Room</a>
+      <a href="/design">Visual system</a>
+      <a href="/work-inventory">Work Inventory</a>
     </nav>
-    <div class="global-controls">
-      <div class="btn-group" data-pref="theme" role="group" aria-label="Theme">
-        <button class="btn" type="button" data-value="dark" aria-pressed="true">Dark</button>
-        <button class="btn" type="button" data-value="light" aria-pressed="false">Light</button>
-      </div>
-      <div class="btn-group" data-pref="density" role="group" aria-label="Density">
-        <button class="btn" type="button" data-value="comfortable" aria-pressed="true">Comfortable</button>
-        <button class="btn" type="button" data-value="compact" aria-pressed="false">Compact</button>
-      </div>
-      <div class="btn-group" data-pref="motion" role="group" aria-label="Motion">
-        <button class="btn" type="button" data-value="full" aria-pressed="true">Motion</button>
-        <button class="btn" type="button" data-value="reduced" aria-pressed="false">Pause motion</button>
-      </div>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </header>
 
   <main id="main" class="shell">
-    <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Prototype for review. Synthetic examples; nothing here reads production or changes anything. <a href="/design">Visual system</a> · <a href="/design/business">Business prototype</a></p>
+    <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. Production is not read or changed.</p>
     <div class="simulator glass">
-      <label for="outcomeSimulator">Simulate the outcome of the next command</label>
-      <select id="outcomeSimulator"><option value="confirm">Confirmed</option><option value="refuse">Refused</option><option value="timeout">Timeout (unknown outcome)</option></select>
+      <label for="outcomeSimulator">Next command outcome</label>
+      <select id="outcomeSimulator">
+        <option value="confirm">Confirmed by the server</option>
+        <option value="refuse">Refused (stale version)</option>
+        <option value="timeout">Timeout (unknown outcome)</option>
+      </select>
     </div>
 
-    <section id="dashboard" class="hero" aria-labelledby="dashTitle">
-      <div>
-        <p class="eyebrow"><span class="orb" data-state="attention" aria-hidden="true"></span> Production · coverage 7 of 8 collectors</p>
-        <h1 id="dashTitle">One thing is broken, nothing is stuck</h1>
-        <p class="intro">The five questions, answered from evidence: what is broken, what is running, what is stuck, what needs Joe, what changed. Healthy work is shown as real accomplishments, never as a score.</p>
-      </div>
-      <div class="hero-meta">
-        <div class="btn-group" id="timeSwitch" role="group" aria-label="Time">
-          <button class="btn" type="button" data-time="live" aria-pressed="true">Live</button>
-          <button class="btn" type="button" data-time="historical" aria-pressed="false">2026-09-14 11:07</button>
+    <div class="tabs" id="operationsTabs" role="tablist" aria-label="Control Room sections">
+      <button class="tab" type="button" role="tab" id="tabDashboard" aria-controls="panelDashboard" aria-selected="true">Dashboard</button>
+      <button class="tab" type="button" role="tab" id="tabAtlas" aria-controls="panelAtlas" aria-selected="false">Atlas</button>
+      <button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room</button>
+      <button class="tab" type="button" role="tab" id="tabSessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
+    </div>
+
+    <section class="tabpanel" id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard" tabindex="0">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="attention" aria-hidden="true"></span> Production · coverage 7 of 8 collectors</p>
+          <h1 id="dashTitle">Control Room</h1>
         </div>
-        <span class="as-of" id="timeLive" aria-live="polite">Live. Observed 14:02:11.</span>
-      </div>
-    </section>
-
-    <section class="five-grid" aria-label="Five operational answers">
-      <article class="card glass urgent"><p class="eyebrow">Broken</p><h2>1</h2><p class="small">CARR Worker read: deal-room-board refused (42501)</p><span class="status" data-state="urgent"><span class="orb" data-state="urgent" aria-hidden="true"></span> Since 13:58</span></article>
-      <article class="card glass"><p class="eyebrow">Running</p><h2>3 jobs</h2><p class="small">Sol reviewing F09 tail · Claude on UX-S01 · nightly export</p><span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Fresh</span></article>
-      <article class="card glass"><p class="eyebrow">Stuck</p><h2>0</h2><p class="small">No suspected stalls. Quiet work and disconnection are distinguished.</p><span class="status" data-state="still"><span class="orb" data-state="still" aria-hidden="true"></span> None</span></article>
-      <article class="card glass attention"><p class="eyebrow">Needs Joe</p><h2>1 approval</h2><p class="small">Repair the Deal Room read; exact target below.</p><span class="status" data-state="attention"><span class="orb" data-state="attention" aria-hidden="true"></span> Waiting</span></article>
-      <article class="card glass"><p class="eyebrow">Changed</p><h2>4 releases</h2><p class="small">Migration 0515 · Worker 9cab · app 6aa0 · registry v26</p><span class="status" data-state="refreshing"><span class="orb" data-state="refreshing" aria-hidden="true"></span> Last 24h</span></article>
-    </section>
-
-    <section class="ops-grid">
-      <section class="card glass" aria-labelledby="attentionTitle">
-        <div class="card-heading"><div><p class="eyebrow">Attention queue</p><h2 id="attentionTitle">Grouped by incident</h2></div></div>
-        <article class="incident" data-severity="failed" aria-labelledby="incTitle">
-          <h3 id="incTitle">Deal Room board read refused for every reader</h3>
-          <dl>
-            <dt>Impact</dt><dd>Deals page cannot load the board. System Work still loads. <span class="certainty" data-level="fact">fact</span></dd>
-            <dt>What works</dt><dd>API, MCP, Clients, Vendors, Tours, sign-in.</dd>
-            <dt>Cause</dt><dd>Sept 10 field_base change reads base table event; carr_reader holds the view grant only. <span class="certainty" data-level="hypothesis">hypothesis</span></dd>
-            <dt>Recommended</dt><dd>Point the read at v_deal_room_event, add a role-realistic test, deploy under production authority.</dd>
-          </dl>
-          <div class="row-wrap">
-            <button class="btn" type="button" id="ackIncident" aria-pressed="false">Acknowledge</button>
-            <button class="btn btn-secondary" type="button">Fix with Doc</button>
-            <a class="btn btn-quiet" href="#atlas">Show in Atlas</a>
+        <div class="hero-meta">
+          <div class="btn-group" id="timeSwitch" role="group" aria-label="Time">
+            <button class="btn" type="button" data-time="live" aria-pressed="true">Live</button>
+            <button class="btn" type="button" data-time="historical" aria-pressed="false">Mon, Sep 14, 2026</button>
           </div>
-          <p class="small" id="ackNote" aria-live="polite">Acknowledging is not resolving. The incident closes on verified recovery.</p>
-        </article>
-        <article class="incident" data-severity="unknown">
-          <h3>GitHub usage collector silent since 13:10</h3>
-          <dl><dt>Impact</dt><dd>Actions minutes shown as unknown, not zero. Last success 13:10.</dd><dt>Recommended</dt><dd>Re-run the collector; no spend policy changes.</dd></dl>
-        </article>
+          <span class="as-of" id="timeLive" aria-live="polite">Live. Observed 2:02 PM.</span>
+        </div>
+      </div>
+
+      <div class="five-grid" id="dashboardTiles" aria-label="Dashboard tiles"></div>
+
+      <section class="card glass" aria-labelledby="inventoryTitle">
+        <div class="card-heading"><div><p class="eyebrow">Work Inventory</p><h2 id="inventoryTitle">Delivery stages</h2></div><span class="as-of">coverage 5 of 5 sources · 213 items</span></div>
+        <table class="data-table">
+          <caption>Four items. Counts have a known denominator; N/A carries a reason.</caption>
+          <thead><tr><th scope="col">Item</th><th scope="col">Design</th><th scope="col">Source</th><th scope="col">Merged</th><th scope="col">Released</th><th scope="col">Activated</th><th scope="col">Consumer proof</th></tr></thead>
+          <tbody>
+            <tr><td>V5-UX-S01 Visual system</td><td>✓ Sep 10</td><td>in review</td><td>—</td><td>—</td><td>N/A (design slice)</td><td>Joe review pending</td></tr>
+            <tr><td>WR95 milestone 8</td><td>✓</td><td>✓</td><td>✓ fce5bb49</td><td>✓ 0515</td><td>✓ Program 6</td><td>✓ 34/34 golden</td></tr>
+            <tr><td>V5-F09 census tail</td><td>✓</td><td>5 of 6 paths</td><td>partial</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr><td>Loop #250 living-orb panel</td><td>dormant</td><td>—</td><td>—</td><td>—</td><td>—</td><td>origination lost; visible on purpose</td></tr>
+          </tbody>
+        </table>
+        <p class="dialog-links"><a class="btn btn-quiet" href="/work-inventory" target="_blank" rel="noopener">Open the full inventory (new tab)</a></p>
       </section>
+
       <section class="card glass" aria-labelledby="doneTitle">
-        <div class="card-heading"><div><p class="eyebrow">Running smoothly</p><h2 id="doneTitle">Verified today</h2></div></div>
-        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> WR95 milestone 8 evidence sealed and read back <time>09:12</time></div>
-        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> Nightly export archived, 12 generations kept <time>05:30</time></div>
-        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> Standing-context read at 130 ms after the round-trip fix <time>08:47</time></div>
-        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> Backup drill: restore 99.2 percent, verified <time>02:10</time></div>
-        <p class="small">No invented saved time, scores or streaks. Each line links to its evidence.</p>
+        <div class="card-heading"><div><p class="eyebrow">Verified today</p><h2 id="doneTitle">Accomplishments</h2></div></div>
+        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> WR95 milestone 8 evidence sealed and read back <time>9:12 AM</time></div>
+        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> Nightly export archived, 12 generations kept <time>5:30 AM</time></div>
+        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> Standing-context read at 130 ms after the round-trip fix <time>8:47 AM</time></div>
+        <div class="accomplishment"><span class="orb" data-state="healthy" aria-hidden="true"></span> Backup drill: restore 99.2 percent, verified <time>2:10 AM</time></div>
         <div class="card-heading" style="margin-top:14px"><div><p class="eyebrow">Resources</p><h2 style="font-size:24px">Metered separately</h2></div></div>
         <div class="meter"><div class="meter-row"><b>Neon compute</b><span>41 of 300 CU-h · resets Oct 1</span></div><div class="meter-bar"><span style="width:14%"></span></div></div>
         <div class="meter"><div class="meter-row"><b>Cloudflare requests</b><span>1.2M of 10M · lag ~5 min</span></div><div class="meter-bar"><span style="width:12%"></span></div></div>
         <div class="meter" data-coverage="unavailable"><div class="meter-row"><b>GitHub Actions minutes</b><span>unknown · collector silent</span></div><div class="meter-bar"></div></div>
-        <p class="small">Policy caps are not consumption. CI counts are not an invoice.</p>
       </section>
     </section>
 
-    <section id="atlas" class="card glass" aria-labelledby="atlasTitle">
-      <div class="card-heading">
-        <div><p class="eyebrow">System Atlas</p><h2 id="atlasTitle">Where things belong, and what is starving</h2></div>
-        <div class="btn-group" id="layerSwitch" role="group" aria-label="Layer">
-          <button class="btn" type="button" data-layer="all" aria-pressed="true">All</button>
-          <button class="btn" type="button" data-layer="data" aria-pressed="false">Data</button>
-          <button class="btn" type="button" data-layer="execution" aria-pressed="false">Execution</button>
-          <button class="btn" type="button" data-layer="rules" aria-pressed="false">Rules</button>
-          <button class="btn" type="button" data-layer="infra" aria-pressed="false">Infrastructure</button>
-        </div>
-      </div>
-      <p class="sr-only" id="layerLive" aria-live="polite"></p>
-      <div class="atlas-layout">
-        <div class="atlas glass" id="atlas">
-          <svg id="atlasSvg" viewBox="0 0 860 360" role="group" aria-label="System Atlas. Six components in a stable anatomical layout; select one to focus it. The same components are listed beside the scene."></svg>
-          <div class="atlas-controls"><button class="btn" type="button" id="atlasBack" disabled>Back</button><a class="btn" href="#atlasIndex">Flat list</a></div>
-        </div>
-        <div class="atlas-side">
-          <ul class="legend" aria-label="Category legend">
-            <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data</li>
-            <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution</li>
-            <li><span class="swatch" data-cat="rules" aria-hidden="true"></span> Rules</li>
-            <li><span class="swatch" data-cat="infra" aria-hidden="true"></span> Infrastructure</li>
-          </ul>
-          <p class="small">Failed is a red fill; blocked downstream is a hatched fill on a healthy stroke; dashed edges are inferred. Static wiring never animates as live traffic.</p>
-          <ul class="atlas-index" id="atlasIndex" aria-label="Components, flat list"></ul>
-          <div id="componentDrawer" class="component-drawer" aria-live="polite" hidden>
-            <div class="panel-head"><div><p class="eyebrow">Component</p><h2 id="componentTitle" style="font-size:24px"></h2></div></div>
-            <div id="componentBody"></div>
+    <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>
+      <section class="card glass" aria-labelledby="atlasTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">System Atlas</p><h2 id="atlasTitle">Atlas</h2></div>
+          <div class="btn-group" id="layerSwitch" role="group" aria-label="Layer">
+            <button class="btn" type="button" data-layer="all" aria-pressed="true">All</button>
+            <button class="btn" type="button" data-layer="data" aria-pressed="false">Data</button>
+            <button class="btn" type="button" data-layer="execution" aria-pressed="false">Execution</button>
+            <button class="btn" type="button" data-layer="rules" aria-pressed="false">Rules</button>
+            <button class="btn" type="button" data-layer="infra" aria-pressed="false">Infrastructure</button>
           </div>
         </div>
+        <p class="sr-only" id="layerLive" aria-live="polite"></p>
+        <div class="atlas-layout">
+          <div class="atlas glass" id="atlas">
+            <svg id="atlasSvg" viewBox="0 0 860 360" role="group" aria-label="System Atlas. Six components in a stable anatomical layout; select one to focus it. The same components are listed beside the scene."></svg>
+            <div class="atlas-controls"><button class="btn" type="button" id="atlasBack" disabled>Back</button><a class="btn" href="#atlasIndex">Flat list</a></div>
+          </div>
+          <div class="atlas-side">
+            <ul class="legend" aria-label="Category legend">
+              <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data</li>
+              <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution</li>
+              <li><span class="swatch" data-cat="rules" aria-hidden="true"></span> Rules</li>
+              <li><span class="swatch" data-cat="infra" aria-hidden="true"></span> Infrastructure</li>
+            </ul>
+            <ul class="atlas-index" id="atlasIndex" aria-label="Components, flat list"></ul>
+            <div id="componentDrawer" class="component-drawer" aria-live="polite" hidden>
+              <div class="panel-head"><div><p class="eyebrow">Component</p><h2 id="componentTitle" style="font-size:24px"></h2></div></div>
+              <div id="componentBody"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
+      <div class="card-heading">
+        <div><p class="eyebrow">Model Room</p><h2 id="modelRoomTitle">Tickets</h2></div>
+        <span class="as-of">4 columns · drag or keyboard</span>
       </div>
+      <p class="drag-hint" id="modelHint">Drag a ticket between columns, or focus a ticket and press Enter to lift it.</p>
+      <p class="sr-only" id="modelLive" aria-live="assertive"></p>
+      <div class="kanban" id="modelKanban" aria-label="Model tickets by column"></div>
+      <section class="card glass" aria-labelledby="modelHistoryTitle" style="margin-top:16px">
+        <div class="card-heading"><div><p class="eyebrow">Ticket history</p><h2 id="modelHistoryTitle">Trail</h2></div></div>
+        <ul class="model-history" id="modelHistory"></ul>
+      </section>
     </section>
 
-    <section id="inventory" class="card glass" aria-labelledby="inventoryTitle">
-      <div class="card-heading"><div><p class="eyebrow">Work Inventory</p><h2 id="inventoryTitle">Every stage is its own evidence</h2></div><span class="as-of">coverage 5 of 5 sources · 213 items</span></div>
-      <table class="data-table">
-        <caption>Delivery stages for four items. Counts have a known denominator; N/A carries a reason.</caption>
-        <thead><tr><th scope="col">Item</th><th scope="col">Design</th><th scope="col">Source</th><th scope="col">Merged</th><th scope="col">Released</th><th scope="col">Activated</th><th scope="col">Consumer proof</th></tr></thead>
-        <tbody>
-          <tr><td>V5-UX-S01 Visual system</td><td>✓ 09-10</td><td>in review</td><td>—</td><td>—</td><td>N/A (design slice)</td><td>Joe review pending</td></tr>
-          <tr><td>WR95 milestone 8</td><td>✓</td><td>✓</td><td>✓ fce5bb49</td><td>✓ 0515</td><td>✓ Program 6</td><td>✓ 34/34 golden</td></tr>
-          <tr><td>V5-F09 census tail</td><td>✓</td><td>5 of 6 paths</td><td>partial</td><td>—</td><td>—</td><td>—</td></tr>
-          <tr><td>Loop #250 living-orb panel</td><td>dormant</td><td>—</td><td>—</td><td>—</td><td>—</td><td>origination lost; visible on purpose</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section id="modelroom" class="ops-grid" aria-label="Model Room">
+    <section class="tabpanel" id="panelSessions" role="tabpanel" aria-labelledby="tabSessions" tabindex="0" hidden>
       <section class="card glass" aria-labelledby="sessionsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Model Room · assignments</p><h2 id="sessionsTitle">Who works on what</h2></div></div>
+        <div class="card-heading"><div><p class="eyebrow">Sessions</p><h2 id="sessionsTitle">Live work</h2></div></div>
         <div class="session-grid">
           <article class="session-card">
             <h3>UX-S01 visual system <span class="session-id">b4981d76 · claude</span></h3>
-            <p class="small">Assigned by Joe · handoff packet 2026-09-16 · Fable 5.1 on this Mac</p>
             <div class="dual-state">
-              <div><span>Work</span><b class="work-state" data-state="working">Working</b><small>last event 14:01 · PR in progress</small></div>
-              <div><span>Contact</span><b class="contact-state" data-state="fresh">Fresh contact</b><small>parent: Joe · 13:55</small></div>
+              <div><span>Work</span><b class="work-state" data-state="working">Working</b><small>last event 2:01 PM · PR in progress</small></div>
+              <div><span>Contact</span><b class="contact-state" data-state="fresh">Fresh contact</b><small>parent: Joe · 1:55 PM</small></div>
             </div>
             <div class="row-wrap"><button class="btn" type="button">Open session</button><button class="btn btn-quiet" type="button">History</button></div>
           </article>
           <article class="session-card">
             <h3>F09 census tail review <span class="session-id">f3cd9a10 · sol</span></h3>
-            <p class="small">Dispatched by session 8384f25a · gpt-5.6-sol / xhigh</p>
             <div class="dual-state">
-              <div><span>Work</span><b class="work-state" data-state="working">Working</b><small>last event 13:44</small></div>
+              <div><span>Work</span><b class="work-state" data-state="working">Working</b><small>last event 1:44 PM</small></div>
               <div><span>Contact</span><b class="contact-state" data-state="delayed">No parent contact 38 min</b><small>expected cadence: per check</small></div>
             </div>
-            <p class="small">Silence is not a freeze. The work state has evidence; the contact state has none yet.</p>
           </article>
           <article class="session-card">
             <h3>Nightly export <span class="session-id">launchd · system</span></h3>
             <div class="dual-state">
-              <div><span>Work</span><b class="work-state" data-state="complete">Complete</b><small>05:30 · receipt archived</small></div>
+              <div><span>Work</span><b class="work-state" data-state="complete">Complete</b><small>5:30 AM · receipt archived</small></div>
               <div><span>Contact</span><b class="contact-state" data-state="pending_ack">Completion unacknowledged</b><small>by parent: none required</small></div>
             </div>
           </article>
         </div>
         <form id="composerForm" class="composer">
           <div class="field"><label for="composerInput">Message the F09 review session</label><input id="composerInput" type="text" placeholder="Ask Sol to post the check list before the tail lands"></div>
-          <div class="row-wrap"><button class="btn btn-primary" type="submit">Send</button><button class="btn btn-quiet" type="button">Ask Doc to route</button></div>
+          <div class="row-wrap"><button class="btn btn-primary" type="submit">Send</button></div>
           <p class="small" id="composerState" aria-live="polite">Sent, delivered, acknowledged and acted on are four different facts.</p>
         </form>
       </section>
+
+      <section class="card glass" aria-labelledby="attentionTitle">
+        <div class="card-heading"><div><p class="eyebrow">Attention queue</p><h2 id="attentionTitle">Incidents</h2></div></div>
+        <article class="incident" data-severity="failed" aria-labelledby="incTitle">
+          <h3 id="incTitle">Deal Room board read refused for every reader</h3>
+          <dl>
+            <dt>Impact</dt><dd>Deals page cannot load the board. System Work still loads. <span class="certainty" data-level="fact">fact</span></dd>
+            <dt>What works</dt><dd>API, MCP, Clients, Vendors, Tours, sign-in.</dd>
+            <dt>Cause</dt><dd>Sep 10 field_base change reads base table event; carr_reader holds the view grant only. <span class="certainty" data-level="hypothesis">hypothesis</span></dd>
+            <dt>Recommended</dt><dd>Point the read at v_deal_room_event, add a role-realistic test, deploy under production authority.</dd>
+          </dl>
+          <div class="row-wrap">
+            <button class="btn" type="button" id="ackIncident" aria-pressed="false">Acknowledge</button>
+            <a class="btn btn-quiet" href="#panelAtlas" data-tab="tabAtlas">Show in Atlas</a>
+          </div>
+          <p class="small" id="ackNote" aria-live="polite">Acknowledging is not resolving. The incident closes on verified recovery.</p>
+        </article>
+        <article class="incident" data-severity="unknown">
+          <h3>GitHub usage collector silent since 1:10 PM</h3>
+          <dl><dt>Impact</dt><dd>Actions minutes shown as unknown, not zero. Last success 1:10 PM.</dd><dt>Recommended</dt><dd>Re-run the collector; no spend policy changes.</dd></dl>
+        </article>
+      </section>
+
       <section class="card glass" aria-labelledby="approvalTitle">
         <div class="card-heading"><div><p class="eyebrow">Waiting for Joe</p><h2 id="approvalTitle">One approval</h2></div></div>
         <article class="approval" id="approvalCard" data-state="fresh" aria-labelledby="apprTitle">
-          <h3 id="apprTitle">Repair the Deal Room board read</h3>
+          <h3 id="apprTitle">Widen the census read to the sixth source</h3>
           <dl>
-            <dt>Fix</dt><dd>Read v_deal_room_event under carr_reader instead of the base event table.</dd>
-            <dt>Impact</dt><dd>Deals page loads for both partners. No grant widens.</dd>
             <dt>Change</dt><dd>carr-system PR 1033 · commit ecc05cb5</dd>
             <dt>Target</dt><dd>Production · Worker 5d8113d5 → candidate</dd>
             <dt>Recommended</dt><dd>Approve. Rollback is the previous immutable Worker.</dd>
-            <dt>Expires</dt><dd>2026-09-16 18:00 CT, or on any material change</dd>
+            <dt>Expires</dt><dd>Wed, Sep 16, 2026 · 6:00 PM CT, or on any material change</dd>
           </dl>
-          <details><summary class="btn btn-quiet">Evidence and recovery detail</summary><p class="small">Regression test role-realistic under carr_reader: pass. Staging parity: 34 checks. Rollback rehearsal: pass at 13:20.</p></details>
           <p class="small" id="approvalNote" aria-live="polite">A material change to the target voids this approval.</p>
           <div class="row-wrap">
             <button class="btn btn-primary" type="button" id="approvalApprove">Approve</button>
             <button class="btn" type="button">Decline</button>
-            <button class="btn btn-quiet" type="button">Ask a question</button>
             <button class="btn btn-quiet" type="button" id="approvalChange">Simulate a material change</button>
           </div>
         </article>
@@ -218,14 +227,35 @@
     </section>
   </main>
 
+  <dialog id="detailDialog" class="dialog" aria-labelledby="detailTitle">
+    <article>
+      <header><div><p class="eyebrow" id="detailEyebrow">Briefing</p><h2 id="detailTitle">Item</h2></div><button class="btn icon-btn" type="button" id="detailClose" aria-label="Close">×</button></header>
+      <div class="dialog-body" id="detailBody"></div>
+    </article>
+  </dialog>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Control Room dashboard</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="footer"><span>DoctorCRE · Control Room prototype</span><span>Synthetic examples. Production was not read or changed.</span></footer>
   <nav class="mobile-nav" aria-label="Control Room shortcuts">
-    <a href="#dashboard" aria-current="page"><span aria-hidden="true">◉</span>Health</a>
-    <a href="#dashboard"><span aria-hidden="true">!</span>Alerts</a>
-    <a href="#modelroom"><span aria-hidden="true">◈</span>Jobs</a>
-    <a href="#atlas"><span aria-hidden="true">⌘</span>Atlas</a>
-    <a href="#modelroom"><span aria-hidden="true">✎</span>Doc</a>
+    <a href="#panelDashboard" data-tab="tabDashboard" aria-current="page"><span aria-hidden="true">◉</span>Dash</a>
+    <a href="#panelAtlas" data-tab="tabAtlas"><span aria-hidden="true">⌘</span>Atlas</a>
+    <a href="#panelModelRoom" data-tab="tabModelRoom"><span aria-hidden="true">◈</span>Models</a>
+    <a href="#panelSessions" data-tab="tabSessions"><span aria-hidden="true">!</span>Sessions</a>
+    <a href="/design/business"><span aria-hidden="true">⌂</span>Business</a>
   </nav>
   <script type="module" src="/js/design-prototype.js"></script>
 </body>
