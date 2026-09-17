@@ -22,16 +22,14 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock } from "./doc-dock.js";
-import { DEFAULT_PREFERENCES, formatDueStamp, parseQuickAdd, preferenceAttributes, resolvePreferences } from "./visual-system.js";
+import { mountDocDock, mountPrefs } from "./shell.js";
+import { formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
   orderTaskRows, partnerName, quickAddPlan, scopeRows, taskDetailRows, closeArgs, dueDateArgs,
   validBoardPayload,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
-
-const PREFS_KEY = "doctorcre.visual-preferences";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -73,51 +71,8 @@ function showToast(text) {
 }
 
 /* ---------------------------------------------------------------- preferences */
-
-function storedPreferences() {
-  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
-}
-
-function persistPreferences(preferences) {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(preferences)); } catch { /* a convenience, never a requirement */ }
-}
-
-function systemPreferences() {
-  return { prefersReducedMotion: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true };
-}
-
-const PREF_WORDS = {
-  theme: { light: "Light theme", dark: "Dark theme" },
-  density: { compact: "Compact density", comfortable: "Comfortable density" },
-  motion: { reduced: "Motion paused", full: "Motion on" },
-};
-
-function applyPreferences(preferences) {
-  Object.entries(preferenceAttributes(preferences)).forEach(([attribute, value]) => document.documentElement.setAttribute(attribute, value));
-  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => {
-    const key = button.dataset.pref;
-    const on = preferences[key] === button.dataset.on;
-    button.setAttribute("aria-pressed", String(on));
-    const words = `${PREF_WORDS[key][preferences[key]]}. Switch to ${PREF_WORDS[key][on ? button.dataset.off : button.dataset.on].toLowerCase()}.`;
-    button.setAttribute("aria-label", words);
-    button.setAttribute("title", words);
-  });
-  const note = $("prefsLive");
-  if (note) note.textContent = `${PREF_WORDS.theme[preferences.theme]}, ${PREF_WORDS.density[preferences.density]}, ${PREF_WORDS.motion[preferences.motion]}.`;
-}
-
-function wirePreferences() {
-  let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...storedPreferences() }, systemPreferences());
-  applyPreferences(current);
-  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
-    const key = button.dataset.pref;
-    const next = current[key] === button.dataset.on ? button.dataset.off : button.dataset.on;
-    current = resolvePreferences({ ...current, [key]: next }, systemPreferences());
-    persistPreferences(current);
-    applyPreferences(current);
-  }));
-}
-
+// The three presentation icons are wired by js/shell.js, which owns them for
+// every surface and migrates the prototype's legacy storage key.
 /* -------------------------------------------------------------------- painting */
 
 function setBoardStatus(state, label) {
@@ -548,7 +503,7 @@ function mountDock() {
 /* ------------------------------------------------------------------------ boot */
 
 async function boot() {
-  wirePreferences();
+  mountPrefs();
   mountDocDock("Tasks");
   mountDock();
   wire();

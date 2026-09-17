@@ -16,6 +16,8 @@ const prototypeJs = await read("js/design-prototype.js");
 const docDockJs = await read("js/doc-dock.js");
 const workInventoryHtml = await read("work-inventory.html");
 const tasksHtml = await read("tasks.html");
+const businessWorkspaceHtml = await read("business-workspace.html");
+const shellJs = await read("js/shell.js");
 
 // Every surface the review covered: the three prototype pages and the product
 // surfaces that share the shell. A site-wide rule — a refused phrase, a printed
@@ -28,7 +30,9 @@ const SURFACES = {
   "design-operations.html": pages.operations,
   "work-inventory.html": workInventoryHtml,
   "tasks.html": tasksHtml,
+  "business-workspace.html": businessWorkspaceHtml,
   "js/design-prototype.js": prototypeJs,
+  "js/shell.js": shellJs,
   "js/doc-dock.js": docDockJs,
 };
 
@@ -165,8 +169,10 @@ test("each surface is built from tabs and popups, and no title carries a descrip
     if (!name.endsWith(".html")) continue;
     assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/, `${name} still has a description paragraph under a title`);
   }
-  assert.match(prototypeJs, /role="tab"/, "tabs are wired");
-  assert.match(prototypeJs, /ArrowRight|ArrowLeft/, "the tab strip is arrow-key operable");
+  // The tab strip is wired by the shared shell since B01; the prototype calls it.
+  assert.match(shellJs, /role="tab"/, "tabs are wired");
+  assert.match(shellJs, /ArrowRight|ArrowLeft/, "the tab strip is arrow-key operable");
+  assert.match(prototypeJs, /wireTabs\("businessTabs"\)/, "the prototype uses the shared tab wiring");
 });
 
 // --------------------------------------------------------------- prototypes

@@ -10,14 +10,12 @@
 // description paragraph under them.
 import {
   contrastRatio, formatCalendarDate, formatClock,
-  formatDueStamp, orderWork, parseQuickAdd, preferenceAttributes,
-  resolvePreferences, weekdayName,
+  formatDueStamp, orderWork, parseQuickAdd, weekdayName,
 } from "./visual-system.js";
 import { createCommandState, feedbackStateFor, performCommand } from "./command-feedback.mjs";
 import { createCommandDock } from "./command-dock.js";
-import { mountDocDock } from "./doc-dock.js";
+import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 
-const PREFS_KEY = "doctorcre.presentation.v1";
 const VIEWER = "joe";
 const $ = (id) => document.getElementById(id);
 const el = (tag, attrs = {}, children = []) => {
@@ -32,91 +30,12 @@ const el = (tag, attrs = {}, children = []) => {
   return node;
 };
 
-// ---------------------------------------------------------------- preferences
-// Each preference is ONE icon button. Filled (aria-pressed=true) is on, hollow
-// is off; the only words are the accessible label and the tooltip.
-function readStoredPreferences() {
-  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
-}
-function storePreferences(preferences) {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(preferences)); } catch { /* storage is a convenience, never a requirement */ }
-}
-function systemPreferences() {
-  return { prefersReducedMotion: typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches };
-}
-const PREF_WORDS = {
-  theme: { light: "Light theme", dark: "Dark theme" },
-  density: { compact: "Compact density", comfortable: "Comfortable density" },
-  motion: { reduced: "Motion paused", full: "Motion on" },
-};
-export function applyPreferences(preferences) {
-  for (const [name, value] of Object.entries(preferenceAttributes(preferences))) document.documentElement.setAttribute(name, value);
-  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => {
-    const key = button.dataset.pref;
-    const on = preferences[key] === button.dataset.on;
-    button.setAttribute("aria-pressed", String(on));
-    const words = `${PREF_WORDS[key][preferences[key]]}. Switch to ${PREF_WORDS[key][on ? button.dataset.off : button.dataset.on].toLowerCase()}.`;
-    button.setAttribute("aria-label", words);
-    button.setAttribute("title", words);
-  });
-  const live = $("prefsLive");
-  if (live) live.textContent = `${PREF_WORDS.theme[preferences.theme]}, ${PREF_WORDS.density[preferences.density]}, ${PREF_WORDS.motion[preferences.motion]}.`;
-}
-function wirePreferences() {
-  let current = resolvePreferences(readStoredPreferences(), systemPreferences());
-  applyPreferences(current);
-  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
-    const key = button.dataset.pref;
-    const next = current[key] === button.dataset.on ? button.dataset.off : button.dataset.on;
-    current = resolvePreferences({ ...current, [key]: next }, systemPreferences());
-    storePreferences(current);
-    applyPreferences(current);
-  }));
-}
-
-// ---------------------------------------------------------------- tabs
-// One screen at a time. A "go to" link elsewhere on the page switches tabs
-// instead of scrolling; links to another surface open in a new browser tab.
-function wireTabs(listId) {
-  const strip = $(listId);
-  if (!strip) return null;
-  const tabs = [...strip.querySelectorAll('[role="tab"]')];
-  const select = (tab, focus = true) => {
-    for (const candidate of tabs) {
-      const chosen = candidate === tab;
-      candidate.setAttribute("aria-selected", String(chosen));
-      candidate.tabIndex = chosen ? 0 : -1;
-      const panel = $(candidate.getAttribute("aria-controls"));
-      if (panel) panel.hidden = !chosen;
-    }
-    if (focus) tab.focus();
-  };
-  strip.addEventListener("click", (event) => {
-    const tab = event.target.closest('[role="tab"]');
-    if (tab) select(tab);
-  });
-  strip.addEventListener("keydown", (event) => {
-    const index = tabs.indexOf(document.activeElement);
-    if (index < 0) return;
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (step) { event.preventDefault(); select(tabs[(index + step + tabs.length) % tabs.length]); }
-    if (event.key === "Home") { event.preventDefault(); select(tabs[0]); }
-    if (event.key === "End") { event.preventDefault(); select(tabs[tabs.length - 1]); }
-  });
-  select(tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0], false);
-  // Any in-page link that names a tab switches to it rather than scrolling.
-  document.addEventListener("click", (event) => {
-    const link = event.target.closest("a[data-tab]");
-    if (!link) return;
-    const tab = $(link.dataset.tab);
-    if (!tab) return;
-    event.preventDefault();
-    select(tab);
-    document.querySelectorAll(".mobile-nav a").forEach((item) => item.toggleAttribute("aria-current", item === link));
-    if (link.hasAttribute("aria-current")) link.setAttribute("aria-current", "page");
-  });
-  return { select: (id) => { const tab = $(id); if (tab) select(tab); } };
-}
+// ---------------------------------------------------------------- shell
+// Preferences and tabs are the shell every surface shares, and js/shell.js owns
+// them. This file kept its own pair, under its own storage key
+// ("doctorcre.presentation.v1"), so a theme chosen here was not the theme the
+// product pages showed back. The shell reads that key once and writes the one
+// key from then on.
 
 // ---------------------------------------------------------------- popups
 // One detail dialog per page. A read opens it nonmodal; a popup that asks for
@@ -991,7 +910,7 @@ function wireIndex() {
 }
 
 // ---------------------------------------------------------------- boot
-wirePreferences();
+mountPrefs();
 mountCommandDock();
 wireDetailDialog();
 const surface = document.body.dataset.prototype;

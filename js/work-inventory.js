@@ -15,10 +15,7 @@ import {
   coverageOrbState, coverageSummary, filterItemsByStatusText, groupItemsByKind, inventoryRequestPath,
   listPhase, mergeInventoryPages, validWorkInventoryPayload,
 } from "./work-inventory-model.js";
-import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from "./visual-system.js";
-import { mountDocDock } from "./doc-dock.js";
-
-const PREFS_KEY = "doctorcre.visual-preferences";
+import { mountDocDock, mountPrefs } from "./shell.js";
 
 const censusOrb = document.querySelector("#censusOrb");
 const censusStatus = document.querySelector("#censusStatus");
@@ -82,53 +79,9 @@ function setCensusStatus(state, label) {
 }
 
 /* ---------------------------------------------------------------- preferences */
-
-function storedPreferences() {
-  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
-}
-
-function persistPreferences(preferences) {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(preferences)); } catch { /* a convenience, never a requirement */ }
-}
-
-function systemPreferences() {
-  return { prefersReducedMotion: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true };
-}
-
-// Theme, density and motion are one icon button each: filled is on, hollow is
-// off, and the only words are the accessible label and the tooltip.
-const PREF_WORDS = {
-  theme: { light: "Light theme", dark: "Dark theme" },
-  density: { compact: "Compact density", comfortable: "Comfortable density" },
-  motion: { reduced: "Motion paused", full: "Motion on" },
-};
-
-function applyPreferences(preferences) {
-  Object.entries(preferenceAttributes(preferences)).forEach(([attribute, value]) => document.documentElement.setAttribute(attribute, value));
-  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => {
-    const key = button.dataset.pref;
-    const on = preferences[key] === button.dataset.on;
-    button.setAttribute("aria-pressed", String(on));
-    const words = `${PREF_WORDS[key][preferences[key]]}. Switch to ${PREF_WORDS[key][on ? button.dataset.off : button.dataset.on].toLowerCase()}.`;
-    button.setAttribute("aria-label", words);
-    button.setAttribute("title", words);
-  });
-  const note = document.querySelector("#prefsLive");
-  if (note) note.textContent = `${PREF_WORDS.theme[preferences.theme]}, ${PREF_WORDS.density[preferences.density]}, ${PREF_WORDS.motion[preferences.motion]}.`;
-}
-
-function wirePreferences() {
-  let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...storedPreferences() }, systemPreferences());
-  applyPreferences(current);
-  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
-    const key = button.dataset.pref;
-    const next = current[key] === button.dataset.on ? button.dataset.off : button.dataset.on;
-    current = resolvePreferences({ ...current, [key]: next }, systemPreferences());
-    persistPreferences(current);
-    applyPreferences(current);
-  }));
-}
-
+// Theme, density and motion are one icon button each, and js/shell.js owns all
+// three for every surface. This page kept its own copy until B01; three copies
+// of one rule is three places for it to drift.
 /* -------------------------------------------------------------------- painting */
 
 function renderFilters() {
@@ -362,7 +315,7 @@ loadMore?.addEventListener("click", () => {
 });
 retryRead?.addEventListener("click", () => read());
 
-wirePreferences();
+mountPrefs();
 mountDocDock("Complete Work Inventory");
 read();
 
