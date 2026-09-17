@@ -163,6 +163,18 @@ function nextWeekday(target, now) {
   return date.toISOString().slice(0, 10);
 }
 
+/** One word, for both the sentence and a record name, so the two are comparable. */
+const QUICK_ADD_WORD = /[a-z0-9'&-]+/g;
+
+/**
+ * The words of a record name that carry identity. Short words are noise, and
+ * "demo" is the fixture prefix half the board shares.
+ */
+function scoredWords(name) {
+  return (String(name || "").toLowerCase().match(QUICK_ADD_WORD) || [])
+    .filter((word) => word.length > 3 && word !== "demo");
+}
+
 /**
  * Quick add reads one sentence and shows what it understood. It infers the
  * action, an owner, a due date, a due time and the related record.
@@ -171,12 +183,21 @@ function nextWeekday(target, now) {
  * unknown when the sentence does not name one: the viewer owns what the
  * viewer captures, and the reply says it was defaulted. A time of day in the
  * sentence ("Friday 10 AM") is read and printed as AM/PM. A related record is
- * matched against the records actually on the board, so a distinctive word
- * ("Crestview") finds "Demo Crestview Derm" without the word "for".
+ * matched against the records actually on the board, never guessed from
+ * capitalisation.
+ *
+ * The 2026-09-17 refinement made that match honest in two ways. It is on WHOLE
+ * WORDS, so "part" no longer resolves an "Apartment" record, and it needs every
+ * scored word of the record's name to be present, so a sentence names the
+ * record it actually names. And when more than one record answers, the reply
+ * resolves NEITHER: it asks which, and carries the candidates so the preview
+ * can show them. The single match also carries the record's id, which is what
+ * lets the filed record point back at the row the reader was looking at.
  *
  * @param {string} sentence
- * @param {number|{now?: number, viewer?: string, records?: string[]}} options
- *        a bare number is still accepted as `now`.
+ * @param {number|{now?: number, viewer?: string, records?: Array<string|{id: string|null, name: string}>}} options
+ *        a bare number is still accepted as `now`. A record may be a bare name
+ *        (older call sites) or an {id, name} pair.
  */
 export function parseQuickAdd(sentence, options = {}) {
   const { now = Date.now(), viewer = "joe", records = [] } = typeof options === "number" ? { now: options } : (options || {});
@@ -197,11 +218,19 @@ export function parseQuickAdd(sentence, options = {}) {
     ? `${Number(timeMatch[1]) % 12 === 0 ? 12 : Number(timeMatch[1]) % 12}:${timeMatch[2] || "00"} ${timeMatch[3].toUpperCase()}`
     : null;
 
-  const haystack = text.toLowerCase();
-  const matched = records.find((name) => String(name).toLowerCase().split(/\s+/)
-    .filter((word) => word.length > 3 && word !== "demo")
-    .some((word) => haystack.includes(word)));
-  const related = matched || /\b(?:for|about|on)\s+((?:Demo\s+)?[A-Z][\w'&-]*(?:\s+[A-Z][\w'&-]*)*)/.exec(text)?.[1] || null;
+  const tokens = new Set(text.toLowerCase().match(QUICK_ADD_WORD) || []);
+  const matches = (Array.isArray(records) ? records : [])
+    .map((record) => (record && typeof record === "object"
+      ? { id: record.id ?? null, name: String(record.name ?? "") }
+      : { id: null, name: String(record ?? "") }))
+    .filter((record) => {
+      const scored = scoredWords(record.name);
+      return scored.length > 0 && scored.every((word) => tokens.has(word));
+    });
+  const relatedCandidates = Object.freeze(matches.map((record) => record.name));
+  const only = matches.length === 1 ? matches[0] : null;
+  const related = only ? only.name : null;
+  const relatedId = only && only.id != null ? String(only.id) : null;
 
   const action = text
     .replace(/(?:@|\bto\s+|\bfor\s+)(joe|dell)\b/ig, " ")
@@ -214,9 +243,12 @@ export function parseQuickAdd(sentence, options = {}) {
 
   const questions = [];
   if (!action) questions.push("What is the action?");
+  // Ambiguity never blocks filing; it is a question the preview surfaces.
+  if (matches.length > 1) questions.push(`Which record is this about: ${relatedCandidates.join(", ")}?`);
   return Object.freeze({
     action, owner, ownerDefaulted, due, dueTime,
-    dueLabel: formatDueStamp(due, dueTime), related, questions, complete: questions.length === 0,
+    dueLabel: formatDueStamp(due, dueTime), related, relatedId, relatedCandidates,
+    questions, complete: questions.length === 0,
   });
 }
 

@@ -14,6 +14,16 @@
 // key spaces are kept apart on purpose.
 import { commandDockHtml, commandReceiptView } from './command-feedback.mjs';
 
+/**
+ * How many entries the dock keeps before it starts forgetting.
+ *
+ * Orchestrator ruling 2026-09-17: only CONFIRMED receipts are evicted, oldest
+ * first. Pending, refused and unknown entries are never evicted — they are the
+ * outstanding work a person still has to resolve — so the Map may exceed this
+ * cap while unresolved work is outstanding.
+ */
+export const DOCK_ENTRY_CAP = 50;
+
 export function createCommandDock({ root, onDispatch = null, onReconcile = null, onUndo = null } = {}) {
   // Insertion order IS display order: a Map preserves it, and re-recording an
   // operation updates it in place rather than moving it to the front.
@@ -44,8 +54,25 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
       status, state, reason, retry, undo,
       request: request || previous.request || null,
     });
+    evict();
     render();
     return entries.get(operationKey);
+  }
+
+  /**
+   * Insertion order IS age order, so the first confirmed entry the walk finds
+   * is the oldest one that may go. When nothing confirmed is left, the dock
+   * stays over the cap rather than dropping work still owed an answer.
+   */
+  function evict() {
+    while (entries.size > DOCK_ENTRY_CAP) {
+      let oldestConfirmed = null;
+      for (const [key, entry] of entries) {
+        if (commandReceiptView(entry).state === 'confirmed') { oldestConfirmed = key; break; }
+      }
+      if (oldestConfirmed === null) return;
+      entries.delete(oldestConfirmed);
+    }
   }
 
   function forget(operationKey) {

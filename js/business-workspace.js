@@ -27,9 +27,9 @@ import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock, formatDueStamp, parseQuickAdd } from "./visual-system.js";
-import { operationKeys, partnerName, quickAddPlan } from "./task-records-model.js";
+import { operationKeys, partnerName, quickAddPlan, quickAddRecords } from "./task-records-model.js";
 import {
-  acceptsResponse, displayedFreshness, freshnessSignature, homeReadPhase, quickAddRecordNames,
+  acceptsResponse, displayedFreshness, freshnessSignature, homeReadPhase,
   safeDestination, sourceIsFresh, summarizeWorkspaceScope, validWorkspacePayload, viewerWorkspaceLabel,
 } from "./workspace-command-center-model.js";
 import { needLabel, teamReviewRows, unavailableCopy } from "./business-workspace-model.js";
@@ -44,7 +44,13 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 }[char]));
 
 /** One place holds what this page believes; nothing else keeps a copy. */
-const view = { status: "loading", payload: null, message: null, sequence: 0, freshnessKey: null, drafts: [] };
+const view = {
+  status: "loading", payload: null, message: null, sequence: 0, freshnessKey: null, drafts: [],
+  // The Quick add record list and its OWN sequence. The board read is a second
+  // read with a second lifetime, so it gets a second guard: a late board answer
+  // must not paint over a newer one, and it must never touch view.sequence.
+  records: Object.freeze([]), boardSequence: 0,
+};
 
 let client = null;
 let viewer = "joe";
@@ -233,6 +239,31 @@ async function load() {
   }
 }
 
+/**
+ * The Quick add record list, read from the Deal Room board.
+ *
+ * The command-centre read is an aggregate of counts and destinations and names
+ * no deal, so the names Quick add matches against come from their own read of
+ * `deal-room-board` — already in the pinned interface, so no contract moves.
+ * It runs ALONGSIDE the command-centre read, never chained to it: the counts
+ * paint whether or not the board answers. A failed or unanswered board read
+ * leaves Quick add with an empty list — no guessed names, and no record-layer
+ * error text on a page whose own read succeeded.
+ */
+async function loadBoardRecords() {
+  const sequence = ++view.boardSequence;
+  let records = [];
+  try {
+    const board = await client.getBoard();
+    records = quickAddRecords(board?.deals);
+  } catch {
+    records = Object.freeze([]);
+  }
+  if (!acceptsResponse(view.boardSequence, sequence)) return;
+  view.records = records;
+  renderQuickAdd();
+}
+
 function settle({ status, payload = null, message = null }, sequence) {
   if (!acceptsResponse(view.sequence, sequence)) return;
   view.status = status;
@@ -260,12 +291,25 @@ function watchExpiry() {
 
 /* ---------------------------------------------------------------- Quick add */
 
+/**
+ * The Related row. One match names the record; more than one names none of
+ * them and asks, in the row itself, which one the sentence meant.
+ */
+function relatedCell(parsed) {
+  if (parsed.related) return escapeHtml(parsed.related);
+  const candidates = parsed.relatedCandidates || [];
+  if (candidates.length > 1) {
+    return `Two records match, say which: ${candidates.map((name) => escapeHtml(name)).join(", ")}`;
+  }
+  return "<i>none</i>";
+}
+
 function renderQuickAdd() {
   const input = $("quickAddInput");
   if (!input) return null;
   const sentence = input.value;
-  // Quick add matches against the record names this page's own read carries.
-  const parsed = parseQuickAdd(sentence, { now: Date.now(), viewer, records: quickAddRecordNames(view.payload) });
+  // Quick add matches against the records this page's own board read carries.
+  const parsed = parseQuickAdd(sentence, { now: Date.now(), viewer, records: view.records });
   const picked = $("quickAddDate")?.value || null;
   const effective = picked ? { ...parsed, due: picked, dueLabel: formatDueStamp(picked, parsed.dueTime) } : parsed;
   const preview = $("quickAddParsed");
@@ -274,7 +318,7 @@ function renderQuickAdd() {
       `<div><span>Action</span>${effective.action ? escapeHtml(effective.action) : "<i>unknown</i>"}</div>`,
       `<div><span>Owner</span>${escapeHtml(partnerName(effective.owner))}${effective.ownerDefaulted ? " <i>(you, by default)</i>" : ""}</div>`,
       `<div><span>Due</span>${effective.due ? escapeHtml(formatDueStamp(effective.due, effective.dueTime)) : "<i>none</i>"}</div>`,
-      `<div><span>Related</span>${effective.related ? escapeHtml(effective.related) : "<i>none</i>"}</div>`,
+      `<div><span>Related</span>${relatedCell(effective)}</div>`,
     ].join("");
   }
   const plan = quickAddPlan(effective, { viewer, sentence });
@@ -402,7 +446,9 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   viewer = client.selfActor || "joe";
+  const boardRead = loadBoardRecords();
   await load();
+  await boardRead;
 }
 
 boot();

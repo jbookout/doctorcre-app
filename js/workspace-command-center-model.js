@@ -239,16 +239,16 @@ export const QUICK_ADD_RECORD_CAP = 200;
 
 export function quickAddRecordNames(payload, cap = QUICK_ADD_RECORD_CAP) {
   if (!validWorkspacePayload(payload)) return Object.freeze([]);
-  const names = [];
+  const records = [];
   const seen = new Set();
   for (const row of [...payload.metrics, ...payload.needs_you_now]) {
     const name = String(row?.deal_name ?? row?.name ?? "").trim();
     if (name === "" || seen.has(name)) continue;
     seen.add(name);
-    names.push(name);
-    if (names.length >= cap) break;
+    records.push(Object.freeze({ id: row?.deal_id ?? row?.id ?? null, name }));
+    if (records.length >= cap) break;
   }
-  return Object.freeze(names);
+  return Object.freeze(records);
 }
 
 export function acceptsResponse(currentSequence, responseSequence) {

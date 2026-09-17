@@ -370,16 +370,23 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   assert.match(js, /records: quickAddRecords\(view\.rows\)/);
 });
 
-test("Quick add is offered the titles the board actually holds, deduped and capped", () => {
+test("Quick add is offered the ids the board holds, not names alone", () => {
   const rows = [
-    boardRow({ number: "201", title: "Beasley lease renewal" }),
-    boardRow({ number: "202", title: "Beasley lease renewal" }),
-    boardRow({ number: "203", title: "   " }),
-    boardRow({ number: "204", title: "Crestview derm site tour" }),
+    boardRow({ number: "201", title: "Beasley lease renewal", loop_id: "loop-201" }),
+    boardRow({ number: "202", title: "Beasley lease renewal", loop_id: "loop-202" }),
+    boardRow({ number: "203", title: "   ", loop_id: "loop-203" }),
+    boardRow({ number: "204", title: "Crestview derm site tour", loop_id: "loop-204" }),
   ];
-  assert.deepEqual([...quickAddRecords(rows)], ["Beasley lease renewal", "Crestview derm site tour"]);
+  assert.deepEqual([...quickAddRecords(rows)], [
+    { id: "loop-201", name: "Beasley lease renewal" },
+    { id: "loop-204", name: "Crestview derm site tour" },
+  ], "each record carries the id its own row holds, deduped by name");
 
-  // Nothing, and rubbish, produce no names rather than an invented one.
+  // A row that names no id is still matchable; it just cannot be pointed at.
+  assert.deepEqual([...quickAddRecords([{ title: "Nameless id" }])], [{ id: null, name: "Nameless id" }]);
+  assert.deepEqual([...quickAddRecords([{ id: "deal-9", name: "Demo Pace Pediatrics" }])], [{ id: "deal-9", name: "Demo Pace Pediatrics" }]);
+
+  // Nothing, and rubbish, produce no records rather than an invented one.
   assert.deepEqual([...quickAddRecords(null)], []);
   assert.deepEqual([...quickAddRecords([null, 7, {}])], []);
 
@@ -387,7 +394,72 @@ test("Quick add is offered the titles the board actually holds, deduped and capp
   const many = Array.from({ length: 260 }, (_, index) => ({ title: `Loop ${index}` }));
   assert.equal(quickAddRecords(many).length, 200);
 
-  // And the names actually steer parseQuickAdd's Related field.
+  // And the records actually steer parseQuickAdd's Related field, id and all.
   const parsed = parseQuickAdd("call about Beasley lease renewal friday", { now: Date.parse(NOW), viewer: "joe", records: quickAddRecords(rows) });
   assert.equal(parsed.related, "Beasley lease renewal");
+  assert.equal(parsed.relatedId, "loop-201");
+});
+
+test("a sentence matches a record on whole words, so 'part' does not resolve the Apartment record", () => {
+  const records = [{ id: "loop-301", name: "Apartment clinic fit-out" }];
+  const substring = parseQuickAdd("Ask Dell for his part of the budget", { now: Date.parse(NOW), viewer: "joe", records });
+  assert.equal(substring.related, null, "'part' is a word inside 'Apartment', not the record's name");
+  assert.equal(substring.relatedId, null);
+  assert.deepEqual([...substring.relatedCandidates], []);
+  assert.deepEqual(substring.questions, [], "no match is not a question");
+
+  const whole = parseQuickAdd("Ask Dell about the Apartment clinic fit-out budget", { now: Date.parse(NOW), viewer: "joe", records });
+  assert.equal(whole.related, "Apartment clinic fit-out");
+  assert.equal(whole.relatedId, "loop-301");
+
+  // A partial name is not the record either: every scored word has to be there.
+  const partial = parseQuickAdd("Ask Dell about the Apartment budget", { now: Date.parse(NOW), viewer: "joe", records });
+  assert.equal(partial.related, null);
+
+  // Bare names are still accepted, and resolve with a null id.
+  const bare = parseQuickAdd("Ask Dell about the Apartment clinic fit-out budget", { now: Date.parse(NOW), viewer: "joe", records: ["Apartment clinic fit-out"] });
+  assert.equal(bare.related, "Apartment clinic fit-out");
+  assert.equal(bare.relatedId, null);
+});
+
+test("two records matching one sentence resolve neither, and the preview asks which one", () => {
+  const records = [
+    { id: "loop-401", name: "Crestview derm site tour" },
+    { id: "loop-402", name: "Crestview derm site tour follow-up" },
+  ];
+  const sentence = "Book the Crestview derm site tour follow-up with Dr. Patel";
+  const parsed = parseQuickAdd(sentence, { now: Date.parse(NOW), viewer: "joe", records });
+  assert.equal(parsed.related, null, "an ambiguous sentence resolves NEITHER record");
+  assert.equal(parsed.relatedId, null);
+  assert.deepEqual([...parsed.relatedCandidates], ["Crestview derm site tour", "Crestview derm site tour follow-up"]);
+  assert.ok(parsed.questions.includes("Which record is this about: Crestview derm site tour, Crestview derm site tour follow-up?"));
+
+  // Ambiguity does not block filing: the action is still a record.
+  const plan = quickAddPlan(parsed, { viewer: "joe", sentence });
+  assert.ok(plan.args, "the capture still files");
+  assert.equal(plan.args.source_note, undefined, "and it points at no record, because none was resolved");
+  assert.equal(parsed.complete, false, "the sentence is understood, but one field is still a question");
+});
+
+test("the matched record's id rides into add-loop as source_note prose, because the verb has no related-id field", () => {
+  const records = [{ id: "loop-501", name: "Beasley lease renewal" }];
+  const sentence = "Send the Beasley lease renewal redline friday";
+  const parsed = parseQuickAdd(sentence, { now: Date.parse(NOW), viewer: "joe", records });
+  assert.equal(parsed.relatedId, "loop-501");
+
+  const plan = quickAddPlan(parsed, { viewer: "joe", sentence });
+  assert.equal(plan.args.source_note, "Related: Beasley lease renewal (loop-501)");
+  // The verb's own argument list, transcribed: there is nowhere else to put it.
+  for (const field of ["related", "related_id", "about", "loop_id"]) {
+    assert.equal(field in plan.args, false, `add-loop has no ${field} argument`);
+  }
+
+  // Shared work files as a team_loop and carries the same note.
+  const shared = quickAddPlan(parseQuickAdd(`${sentence} @dell`, { now: Date.parse(NOW), viewer: "joe", records }), { viewer: "joe", sentence });
+  assert.equal(shared.kind, "team_loop");
+  assert.equal(shared.args.source_note, "Related: Beasley lease renewal (loop-501)");
+
+  // No resolved record, no source_note from this path at all.
+  const unmatched = quickAddPlan(parseQuickAdd("Send the redline friday", { now: Date.parse(NOW), viewer: "joe", records }), { viewer: "joe", sentence: "Send the redline friday" });
+  assert.equal("source_note" in unmatched.args, false);
 });

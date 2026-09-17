@@ -389,13 +389,13 @@ test("clock and calendar formatting are 12-hour AM/PM and a readable calendar da
 test("Quick add fills owner, due and related from the sentence and never leaves them unknown when the sentence holds them", () => {
   const now = Date.parse("2026-09-16T14:00:00Z");
   const records = ["Demo Gulf Breeze Dental", "Demo Pace Pediatrics", "Demo Crestview Derm"];
-  const placeholder = parseQuickAdd("Call Dr. Patel Friday 10 AM about the Crestview LOI", { now, viewer: "joe", records });
+  const placeholder = parseQuickAdd("Call Dr. Patel Friday 10 AM about the Demo Crestview Derm LOI", { now, viewer: "joe", records });
   assert.equal(placeholder.owner, "joe", "the viewer owns what the viewer captures");
   assert.equal(placeholder.ownerDefaulted, true);
   assert.equal(placeholder.due, "2026-09-18");
   assert.equal(placeholder.dueTime, "10:00 AM");
   assert.equal(placeholder.dueLabel, "Fri, Sep 18, 2026 · 10:00 AM");
-  assert.equal(placeholder.related, "Demo Crestview Derm", "a distinctive word matches a record on the board");
+  assert.equal(placeholder.related, "Demo Crestview Derm", "the sentence names a record on the board");
   assert.match(placeholder.action, /^Call Dr\. Patel/);
   assert.deepEqual(placeholder.questions, []);
   assert.equal(placeholder.complete, true);
