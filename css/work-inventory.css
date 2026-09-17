@@ -55,3 +55,37 @@
 .stage-cell[data-state="complete"] { color: var(--green); }
 .stage-cell[data-state="not reached"] { color: var(--muted); }
 .stage-cell[data-state="unknown"] { color: var(--amber); }
+
+/* At phone width nine columns cannot be a table. Each row becomes a bordered
+ * card and each cell carries its own column caption, so nothing is read by
+ * counting across a header the reader can no longer see. The state colours are
+ * keyed to .stage-cell[data-state], not to the table layout, so they survive. */
+@media (max-width: 640px) {
+  .stage-scroll { overflow-x: visible; }
+  .stage-table thead { display: none; }
+  .stage-table tbody,
+  .stage-table tr,
+  .stage-table td { display: block; }
+  .stage-table tr {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 6px 0;
+    background: var(--ground-1);
+  }
+  .stage-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border: 0;
+  }
+  .stage-table td[data-stage-label]::before {
+    content: attr(data-stage-label);
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  .stage-table td .btn { min-height: var(--touch); }
+}

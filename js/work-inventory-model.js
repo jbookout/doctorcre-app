@@ -267,3 +267,22 @@ export function listPhase({ status, payload, visible = 0 }) {
   if (visible === 0) return "no_match";
   return payload.census_complete ? "ready" : "partial";
 }
+
+/**
+ * The state word a disposition row shows, and where it came from.
+ *
+ * A fresh work-request card is authority: its state is the one every write is
+ * built against. Before that read the census has already told this page a
+ * status, and withholding it made the row read as "unknown" when it was not.
+ * So the census status is shown, MARKED as coming from the census, and it is
+ * never fed to availableActions, dispositionArgs or base_version — those still
+ * require the fresh card. With neither, the word stays the literal `unknown`.
+ */
+export function dispositionState(item, card = null) {
+  if (card && typeof card.state === "string" && card.state !== "") {
+    return Object.freeze({ state: card.state, source: "card" });
+  }
+  const status = item && typeof item.status === "string" ? item.status.trim() : "";
+  if (status !== "") return Object.freeze({ state: status, source: "census" });
+  return Object.freeze({ state: "unknown", source: "none" });
+}

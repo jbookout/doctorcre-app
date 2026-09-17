@@ -226,6 +226,31 @@ export function homeReadPhase({ status, payload, scope = DEFAULT_SCOPE, now = ()
 }
 
 /** A response is only allowed to paint if no newer read has been started since it left. */
+/**
+ * The record names Quick add may match a sentence against on this surface: the
+ * ones the command-centre read actually names. That read is an AGGREGATE — its
+ * pipeline metrics and needs-you-now rows carry counts and destinations, never
+ * deal names — so today this honestly returns an empty list rather than feeding
+ * Quick add the category labels ("Flagged team deals") the page renders. The
+ * seam is here so that the day the read carries names, one call site changes.
+ * Empty and duplicate names are dropped and the list is capped.
+ */
+export const QUICK_ADD_RECORD_CAP = 200;
+
+export function quickAddRecordNames(payload, cap = QUICK_ADD_RECORD_CAP) {
+  if (!validWorkspacePayload(payload)) return Object.freeze([]);
+  const names = [];
+  const seen = new Set();
+  for (const row of [...payload.metrics, ...payload.needs_you_now]) {
+    const name = String(row?.deal_name ?? row?.name ?? "").trim();
+    if (name === "" || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+    if (names.length >= cap) break;
+  }
+  return Object.freeze(names);
+}
+
 export function acceptsResponse(currentSequence, responseSequence) {
   return Number.isInteger(currentSequence) && Number.isInteger(responseSequence) && responseSequence === currentSequence;
 }

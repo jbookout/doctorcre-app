@@ -12,8 +12,8 @@
 
 import {
   COVERAGE_COPY, KIND_LABEL, WORK_INVENTORY_ENDPOINT, WORK_INVENTORY_KINDS, WORK_INVENTORY_LIMIT_DEFAULT,
-  coverageOrbState, coverageSummary, filterItemsByStatusText, groupItemsByKind, inventoryRequestPath,
-  listPhase, mergeInventoryPages, validWorkInventoryPayload,
+  coverageOrbState, coverageSummary, dispositionState, filterItemsByStatusText, groupItemsByKind,
+  inventoryRequestPath, listPhase, mergeInventoryPages, validWorkInventoryPayload,
 } from "./work-inventory-model.js";
 import {
   NO_PASSPORT_REASON, STAGE_LABEL, availableActions, deliveryStages, dispositionArgs,
@@ -294,15 +294,15 @@ function stagesFor(ref) {
 
 function stageCellHtml(row) {
   const title = row.state === "complete" ? row.evidence_ref || "" : row.reason || "";
-  return `<td class="stage-cell" data-stage="${escapeHtml(row.stage)}" data-state="${escapeHtml(row.state)}" title="${escapeHtml(title)}">${escapeHtml(row.state)}</td>`;
+  return `<td class="stage-cell" data-stage="${escapeHtml(row.stage)}" data-stage-label="${escapeHtml(STAGE_LABEL[row.stage] || row.stage)}" data-state="${escapeHtml(row.state)}" title="${escapeHtml(title)}">${escapeHtml(row.state)}</td>`;
 }
 
 function stageRowHtml(item) {
   const cells = stagesFor(item.id).map(stageCellHtml).join("");
   return `<tr data-record="${escapeHtml(item.id)}">
-    <td>${escapeHtml(item.title || item.id)} <span class="mono">${escapeHtml(item.id)}</span></td>
+    <td data-stage-label="Record">${escapeHtml(item.title || item.id)} <span class="mono">${escapeHtml(item.id)}</span></td>
     ${cells}
-    <td><button class="btn btn-quiet" type="button" data-evidence="${escapeHtml(item.id)}">Evidence</button></td>
+    <td data-stage-label="Evidence"><button class="btn btn-quiet" type="button" data-evidence="${escapeHtml(item.id)}">Evidence</button></td>
   </tr>`;
 }
 
@@ -332,7 +332,8 @@ function renderStages(visible, payload) {
 
 function dispositionRowHtml(item) {
   const card = cards.get(item.id) || null;
-  const state = card ? card.state : "unknown";
+  const { state, source: stateSource } = dispositionState(item, card);
+  const stateMarker = stateSource === "census" ? ` <span class="small">from the census read</span>` : "";
   const actions = card
     ? availableActions(card).map((action) => (action.available
       ? `<button class="btn btn-secondary" type="button" data-action="${escapeHtml(action.choice)}" data-record="${escapeHtml(item.id)}">${escapeHtml(action.label)}</button>`
@@ -344,7 +345,7 @@ function dispositionRowHtml(item) {
   return `<li class="work-item" data-record="${escapeHtml(item.id)}">
     <div>
       <h3>${escapeHtml(item.title || item.id)}</h3>
-      <div class="work-meta"><span class="mono">${escapeHtml(item.id)}</span><span>state <b>${escapeHtml(state)}</b></span></div>
+      <div class="work-meta"><span class="mono">${escapeHtml(item.id)}</span><span>state <b>${escapeHtml(state)}</b>${stateMarker}</span></div>
       ${options}
     </div>
     <div class="stack-end">${actions}</div>
