@@ -102,9 +102,18 @@
  * @property {Object} args
  */
 
+// The eight deal phases, one UI value per `deal_phase` slug.
+//
+// "Site selection" was added in V5-UX-B03: the phase existed in the record layer
+// and had no board column, so both it and `research` were shown as "Research"
+// and writing that label back relocated a site-selection deal (defect 5e355b84).
+// The two long-standing labels are deliberately unchanged — the Deal Room table
+// has shown "On Deck" and "Diligence" since it shipped — and the Kanban prints
+// each phase's own name over these values instead.
 export const PHASES = [
   'On Deck',
   'Research',
+  'Site selection',
   'Negotiation',
   'Legal',
   'Diligence',
@@ -115,6 +124,7 @@ export const PHASES = [
 export const PHICON = {
   'On Deck': '🔥',
   Research: '🔍',
+  'Site selection': '📍',
   Negotiation: '🤝',
   Legal: '⚖️',
   Diligence: '📋',

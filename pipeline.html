@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Deals — the pipeline board by phase, moved by drag or keyboard, with the record beside it">
+  <title>Deals · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/pipeline.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the board</a>
+  <header class="topbar">
+    <a class="brand" href="/business" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>deals</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/business">Home</a>
+      <a href="/tasks">Tasks</a>
+      <a href="/pipeline" aria-current="page">Deals</a>
+      <a href="/clients">Clients</a>
+      <a href="/vendors">Vendors</a>
+      <a href="/work-inventory">Work Inventory</a>
+    </nav>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass" aria-labelledby="pageTitle">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="still" id="boardOrb" aria-hidden="true"></span> Pipeline</p>
+          <h1 id="pageTitle">Deals</h1>
+        </div>
+        <div class="hero-meta">
+          <span class="status" data-state="unknown" id="boardStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="boardStatusLabel">Reading the record…</span></span>
+          <span class="as-of" id="boardAsOf">Reading the record layer…</span>
+        </div>
+      </div>
+      <div class="chip-bar">
+        <div class="chip-bar" id="boardChips" aria-label="Deal type filters"></div>
+        <button class="btn" type="button" id="receiptsOpen" aria-haspopup="dialog">Recent changes <span id="receiptsCount">0</span></button>
+        <button class="btn" type="button" id="retryRead">Retry read</button>
+      </div>
+    </section>
+
+    <p class="sr-only" id="boardLive" aria-live="polite" role="status">Reading the record…</p>
+    <p class="sr-only" id="dragLive" aria-live="assertive"></p>
+
+    <div class="pending-bar" id="pendingWrites" role="alert" hidden></div>
+
+    <p class="drag-hint sr-only">Drag a card between columns, or focus a card and press Enter to lift it. Arrows choose a column, Enter drops, Escape cancels.</p>
+    <p class="drag-hint" id="boardNote" hidden></p>
+
+    <div class="pipeline-layout">
+      <div class="kanban" id="kanban" aria-label="Deals by phase"></div>
+      <aside id="recordPanel" class="side-panel glass" aria-labelledby="panelTitle" data-pinned="false" hidden>
+        <div class="panel-head">
+          <div><p class="eyebrow">Record</p><h2 id="panelTitle">Record</h2></div>
+          <div class="row-wrap">
+            <button class="btn icon-btn" type="button" id="panelPin" aria-pressed="false" aria-label="Pin this panel">📌</button>
+            <button class="btn icon-btn" type="button" id="panelClose" aria-label="Close record panel">×</button>
+          </div>
+        </div>
+        <div id="panelBody"></div>
+      </aside>
+    </div>
+  </main>
+
+  <dialog id="completionDialog" class="dialog" aria-labelledby="completionTitle">
+    <form id="completionForm">
+      <header>
+        <div><p class="eyebrow">Phase change</p><h2 id="completionTitle">Move</h2></div>
+        <button class="btn icon-btn" type="button" id="completionDismiss" aria-label="Cancel">×</button>
+      </header>
+      <div class="dialog-body">
+        <p class="field-hint" id="completionFrom"></p>
+        <p class="field-hint" id="completionClosedNote" hidden></p>
+        <p class="field-hint error" id="completionErrors" tabindex="-1" hidden></p>
+        <div class="field">
+          <label for="completionEvidence">Evidence</label>
+          <textarea id="completionEvidence" rows="3" placeholder="What makes this the right phase now"></textarea>
+          <p class="field-hint">Filed as a note on the record. CARR does not require evidence to move a phase.</p>
+        </div>
+        <div class="field">
+          <label for="completionNextStep">What happens next</label>
+          <input id="completionNextStep" type="text" autocomplete="off">
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="completionNextWhen">When</label>
+            <input id="completionNextWhen" type="date">
+          </div>
+        </div>
+        <p class="field-hint">Recorded as the next step.</p>
+        <div class="field-grid">
+          <div class="field">
+            <label for="completionDate">Effective date</label>
+            <input id="completionDate" type="date">
+          </div>
+        </div>
+        <label class="check-option"><input type="checkbox" id="completionCritical"> <span>Record this as a critical date</span></label>
+        <div class="field" id="completionSourceField" hidden>
+          <label for="completionSource">Where did this date come from?</label>
+          <input id="completionSource" type="text" autocomplete="off">
+        </div>
+        <p class="field-hint" id="completionDateCaption">Not recorded anywhere; the move is dated by when it is saved.</p>
+      </div>
+      <footer>
+        <button class="btn btn-quiet" type="button" id="completionCancel">Cancel, keep phase</button>
+        <button class="btn btn-primary" type="submit" id="completionConfirm">Move to the chosen column</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="conflictDialog" class="dialog" aria-labelledby="conflictTitle">
+    <form id="conflictForm">
+      <header><div><p class="eyebrow">Two edits crossed</p><h2 id="conflictTitle">Choose the value</h2></div></header>
+      <div class="dialog-body">
+        <div id="conflictChoices"></div>
+        <p class="field-hint">Both values stay in the record's history whichever one is kept.</p>
+      </div>
+      <footer>
+        <button class="btn btn-quiet" type="button" id="conflictCancel">Decide later</button>
+        <button class="btn btn-primary" type="submit">Keep the selected value</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="receiptsDialog" class="dialog" aria-labelledby="receiptsTitle">
+    <article>
+      <header>
+        <div><p class="eyebrow">This session</p><h2 id="receiptsTitle">Recent changes</h2></div>
+        <button class="btn icon-btn" type="button" id="receiptsClose" aria-label="Close">×</button>
+      </header>
+      <div class="dialog-body">
+        <ul class="receipt-list" id="receiptsList"></ul>
+        <p class="field-hint">Session memory only, and never a substitute for the record's own change history.</p>
+      </div>
+    </article>
+  </dialog>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Deals</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Deals · One record, one owner, one safety key per command.</p></footer>
+  <nav class="mobile-nav" aria-label="Workspace shortcuts">
+    <a href="/business"><span aria-hidden="true">⌂</span>Home</a>
+    <a href="/tasks"><span aria-hidden="true">☰</span>Tasks</a>
+    <a href="/pipeline" aria-current="page"><span aria-hidden="true">◈</span>Deals</a>
+    <a href="/work-inventory"><span aria-hidden="true">◷</span>Inventory</a>
+  </nav>
+  <script type="module" src="/js/pipeline.js"></script>
+</body>
+</html>

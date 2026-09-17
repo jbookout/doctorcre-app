@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e7f4f1514568d03e269bda336a4c7d28f24f5810"
@@ -14,6 +14,7 @@
     "database_access": "forbidden"
   },
   "mcp_operations": [
+    "add-critical-date",
     "add-deal-note",
     "add-loop",
     "capture-queue",

@@ -16,6 +16,7 @@ const prototypeJs = await read("js/design-prototype.js");
 const docDockJs = await read("js/doc-dock.js");
 const workInventoryHtml = await read("work-inventory.html");
 const tasksHtml = await read("tasks.html");
+const pipelineHtml = await read("pipeline.html");
 const businessWorkspaceHtml = await read("business-workspace.html");
 const shellJs = await read("js/shell.js");
 
@@ -30,6 +31,7 @@ const SURFACES = {
   "design-operations.html": pages.operations,
   "work-inventory.html": workInventoryHtml,
   "tasks.html": tasksHtml,
+  "pipeline.html": pipelineHtml,
   "business-workspace.html": businessWorkspaceHtml,
   "js/design-prototype.js": prototypeJs,
   "js/shell.js": shellJs,
