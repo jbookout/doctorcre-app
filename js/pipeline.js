@@ -46,7 +46,7 @@ import {
   createUndoState, performUndo,
 } from './change-receipts.mjs';
 import {
-  COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
+  CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, filterDeals, groupByColumn, keyboardTarget, moveIntent,
   moveSummary, moveTitle, orderColumn, presenceChip, recordPanelSections, typeFilters,
 } from './pipeline-model.js';
@@ -328,6 +328,55 @@ const FOLLOW_UP_SENDERS = {
   'add-critical-date': (request) => state.client.addCriticalDate(request),
 };
 
+/**
+ * The outcome write, and the fresh read it is built on.
+ *
+ * Three things make this NOT an ordinary follow-up. It carries a
+ * `base_version`, which only a read taken AFTER the phase patch can supply —
+ * a version captured when the dialog opened would name a row the move itself
+ * has since changed. Its refusals are the concurrency ones: a version_conflict
+ * goes to the crossed-edits path and a key_reuse is the kernel replaying an
+ * answer, and neither is ever re-sent blind. And it is last, so a refusal here
+ * leaves the card exactly where the server put it, and says so on its own
+ * receipt rather than pretending the move failed.
+ */
+async function runOutcomeWrite(operationKey, step, intent) {
+  dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
+
+  let version = null;
+  try {
+    const fresh = await state.client.getDeal(intent.deal);
+    version = fresh?.deal?.version ?? null;
+  } catch {
+    version = null;
+  }
+  if (!Number.isInteger(version)) {
+    dock.record(operationKey, {
+      summary: step.summary, status: 'failed', undo: false,
+      reason: `${intent.name} moved, but the record could not be re-read for its version, so the outcome was not written. Nothing was guessed.`,
+    });
+    return null;
+  }
+
+  const args = { ...step.args, base_version: version };
+  const send = (request) => state.client.updateDeal(request);
+  operations.set(operationKey, { kind: 'command', verb: step.verb, args, send, summary: step.summary });
+  const result = await performCommand({
+    operationKey,
+    args,
+    getState: () => commandState,
+    setState: (next) => { commandState = next; },
+    newKey: uuidv4,
+    call: (request) => send(request),
+  });
+  dock.record(operationKey, {
+    summary: step.summary, status: result.status, reason: result.message || null,
+    retry: result.retry, undo: false, request: result.request,
+  });
+  if (result.status === 'ok') state.boardSync.requestRefresh('after-write');
+  return result;
+}
+
 /** One follow-up, its own key, its own receipt. A failure never un-moves a card. */
 async function runFollowUp(operationKey, step) {
   const send = FOLLOW_UP_SENDERS[step.verb];
@@ -400,7 +449,11 @@ async function runMove(intent, form) {
   announce(`${intent.name} moved to ${intent.to_label}.`);
 
   const token = uuidv4();
-  for (const step of followUps) await runFollowUp(`${step.verb}:${intent.deal}:${token}`, step);
+  for (const step of followUps) {
+    const operationKey = `${step.verb}:${intent.deal}:${token}`;
+    if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, intent);
+    else await runFollowUp(operationKey, step);
+  }
   return { ok: true, errors: [] };
 }
 
@@ -447,11 +500,23 @@ function openCompletion(intent) {
   if (!dialog) return;
   $('completionTitle').textContent = moveTitle(intent);
   $('completionFrom').textContent = `Cancel leaves it in ${intent.from_label}.`;
+  const isClosed = intent.to === CLOSED_SLUG;
   const closed = $('completionClosedNote');
   if (closed) {
-    closed.hidden = intent.to !== 'closed';
+    closed.hidden = !isClosed;
     closed.textContent = closedColumnCaption();
   }
+  const outcomeField = $('completionOutcomeField');
+  if (outcomeField) outcomeField.hidden = !isClosed;
+  for (const radio of outcomeRadios()) radio.checked = false;
+  // Today, as the calendar picker's own value. There is no typed-date box: the
+  // ruling is a picker or nothing, and a default of today is what a person
+  // closing a record almost always means.
+  const closedOn = $('completionClosedOn');
+  if (closedOn) closedOn.value = isClosed ? todayIso() : '';
+  const wonValue = $('completionWonValue');
+  if (wonValue) wonValue.value = '';
+  renderOutcomeState();
   const confirm = $('completionConfirm');
   if (confirm) confirm.textContent = `Move to ${intent.to_label}`;
   $('completionEvidence').value = '';
@@ -465,6 +530,21 @@ function openCompletion(intent) {
   renderCriticalState();
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   $('completionEvidence')?.focus();
+}
+
+const outcomeRadios = () => [...document.querySelectorAll('input[name="completionOutcome"]')];
+const chosenOutcome = () => outcomeRadios().find((radio) => radio.checked)?.value || '';
+/** Today as the calendar's own YYYY-MM-DD, in the reader's timezone, not UTC. */
+function todayIso() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** Won value belongs to a won record and to nothing else, so it appears there. */
+function renderOutcomeState() {
+  const field = $('completionWonValueField');
+  if (field) field.hidden = chosenOutcome() !== 'won';
 }
 
 function renderCriticalState() {
@@ -697,6 +777,7 @@ function wire() {
   $('receiptsClose')?.addEventListener('click', () => $('receiptsDialog')?.close());
 
   $('completionCritical')?.addEventListener('change', renderCriticalState);
+  $('completionOutcomeField')?.addEventListener('change', renderOutcomeState);
   $('completionCancel')?.addEventListener('click', () => closeCompletion({ cancelled: true }));
   $('completionDismiss')?.addEventListener('click', () => closeCompletion({ cancelled: true }));
   $('completionForm')?.addEventListener('submit', async (event) => {
@@ -710,6 +791,9 @@ function wire() {
       effectiveDate: $('completionDate')?.value,
       recordCriticalDate: $('completionCritical')?.checked === true,
       dateSource: $('completionSource')?.value,
+      outcome: chosenOutcome(),
+      closedOn: $('completionClosedOn')?.value,
+      wonValue: $('completionWonValue')?.value,
     });
     if (outcome.errors.length) {
       const errors = $('completionErrors');

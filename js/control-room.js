@@ -14,7 +14,7 @@
 import {
   canonicalHref, coverageLine, dashboardTiles, groupedIncidents, incidentFilters, notInReleaseBlocks,
   readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
-  validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE,
+  validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
 import { renderCount, stageDenominator } from "./delivery-evidence-model.js";
 import { validWorkInventoryPayload, WORK_INVENTORY_ENDPOINT } from "./work-inventory-model.js";
@@ -83,6 +83,7 @@ function renderTiles() {
   const tiles = dashboardTiles({
     incidents: readFor("incidents"), work: readFor("work"),
     needsJoe: readFor("needs_joe"), census: readFor("census"),
+    cadence: STUCK_SILENCE_HOURS,
   });
   grid.innerHTML = tiles.map((tile) => `<section class="card glass" data-tile="${escapeHtml(tile.id)}" data-state="${escapeHtml(tile.state)}">
     <p class="eyebrow">Question</p>
@@ -159,11 +160,11 @@ function renderActiveWork() {
     end: canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : "",
   })).join("") || rowHtml({ title: "Nothing is held right now", meta: "the queue may still hold ready work, which this read deliberately does not show" });
 
-  const stalls = stallCandidates(payload.current, { cadence: null });
+  const stalls = stallCandidates(payload.current, { cadence: STUCK_SILENCE_HOURS });
   longestList.innerHTML = stalls.items.map((item) => rowHtml({
     title: item.title,
-    meta: `${item.human_ref} · ${sinceChangeLabel(item.hours_since_last_change)} · ${stalls.reason}`,
-  })).join("") || rowHtml({ title: "No held work to order", meta: stalls.reason });
+    meta: `${item.human_ref} · ${sinceChangeLabel(item.hours_since_last_change)}`,
+  })).join("") || rowHtml({ title: "No held work to order", meta: `nothing has been held without a change for ${STUCK_SILENCE_HOURS} hours or more` });
 }
 
 function renderNeedsJoe() {

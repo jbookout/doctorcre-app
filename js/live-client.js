@@ -258,6 +258,16 @@ export function createLiveClient(opts = {}) {
       return write('resolve-conflict', args);
     },
 
+    // The deal-row write the Closed column needs: the outcome and its date.
+    // `base_version` is NOT defaulted and NOT re-read here — the caller reads
+    // the deal, decides against what it read, and sends that version. A client
+    // that fetched a fresh version on the caller's behalf would turn a crossed
+    // edit into a silent overwrite. `fields` passes through untouched except
+    // for the phase vocabulary, which this verb does not carry.
+    async updateDeal(args) {
+      return write('update-deal', args);
+    },
+
     async addDealNote(args) {
       return write('add-deal-note', args);
     },
