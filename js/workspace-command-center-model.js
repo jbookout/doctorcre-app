@@ -17,7 +17,7 @@ const SCOPE_DESTINATIONS = {
   team: { active: TEAM_ACTIVE_DESTINATION, flagged: TEAM_FLAGGED_DESTINATION },
   mine: { active: null, flagged: MY_FLAGGED_DESTINATION },
 };
-export const SCOPE_LABEL = { team: "Team book", mine: "My work" };
+export const SCOPE_LABEL = { team: "Deals", mine: "My work" };
 const CARD_SOURCES = new Set(["v_deal_room_board", "ops.work_request"]);
 const ALL_SOURCES = new Set(["command_center", ...CARD_SOURCES]);
 
@@ -134,7 +134,7 @@ export function needsJoeWork(payload, now = () => Date.now()) {
   return payload.needs_you_now.find((item) => item.kind === "needs_joe_work") || null;
 }
 
-/** Home headline text. Never claims a scope with zero flagged deals means the team book is clear. */
+/** Home headline text. Never claims a scope with zero flagged deals means the Deals list is clear. */
 export function homeCardCopy(summary) {
   const label = SCOPE_LABEL[summary.scope] || "Workspace";
   const deals = (value) => `${value} ${value === 1 ? "deal" : "deals"}`;
@@ -150,14 +150,14 @@ export function homeCardCopy(summary) {
   const mineCountLabel = `${deals(summary.active)} active and owned by you · ${summary.teamFlagged} flagged team-wide`;
   if (summary.state === "empty") {
     return summary.scope === "team"
-      ? { eyebrow: "Team book · no flagged work", title: "No team deal is flagged", count: 0, countLabel: `${deals(summary.active)} active across the team`,
-        copy: `The active team book holds ${deals(summary.active)}, and none is flagged for attention.` }
+      ? { eyebrow: "Deals · no flagged work", title: "No team deal is flagged", count: 0, countLabel: `${deals(summary.active)} active across the team`,
+        copy: `The active Deals list holds ${deals(summary.active)}, and none is flagged for attention.` }
       : { eyebrow: "My work · no flagged work", title: "None of your deals are flagged", count: 0, countLabel: mineCountLabel,
-        copy: `You own ${deals(summary.active)} in the active team book. ${summary.teamFlagged === 0 ? "The team book has no flagged deals either." : `The team book still has ${deals(summary.teamFlagged)} flagged — switch to Team to review ${summary.teamFlagged === 1 ? "it" : "them"}.`}` };
+        copy: `You own ${deals(summary.active)} in the active Deals list. ${summary.teamFlagged === 0 ? "The Deals list has no flagged deals either." : `The Deals list still has ${deals(summary.teamFlagged)} flagged — switch to Team to review ${summary.teamFlagged === 1 ? "it" : "them"}.`}` };
   }
   return summary.scope === "team"
-    ? { eyebrow: "Team book · attention", title: `${summary.flagged} flagged team ${summary.flagged === 1 ? "deal needs" : "deals need"} attention`, count: summary.flagged, countLabel: `${deals(summary.active)} active across the team`,
-      copy: "These team-book records are flagged for partner attention. Review the owning Deal Room view before deciding what changes." }
+    ? { eyebrow: "Deals · attention", title: `${summary.flagged} flagged team ${summary.flagged === 1 ? "deal needs" : "deals need"} attention`, count: summary.flagged, countLabel: `${deals(summary.active)} active across the team`,
+      copy: "These deal records are flagged for partner attention. Review the owning Deal Room view before deciding what changes." }
     : { eyebrow: "My work · attention", title: `${summary.flagged} of your ${summary.flagged === 1 ? "deals is" : "deals are"} flagged`, count: summary.flagged, countLabel: mineCountLabel,
       copy: "These flagged records are owned by you. Review the owning Deal Room view before deciding what changes." };
 }
@@ -194,7 +194,7 @@ export function viewerWorkspaceLabel(viewer) {
 export function scopeNote(scope) {
   return scope === "mine"
     ? "Showing your own work. Team is the default view."
-    : "Showing the combined team book for Joe and Dell. My work is the secondary view.";
+    : "Showing the combined Deals view. My work is the secondary view.";
 }
 
 export function humanSourceLabel(source) {
@@ -211,7 +211,7 @@ export function primaryHomeAction(payload, { scope = DEFAULT_SCOPE, now = () => 
   if (summary.state === "attention") {
     return { label: scope === "team" ? "Review flagged team deals" : "Review my flagged deals", href: safeDestination(summary.flaggedDestination), state: "attention" };
   }
-  if (summary.state === "empty") return { label: "Open the team book", href: TEAM_ACTIVE_DESTINATION, state: "empty" };
+  if (summary.state === "empty") return { label: "Open Deals", href: TEAM_ACTIVE_DESTINATION, state: "empty" };
   return { label: "Open Deal Room", href: DEAL_ROOM_DESTINATION, state: summary.state === "stale" ? "stale" : "unavailable" };
 }
 

@@ -115,7 +115,7 @@ function renderAggregates(payload, scope) {
     value: String(summary.flagged),
     copy: summary.flagged
       ? `Opens the same ${scope === "team" ? "team" : "owner-filtered"} flagged list in the Deal Room.`
-      : `Nothing is flagged in ${scope === "team" ? "the team book" : "your own work"} right now.`,
+      : `Nothing is flagged in ${scope === "team" ? "Deals" : "your own work"} right now.`,
   }, payload.metrics[SCOPES.indexOf(scope)].source);
   const doc = payload.doc_at_work[0];
   const docOut = cardStates.doc !== "fresh";

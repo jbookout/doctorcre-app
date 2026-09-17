@@ -101,7 +101,7 @@ test("Home defaults to the combined team scope and offers My work as a keyboard 
   assert.match(html, /<button[^>]*data-scope="team"[^>]*aria-pressed="true"/);
   assert.match(html, /<button[^>]*data-scope="mine"[^>]*aria-pressed="false"/);
   assert.match(html, /id="scopeNote"/);
-  assert.match(html, /Team book/);
+  assert.match(html, /<span>Deals<\/span>/);
   assert.match(html, /My work/);
   // Buttons are reachable by keyboard and pointer; arrow keys move between the two scopes.
   assert.match(js, /addEventListener\("click"/);
