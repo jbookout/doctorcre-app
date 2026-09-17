@@ -67,15 +67,23 @@ export function createLiveClient(opts = {}) {
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
   // the display names the mockup ruled. Translate at the client boundary in
   // both directions so neither side ever sees the other's vocabulary.
+  //
+  // The map is ONE-TO-ONE, and that is the repair in V5-UX-B03. It used to send
+  // both `research` and `site_selection` to "Research" while UI_TO_PHASE had no
+  // entry for site selection at all, so a board that read a site-selection deal
+  // showed it as Research and wrote `research` back — silently relocating the
+  // record to a phase nobody chose (defect 5e355b84). Every slug now has its own
+  // label and every label its own slug, so a round trip returns what it started
+  // with.
   const PHASE_TO_UI = {
-    pending: 'On Deck', research: 'Research', site_selection: 'Research',
+    pending: 'On Deck', research: 'Research', site_selection: 'Site selection',
     negotiation: 'Negotiation', legal: 'Legal', due_diligence: 'Diligence',
     closing: 'Closing', closed: 'Closed',
   };
   const UI_TO_PHASE = {
-    'On Deck': 'pending', 'Research': 'research', 'Negotiation': 'negotiation',
-    'Legal': 'legal', 'Diligence': 'due_diligence', 'Closing': 'closing',
-    'Closed': 'closed',
+    'On Deck': 'pending', 'Research': 'research', 'Site selection': 'site_selection',
+    'Negotiation': 'negotiation', 'Legal': 'legal', 'Diligence': 'due_diligence',
+    'Closing': 'closing', 'Closed': 'closed',
   };
   const TYPE_TO_UI = {
     startup: 'Startup', relocation: 'Relocation', additional_office: '2nd Office',
@@ -256,6 +264,13 @@ export function createLiveClient(opts = {}) {
 
     async setNextStep(args) {
       return write('set-next-step', args);
+    },
+
+    // A date that matters to the record, with the place it came from. `source`
+    // is not optional at the record layer and is not defaulted here: a date
+    // whose provenance nobody stated is one this app will not invent one for.
+    async addCriticalDate(args) {
+      return write('add-critical-date', args);
     },
 
     async createDeal(args) {

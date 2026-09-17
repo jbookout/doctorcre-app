@@ -1,0 +1,62 @@
+/* V5-UX-B03 — Deals (pipeline.html).
+ *
+ * css/system.css owns the register: the dark cinematic ground, the glass, the
+ * palette, the 44px touch floor, the .kanban* rules the prototype proved, the
+ * side panel, the dialogs and the receipt dock. This file adds ONLY what is
+ * particular to this surface and is not in the shared system:
+ *
+ *   1. the two-column board/panel layout, which lived in the prototype's own
+ *      css/design.css and has to exist for a product page too;
+ *   2. the small pieces of page furniture every product surface re-declares
+ *      because they were written for the prototype pages (the hero row, a wrapped
+ *      button row, the field grid);
+ *   3. the four things this board invents: the card title button, the partner
+ *      presence chip, the unconfirmed-changes bar and the change list inside the
+ *      Recent changes popup.
+ *
+ * Nothing here restates a token, a colour or a motion duration: those have one
+ * home and it is the shared system.
+ */
+
+/* ------------------------------------------------------ page furniture */
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+
+/* ------------------------------------------------------ board and panel */
+/* The board scrolls sideways through eight columns; the record panel sits
+   beside it and collapses out of the grid when it is closed, so the board gets
+   the whole width back rather than leaving a hole where a panel might be. */
+.pipeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; margin-top: 12px; }
+.pipeline-layout .side-panel:not([hidden]) { display: grid; }
+.pipeline-layout:has(.side-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
+
+/* The card's title is the way into the record, because Enter on the card body
+   lifts it for a move. A button that reads as a heading, and nothing else. */
+.card-open { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.card-open:hover { color: var(--orange-text); }
+
+/* A partner's open lease on this record's phase. It says who, and nothing about
+   what they intend to do. */
+.presence-chip { margin: 0; color: var(--cyan-text); font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* ------------------------------------------------------ unconfirmed writes */
+/* A write that was never answered belongs to the page, not to a column: it stays
+   above the board until the person settles it, whatever the filter is showing. */
+.pending-bar { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px dashed color-mix(in srgb, var(--amber) 60%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--amber) 8%, transparent); font-size: 12px; }
+.pending-bar span { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ------------------------------------------------------ dialog additions */
+.check-option { display: flex; gap: 8px; align-items: center; min-height: var(--touch); font-size: 12px; }
+.field-hint.error { color: var(--red-text); font-size: 12px; font-weight: 700; }
+
+/* ------------------------------------------------------ Recent changes popup */
+.receipt-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+
+@media (max-width: 1100px) {
+  .pipeline-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .shell { padding-bottom: 96px; }
+}

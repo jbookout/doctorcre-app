@@ -80,6 +80,10 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
+  // Critical dates recorded in this session, by deal. The seed carries none:
+  // the fixture derives one line from the deal's own next date, and anything
+  // else on the list was written here through add-critical-date.
+  const criticalDates = new Map();
 
   /**
    * Synthetic loop records — the task surface's fixture.
@@ -161,6 +165,7 @@ export async function createFixtureClient(opts = {}) {
   let seq = events.length + 1;
   let conflictSeq = 1;
   let noteSeq = 1;
+  let criticalDateSeq = 1;
   let histSeq = 1;
   let confirmSeq = 1;
   let reviewSeq = 1;
@@ -372,6 +377,7 @@ export async function createFixtureClient(opts = {}) {
           date: deal.next_date,
         });
       }
+      for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
       return { deal, thread, critical_dates, history: hist,
         next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
@@ -471,6 +477,33 @@ export async function createFixtureClient(opts = {}) {
         });
         pushHistory(deal, selfActor, `added note`, e.recorded_at);
         return { status: 'ok', event: e };
+      });
+    },
+
+    // A date that matters, with where it came from. The record layer refuses a
+    // critical date without a source, and so does this: a fixture that accepted
+    // one would let a surface ship a dialog the live verb would bounce.
+    async addCriticalDate({ deal, kind, due_on, source, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        getDealOrThrow(deal);
+        const k = String(kind || '').trim();
+        const day = String(due_on || '').trim();
+        const from = String(source || '').trim();
+        if (!k) throw new Error('critical date kind required');
+        if (!day) throw new Error('critical date due_on required');
+        if (!from) throw new Error('critical date source required');
+        const entry = { id: `cd-${criticalDateSeq++}`, kind: k, label: k, due_on: day, date: day, source: from };
+        criticalDates.set(deal, [...(criticalDates.get(deal) || []), entry]);
+        const e = pushEvent({
+          actor: selfActor,
+          verb: 'add-critical-date',
+          subject_id: deal,
+          field: null,
+          old_value: null,
+          new_value: day,
+        });
+        pushHistory(deal, selfActor, `added critical date ${k}`, e.recorded_at);
+        return { status: 'ok', event: e, critical_date: entry };
       });
     },
 

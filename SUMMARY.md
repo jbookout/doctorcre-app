@@ -37,6 +37,9 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `tasks.html` | V5-UX-B02 Tasks at `/tasks`: the shared record of open task and team loops, with Quick add capture, handover, due dates and completion |
 | `js/task-records-model.js` | Pure task rules: board-row validation, owner scoping, handover/close/due argument sets, the Quick add plan and the operation keys |
 | `js/task-records.js` | Tasks DOM wiring over the loop verbs, through the shared command kernel and dock |
+| `pipeline.html` | V5-UX-B03 Deals at `/pipeline`: the eight-phase Kanban, moved by drag or keyboard, with the completion dialog, the crossed-edits chooser and the record panel |
+| `js/pipeline-model.js` | Pure board rules: the eight columns and their one-to-one phase map, grouping, the move intent, the ordered completion plan and the keyboard target |
+| `js/pipeline.js` | Deals DOM wiring over `deal-room-board` and `patch-deal-field`, through the board coordinator, the field-write kernel and the command dock |
 | `business-workspace.html` | V5-UX-B01 Business workspace at `/business`: Home, Work, Pipeline and Doc history over the canonical command-center read, with Team review and Quick add |
 | `js/business-workspace-model.js` | Pure Home rules: the section order, the Team review share arithmetic and the words an unverified section says |
 | `js/business-workspace.js` | Business workspace DOM wiring over `GET /api/v1/command-center` and the Quick add capture |
