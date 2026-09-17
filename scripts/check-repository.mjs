@@ -22,7 +22,7 @@ assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html"]) await read(path);
+for (const path of ["control-room.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
@@ -32,6 +32,8 @@ assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census
 assert.equal(routes.routes["/tasks"], "tasks.html", "the Tasks route must stay in the route contract");
 assert.equal(routes.routes["/pipeline"], "pipeline.html", "the Deals board route must stay in the route contract");
 assert.equal(routes.routes["/business"], "business-workspace.html", "the business workspace route must stay in the route contract");
+assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");
+for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);
 assert.ok(contract.http_surfaces.includes("/api/v1/command-center"), "the command-center path must stay pinned in the CARR interface");
 for (const verb of ["add-critical-date", "add-deal-note", "set-next-step", "presence-lease", "resolve-conflict"]) assert.ok(contract.mcp_operations.includes(verb), `the Deals board needs ${verb} pinned`);
 for (const verb of ["loop-board", "read-loop", "add-loop", "update-loop", "close-loop", "loop-headers"]) assert.ok(contract.mcp_operations.includes(verb), `the interface must pin ${verb}`);
@@ -41,7 +43,11 @@ const forbidden = [
   [/BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY/, "private key"],
   [/postgres(?:ql)?:\/\//i, "database connection string"],
   [/@neondatabase|DATABASE_URL/, "database implementation or credential name", (path) => path.startsWith("js/")],
-  [/from\s+["'][^"']*(?:carr-system|mcp-server|control-room)[^"']*["']|import\s*\([^)]*(?:carr-system|mcp-server|control-room)/, "cross-repository source import"]
+  // A PATH SEGMENT, not a substring. The repository that produces those reads
+  // is named by a whole directory in an import path; `./control-room-model.js`
+  // is a module in THIS repository whose name merely starts with the same
+  // letters, and refusing it would refuse the app's own Control Room page.
+  [/(?:from\s+|import\s*\(\s*)["'](?:[^"']*\/)?(?:carr-system|mcp-server|control-room)(?:\/[^"']*)?["']/, "cross-repository source import"]
 ];
 
 async function files(directory) {

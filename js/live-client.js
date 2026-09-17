@@ -342,6 +342,15 @@ export function createLiveClient(opts = {}) {
     async supersedeWorkRequest(args) { return write('supersede-work-request', args); },
     async setWorkShapeDisposition(args) { return write('set-work-shape-disposition', args); },
 
+    // ------------------------------------------------------ Control Room (C01)
+    // Three read-only verbs, passed through untouched. Two of them take NO
+    // arguments at all and refuse any field, so nothing is defaulted in here:
+    // a tenant, an owner or a filter invented by the browser is exactly what
+    // those verbs exist to refuse.
+    async incidentBoard(args = {}) { return rpc('incident-board', args); },
+    async currentWorkItem() { return rpc('current-work-item', {}); },
+    async currentWorkRequests() { return rpc('current-work-requests', {}); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

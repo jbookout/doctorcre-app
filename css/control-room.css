@@ -1,0 +1,71 @@
+/* V5-UX-C01 Control Room — page layer over css/system.css.
+ *
+ * The shared sheet is contract-bound, so nothing here invents a colour, a type
+ * scale or a component. It does only the four things the shared sheet leaves to
+ * a page:
+ *
+ *  1. The hero row and the one freshness line under it, as the business
+ *     workspace carries them.
+ *  2. The five-across question grid, which lives in the prototype stylesheet and
+ *     is not part of the product sheet.
+ *  3. The 44px floor on the controls this page adds, and wrapping for refs that
+ *     are single unbroken tokens.
+ *  4. The permanent "not in this release" state: a scope statement, drawn quiet
+ *     and dashed so it can never be mistaken for a zero or an outage.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hero-card { display: grid; gap: 12px; }
+
+.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
+.freshness[data-freshness="partial"], .freshness[data-freshness="offline"] { color: var(--amber-text); }
+
+.count-line { margin: 0; font: 600 24px/1.1 var(--display); }
+.count-line[data-state="unavailable"] { color: var(--quiet); }
+
+.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.chip { min-height: var(--touch); }
+.btn-group .btn { min-height: var(--touch); }
+
+/* The five questions, one tile each. The tile is a card with a title, one value
+ * line, one sentence and the one button that opens the rows behind it. */
+.five-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.five-grid .card { display: grid; gap: 6px; align-content: start; margin: 0; padding: 18px; }
+.tile-value { margin: 0; font: 600 40px/1.05 var(--display); }
+.tile-value[data-state="unknown"], .tile-value[data-state="not_in_release"] { color: var(--quiet); font-size: 24px; }
+.tile-sentence { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* Refs and correlation ids are unbroken tokens: they wrap rather than push the
+ * page sideways. */
+.work-item h3,
+.work-meta,
+.work-meta span,
+.detail-rows dd { min-width: 0; overflow-wrap: anywhere; }
+.work-item > div { min-width: 0; }
+.stack-end { display: grid; gap: 8px; justify-items: end; }
+
+.detail-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px 12px; margin: 0; }
+.detail-rows dt { color: var(--quiet); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.detail-rows dd { margin: 0; font-size: 13px; }
+
+/* Permanent scope, not an outage and not a zero. */
+.state-block[data-state="not_in_release"] { border-style: dashed; border-color: var(--line-strong); }
+.state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
+.state-block + .state-block { margin-top: 10px; }
+
+@media (max-width: 980px) {
+  .five-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .five-grid { grid-template-columns: 1fr; }
+  .work-item { grid-template-columns: minmax(0, 1fr); }
+  .stack-end { justify-items: start; }
+  .detail-rows { grid-template-columns: 1fr; }
+  /* The bottom navigation mirrors the tabs, so the page keeps clear of it. */
+  main.shell { padding-bottom: 96px; }
+}

@@ -403,6 +403,49 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
+  /* ------------------------------------------------- Control Room fixtures (C01)
+   * Three severities, one row ready to close, one recurring row; three held
+   * work items with distinct silences and one blocker; two shared requests.
+   * Every name starts with "Demo " so nothing here can be mistaken for a record.
+   */
+  const outage = opts.outage || null;
+  const refuseIfOutage = (read, verb) => {
+    if (outage !== read) return;
+    const error = new Error(`fixture outage: ${verb} is unreachable`);
+    error.status = 503;
+    throw error;
+  };
+  const incident = (row) => ({
+    ref: row.ref, title: row.title, severity: row.severity, state: row.state,
+    environment: 'staging', owner_actor: row.owner_actor, next_action: row.next_action,
+    business_impact: row.business_impact, fingerprint: `demo-service|${row.severity}|demo`,
+    detected_at: row.detected_at, observed_at: row.detected_at, monitoring_until: null,
+    duplicate_of: null, monitoring_window_open: false, age_days: row.age_days,
+    occurrences: row.occurrences, occurrence_evidence_status: 'complete',
+    legacy_overlap_unknown: false, unresolved_occurrence_edge_count: 0,
+    ready_to_close: row.ready_to_close, blocked_by: row.blocked_by || null,
+  });
+  const incidents = [
+    incident({ ref: 'INC-20260915-01', title: 'Demo export service stopped writing its nightly generation', severity: 'SEV-1', state: 'investigating', owner_actor: 'joe', next_action: 'Read the demo export log and name the failing generation', business_impact: 'The demo nightly export is not being produced', detected_at: '2026-09-13T04:10:00.000Z', age_days: 4, occurrences: 6, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
+    incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
+    incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
+  ];
+  const held = (row) => ({
+    human_ref: row.human_ref, title: row.title, state: row.state, owner: row.owner,
+    executor: row.executor, done_predicate: row.done_predicate, blocker: row.blocker || null,
+    program: { key: 'demo-program', sequence: row.sequence }, held_since: row.held_since,
+    hours_since_last_change: row.hours_since_last_change,
+  });
+  const heldWork = [
+    held({ human_ref: 'WR-000901', title: 'Demo bounded request: reconcile the demo vendor rows', state: 'in_progress', owner: 'joe', executor: 'claude', done_predicate: ['Demo vendor rows reconcile against the demo source'], sequence: 1, held_since: '2026-09-16T12:00:00.000Z', hours_since_last_change: 3.5 }),
+    held({ human_ref: 'WR-000902', title: 'Demo bounded request: publish the demo coverage note', state: 'blocked', owner: 'joe', executor: 'dell', done_predicate: ['The demo coverage note is published'], sequence: 2, held_since: '2026-09-14T08:00:00.000Z', hours_since_last_change: 51.2, blocker: { code: 'counterparty', detail: 'Demo Coastal Surveying has not answered since Monday' } }),
+    held({ human_ref: 'WR-000903', title: 'Demo bounded request: verify the demo release evidence', state: 'verification', owner: 'dell', executor: 'dell', done_predicate: ['A demo consumer receipt exists for every clause'], sequence: 3, held_since: '2026-09-15T16:30:00.000Z', hours_since_last_change: 19 }),
+  ];
+  const sharedRequests = [
+    { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window in the record layer' },
+    { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
+  ];
+
   const client = {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
@@ -850,6 +893,56 @@ export async function createFixtureClient(opts = {}) {
           shape_disposition: row.shape.disposition, shape_fixed_surface_ref: row.shape.fixed_surface_ref,
           shape_rationale: String(rationale).trim(), shape_decided_by_actor_id: selfActor, shape_decided_at: nowIso() } };
       });
+    },
+
+    // ------------------------------------------------------ Control Room (C01)
+    // The synthetic twins of the three Control Room reads, in the record
+    // layer's OWN row vocabulary: an incident's recurrence count is
+    // `occurrences`, its age is `age_days`, its recommended next step is
+    // `next_action`, and held work carries `hours_since_last_change` with a
+    // blocker object or an explicit null. A fixture that invented friendlier
+    // names would let the page work here and fail against CARR.
+    //
+    // `outage` is the switch that makes CR-AC-02 demonstrable in a browser:
+    // exactly one read throws, and the page must then make only that read's
+    // areas unknown. It is fixture-only and cannot exist on a reviewed host.
+    async incidentBoard({ state = 'open', severity = null } = {}) {
+      refuseIfOutage('incidents', 'incident-board');
+      const rows = incidents
+        .filter((row) => (state === 'any' ? true : state === 'open' ? !['resolved', 'reviewed'].includes(row.state) : row.state === state))
+        .filter((row) => (severity ? row.severity === severity : true))
+        .sort((a, b) => a.severity.localeCompare(b.severity) || a.detected_at.localeCompare(b.detected_at));
+      const tally = (key) => rows.reduce((out, row) => ({ ...out, [row[key]]: (out[row[key]] || 0) + 1 }), {});
+      return {
+        count: rows.length,
+        by_severity: tally('severity'),
+        by_state: tally('state'),
+        ready_to_close: rows.filter((row) => row.ready_to_close).length,
+        incidents: rows.map((row) => ({ ...row })),
+      };
+    },
+
+    async currentWorkItem() {
+      refuseIfOutage('work', 'current-work-item');
+      const inFlight = heldWork.filter((row) => row.state === 'claimed' || row.state === 'in_progress');
+      return {
+        ok: true,
+        current: heldWork.map((row) => ({ ...row })),
+        count: heldWork.length,
+        wip: {
+          limit_system_wide: 2, limit_per_executor: 1, in_flight: inFlight.length,
+          over_system_limit: inFlight.length > 2, executors_over_limit: [], in_flight_unattributed: 0,
+          note: 'reported here, enforced in the claim path',
+        },
+        unchanged_over_48h: heldWork.filter((row) => row.hours_since_last_change >= 48)
+          .map((row) => ({ human_ref: row.human_ref, hours_since_last_change: row.hours_since_last_change })),
+        say: 'these are held right now; a blocked or needs-Joe row is still current and is never skipped',
+      };
+    },
+
+    async currentWorkRequests() {
+      refuseIfOutage('needs_joe', 'current-work-requests');
+      return { ok: true, items: sharedRequests.map((row) => ({ ...row, source: { ...row.source } })) };
     },
 
     // ---------------------------------------------------------- command centre

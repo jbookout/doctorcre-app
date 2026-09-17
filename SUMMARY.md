@@ -43,6 +43,9 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `business-workspace.html` | V5-UX-B01 Business workspace at `/business`: Home, Work, Pipeline and Doc history over the canonical command-center read, with Team review and Quick add |
 | `js/business-workspace-model.js` | Pure Home rules: the section order, the Team review share arithmetic and the words an unverified section says |
 | `js/business-workspace.js` | Business workspace DOM wiring over `GET /api/v1/command-center` and the Quick add capture |
+| `control-room.html` | V5-UX-C01 Control Room at `/control-room`: the five operational questions — broken, running, stuck, needs Joe, changed — with a coverage line built only from the reads that answered, plus the grouped incident queue |
+| `js/control-room-model.js` | Pure Control Room rules: exact-key validation of `incident-board`, `current-work-item` and `current-work-requests`, the five tiles (never 0 for an unanswered read), the cadence-free stall facts, the coverage line and the named scope statements |
+| `js/control-room.js` | Control Room DOM wiring over those three reads and `GET /api/v1/work-inventory`, each read settled on its own so one outage makes only its own areas unknown |
 | `js/shell.js` | The shell every surface shares: the three presentation icons (one storage key, legacy key migrated), the tab strip, and the floating Doc |
 | `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
 | `js/doc-dock.js` | The one floating Doc icon and its chat window, shared by every surface |
