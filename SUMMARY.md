@@ -31,13 +31,14 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | Path | Responsibility |
 |------|----------------|
 | `*.html` | DoctorCRE application surfaces |
-| `css/` | Product presentation and responsive behavior |
+| `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
 | `js/client.js` | Small client interface selected by the app |
 | `js/live-client.js` | Authenticated same-origin CARR adapter |
 | `js/fixture-client.js` | In-memory synthetic adapter |
-| `contracts/` | Pinned CARR consumer boundary and app routes |
+| `contracts/` | Pinned CARR consumer boundary, app routes and the visual-system contract |
 | `data/board-seed.json` | Synthetic local/test fixture only |
 | `reports/` and `tours/` | DoctorCRE report and tour presentation |
+| `design*.html` | V5-UX-S01 review prototypes on synthetic data: `/design`, `/design/business`, `/design/operations` |
 | `test/` | Product, interface, accessibility, and concurrency tests |
 
 The application deliberately has no build step and no package dependencies.

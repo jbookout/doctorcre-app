@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE shared visual system: tokens, components, states and motion, with interactive prototypes for review">
+  <title>Visual system · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/design.css">
+</head>
+<body data-prototype="index">
+  <a class="skip" href="#main">Skip to the system</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark">C</span><span>DoctorCRE <small>visual system</small></span></a>
+    <nav class="primary-nav" aria-label="Prototype navigation">
+      <a href="/design" aria-current="page">System</a>
+      <a href="/design/business">Business prototype</a>
+      <a href="/design/operations">Control Room prototype</a>
+    </nav>
+    <div class="global-controls" role="group" aria-label="Personal presentation preferences">
+      <div class="btn-group" data-pref="theme" role="group" aria-label="Theme">
+        <button class="btn" type="button" data-value="dark" aria-pressed="true">Dark</button>
+        <button class="btn" type="button" data-value="light" aria-pressed="false">Light</button>
+      </div>
+      <div class="btn-group" data-pref="density" role="group" aria-label="Density">
+        <button class="btn" type="button" data-value="comfortable" aria-pressed="true">Comfortable</button>
+        <button class="btn" type="button" data-value="compact" aria-pressed="false">Compact</button>
+      </div>
+      <div class="btn-group" data-pref="motion" role="group" aria-label="Motion">
+        <button class="btn" type="button" data-value="full" aria-pressed="true">Motion</button>
+        <button class="btn" type="button" data-value="reduced" aria-pressed="false">Pause motion</button>
+      </div>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Prototype for review. Synthetic examples only; nothing on these pages reads or changes a record.</p>
+    <section class="hero" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow">V5-UX-S01 · shared visual system</p>
+        <h1 id="pageTitle">One grammar for every surface</h1>
+        <p class="intro">Near-black ground, glass with real blur, navy and orange as the light in the frame, condensed display type. The light theme keeps the grammar on a light ground for Dell. Every status has a shape, every category has a shape, and motion is a state channel you can pause.</p>
+      </div>
+      <div class="hero-meta">
+        <span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Contract v1.0.0</span>
+        <span class="as-of">Bound to <code>contracts/visual-system.v1.json</code></span>
+      </div>
+    </section>
+
+    <section class="card glass" aria-labelledby="tokensTitle">
+      <div class="card-heading"><div><p class="eyebrow">Tokens</p><h2 id="tokensTitle">Colour by role, checked against the floor</h2></div><span class="panel-note">WCAG 2.2 AA · 4.5:1</span></div>
+      <div class="swatch-grid" aria-label="Colour roles">
+        <div class="token" style="--t:var(--ground-0)"><span></span><b>--ground-0</b><small>page ground</small></div>
+        <div class="token" style="--t:var(--ground-2)"><span></span><b>--ground-2</b><small>raised ground</small></div>
+        <div class="token" style="--t:var(--text)"><span></span><b>--text</b><small>primary text</small></div>
+        <div class="token" style="--t:var(--muted)"><span></span><b>--muted</b><small>secondary text</small></div>
+        <div class="token" style="--t:var(--quiet)"><span></span><b>--quiet</b><small>labels, as-of</small></div>
+        <div class="token" style="--t:var(--navy)"><span></span><b>--navy</b><small>CARR navy</small></div>
+        <div class="token" style="--t:var(--orange)"><span></span><b>--orange</b><small>the light in the frame</small></div>
+        <div class="token" style="--t:var(--cyan)"><span></span><b>--cyan</b><small>refreshing, data</small></div>
+        <div class="token" style="--t:var(--green)"><span></span><b>--green</b><small>healthy, infra</small></div>
+        <div class="token" style="--t:var(--amber)"><span></span><b>--amber</b><small>deadline, degraded</small></div>
+        <div class="token" style="--t:var(--red)"><span></span><b>--red</b><small>urgent, failed</small></div>
+        <div class="token" style="--t:var(--violet)"><span></span><b>--violet</b><small>blocked, rules</small></div>
+      </div>
+      <table class="data-table" id="contrastTable" data-pairs='[["--text","--ground-0"],["--text","--ground-2"],["--muted","--ground-0"],["--quiet","--ground-1"],["--orange-text","--ground-0"],["--cyan-text","--ground-0"],["--green-text","--ground-0"],["--amber-text","--ground-0"],["--red-text","--ground-0"],["--violet-text","--ground-0"],["--on-accent","--orange"]]'>
+        <caption>Contrast of the current theme, computed live in this page. Switch the theme above to check the other one.</caption>
+        <thead><tr><th scope="col">Pair</th><th scope="col">Ratio</th><th scope="col">Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="two-up">
+      <div class="card glass" aria-labelledby="typeTitle">
+        <div class="card-heading"><div><p class="eyebrow">Type</p><h2 id="typeTitle">Condensed display, quiet body</h2></div></div>
+        <p class="type-sample display" style="font-size:56px;line-height:.9">Barlow Condensed 600</p>
+        <p class="type-sample" style="font-size:15px">DM Sans 400 carries reading text at 14 to 15 pixels with a 1.5 line height. Labels are 10 pixel, 800 weight, letter-spaced and upper case.</p>
+        <p class="type-sample mono">ui-monospace for ids, digests and receipts: 0180b7d2…</p>
+      </div>
+      <div class="card glass" aria-labelledby="statusTitle">
+        <div class="card-heading"><div><p class="eyebrow">Status</p><h2 id="statusTitle">Colour, shape and motion, together</h2></div></div>
+        <ul class="status-list">
+          <li><span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Healthy</span><small>solid dot · breathes at 3.5s</small></li>
+          <li><span class="status" data-state="attention"><span class="orb" data-state="attention" aria-hidden="true"></span> Attention</span><small>ring dot · 2s</small></li>
+          <li><span class="status" data-state="urgent"><span class="orb" data-state="urgent" aria-hidden="true"></span> Urgent</span><small>double ring · 1s</small></li>
+          <li><span class="status" data-state="refreshing"><span class="orb" data-state="refreshing" aria-hidden="true"></span> Refreshing</span><small>cyan dot · 2s</small></li>
+          <li><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Unknown</span><small>dashed hollow · still</small></li>
+          <li><span class="status" data-state="still"><span class="orb" data-state="still" aria-hidden="true"></span> Still</span><small>hollow · never moves</small></li>
+        </ul>
+        <p class="small">Pause motion above, or set reduced motion in the operating system: every state stays readable from its shape.</p>
+      </div>
+    </section>
+
+    <section class="card glass" aria-labelledby="componentsTitle">
+      <div class="card-heading"><div><p class="eyebrow">Components</p><h2 id="componentsTitle">The kit, in every state it can be shown</h2></div><span class="panel-note">44px targets · keyboard first</span></div>
+      <div class="component-row">
+        <h3>Buttons</h3>
+        <div class="row-wrap">
+          <button class="btn btn-primary" type="button">Primary</button>
+          <button class="btn btn-secondary" type="button">Secondary</button>
+          <button class="btn" type="button">Default</button>
+          <button class="btn btn-quiet" type="button">Quiet</button>
+          <button class="btn btn-danger" type="button">Danger</button>
+          <button class="btn" type="button" aria-pressed="true">Pressed</button>
+          <button class="btn" type="button" aria-busy="true">Busy</button>
+          <button class="btn" type="button" disabled>Disabled</button>
+        </div>
+      </div>
+      <div class="component-row">
+        <h3>Filters</h3>
+        <div class="chip-bar">
+          <button class="chip" type="button"><span class="chip-label">Phase</span> LOI <span class="chip-remove" aria-hidden="true">×</span><span class="sr-only">remove</span></button>
+          <button class="chip" type="button"><span class="chip-label">Owner</span> Dell <span class="chip-remove" aria-hidden="true">×</span><span class="sr-only">remove</span></button>
+          <button class="chip" type="button" aria-pressed="true">Warm prospects</button>
+          <button class="chip chip-reset" type="button">Reset</button>
+        </div>
+      </div>
+      <div class="component-row">
+        <h3>Fields</h3>
+        <div class="field-grid">
+          <div class="field"><label for="demoText">Action</label><input id="demoText" type="text" value="Send LOI redline" aria-describedby="demoHint"><p class="field-hint" id="demoHint">One sentence. Owner and date can follow.</p></div>
+          <div class="field invalid"><label for="demoDate">Due</label><input id="demoDate" type="text" value="next week?" aria-invalid="true" aria-describedby="demoErr"><p class="field-error" id="demoErr">Give a date, or leave it empty. It was not saved.</p></div>
+          <div class="field"><label for="demoSelect">Owner</label><select id="demoSelect"><option>Joe</option><option>Dell</option></select></div>
+          <div class="field"><label id="demoSwitchLabel">Shared with Dell</label><button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="demoSwitchLabel"><span class="switch-track" aria-hidden="true"></span> On</button></div>
+        </div>
+      </div>
+      <div class="component-row">
+        <h3>Work items</h3>
+        <ul class="work-list">
+          <li class="work-item" data-priority="overdue"><div><h3>Send LOI redline to landlord counsel</h3><div class="work-meta"><span>for <b>Demo Gulf Breeze Dental</b></span><span>due <b>2026-09-15</b></span></div><p class="why">Why here: due 1 day ago</p></div><div class="stack-end"><span class="owner"><span class="avatar" data-partner="joe" aria-hidden="true">J</span>Joe</span><span class="work-status" data-status="in_progress">in progress</span></div></li>
+          <li class="work-item" data-priority="blocked"><div><h3>Assemble information request</h3><div class="work-meta"><span>for <b>Demo Navarre Ortho</b></span></div><p class="why">Why here: blocked on signed ETL</p></div><div class="stack-end"><span class="owner"><span class="avatar" data-partner="dell" aria-hidden="true">D</span>Dell</span><span class="work-status" data-status="waiting">waiting</span></div></li>
+        </ul>
+      </div>
+      <div class="component-row">
+        <h3>Command feedback</h3>
+        <div class="receipt-grid">
+          <div class="receipt" data-state="pending"><span class="receipt-badge">Saving</span><div><b>Demo Pace Pediatrics → LOI</b><small>operation move:c2:LOI</small></div><div></div></div>
+          <div class="receipt" data-state="confirmed"><span class="receipt-badge">Confirmed</span><div><b>Demo Pace Pediatrics → LOI</b><small>receipt 14:02:11 · reload agrees</small></div><div><button class="btn btn-quiet" type="button">Undo</button></div></div>
+          <div class="receipt" data-state="refused"><span class="receipt-badge">Refused</span><div><b>Demo Pace Pediatrics → LOI</b><small>Stale version. Your input is kept.</small></div><div><button class="btn btn-quiet" type="button">Try again</button></div></div>
+          <div class="receipt" data-state="unknown"><span class="receipt-badge">Unknown outcome</span><div><b>Demo Pace Pediatrics → LOI</b><small>Sent, not proven. Checking before any retry.</small></div><div><button class="btn btn-secondary" type="button">Check outcome</button></div></div>
+        </div>
+      </div>
+      <div class="component-row">
+        <h3>Data states</h3>
+        <div class="btn-group state-picker" id="statePicker" role="group" aria-label="Show a data state">
+          <button class="btn" type="button" data-state="loading" aria-pressed="true">Loading</button>
+          <button class="btn" type="button" data-state="refreshing" aria-pressed="false">Refreshing</button>
+          <button class="btn" type="button" data-state="empty" aria-pressed="false">Empty</button>
+          <button class="btn" type="button" data-state="no_match" aria-pressed="false">No match</button>
+          <button class="btn" type="button" data-state="no_access" aria-pressed="false">No access</button>
+          <button class="btn" type="button" data-state="offline" aria-pressed="false">Offline</button>
+          <button class="btn" type="button" data-state="draft" aria-pressed="false">Draft</button>
+          <button class="btn" type="button" data-state="refused" aria-pressed="false">Refused</button>
+          <button class="btn" type="button" data-state="conflict" aria-pressed="false">Conflict</button>
+          <button class="btn" type="button" data-state="unknown" aria-pressed="false">Unknown</button>
+          <button class="btn" type="button" data-state="partial" aria-pressed="false">Partial</button>
+          <button class="btn" type="button" data-state="stale" aria-pressed="false">Stale</button>
+          <button class="btn" type="button" data-state="permission_changed" aria-pressed="false">Access changed</button>
+        </div>
+        <div class="state-block" id="stateDemo" data-state="loading" aria-live="polite">
+          <h3>Loading the team book</h3>
+          <p>Reading verified state. Nothing here is a count yet.</p>
+          <div class="skeleton-line"></div>
+          <div class="compare" hidden>
+            <div class="original"><span>Original</span>Due 2026-09-18 · Joe · 09:41</div>
+            <div class="local"><span>Yours</span>Due 2026-09-19 · unsaved</div>
+            <div class="current"><span>Current</span>Due 2026-09-22 · Dell · 14:01</div>
+          </div>
+        </div>
+      </div>
+      <div class="component-row">
+        <h3>Category legend (Atlas)</h3>
+        <ul class="legend">
+          <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data · circle</li>
+          <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution · square</li>
+          <li><span class="swatch" data-cat="rules" aria-hidden="true"></span> Rules and permissions · diamond</li>
+          <li><span class="swatch" data-cat="infra" aria-hidden="true"></span> Infrastructure · tab</li>
+        </ul>
+        <p class="small">Category identity never changes with health. Health is a translucent overlay that keeps the category stroke legible.</p>
+      </div>
+    </section>
+
+    <section class="two-up">
+      <div class="card glass" aria-labelledby="rulesTitle">
+        <div class="card-heading"><div><p class="eyebrow">Rules</p><h2 id="rulesTitle">What every surface must hold</h2></div></div>
+        <ul class="rule-list">
+          <li>Every action has a keyboard and click/tap path. A Move menu sits beside every draggable card.</li>
+          <li>Focus is visible and returns to the control that opened a panel or dialog.</li>
+          <li>A modal dialog and a pinnable nonmodal side panel are different components.</li>
+          <li>Saving is not confirmed. Refused keeps the input. Unknown is not failed.</li>
+          <li>Charts have a table or list equivalent with units, window and source.</li>
+          <li>Theme, density and motion are personal. Follow mode never changes them.</li>
+          <li>No partner ranking anywhere by default.</li>
+        </ul>
+      </div>
+      <div class="card glass" aria-labelledby="refsTitle">
+        <div class="card-heading"><div><p class="eyebrow">References</p><h2 id="refsTitle">Seven references, seven dispositions</h2></div></div>
+        <ul class="rule-list">
+          <li><b>Apple HIG principles</b> shape the state vocabulary; no native mandate.</li>
+          <li><b>HIG agent skills</b>: platform distinctions kept; not installed.</li>
+          <li><b>shadcn, rareui, transitions.dev, beui</b>: menu, chip and receipt interaction references; no framework rewrite.</li>
+          <li><b>lieflat-charts</b>: one chart grammar with table equivalents; product charts bound to V5-R04.</li>
+          <li><b>21st.dev, Magic UI</b>: component references only.</li>
+          <li><b>Carbon palettes, C4 notation</b>: categorical colour with a persistent legend, separate from status.</li>
+          <li><b>WCAG 2.2</b> dragging, pause-stop-hide and animation criteria: Move menu, motion pause, reduced-motion floor.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card glass" aria-labelledby="reviewTitle">
+      <div class="card-heading"><div><p class="eyebrow">Review</p><h2 id="reviewTitle">What Joe is asked to look at</h2></div></div>
+      <ol class="rule-list">
+        <li>Open the <a href="/design/business">business prototype</a>: Home, Team Review, the pipeline with Move, the record panel, Doc and Quick Add. Try a refused and an unknown outcome from the simulator.</li>
+        <li>Open the <a href="/design/operations">Control Room prototype</a>: the five dashboard answers, the Atlas with layers and a failure trace, incidents, Model Room session cards and an approval that goes stale.</li>
+        <li>Switch theme, density and motion. Use only the keyboard for one full pass, then only touch on a phone.</li>
+        <li>Record what still feels wrong. Palette shades, geometry and motion timing are open until this review.</li>
+      </ol>
+    </section>
+  </main>
+  <footer class="footer"><span>DoctorCRE · Visual system prototype</span><span>Synthetic examples. No record was read or changed.</span></footer>
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <script type="module" src="/js/design-prototype.js"></script>
+</body>
+</html>
