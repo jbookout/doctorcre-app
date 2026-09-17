@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Control Room — broken, running, stuck, needs Joe and changed, answered only from reads that answered">
+  <title>Control Room · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/control-room.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the Control Room</a>
+  <header class="topbar">
+    <a class="brand" href="/business" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>control room</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/business">Home</a>
+      <a href="/tasks">Tasks</a>
+      <a href="/pipeline">Deals</a>
+      <a href="/clients">Clients</a>
+      <a href="/vendors">Vendors</a>
+      <a href="/work-inventory">Work Inventory</a>
+      <a href="/control-room" aria-current="page">Control Room</a>
+    </nav>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass hero-card" aria-labelledby="pageTitle">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="still" id="roomOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
+          <h1 id="pageTitle">Control Room</h1>
+        </div>
+        <div class="hero-meta">
+          <span class="status" data-state="unknown" id="roomStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="roomStatusLabel">Taking the reads…</span></span>
+          <button class="btn" type="button" id="retryRead" hidden>Read again</button>
+        </div>
+      </div>
+      <p class="caption freshness" id="roomFreshness">Taking the reads…</p>
+    </section>
+
+    <p class="sr-only" id="roomLive" aria-live="polite" role="status">Taking the reads…</p>
+
+    <div class="tabs" id="controlRoomTabs" role="tablist" aria-label="Control Room sections">
+      <button class="tab" type="button" role="tab" id="tabDashboard" aria-controls="panelDashboard" aria-selected="true">Dashboard</button>
+      <button class="tab" type="button" role="tab" id="tabAttention" aria-controls="panelAttention" aria-selected="false">Attention</button>
+      <button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room</button>
+      <button class="tab" type="button" role="tab" id="tabAtlas" aria-controls="panelAtlas" aria-selected="false">Atlas</button>
+    </div>
+
+    <section class="tabpanel" id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard" tabindex="0">
+      <section class="card glass" data-section="coverage" aria-labelledby="coverageTitle">
+        <div class="card-heading"><div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Reads that answered</h2></div></div>
+        <div class="chip-bar" id="coverageChips" aria-label="Coverage by read">
+          <span class="chip-label">Each read states its own clock</span>
+        </div>
+      </section>
+
+      <div class="five-grid" id="questionTiles" aria-label="The five operational questions"></div>
+
+      <section class="card glass" data-section="activeWork" id="activeWork" aria-labelledby="activeWorkTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Held now</p><h2 id="activeWorkTitle">Active work</h2></div>
+          <span class="as-of" id="activeWorkAsOf">unknown</span>
+        </div>
+        <p class="count-line" id="wipLine" data-state="unavailable">unknown</p>
+        <ul class="work-list" id="activeWorkList"></ul>
+        <div class="state-block" id="activeWorkState" data-state="unknown" hidden><h3>Held work could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="longestSinceChange" id="longestSinceChange" aria-labelledby="longestTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Facts</p><h2 id="longestTitle">Longest since change</h2></div>
+          <span class="as-of" id="longestAsOf">unknown</span>
+        </div>
+        <ul class="work-list" id="longestList"></ul>
+        <div class="state-block" id="longestState" data-state="unknown" hidden><h3>Held work could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="needsJoe" id="needsJoe" aria-labelledby="needsJoeTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Shared requests</p><h2 id="needsJoeTitle">Waiting on a partner</h2></div>
+          <span class="as-of" id="needsJoeAsOf">unknown</span>
+        </div>
+        <ul class="work-list" id="needsJoeList"></ul>
+        <div class="state-block" id="needsJoeState" data-state="unknown" hidden><h3>Shared requests could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="delivery" aria-labelledby="deliveryTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Delivery evidence</p><h2 id="deliveryTitle">Work request coverage</h2></div>
+          <span class="as-of" id="deliveryAsOf">unknown</span>
+        </div>
+        <p class="count-line" id="deliveryValue" data-state="unavailable">unknown</p>
+        <p class="small" id="deliveryReason">Coverage unknown until the census answers.</p>
+        <div class="row-wrap"><a class="btn" href="/work-inventory">Open the Complete Work Inventory</a></div>
+        <div class="state-block" id="deliveryState" data-state="unknown" hidden><h3>The census could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="not_in_release" aria-labelledby="scopeTitle">
+        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="scopeTitle">Not in this release</h2></div></div>
+        <div id="dashboardScopeBlocks"></div>
+      </section>
+    </section>
+
+    <section class="tabpanel" id="panelAttention" role="tabpanel" aria-labelledby="tabAttention" tabindex="0" hidden>
+      <section class="card glass" data-section="incidents" aria-labelledby="attentionTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Operational ledger</p><h2 id="attentionTitle">Incidents</h2></div>
+          <span class="as-of" id="attentionAsOf">unknown</span>
+        </div>
+        <div class="chip-bar" id="severityChips" role="group" aria-label="Severity">
+          <span class="chip-label">Severity</span>
+        </div>
+        <div id="incidentGroups"></div>
+        <div class="state-block" id="attentionState" data-state="unknown" hidden><h3>The incident ledger could not be verified</h3></div>
+      </section>
+    </section>
+
+    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
+      <section class="card glass" aria-labelledby="modelRoomTitle">
+        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="modelRoomTitle">Model Room</h2></div></div>
+        <div class="state-block" data-state="not_in_release"><h3>Model Room: not in this release</h3><p>The ticket board and its history ship in V5-UX-C12 and V5-UX-C13.</p></div>
+      </section>
+    </section>
+
+    <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>
+      <section class="card glass" aria-labelledby="atlasTitle">
+        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="atlasTitle">Atlas</h2></div></div>
+        <div class="state-block" data-state="not_in_release"><h3>Atlas: not in this release</h3><p>The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09.</p></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="incidentDialog" class="dialog" aria-labelledby="incidentDialogTitle">
+    <article>
+      <header><div><p class="eyebrow">Incident</p><h2 id="incidentDialogTitle">Record</h2></div><button class="btn icon-btn" type="button" id="incidentClose" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <dl class="detail-rows" id="incidentRows"></dl>
+        <p class="small" id="incidentRecordLine">This record has no page in this application yet.</p>
+        <p class="small">Nothing on this page writes to the record layer.</p>
+      </div>
+    </article>
+  </dialog>
+
+  <footer class="shell"><p class="small">DoctorCRE · Control Room · A read that did not answer is unknown, never zero.</p></footer>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Control Room</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <nav class="mobile-nav" aria-label="Workspace shortcuts">
+    <a href="/business"><span aria-hidden="true">⌂</span>Home</a>
+    <a href="/tasks"><span aria-hidden="true">☰</span>Tasks</a>
+    <a href="/deals"><span aria-hidden="true">◈</span>Deals</a>
+    <a href="#panelDashboard" data-tab="tabDashboard" aria-current="page"><span aria-hidden="true">◉</span>Control Room</a>
+  </nav>
+  <script type="module" src="/js/control-room.js"></script>
+</body>
+</html>

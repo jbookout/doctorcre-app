@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
-  "business-workspace.html", "business.html", "design-business.html", "design-operations.html", "design.html",
+  "business-workspace.html", "business.html", "control-room.html", "design-business.html", "design-operations.html", "design.html",
   "index.html", "leads.html", "manifest.webmanifest",
   "pipeline.html", "queue.html", "room.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
