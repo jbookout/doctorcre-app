@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   canDispatch, classifyPriority, contrastRatio, createFeedback, feedbackLabel, formatCalendarDate,
-  formatClock, formatDueStamp, orderWork, parseQuickAdd, parseTypedDate, preferenceAttributes,
+  formatClock, formatDueStamp, orderWork, parseQuickAdd, preferenceAttributes,
   readTokens, resolvePreferences, transitionFeedback, weekdayName,
 } from "../js/visual-system.js";
 
@@ -102,6 +102,9 @@ test("touch targets, focus and the modal/nonmodal distinction are in the stylesh
   assert.match(css, /--touch: 44px/);
   assert.match(css, /\.btn \{[^}]*min-height: var\(--touch\)/);
   assert.match(css, /\.tab \{[^}]*min-height: var\(--touch\)/, "a tab is a full touch target");
+  assert.match(css, /\.btn-group \.btn \{[^}]*min-height: var\(--touch\)/, "a grouped button keeps the floor");
+  assert.match(css, /\.chip \{[^}]*min-height: var\(--touch\)/, "a chip is a full touch target");
+  assert.doesNotMatch(css, /\.(btn|chip)[^{]*\{[^}]*min-height: [0-9]+px/, "no button or chip rule sits under the shared floor");
   assert.match(css, /\.doc-fab \{[^}]*width: 56px; height: 56px/, "the floating Doc icon is over the 44px floor");
   assert.match(css, /:focus-visible \{ outline: 3px solid var\(--focus\)/);
   assert.match(css, /\.side-panel \{ position: sticky/);
@@ -379,20 +382,6 @@ test("clock and calendar formatting are 12-hour AM/PM and a readable calendar da
   assert.equal(formatDueStamp("2026-09-15", "5:00 PM"), "Tue, Sep 15, 2026 · 5:00 PM");
   assert.equal(formatDueStamp("2026-09-15"), "Tue, Sep 15, 2026");
   assert.equal(formatDueStamp("nope", "5:00 PM"), null);
-});
-
-test("a typed date is accepted in the forms a person actually types, and refused when it is not a date", () => {
-  const now = Date.parse("2026-09-16T14:00:00Z");
-  assert.equal(parseTypedDate("2026-09-18", now), "2026-09-18");
-  assert.equal(parseTypedDate("9/18/2026", now), "2026-09-18");
-  assert.equal(parseTypedDate("9/18", now), "2026-09-18");
-  assert.equal(parseTypedDate("9/18/26", now), "2026-09-18");
-  assert.equal(parseTypedDate("Sep 18, 2026", now), "2026-09-18");
-  assert.equal(parseTypedDate("September 18", now), "2026-09-18");
-  assert.equal(parseTypedDate("Friday", now), "2026-09-18");
-  assert.equal(parseTypedDate("next week?", now), null);
-  assert.equal(parseTypedDate("2026-02-30", now), null, "a day that does not exist is not a date");
-  assert.equal(parseTypedDate("", now), null);
 });
 
 test("Quick add fills owner, due and related from the sentence and never leaves them unknown when the sentence holds them", () => {

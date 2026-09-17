@@ -156,37 +156,6 @@ export function formatDueStamp(value, time = null) {
   return time ? `${calendar} · ${time}` : calendar;
 }
 
-/**
- * The typed fallback beside every <input type="date">: accept what a person
- * types by hand and return the same ISO key the picker would have produced,
- * or null when it is not a date at all.
- */
-export function parseTypedDate(text, now = Date.now()) {
-  const value = String(text || "").trim();
-  if (!value) return null;
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
-  if (iso) return isoKey(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-  const slashed = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/.exec(value);
-  if (slashed) {
-    const year = slashed[3] ? Number(slashed[3].length === 2 ? `20${slashed[3]}` : slashed[3]) : new Date(now).getUTCFullYear();
-    return isoKey(year, Number(slashed[1]), Number(slashed[2]));
-  }
-  const spelled = /^([a-z]{3,9})\s+(\d{1,2})(?:,?\s*(\d{4}))?$/i.exec(value);
-  if (spelled) {
-    const month = MONTHS.findIndex((name) => name.toLowerCase() === spelled[1].slice(0, 3).toLowerCase());
-    if (month >= 0) return isoKey(spelled[3] ? Number(spelled[3]) : new Date(now).getUTCFullYear(), month + 1, Number(spelled[2]));
-  }
-  const weekday = WEEKDAYS.findIndex((name) => name.toLowerCase() === value.toLowerCase());
-  if (weekday >= 0) return nextWeekday(weekday, now);
-  return null;
-}
-
-function isoKey(year, month, day) {
-  if (!(year >= 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31)) return null;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.toISOString().slice(0, 10) : null;
-}
-
 function nextWeekday(target, now) {
   const date = new Date(now);
   const delta = ((target - date.getUTCDay()) + 7) % 7 || 7;
