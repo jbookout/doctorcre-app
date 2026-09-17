@@ -11,6 +11,11 @@ const STATIC_EXACT = new Map([
   ["/favicon.ico", "/public-shell/icons/dealroom.svg"],
 ]);
 const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"];
+// V5-UX-C15: the one page route served AHEAD of the CARR gate. Every other app
+// page is gated, so a CARR outage takes the Control Room with it and the gated
+// page cannot be its own fallback (CR-AC-26). This page reads nothing from CARR
+// on the server side; what it can and cannot say is decided in the browser.
+const UNGATED_PAGES = new Set(["/status"]);
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -105,6 +110,11 @@ export async function handleDoctorcreRequest(request, env) {
   const pathname = url.pathname;
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
   if (pathname === "/share") return Response.redirect(`https://reports.doctorcre.com/share${url.search}`, 302);
+
+  if (UNGATED_PAGES.has(pathname)) {
+    if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
+    return assetResponse(request, env, `/${APP_ROUTES.get(pathname)}`);
+  }
 
   const routeAsset = APP_ROUTES.get(pathname);
   if (routeAsset) {

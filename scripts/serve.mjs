@@ -4,7 +4,9 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const routes = JSON.parse(await readFile(new URL("../contracts/app-routes.v1.json", import.meta.url), "utf8")).routes;
+const routeContract = JSON.parse(await readFile(new URL("../contracts/app-routes.v1.json", import.meta.url), "utf8"));
+const carrContract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
+const routes = routeContract.routes;
 const types = {".css":"text/css; charset=utf-8",".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".json":"application/json; charset=utf-8",".mjs":"text/javascript; charset=utf-8",".png":"image/png",".svg":"image/svg+xml",".webmanifest":"application/manifest+json; charset=utf-8"};
 
 /**
@@ -101,6 +103,25 @@ function censusResponse(url) {
 createServer(async (request, response) => {
   try {
     const url = new URL(request.url, "http://127.0.0.1");
+    // V5-UX-C15: the fixture's own /app-release, so the independent status page
+    // can be exercised here. `?outage=release` (and `all`) refuses it, which is
+    // the only way to see the "the app itself did not answer" path in a browser.
+    if (url.pathname === "/app-release") {
+      const outage = url.searchParams.get("outage");
+      if (outage === "release" || outage === "all") {
+        response.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        response.end(JSON.stringify({ error: "app_release_outage_requested_by_the_fixture_switch" }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      response.end(JSON.stringify({
+        service: "doctorcre-app", environment: "fixture", source_commit: "0".repeat(40),
+        provider_version_id: null, provider_version_tag: null, provider_version_created_at: null,
+        carr_contract: { schema: carrContract.schema, version: carrContract.version },
+        route_contract: { schema: routeContract.schema, version: routeContract.version },
+      }));
+      return;
+    }
     if (url.pathname === "/api/v1/work-inventory") {
       response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       response.end(JSON.stringify(censusResponse(url)));

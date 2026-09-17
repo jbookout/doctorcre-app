@@ -76,6 +76,19 @@ test("public assets bypass CARR, while unknown and mutation routes fail closed",
   assert.equal((await handleDoctorcreRequest(request("/leads", { method: "POST" }), env)).status, 405);
 });
 
+// V5-UX-C15: the gated Control Room cannot be its own fallback, so /status is
+// answered ahead of the gate. If this ever takes the CARR path again, the page
+// disappears in exactly the outage it exists for.
+test("the independent status page is served without a CARR call", async () => {
+  let carrCalls = 0;
+  const env = environment({ carr: { fetch: async () => { carrCalls += 1; return new Response(); } } });
+  assert.equal(await (await handleDoctorcreRequest(request("/status"), env)).text(), "asset:/status.html");
+  assert.equal(carrCalls, 0, "the status page must not consult CARR");
+  assert.equal((await handleDoctorcreRequest(request("/status", { method: "POST" }), env)).status, 405);
+  assert.equal(carrCalls, 0);
+  assert.equal((await handleDoctorcreRequest(request("/leads", { method: "POST" }), env)).status, 405);
+});
+
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
   const share = await handleDoctorcreRequest(request("/share?tour=T-1"), environment());
   assert.equal(share.status, 302);
@@ -86,6 +99,6 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.7.0" },
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.6.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.7.0" },
   });
 });

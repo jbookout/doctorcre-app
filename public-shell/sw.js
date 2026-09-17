@@ -7,7 +7,11 @@ const SHELL = [
   "/icons/dealroom-192.png",
   "/icons/dealroom-512.png",
 ];
-const DATA_PATHS = new Set(["/pipeline/changes", "/mcp"]);
+// /app-release is live-only for the same reason: V5-UX-C15's status page asks
+// the app whether it is serving, and a cached answer from an earlier visit
+// would report "serving" while the Worker is down — the one lie this surface
+// exists to prevent.
+const DATA_PATHS = new Set(["/pipeline/changes", "/mcp", "/app-release"]);
 
 // EVERY LIVE SURFACE, not just the two that existed when this file was written.
 // The exact-path set missed every /api/ route: a GET to /api/system-work/session

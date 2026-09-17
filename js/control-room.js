@@ -16,6 +16,7 @@ import {
   readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
+import { snapshotFromReads, writeSnapshot } from "./status-model.js";
 import { renderCount, stageDenominator } from "./delivery-evidence-model.js";
 import { validWorkInventoryPayload, WORK_INVENTORY_ENDPOINT } from "./work-inventory-model.js";
 import { acceptsResponse } from "./workspace-command-center-model.js";
@@ -365,6 +366,21 @@ async function load() {
     take("census", () => census(), "the census refused or could not be reached"),
   ]);
   render();
+  // V5-UX-C15 (C21): leave a timestamped last-known picture on THIS device so
+  // /status can show it when this page is unreachable. It records which reads
+  // answered and when — never a row, a title or a count.
+  storeSnapshot();
+}
+
+/** Never blocks a read and never throws: a device that refuses storage is fine. */
+function storeSnapshot() {
+  let storage = null;
+  try {
+    storage = globalThis.localStorage || null;
+  } catch {
+    return;
+  }
+  writeSnapshot(storage, snapshotFromReads(view.reads, Date.now()));
 }
 
 /* ------------------------------------------------------------------------ boot */
