@@ -630,7 +630,7 @@
       "Charts have an equivalent table or list with units, window and source.",
       "Ongoing motion can be paused; prefers-reduced-motion and the personal motion preference both disable it.",
       "Light and dark are verified separately against the contrast floor.",
-      "Every clock time is 12-hour with AM or PM; every due date is a calendar date offered through a date picker with a typed fallback.",
+      "Every clock time is 12-hour with AM or PM; every due date is a calendar date entered through a date picker, which accepts typing directly.",
       "A title carries its own screen: no description paragraph sits under a heading."
     ]
   },

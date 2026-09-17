@@ -10,7 +10,7 @@
 // description paragraph under them.
 import {
   canDispatch, contrastRatio, createFeedback, feedbackLabel, formatCalendarDate, formatClock,
-  formatDueStamp, orderWork, parseQuickAdd, parseTypedDate, preferenceAttributes,
+  formatDueStamp, orderWork, parseQuickAdd, preferenceAttributes,
   resolvePreferences, transitionFeedback, weekdayName,
 } from "./visual-system.js";
 import { mountDocDock } from "./doc-dock.js";
@@ -286,7 +286,6 @@ function answerForm(item) {
   form.append(
     el("div", { class: "field" }, [el("label", { for: "answerText", text: item.ask || "Your answer" }), el("input", { id: "answerText", type: "text", autocomplete: "off", placeholder: "Type what happened" })]),
     el("div", { class: "field" }, [el("label", { for: "answerDate", text: "Effective date" }), el("input", { id: "answerDate", type: "date", value: item.due || "" })]),
-    el("div", { class: "field" }, [el("label", { for: "answerDateTyped", text: "Or type the date" }), el("input", { id: "answerDateTyped", type: "text", autocomplete: "off", placeholder: "Sep 18, 2026" })]),
     el("div", { class: "row-wrap", style: "grid-column:1/-1" }, [el("button", { class: "btn btn-primary", type: "submit", text: "Save answer" }), el("button", { class: "btn btn-quiet", type: "button", "data-close-detail": true, text: "Cancel" })]),
   );
   return form;
@@ -496,7 +495,7 @@ function openCompletion(record, toPhase, need) {
   dialog.showModal();
   dialog.addEventListener("close", () => {
     if (dialog.returnValue === "confirm") {
-      const effective = parseTypedDate($("completionDateTyped")?.value || "", Date.parse(TODAY)) || $("completionDate")?.value || TODAY.slice(0, 10);
+      const effective = $("completionDate")?.value || TODAY.slice(0, 10);
       record.phase = toPhase;
       pipelineBoard.render();
       dispatchCommand(`move:${record.id}:${toPhase}`, `${record.name} → ${toPhase}, effective ${formatCalendarDate(effective)}`, outcomeChoice());
@@ -532,9 +531,8 @@ function renderQuickAdd() {
   const input = $("quickAddInput");
   if (!input) return;
   const parsed = parseQuickAdd(input.value, { now: Date.parse(TODAY), viewer: VIEWER, records: CARDS.map((card) => card.name) });
-  const typed = parseTypedDate($("quickAddDateTyped")?.value || "", Date.parse(TODAY));
   const picked = $("quickAddDate")?.value || null;
-  const due = typed || picked || parsed.due;
+  const due = picked || parsed.due;
   $("quickAddParsed").replaceChildren(
     el("div", { html: `<span>Action</span>${parsed.action || "<i>unknown</i>"}` }),
     el("div", { html: `<span>Owner</span>${parsed.owner === "joe" ? "Joe" : "Dell"}${parsed.ownerDefaulted ? " <i>(you, by default)</i>" : ""}` }),
@@ -591,7 +589,7 @@ function wireBusiness() {
     event.preventDefault();
     const item = WORK.find((w) => w.id === form.dataset.answer);
     const answer = form.querySelector("#answerText").value.trim() || "no detail given";
-    const effective = parseTypedDate(form.querySelector("#answerDateTyped").value, Date.parse(TODAY)) || form.querySelector("#answerDate").value || null;
+    const effective = form.querySelector("#answerDate").value || null;
     $("detailDialog")?.close();
     dispatchCommand(`answer:${item.id}:${Date.now()}`, `Answered “${item.action}”: ${answer.slice(0, 40)}${effective ? ` · ${formatCalendarDate(effective)}` : ""}`, outcomeChoice());
   });
@@ -647,7 +645,7 @@ function wireBusiness() {
     event.currentTarget.setAttribute("aria-pressed", String(pinned));
   });
 
-  for (const id of ["quickAddInput", "quickAddDate", "quickAddDateTyped"]) $(id)?.addEventListener("input", renderQuickAdd);
+  for (const id of ["quickAddInput", "quickAddDate"]) $(id)?.addEventListener("input", renderQuickAdd);
   $("quickAddDate")?.addEventListener("change", renderQuickAdd);
   $("quickAddForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
