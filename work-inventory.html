@@ -17,7 +17,7 @@
 <body>
   <a class="skip" href="#main">Skip to the work inventory</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark">C</span><span>DoctorCRE <small>work inventory</small></span></a>
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>work inventory</small></span></a>
     <nav class="primary-nav" aria-label="Primary navigation">
       <a href="/">Home</a>
       <a href="/leads">Leads</a>
@@ -25,15 +25,16 @@
       <a href="/system-work.html">System work</a>
       <a href="/work-inventory" aria-current="page">Inventory</a>
     </nav>
-    <div class="global-controls">
-      <div class="btn-group" data-pref="theme" role="group" aria-label="Theme">
-        <button class="btn" type="button" data-value="dark" aria-pressed="true">Dark</button>
-        <button class="btn" type="button" data-value="light" aria-pressed="false">Light</button>
-      </div>
-      <div class="btn-group" data-pref="motion" role="group" aria-label="Motion">
-        <button class="btn" type="button" data-value="full" aria-pressed="true">Motion</button>
-        <button class="btn" type="button" data-value="reduced" aria-pressed="false">Pause motion</button>
-      </div>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </header>
@@ -43,7 +44,6 @@
       <div>
         <p class="eyebrow"><span class="orb" data-state="still" id="censusOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span> · every source, every status</p>
         <h1 id="pageTitle">Complete Work Inventory</h1>
-        <p class="intro">Every work record CARR holds, in every status, from all six canonical sources. Queued, dormant, superseded, declined and unlinked work is shown by default — this surface is not an active queue, and it never presents an incomplete census as an empty one.</p>
       </div>
       <div class="chip-bar">
         <span class="status" data-state="unknown" id="censusStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="censusStatusLabel">Reading the census…</span></span>
@@ -55,7 +55,7 @@
 
     <section class="card glass" aria-labelledby="filterTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Filter</p><h2 id="filterTitle">Narrow the census, never the statuses</h2></div>
+        <div><p class="eyebrow">Filter</p><h2 id="filterTitle">Sources and status</h2></div>
         <span class="panel-note">All statuses shown by default</span>
       </div>
       <div class="chip-bar" id="kindChips" role="group" aria-label="Sources to read">
@@ -71,30 +71,29 @@
       <div class="field">
         <label for="statusFilter">Status contains</label>
         <input id="statusFilter" type="text" inputmode="search" autocomplete="off" placeholder="superseded, dormant, queued…">
-        <p class="field-hint" id="statusHint">Empty means every status. Hidden statuses are always included, and no item is placed above another.</p>
+        <p class="field-hint" id="statusHint">Empty means every status.</p>
       </div>
       <p class="small" id="requestPath">Request: /api/v1/work-inventory</p>
     </section>
 
     <section class="card glass" aria-labelledby="coverageTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">What each source could answer</h2></div>
+        <div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Coverage by source</h2></div>
         <span class="as-of" id="coverageSummary">Coverage unknown until the census answers.</span>
       </div>
       <ul class="work-list" id="coverageStrip" aria-label="Coverage by source">
         <li class="work-item"><div><h3>Reading coverage…</h3><div class="skeleton-line"></div></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Pending</span></li>
       </ul>
-      <p class="small" id="coverageNote">A source that could not be read is shown urgent, not quiet. Its work is missing from the list below.</p>
     </section>
 
     <section class="card glass" aria-labelledby="itemsTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Records</p><h2 id="itemsTitle">Every item this census enumerated</h2></div>
+        <div><p class="eyebrow">Inventory</p><h2 id="itemsTitle">Records</h2></div>
         <span class="as-of" id="itemsCount">Reading…</span>
       </div>
       <div class="state-block" id="inventoryState" data-state="loading">
         <h3>Reading the complete work inventory…</h3>
-        <p>Six canonical sources are being read at request time. Nothing below is cached.</p>
+        <p>Six canonical sources, read at request time.</p>
       </div>
       <div id="kindGroups"></div>
       <div class="chip-bar">
@@ -106,6 +105,20 @@
   </main>
 
   <footer class="shell"><p class="small">DoctorCRE · Complete Work Inventory · Coverage travels with every count.</p></footer>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Complete Work Inventory</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
   <script type="module" src="/js/work-inventory.js"></script>
 </body>
 </html>

@@ -386,10 +386,13 @@ function renderChrome() {
   $('#accountBack').hidden = !state.accountId;
   $('#workspaceEyebrow').textContent = state.query ? 'Global Deal Room search'
     : state.workspace === 'team' ? 'Shared territory pipeline' : selected ? 'National account agenda' : 'Partner-owned portfolios';
-  $('#workspaceTitle').textContent = state.query ? 'Search results' : state.workspace === 'team' ? 'Team Book'
+  // Never print the partners' names as a label: the team is both partners by
+  // definition, so the combined list is just "Deals". The team view carries no
+  // description sentence under its title (2026-09-16 review).
+  $('#workspaceTitle').textContent = state.query ? 'Search results' : state.workspace === 'team' ? 'Deals'
     : selected?.account_name || 'National Accounts';
   $('#workspaceSubtitle').textContent = state.query ? 'Searching work records across the territory and every national account.'
-    : state.workspace === 'team' ? 'The active work Joe and Dell are moving now.'
+    : state.workspace === 'team' ? ''
     : selected ? `${actorName(selected.account_owner)} owns the account; each market deal keeps its assigned agent and owner.`
     : 'One account can hold dozens of market-level transactions without crowding the territory agenda.';
   const addLabel = state.workspace === 'national_account' ? (selected ? 'Add market deal' : 'Add national account') : 'Add work record';
@@ -1055,7 +1058,7 @@ function addTeamDealForm() {
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
       await state.client.createDeal({ ...args, lane:'territory', idempotency_key:uuidv4() });
-      await loadHome(); showToast('Work record created in the Team Book');
+      await loadHome(); showToast('Work record created in Deals');
     } });
 }
 
@@ -1153,7 +1156,7 @@ function renderAgenda() {
   // would show the partner the phase and next step as they were at the start.
   const captured = review.deals[review.index];
   const deal = resolveCurrentRow(captured, state.deals);
-  $('#agendaTitle').textContent = state.workspace === 'team' ? 'Team Book' : account()?.account_name || 'National account';
+  $('#agendaTitle').textContent = state.workspace === 'team' ? 'Deals' : account()?.account_name || 'National account';
   $('#agendaProgress').textContent = `${Math.min(review.index + 1,review.deals.length)} of ${review.deals.length}`;
   $('#agendaMeter').max = review.deals.length;
   $('#agendaMeter').value = review.index;

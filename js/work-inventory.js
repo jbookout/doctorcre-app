@@ -16,6 +16,7 @@ import {
   listPhase, mergeInventoryPages, validWorkInventoryPayload,
 } from "./work-inventory-model.js";
 import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from "./visual-system.js";
+import { mountDocDock } from "./doc-dock.js";
 
 const PREFS_KEY = "doctorcre.visual-preferences";
 
@@ -94,27 +95,38 @@ function systemPreferences() {
   return { prefersReducedMotion: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true };
 }
 
+// Theme, density and motion are one icon button each: filled is on, hollow is
+// off, and the only words are the accessible label and the tooltip.
+const PREF_WORDS = {
+  theme: { light: "Light theme", dark: "Dark theme" },
+  density: { compact: "Compact density", comfortable: "Comfortable density" },
+  motion: { reduced: "Motion paused", full: "Motion on" },
+};
+
 function applyPreferences(preferences) {
   Object.entries(preferenceAttributes(preferences)).forEach(([attribute, value]) => document.documentElement.setAttribute(attribute, value));
-  document.querySelectorAll("[data-pref]").forEach((group) => {
-    const key = group.getAttribute("data-pref");
-    group.querySelectorAll("button[data-value]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.value === preferences[key])));
+  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => {
+    const key = button.dataset.pref;
+    const on = preferences[key] === button.dataset.on;
+    button.setAttribute("aria-pressed", String(on));
+    const words = `${PREF_WORDS[key][preferences[key]]}. Switch to ${PREF_WORDS[key][on ? button.dataset.off : button.dataset.on].toLowerCase()}.`;
+    button.setAttribute("aria-label", words);
+    button.setAttribute("title", words);
   });
+  const note = document.querySelector("#prefsLive");
+  if (note) note.textContent = `${PREF_WORDS.theme[preferences.theme]}, ${PREF_WORDS.density[preferences.density]}, ${PREF_WORDS.motion[preferences.motion]}.`;
 }
 
 function wirePreferences() {
   let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...storedPreferences() }, systemPreferences());
   applyPreferences(current);
-  document.querySelectorAll("[data-pref]").forEach((group) => {
-    const key = group.getAttribute("data-pref");
-    group.querySelectorAll("button[data-value]").forEach((button) => button.addEventListener("click", () => {
-      current = resolvePreferences({ ...current, [key]: button.dataset.value }, systemPreferences());
-      persistPreferences(current);
-      applyPreferences(current);
-      const note = document.querySelector("#prefsLive");
-      if (note) note.textContent = `${key} set to ${current[key]}`;
-    }));
-  });
+  document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.pref;
+    const next = current[key] === button.dataset.on ? button.dataset.off : button.dataset.on;
+    current = resolvePreferences({ ...current, [key]: next }, systemPreferences());
+    persistPreferences(current);
+    applyPreferences(current);
+  }));
 }
 
 /* -------------------------------------------------------------------- painting */
@@ -351,6 +363,7 @@ loadMore?.addEventListener("click", () => {
 retryRead?.addEventListener("click", () => read());
 
 wirePreferences();
+mountDocDock("Complete Work Inventory");
 read();
 
 export { WORK_INVENTORY_ENDPOINT };
