@@ -9,10 +9,12 @@
 // times everywhere, calendar pickers for dates, and titles with no
 // description paragraph under them.
 import {
-  canDispatch, contrastRatio, createFeedback, feedbackLabel, formatCalendarDate, formatClock,
+  contrastRatio, formatCalendarDate, formatClock,
   formatDueStamp, orderWork, parseQuickAdd, preferenceAttributes,
-  resolvePreferences, transitionFeedback, weekdayName,
+  resolvePreferences, weekdayName,
 } from "./visual-system.js";
+import { createCommandState, feedbackStateFor, performCommand } from "./command-feedback.mjs";
+import { createCommandDock } from "./command-dock.js";
 import { mountDocDock } from "./doc-dock.js";
 
 const PREFS_KEY = "doctorcre.presentation.v1";
@@ -154,55 +156,106 @@ function showToast(text) {
 }
 
 // ---------------------------------------------------------------- command feedback
+// The prototype runs the REAL kernel (command-feedback.mjs) against a simulated
+// transport, so what a reviewer sees on these pages is the product's own
+// behaviour: one key per logical operation, a double click that sends nothing,
+// an unknown outcome that is reconciled by re-sending the frozen request rather
+// than by guessing, and a refusal that keeps the person's input.
 const feedbackDock = () => $("receiptDock");
-const records = new Map();
-function renderReceipts() {
-  const dock = feedbackDock();
-  if (!dock) return;
-  dock.replaceChildren(...[...records.values()].slice(-4).map((record) => {
-    const actions = [];
-    if (record.state === "confirmed") actions.push(el("button", { class: "btn btn-quiet", type: "button", text: "Undo", "data-op": record.operationId, "data-event": "undo" }));
-    if (record.state === "unknown") actions.push(el("button", { class: "btn btn-secondary", type: "button", text: "Check outcome", "data-op": record.operationId, "data-event": "reconcile" }));
-    if (record.state === "refused") actions.push(el("button", { class: "btn btn-quiet", type: "button", text: "Try again", "data-op": record.operationId, "data-event": "dispatch" }));
-    return el("div", { class: "receipt", role: "status", "data-state": record.state }, [
-      el("span", { class: "receipt-badge", text: feedbackLabel(record) }),
-      el("div", {}, [el("b", { text: record.summary }), el("small", { text: record.reason || `operation ${record.operationId}` })]),
-      el("div", {}, actions),
-    ]);
-  }));
-}
-function settle(record, outcome) {
-  const event = outcome === "refuse" ? "refuse" : outcome === "timeout" ? "timeout" : "confirm";
-  const detail = event === "refuse" ? { reason: "Stale version: Dell changed this card 40 seconds ago. Your input is kept." } : {};
-  const next = transitionFeedback(record, event, detail);
-  records.set(next.operationId, next);
-  renderReceipts();
-  document.dispatchEvent(new CustomEvent("prototype:settled", { detail: next }));
-}
-export function dispatchCommand(operationId, summary, outcome = "confirm") {
-  const existing = records.get(operationId) || createFeedback(operationId, summary);
-  if (!canDispatch(existing)) return existing; // double click, reconnect, second device: one logical operation
-  const pending = transitionFeedback(existing, "dispatch");
-  records.set(operationId, pending);
-  renderReceipts();
-  setTimeout(() => settle(records.get(operationId), outcome), 700);
-  return pending;
-}
-function wireReceipts() {
-  const dock = feedbackDock();
-  if (!dock) return;
-  dock.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-op]");
-    if (!button) return;
-    const record = records.get(button.dataset.op);
-    const next = transitionFeedback(record, button.dataset.event);
-    records.set(next.operationId, next);
-    renderReceipts();
-    if (next.state === "checking") setTimeout(() => settle(records.get(next.operationId), "confirm"), 900);
-    if (next.state === "pending") setTimeout(() => settle(records.get(next.operationId), "confirm"), 700);
-    if (next.state === "undone") document.dispatchEvent(new CustomEvent("prototype:undone", { detail: next }));
+const SIMULATED_ROUND_TRIP = 700;
+let commandState = createCommandState();
+let mintedKeys = 0;
+let simulatedEvents = 0;
+// What each operation is called on screen. The kernel holds the requests; this
+// holds the words, which is the one thing it has no opinion about.
+const commandSummaries = new Map();
+
+let dock = { record: () => {}, render: () => {}, mount: () => {} };
+
+function mountCommandDock() {
+  const root = feedbackDock();
+  if (!root) return;
+  dock = createCommandDock({
+    root,
+    onDispatch: (operationKey) => runCommand(operationKey, { outcome: outcomeChoice() }),
+    onReconcile: (operationKey) => runCommand(operationKey, { replay: true }),
+    onUndo: (operationKey) => {
+      const entry = commandSummaries.get(operationKey);
+      dock.record(operationKey, { summary: entry?.summary || "", status: "undone" });
+      document.dispatchEvent(new CustomEvent("prototype:undone", { detail: { operationId: operationKey, state: "undone" } }));
+    },
   });
+  dock.mount();
 }
+
+/**
+ * The simulated record layer. `confirm` accepts and names the event it
+ * committed; `refuse` answers with a stale-version refusal, which the kernel
+ * reads as a conflict; `timeout` throws with no status and no payload, which is
+ * the only honest shape for "nothing came back". A reconcile resolves as a
+ * replay, which is what a re-send under a spent key really returns.
+ */
+function simulatedCall(outcome, { replay = false } = {}) {
+  return () => new Promise((resolve, reject) => setTimeout(() => {
+    if (replay) { resolve({ ok: true, replayed: true, event_id: `sim-${++simulatedEvents}` }); return; }
+    if (outcome === "refuse") {
+      const refusal = new Error("prototype: the change was refused");
+      refusal.payload = { error: "version_conflict", hint: "Stale version: Dell changed this card 40 seconds ago. Your input is kept." };
+      reject(refusal);
+      return;
+    }
+    if (outcome === "timeout") { reject(new Error("prototype: nothing came back")); return; }
+    resolve({ ok: true, event_id: `sim-${++simulatedEvents}` });
+  }, SIMULATED_ROUND_TRIP));
+}
+
+async function runCommand(operationKey, { outcome = "confirm", replay = false } = {}) {
+  const entry = commandSummaries.get(operationKey);
+  if (!entry) return null;
+  const reconciling = Boolean(commandState[operationKey]);
+  const result = await performCommand({
+    operationKey, args: entry.args,
+    getState: () => commandState,
+    setState: (next) => {
+      commandState = next;
+      // The claim is published before the request is awaited, so the badge is
+      // on screen for the round trip and a second click sees it.
+      if (next[operationKey]?.status === "pending") {
+        dock.record(operationKey, { summary: entry.summary, status: "sending", retry: reconciling, undo: entry.undo });
+      }
+    },
+    newKey: () => `sim-key-${++mintedKeys}`,
+    call: simulatedCall(outcome, { replay }),
+  });
+  if (!result.started) return result;
+  dock.record(operationKey, {
+    summary: entry.summary, status: result.status,
+    reason: result.hint || result.message, retry: result.retry, undo: entry.undo,
+    request: result.request,
+  });
+  const state = feedbackStateFor({ status: result.status });
+  document.dispatchEvent(new CustomEvent("prototype:settled", {
+    detail: { operationId: operationKey, state, reason: result.reason, summary: entry.summary },
+  }));
+  return result;
+}
+
+/**
+ * Every call site names its operation and what it is called. The operation id
+ * IS the operation key; the idempotency key is minted by the kernel and shown
+ * on the receipt when there is no reason to show instead.
+ */
+export function dispatchCommand(operationId, summary, outcome = "confirm") {
+  commandSummaries.set(operationId, {
+    summary,
+    // The arguments this operation is defined by. Stable across every attempt,
+    // which is what lets a retry be the same operation instead of a new one.
+    args: commandSummaries.get(operationId)?.args || { operation: operationId, summary },
+    undo: true,
+  });
+  return runCommand(operationId, { outcome });
+}
+
 const outcomeChoice = () => $("outcomeSimulator")?.value || "confirm";
 
 // ---------------------------------------------------------------- business fixtures
@@ -939,7 +992,7 @@ function wireIndex() {
 
 // ---------------------------------------------------------------- boot
 wirePreferences();
-wireReceipts();
+mountCommandDock();
 wireDetailDialog();
 const surface = document.body.dataset.prototype;
 if (surface === "business") wireBusiness();

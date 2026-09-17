@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e7f4f1514568d03e269bda336a4c7d28f24f5810"
@@ -51,6 +51,7 @@
     "The browser never selects its actor, tenant, sponsor, or authority class.",
     "A refused write and an unanswered write remain distinct states.",
     "Retries reuse the same idempotency key and reconcile against CARR.",
-    "Fixture data is synthetic and cannot become production state."
+    "Fixture data is synthetic and cannot become production state.",
+    "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again."
   ]
 }
