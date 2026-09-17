@@ -381,21 +381,24 @@ small, .small { font-size: 11px; color: var(--muted); }
 .evidence-option input { margin-top: 4px; }
 
 /* ------------------------------------------------------------- command feedback */
-.receipt-dock { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: grid; gap: 8px; width: min(420px, calc(100vw - 32px)); }
+.receipt-dock { position: fixed; right: 88px; bottom: 16px; z-index: 40; display: grid; gap: 8px; width: min(420px, calc(100vw - 104px)); }
 .receipt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 4px solid var(--orange); border-radius: var(--radius); background: var(--ground-1); box-shadow: var(--shadow-float); animation: receipt-in var(--motion-enter) var(--ease); }
 .receipt[data-state="pending"] { border-left-color: var(--cyan); border-left-style: dashed; }
 .receipt[data-state="confirmed"] { border-left-color: var(--green); }
 .receipt[data-state="refused"] { border-left-color: var(--red); }
 .receipt[data-state="unknown"] { border-left-color: var(--amber); border-left-style: double; }
+.receipt[data-state="checking"] { border-left-color: var(--cyan); border-left-style: dotted; }
 .receipt[data-state="undone"] { border-left-color: var(--line-strong); }
 .receipt b { display: block; font-size: 12px; }
 .receipt small { display: block; color: var(--muted); font-size: 10px; }
-.receipt .btn { min-height: 38px; }
+.receipt .btn { min-height: var(--touch); }
 .receipt-badge { padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .receipt[data-state="pending"] .receipt-badge { color: var(--cyan-text); }
 .receipt[data-state="confirmed"] .receipt-badge { color: var(--green-text); }
 .receipt[data-state="refused"] .receipt-badge { color: var(--red-text); }
 .receipt[data-state="unknown"] .receipt-badge { color: var(--amber-text); }
+.receipt[data-state="checking"] .receipt-badge { color: var(--cyan-text); }
+.receipt[data-state="undone"] .receipt-badge { color: var(--muted); }
 
 /* ------------------------------------------------------------- data states */
 .state-block { display: grid; gap: 8px; padding: var(--pad-card); border: 1px solid var(--line); border-radius: var(--radius-l); }

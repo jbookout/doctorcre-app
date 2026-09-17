@@ -17,8 +17,12 @@
  * board opens "Two edits crossed" with both sides attributed to the same person.
  * Under the ORIGINAL key the retry never reaches that handler: it replays.
  *
- * So this module holds, per `deal|field`, the one operation that has not been
- * answered yet, frozen:
+ * Since V5-UX-S03 that bookkeeping is not this module's own: it is the shared
+ * kernel in command-feedback.mjs, which every command surface uses, keyed by an
+ * `operationKey`. A cell's key is `deal|field`, and this file is the Deal Room's
+ * dialect of the kernel — the cell vocabulary, the cell's supersession test, and
+ * the cell's sentences. The behaviour it describes below is unchanged, because
+ * it is the kernel's behaviour:
  *
  *   - the request is built ONCE — deal, field, value, base_event_id, key — and
  *     every later attempt sends that same object. A base the changes feed has
@@ -50,21 +54,17 @@
  * server answers a re-send of it.
  */
 
-/** Codes that mean the server BROKE, not that it declined. */
-const SERVER_FAULT_CODES = new Set(['unhandled_verb_failure', 'internal_error']);
-
-/**
- * Statuses that are a DECISION about this request rather than a failure around
- * it. 401 and 403 are taken at the door, before the verb runs: the change was
- * not saved, nothing is pending, and inviting a retry of it would be a lie.
- * Everything else non-2xx is treated as uncertain, because a proxy can produce
- * almost any status and this client cannot tell one from the record layer.
- */
-const DEFINITIVE_HTTP = new Set([401, 403]);
+import {
+  beginCommand, classifyCommandOutcome, createCommandState, pendingCommand,
+  performCommand, settleCommand, stableText,
+} from './command-feedback.mjs';
 
 // Sentence tails. The caller supplies the subject — "Attention flag on
 // Riverbank Dental", or the default "This change" — so one wording serves a
-// toast that must name the cell and a dialog that already has.
+// toast that must name the cell and a dialog that already has. These stay here
+// rather than in the kernel: they name the Deal Room's own controls, and a
+// sentence that sends a person to a bar that is not on their page is worse than
+// no sentence at all.
 const OUTCOME_SENTENCE = Object.freeze({
   // An accepted answer that is no longer the newest word on its cell. It is not
   // a failure and it is not a conflict: the operation landed, and something the
@@ -95,19 +95,15 @@ function humanize(code) {
   return value.replace(/_/g, ' ');
 }
 
-/** Stable text for any value a cell can hold, so equality survives a re-render. */
-function stableText(value) {
-  if (value === null || value === undefined) return 'null';
-  if (typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableText).join(',')}]`;
-  const keys = Object.keys(value).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableText(value[key])}`).join(',')}}`;
-}
-
 /**
  * Is this the SAME intended change? Cells hold booleans, strings, nulls and the
  * operating-state object, and a re-render hands back a structurally equal object
  * rather than the identical one, so identity would call every retry a new intent.
+ *
+ * A cell's intent is its VALUE alone. The base this attempt was computed from is
+ * part of the request, not part of the intent: the feed moves between a lost
+ * answer and the retry of it, and a retry that carried today's base would be a
+ * different operation under a key that is already spent.
  */
 export function sameFieldValue(a, b) {
   return stableText(a) === stableText(b);
@@ -120,12 +116,17 @@ export function cellKey(deal, field) {
 
 /** Per-cell write bookkeeping. Plain data so it stays comparable. */
 export function createFieldWriteState() {
-  return {};
+  return createCommandState();
 }
 
-function freezeRequest(request) {
-  if (request.value && typeof request.value === 'object') Object.freeze(request.value);
-  return Object.freeze(request);
+/**
+ * The arguments this attempt is an attempt AT. When an unresolved operation for
+ * this cell holds the same value, its own retained arguments are handed back
+ * verbatim, so the kernel sees one intent and re-sends the original request.
+ */
+function intentArgs(current, { deal, field, value, base }) {
+  if (current && sameFieldValue(current.request.value, value)) return { ...current.request };
+  return { deal, field, value, base_event_id: base ?? null };
 }
 
 /**
@@ -142,30 +143,9 @@ function freezeRequest(request) {
  *             reconciled first.
  */
 export function beginFieldWrite(state, { deal, field, value, base = null, newKey }) {
-  const writes = state || {};
   const cell = cellKey(deal, field);
-  const current = writes[cell] || null;
-  if (current && current.status === 'pending') {
-    return { state: writes, started: false, status: 'in_flight', reason: 'in_flight', request: null, pending: current };
-  }
-  if (current && !sameFieldValue(current.request.value, value)) {
-    return { state: writes, started: false, status: 'blocked', reason: 'unresolved', request: null, pending: current };
-  }
-  // The retained request is reused WHOLE. Rebuilding it from today's base would
-  // change the operation manifest the server hashed, which is precisely how a
-  // retry stops being a retry.
-  const request = current ? current.request : freezeRequest({
-    deal, field, value, base_event_id: base ?? null, idempotency_key: newKey(),
-  });
-  const entry = {
-    cell, status: 'pending', request, attempts: (current?.attempts || 0) + 1,
-    reason: null, code: null, hint: null, message: null,
-  };
-  return {
-    state: { ...writes, [cell]: entry },
-    started: true, status: 'sending', reason: null, request,
-    pending: null, retry: Boolean(current),
-  };
+  const current = (state || {})[cell] || null;
+  return beginCommand(state, { operationKey: cell, args: intentArgs(current, { deal, field, value, base }), newKey });
 }
 
 /**
@@ -174,22 +154,12 @@ export function beginFieldWrite(state, { deal, field, value, base = null, newKey
  * including a refusal, drops it so the next intent starts clean.
  */
 export function settleFieldWrite(state, cell, outcome) {
-  const writes = state || {};
-  const current = writes[cell];
-  if (!current) return writes;
-  if (outcome?.status === 'unknown') {
-    return { ...writes, [cell]: {
-      ...current,
-      status: 'unknown',
-      reason: outcome.reason || null,
-      code: outcome.code || null,
-      hint: outcome.hint || null,
-      message: fieldWriteMessage(outcome),
-    } };
-  }
-  const next = { ...writes };
-  delete next[cell];
-  return next;
+  const next = settleCommand(state, cell, outcome);
+  const entry = next[cell];
+  // The kernel's own sentence is the general one; a cell's row says where its
+  // control is, so the retained entry carries the Deal Room's wording.
+  if (!entry || entry === (state || {})[cell]) return next;
+  return { ...next, [cell]: { ...entry, cell, message: fieldWriteMessage(outcome) } };
 }
 
 /**
@@ -220,41 +190,12 @@ export function settleFieldWrite(state, cell, outcome) {
  *
  * `key_reuse` is called out on its own: it means this key already carries a
  * DIFFERENT request, so neither retrying nor assuming success is honest.
+ *
+ * The table is the kernel's. This wrapper only guarantees the shape the Deal
+ * Room already reads.
  */
 export function classifyFieldWriteOutcome({ response = null, error = null } = {}) {
-  if (error) {
-    const code = error?.payload?.error || null;
-    const hint = error?.payload?.hint || null;
-    const httpStatus = Number(error?.status ?? error?.http_status ?? 0) || null;
-    if (code === 'key_reuse') return { status: 'refused', reason: 'key_reuse', code, hint, http_status: httpStatus };
-    if (code && SERVER_FAULT_CODES.has(code)) return { status: 'unknown', reason: 'server_error', code, hint: null, http_status: httpStatus };
-    if (code) return { status: 'refused', reason: 'declined', code, hint, http_status: httpStatus };
-    // No tool payload, so this stopped before or outside the verb. The status —
-    // which the live client now carries on the error — is the only evidence of
-    // which kind of failure it was, and the two must not be told alike:
-    //   401/403 the request was DECIDED and did not land. Nothing is retained,
-    //           because retrying it is not the thing to do; signing in is.
-    //   any other non-2xx  an error came BACK. It may still have landed.
-    //   no status at all   nothing came back: the wire, the tab, the timeout.
-    if (DEFINITIVE_HTTP.has(httpStatus)) {
-      return { status: 'refused', reason: 'unauthorized', code: `http_${httpStatus}`, hint: null, http_status: httpStatus };
-    }
-    if (httpStatus) return { status: 'unknown', reason: 'server_error', code: null, hint: null, http_status: httpStatus };
-    return { status: 'unknown', reason: 'no_answer', code: null, hint: null, http_status: null };
-  }
-  if (response && response.status === 'conflict' && response.conflict) {
-    return { status: 'conflict', reason: null, code: null, hint: null, conflict: response.conflict };
-  }
-  if (response && response.status === 'ok' && response.ok !== false) {
-    return {
-      status: 'ok', reason: null, code: null, hint: null,
-      replayed: response.replayed === true,
-      // Taken from the answer verbatim, or null. Nothing here constructs one.
-      event_id: response.event_id ?? null,
-      event_recorded_at: response.event_recorded_at ?? null,
-    };
-  }
-  return { status: 'unknown', reason: 'no_answer', code: null, hint: null, http_status: null };
+  return classifyCommandOutcome({ response, error });
 }
 
 /**
@@ -355,6 +296,8 @@ export function fieldWriteMessage(outcome, subject = 'This change') {
   if (outcome.status === 'ok') {
     return outcome.superseded === true ? `${subject} ${OUTCOME_SENTENCE.superseded}` : null;
   }
+  // An answered conflict is the board's own surface — "Two edits crossed" — and
+  // not a sentence in a toast.
   if (outcome.status === 'conflict') return null;
   if (outcome.reason === 'declined') {
     return `${subject} was refused by the server: ${outcome.hint || `${humanize(outcome.code) || 'no reason given'}.`}`;
@@ -374,7 +317,8 @@ export function unresolvedFieldWrites(state, deal = null) {
   return Object.values(state || {})
     .filter((entry) => entry.status === 'unknown' && (!deal || entry.request.deal === deal))
     .map((entry) => ({
-      cell: entry.cell, deal: entry.request.deal, field: entry.request.field,
+      cell: entry.cell || entry.operationKey,
+      deal: entry.request.deal, field: entry.request.field,
       value: entry.request.value, attempts: entry.attempts,
       reason: entry.reason, code: entry.code, message: entry.message,
     }))
@@ -383,7 +327,7 @@ export function unresolvedFieldWrites(state, deal = null) {
 
 /** The retained request for one cell, or null. Nothing here mutates state. */
 export function pendingFieldWrite(state, cell) {
-  return (state || {})[cell] || null;
+  return pendingCommand(state, cell);
 }
 
 /**
@@ -396,10 +340,6 @@ export function pendingFieldWrite(state, cell) {
  * throws becomes an `unknown` outcome with a sentence attached, which is what
  * the click listeners used to lose on the floor.
  *
- * @param {Object} args
- * @param {string} args.deal
- * @param {string} args.field
- * @param {*} args.value
  * An accepted answer is reported as `superseded` when this cell's base moved
  * while the request was out. That is the one thing a replay cannot tell you: the
  * server truthfully returns the recorded result of the original operation, which
@@ -422,54 +362,45 @@ export function pendingFieldWrite(state, cell) {
  * @param {(request:Object) => Promise<any>} args.patch
  */
 export async function performFieldWrite({ deal, field, value, base = null, baseNow = null, getState, setState, newKey, patch }) {
-  const claim = beginFieldWrite(getState(), { deal, field, value, base, newKey });
-  setState(claim.state);
-  if (!claim.started) {
-    return {
-      status: claim.status, sent: false, retry: false, replayed: false, superseded: false,
-      reason: claim.reason, code: null, hint: null, http_status: null,
-      event_id: null, event_recorded_at: null, conflict: null,
-      request: claim.pending?.request || null, pending: claim.pending,
-      message: fieldWriteMessage({ status: claim.status, reason: claim.reason }),
-      response: null,
-    };
-  }
-  let response = null;
-  let error = null;
-  try {
+  const cell = cellKey(deal, field);
+  const current = getState()?.[cell] || null;
+  const result = await performCommand({
+    operationKey: cell,
+    args: intentArgs(current, { deal, field, value, base }),
+    getState, setState, newKey,
     // A copy, so a client that rewrites an argument on its way out — the live
     // client translates a phase name into its slug — cannot touch the request
     // this operation is defined by.
-    response = await patch({ ...claim.request });
-  } catch (caught) {
-    error = caught;
-  }
-  const classified = classifyFieldWriteOutcome({ response, error });
-  // Read the cell's base only NOW, and only for an accepted answer: an operation
-  // that was refused or never answered has no value to withhold in the first
-  // place, and an open conflict is already the server saying the cell moved.
-  // The answer's own committed event id is the third piece of evidence: without
-  // it, this operation's own event arriving on the feed reads as a partner's.
-  const outcome = classified.status === 'ok'
-    ? { ...classified, superseded: answerSupersededByFeed(
-      claim.request, baseNow ? baseNow() : (base ?? null), classified.event_id ?? null) }
-    : classified;
-  const cell = cellKey(deal, field);
-  setState(settleFieldWrite(getState(), cell, outcome));
+    call: (request) => patch({ ...request }),
+    // Read the cell's base only NOW, and only for an accepted answer: an
+    // operation that was refused or never answered has no value to withhold in
+    // the first place, and an open conflict is already the server saying the
+    // cell moved. The answer's own committed event id is the third piece of
+    // evidence: without it, this operation's own event arriving on the feed
+    // reads as a partner's.
+    supersededBy: (request, outcome) => answerSupersededByFeed(
+      request, baseNow ? baseNow() : (base ?? null), outcome.event_id ?? null),
+  });
+  const outcome = {
+    status: result.status, reason: result.reason, code: result.code, hint: result.hint,
+    http_status: result.http_status, superseded: result.superseded,
+  };
+  // The retained entry carries this board's own sentence, not the general one.
+  if (result.status === 'unknown') setState(settleFieldWrite(getState(), cell, outcome));
   return {
-    status: outcome.status, sent: true, retry: claim.retry === true,
-    replayed: outcome.replayed === true, superseded: outcome.superseded === true,
-    reason: outcome.reason || null, code: outcome.code || null, hint: outcome.hint || null,
-    http_status: outcome.http_status || null,
+    status: result.status, sent: result.sent, retry: result.retry,
+    replayed: result.replayed, superseded: result.superseded,
+    reason: result.reason, code: result.code, hint: result.hint,
+    http_status: result.http_status,
     // The committed event this write made, as the record layer named it — and
     // null on every answer that did not name one, which the caller must read as
     // "no base to advance to" rather than as any kind of identity.
-    event_id: outcome.event_id ?? null,
-    event_recorded_at: outcome.event_recorded_at ?? null,
-    conflict: outcome.conflict || null,
-    request: claim.request,
+    event_id: result.event_id,
+    event_recorded_at: result.event_recorded_at,
+    conflict: result.conflict,
+    request: result.request,
     pending: pendingFieldWrite(getState(), cell),
     message: fieldWriteMessage(outcome),
-    response,
+    response: result.response,
   };
 }

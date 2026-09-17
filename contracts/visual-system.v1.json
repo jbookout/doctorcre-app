@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-visual-system.v1",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "slice": "V5-UX-S01",
   "stylesheet": "css/system.css",
   "model": "js/visual-system.js",
@@ -445,6 +445,7 @@
         ".receipt[data-state=\"confirmed\"]",
         ".receipt[data-state=\"refused\"]",
         ".receipt[data-state=\"unknown\"]",
+        ".receipt[data-state=\"checking\"]",
         ".receipt[data-state=\"undone\"]"
       ]
     },
