@@ -22,13 +22,15 @@ assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html"]) await read(path);
+for (const path of ["workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
 const routes = await json("contracts/app-routes.v1.json");
 assert.equal(routes.routes["/work-inventory"], "work-inventory.html", "the Work Inventory route must stay in the route contract");
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
+assert.equal(routes.routes["/tasks"], "tasks.html", "the Tasks route must stay in the route contract");
+for (const verb of ["loop-board", "read-loop", "add-loop", "update-loop", "close-loop", "loop-headers"]) assert.ok(contract.mcp_operations.includes(verb), `the interface must pin ${verb}`);
 
 const textExtensions = new Set([".js", ".mjs", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);
 const forbidden = [

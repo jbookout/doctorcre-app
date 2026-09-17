@@ -34,6 +34,9 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `work-inventory.html` | V5-UX-C10 Complete Work Inventory at `/work-inventory`: every work record from all six canonical CARR sources, in every status, with each source's coverage stated |
 | `js/work-inventory-model.js` | Pure census rules: exact-key validation, grouping, coverage summary, query building, page merge |
 | `js/work-inventory.js` | Work Inventory DOM wiring over `GET /api/v1/work-inventory` |
+| `tasks.html` | V5-UX-B02 Tasks at `/tasks`: the shared record of open task and team loops, with Quick add capture, handover, due dates and completion |
+| `js/task-records-model.js` | Pure task rules: board-row validation, owner scoping, handover/close/due argument sets, the Quick add plan and the operation keys |
+| `js/task-records.js` | Tasks DOM wiring over the loop verbs, through the shared command kernel and dock |
 | `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
 | `js/doc-dock.js` | The one floating Doc icon and its chat window, shared by every surface |
 | `js/client.js` | Small client interface selected by the app |

@@ -15,14 +15,19 @@ const pages = Object.fromEntries(await Promise.all(Object.entries(contract.proto
 const prototypeJs = await read("js/design-prototype.js");
 const docDockJs = await read("js/doc-dock.js");
 const workInventoryHtml = await read("work-inventory.html");
+const tasksHtml = await read("tasks.html");
 
 // Every surface the review covered: the three prototype pages and the product
-// surface that shares the shell. A site-wide rule is checked on all four.
+// surfaces that share the shell. A site-wide rule — a refused phrase, a printed
+// clock, Doc's one place, a title with a paragraph under it — is a rule about
+// the product, not about one page, so every shipped surface built on the shell
+// is checked here.
 const SURFACES = {
   "design.html": pages.index,
   "design-business.html": pages.business,
   "design-operations.html": pages.operations,
   "work-inventory.html": workInventoryHtml,
+  "tasks.html": tasksHtml,
   "js/design-prototype.js": prototypeJs,
   "js/doc-dock.js": docDockJs,
 };

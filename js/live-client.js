@@ -274,6 +274,22 @@ export function createLiveClient(opts = {}) {
       return { status: 'ok', deal_id: res.deal_id };
     },
 
+    // ---------------------------------------------------------------- loops
+    // Task records are loop records. The reads pass their arguments through
+    // untouched, and the writes keep the caller's idempotency key: the command
+    // kernel mints one key per logical operation and a client that replaced it
+    // would turn a reconcile into a second write.
+    //
+    // `read-loop` answers a miss IN the payload with `isError` false, so a
+    // not_found or an ambiguous number arrives here as an ordinary answer and
+    // is returned as one. Only a real refusal throws.
+    async loopBoard(args = {}) { return rpc('loop-board', args); },
+    async readLoop(args = {}) { return rpc('read-loop', args); },
+    async loopHeaders(args = {}) { return rpc('loop-headers', args); },
+    async addLoop(args) { return write('add-loop', args); },
+    async updateLoop(args) { return write('update-loop', args); },
+    async closeLoop(args) { return write('close-loop', args); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

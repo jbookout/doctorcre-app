@@ -78,6 +78,72 @@ export async function createFixtureClient(opts = {}) {
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
 
+  /**
+   * Synthetic loop records — the task surface's fixture.
+   *
+   * These exercise the shapes the page has to survive: both partners as owners,
+   * a record owned by the system, a jointly owned one, a dated marker, a bell,
+   * a counterparty the partnership is waiting on, a team record, and two
+   * records that share a number (which is exactly why the number is not an
+   * identity and a read by number alone can be ambiguous).
+   */
+  let loopSeq = 0;
+  const loop = (row) => ({
+    loop_id: `loop-${String(++loopSeq).padStart(3, '0')}`,
+    kind: 'open_loop', domain: 'business', status: 'open', owner: 'joe', marker: 'none',
+    body: '', unblocks: null, source_note: 'Demo fixture record', due_on: null,
+    blocker_class: null, blocker_detail: null, joint_owner: false,
+    close_outcome: null, closed_at: null, version: 1,
+    tier: row.kind === 'team_loop' || row.kind === 'action_required' ? 'shared' : 'personal',
+    personal_to: row.kind === 'team_loop' || row.kind === 'action_required' ? null : (row.owner || 'joe'),
+    since_text: 'open 3 days',
+    created_at: '2026-09-13T13:00:00Z', updated_at: '2026-09-15T13:00:00Z',
+    ...row,
+  });
+  /** @type {any[]} */
+  const loops = [
+    loop({ number: '201', title: 'Demo Gulf Breeze Dental: send the LOI redline to landlord counsel', owner: 'joe', blocker_class: 'human_only', blocker_detail: 'Joe does this personally: send the LOI redline to landlord counsel' }),
+    loop({ number: '202', title: 'Demo Navarre Ortho: assemble the information request for the practice CPA', owner: 'joe', marker: 'dated', due_on: '2026-09-15', blocker_class: 'human_only', blocker_detail: 'Joe does this personally: assemble the information request' }),
+    loop({ number: '203', title: 'Demo Milton Family Care: refresh the property search', owner: 'dell', marker: 'bell', blocker_class: 'human_only', blocker_detail: 'Dell does this personally: refresh the property search' }),
+    loop({ number: '204', title: 'Demo Pace Pediatrics: confirm the survey window', owner: 'dell', blocker_class: 'counterparty', blocker_detail: 'Demo Coastal Surveying has not offered a window since Monday' }),
+    loop({ number: '205', title: 'Demo Crestview Derm: read the landlord counter when it lands', owner: 'joe', blocker_class: 'external_event', blocker_detail: 'The landlord counter has not been delivered yet' }),
+    loop({ number: '206', title: 'Demo tenant-rep packet: regenerate the market comparison', owner: 'claude', blocker_class: 'capability', blocker_detail: 'The comparison rebuild is queued behind the market refresh' }),
+    loop({ kind: 'team_loop', number: '207', title: 'Demo Regional Health Summit: research the exhibitor list and pricing', owner: 'dell', body: 'Research exhibitor list and pricing for the Demo Regional Health Summit' }),
+    loop({ kind: 'team_loop', number: '201', title: 'Demo Gulf Breeze Dental: agree the shared close checklist', owner: 'joe', body: 'Agree the shared close checklist with the practice' }),
+    loop({ kind: 'team_loop', number: '208', title: 'Demo partnership: reconcile the quarterly referral list', owner: 'joe', joint_owner: true }),
+  ];
+
+  const boardRow = (row) => ({
+    number: row.number, kind: row.kind, domain: row.domain, status: row.status, owner: row.owner,
+    marker: row.marker, title: row.title, label: row.owner === 'claude' ? 'system' : partnerLabel(row.owner),
+    joint_owner: row.joint_owner === true, blocker_class: row.blocker_class,
+    blocker_detail: row.blocker_detail, since_text: row.since_text, due_on: row.due_on,
+    version: row.version,
+  });
+  const partnerLabel = (owner) => (owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : String(owner));
+
+  /** The record layer's own version guard, refused the way the server refuses it. */
+  function guardVersion(row, baseVersion) {
+    if (baseVersion === undefined || baseVersion === null) {
+      const error = new Error('fixture update-loop refused: missing_base_version');
+      error.payload = { error: 'missing_base_version', hint: 'Re-read the record and send the version it holds now.' };
+      throw error;
+    }
+    if (Number(baseVersion) !== Number(row.version)) {
+      const error = new Error('fixture update-loop refused: version_conflict');
+      error.payload = { error: 'version_conflict', hint: 'The record changed since you read it. Re-open it and decide from what it holds now.' };
+      throw error;
+    }
+  }
+
+  function findLoop({ loop_id, number, kind }) {
+    if (loop_id) return loops.find((row) => row.loop_id === loop_id) || null;
+    if (!number) return 'need_number_or_id';
+    const matches = loops.filter((row) => row.number === String(number) && (!kind || row.kind === kind));
+    if (matches.length > 1) return 'ambiguous_number';
+    return matches[0] || null;
+  }
+
   /** @type {any[]} confirm proposals from call distill */
   let pendingConfirms = [];
 
@@ -481,6 +547,131 @@ export async function createFixtureClient(opts = {}) {
         });
         pushHistory(id, selfActor, 'created from the board', e.recorded_at);
         return { status: 'ok', event: e, deal: { ...d } };
+      });
+    },
+
+    // ---------------------------------------------------------------- loops
+    // The same six verbs the live client serves, against the synthetic loops
+    // above. The answer shapes are the record layer's own, including the one
+    // that matters most on this surface: `read-loop` returns a miss IN the
+    // payload rather than throwing, and only a real refusal throws with a
+    // payload the command kernel can classify.
+    async loopBoard({ kind = 'open_loop', status = 'open', domain, blocker, owner, search, limit = 300 } = {}) {
+      const rows = loops.filter((row) => row.kind === kind
+        && (!status || row.status === status)
+        && (!domain || row.domain === domain)
+        && (!blocker || row.blocker_class === blocker)
+        && (!owner || row.owner === owner)
+        && (!search || row.title.toLowerCase().includes(String(search).toLowerCase())))
+        .slice(0, Math.min(Number(limit) || 300, 300))
+        .map(boardRow);
+      return { count: rows.length, loops: rows };
+    },
+
+    async readLoop({ loop_id, number, kind } = {}) {
+      const found = findLoop({ loop_id, number, kind });
+      if (found === 'need_number_or_id') return { error: 'need_number_or_id' };
+      if (found === 'ambiguous_number') {
+        return {
+          error: 'ambiguous_number',
+          candidates: loops.filter((row) => row.number === String(number)).map((row) => ({ loop_id: row.loop_id, kind: row.kind, title: row.title })),
+        };
+      }
+      if (!found) return { error: 'not_found' };
+      return { loop: structuredClone(found) };
+    },
+
+    // The record layer's own answer shape: {count, blocks:[...]} with the
+    // version edit-loop-header would need as base_version.
+    async loopHeaders() {
+      const blocks = [
+        { block_id: 'block-open-hot', file: '00_Context/open-loops.md', kind: 'open_loop', section: 'hot', seq: 1, version: 3, prose_md: 'What is open this week, and what each one is waiting on.' },
+        { block_id: 'block-team-open', file: '00_Context/team-loops.md', kind: 'team_loop', section: 'open', seq: 1, version: 2, prose_md: 'Work the partnership holds together.' },
+      ];
+      return { count: blocks.length, blocks };
+    },
+
+    async addLoop({ idempotency_key, kind = 'open_loop', owner, title, body, domain, marker = 'none', due_on, blocker, blocker_detail, unblocks, source_note }) {
+      return withIdem(idempotency_key, () => {
+        const row = loop({
+          kind, owner, title, body, domain, marker, due_on: due_on || null,
+          blocker_class: blocker || null, blocker_detail: blocker_detail || null,
+          unblocks: unblocks || null, source_note: source_note || 'Captured on the Tasks surface',
+          number: String(300 + loops.length), since_text: 'open today',
+          created_at: nowIso(), updated_at: nowIso(),
+        });
+        loops.push(row);
+        return {
+          ok: true, loop_id: row.loop_id, number: row.number, kind: row.kind,
+          section: row.kind, renders_into: 'loop-board', blocker: row.blocker_class,
+        };
+      });
+    },
+
+    async updateLoop({ idempotency_key, loop_id, number, kind, base_version, ...fields }) {
+      return withIdem(idempotency_key, () => {
+        const found = findLoop({ loop_id, number, kind });
+        if (typeof found === 'string' || !found) {
+          const error = new Error(`fixture update-loop refused: ${found || 'not_found'}`);
+          error.payload = { error: typeof found === 'string' ? found : 'not_found' };
+          throw error;
+        }
+        if (found.status !== 'open') {
+          const error = new Error('fixture update-loop refused: loop_not_open');
+          error.payload = { error: 'loop_not_open', hint: 'This record is already closed.' };
+          throw error;
+        }
+        guardVersion(found, base_version);
+        const allowed = ['title', 'body', 'owner', 'marker', 'due_on', 'domain', 'unblocks', 'source_note'];
+        const applied = allowed.filter((field) => fields[field] !== undefined);
+        if (fields.blocker !== undefined) applied.push('blocker');
+        if (applied.length === 0) {
+          const error = new Error('fixture update-loop refused: nothing_to_update');
+          error.payload = { error: 'nothing_to_update' };
+          throw error;
+        }
+        if (fields.due_on !== undefined && (fields.marker || found.marker) !== 'dated') {
+          const error = new Error('fixture update-loop refused: due_date_needs_dated_marker');
+          error.payload = { error: 'due_date_needs_dated_marker' };
+          throw error;
+        }
+        for (const field of allowed) if (fields[field] !== undefined) found[field] = fields[field];
+        if (fields.blocker !== undefined) {
+          found.blocker_class = fields.blocker;
+          found.blocker_detail = fields.blocker_detail ?? found.blocker_detail;
+        }
+        if (fields.owner !== undefined && found.kind !== 'team_loop') found.personal_to = fields.owner;
+        found.version = Number(found.version) + 1;
+        found.updated_at = nowIso();
+        return { ok: true, loop_id: found.loop_id, number: found.number, moved: false, renumbered: false };
+      });
+    },
+
+    async closeLoop({ idempotency_key, loop_id, number, kind, base_version, outcome, resolution = 'done' }) {
+      return withIdem(idempotency_key, () => {
+        if (!outcome || !String(outcome).trim()) {
+          const error = new Error('fixture close-loop refused: outcome_required');
+          error.payload = { error: 'outcome_required', hint: 'Say what happened before closing the record.' };
+          throw error;
+        }
+        const found = findLoop({ loop_id, number, kind });
+        if (typeof found === 'string' || !found) {
+          const error = new Error(`fixture close-loop refused: ${found || 'not_found'}`);
+          error.payload = { error: typeof found === 'string' ? found : 'not_found' };
+          throw error;
+        }
+        if (found.status !== 'open') {
+          const error = new Error('fixture close-loop refused: loop_not_open');
+          error.payload = { error: 'loop_not_open' };
+          throw error;
+        }
+        guardVersion(found, base_version);
+        found.status = resolution === 'dropped' ? 'dropped' : 'done';
+        found.close_outcome = String(outcome).trim();
+        found.closed_at = nowIso();
+        found.version = Number(found.version) + 1;
+        found.updated_at = found.closed_at;
+        return { ok: true, loop_id: found.loop_id, number: found.number, status: found.status };
       });
     },
 

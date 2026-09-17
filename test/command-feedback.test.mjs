@@ -343,6 +343,6 @@ test("checking is a declared state of the shared visual system, and the styleshe
   // The invariant this whole slice exists to keep, pinned where the consumer
   // contract can be read without the code.
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(carr.version, "1.2.0");
+  assert.equal(carr.version, "1.3.0");
   assert.ok(carr.invariants.some((line) => /one idempotency key across double click, reconnect and a second device/.test(line)));
 });

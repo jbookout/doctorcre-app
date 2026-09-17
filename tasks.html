@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Tasks — the shared record of open task and team loops, with capture, handover and completion">
+  <title>Tasks · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/tasks.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the task list</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>tasks</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/leads">Leads</a>
+      <a href="/deals">Deals</a>
+      <a href="/system-work.html">System work</a>
+      <a href="/work-inventory">Inventory</a>
+      <a href="/tasks" aria-current="page">Tasks</a>
+    </nav>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow"><span class="orb" data-state="still" id="taskOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span> · the shared record, filtered by owner — every partner sees the same rows</p>
+        <h1 id="pageTitle">Tasks</h1>
+      </div>
+      <div class="chip-bar">
+        <span class="status" data-state="unknown" id="taskStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="taskStatusLabel">Reading the record…</span></span>
+        <span class="as-of" id="taskAsOf">Reading the record layer…</span>
+      </div>
+    </section>
+
+    <p class="sr-only" id="taskLive" aria-live="polite" role="status">Reading the record…</p>
+
+    <section class="card glass" aria-labelledby="quickTitle">
+      <div class="card-heading"><div><p class="eyebrow">Capture</p><h2 id="quickTitle">Quick add</h2></div></div>
+      <form id="quickAddForm">
+        <div class="field">
+          <label for="quickAddInput">Sentence</label>
+          <input id="quickAddInput" type="text" autocomplete="off" placeholder="Call Dr. Patel Friday 10 AM about the Crestview LOI" aria-describedby="quickAddQuestion">
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label for="quickAddDate">Due date</label>
+            <input id="quickAddDate" type="date">
+          </div>
+        </div>
+        <div class="compare parsed" id="quickAddParsed" aria-live="polite">
+          <div><span>Action</span><i>unknown</i></div><div><span>Owner</span><i>unknown</i></div><div><span>Due</span><i>none</i></div><div><span>Related</span><i>none</i></div>
+        </div>
+        <p class="small" id="quickAddQuestion"></p>
+        <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button" id="quickAddDraft">Keep as draft</button></div>
+      </form>
+      <div class="chip-bar" id="draftBar" hidden>
+        <span class="chip-label">Drafts, kept on this page only</span>
+        <span class="chip-list" id="draftList"></span>
+      </div>
+    </section>
+
+    <section class="card glass" aria-labelledby="listTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Open work</p><h2 id="listTitle">Records</h2></div>
+        <div class="btn-group" id="scopeSwitch" role="group" aria-label="Scope">
+          <button class="btn" type="button" data-scope="team" aria-pressed="true">Team</button>
+          <button class="btn" type="button" data-scope="mine" aria-pressed="false">Mine</button>
+        </div>
+      </div>
+      <div class="state-block" id="taskState" data-state="loading"><h3>Reading the shared record…</h3></div>
+      <ul class="work-list" id="taskList"></ul>
+      <details class="system-owned" id="systemOwned" hidden>
+        <summary>System-owned records <span id="systemCount"></span></summary>
+        <ul class="work-list" id="systemList"></ul>
+      </details>
+      <div class="chip-bar">
+        <button class="btn" type="button" id="retryRead" hidden>Retry read</button>
+        <p class="small" id="sourceLine">Source pending</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="taskDialog" class="dialog" aria-labelledby="taskDialogTitle">
+    <article>
+      <header><div><p class="eyebrow" id="taskDialogEyebrow">Record</p><h2 id="taskDialogTitle">Task</h2></div><button class="btn icon-btn" type="button" id="taskDialogClose" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <dl class="detail-rows" id="taskDialogRows"></dl>
+        <div class="field-grid">
+          <div class="field"><label for="taskDue">Due date</label><input id="taskDue" type="date"></div>
+        </div>
+        <div class="row-wrap">
+          <button class="btn btn-secondary" type="button" id="taskHandover">Hand over</button>
+          <button class="btn" type="button" id="taskComplete">Complete</button>
+          <button class="btn btn-quiet" type="button" id="taskDrop">Drop</button>
+        </div>
+        <form id="taskCloseForm" hidden>
+          <div class="field">
+            <label for="taskOutcome" id="taskOutcomeLabel">What happened</label>
+            <input id="taskOutcome" type="text" autocomplete="off" required placeholder="Type the outcome in your own words">
+            <p class="field-hint">The record layer refuses a close without one.</p>
+          </div>
+          <div class="row-wrap"><button class="btn btn-primary" type="submit" id="taskCloseConfirm">Confirm</button><button class="btn btn-quiet" type="button" id="taskCloseCancel">Keep it open</button></div>
+        </form>
+      </div>
+    </article>
+  </dialog>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Tasks</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Tasks · One record, one owner, one safety key per command.</p></footer>
+  <script type="module" src="/js/task-records.js"></script>
+</body>
+</html>
