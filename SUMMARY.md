@@ -46,6 +46,9 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `control-room.html` | V5-UX-C01 Control Room at `/control-room`: the five operational questions — broken, running, stuck, needs Joe, changed — with a coverage line built only from the reads that answered, plus the grouped incident queue |
 | `js/control-room-model.js` | Pure Control Room rules: exact-key validation of `incident-board`, `current-work-item` and `current-work-requests`, the five tiles (never 0 for an unanswered read), the cadence-free stall facts, the coverage line and the named scope statements |
 | `js/control-room.js` | Control Room DOM wiring over those three reads and `GET /api/v1/work-inventory`, each read settled on its own so one outage makes only its own areas unknown |
+| `incidents.html` | V5-UX-C14 Incident at `/incidents?ref=INC-…`: one operational incident, its facts kept visibly apart from its hypotheses, and who can clear it |
+| `js/incidents-model.js` | Pure incident rules: the reference test, the detail payload's exact keys, facts and hypotheses as separate rows, the "Who can clear this" line and the one write's arguments |
+| `js/incidents.js` | Incident DOM wiring over `get-incident`, with `link-incident-work-request` sent through the shared command kernel and dock |
 | `status.html` | V5-UX-C15 Status at `/status`: the one page served ahead of the CARR sign-in gate, so an app outage and a record-layer outage can be told apart without signing in |
 | `js/status-model.js` | Pure status rules: the four headline scenarios, the sanitized refusal sentence, the payload-free last-known snapshot and the named integration gaps |
 | `js/status.js` | Status DOM wiring over `GET /app-release` and the four Control Room reads, each settled on its own |

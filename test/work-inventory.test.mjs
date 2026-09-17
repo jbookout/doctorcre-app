@@ -240,7 +240,7 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
 
   // Route and contract.
   assert.equal(routes.routes["/work-inventory"], "work-inventory.html");
-  assert.equal(routes.version, "1.7.0", "an additive route is a minor version of the route contract");
+  assert.equal(routes.version, "1.8.0", "an additive route is a minor version of the route contract");
   assert.ok(carr.http_surfaces.includes("/api/v1/work-inventory"), "the consumed path belongs in the pinned interface");
 
   // The page is listed everywhere a page has to be listed.

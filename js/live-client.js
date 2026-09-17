@@ -361,6 +361,13 @@ export function createLiveClient(opts = {}) {
     async currentWorkItem() { return rpc('current-work-item', {}); },
     async currentWorkRequests() { return rpc('current-work-requests', {}); },
 
+    // ---------------------------------------------------- incident page (C14)
+    // One read and one write, passed through untouched. The write's arguments
+    // are exactly what the verb declares (it refuses any other field, and it
+    // takes no base version), so nothing is added here.
+    async getIncident(args = {}) { return rpc('get-incident', args); },
+    async linkIncidentWorkRequest(args) { return write('link-incident-work-request', args); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

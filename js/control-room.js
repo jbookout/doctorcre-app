@@ -13,7 +13,7 @@
 // than painted over the newer one.
 import {
   canonicalHref, coverageLine, dashboardTiles, groupedIncidents, incidentFilters, notInReleaseBlocks,
-  readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
+  operationsBlocks, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
 import { snapshotFromReads, writeSnapshot } from "./status-model.js";
@@ -225,6 +225,18 @@ function renderScopeBlocks() {
     </div>`).join("");
 }
 
+/** V5-UX-C14: the two Operations cards, in the house not-in-release style. */
+function renderOperations() {
+  const root = $("operationsBlocks");
+  if (!root) return;
+  root.innerHTML = operationsBlocks().map((block) => `
+    <div class="state-block" data-state="not_in_release" data-operations="${escapeHtml(block.id)}">
+      <h3>${escapeHtml(block.title)}</h3>
+      <p>${escapeHtml(block.body)}</p>
+      ${block.rule ? `<p class="operations-rule">${escapeHtml(block.rule)}</p>` : ""}
+    </div>`).join("");
+}
+
 function renderIncidents() {
   const read = view.reads.incidents;
   $("attentionAsOf").textContent = asOf(read);
@@ -318,6 +330,7 @@ function render() {
   renderNeedsJoe();
   renderDelivery();
   renderIncidents();
+  renderOperations();
   renderScopeBlocks();
 }
 
@@ -391,6 +404,7 @@ async function boot() {
   tabs = wireTabs("controlRoomTabs");
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());
+  renderOperations();
   renderScopeBlocks();
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
