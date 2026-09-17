@@ -232,12 +232,12 @@ small, .small { font-size: 11px; color: var(--muted); }
 .ring[data-tone="orange"] { background: conic-gradient(var(--orange) var(--ring-sweep, 0turn), transparent 0); }
 :root[data-motion="reduced"] .ring, :root[data-motion="reduced"] .btn[aria-busy="true"]::after { background: conic-gradient(var(--cyan) 0.75turn, transparent 0); }
 .btn-group { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--text) 4%, transparent); }
-.btn-group .btn { border-color: transparent; min-height: 38px; }
+.btn-group .btn { border-color: transparent; min-height: var(--touch); }
 .icon-btn { padding: 0; width: var(--touch); }
 
 /* ------------------------------------------------------------- chips and filters */
 .chip-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 11px; border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--cyan) 9%, transparent); color: var(--text); font-size: 11px; font-weight: 700; cursor: pointer; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: var(--touch); padding: 6px 11px; border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--cyan) 9%, transparent); color: var(--text); font-size: 11px; font-weight: 700; cursor: pointer; }
 .chip:hover { border-color: color-mix(in srgb, var(--orange) 60%, transparent); background: color-mix(in srgb, var(--orange) 14%, transparent); }
 .chip-label { color: var(--quiet); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
 .chip-remove { color: var(--orange-text); font-size: 14px; line-height: 1; }
@@ -314,7 +314,7 @@ small, .small { font-size: 11px; color: var(--muted); }
 .kanban-card h4 { margin: 0; font: 700 14px/1.2 var(--body); }
 .kanban-card .work-meta { font-size: 10px; }
 .card-actions { display: flex; gap: 6px; margin-top: 2px; }
-.card-actions .btn { min-height: 38px; padding: 6px 10px; font-size: 11px; }
+.card-actions .btn { min-height: var(--touch); padding: 6px 10px; font-size: 11px; }
 /* Cards move by mouse drag. The keyboard path is the same move, announced:
    focus a card, Enter or Space lifts it, arrows choose a column, Enter drops,
    Escape puts it back. Nothing in this system is drag-only. */
@@ -497,7 +497,7 @@ small, .small { font-size: 11px; color: var(--muted); }
 .atlas-edge[data-flow="inferred"] { stroke-dasharray: 8 6; opacity: 0.7; }
 .atlas-marker { fill: var(--red); stroke: var(--ground-0); stroke-width: 2; animation: breathe var(--motion-urgent) ease-in-out infinite; }
 .atlas-controls { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
-.atlas-controls .btn { min-height: 38px; background: color-mix(in srgb, var(--ground-0) 80%, transparent); }
+.atlas-controls .btn { min-height: var(--touch); background: color-mix(in srgb, var(--ground-0) 80%, transparent); }
 .atlas[data-layer="data"] .atlas-node:not([data-cat="data"]) { opacity: 0.35; }
 .atlas[data-layer="execution"] .atlas-node:not([data-cat="execution"]) { opacity: 0.35; }
 .atlas[data-layer="rules"] .atlas-node:not([data-cat="rules"]) { opacity: 0.35; }
