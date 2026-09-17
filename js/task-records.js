@@ -26,8 +26,8 @@ import { mountDocDock, mountPrefs } from "./shell.js";
 import { formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
-  orderTaskRows, partnerName, quickAddPlan, scopeRows, taskDetailRows, closeArgs, dueDateArgs,
-  validBoardPayload,
+  orderTaskRows, partnerName, quickAddPlan, quickAddRecords, scopeRows, taskDetailRows, closeArgs,
+  dueDateArgs, validBoardPayload,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -332,7 +332,9 @@ function renderQuickAdd() {
   const input = $("quickAddInput");
   if (!input) return null;
   const sentence = input.value;
-  const parsed = parseQuickAdd(sentence, { now: Date.now(), viewer, records: [] });
+  // Quick add matches against the loop titles this page has actually read, so a
+  // sentence naming a row on the board resolves Related to that row's title.
+  const parsed = parseQuickAdd(sentence, { now: Date.now(), viewer, records: quickAddRecords(view.rows) });
   const picked = $("quickAddDate")?.value || null;
   const effective = picked ? { ...parsed, due: picked, dueLabel: formatDueStamp(picked, parsed.dueTime) } : parsed;
   const preview = $("quickAddParsed");

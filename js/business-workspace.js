@@ -29,8 +29,8 @@ import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock, formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import { operationKeys, partnerName, quickAddPlan } from "./task-records-model.js";
 import {
-  acceptsResponse, displayedFreshness, freshnessSignature, homeReadPhase, safeDestination,
-  sourceIsFresh, summarizeWorkspaceScope, validWorkspacePayload, viewerWorkspaceLabel,
+  acceptsResponse, displayedFreshness, freshnessSignature, homeReadPhase, quickAddRecordNames,
+  safeDestination, sourceIsFresh, summarizeWorkspaceScope, validWorkspacePayload, viewerWorkspaceLabel,
 } from "./workspace-command-center-model.js";
 import { needLabel, teamReviewRows, unavailableCopy } from "./business-workspace-model.js";
 import { uuidv4 } from "./uuid.js";
@@ -264,7 +264,8 @@ function renderQuickAdd() {
   const input = $("quickAddInput");
   if (!input) return null;
   const sentence = input.value;
-  const parsed = parseQuickAdd(sentence, { now: Date.now(), viewer, records: [] });
+  // Quick add matches against the record names this page's own read carries.
+  const parsed = parseQuickAdd(sentence, { now: Date.now(), viewer, records: quickAddRecordNames(view.payload) });
   const picked = $("quickAddDate")?.value || null;
   const effective = picked ? { ...parsed, due: picked, dueLabel: formatDueStamp(picked, parsed.dueTime) } : parsed;
   const preview = $("quickAddParsed");

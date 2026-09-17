@@ -277,6 +277,30 @@ export function stableKey(text) {
   return hash.toString(16).padStart(8, "0");
 }
 
+/**
+ * The record names Quick add is allowed to match a sentence against: the ones
+ * this page has actually READ. Quick add used to be handed an empty list, so a
+ * sentence naming a loop on the board in front of the reader still resolved
+ * Related by capitalisation guesswork. Empty and duplicate names are dropped,
+ * and the list is capped so a long board cannot turn one keystroke into a
+ * thousand substring scans.
+ */
+export const QUICK_ADD_RECORD_CAP = 200;
+
+export function quickAddRecords(rows, cap = QUICK_ADD_RECORD_CAP) {
+  const names = [];
+  const seen = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || typeof row !== "object") continue;
+    const name = String(row.title ?? row.name ?? "").trim();
+    if (name === "" || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+    if (names.length >= cap) break;
+  }
+  return Object.freeze(names);
+}
+
 export const operationKeys = Object.freeze({
   handover: (row) => `handover:${row?.kind}:${row?.number}`,
   close: (row) => `close:${row?.kind}:${row?.number}`,

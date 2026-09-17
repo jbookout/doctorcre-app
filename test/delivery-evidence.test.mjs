@@ -8,6 +8,7 @@ import {
   dispositionEffect, dispositionOptions, operationKeys, refusalMessage, renderCount, stageDenominator,
   validPassportPayload, validPortfolioPayload, validWorkRequestCard,
 } from "../js/delivery-evidence-model.js";
+import { dispositionState } from "../js/work-inventory-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createCommandState, performCommand } from "../js/command-feedback.mjs";
 import { uuidv4 } from "../js/uuid.js";
@@ -305,6 +306,37 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   assert.match(js, /deliveryStages\(null\)/);
   assert.match(js, /stageDenominator\(/);
   assert.doesNotMatch(js, /review-engineering-slice/, "independent review is not a browser write");
+
+  // Nine columns cannot be a table on a phone: the header hides and each cell
+  // carries its own caption, so nothing is read by counting across.
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*\.stage-table thead \{ display: none; \}/);
+  assert.match(css, /\.stage-table td\[data-stage-label\]::before \{\n\s*content: attr\(data-stage-label\);/);
+  assert.match(js, /data-stage-label="\$\{escapeHtml\(STAGE_LABEL\[row\.stage\]/, "every stage cell carries its column caption");
+  assert.match(js, /data-stage-label="Record"/);
+  assert.match(js, /data-stage-label="Evidence"/);
+  // The state colours are keyed to the cell, not to the table layout.
+  assert.match(css, /\.stage-cell\[data-state="complete"\]/);
+
+  // The disposition row shows the census status before any card is read, and
+  // marks it as the census's word rather than the card's.
+  assert.match(js, /dispositionState\(item, card\)/);
+  assert.match(js, /from the census read/);
+});
+
+test("a disposition row states what it knows, and says which read it came from", () => {
+  const item = { kind: "work_request", id: "WR-000901", status: "in_progress" };
+
+  // No card: the census already answered, so the row is not "unknown" — but the
+  // word is marked as the census's, not the card's.
+  assert.deepEqual({ ...dispositionState(item, null) }, { state: "in_progress", source: "census" });
+
+  // A card is authority and needs no marker.
+  assert.deepEqual({ ...dispositionState(item, { state: "triaged" }) }, { state: "triaged", source: "card" });
+
+  // Neither: the literal word unknown, never an invented state.
+  assert.deepEqual({ ...dispositionState({ kind: "work_request", id: "WR-000902" }, null) },
+    { state: "unknown", source: "none" });
+  assert.deepEqual({ ...dispositionState({ status: "   " }, null) }, { state: "unknown", source: "none" });
 });
 
 /** file: URLs are not fetchable in node, so the seed travels as a data: URL. */

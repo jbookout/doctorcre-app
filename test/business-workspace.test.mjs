@@ -7,7 +7,7 @@ import {
   HOME_SECTIONS, NOT_IN_RELEASE, SECTION_TITLE, homeSections, needLabel, teamReviewRows, unavailableCopy,
 } from "../js/business-workspace-model.js";
 import { migratePreferences } from "../js/shell.js";
-import { validWorkspacePayload } from "../js/workspace-command-center-model.js";
+import { quickAddRecordNames, validWorkspacePayload } from "../js/workspace-command-center-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -185,4 +185,15 @@ test("the synthetic command-centre read is a payload the shared validator accept
   assert.equal(validWorkspacePayload(dellPayload), true);
   assert.equal(dellPayload.viewer, "dell");
   assert.equal(dellPayload.needs_you_now.some((item) => item.kind === "needs_joe_work"), false, "work waiting on Joe is not shown to Dell as his");
+
+  // Quick add is handed the names THIS read carries. The command-centre read is
+  // an aggregate of counts and destinations, so today that is honestly none —
+  // never the category labels ("Flagged team deals") the page draws.
+  assert.deepEqual([...quickAddRecordNames(payload)], []);
+  assert.deepEqual([...quickAddRecordNames(null)], [], "an unverified payload names no record");
+});
+
+test("Quick add on Home is wired to the page's own read, not to a hardcoded empty list", () => {
+  assert.doesNotMatch(pageJs, /records:\s*\[\]/, "Quick add is given the records the page already holds");
+  assert.match(pageJs, /records: quickAddRecordNames\(view\.payload\)/);
 });

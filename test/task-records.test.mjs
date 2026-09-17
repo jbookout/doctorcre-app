@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   BOARD_ROW_KEYS, PARTNERS, TASK_KINDS, closeArgs, dueDateArgs, handoverArgs, handoverTarget,
   loopRefusalMessage, normalizeBoardRow, operationKeys, orderTaskRows, partnerName, quickAddPlan,
-  scopeRows, stableKey, taskDetailRows, validBoardPayload,
+  quickAddRecords, scopeRows, stableKey, taskDetailRows, validBoardPayload,
 } from "../js/task-records-model.js";
 import { parseQuickAdd } from "../js/visual-system.js";
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -364,4 +364,30 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   // The model stays pure.
   assert.doesNotMatch(model, /document\.|window\.|fetch\(|localStorage|Date\.now\(\)/, "the model has no DOM, no network and no clock of its own");
   for (const source of [html, js, model, css]) assert.doesNotMatch(source, /\bTODO\b/);
+
+  // Quick add reads the board this page is holding, not an empty list.
+  assert.doesNotMatch(js, /records:\s*\[\]/, "Quick add is given the records the page already holds");
+  assert.match(js, /records: quickAddRecords\(view\.rows\)/);
+});
+
+test("Quick add is offered the titles the board actually holds, deduped and capped", () => {
+  const rows = [
+    boardRow({ number: "201", title: "Beasley lease renewal" }),
+    boardRow({ number: "202", title: "Beasley lease renewal" }),
+    boardRow({ number: "203", title: "   " }),
+    boardRow({ number: "204", title: "Crestview derm site tour" }),
+  ];
+  assert.deepEqual([...quickAddRecords(rows)], ["Beasley lease renewal", "Crestview derm site tour"]);
+
+  // Nothing, and rubbish, produce no names rather than an invented one.
+  assert.deepEqual([...quickAddRecords(null)], []);
+  assert.deepEqual([...quickAddRecords([null, 7, {}])], []);
+
+  // The cap is a real ceiling, not a comment.
+  const many = Array.from({ length: 260 }, (_, index) => ({ title: `Loop ${index}` }));
+  assert.equal(quickAddRecords(many).length, 200);
+
+  // And the names actually steer parseQuickAdd's Related field.
+  const parsed = parseQuickAdd("call about Beasley lease renewal friday", { now: Date.parse(NOW), viewer: "joe", records: quickAddRecords(rows) });
+  assert.equal(parsed.related, "Beasley lease renewal");
 });
