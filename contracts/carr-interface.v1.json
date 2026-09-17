@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e7f4f1514568d03e269bda336a4c7d28f24f5810"
@@ -22,7 +22,9 @@
     "create-national-account",
     "create-national-market-deal",
     "deal-room-board",
+    "decline-work-request",
     "end-deal-review",
+    "engineering-passport",
     "get-call-context",
     "get-deal-room",
     "loop-board",
@@ -31,6 +33,7 @@
     "patch-deal-field",
     "presence-lease",
     "read-loop",
+    "read-portfolio",
     "resolve-candidate",
     "resolve-conflict",
     "resolve-post-call-candidate",
@@ -40,8 +43,11 @@
     "set-market-agent",
     "set-national-account-owner",
     "set-next-step",
+    "set-work-shape-disposition",
     "start-deal-review",
-    "update-loop"
+    "supersede-work-request",
+    "update-loop",
+    "work-request-card"
   ],
   "http_surfaces": [
     "/pipeline/changes",

@@ -338,6 +338,71 @@ export async function createFixtureClient(opts = {}) {
     return { status: 'ok', event: e, event_id: e.id, event_recorded_at: e.recorded_at };
   }
 
+  // ------------------------------------------------- delivery evidence (C11)
+  // Five synthetic Work Requests, chosen so that every NON-operational state the
+  // Delivery stages table has to be able to show is reachable without a server:
+  // built-unmerged, merged-unactivated, active-unproven, a captured record that
+  // can actually be withdrawn, and a record whose plan is stale. Nothing here is
+  // production state and every ref is visibly a demo one.
+  const evidenceRef = (ref) => ({ ref, content_digest: 'd'.repeat(64), redaction_class: 'metadata_only' });
+  const facet = (state, ref, note) => ({ state, evidence_refs: ref ? [evidenceRef(ref)] : [], note });
+  function passport({ work_request, slices, closure_state, closure, stale = false }) {
+    return {
+      schema_version: 'engineering-passport.v1',
+      work_request,
+      accepted_plan_revision: { id: `${work_request}-PLAN`, revision: 3, digest: 'a'.repeat(64) },
+      plan_digest: 'b'.repeat(64),
+      slice_plan: { work_request, slices: [] },
+      execution_envelopes: [],
+      slices,
+      current_receipts: [], current_reviewer_facts: [], receipts: [], reviewer_facts: [], qa_facts: [],
+      operator_receipt: { what_changed: [], why: 'synthetic fixture projection', evidence_refs: [], deviations: [], remaining_risk: [], manual_qa_items: [] },
+      closure,
+      closure_state,
+      stale_conflict: stale
+        ? { state: 'stale', reason: 'current Work Request or accepted plan no longer matches the registered slice plan' }
+        : { state: 'none', reason: null },
+      projection_digest: 'c'.repeat(64),
+    };
+  }
+  const slice = (slice_ref, state) => ({ slice_ref, ordinal: 1, dependency_refs: [], state, planned_check_refs: [], deviation_refs: [], manual_qa_required: false, release_requirement: 'none' });
+  const unresolved = (note) => facet('unresolved', null, note);
+  const workRequests = new Map([
+    ['WR-000901', { ref: 'WR-000901', title: 'Demo built, not merged', state: 'ready', version: 4, portfolio_ref: 'PF-DEMO-1',
+      passport: passport({ work_request: 'WR-000901', closure_state: 'blocked', slices: [slice('SL-901-1', 'verified_complete')],
+        closure: { work: unresolved('one or more planned slices remain unresolved'), proof: unresolved('receipts are executor claims until independently reviewed'), explanation: unresolved('derived from canonical persisted facts'), release: unresolved('release remains closed until closure is complete'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
+    ['WR-000902', { ref: 'WR-000902', title: 'Demo merged, not activated', state: 'ready', version: 2, portfolio_ref: 'PF-DEMO-2',
+      passport: passport({ work_request: 'WR-000902', closure_state: 'blocked', slices: [slice('SL-902-1', 'verified_complete')],
+        closure: { work: facet('complete', 'demo-merge-902', 'all planned slices have a bound receipt and independent pass'), proof: unresolved('receipts are executor claims until independently reviewed'), explanation: unresolved('derived from canonical persisted facts'), release: unresolved('release remains closed until closure is complete'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
+    ['WR-000903', { ref: 'WR-000903', title: 'Demo active, consumer unproven', state: 'ready', version: 7, portfolio_ref: null,
+      passport: passport({ work_request: 'WR-000903', closure_state: 'complete', slices: [slice('SL-903-1', 'verified_complete')],
+        closure: { work: facet('complete', 'demo-merge-903', 'all planned slices have a bound receipt and independent pass'), proof: unresolved('receipts are executor claims until independently reviewed'), explanation: facet('complete', 'demo-explain-903', 'derived from canonical persisted facts'), release: facet('complete', 'demo-release-903', 'all required slices are verified'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
+    ['WR-000904', { ref: 'WR-000904', title: 'Demo captured in error', state: 'captured', version: 1, portfolio_ref: null, passport: null }],
+    ['WR-000905', { ref: 'WR-000905', title: 'Demo stale plan', state: 'ready', version: 3, portfolio_ref: 'PF-DEMO-1',
+      passport: passport({ work_request: 'WR-000905', closure_state: 'complete', stale: true, slices: [slice('SL-905-1', 'verified_complete')],
+        closure: { work: facet('complete', 'demo-merge-905', 'all planned slices have a bound receipt and independent pass'), proof: facet('complete', 'demo-proof-905', 'all receipts are independently reviewed'), explanation: facet('complete', 'demo-explain-905', 'derived from canonical persisted facts'), release: facet('complete', 'demo-release-905', 'all required slices are verified'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
+  ]);
+  const portfolios = new Map([
+    ['PF-DEMO-1', { portfolio_ref: 'PF-DEMO-1', exists: true, accepted: true, accepted_revision_id: 'PF-DEMO-1-R2', reviews: [{ verdict: 'pass', reviewed_digest: 'e'.repeat(64), reviewer_actor_id: partnerActor }] }],
+    ['PF-DEMO-2', { portfolio_ref: 'PF-DEMO-2', exists: true, accepted: false, accepted_revision_id: null, reviews: [] }],
+  ]);
+  function refuse(verb, code, extra = {}) {
+    const error = new Error(`fixture ${verb} refused: ${code}`);
+    error.payload = { error: code, ...extra };
+    throw error;
+  }
+  function workRequestOrRefuse(verb, ref) {
+    const row = workRequests.get(String(ref));
+    if (!row) refuse(verb, 'work_request_not_found', { work_request: ref });
+    return row;
+  }
+  function guardWorkRequestVersion(verb, row, baseVersion) {
+    if (!Number.isInteger(baseVersion)) refuse(verb, 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
+    if (Number(baseVersion) !== Number(row.version)) {
+      refuse(verb, 'version_conflict', { human_ref: row.ref, resolution: 're-read the Work Request card; only its current captured version may be withdrawn' });
+    }
+  }
+
   const client = {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
@@ -708,6 +773,82 @@ export async function createFixtureClient(opts = {}) {
         found.version = Number(found.version) + 1;
         found.updated_at = found.closed_at;
         return { ok: true, loop_id: found.loop_id, number: found.number, status: found.status };
+      });
+    },
+
+    // ------------------------------------------------- delivery evidence (C11)
+    // The three reads REFUSE a miss rather than answering an empty one, because
+    // an empty answer would paint as "no evidence" where the truth is "unknown".
+    // The three writes are captured-only or pre-build-only exactly as the record
+    // layer is, they demand the version the card last held, and they replay a
+    // stored answer under a spent key instead of writing a second time.
+    async engineeringPassport({ work_request } = {}) {
+      const row = workRequestOrRefuse('engineering-passport', work_request);
+      if (!row.passport) refuse('engineering-passport', 'engineering_work_request_not_found', { work_request });
+      return structuredClone(row.passport);
+    },
+
+    async readPortfolio({ portfolio_ref } = {}) {
+      const row = portfolios.get(String(portfolio_ref));
+      if (!row) refuse('read-portfolio', 'portfolio_readback_unavailable', { portfolio_ref });
+      return { ok: true, ...structuredClone(row) };
+    },
+
+    async workRequestCard({ work_request } = {}) {
+      const row = workRequestOrRefuse('work-request-card', work_request);
+      return {
+        ok: true, human_ref: row.ref, title: row.title, state: row.state, version: Number(row.version),
+        projection_state: ['declined', 'superseded'].includes(row.state) ? 'declined' : 'queued',
+        shape: row.shape ? { ...row.shape } : null,
+        withdrawal: row.withdrawal ? { ...row.withdrawal } : null,
+        next_human_action: { label: 'Review and triage', effect: 'none' },
+        actions: [],
+      };
+    },
+
+    async declineWorkRequest({ idempotency_key, human_ref, base_version, exit_reason }) {
+      return withIdem(idempotency_key, () => {
+        const row = workRequestOrRefuse('decline-work-request', human_ref);
+        if (row.state !== 'captured') refuse('decline-work-request', 'work_request_not_found', { human_ref });
+        guardWorkRequestVersion('decline-work-request', row, base_version);
+        if (!exit_reason || !String(exit_reason).trim()) refuse('decline-work-request', 'exit_reason_required', { hint: 'Say why this request was captured in error.' });
+        row.state = 'declined';
+        row.version = Number(row.version) + 1;
+        row.withdrawal = { exit_reason: String(exit_reason).trim(), closed_at: nowIso(), superseded_by_ref: null };
+        return { ok: true, human_ref: row.ref, state: row.state, version: row.version, exit_reason: row.withdrawal.exit_reason, closed_at: row.withdrawal.closed_at };
+      });
+    },
+
+    async supersedeWorkRequest({ idempotency_key, human_ref, base_version, exit_reason, superseded_by }) {
+      return withIdem(idempotency_key, () => {
+        const row = workRequestOrRefuse('supersede-work-request', human_ref);
+        if (row.state !== 'captured') refuse('supersede-work-request', 'work_request_not_found', { human_ref });
+        guardWorkRequestVersion('supersede-work-request', row, base_version);
+        if (!/^WR-[0-9]{1,12}$/.test(String(superseded_by))) refuse('supersede-work-request', 'successor_required', { hint: 'Name the request that replaces this one.' });
+        row.state = 'superseded';
+        row.version = Number(row.version) + 1;
+        row.withdrawal = { exit_reason: String(exit_reason).trim(), closed_at: nowIso(), superseded_by_ref: String(superseded_by) };
+        return { ok: true, human_ref: row.ref, state: row.state, version: row.version, exit_reason: row.withdrawal.exit_reason, closed_at: row.withdrawal.closed_at, superseded_by_ref: row.withdrawal.superseded_by_ref };
+      });
+    },
+
+    async setWorkShapeDisposition({ idempotency_key, work_request, base_version, disposition, rationale, fixed_surface_ref, human_quote }) {
+      return withIdem(idempotency_key, () => {
+        const row = workRequestOrRefuse('set-work-shape-disposition', work_request);
+        if (!['captured', 'triaged', 'ready'].includes(row.state)) {
+          refuse('set-work-shape-disposition', 'work_shape_disposition_frozen', { work_request: row.ref, state: row.state, allowed_states: ['captured', 'triaged', 'ready'] });
+        }
+        guardWorkRequestVersion('set-work-shape-disposition', row, base_version);
+        if (!['required', 'not_required'].includes(disposition)) refuse('set-work-shape-disposition', 'invalid_disposition', {});
+        if (disposition === 'not_required' && !String(fixed_surface_ref || '').trim()) {
+          refuse('set-work-shape-disposition', 'fixed_surface_ref_required', { hint: 'Not required is admitted only when the surface is already fixed.' });
+        }
+        row.version = Number(row.version) + 1;
+        row.shape = { disposition, fixed_surface_ref: disposition === 'not_required' ? String(fixed_surface_ref).trim() : null };
+        void human_quote;
+        return { ok: true, work_request: { id: `fixture-${row.ref}`, ref: row.ref, title: row.title, state: row.state, version: row.version,
+          shape_disposition: row.shape.disposition, shape_fixed_surface_ref: row.shape.fixed_surface_ref,
+          shape_rationale: String(rationale).trim(), shape_decided_by_actor_id: selfActor, shape_decided_at: nowIso() } };
       });
     },
 

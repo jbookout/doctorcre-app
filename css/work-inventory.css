@@ -39,3 +39,19 @@
   .work-item > .status,
   .work-item > .small { justify-self: start; }
 }
+
+/* V5-UX-C11 Delivery stages and retrospective disposition.
+ *
+ * The table is the design-operations prototype's .data-table, unchanged. What is
+ * added here is the same three things this sheet already does for the census:
+ * the 44px floor on the new controls, wrapping for long refs, and a horizontal
+ * scroller so eight columns never force the PAGE sideways on a phone. */
+.stage-scroll { overflow-x: auto; }
+.stage-table td .btn,
+#dispositionRows .btn,
+.dialog .row-wrap .btn { min-height: var(--touch); }
+.stage-table td { overflow-wrap: anywhere; }
+.stage-cell { font-weight: 600; }
+.stage-cell[data-state="complete"] { color: var(--green); }
+.stage-cell[data-state="not reached"] { color: var(--muted); }
+.stage-cell[data-state="unknown"] { color: var(--amber); }

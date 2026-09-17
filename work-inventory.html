@@ -102,8 +102,93 @@
         <p class="small" id="sourceLine">Source pending</p>
       </div>
     </section>
+    <section class="card glass" aria-labelledby="stagesTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Delivery</p><h2 id="stagesTitle">Delivery stages</h2></div>
+        <span class="as-of" id="stagesCount">unknown</span>
+      </div>
+      <div class="state-block" id="stagesState" data-state="loading" hidden>
+        <h3>No work request has been read yet</h3>
+      </div>
+      <div class="stage-scroll">
+        <table class="data-table stage-table" id="stageTable">
+          <caption>Counts have a known denominator; N/A carries a reason.</caption>
+          <thead><tr>
+            <th scope="col">Record</th>
+            <th scope="col">Planned</th>
+            <th scope="col">Approved</th>
+            <th scope="col">Source verified</th>
+            <th scope="col">Merged</th>
+            <th scope="col">Released</th>
+            <th scope="col">Activated</th>
+            <th scope="col">Consumer proven</th>
+            <th scope="col">Evidence</th>
+          </tr></thead>
+          <tbody id="stageRows"></tbody>
+        </table>
+      </div>
+      <p class="small" id="stageDenominatorLine">Denominator unknown until the census answers.</p>
+    </section>
+
+    <section class="card glass" aria-labelledby="dispositionTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Retrospective</p><h2 id="dispositionTitle">Retrospective disposition</h2></div>
+        <span class="as-of" id="dispositionCount">unknown</span>
+      </div>
+      <div class="state-block" id="dispositionMissing" data-state="unknown">
+        <h3>Not available here</h3>
+        <p>No supported disposition command exists for combine, shelve, investigate or finish shipping. Joe decides those in the record layer.</p>
+      </div>
+      <ul class="work-list" id="dispositionRows"></ul>
+    </section>
   </main>
 
+  <dialog id="evidenceDialog" class="dialog" aria-labelledby="evidenceTitle">
+    <article>
+      <header><div><p class="eyebrow">Delivery evidence</p><h2 id="evidenceTitle">Record</h2></div><button class="btn icon-btn" type="button" id="evidenceClose" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <dl class="detail-rows" id="evidenceRows"></dl>
+        <p class="small">Independent review is recorded by the reviewing seat, not from this page.</p>
+      </div>
+    </article>
+  </dialog>
+
+  <dialog id="dispositionDialog" class="dialog" aria-labelledby="dispositionDialogTitle">
+    <form method="dialog" id="dispositionForm">
+      <header><div><p class="eyebrow" id="dispositionDialogEyebrow">Disposition</p><h2 id="dispositionDialogTitle">Record</h2></div><button class="btn icon-btn" type="button" id="dispositionClose" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <p class="small" id="dispositionEffect">Nothing is recorded yet.</p>
+        <div class="field">
+          <label for="dispositionReason" id="dispositionReasonLabel">Why</label>
+          <input id="dispositionReason" type="text" autocomplete="off" required placeholder="Say why, in your own words">
+          <p class="field-hint">The record layer refuses this without a reason.</p>
+        </div>
+        <div class="field" id="dispositionSuccessorField" hidden>
+          <label for="dispositionSuccessor">Successor</label>
+          <input id="dispositionSuccessor" type="text" autocomplete="off" placeholder="WR-000123" pattern="WR-[0-9]{1,12}">
+        </div>
+        <div class="field" id="dispositionShapeField" hidden>
+          <label for="dispositionShape">Shape analysis</label>
+          <select id="dispositionShape">
+            <option value="required">required</option>
+            <option value="not_required">not required</option>
+          </select>
+        </div>
+        <div class="field" id="dispositionSurfaceField" hidden>
+          <label for="dispositionSurface">Fixed surface</label>
+          <input id="dispositionSurface" type="text" autocomplete="off" placeholder="The surface that is already fixed">
+        </div>
+        <p class="state-block" id="dispositionRefusal" data-state="refused" hidden></p>
+        <div class="row-wrap">
+          <button class="btn btn-primary" type="submit" id="dispositionConfirm">Record it</button>
+          <button class="btn btn-secondary" type="button" id="dispositionReread" hidden>Read again</button>
+          <button class="btn btn-quiet" type="button" id="dispositionCancel">Leave it as it is</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="shell"><p class="small">DoctorCRE · Complete Work Inventory · Coverage travels with every count.</p></footer>
 
   <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>

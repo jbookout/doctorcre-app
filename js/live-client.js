@@ -329,6 +329,19 @@ export function createLiveClient(opts = {}) {
       return res.json();
     },
 
+    // ------------------------------------------------- delivery evidence (C11)
+    // Three reads and three writes, passed through untouched. The reads answer a
+    // miss by REFUSING, so a missing passport arrives as a thrown error with the
+    // payload the command kernel classifies; nothing here turns one into an
+    // empty answer, because an empty answer would paint as "no evidence" rather
+    // than "unknown".
+    async engineeringPassport(args = {}) { return rpc('engineering-passport', args); },
+    async readPortfolio(args = {}) { return rpc('read-portfolio', args); },
+    async workRequestCard(args = {}) { return rpc('work-request-card', args); },
+    async declineWorkRequest(args) { return write('decline-work-request', args); },
+    async supersedeWorkRequest(args) { return write('supersede-work-request', args); },
+    async setWorkShapeDisposition(args) { return write('set-work-shape-disposition', args); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },
