@@ -292,7 +292,7 @@ test("the fixture serves the three reads in the record layer's own shapes, and o
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.6.0");
+  assert.equal(routes.version, "1.7.0");
   assert.equal(contract.version, "1.7.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
