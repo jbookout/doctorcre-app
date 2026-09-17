@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-app-routes.v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "routes": {
     "/": "workspace.html",
     "/workspace": "workspace.html",
@@ -12,6 +12,9 @@
     "/room.html": "room.html",
     "/queue.html": "queue.html",
     "/tours": "tours/index.html",
-    "/share": "reports/share.html"
+    "/share": "reports/share.html",
+    "/design": "design.html",
+    "/design/business": "design-business.html",
+    "/design/operations": "design-operations.html"
   }
 }

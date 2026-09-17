@@ -1,0 +1,108 @@
+{
+  "schema": "doctorcre-visual-system.v1",
+  "version": "1.0.0",
+  "slice": "V5-UX-S01",
+  "stylesheet": "css/system.css",
+  "model": "js/visual-system.js",
+  "prototypes": {
+    "index": "design.html",
+    "business": "design-business.html",
+    "operations": "design-operations.html"
+  },
+  "register": "Dark cinematic register on every surface: near-black ground, glass panels with real backdrop blur, CARR navy and orange as the light in the frame, condensed display type. The light theme keeps the same grammar on a light ground; it is Dell's preference, not a different design.",
+  "preferences": {
+    "attributes": { "theme": "data-theme", "density": "data-density", "motion": "data-motion" },
+    "theme": { "values": ["dark", "light"], "default": "dark" },
+    "density": { "values": ["comfortable", "compact"], "default": "comfortable" },
+    "motion": { "values": ["full", "reduced"], "default": "full", "system_fallback": "prefers-reduced-motion" },
+    "rule": "Personal by contract. Follow mode syncs view and selection only and never changes another partner's theme, density or motion."
+  },
+  "tokens": {
+    "ground": ["--ground-0", "--ground-1", "--ground-2", "--glass", "--glass-hi", "--line", "--line-strong", "--shadow", "--shadow-float"],
+    "text": ["--text", "--muted", "--quiet", "--on-accent"],
+    "accent": ["--navy", "--navy-deep", "--orange", "--orange-text", "--cyan", "--cyan-text", "--green", "--green-text", "--amber", "--amber-text", "--red", "--red-text", "--violet", "--violet-text", "--focus"],
+    "category": ["--cat-data", "--cat-execution", "--cat-rules", "--cat-infra"],
+    "health_overlay": ["--health-ok", "--health-degraded", "--health-failed", "--health-unknown"],
+    "themed_in_both": ["--ground-0", "--ground-1", "--ground-2", "--glass", "--glass-hi", "--line", "--line-strong", "--text", "--muted", "--quiet", "--navy", "--orange", "--orange-text", "--cyan", "--cyan-text", "--green", "--green-text", "--amber", "--amber-text", "--red", "--red-text", "--violet", "--violet-text", "--focus", "--cat-data", "--cat-execution", "--cat-rules", "--cat-infra", "--health-ok", "--health-degraded", "--health-failed", "--health-unknown"],
+    "type": ["--display", "--body", "--mono"],
+    "shape": ["--radius-s", "--radius", "--radius-l", "--unit", "--density", "--touch", "--gap", "--pad", "--pad-card"],
+    "motion": ["--motion-calm", "--motion-attention", "--motion-urgent", "--motion-flow", "--motion-enter", "--motion-move", "--ease"]
+  },
+  "contrast_floor": {
+    "ratio": 4.5,
+    "pairs": [
+      ["--text", "--ground-0"], ["--text", "--ground-2"],
+      ["--muted", "--ground-0"], ["--muted", "--ground-2"],
+      ["--quiet", "--ground-0"], ["--quiet", "--ground-1"],
+      ["--orange-text", "--ground-0"], ["--orange-text", "--ground-2"],
+      ["--cyan-text", "--ground-0"], ["--green-text", "--ground-0"],
+      ["--amber-text", "--ground-0"], ["--red-text", "--ground-0"], ["--violet-text", "--ground-0"],
+      ["--on-accent", "--orange"]
+    ]
+  },
+  "motion_states": {
+    "rule": "Motion is a state channel and is always redundant with colour and shape. With motion reduced, every state stays readable from the shape alone.",
+    "states": {
+      "healthy": { "shape": "solid dot", "duration": "--motion-calm" },
+      "attention": { "shape": "ring dot", "duration": "--motion-attention" },
+      "urgent": { "shape": "double ring", "duration": "--motion-urgent" },
+      "refreshing": { "shape": "solid dot, cyan", "duration": "--motion-attention" },
+      "unknown": { "shape": "dashed hollow dot", "duration": "none" },
+      "still": { "shape": "hollow dot", "duration": "none" }
+    },
+    "flow": "Direction and flow motion is illustrative and labelled so; static wiring never animates as measured live traffic.",
+    "forbidden": ["casino or arcade effects", "widespread simultaneous pulses", "flashing", "motion as the only signal"]
+  },
+  "components": {
+    "shell": { "selectors": [".topbar", ".brand", ".primary-nav", ".global-controls", ".mobile-nav", ".skip"], "states": ["[aria-current=\"page\"]"] },
+    "glass_card": { "selectors": [".glass", ".card"], "states": [".card.attention", ".card.healthy", ".card.urgent", ".card.refreshing", ".card.unknown"] },
+    "button": { "selectors": [".btn", ".btn-primary", ".btn-secondary", ".btn-quiet", ".btn-danger", ".btn-group", ".icon-btn"], "states": [".btn[aria-pressed=\"true\"]", ".btn[aria-busy=\"true\"]", "button:disabled"] },
+    "chip": { "selectors": [".chip-bar", ".chip", ".chip-label", ".chip-remove", ".chip-reset"], "states": [".chip[aria-pressed=\"true\"]"] },
+    "field": { "selectors": [".field", ".field-hint", ".switch", ".switch-track"], "states": [".field.invalid", ".field-error", ".switch[aria-checked=\"true\"]"] },
+    "status": { "selectors": [".status", ".orb"], "states": [".orb[data-state=\"healthy\"]", ".orb[data-state=\"attention\"]", ".orb[data-state=\"urgent\"]", ".orb[data-state=\"refreshing\"]", ".orb[data-state=\"unknown\"]", ".orb[data-state=\"still\"]"] },
+    "work_item": { "selectors": [".work-list", ".work-item", ".work-meta", ".owner", ".avatar", ".work-status", ".why", ".pin"], "states": [".work-item[data-priority=\"overdue\"]", ".work-item[data-priority=\"deadline\"]", ".work-item[data-priority=\"blocked\"]", ".work-item[data-priority=\"ordinary\"]", ".work-status[data-status=\"todo\"]", ".work-status[data-status=\"in_progress\"]", ".work-status[data-status=\"waiting\"]", ".work-status[data-status=\"done\"]", ".avatar[data-partner=\"joe\"]", ".avatar[data-partner=\"dell\"]"] },
+    "kanban": { "selectors": [".kanban", ".kanban-column", ".kanban-lane-label", ".kanban-card", ".card-actions", ".move-menu"], "states": [".kanban-card[data-kind=\"prospect\"]", ".kanban-card[data-kind=\"client\"]", ".kanban-card[data-pending=\"true\"]", ".move-menu button[aria-disabled=\"true\"]"] },
+    "side_panel": { "selectors": [".side-panel", ".panel-head", ".panel-section"], "states": [".side-panel[data-pinned=\"true\"]"] },
+    "dialog": { "selectors": [".dialog", ".dialog-body", ".completion-need", ".evidence-option"], "states": [".dialog::backdrop"] },
+    "command_feedback": { "selectors": [".receipt-dock", ".receipt", ".receipt-badge"], "states": [".receipt[data-state=\"pending\"]", ".receipt[data-state=\"confirmed\"]", ".receipt[data-state=\"refused\"]", ".receipt[data-state=\"unknown\"]", ".receipt[data-state=\"undone\"]"] },
+    "data_state": { "selectors": [".state-block", ".skeleton-line", ".as-of", ".compare", ".source-link"], "states": [".state-block[data-state=\"loading\"]", ".state-block[data-state=\"refreshing\"]", ".state-block[data-state=\"empty\"]", ".state-block[data-state=\"no_match\"]", ".state-block[data-state=\"no_access\"]", ".state-block[data-state=\"offline\"]", ".state-block[data-state=\"refused\"]", ".state-block[data-state=\"conflict\"]", ".state-block[data-state=\"unknown\"]", ".state-block[data-state=\"partial\"]", ".state-block[data-state=\"stale\"]", ".state-block[data-state=\"draft\"]", ".state-block[data-state=\"permission_changed\"]", ".as-of[data-stale=\"true\"]"] },
+    "incident": { "selectors": [".incident", ".certainty"], "states": [".incident[data-severity=\"degraded\"]", ".incident[data-severity=\"unknown\"]", ".certainty[data-level=\"fact\"]", ".certainty[data-level=\"hypothesis\"]"] },
+    "session_card": { "selectors": [".session-card", ".session-id", ".dual-state"], "states": [".work-state[data-state=\"working\"]", ".work-state[data-state=\"idle\"]", ".work-state[data-state=\"blocked\"]", ".work-state[data-state=\"awaiting_input\"]", ".work-state[data-state=\"complete\"]", ".work-state[data-state=\"unknown\"]", ".contact-state[data-state=\"fresh\"]", ".contact-state[data-state=\"pending_ack\"]", ".contact-state[data-state=\"delayed\"]", ".contact-state[data-state=\"disconnected\"]", ".contact-state[data-state=\"unknown\"]"] },
+    "approval": { "selectors": [".approval"], "states": [".approval[data-state=\"stale\"]"] },
+    "meter": { "selectors": [".meter", ".meter-bar", ".meter-row"], "states": [".meter[data-coverage=\"unavailable\"]"] },
+    "atlas": { "selectors": [".atlas", ".atlas-node", ".atlas-edge", ".atlas-marker", ".atlas-controls", ".legend", ".swatch"], "states": [".atlas-node[data-cat=\"data\"]", ".atlas-node[data-cat=\"execution\"]", ".atlas-node[data-cat=\"rules\"]", ".atlas-node[data-cat=\"infra\"]", ".atlas-node[data-health=\"failed\"]", ".atlas-node[data-health=\"degraded\"]", ".atlas-node[data-health=\"blocked\"]", ".atlas-node[data-health=\"unknown\"]", ".atlas-node[aria-current=\"true\"]", ".atlas-edge[data-flow=\"stopped\"]", ".atlas-edge[data-flow=\"healthy\"]", ".atlas-edge[data-flow=\"inferred\"]", ".atlas[data-layer=\"data\"]", ".atlas[data-layer=\"execution\"]", ".atlas[data-layer=\"rules\"]", ".atlas[data-layer=\"infra\"]"] },
+    "chart_equivalent": { "selectors": [".data-table", ".bar-row"], "states": [] },
+    "accomplishment": { "selectors": [".accomplishment"], "states": [] }
+  },
+  "state_vocabulary": {
+    "data": ["loading", "refreshing", "empty", "no_match", "no_access", "offline", "draft", "refused", "conflict", "unknown", "partial", "stale", "permission_changed"],
+    "command": ["idle", "pending", "confirmed", "refused", "unknown", "checking", "undone"],
+    "work_priority": ["overdue", "deadline", "blocked", "ordinary"],
+    "task_status": ["todo", "in_progress", "waiting", "done"],
+    "execution": ["working", "idle", "blocked", "awaiting_input", "complete", "unknown"],
+    "contact": ["fresh", "pending_ack", "delayed", "disconnected", "unknown"]
+  },
+  "accessibility": {
+    "floor": "WCAG 2.2 AA",
+    "touch_target_px": 44,
+    "requirements": [
+      "Every action is keyboard and click/tap operable; no drag-only or hover-only path (Move menu beside every draggable card).",
+      "Focus is visible, unobscured, and returns to the originating control after a panel or dialog closes.",
+      "A modal dialog and a pinnable nonmodal side panel are distinct components.",
+      "Colour is never the only signal: every status has a shape, every category a shape, and health overlays keep category hue legible.",
+      "Charts have an equivalent table or list with units, window and source.",
+      "Ongoing motion can be paused; prefers-reduced-motion and the personal motion preference both disable it.",
+      "Light and dark are verified separately against the contrast floor."
+    ]
+  },
+  "reference_dispositions": [
+    { "source": "Apple Human Interface Guidelines design principles", "applied": "purpose, agency, familiarity, simplicity and craft drive the state vocabulary; no Apple-native mandate" },
+    { "source": "HIG agent skills repository (justinwetch)", "applied": "platform distinctions preserved; not installed" },
+    { "source": "shadcn/ui, rareui, transitions.dev, beui", "applied": "interaction references for menus, chips and receipts; no framework rewrite or bulk install; beautifului.dev not inspected" },
+    { "source": "lieflat-charts", "applied": "one visual grammar for charts and their table equivalents; bound to V5-R04 for product charts" },
+    { "source": "21st.dev and Magic UI", "applied": "component references only; no new integrations" },
+    { "source": "Carbon data-visualization palettes and C4 notation", "applied": "categorical colours with a persistent legend, separate from status colours; no universal colour code claimed" },
+    { "source": "WCAG 2.2 dragging movements, pause-stop-hide, animation from interactions", "applied": "Move menu, motion pause, reduced-motion floor" }
+  ],
+  "review_gate": "Joe reviews the interactive business and operations prototypes; the exact reviewed source commit and every unresolved palette or layout choice are recorded with the review. Technical checks alone do not close this slice."
+}

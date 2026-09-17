@@ -22,7 +22,7 @@ assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html"]) await read(path);
+for (const path of ["workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "design.html", "design-business.html", "design-operations.html"]) await read(path);
 
 const textExtensions = new Set([".js", ".mjs", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);
 const forbidden = [

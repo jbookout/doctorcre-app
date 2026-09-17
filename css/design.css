@@ -1,0 +1,69 @@
+/* Layout that belongs to the V5-UX-S01 prototype pages only. Loaded after
+   css/system.css and reusing its tokens; nothing here is a product component. */
+.prototype-banner { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; padding: 10px 14px; border: 1px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); font-size: 12px; }
+.prototype-banner a { color: var(--orange-text); margin-left: 4px; }
+.simulator { display: grid; grid-template-columns: auto minmax(200px, 320px); align-items: center; gap: 12px; margin-bottom: 20px; padding: 10px 14px; border-radius: var(--radius); font-size: 12px; color: var(--muted); }
+.simulator select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--ground-0) 65%, transparent); color: var(--text); }
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
+.hero-meta { display: grid; justify-items: end; gap: 10px; }
+.two-up { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.card { margin-bottom: 16px; }
+.two-up > .card { margin-bottom: 0; }
+.swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.token { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 11px; }
+.token span { display: block; height: 42px; border-radius: 9px; background: var(--t); border: 1px solid var(--line-strong); }
+.token b { font-family: var(--mono); font-size: 11px; }
+.type-sample { margin: 8px 0; }
+.status-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.status-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.component-row { display: grid; gap: 10px; padding: 16px 0; border-top: 1px solid var(--line); }
+.component-row > h3 { color: var(--quiet); font: 800 10px var(--body); letter-spacing: 0.12em; text-transform: uppercase; }
+.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.stack-end { display: grid; gap: 8px; justify-items: end; }
+.receipt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.receipt-grid .receipt { animation: none; box-shadow: none; }
+.state-picker { flex-wrap: wrap; }
+.rule-list { display: grid; gap: 8px; margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.home-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.home-grid .card { margin: 0; }
+.change-list { margin: 0; padding-left: 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.change-list b { color: var(--text); }
+.bars { display: grid; gap: 2px; }
+.scope-bar { display: grid; gap: 6px; justify-items: end; }
+.pipeline-section { margin-bottom: 16px; }
+.pipeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; margin-top: 12px; }
+.pipeline-layout .side-panel:not([hidden]) { display: grid; }
+.pipeline-layout .side-panel[hidden] + .kanban, .pipeline-layout:has(.side-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.doc-panel { position: fixed; right: 16px; top: 84px; z-index: 30; width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 100px); }
+.parsed { margin: 12px 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.parsed i { color: var(--quiet); }
+.five-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.five-grid .card { display: grid; gap: 6px; align-content: start; margin: 0; padding: 18px; }
+.five-grid h2 { font-size: 40px; }
+.ops-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr); gap: 16px; margin-bottom: 16px; }
+.ops-grid .card { margin: 0; }
+.ops-grid .incident + .incident { margin-top: 10px; }
+.atlas-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr); gap: 14px; }
+.atlas-side { display: grid; gap: 12px; align-content: start; }
+.atlas-index { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.atlas-index small { margin-left: auto; }
+.component-drawer { padding: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.session-grid { display: grid; gap: 10px; }
+.composer { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.footer { display: flex; justify-content: space-between; gap: 16px; width: min(1400px, 100%); margin: 0 auto; padding: 20px max(18px, 4vw) 30px; border-top: 1px solid var(--line); color: var(--quiet); font-size: 10px; }
+@media (max-width: 1280px) { .topbar { flex-wrap: wrap; } .global-controls { margin-left: 0; flex-wrap: wrap; } }
+@media (max-width: 1040px) {
+  .home-grid, .five-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two-up, .ops-grid, .atlas-layout, .pipeline-layout { grid-template-columns: 1fr; }
+  .hero { display: block; }
+  .hero-meta { justify-items: start; margin-top: 16px; }
+}
+@media (max-width: 767px) {
+  .home-grid, .five-grid, .parsed { grid-template-columns: 1fr; }
+  .simulator { grid-template-columns: 1fr; }
+  .global-controls { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .global-controls .btn { min-height: 40px; padding: 6px 10px; font-size: 11px; }
+  .doc-panel { position: fixed; inset: 0; width: auto; max-height: none; }
+  .footer { display: block; padding-bottom: 110px; }
+}
