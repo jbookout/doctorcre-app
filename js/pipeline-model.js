@@ -134,13 +134,36 @@ export function moveTitle(intent) {
  * The one extra sentence the Closed column owes.
  *
  * A phase patch to `closed` leaves the deal's outcome NULL, and the board view
- * keeps every record whose outcome is NULL — so the card lands in Closed and
- * the record stays on the board. Recording the outcome needs `update-deal`,
- * which is not on this app's interface allowlist, so the honest thing is to say
- * what this move does and does not do.
+ * keeps every record whose outcome is NULL — so the card would land in Closed
+ * with nothing said about how it ended. `update-deal` is now pinned on this
+ * app's interface, so the Closed dialog collects the outcome and the closing
+ * date and writes them, and this sentence says exactly what will be written.
+ * It still claims no gate: CARR checks the outcome against its own enum and
+ * nothing else.
  */
 export function closedColumnCaption() {
-  return 'Moving here does not close the deal record; it stays on the board until the outcome is recorded.';
+  return 'Records the outcome and the closing date on the deal.';
+}
+
+/**
+ * The three outcomes the record layer accepts, and nothing else.
+ *
+ * `deal_outcome_check` constrains the column to exactly these values, so the
+ * dialog offers exactly these values. A fourth chip here would be a write the
+ * database refuses after the phase has already moved.
+ */
+export const DEAL_OUTCOMES = Object.freeze([
+  { value: 'won', label: 'Won' },
+  { value: 'lost', label: 'Lost' },
+  { value: 'paused', label: 'Paused' },
+].map((entry) => Object.freeze(entry)));
+
+/** The slug of the one column that records an outcome. */
+export const CLOSED_SLUG = 'closed';
+
+/** Is this outcome one the record layer will take? */
+export function isDealOutcome(value) {
+  return DEAL_OUTCOMES.some((entry) => entry.value === value);
 }
 
 /** The captions the dialog prints. No sentence here promises a check. */
@@ -149,6 +172,9 @@ export const COMPLETION_CAPTIONS = Object.freeze({
   next: 'Recorded as the next step.',
   effective_off: 'Not recorded anywhere; the move is dated by when it is saved.',
   effective_on: 'Recorded as a critical date on the record.',
+  outcome: 'How this ended. The record layer takes won, lost or paused, and nothing else.',
+  closed_on: 'The date the record closed, written alongside the outcome.',
+  won_value: 'Optional. Recorded only on a won outcome.',
 });
 
 /** The `kind` a critical date created by a phase move carries. */
@@ -169,9 +195,17 @@ const text = (value) => String(value ?? '').trim();
  * requires a source, so asking for the date without saying where it came from is
  * named here rather than sent and bounced.
  *
+ * A move INTO Closed carries one more step, and it is deliberately LAST: the
+ * outcome is a second write on a record the phase patch has already moved, it
+ * needs a `base_version` read fresh AFTER that patch, and a refusal on it must
+ * leave the card where the server put it. The plan names the step and the
+ * fields; the caller supplies `base_version` at the moment it sends, because a
+ * version this module captured would already be stale by then.
+ *
  * @param {ReturnType<typeof moveIntent>} intent
  * @param {{evidence?:string, nextStep?:string, nextWhen?:string,
- *          effectiveDate?:string, recordCriticalDate?:boolean, dateSource?:string}} [form]
+ *          effectiveDate?:string, recordCriticalDate?:boolean, dateSource?:string,
+ *          outcome?:string, closedOn?:string, wonValue?:string|number}} [form]
  * @returns {{steps: Array<{verb:string, args:Object, summary:string}>, errors: string[]}}
  */
 export function completionPlan(intent, form = {}) {
@@ -216,6 +250,37 @@ export function completionPlan(intent, form = {}) {
         args: { deal: intent.deal, kind: PHASE_DATE_KIND, due_on: effective, source },
         summary: `Critical date on ${intent.name}`,
       });
+    }
+  }
+
+  if (intent.to === CLOSED_SLUG) {
+    const outcome = text(form.outcome);
+    if (!outcome) {
+      errors.push('Choose the outcome — Won, Lost or Paused — before closing this record.');
+    } else if (!isDealOutcome(outcome)) {
+      errors.push('The record layer records an outcome of won, lost or paused, and nothing else.');
+    } else {
+      const fields = { outcome };
+      const closedOn = text(form.closedOn);
+      if (closedOn) fields.closed_on = closedOn;
+      // The money only belongs to a won record. A value typed against Won and
+      // then switched to Lost is DROPPED here rather than written, because a
+      // lost deal with a won value on it is a record nobody can read honestly.
+      if (outcome === 'won') {
+        const raw = text(form.wonValue);
+        if (raw) {
+          const amount = Number(raw);
+          if (!Number.isFinite(amount)) errors.push('The won value must be a number, or leave it empty.');
+          else fields.won_value = amount;
+        }
+      }
+      if (!errors.length) {
+        steps.push({
+          verb: 'update-deal',
+          args: { deal: intent.deal, fields },
+          summary: `Outcome ${outcome} on ${intent.name}`,
+        });
+      }
     }
   }
 

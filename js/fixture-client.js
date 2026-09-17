@@ -29,9 +29,14 @@ export async function createFixtureClient(opts = {}) {
   const partnerActor = seed.actors?.partner || 'dell';
 
   /** @type {Map<string, any>} */
+  // `version` is the record layer's own optimistic-concurrency counter for the
+  // deal ROW (what `update-deal` demands as `base_version`), which is a
+  // different thing from `field_base`, the per-cell event identity that
+  // `patch-deal-field` guards with. Both exist because CARR has both.
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
-    parked_at: null, parked_by: null, ...d,
+    parked_at: null, parked_by: null, version: 1,
+    outcome: null, closed_on: null, won_value: null, ...d,
   }]));
   // Demonstrate that Salesforce-shaped records are not automatically active
   // transactions. These are fixture-only examples; production is never
@@ -386,6 +391,9 @@ export async function createFixtureClient(opts = {}) {
     ['PF-DEMO-1', { portfolio_ref: 'PF-DEMO-1', exists: true, accepted: true, accepted_revision_id: 'PF-DEMO-1-R2', reviews: [{ verdict: 'pass', reviewed_digest: 'e'.repeat(64), reviewer_actor_id: partnerActor }] }],
     ['PF-DEMO-2', { portfolio_ref: 'PF-DEMO-2', exists: true, accepted: false, accepted_revision_id: null, reviews: [] }],
   ]);
+  /** `deal_outcome_check`, spelled the way the database spells it. */
+  const DEAL_OUTCOMES = ['won', 'lost', 'paused'];
+  const DAY = /^\d{4}-\d{2}-\d{2}$/;
   function refuse(verb, code, extra = {}) {
     const error = new Error(`fixture ${verb} refused: ${code}`);
     error.payload = { error: code, ...extra };
@@ -527,6 +535,51 @@ export async function createFixtureClient(opts = {}) {
           verb: 'patch-deal-field',
         }),
       );
+    },
+
+    /**
+     * The deal-row write, guarded by the row's own version.
+     *
+     * It refuses exactly what the record layer refuses: a missing or wrong
+     * `base_version`, and an outcome outside `deal_outcome_check`. A fixture
+     * that took a fourth outcome, or took a stale base quietly, would let this
+     * app ship a dialog the live verb bounces after the phase already moved.
+     */
+    async updateDeal({ deal, base_version, fields, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const row = getDealOrThrow(deal);
+        const patch = fields && typeof fields === 'object' ? fields : {};
+        if (!Number.isInteger(base_version)) {
+          refuse('update-deal', 'missing_base_version', { hint: 'Re-read the deal and send the version it holds now.' });
+        }
+        if (Number(base_version) !== Number(row.version)) {
+          refuse('update-deal', 'version_conflict', { deal, resolution: 're-read the deal and decide from what it holds now' });
+        }
+        if ('outcome' in patch) {
+          if (!DEAL_OUTCOMES.includes(patch.outcome)) {
+            refuse('update-deal', 'deal_outcome_check', { hint: 'outcome is one of won, lost or paused' });
+          }
+          row.outcome = patch.outcome;
+        }
+        if ('closed_on' in patch) {
+          const day = String(patch.closed_on || '').trim();
+          if (!DAY.test(day)) refuse('update-deal', 'invalid_closed_on', { hint: 'closed_on is a calendar date' });
+          row.closed_on = day;
+        }
+        if ('won_value' in patch) {
+          const amount = Number(patch.won_value);
+          if (!Number.isFinite(amount)) refuse('update-deal', 'invalid_won_value', { hint: 'won_value is a number' });
+          row.won_value = amount;
+        }
+        row.version = Number(row.version) + 1;
+        row.last_touch = nowIso().slice(0, 10);
+        const e = pushEvent({
+          actor: selfActor, verb: 'update-deal', subject_id: deal, field: null,
+          old_value: null, new_value: { ...patch },
+        });
+        pushHistory(deal, selfActor, 'updated the deal record', e.recorded_at);
+        return { ok: true, status: 'ok', deal_id: deal, version: row.version, event: e };
+      });
     },
 
     async resolveConflict({ conflict_id, winner, idempotency_key }) {

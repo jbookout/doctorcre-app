@@ -44,6 +44,18 @@ export const TILE_TITLE = Object.freeze({
 
 export const NO_CADENCE_REASON = "no silence cadence is approved yet";
 
+/**
+ * The approved silence cadence for held work, in hours.
+ *
+ * Approved 2026-09-17 by the v5 refinement pass; reopen by changing this
+ * constant and the decision that set it. Until that ruling there was no
+ * approved number at all, and the Stuck tile said so rather than inventing
+ * one — `NO_CADENCE_REASON` and the `cadence: null` path are kept for exactly
+ * that state, because a cadence this app made up would be a claim about work
+ * nobody agreed to measure that way.
+ */
+export const STUCK_SILENCE_HOURS = 48;
+
 const SEVERITY = /^SEV-[0-9]$/;
 const WORK_REQUEST_REF = /^WR-[0-9]{1,12}$/;
 const HELD_STATES = Object.freeze(["claimed", "in_progress", "verification", "needs_joe", "blocked"]);
@@ -151,7 +163,7 @@ const unanswered = (id, reason, open) => ({
  * @param {{incidents?: object, work?: object, needsJoe?: object, census?: object}} reads
  *   each entry is {state: "read", payload} or {state: "unknown", reason}
  */
-export function dashboardTiles({ incidents, work, needsJoe, census } = {}) {
+export function dashboardTiles({ incidents, work, needsJoe, census, cadence = null } = {}) {
   const tiles = [];
 
   const brokenOpen = { tab: "attention", label: "Open the incident queue" };
@@ -184,12 +196,24 @@ export function dashboardTiles({ incidents, work, needsJoe, census } = {}) {
 
   const stuckOpen = { tab: "dashboard", section: "longestSinceChange", label: "Open longest since change" };
   if (work?.state === "read" && validCurrentWorkItemPayload(work.payload)) {
-    tiles.push({
-      id: "stuck", title: TILE_TITLE.stuck, state: "unknown", value: null, word: "unknown",
-      reason: NO_CADENCE_REASON,
-      sentence: `This is unknown: ${NO_CADENCE_REASON}. The held work is listed by how long it has gone without a change instead.`,
-      open: stuckOpen,
-    });
+    const stalls = stallCandidates(work.payload.current, { cadence });
+    if (stalls.state === "read") {
+      // The read answered, so 0 is a real answer and stays 0. Only an
+      // unanswered read is ever the word unknown on this tile.
+      const count = stalls.items.length;
+      tiles.push({
+        id: "stuck", title: TILE_TITLE.stuck, state: "read", value: count, word: String(count), reason: null,
+        sentence: `Held work with no change for ${stalls.cadence} hours or more.`,
+        open: stuckOpen,
+      });
+    } else {
+      tiles.push({
+        id: "stuck", title: TILE_TITLE.stuck, state: "unknown", value: null, word: "unknown",
+        reason: stalls.reason,
+        sentence: `This is unknown: ${stalls.reason}. The held work is listed by how long it has gone without a change instead.`,
+        open: stuckOpen,
+      });
+    }
   } else {
     tiles.push(unanswered("stuck", work?.reason || "the held-work read did not answer", stuckOpen));
   }

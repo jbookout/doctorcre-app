@@ -36,6 +36,7 @@ assert.equal(routes.routes["/control-room"], "control-room.html", "the Control R
 for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);
 assert.ok(contract.http_surfaces.includes("/api/v1/command-center"), "the command-center path must stay pinned in the CARR interface");
 for (const verb of ["add-critical-date", "add-deal-note", "set-next-step", "presence-lease", "resolve-conflict"]) assert.ok(contract.mcp_operations.includes(verb), `the Deals board needs ${verb} pinned`);
+assert.ok(contract.mcp_operations.includes("update-deal"), "the Deals board Closed column needs update-deal pinned");
 for (const verb of ["loop-board", "read-loop", "add-loop", "update-loop", "close-loop", "loop-headers"]) assert.ok(contract.mcp_operations.includes(verb), `the interface must pin ${verb}`);
 
 const textExtensions = new Set([".js", ".mjs", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);

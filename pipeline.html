@@ -93,6 +93,26 @@
         <p class="field-hint" id="completionFrom"></p>
         <p class="field-hint" id="completionClosedNote" hidden></p>
         <p class="field-hint error" id="completionErrors" tabindex="-1" hidden></p>
+        <fieldset class="field" id="completionOutcomeField" hidden>
+          <legend>Outcome</legend>
+          <div class="chip-bar" role="none">
+            <label class="chip"><input type="radio" name="completionOutcome" value="won"> <span>Won</span></label>
+            <label class="chip"><input type="radio" name="completionOutcome" value="lost"> <span>Lost</span></label>
+            <label class="chip"><input type="radio" name="completionOutcome" value="paused"> <span>Paused</span></label>
+          </div>
+          <p class="field-hint">How this ended. The record layer takes won, lost or paused, and nothing else.</p>
+          <div class="field-grid">
+            <div class="field">
+              <label for="completionClosedOn">Closed on</label>
+              <input id="completionClosedOn" type="date">
+            </div>
+            <div class="field" id="completionWonValueField" hidden>
+              <label for="completionWonValue">Won value</label>
+              <input id="completionWonValue" type="number" min="0" step="any" inputmode="decimal" autocomplete="off">
+            </div>
+          </div>
+          <p class="field-hint">The date the record closed, written alongside the outcome. Optional. Recorded only on a won outcome.</p>
+        </fieldset>
         <div class="field">
           <label for="completionEvidence">Evidence</label>
           <textarea id="completionEvidence" rows="3" placeholder="What makes this the right phase now"></textarea>

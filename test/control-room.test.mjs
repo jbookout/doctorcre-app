@@ -12,7 +12,7 @@ import {
   NO_CADENCE_REASON, TILES, canonicalHref, coverageLine, dashboardTiles, groupedIncidents,
   incidentFilters, notInReleaseBlocks, readPhase, sinceChangeLabel, stallCandidates,
   validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload,
-  workInProgressLine,
+  workInProgressLine, STUCK_SILENCE_HOURS,
 } from "../js/control-room-model.js";
 import { acceptsResponse } from "../js/workspace-command-center-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -79,7 +79,8 @@ test("the five questions are answered from the real payload shapes, in doctrine 
   assert.equal(tiles[0].value, 2);
   assert.equal(tiles[1].value, 2);
   assert.equal(tiles[3].value, 1);
-  // Stuck is unknown by ruling, not by outage, and Changed has no producer.
+  // With no cadence passed, Stuck is still unknown by ruling, not by outage,
+  // and Changed has no producer.
   assert.equal(tiles[2].state, "unknown");
   assert.equal(tiles[2].reason, NO_CADENCE_REASON);
   assert.equal(tiles[4].state, "not_in_release");
@@ -157,6 +158,53 @@ test("stuck states facts, not a verdict, until a cadence is approved", () => {
   assert.equal(sinceChangeLabel(51.2), "51.2 hours since change");
   assert.equal(sinceChangeLabel(1), "1 hour since change");
   assert.equal(sinceChangeLabel(null), "unknown");
+});
+
+test("the approved 48-hour cadence turns Stuck into a count the read actually supports", () => {
+  assert.equal(STUCK_SILENCE_HOURS, 48);
+  const tiles = dashboardTiles({
+    incidents: answered(INCIDENTS), work: answered(WORK), needsJoe: answered(NEEDS_JOE),
+    cadence: STUCK_SILENCE_HOURS,
+  });
+  const stuck = tiles.find((tile) => tile.id === "stuck");
+  // 47 h is not stuck; 49 h is. The fixture above holds one of each side.
+  assert.equal(stuck.state, "read");
+  assert.equal(stuck.value, 1, "only the 51.2-hour row is past the cadence");
+  assert.equal(stuck.sentence, "Held work with no change for 48 hours or more.");
+  assert.equal(stuck.reason, null);
+
+  const edges = {
+    ...WORK,
+    count: 2,
+    current: [
+      { ...WORK.current[0], human_ref: "WR-000911", hours_since_last_change: 47 },
+      { ...WORK.current[1], human_ref: "WR-000912", hours_since_last_change: 49 },
+    ],
+  };
+  assert.deepEqual(
+    stallCandidates(edges.current, { cadence: STUCK_SILENCE_HOURS }).items.map((item) => item.human_ref),
+    ["WR-000912"],
+  );
+  const quiet = dashboardTiles({
+    incidents: answered(INCIDENTS), needsJoe: answered(NEEDS_JOE), cadence: STUCK_SILENCE_HOURS,
+    work: answered({ ...WORK, count: 1, current: [{ ...WORK.current[0], hours_since_last_change: 2 }] }),
+  });
+  const none = quiet.find((tile) => tile.id === "stuck");
+  assert.equal(none.state, "read");
+  assert.equal(none.value, 0, "a read that answered says 0, never unknown");
+
+  // An unanswered read is the only thing that still says unknown.
+  const outage = dashboardTiles({
+    incidents: answered(INCIDENTS), work: refused("the held-work read refused"),
+    needsJoe: answered(NEEDS_JOE), cadence: STUCK_SILENCE_HOURS,
+  });
+  assert.equal(outage.find((tile) => tile.id === "stuck").state, "unknown");
+});
+
+test("the Control Room page passes the approved cadence rather than inventing one", () => {
+  assert.match(pageJs, /cadence: STUCK_SILENCE_HOURS/);
+  assert.doesNotMatch(pageJs, /cadence: null/);
+  assert.match(pageJs, /STUCK_SILENCE_HOURS,\n\} from "\.\/control-room-model\.js";/);
 });
 
 test("the work-in-progress line is stated only when the read carried both integers", () => {
@@ -245,7 +293,7 @@ test("the fixture serves the three reads in the record layer's own shapes, and o
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.6.0");
-  assert.equal(contract.version, "1.6.0");
+  assert.equal(contract.version, "1.7.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

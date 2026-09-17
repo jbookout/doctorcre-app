@@ -22,9 +22,10 @@ import { readFile } from "node:fs/promises";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { PHASES, PHICON, phaseLabel } from "../js/client.js";
 import {
-  COLUMNS, PHASE_DATE_KIND, closedColumnCaption, columnBySlug, columnByValue, columnLabel,
-  completionPlan, filterDeals, groupByColumn, keyboardTarget, moveIntent, moveSummary,
-  moveTitle, orderColumn, presenceChip, recordPanelSections, typeFilters,
+  CLOSED_SLUG, COLUMNS, DEAL_OUTCOMES, PHASE_DATE_KIND, closedColumnCaption, columnBySlug,
+  columnByValue, columnLabel, completionPlan, filterDeals, groupByColumn, isDealOutcome,
+  keyboardTarget, moveIntent, moveSummary, moveTitle, orderColumn, presenceChip,
+  recordPanelSections, typeFilters,
 } from "../js/pipeline-model.js";
 
 const ROOT = new URL("..", import.meta.url);
@@ -163,9 +164,8 @@ test("a critical date is refused without its source, and a date without a step i
   assert.deepEqual(completionPlan(null, {}).steps, []);
 });
 
-test("no sentence the dialog prints claims a gate, and Closed says what it does not do", () => {
-  assert.equal(closedColumnCaption(),
-    "Moving here does not close the deal record; it stays on the board until the outcome is recorded.");
+test("no sentence the dialog prints claims a gate, and Closed says what it writes", () => {
+  assert.equal(closedColumnCaption(), "Records the outcome and the closing date on the deal.");
   const source = completionPlan(
     moveIntent({ id: "d01", name: "Demo", phase: "On Deck" }, "legal"),
     { evidence: "x", nextStep: "y", effectiveDate: "2026-02-01", recordCriticalDate: true, dateSource: "z" },
@@ -487,4 +487,119 @@ test("the route and the verbs this surface needs are pinned in the contracts", a
   for (const verb of ["patch-deal-field", "add-deal-note", "set-next-step", "add-critical-date", "resolve-conflict", "presence-lease", "revert-deal-field"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
+});
+
+/* ------------------------------------------------- Closed records an outcome */
+
+const closedIntent = () => moveIntent({ id: "d05", name: "Demo Family Clinic", phase: "Closing" }, CLOSED_SLUG);
+
+test("a move into Closed plans the outcome write, and only into Closed", () => {
+  assert.equal(CLOSED_SLUG, "closed");
+  assert.deepEqual(DEAL_OUTCOMES.map((entry) => entry.value), ["won", "lost", "paused"]);
+  assert.ok(isDealOutcome("paused"));
+  assert.equal(isDealOutcome("closed"), false, "the phase is not an outcome");
+
+  const won = completionPlan(closedIntent(), { outcome: "won", closedOn: "2026-09-17", wonValue: "48000" });
+  assert.deepEqual(won.errors, []);
+  assert.deepEqual(won.steps.map((step) => step.verb), ["patch-deal-field", "update-deal"]);
+  assert.deepEqual(won.steps[1].args, {
+    deal: "d05",
+    fields: { outcome: "won", closed_on: "2026-09-17", won_value: 48000 },
+  });
+  assert.equal(won.steps[1].summary, "Outcome won on Demo Family Clinic");
+  assert.ok(!("base_version" in won.steps[1].args),
+    "the version is read fresh at send time, never planned from a stale read");
+
+  // The money belongs to a won record and to nothing else.
+  const lost = completionPlan(closedIntent(), { outcome: "lost", closedOn: "2026-09-17", wonValue: "48000" });
+  assert.deepEqual(lost.steps[1].args.fields, { outcome: "lost", closed_on: "2026-09-17" });
+  const paused = completionPlan(closedIntent(), { outcome: "paused", closedOn: "2026-09-17" });
+  assert.deepEqual(paused.steps[1].args.fields, { outcome: "paused", closed_on: "2026-09-17" });
+  const noValue = completionPlan(closedIntent(), { outcome: "won", closedOn: "2026-09-17", wonValue: "  " });
+  assert.deepEqual(noValue.steps[1].args.fields, { outcome: "won", closed_on: "2026-09-17" });
+
+  // Every other column is untouched by this slice.
+  const legal = completionPlan(moveIntent({ id: "d01", name: "Demo Dental North", phase: "On Deck" }, "legal"),
+    { outcome: "won", closedOn: "2026-09-17" });
+  assert.deepEqual(legal.steps.map((step) => step.verb), ["patch-deal-field"]);
+  assert.deepEqual(legal.errors, []);
+});
+
+test("Closed refuses without an outcome, and refuses an outcome the record layer would bounce", () => {
+  const missing = completionPlan(closedIntent(), { closedOn: "2026-09-17" });
+  assert.deepEqual(missing.steps.map((step) => step.verb), ["patch-deal-field"],
+    "nothing beyond the move is planned");
+  assert.ok(missing.errors.some((line) => /outcome/i.test(line)), "the sentence names the missing outcome");
+  assert.match(missing.errors[0], /Won, Lost or Paused/);
+
+  const invented = completionPlan(closedIntent(), { outcome: "settled", closedOn: "2026-09-17" });
+  assert.deepEqual(invented.steps.map((step) => step.verb), ["patch-deal-field"]);
+  assert.ok(invented.errors.some((line) => /won, lost or paused/.test(line)));
+
+  const nonsense = completionPlan(closedIntent(), { outcome: "won", closedOn: "2026-09-17", wonValue: "lots" });
+  assert.deepEqual(nonsense.steps.map((step) => step.verb), ["patch-deal-field"]);
+  assert.ok(nonsense.errors.some((line) => /must be a number/.test(line)));
+});
+
+test("the fixture takes the outcome write only against the version the deal holds now", async () => {
+  const client = await newClient();
+  const before = await client.getDeal("d05");
+  assert.equal(before.deal.version, 1);
+  assert.equal(before.deal.outcome, null);
+
+  await assert.rejects(
+    () => client.updateDeal({ deal: "d05", fields: { outcome: "won" }, idempotency_key: "k-no-base" }),
+    (error) => error.payload.error === "missing_base_version",
+  );
+  await assert.rejects(
+    () => client.updateDeal({ deal: "d05", base_version: 7, fields: { outcome: "won" }, idempotency_key: "k-stale" }),
+    (error) => error.payload.error === "version_conflict",
+  );
+  await assert.rejects(
+    () => client.updateDeal({ deal: "d05", base_version: 1, fields: { outcome: "settled" }, idempotency_key: "k-enum" }),
+    (error) => error.payload.error === "deal_outcome_check",
+  );
+
+  const answer = await client.updateDeal({
+    deal: "d05", base_version: 1,
+    fields: { outcome: "won", closed_on: "2026-09-17", won_value: 48000 },
+    idempotency_key: "k-outcome",
+  });
+  assert.equal(answer.ok, true);
+  assert.equal(answer.version, 2);
+  const after = await client.getDeal("d05");
+  assert.equal(after.deal.outcome, "won");
+  assert.equal(after.deal.closed_on, "2026-09-17");
+  assert.equal(after.deal.won_value, 48000);
+
+  // A replay under the same key returns the stored answer instead of writing again.
+  const replay = await client.updateDeal({
+    deal: "d05", base_version: 1,
+    fields: { outcome: "won", closed_on: "2026-09-17", won_value: 48000 },
+    idempotency_key: "k-outcome",
+  });
+  assert.equal(replay.version, 2, "the second send wrote nothing");
+  assert.equal((await client.getDeal("d05")).deal.version, 2);
+});
+
+test("the Closed dialog offers the three outcomes, a picker for the date, and both adapters can send it", async () => {
+  const html = await read("pipeline.html");
+  assert.match(html, /id="completionOutcomeField"[^>]*hidden/, "the outcome belongs to the Closed move only");
+  for (const value of ["won", "lost", "paused"]) {
+    assert.match(html, new RegExp(`name="completionOutcome" value="${value}"`));
+  }
+  assert.match(html, /id="completionClosedOn" type="date"/, "a calendar picker, never a typed-date box");
+  assert.match(html, /id="completionWonValue" type="number"/);
+  assert.match(html, /id="completionWonValueField"[^>]*hidden/, "the value shows only on a won outcome");
+
+  const pageJs = await read("js/pipeline.js");
+  assert.match(pageJs, /runOutcomeWrite/);
+  assert.match(pageJs, /state\.client\.getDeal\(intent\.deal\)/, "the base_version comes from a fresh read");
+  assert.match(pageJs, /base_version: version/);
+  const live = await read("js/live-client.js");
+  assert.match(live, /async updateDeal\(args\) \{\s*return write\('update-deal', args\);/);
+
+  const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+  assert.ok(contract.mcp_operations.includes("update-deal"));
+  assert.equal(contract.version, "1.7.0");
 });
