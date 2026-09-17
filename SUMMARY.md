@@ -31,6 +31,9 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | Path | Responsibility |
 |------|----------------|
 | `*.html` | DoctorCRE application surfaces |
+| `work-inventory.html` | V5-UX-C10 Complete Work Inventory at `/work-inventory`: every work record from all six canonical CARR sources, in every status, with each source's coverage stated |
+| `js/work-inventory-model.js` | Pure census rules: exact-key validation, grouping, coverage summary, query building, page merge |
+| `js/work-inventory.js` | Work Inventory DOM wiring over `GET /api/v1/work-inventory` |
 | `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
 | `js/client.js` | Small client interface selected by the app |
 | `js/live-client.js` | Authenticated same-origin CARR adapter |

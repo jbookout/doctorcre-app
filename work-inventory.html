@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Complete Work Inventory — every work record in every status, with the coverage of each source stated">
+  <title>Complete Work Inventory · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/work-inventory.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the work inventory</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark">C</span><span>DoctorCRE <small>work inventory</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/leads">Leads</a>
+      <a href="/deals">Deals</a>
+      <a href="/system-work.html">System work</a>
+      <a href="/work-inventory" aria-current="page">Inventory</a>
+    </nav>
+    <div class="global-controls">
+      <div class="btn-group" data-pref="theme" role="group" aria-label="Theme">
+        <button class="btn" type="button" data-value="dark" aria-pressed="true">Dark</button>
+        <button class="btn" type="button" data-value="light" aria-pressed="false">Light</button>
+      </div>
+      <div class="btn-group" data-pref="motion" role="group" aria-label="Motion">
+        <button class="btn" type="button" data-value="full" aria-pressed="true">Motion</button>
+        <button class="btn" type="button" data-value="reduced" aria-pressed="false">Pause motion</button>
+      </div>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow"><span class="orb" data-state="still" id="censusOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span> · every source, every status</p>
+        <h1 id="pageTitle">Complete Work Inventory</h1>
+        <p class="intro">Every work record CARR holds, in every status, from all six canonical sources. Queued, dormant, superseded, declined and unlinked work is shown by default — this surface is not an active queue, and it never presents an incomplete census as an empty one.</p>
+      </div>
+      <div class="chip-bar">
+        <span class="status" data-state="unknown" id="censusStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="censusStatusLabel">Reading the census…</span></span>
+        <span class="as-of" id="censusAsOf">Reading canonical state…</span>
+      </div>
+    </section>
+
+    <p class="sr-only" id="inventoryLive" aria-live="polite" role="status">Reading the census…</p>
+
+    <section class="card glass" aria-labelledby="filterTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Filter</p><h2 id="filterTitle">Narrow the census, never the statuses</h2></div>
+        <span class="panel-note">All statuses shown by default</span>
+      </div>
+      <div class="chip-bar" id="kindChips" role="group" aria-label="Sources to read">
+        <span class="chip-label">Sources</span>
+        <button class="chip" type="button" data-kind="work_request" aria-pressed="true">Work requests</button>
+        <button class="chip" type="button" data-kind="portfolio_node" aria-pressed="true">Portfolio nodes</button>
+        <button class="chip" type="button" data-kind="loop" aria-pressed="true">Open loops</button>
+        <button class="chip" type="button" data-kind="work_shape" aria-pressed="true">Work shapes</button>
+        <button class="chip" type="button" data-kind="slice_plan" aria-pressed="true">Slice plans</button>
+        <button class="chip" type="button" data-kind="governance_item" aria-pressed="true">Governance items</button>
+        <button class="chip chip-reset" type="button" id="kindReset">Read all six</button>
+      </div>
+      <div class="field">
+        <label for="statusFilter">Status contains</label>
+        <input id="statusFilter" type="text" inputmode="search" autocomplete="off" placeholder="superseded, dormant, queued…">
+        <p class="field-hint" id="statusHint">Empty means every status. Hidden statuses are always included, and no item is placed above another.</p>
+      </div>
+      <p class="small" id="requestPath">Request: /api/v1/work-inventory</p>
+    </section>
+
+    <section class="card glass" aria-labelledby="coverageTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">What each source could answer</h2></div>
+        <span class="as-of" id="coverageSummary">Coverage unknown until the census answers.</span>
+      </div>
+      <ul class="work-list" id="coverageStrip" aria-label="Coverage by source">
+        <li class="work-item"><div><h3>Reading coverage…</h3><div class="skeleton-line"></div></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Pending</span></li>
+      </ul>
+      <p class="small" id="coverageNote">A source that could not be read is shown urgent, not quiet. Its work is missing from the list below.</p>
+    </section>
+
+    <section class="card glass" aria-labelledby="itemsTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Records</p><h2 id="itemsTitle">Every item this census enumerated</h2></div>
+        <span class="as-of" id="itemsCount">Reading…</span>
+      </div>
+      <div class="state-block" id="inventoryState" data-state="loading">
+        <h3>Reading the complete work inventory…</h3>
+        <p>Six canonical sources are being read at request time. Nothing below is cached.</p>
+      </div>
+      <div id="kindGroups"></div>
+      <div class="chip-bar">
+        <button class="btn btn-primary" type="button" id="loadMore" hidden>Load more</button>
+        <button class="btn" type="button" id="retryRead" hidden>Retry read</button>
+        <p class="small" id="sourceLine">Source pending</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell"><p class="small">DoctorCRE · Complete Work Inventory · Coverage travels with every count.</p></footer>
+  <script type="module" src="/js/work-inventory.js"></script>
+</body>
+</html>

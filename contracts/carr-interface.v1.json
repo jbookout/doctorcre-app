@@ -40,6 +40,7 @@
     "/pipeline/changes",
     "/api/v1/business/*",
     "/api/v1/command-center",
+    "/api/v1/work-inventory",
     "/api/room/*",
     "/api/system-work/*",
     "/api/share/*",
