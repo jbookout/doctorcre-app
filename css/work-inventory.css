@@ -1,0 +1,41 @@
+/* V5-UX-C10 Complete Work Inventory — page layer over css/system.css.
+ *
+ * Nothing here redefines the register: no colours, no type, no new components.
+ * It does three things the shared sheet leaves to the page, because the shared
+ * sheet is contract-bound and a page may not widen it:
+ *
+ *  1. WRAPS what the census makes long. A source_ref chain and a correlation id
+ *     are single unbroken tokens, and an inventory that scrolls sideways on a
+ *     phone is an inventory nobody reads on a phone.
+ *  2. RAISES the shared 36/38px controls to the 44px floor the visual-system
+ *     contract sets, on this page only.
+ *  3. LETS a work row stack at phone width, so the Open button stays a full
+ *     target instead of squeezing the record beside it.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+/* The 44px accessibility floor, applied where the shared sheet sits under it. */
+.btn-group .btn { min-height: var(--touch); }
+.chip { min-height: var(--touch); }
+
+/* Census identifiers are unbroken tokens; they wrap rather than push the page. */
+#sourceLine,
+#requestPath,
+.work-meta,
+.work-meta span,
+.work-item h3,
+.work-item .small { min-width: 0; overflow-wrap: anywhere; }
+
+.work-item > div { min-width: 0; }
+.work-item .chip-bar { margin-top: 6px; }
+
+/* A coverage row and a record row both carry their state on the right until
+ * there is no room for two columns, and then it goes underneath. */
+@media (max-width: 640px) {
+  .work-item { grid-template-columns: minmax(0, 1fr); }
+  .work-item > .btn,
+  .work-item > .status,
+  .work-item > .small { justify-self: start; }
+}

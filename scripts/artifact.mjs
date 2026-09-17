@@ -6,7 +6,7 @@ import { dirname, join, posix } from "node:path";
 const ROOT_FILES = [
   "business.html", "design-business.html", "design-operations.html", "design.html",
   "index.html", "leads.html", "manifest.webmanifest",
-  "queue.html", "room.html", "system-work.html", "workspace.html",
+  "queue.html", "room.html", "system-work.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const SHA = /^[0-9a-f]{64}$/;
