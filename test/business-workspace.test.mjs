@@ -86,7 +86,7 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
   // Work and Pipeline NAVIGATE: they are ordinary links, so Back, a middle
   // click and a screen reader all behave as they always do.
   assert.match(tabs, /<a class="tab" href="\/tasks">Work<\/a>/);
-  assert.match(tabs, /<a class="tab" href="\/deals">Pipeline<\/a>/);
+  assert.match(tabs, /<a class="tab" href="\/pipeline">Pipeline<\/a>/);
   assert.match(css, /a\.tab\[aria-current="page"\]/, "an active page tab is marked by aria-current alone");
 
   const nav = /<nav class="mobile-nav"[\s\S]*?<\/nav>/.exec(html)?.[0] || "";

@@ -106,6 +106,11 @@ createServer(async (request, response) => {
       response.end(JSON.stringify(censusResponse(url)));
       return;
     }
+    // Mirrors src/worker.js assetPath: the icons live under public-shell/ and
+    // every page links them at /icons/. /favicon.ico is a fixture-only courtesy
+    // so a browser's automatic request is not a 404 on every page.
+    if (url.pathname.startsWith("/icons/")) url.pathname = `/public-shell${url.pathname}`;
+    if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
     const requested = routes[url.pathname] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");
     const repositoryPath = relative(root, path);

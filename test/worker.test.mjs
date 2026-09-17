@@ -69,6 +69,7 @@ test("public assets bypass CARR, while unknown and mutation routes fail closed",
   const env = environment({ carr: { fetch: async () => { carrCalls += 1; return new Response(); } } });
   assert.equal(await (await handleDoctorcreRequest(request("/js/app.js"), env)).text(), "asset:/js/app.js");
   assert.equal(await (await handleDoctorcreRequest(request("/icons/dealroom.svg"), env)).text(), "asset:/public-shell/icons/dealroom.svg");
+  assert.equal(await (await handleDoctorcreRequest(request("/favicon.ico"), env)).text(), "asset:/public-shell/icons/dealroom.svg");
   assert.equal(await (await handleDoctorcreRequest(request("/public-shell/shell.css"), env)).text(), "asset:/public-shell/shell.css");
   assert.equal(carrCalls, 0);
   assert.equal((await handleDoctorcreRequest(request("/unknown"), env)).status, 404);

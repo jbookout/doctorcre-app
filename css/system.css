@@ -360,7 +360,7 @@ small, .small { font-size: 11px; color: var(--muted); }
 .doc-mic[aria-pressed="true"] .orb { animation: breathe var(--motion-attention) ease-in-out infinite; }
 
 /* ------------------------------------------------------------- toast: shows briefly, then fully gone */
-.toast { position: fixed; left: 50%; bottom: 96px; z-index: 50; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 11px 16px; border: 1px solid color-mix(in srgb, var(--green) 50%, transparent); border-radius: 999px; background: var(--ground-1); color: var(--text); font-size: 12px; font-weight: 700; box-shadow: var(--shadow-float); animation: toast-life var(--motion-toast) var(--ease) forwards; }
+.toast { position: fixed; left: auto; right: 88px; bottom: 16px; z-index: 50; transform: none; display: flex; align-items: center; gap: 10px; padding: 11px 16px; border: 1px solid color-mix(in srgb, var(--green) 50%, transparent); border-radius: 999px; background: var(--ground-1); color: var(--text); font-size: 12px; font-weight: 700; box-shadow: var(--shadow-float); animation: toast-life var(--motion-toast) var(--ease) forwards; }
 :root[data-motion="reduced"] .toast { animation: none; }
 
 /* ------------------------------------------------------------- panels: nonmodal aside vs modal dialog */
@@ -381,7 +381,7 @@ small, .small { font-size: 11px; color: var(--muted); }
 .evidence-option input { margin-top: 4px; }
 
 /* ------------------------------------------------------------- command feedback */
-.receipt-dock { position: fixed; right: 88px; bottom: 16px; z-index: 40; display: grid; gap: 8px; width: min(420px, calc(100vw - 104px)); }
+.receipt-dock { position: fixed; right: 88px; bottom: 72px; z-index: 40; display: grid; gap: 8px; width: min(420px, calc(100vw - 104px)); }
 .receipt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 4px solid var(--orange); border-radius: var(--radius); background: var(--ground-1); box-shadow: var(--shadow-float); animation: receipt-in var(--motion-enter) var(--ease); }
 .receipt[data-state="pending"] { border-left-color: var(--cyan); border-left-style: dashed; }
 .receipt[data-state="confirmed"] { border-left-color: var(--green); }
@@ -525,7 +525,7 @@ small, .small { font-size: 11px; color: var(--muted); }
 @property --ring-sweep { syntax: "<angle>"; inherits: false; initial-value: 0turn; }
 @keyframes breathe { 0%, 100% { filter: brightness(1); opacity: 0.9; } 50% { filter: brightness(1.25); opacity: 1; } }
 @keyframes ring-draw { 0% { --ring-sweep: 0turn; opacity: 0.2; } 55% { --ring-sweep: 1turn; opacity: 1; } 100% { --ring-sweep: 1turn; opacity: 0; } }
-@keyframes toast-life { 0% { opacity: 0; transform: translate(-50%, 8px); } 8%, 62% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; visibility: hidden; transform: translate(-50%, 0); } }
+@keyframes toast-life { 0% { opacity: 0; transform: translateY(8px); } 8%, 62% { opacity: 1; transform: none; } 100% { opacity: 0; visibility: hidden; transform: none; } }
 @keyframes shimmer { to { background-position-x: -200%; } }
 @keyframes flow-dash { to { stroke-dashoffset: -144; } }
 @keyframes receipt-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -543,7 +543,7 @@ small, .small { font-size: 11px; color: var(--muted); }
   /* Doc clears the mobile nav; the chat fills the screen below the topbar. */
   .doc-fab { right: 14px; bottom: 82px; }
   .doc-chat { right: 10px; left: 10px; bottom: 82px; width: auto; max-height: calc(100vh - 150px); }
-  .toast { left: 12px; right: 12px; bottom: 150px; transform: none; justify-content: center; }
+  .toast { left: 12px; right: 80px; bottom: 96px; transform: none; justify-content: center; }
   @keyframes toast-life { 0% { opacity: 0; } 8%, 62% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
   .tabs { margin-bottom: 14px; }
   .tab { padding: 8px 12px; }

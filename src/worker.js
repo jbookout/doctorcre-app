@@ -8,6 +8,7 @@ const STATIC_EXACT = new Map([
   ["/manifest.webmanifest", "/manifest.webmanifest"],
   ["/sw.js", "/public-shell/sw.js"],
   ["/offline.html", "/public-shell/offline.html"],
+  ["/favicon.ico", "/public-shell/icons/dealroom.svg"],
 ]);
 const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"];
 

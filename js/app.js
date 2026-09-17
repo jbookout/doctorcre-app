@@ -1,4 +1,4 @@
-import { createClient, PHASES, PHICON, ACTOR_LABEL } from './client.js';
+import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
 import {
@@ -113,7 +113,7 @@ function reasonFor(deal) {
   if (!deal.next_step) return 'No next step';
   if (isStale(deal)) return deal.last_touch ? `Gone quiet ${relative(deal.last_touch)}` : 'No recent touch captured';
   if (!deal.market_agent && deal.workspace_kind === 'national_account') return 'Market agent unassigned';
-  return `Ready for review · ${deal.phase}`;
+  return `Ready for review · ${phaseLabel(deal.phase)}`;
 }
 
 function priority(deal) {
@@ -517,7 +517,9 @@ function renderFocus(deals) {
 }
 
 function phaseOptions(current) {
-  return PHASES.map((phase) => `<option${phase === current ? ' selected' : ''}>${esc(phase)}</option>`).join('');
+  // The option value stays the wire word the record layer speaks; only the
+  // text a human reads carries the display label.
+  return PHASES.map((phase) => `<option value="${esc(phase)}"${phase === current ? ' selected' : ''}>${esc(phaseLabel(phase))}</option>`).join('');
 }
 
 function rowHtml(deal) {
@@ -1108,7 +1110,7 @@ async function openDeal(dealId) {
   const detail = await state.client.getDeal(dealId);
   const deal = detail.deal;
   const parked = deal.operating_state === 'parked';
-  const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(deal.phase)} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
+  const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
     <div class="deal-content">${parked ? `<div class="parking-banner"><b>${esc(parkingReasonLabel(deal.parking_reason))}</b>${deal.parking_note ? `<span>${esc(deal.parking_note)}</span>` : ''}<small>This record is outside active counts and weekly agendas.</small></div>` : ''}<div class="deal-summary">
       <div class="detail-card"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
@@ -1163,7 +1165,7 @@ function renderAgenda() {
   if (!deal) return finishAgenda();
   $('#agendaCard').innerHTML = `<article class="agenda-deal"><p class="eyebrow">${esc(deal.market || deal.client_name || '')}</p><h3>${esc(deal.name)}</h3>
     <span class="agenda-reason">${esc(reasonFor(deal))}</span>
-    <div class="agenda-fact"><label>Phase</label><p>${esc(deal.phase)}</p></div>
+    <div class="agenda-fact"><label>Phase</label><p>${esc(phaseLabel(deal.phase))}</p></div>
     <div class="agenda-fact"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
     <div class="agenda-fact"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
     ${deal.workspace_kind === 'national_account' ? `<div class="agenda-fact"><label>Assigned market agent</label><p>${esc(deal.market_agent || 'Unassigned')}</p></div>` : ''}
