@@ -30,6 +30,11 @@ const CENSUS_PAGES = [
   [
     censusItem("work_request", "WR-000061", "4", "Demo bounded request: reconcile vendor rows", "in_progress", "2026-09-16T13:40:00.000Z", [{ kind: "doctrine_section", id: "demo-origin-0001" }], SYSTEM_WORK),
     censusItem("work_request", "WR-000059", "7", "Demo bounded request: retire the demo export", "superseded", "2026-09-16T11:05:00.000Z", [{ kind: "work_request", id: "WR-000061" }], SYSTEM_WORK),
+    censusItem("work_request", "WR-000901", "4", "Demo built, not merged", "in_progress", "2026-09-16T10:00:00.000Z", [{ kind: "portfolio_node", id: "PF-DEMO-1" }], SYSTEM_WORK),
+    censusItem("work_request", "WR-000902", "2", "Demo merged, not activated", "in_progress", "2026-09-16T09:00:00.000Z", [{ kind: "portfolio_node", id: "PF-DEMO-2" }], SYSTEM_WORK),
+    censusItem("work_request", "WR-000903", "7", "Demo active, consumer unproven", "in_progress", "2026-09-16T08:00:00.000Z", [], SYSTEM_WORK),
+    censusItem("work_request", "WR-000904", "1", "Demo captured in error", "captured", "2026-09-16T07:00:00.000Z", [], SYSTEM_WORK),
+    censusItem("work_request", "WR-000905", "3", "Demo stale plan", "in_progress", "2026-09-16T06:00:00.000Z", [{ kind: "portfolio_node", id: "PF-DEMO-1" }], SYSTEM_WORK),
     censusItem("loop", "612", "3", "Demo loop: name the owner of the demo digest", "dormant", "2026-09-15T22:18:00.000Z", [], null),
     censusItem("work_shape", "8f21c4a0-0000-4000-8000-000000000001", "2", "Demo bounded request: reconcile vendor rows", "unset", "2026-09-15T20:02:00.000Z", [{ kind: "work_request", id: "WR-000061" }], SYSTEM_WORK),
     censusItem("slice_plan", "b1d7e9c2-0000-4000-8000-000000000002", "4", "Demo slice plan: census consumer surface", "registered", "2026-09-15T17:44:00.000Z", [{ kind: "work_request", id: "WR-000061" }], SYSTEM_WORK),
@@ -45,7 +50,7 @@ const CENSUS_PAGES = [
 // One leg is down and one cannot be counted, so census_complete is false and the
 // surface must say so rather than presenting the page below as the whole truth.
 const CENSUS_LEG_STATE = {
-  work_request: { state: "complete", total: 2, reason: null },
+  work_request: { state: "complete", total: 7, reason: null },
   portfolio_node: { state: "unavailable", total: null, reason: "DEPENDENCY_UNAVAILABLE" },
   loop: { state: "partial", total: null, reason: "count_unavailable;rows_missing_order_key:1" },
   work_shape: { state: "complete", total: 1, reason: null },
