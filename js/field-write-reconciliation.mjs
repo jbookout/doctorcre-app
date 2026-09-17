@@ -123,10 +123,13 @@ export function createFieldWriteState() {
  * The arguments this attempt is an attempt AT. When an unresolved operation for
  * this cell holds the same value, its own retained arguments are handed back
  * verbatim, so the kernel sees one intent and re-sends the original request.
+ *
+ * `extra` is therefore applied ONLY to a brand-new request. A replay is the
+ * original arguments or it is not a replay.
  */
-function intentArgs(current, { deal, field, value, base }) {
+function intentArgs(current, { deal, field, value, base, extra }) {
   if (current && sameFieldValue(current.request.value, value)) return { ...current.request };
-  return { deal, field, value, base_event_id: base ?? null };
+  return { deal, field, value, base_event_id: base ?? null, ...(extra || {}) };
 }
 
 /**
@@ -142,10 +145,10 @@ function intentArgs(current, { deal, field, value, base }) {
  *             DIFFERENT intent. Nothing is sent; `pending` names what has to be
  *             reconciled first.
  */
-export function beginFieldWrite(state, { deal, field, value, base = null, newKey }) {
+export function beginFieldWrite(state, { deal, field, value, base = null, extra = null, newKey }) {
   const cell = cellKey(deal, field);
   const current = (state || {})[cell] || null;
-  return beginCommand(state, { operationKey: cell, args: intentArgs(current, { deal, field, value, base }), newKey });
+  return beginCommand(state, { operationKey: cell, args: intentArgs(current, { deal, field, value, base, extra }), newKey });
 }
 
 /**
@@ -353,6 +356,10 @@ export function pendingFieldWrite(state, cell) {
  * @param {*} args.value
  * @param {string|null} [args.base] the cell's last-seen event id, used only when
  *   this is a NEW operation; a retained request keeps the base it was built with
+ * @param {Object|null} [args.extra] additional verb arguments to send alongside
+ *   the cell's own three. Applied ONLY to a NEW operation: a replay re-sends the
+ *   retained request verbatim, so one idempotency key stays bound to one set of
+ *   arguments and a later, different `extra` is ignored by design.
  * @param {() => (string|null)} [args.baseNow] the cell's last-seen event id AS OF
  *   the answer; defaults to `base`, which is what the caller believed on the way
  *   out — so a retry whose base has moved is superseded even without a feed
@@ -361,12 +368,12 @@ export function pendingFieldWrite(state, cell) {
  * @param {() => string} args.newKey
  * @param {(request:Object) => Promise<any>} args.patch
  */
-export async function performFieldWrite({ deal, field, value, base = null, baseNow = null, getState, setState, newKey, patch }) {
+export async function performFieldWrite({ deal, field, value, base = null, extra = null, baseNow = null, getState, setState, newKey, patch }) {
   const cell = cellKey(deal, field);
   const current = getState()?.[cell] || null;
   const result = await performCommand({
     operationKey: cell,
-    args: intentArgs(current, { deal, field, value, base }),
+    args: intentArgs(current, { deal, field, value, base, extra }),
     getState, setState, newKey,
     // A copy, so a client that rewrites an argument on its way out — the live
     // client translates a phase name into its slug — cannot touch the request

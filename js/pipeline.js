@@ -303,12 +303,13 @@ function confirmLocalWrite(dealId, patch) {
  * makes a retry a replay at the server rather than a second write colliding
  * with the first.
  */
-async function sendPhaseWrite(dealId, value) {
+async function sendPhaseWrite(dealId, value, extra = null) {
   const cell = cellKey(dealId, 'phase');
   const result = await performFieldWrite({
     deal: dealId,
     field: 'phase',
     value,
+    extra,
     base: state.fieldBase.get(cell)?.id || null,
     baseNow: () => state.fieldBase.get(cell)?.id || null,
     getState: () => state.fieldWrites,
@@ -415,7 +416,14 @@ async function runMove(intent, form) {
   dock.record(cell, { summary: moveSummary(intent), status: 'sending', undo: false });
   renderBoard();
 
-  const result = await sendPhaseWrite(intent.deal, phaseStep.args.value);
+  // Only the two optional partner fields travel as extras. `deal`, `field` and
+  // `value` are the kernel's own, and a retry replays the retained request, so
+  // these ride on the first attempt or on none.
+  const phaseExtra = {};
+  if (phaseStep.args.change_reason) phaseExtra.change_reason = phaseStep.args.change_reason;
+  if (phaseStep.args.human_quote) phaseExtra.human_quote = phaseStep.args.human_quote;
+
+  const result = await sendPhaseWrite(intent.deal, phaseStep.args.value, Object.keys(phaseExtra).length ? phaseExtra : null);
   dock.record(cell, {
     summary: moveSummary(intent), status: result.status,
     reason: fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`) || null,
@@ -520,6 +528,8 @@ function openCompletion(intent) {
   const confirm = $('completionConfirm');
   if (confirm) confirm.textContent = `Move to ${intent.to_label}`;
   $('completionEvidence').value = '';
+  $('completionReason').value = '';
+  $('completionQuote').value = '';
   $('completionNextStep').value = '';
   $('completionNextWhen').value = '';
   $('completionDate').value = '';
@@ -786,6 +796,8 @@ function wire() {
     if (!intent) return;
     const outcome = await runMove(intent, {
       evidence: $('completionEvidence')?.value,
+      changeReason: $('completionReason')?.value,
+      humanQuote: $('completionQuote')?.value,
       nextStep: $('completionNextStep')?.value,
       nextWhen: $('completionNextWhen')?.value,
       effectiveDate: $('completionDate')?.value,

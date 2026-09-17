@@ -222,6 +222,10 @@ export async function createFixtureClient(opts = {}) {
       field: partial.field ?? null,
       old_value: partial.old_value ?? null,
       new_value: partial.new_value ?? null,
+      // The partner's own words, carried on the event and nowhere else: they
+      // describe the change, not the deal, so the deal row never learns them.
+      change_reason: partial.change_reason ?? null,
+      human_quote: partial.human_quote ?? null,
     };
     events.push(e);
     if (e.field) lastFieldEvent.set(`${e.subject_id}|${e.field}`, e.id);
@@ -283,7 +287,7 @@ export async function createFixtureClient(opts = {}) {
   /**
    * Apply a field write. If base_event_id mismatches last known, open conflict.
    */
-  function applyFieldWrite({ deal, field, value, base_event_id, actor, verb }) {
+  function applyFieldWrite({ deal, field, value, base_event_id, actor, verb, change_reason, human_quote }) {
     const d = getDealOrThrow(deal);
     const key = `${deal}|${field}`;
     const last = lastFieldEvent.get(key) || null;
@@ -335,6 +339,8 @@ export async function createFixtureClient(opts = {}) {
       field,
       old_value: old ?? null,
       new_value: value ?? null,
+      change_reason: change_reason ?? null,
+      human_quote: human_quote ?? null,
     });
     pushHistory(deal, actor, `${field} ${old ?? '(empty)'} to ${value ?? '(empty)'}`, e.recorded_at);
     // The committed event's own identity, named the same way the live answer
@@ -569,7 +575,9 @@ export async function createFixtureClient(opts = {}) {
       return { ok: true };
     },
 
-    async patchDealField({ deal, field, value, base_event_id, idempotency_key }) {
+    // `change_reason` and `human_quote` are optional at the record layer and are
+    // optional here: a move without them is not refused, it simply records none.
+    async patchDealField({ deal, field, value, base_event_id, idempotency_key, change_reason, human_quote }) {
       return withIdem(idempotency_key, () =>
         applyFieldWrite({
           deal,
@@ -578,6 +586,8 @@ export async function createFixtureClient(opts = {}) {
           base_event_id: base_event_id ?? null,
           actor: selfActor,
           verb: 'patch-deal-field',
+          change_reason,
+          human_quote,
         }),
       );
     },
