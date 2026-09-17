@@ -76,20 +76,20 @@ test("every emitted link is a Deal Room filter that already exists", () => {
   assert.equal(validWorkspacePayload(payload({ metrics: [payload().metrics[0], { ...payload().metrics[1], active_destination: "/deals?workspace=team&filter=mine" }] })), false);
 });
 
-test("zero flagged in my work never claims the team book is clear", () => {
+test("zero flagged in my work never claims the Deals list is clear", () => {
   const mine = summarizeWorkspaceScope(myWorkClear(), "mine", INSIDE);
   assert.equal(mine.state, "empty");
   assert.equal(mine.flagged, 0);
   assert.equal(mine.teamFlagged, 3);
   const copy = homeCardCopy(mine);
   assert.equal(copy.title, "None of your deals are flagged");
-  assert.match(copy.copy, /team book still has 3 deals flagged/);
+  assert.match(copy.copy, /Deals list still has 3 deals flagged/);
   assert.doesNotMatch(copy.copy, /clear/i);
   const team = homeCardCopy(summarizeWorkspaceScope(myWorkClear(), "team", INSIDE));
   assert.match(team.title, /3 flagged team deals need attention/);
 });
 
-test("an actually clear team book says so in both scopes", () => {
+test("an actually clear Deals list says so in both scopes", () => {
   const team = homeCardCopy(summarizeWorkspaceScope(clearBook(), "team", INSIDE));
   assert.equal(team.title, "No team deal is flagged");
   assert.match(team.copy, /none is flagged/);
@@ -147,14 +147,14 @@ test("the personal count label states two facts and never reads as a subset of t
   assert.equal(homeCardCopy(summarizeWorkspaceScope(payload(), "team", INSIDE)).countLabel, "6 deals active across the team");
 });
 
-test("team copy describes the team book and never attributes unassigned records to a partner", () => {
+test("team copy describes the Deals list and never attributes unassigned records to a partner", () => {
   for (const state of [payload(), clearBook(), myWorkClear()]) {
     const team = homeCardCopy(summarizeWorkspaceScope(state, "team", INSIDE));
     assert.doesNotMatch(team.copy, /Joe|Dell/);
     assert.doesNotMatch(team.countLabel, /Joe|Dell/);
-    assert.match(team.copy, /team.book/i);
+    assert.match(team.copy, /deal records|Deals list/);
   }
-  assert.match(homeCardCopy(summarizeWorkspaceScope(clearBook(), "team", INSIDE)).copy, /The active team book holds 6 deals/);
+  assert.match(homeCardCopy(summarizeWorkspaceScope(clearBook(), "team", INSIDE)).copy, /The active Deals list holds 6 deals/);
 });
 
 test("the displayed freshness is derived from the current clock, not the stamp", () => {
@@ -228,14 +228,14 @@ test("Home identity comes only from the verified viewer", () => {
   assert.equal(viewerWorkspaceLabel("joe"), "Joe’s workspace");
   assert.equal(viewerWorkspaceLabel("dell"), "Dell’s workspace");
   assert.equal(viewerWorkspaceLabel("other"), "Partner workspace");
-  assert.match(scopeNote("team"), /combined team book/i);
+  assert.match(scopeNote("team"), /combined Deals view/);
   assert.match(scopeNote("mine"), /Team is the default/i);
 });
 
 test("Home primary action resolves from the selected scope's verified freshness and count", () => {
   assert.deepEqual(primaryHomeAction(payload(), { scope: "team", now: INSIDE }), { label: "Review flagged team deals", href: TEAM_FLAGGED_DESTINATION, state: "attention" });
   assert.deepEqual(primaryHomeAction(payload(), { scope: "mine", now: INSIDE }), { label: "Review my flagged deals", href: MY_FLAGGED_DESTINATION, state: "attention" });
-  assert.deepEqual(primaryHomeAction(myWorkClear(), { scope: "mine", now: INSIDE }), { label: "Open the team book", href: TEAM_ACTIVE_DESTINATION, state: "empty" });
+  assert.deepEqual(primaryHomeAction(myWorkClear(), { scope: "mine", now: INSIDE }), { label: "Open Deals", href: TEAM_ACTIVE_DESTINATION, state: "empty" });
   assert.deepEqual(primaryHomeAction(payload(), { now: OUTSIDE }), { label: "Open Deal Room", href: "/deals", state: "stale" });
   assert.deepEqual(primaryHomeAction({}, {}), { label: "Open Deal Room", href: "/deals", state: "unavailable" });
   assert.deepEqual(primaryHomeAction(null, { unauthorized: true }), { label: "Sign in", href: "/auth/login?return_to=%2F", state: "unauthorized" });
