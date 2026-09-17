@@ -30,6 +30,20 @@
  * A conflict is terminal for the SAME request: re-sending it replays the same
  * refusal, so the sentence tells the person to re-read and decide rather than
  * offering a retry.
+ *
+ * UNDO IS NOT KEYED HERE, AND THAT IS DELIBERATE. This module keys on the
+ * operation: one intent to write, one idempotency key, one dock row. Undo keys
+ * on the change-feed EVENT the server recorded, in change-receipts.mjs, because
+ * one operation can produce several events (a board move files a note, a next
+ * step and a critical date), a change made in another session has no operation
+ * here at all, and whether an event can still be undone is a computation over
+ * the whole feed (supersession per deal and field, ownership, age) that a
+ * per-operation map cannot express. So every production page records its dock
+ * entries with `undo: false` and mounts the dock with no `onUndo`; the Undo
+ * button below stays as the dock's hook for a page that has a single-event
+ * operation and chooses to wire it, and the Undo people use lives in the Recent
+ * changes popup. Deferred tweak 7 (decision 20b3e28a) considered unifying the
+ * two and did not: the plumbing is small, the semantics are a redesign.
  */
 
 import { FEEDBACK_STATES, feedbackLabel } from './visual-system.js';

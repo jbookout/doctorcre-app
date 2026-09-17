@@ -6,6 +6,12 @@
 // into a root element, and turns a click into one of three callbacks. It
 // re-renders only when the rendered signature changes, so a dock that is
 // already correct is left alone and a focused button keeps its focus.
+//
+// `onUndo` is wired by no production page today. The dock keys on operations;
+// Undo keys on change-feed events and lives in the Recent changes popup
+// (change-receipts.mjs). The hook stays for a page whose operation maps to
+// exactly one event; see the header of command-feedback.mjs for why the two
+// key spaces are kept apart on purpose.
 import { commandDockHtml, commandReceiptView } from './command-feedback.mjs';
 
 export function createCommandDock({ root, onDispatch = null, onReconcile = null, onUndo = null } = {}) {
