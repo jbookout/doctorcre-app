@@ -328,6 +328,19 @@ function revealCloseForm(resolution) {
 
 /* ---------------------------------------------------------------- Quick add */
 
+/**
+ * The Related row. One match names the record; more than one names none of
+ * them and asks, in the row itself, which one the sentence meant.
+ */
+function relatedCell(parsed) {
+  if (parsed.related) return escapeHtml(parsed.related);
+  const candidates = parsed.relatedCandidates || [];
+  if (candidates.length > 1) {
+    return `Two records match, say which: ${candidates.map((name) => escapeHtml(name)).join(", ")}`;
+  }
+  return "<i>none</i>";
+}
+
 function renderQuickAdd() {
   const input = $("quickAddInput");
   if (!input) return null;
@@ -343,7 +356,7 @@ function renderQuickAdd() {
       `<div><span>Action</span>${effective.action ? escapeHtml(effective.action) : "<i>unknown</i>"}</div>`,
       `<div><span>Owner</span>${escapeHtml(partnerName(effective.owner))}${effective.ownerDefaulted ? " <i>(you, by default)</i>" : ""}</div>`,
       `<div><span>Due</span>${effective.due ? escapeHtml(formatDueStamp(effective.due, effective.dueTime)) : "<i>none</i>"}</div>`,
-      `<div><span>Related</span>${effective.related ? escapeHtml(effective.related) : "<i>none</i>"}</div>`,
+      `<div><span>Related</span>${relatedCell(effective)}</div>`,
     ].join("");
   }
   const plan = quickAddPlan(effective, { viewer, sentence });

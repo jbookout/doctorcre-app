@@ -15,6 +15,7 @@ import {
   createCommandState, feedbackStateFor, pendingCommand, performCommand, sameCommandIntent,
   settleCommand, unresolvedCommands,
 } from "../js/command-feedback.mjs";
+import { DOCK_ENTRY_CAP, createCommandDock } from "../js/command-dock.js";
 import { FEEDBACK_STATES } from "../js/visual-system.js";
 
 const root = new URL("..", import.meta.url);
@@ -345,4 +346,74 @@ test("checking is a declared state of the shared visual system, and the styleshe
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(carr.version, "1.8.0");
   assert.ok(carr.invariants.some((line) => /one idempotency key across double click, reconnect and a second device/.test(line)));
+});
+
+/* ------------------------------------------------------------------ the dock cap */
+
+// The dock keeps one entry per operation forever, so a long session grew the
+// Map without bound. Orchestrator ruling 2026-09-17: evict CONFIRMED receipts
+// only, oldest first. An unresolved one is work the person still owes an
+// answer to, and forgetting it would quietly drop the only offer to reconcile.
+
+test("a long session drops the oldest confirmed receipt and keeps every pending, refused and unknown one", () => {
+  const dock = createCommandDock({ root: null });
+  const unresolved = [
+    { key: "pending-1", status: "sending" },
+    { key: "refused-1", status: "refused" },
+    { key: "unknown-1", status: "unknown" },
+  ];
+  for (const { key, status } of unresolved) dock.record(key, { summary: key, status });
+
+  // Well past the cap, all confirmed, in age order.
+  for (let index = 0; index < DOCK_ENTRY_CAP + 20; index += 1) {
+    dock.record(`ok-${index}`, { summary: `confirmed ${index}`, status: "ok" });
+  }
+
+  assert.equal(dock.entries.size, DOCK_ENTRY_CAP, "the dock settles at the cap");
+  for (const { key } of unresolved) {
+    assert.equal(dock.entries.has(key), true, `${key} is never evicted`);
+  }
+  // The oldest confirmed ones went first, and the newest are all still here.
+  assert.equal(dock.entries.has("ok-0"), false, "the oldest confirmed receipt is the one that goes");
+  assert.equal(dock.entries.has("ok-22"), false);
+  assert.equal(dock.entries.has("ok-23"), true);
+  assert.equal(dock.entries.has(`ok-${DOCK_ENTRY_CAP + 19}`), true);
+
+  // With nothing confirmed left to drop, the Map is ALLOWED to exceed the cap
+  // rather than forget outstanding work.
+  const outstanding = createCommandDock({ root: null });
+  for (let index = 0; index < DOCK_ENTRY_CAP + 5; index += 1) {
+    outstanding.record(`stuck-${index}`, { summary: `pending ${index}`, status: "in_flight" });
+  }
+  assert.equal(outstanding.entries.size, DOCK_ENTRY_CAP + 5, "nothing resolved, so nothing is evicted");
+
+  // And once those resolve, the backlog drains from the oldest.
+  outstanding.record("stuck-0", { summary: "pending 0", status: "ok" });
+  assert.equal(outstanding.entries.has("stuck-0"), false, "the receipt that just confirmed is now evictable");
+  assert.equal(outstanding.entries.size, DOCK_ENTRY_CAP + 4);
+});
+
+test("eviction never changes what the newest four render as", () => {
+  const dock = createCommandDock({ root: null });
+  for (let index = 0; index < 10; index += 1) {
+    dock.record(`ok-${index}`, { summary: `confirmed ${index}`, status: "ok" });
+  }
+  const newestFour = () => commandDockHtml([...dock.entries.values()].map(commandReceiptView));
+  const before = newestFour();
+  assert.match(before, /confirmed 9/);
+  assert.doesNotMatch(before, /confirmed 5/, "four is four, before the cap is anywhere near");
+
+  for (let index = 10; index < DOCK_ENTRY_CAP + 40; index += 1) {
+    dock.record(`ok-${index}`, { summary: `confirmed ${index}`, status: "ok" });
+  }
+  assert.equal(dock.entries.size, DOCK_ENTRY_CAP, "eviction did run");
+
+  // The rendered four are still the four newest, drawn exactly as they were.
+  const after = newestFour();
+  const expected = createCommandDock({ root: null });
+  for (let index = DOCK_ENTRY_CAP + 36; index < DOCK_ENTRY_CAP + 40; index += 1) {
+    expected.record(`ok-${index}`, { summary: `confirmed ${index}`, status: "ok" });
+  }
+  assert.equal(after, commandDockHtml([...expected.entries.values()].map(commandReceiptView)));
+  assert.equal(after.includes("confirmed 9"), false, "the old ones are gone from the render too");
 });

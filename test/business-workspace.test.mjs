@@ -7,7 +7,9 @@ import {
   HOME_SECTIONS, NOT_IN_RELEASE, SECTION_TITLE, homeSections, needLabel, teamReviewRows, unavailableCopy,
 } from "../js/business-workspace-model.js";
 import { migratePreferences } from "../js/shell.js";
-import { quickAddRecordNames, validWorkspacePayload } from "../js/workspace-command-center-model.js";
+import { acceptsResponse, quickAddRecordNames, validWorkspacePayload } from "../js/workspace-command-center-model.js";
+import { quickAddRecords } from "../js/task-records-model.js";
+import { parseQuickAdd } from "../js/visual-system.js";
 import { createFixtureClient } from "../js/fixture-client.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -193,7 +195,74 @@ test("the synthetic command-centre read is a payload the shared validator accept
   assert.deepEqual([...quickAddRecordNames(null)], [], "an unverified payload names no record");
 });
 
-test("Quick add on Home is wired to the page's own read, not to a hardcoded empty list", () => {
+test("Home's Quick add names come from a board read, and a late board response cannot overwrite a newer one", async () => {
+  // The page reads the board for names. Here that read is replayed against the
+  // same fixture the page uses, through the same model, so the names asserted
+  // are the ones a reader would actually be offered.
+  const fixtureText = await read("data/board-seed.json");
+  const fixture = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(fixtureText).toString("base64")}` });
+  const board = await fixture.getBoard();
+  const records = quickAddRecords(board.deals);
+  assert.ok(records.length > 0, "the board names deals, which is why Quick add reads it");
+  for (const record of records) {
+    assert.equal(typeof record.name, "string");
+    assert.ok(record.name.length > 0);
+    assert.ok(record.id, "each name carries the board's own deal id");
+  }
+  const parsed = parseQuickAdd(`Call about ${records[0].name} friday`, { now: Date.parse("2026-09-16T14:00:00Z"), viewer: "joe", records });
+  assert.equal(parsed.related, records[0].name);
+  assert.equal(parsed.relatedId, records[0].id);
+
+  // The page issues the board read ALONGSIDE the command-centre read, under a
+  // second sequence of its own, and the two guards never share a counter.
+  assert.match(pageJs, /client\.getBoard\(\)/, "the names come from the deal-room-board read");
+  assert.match(pageJs, /boardSequence/, "the board read has its own sequence");
+  assert.match(pageJs, /acceptsResponse\(view\.boardSequence, sequence\)/, "a late board answer is discarded");
+  assert.match(pageJs, /records: view\.records/);
   assert.doesNotMatch(pageJs, /records:\s*\[\]/, "Quick add is given the records the page already holds");
-  assert.match(pageJs, /records: quickAddRecordNames\(view\.payload\)/);
+  const loadBody = pageJs.slice(pageJs.indexOf("async function load()"), pageJs.indexOf("async function loadBoardRecords"));
+  assert.doesNotMatch(loadBody, /getBoard|loadBoardRecords/, "the board read is not chained behind the command-centre read");
+
+  // And the guard itself refuses a stale sequence, which is what makes the
+  // wiring above mean anything.
+  assert.equal(acceptsResponse(3, 2), false, "a board answer from an older read is dropped");
+  assert.equal(acceptsResponse(3, 3), true);
+});
+
+test("an unread or failed board read leaves Quick add with an empty record list rather than guessed names", () => {
+  // Nothing read yet, and a read that threw, are the same thing here: no names.
+  for (const records of [[], quickAddRecords(null), quickAddRecords(undefined)]) {
+    const parsed = parseQuickAdd("Call about Demo Gulf Breeze Dental friday", { now: Date.parse("2026-09-16T14:00:00Z"), viewer: "joe", records });
+    assert.equal(parsed.related, null, "an unread board names no record, and nothing is guessed from capitalisation");
+    assert.equal(parsed.relatedId, null);
+    assert.deepEqual([...parsed.relatedCandidates], []);
+  }
+
+  // The failure is swallowed on the page: the board's error text never reaches
+  // a reader whose command-centre read succeeded.
+  assert.match(pageJs, /catch \{\s*records = Object\.freeze\(\[\]\);/, "a failed board read falls back to an empty list");
+  assert.doesNotMatch(pageJs.slice(pageJs.indexOf("async function loadBoardRecords"), pageJs.indexOf("function settle(")), /setStatus|announce|showToast/, "a failed board read paints no error on the page");
+});
+
+test("Home's Quick add renders the ambiguity question from its own read", () => {
+  // Two board deals whose names the same sentence answers. The page resolves
+  // neither and says so in the Related row it already has.
+  const records = [
+    { id: "deal-1", name: "Demo Crestview Derm" },
+    { id: "deal-2", name: "Demo Crestview Derm Suite 200" },
+  ];
+  const parsed = parseQuickAdd("Book the Demo Crestview Derm Suite 200 walkthrough", {
+    now: Date.parse("2026-09-16T14:00:00Z"), viewer: "joe", records,
+  });
+  assert.equal(parsed.related, null);
+  assert.deepEqual([...parsed.relatedCandidates], ["Demo Crestview Derm", "Demo Crestview Derm Suite 200"]);
+  assert.ok(parsed.questions.some((question) => question.startsWith("Which record is this about:")));
+
+  // The Related row is the one that says it, in the markup Home already has,
+  // with every candidate escaped and no new class or style.
+  assert.match(pageJs, /Two records match, say which:/, "the ambiguity is named in words, not left blank");
+  assert.match(pageJs, /function relatedCell\(parsed\)/);
+  assert.match(pageJs, /candidates\.map\(\(name\) => escapeHtml\(name\)\)/, "a candidate name is escaped like every other read value");
+  assert.match(pageJs, /<div><span>Related<\/span>\$\{relatedCell\(effective\)\}<\/div>/, "the existing Related row carries it");
+  assert.doesNotMatch(css, /ambigu/i, "no new CSS was needed");
 });

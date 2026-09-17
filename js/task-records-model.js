@@ -180,6 +180,12 @@ export function quickAddPlan(parsed, { viewer = "joe", sentence = "" } = {}) {
   const body = String(sentence || "").trim() || action;
   const dated = Boolean(parsed.due);
   const shared = PARTNER_SET.has(owner) && owner !== self;
+  // add-loop has NO related-id field. Its arguments are idempotency_key, kind,
+  // owner, domain, title, body, marker, due_on, unblocks, source_note, blocker
+  // and blocker_detail, so source_note prose is the only carrier the verb
+  // offers for the id of the record this capture is about. An unresolved or
+  // ambiguous match carries nothing rather than a guess.
+  const relatedNote = parsed?.relatedId ? `Related: ${parsed.related} (${parsed.relatedId})` : null;
   const common = {
     owner,
     title: action,
@@ -187,6 +193,7 @@ export function quickAddPlan(parsed, { viewer = "joe", sentence = "" } = {}) {
     domain: "business",
     marker: dated ? "dated" : "none",
     ...(dated ? { due_on: parsed.due } : {}),
+    ...(relatedNote ? { source_note: relatedNote } : {}),
   };
   const kind = shared ? "team_loop" : "open_loop";
   const args = shared
@@ -278,27 +285,29 @@ export function stableKey(text) {
 }
 
 /**
- * The record names Quick add is allowed to match a sentence against: the ones
- * this page has actually READ. Quick add used to be handed an empty list, so a
- * sentence naming a loop on the board in front of the reader still resolved
- * Related by capitalisation guesswork. Empty and duplicate names are dropped,
- * and the list is capped so a long board cannot turn one keystroke into a
- * thousand substring scans.
+ * The records Quick add is allowed to match a sentence against: the ones this
+ * page has actually READ, as {id, name} pairs. Quick add used to be handed an
+ * empty list, so a sentence naming a loop on the board in front of the reader
+ * still resolved Related by capitalisation guesswork. The id rides along so a
+ * match can be carried into the filed record rather than re-found from prose.
+ * Empty and duplicate names are dropped, and the list is capped so a long board
+ * cannot turn one keystroke into a thousand name scans.
  */
 export const QUICK_ADD_RECORD_CAP = 200;
 
 export function quickAddRecords(rows, cap = QUICK_ADD_RECORD_CAP) {
-  const names = [];
+  const records = [];
   const seen = new Set();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== "object") continue;
     const name = String(row.title ?? row.name ?? "").trim();
     if (name === "" || seen.has(name)) continue;
     seen.add(name);
-    names.push(name);
-    if (names.length >= cap) break;
+    // The id the row itself carries, never one derived from the name.
+    records.push(Object.freeze({ id: row.loop_id ?? row.id ?? null, name }));
+    if (records.length >= cap) break;
   }
-  return Object.freeze(names);
+  return Object.freeze(records);
 }
 
 export const operationKeys = Object.freeze({
