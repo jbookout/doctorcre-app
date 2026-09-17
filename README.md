@@ -31,8 +31,12 @@ The production Worker configuration deliberately has no route. It binds only to
 the production `carr-mcp` service and enables version preview URLs, so a release
 can be built, uploaded, and verified before any public hostname moves. Run
 `npm run deployment:check:production` to validate that configuration locally.
-Attaching `app.doctorcre.com`, promoting a production version, or moving the
-hostname back remains a separately authorized production operation.
+`npm run release:production`, run from a clean checkout at exactly `origin/main`
+under Joe's explicit instruction for that release, uploads and promotes an
+immutable production version through the same checks as staging; it never
+creates a Worker on first use. `npm run rollback:production -- <version-id>`
+restores one explicit earlier production version. Attaching `app.doctorcre.com`
+or moving the hostname stays outside these scripts and outside `wrangler.jsonc`.
 
 `npm run build` produces a deterministic `dist/doctorcre-app.tar`, its complete
 file-and-contract manifest, a SHA-256 sidecar, and the exact `dist/site` static

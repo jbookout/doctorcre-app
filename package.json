@@ -16,6 +16,8 @@
     "dev:staging": "npm run build && wrangler dev --env staging",
     "release:staging": "node scripts/release-staging.mjs",
     "rollback:staging": "node scripts/rollback-staging.mjs",
+    "release:production": "node scripts/release-production.mjs",
+    "rollback:production": "node scripts/rollback-production.mjs",
     "test": "node --test test/*.test.mjs",
     "serve": "node scripts/serve.mjs"
   },
