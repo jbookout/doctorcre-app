@@ -37,6 +37,10 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `tasks.html` | V5-UX-B02 Tasks at `/tasks`: the shared record of open task and team loops, with Quick add capture, handover, due dates and completion |
 | `js/task-records-model.js` | Pure task rules: board-row validation, owner scoping, handover/close/due argument sets, the Quick add plan and the operation keys |
 | `js/task-records.js` | Tasks DOM wiring over the loop verbs, through the shared command kernel and dock |
+| `business-workspace.html` | V5-UX-B01 Business workspace at `/business`: Home, Work, Pipeline and Doc history over the canonical command-center read, with Team review and Quick add |
+| `js/business-workspace-model.js` | Pure Home rules: the section order, the Team review share arithmetic and the words an unverified section says |
+| `js/business-workspace.js` | Business workspace DOM wiring over `GET /api/v1/command-center` and the Quick add capture |
+| `js/shell.js` | The shell every surface shares: the three presentation icons (one storage key, legacy key migrated), the tab strip, and the floating Doc |
 | `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
 | `js/doc-dock.js` | The one floating Doc icon and its chat window, shared by every surface |
 | `js/client.js` | Small client interface selected by the app |

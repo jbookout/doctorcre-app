@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE business workspace — Home, Work, Pipeline and Doc history over the canonical command-center read">
+  <title>Business · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/business-workspace.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to Home</a>
+  <header class="topbar">
+    <a class="brand" href="/business" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>business</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/business" aria-current="page">Home</a>
+      <a href="/tasks">Tasks</a>
+      <a href="/deals">Deals</a>
+      <a href="/clients">Clients</a>
+      <a href="/vendors">Vendors</a>
+      <a href="/work-inventory">Work Inventory</a>
+    </nav>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass hero-card" aria-labelledby="pageTitle">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="still" id="homeOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
+          <h1 id="pageTitle">Business</h1>
+        </div>
+        <div class="hero-meta">
+          <span class="status" data-state="unknown" id="homeStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="homeStatusLabel">Reading the command centre…</span></span>
+        </div>
+      </div>
+      <p class="caption freshness" id="homeFreshness">Reading the command centre…</p>
+      <div class="row-wrap"><button class="btn" type="button" id="retryRead" hidden>Retry read</button><a class="btn btn-primary" id="signInAgain" href="/auth/login?return_to=/business" hidden>Sign in again</a></div>
+    </section>
+
+    <p class="sr-only" id="homeLive" aria-live="polite" role="status">Reading the command centre…</p>
+
+    <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
+      <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
+      <a class="tab" href="/tasks">Work</a>
+      <a class="tab" href="/deals">Pipeline</a>
+      <button class="tab" type="button" id="tabDocHistory">Doc history</button>
+    </div>
+
+    <section class="tabpanel" id="panelHome" role="tabpanel" aria-labelledby="tabHome" tabindex="0">
+      <section class="card glass" data-section="needs_action" aria-labelledby="needsActionTitle">
+        <div class="card-heading"><div><p class="eyebrow">Flagged</p><h2 id="needsActionTitle">Needs action</h2></div></div>
+        <ul class="work-list" id="needsActionList"></ul>
+        <div class="state-block" id="needsActionState" data-state="empty" hidden><h3>Nothing flagged</h3></div>
+      </section>
+
+      <section class="card glass" data-section="pipeline" aria-labelledby="pipelineTitle">
+        <div class="card-heading"><div><p class="eyebrow">Deals</p><h2 id="pipelineTitle">Pipeline</h2></div></div>
+        <ul class="work-list" id="pipelineList"></ul>
+        <div class="state-block" id="pipelineState" data-state="offline" hidden><h3>Deal counts could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="changes" aria-labelledby="changesTitle">
+        <div class="card-heading"><div><p class="eyebrow">Record layer</p><h2 id="changesTitle">Changes</h2></div></div>
+        <p class="count-line" id="changesValue">—</p>
+        <div class="state-block" id="changesState" data-state="offline" hidden><h3>Recent changes could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="doc_at_work" aria-labelledby="docWorkTitle">
+        <div class="card-heading"><div><p class="eyebrow">Nonhuman work</p><h2 id="docWorkTitle">Doc at work</h2></div></div>
+        <p class="count-line" id="docWorkValue">—</p>
+        <div class="state-block" id="docWorkState" data-state="offline" hidden><h3>Work in progress could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="quick_add" aria-labelledby="quickTitle">
+        <div class="card-heading"><div><p class="eyebrow">Capture</p><h2 id="quickTitle">Quick add</h2></div></div>
+        <form id="quickAddForm">
+          <div class="field">
+            <label for="quickAddInput">Sentence</label>
+            <input id="quickAddInput" type="text" autocomplete="off" placeholder="Call Dr. Patel Friday 10 AM about the Crestview LOI" aria-describedby="quickAddQuestion">
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="quickAddDate">Due date</label>
+              <input id="quickAddDate" type="date">
+            </div>
+          </div>
+          <div class="compare parsed" id="quickAddParsed" aria-live="polite">
+            <div><span>Action</span><i>unknown</i></div><div><span>Owner</span><i>unknown</i></div><div><span>Due</span><i>none</i></div><div><span>Related</span><i>none</i></div>
+          </div>
+          <p class="small" id="quickAddQuestion"></p>
+          <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button" id="quickAddDraft">Keep as draft</button></div>
+        </form>
+        <div class="chip-bar" id="draftBar" hidden>
+          <span class="chip-label">Drafts, kept on this page only</span>
+          <span class="chip-list" id="draftList"></span>
+        </div>
+      </section>
+
+      <section class="card glass" data-section="not_in_release" aria-labelledby="notInReleaseTitle">
+        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="notInReleaseTitle">Not in this release</h2></div></div>
+        <div class="state-block" data-state="not_in_release"><h3>This week: not in this release</h3></div>
+        <div class="state-block" data-state="not_in_release"><h3>Calls: not in this release</h3></div>
+        <div class="state-block" data-state="not_in_release"><h3>Waiting on others: not in this release</h3></div>
+      </section>
+
+      <section class="card glass" data-section="team_review" aria-labelledby="teamReviewTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Your share</p><h2 id="teamReviewTitle">Team review</h2></div>
+          <span class="owner"><span class="avatar" data-partner="joe" id="viewerAvatar" aria-hidden="true">J</span><span id="viewerName">Joe</span></span>
+        </div>
+        <ul class="work-list" id="teamReviewList"></ul>
+        <div class="state-block" id="teamReviewState" data-state="offline" hidden><h3>Your share could not be verified</h3></div>
+      </section>
+    </section>
+  </main>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Business home</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Business · One record, one owner, one safety key per command.</p></footer>
+  <nav class="mobile-nav" aria-label="Workspace shortcuts">
+    <a href="#panelHome" data-tab="tabHome" aria-current="page"><span aria-hidden="true">⌂</span>Home</a>
+    <a href="/tasks"><span aria-hidden="true">☰</span>Work</a>
+    <a href="/deals"><span aria-hidden="true">◈</span>Pipeline</a>
+    <a href="#docChat" id="mobileDocHistory"><span aria-hidden="true">◷</span>Doc history</a>
+  </nav>
+  <script type="module" src="/js/business-workspace.js"></script>
+</body>
+</html>

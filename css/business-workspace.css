@@ -1,0 +1,65 @@
+/* V5-UX-B01 Business workspace — page layer over css/system.css.
+ *
+ * The shared sheet is contract-bound, so nothing here redefines the register:
+ * no colours of its own, no type scale, no new component vocabulary. It does
+ * only what the shared sheet leaves to a page:
+ *
+ *  1. The hero row and the one freshness line under it.
+ *  2. The small layout helpers this page's Quick add card is built from
+ *     (row-wrap, field-grid, the parsed strip), which live in the prototype
+ *     stylesheet and are not part of the product sheet.
+ *  3. A tab that is a LINK to another page: it looks like the tabs beside it
+ *     and is marked only by aria-current when the person is already there.
+ *  4. The permanent "not in this release" state, which is neither a zero count
+ *     nor a failure: it is a scope statement, so it is drawn quiet and dashed.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+/* The hero row: title on the left, the read's status on the right. */
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hero-card { display: grid; gap: 12px; }
+
+/* One line, under the hero and under nothing else: when the read was taken and
+ * what it is against the current clock. */
+.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
+.freshness[data-freshness="stale"], .freshness[data-freshness="expired"], .freshness[data-freshness="missing"] { color: var(--amber-text); }
+
+.count-line { margin: 0; font: 600 24px/1.1 var(--display); }
+.count-line[data-state="unavailable"] { color: var(--quiet); }
+
+/* Quick add, the same card the Tasks page carries. */
+.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+.parsed { margin: 12px 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.parsed i { color: var(--quiet); }
+.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: var(--touch); }
+
+/* A tab that navigates. It carries the tab register and takes the selected
+ * treatment only from aria-current, which the browser sets by being there. */
+a.tab { text-decoration: none; }
+a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%, transparent); background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--text); box-shadow: inset 0 -2px var(--orange); }
+
+/* A Home row: label and numbers on the left, the one Open button on the right. */
+.stack-end { display: grid; gap: 8px; justify-items: end; }
+.work-item h3 { margin: 0; }
+.work-item h3,
+.work-meta,
+.work-meta span { min-width: 0; overflow-wrap: anywhere; }
+.work-item > div { min-width: 0; }
+
+/* Permanent scope, not an outage and not a zero. */
+.state-block[data-state="not_in_release"] { border-style: dashed; border-color: var(--line-strong); }
+.state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
+.state-block + .state-block { margin-top: 10px; }
+
+@media (max-width: 640px) {
+  .parsed { grid-template-columns: 1fr; }
+  .work-item { grid-template-columns: minmax(0, 1fr); }
+  .stack-end { justify-items: start; }
+  /* The bottom navigation mirrors the tabs, so the page keeps clear of it. */
+  main.shell { padding-bottom: 96px; }
+}

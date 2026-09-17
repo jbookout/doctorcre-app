@@ -290,6 +290,30 @@ export function createLiveClient(opts = {}) {
     async updateLoop(args) { return write('update-loop', args); },
     async closeLoop(args) { return write('close-loop', args); },
 
+    // ---------------------------------------------------------- command centre
+    // The one aggregate Home read. It is NOT an MCP verb: the app Worker serves
+    // it as a cookie-authenticated same-origin GET, and the only query parameter
+    // it accepts is a viewer equal to the session actor, so this client sends
+    // none and lets the session say who is asking.
+    //
+    // The STATUS travels on the error. A 401 or 403 is a decision taken before
+    // the read ran and the page must say the session ended; anything else is a
+    // path failure the page may retry. A caller that saw only a thrown Error
+    // could not tell those apart.
+    async commandCenter() {
+      const res = await fetchImpl('/api/v1/command-center', {
+        headers: { accept: 'application/json' },
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const error = new Error(`live command-center -> HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
+      }
+      return res.json();
+    },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

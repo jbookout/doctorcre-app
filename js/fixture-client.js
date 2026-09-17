@@ -4,6 +4,9 @@
  */
 import { uuidv4 } from './uuid.js';
 import { PHASES } from './client.js';
+import {
+  MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
+} from './workspace-command-center-model.js';
 
 const LEASE_TTL_MS = 3000;
 const IDEM_TTL_MS = 60 * 60 * 1000;
@@ -673,6 +676,63 @@ export async function createFixtureClient(opts = {}) {
         found.updated_at = found.closed_at;
         return { ok: true, loop_id: found.loop_id, number: found.number, status: found.status };
       });
+    },
+
+    // ---------------------------------------------------------- command centre
+    // The synthetic twin of the aggregate Home read. It is BUILT FROM THE SAME
+    // fixture board the rest of this client serves, so the counts a person sees
+    // on Home are the counts they see on the board — a hand-written constant
+    // here would let the two surfaces disagree and teach a reader to distrust
+    // whichever one they checked second.
+    //
+    // Every stamp is minted against the current clock with the contract's own
+    // 60-second window, because a fixture with a frozen `valid_until` would show
+    // the expired path on every run and never exercise the fresh one.
+    async commandCenter() {
+      const now = Date.now();
+      const observed_at = new Date(now).toISOString();
+      const valid_until = new Date(now + 60_000).toISOString();
+      const source = (name) => ({
+        source: name,
+        source_ref: name === 'command_center' ? 'fixture:command-center' : `fixture:${name}`,
+        observed_at,
+        valid_until,
+        freshness: 'fresh',
+        correlation_id: uuidv4(),
+        safe_explanation: 'Synthetic fixture read. No production record was read.',
+      });
+      const active = [...deals.values()].filter((deal) => deal.operating_state === 'active');
+      const mineActive = active.filter((deal) => deal.owner === selfActor);
+      const teamFlagged = active.filter((deal) => deal.attention === true);
+      const myFlagged = mineActive.filter((deal) => deal.attention === true);
+      const needs = [
+        { kind: 'team_flagged_deals', scope: 'team', count: teamFlagged.length, destination: TEAM_FLAGGED_DESTINATION },
+        { kind: 'my_flagged_deals', scope: 'mine', count: myFlagged.length, destination: MY_FLAGGED_DESTINATION },
+      ];
+      // needs_joe_work is Joe's row and only Joe's: a viewer who is not Joe is
+      // never shown work that is waiting on someone else's hands.
+      if (selfActor === 'joe') needs.push({ kind: 'needs_joe_work', scope: 'mine', count: 2, destination: NEEDS_JOE_DESTINATION });
+      return {
+        viewer: selfActor === 'dell' ? 'dell' : 'joe',
+        source: source('command_center'),
+        metrics: [
+          {
+            scope: 'team', active_deals: active.length, flagged_deals: teamFlagged.length,
+            active_destination: TEAM_ACTIVE_DESTINATION, flagged_destination: TEAM_FLAGGED_DESTINATION,
+            source: source('v_deal_room_board'),
+          },
+          {
+            scope: 'mine', active_deals: mineActive.length, flagged_deals: myFlagged.length,
+            active_destination: null, flagged_destination: MY_FLAGGED_DESTINATION,
+            source: source('v_deal_room_board'),
+          },
+        ],
+        needs_you_now: needs,
+        doc_at_work: [{ kind: 'active_nonhuman_work', count: 3, source: source('ops.work_request') }],
+        recent_activity: [{ kind: 'changed_work', count: 5, observed_at, source: source('v_deal_room_board') }],
+        this_week: [],
+        recent_calls: [],
+      };
     },
 
     async startReview({ workspace_kind, account_client_id, idempotency_key }) {

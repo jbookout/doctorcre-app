@@ -85,6 +85,6 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.3.0" },
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.3.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.4.0" },
   });
 });
