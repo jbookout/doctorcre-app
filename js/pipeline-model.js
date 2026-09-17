@@ -169,6 +169,8 @@ export function isDealOutcome(value) {
 /** The captions the dialog prints. No sentence here promises a check. */
 export const COMPLETION_CAPTIONS = Object.freeze({
   evidence: 'Filed as a note on the record. CARR does not require evidence to move a phase.',
+  change_reason: 'A short reason, saved with the phase change itself.',
+  human_quote: 'Your own sentence, saved word for word with the phase change.',
   next: 'Recorded as the next step.',
   effective_off: 'Not recorded anywhere; the move is dated by when it is saved.',
   effective_on: 'Recorded as a critical date on the record.',
@@ -205,16 +207,27 @@ const text = (value) => String(value ?? '').trim();
  * @param {ReturnType<typeof moveIntent>} intent
  * @param {{evidence?:string, nextStep?:string, nextWhen?:string,
  *          effectiveDate?:string, recordCriticalDate?:boolean, dateSource?:string,
- *          outcome?:string, closedOn?:string, wonValue?:string|number}} [form]
+ *          outcome?:string, closedOn?:string, wonValue?:string|number,
+ *          changeReason?:string, humanQuote?:string}} [form]
  * @returns {{steps: Array<{verb:string, args:Object, summary:string}>, errors: string[]}}
  */
 export function completionPlan(intent, form = {}) {
   const errors = [];
   if (!intent) return { steps: [], errors: ['There is no move to make.'] };
 
+  // The reason and the partner's own sentence ride ON the phase patch rather
+  // than as follow-up verbs: they describe the change itself, so they belong to
+  // the same write and the same receipt. Blank stays blank — an untouched box
+  // sends no key at all, never an empty string.
+  const phaseArgs = { deal: intent.deal, field: 'phase', value: intent.value };
+  const changeReason = text(form.changeReason);
+  const humanQuote = text(form.humanQuote);
+  if (changeReason) phaseArgs.change_reason = changeReason;
+  if (humanQuote) phaseArgs.human_quote = humanQuote;
+
   const steps = [{
     verb: 'patch-deal-field',
-    args: { deal: intent.deal, field: 'phase', value: intent.value },
+    args: phaseArgs,
     summary: moveSummary(intent),
   }];
 

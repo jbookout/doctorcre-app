@@ -126,6 +126,9 @@ test("the completion plan puts the phase patch first and carries only the follow
     args: { deal: "d01", field: "phase", value: "Legal" },
     summary: "Demo Dental North → Legal",
   });
+  // An untouched box sends nothing at all — not a key holding an empty string.
+  assert.equal("change_reason" in bare.steps[0].args, false);
+  assert.equal("human_quote" in bare.steps[0].args, false);
 
   const full = completionPlan(intent, {
     evidence: "  Redline returned unchanged.  ",
@@ -145,6 +148,30 @@ test("the completion plan puts the phase patch first and carries only the follow
   // Whitespace is not an answer, and an unticked box writes nothing at all.
   const blank = completionPlan(intent, { evidence: "   ", effectiveDate: "2026-02-01", recordCriticalDate: false });
   assert.deepEqual(blank.steps.map((step) => step.verb), ["patch-deal-field"]);
+});
+
+test("the phase patch carries the partner's reason and sentence when they were typed", () => {
+  const intent = moveIntent({ id: "d01", name: "Demo Dental North", phase: "On Deck" }, "legal");
+  const plan = completionPlan(intent, {
+    changeReason: "  Countersigned  ",
+    humanQuote: "  They signed it this morning.  ",
+  });
+  assert.deepEqual(plan.errors, []);
+  assert.equal(plan.steps.length, 1, "neither field spawns a second verb");
+  assert.deepEqual(plan.steps[0].args, {
+    deal: "d01",
+    field: "phase",
+    value: "Legal",
+    change_reason: "Countersigned",
+    human_quote: "They signed it this morning.",
+  });
+});
+
+test("whitespace is not a sentence", () => {
+  const intent = moveIntent({ id: "d01", name: "Demo Dental North", phase: "On Deck" }, "legal");
+  const plan = completionPlan(intent, { changeReason: "   ", humanQuote: "   " });
+  assert.equal("change_reason" in plan.steps[0].args, false);
+  assert.equal("human_quote" in plan.steps[0].args, false);
 });
 
 test("a critical date is refused without its source, and a date without a step is refused too", () => {
@@ -601,5 +628,56 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.8.0");
+  assert.equal(contract.version, "1.9.0");
+});
+
+test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {
+  const client = await newClient();
+  const row = await boardRow(client, "d20");
+  const intent = moveIntent(row, "closing");
+  const plan = completionPlan(intent, {
+    changeReason: "Countersigned",
+    humanQuote: "They signed it this morning.",
+  });
+  const answer = await client.patchDealField({
+    ...plan.steps[0].args,
+    base_event_id: row.field_base?.phase?.id || null,
+    idempotency_key: "key-words-1",
+  });
+  assert.equal(answer.status, "ok");
+
+  const changes = await client.getChanges(null);
+  const event = changes.events.find((entry) => entry.id === answer.event_id);
+  assert.ok(event, "the committed event is on the feed");
+  assert.equal(event.field, "phase");
+  assert.equal(event.change_reason, "Countersigned");
+  assert.equal(event.human_quote, "They signed it this morning.", "sent verbatim, never composed");
+
+  // A move with neither field is not refused; it simply records none.
+  const plain = await client.patchDealField({
+    deal: "d01", field: "phase", value: "Research",
+    base_event_id: (await boardRow(client, "d01")).field_base?.phase?.id || null,
+    idempotency_key: "key-words-2",
+  });
+  assert.equal(plain.status, "ok");
+  const plainEvent = (await client.getChanges(null)).events.find((entry) => entry.id === plain.event_id);
+  assert.equal(plainEvent.change_reason, null);
+  assert.equal(plainEvent.human_quote, null);
+});
+
+test("the completion dialog asks for the reason and the partner's own words, and claims no gate", async () => {
+  const html = await read("pipeline.html");
+  assert.match(html, /id="completionReason"/);
+  assert.match(html, /id="completionQuote"/);
+  assert.match(html, /A short reason, saved with the phase change itself\./);
+  assert.match(html, /Your own sentence, saved word for word with the phase change\./);
+  for (const phrase of ["needs evidence", "blocked", "not allowed", "requires approval", "cannot move until"]) {
+    assert.ok(!html.toLowerCase().includes(phrase), `the page still says "${phrase}"`);
+  }
+});
+
+test("the two new controls' values reach the completion plan", async () => {
+  const pageJs = await read("js/pipeline.js");
+  assert.match(pageJs, /changeReason: \$\('completionReason'\)/);
+  assert.match(pageJs, /humanQuote: \$\('completionQuote'\)/);
 });

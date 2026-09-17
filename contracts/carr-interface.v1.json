@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "e7f4f1514568d03e269bda336a4c7d28f24f5810"
+    "source_commit": "d42737800b3452eeee443c8011604245108b32b0"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -71,6 +71,7 @@
     "A refused write and an unanswered write remain distinct states.",
     "Retries reuse the same idempotency key and reconcile against CARR.",
     "Fixture data is synthetic and cannot become production state.",
-    "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again."
+    "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
+    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one."
   ]
 }

@@ -660,3 +660,38 @@ test("the message names the cell when a toast has to, and speaks plainly when it
     /reported an error instead of confirming it\. .*\(HTTP 503\)$/);
   assert.doesNotMatch(fieldWriteMessage({ status: "unknown", reason: "server_error" }), /HTTP/);
 });
+
+test("extra arguments ride on the first attempt, and a replay re-sends the original ones", async () => {
+  let writes = createFieldWriteState();
+  const sent = [];
+  let minted = 0;
+  const queue = [dropped("connection dropped"), ok({ event_id: "e-9", event_recorded_at: "2026-02-01T00:00:00Z" })];
+  const write = (extra) => performFieldWrite({
+    deal: "d01", field: "phase", value: "Legal", base: null, extra,
+    getState: () => writes,
+    setState: (next) => { writes = next; },
+    newKey: () => `key-${++minted}`,
+    patch: async (request) => {
+      sent.push(request);
+      const answer = queue.shift();
+      if (!answer) throw new Error("no scripted answer left");
+      return answer(request);
+    },
+  });
+
+  const first = await write({ change_reason: "r", human_quote: "q" });
+  assert.equal(first.status, "unknown", "the answer was lost");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].change_reason, "r");
+  assert.equal(sent[0].human_quote, "q");
+  const key = sent[0].idempotency_key;
+
+  // The retry supplies DIFFERENT words. The retained request wins: one key stays
+  // bound to one set of arguments, whatever a later caller believes.
+  const retry = await write({ change_reason: "changed", human_quote: "changed" });
+  assert.equal(retry.status, "ok");
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent[1], sent[0], "the replay is the original request, byte for byte");
+  assert.equal(sent[1].idempotency_key, key, "and under the original key");
+  assert.equal(minted, 1, "no second key was minted");
+});
