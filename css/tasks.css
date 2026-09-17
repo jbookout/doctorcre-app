@@ -1,0 +1,57 @@
+/* V5-UX-B02 Tasks — page layer over css/system.css.
+ *
+ * The shared sheet is contract-bound, so nothing here redefines the register:
+ * no colours of its own, no type scale, no new component vocabulary. It does
+ * the four things the shared sheet leaves to a page:
+ *
+ *  1. Raises the shared 36/38px controls to the 44px floor on this page, so a
+ *     scope switch and a chip are full touch targets like every other button.
+ *  2. Brings across the four small layout helpers the prototype's Quick add
+ *     card is built from (row-wrap, field-grid, the parsed strip), which live
+ *     in the prototype stylesheet and are not part of the product sheet.
+ *  3. Lets a task row and its actions stack at phone width instead of
+ *     squeezing the title.
+ *  4. Styles the two things this surface adds: the popup's label/value rows and
+ *     the collapsed system-owned group.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+/* The 44px accessibility floor, applied where the shared sheet sits under it. */
+.btn-group .btn { min-height: var(--touch); }
+.chip { min-height: var(--touch); }
+
+/* Quick add, lifted from the prototype card. */
+.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+.parsed { margin: 12px 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.parsed i { color: var(--quiet); }
+.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* A task row: title and meta on the left, owner and state on the right. */
+.stack-end { display: grid; gap: 8px; justify-items: end; }
+.task-open { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.task-open h3 { margin: 0; font: 600 17px/1.15 var(--body); }
+.work-item h3,
+.work-meta,
+.work-meta span { min-width: 0; overflow-wrap: anywhere; }
+.work-item > div { min-width: 0; }
+
+/* The popup's label/value rows. */
+.detail-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 14px; margin: 0; }
+.detail-rows dt { color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.detail-rows dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+
+/* The system-owned group: present, collapsed, never hidden. */
+.system-owned { margin-top: var(--gap); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 10px 12px; }
+.system-owned > summary { min-height: var(--touch); display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
+.system-owned .work-list { margin-top: 10px; }
+
+@media (max-width: 640px) {
+  .parsed { grid-template-columns: 1fr; }
+  .detail-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .detail-rows dd { margin-bottom: 8px; }
+  .work-item { grid-template-columns: minmax(0, 1fr); }
+  .stack-end { justify-items: start; }
+}
