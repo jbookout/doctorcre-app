@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { createFixtureClient } from "../js/fixture-client.js";
-import { PHASES, PHICON } from "../js/client.js";
+import { PHASES, PHICON, phaseLabel } from "../js/client.js";
 import {
   COLUMNS, PHASE_DATE_KIND, closedColumnCaption, columnBySlug, columnByValue, columnLabel,
   completionPlan, filterDeals, groupByColumn, keyboardTarget, moveIntent, moveSummary,
@@ -50,6 +50,25 @@ test("the board has the eight deal phases, in the record layer's own order", () 
   assert.equal(columnBySlug("due_diligence").value, "Diligence");
   assert.equal(columnLabel("On Deck"), "Pending");
   assert.equal(columnLabel("Diligence"), "Due diligence");
+  // /deals now prints the same display words as the board. One map per word,
+  // asserted against the other, so the two surfaces cannot drift apart.
+  for (const column of COLUMNS) {
+    assert.equal(phaseLabel(column.value), column.label, `${column.value} reads differently on the two surfaces`);
+  }
+});
+
+test("the /deals phase select shows the display word and writes the wire word", async () => {
+  assert.equal(phaseLabel("On Deck"), "Pending");
+  assert.equal(phaseLabel("Diligence"), "Due diligence");
+  for (const phase of PHASES) {
+    if (phase !== "On Deck" && phase !== "Diligence") assert.equal(phaseLabel(phase), phase, `${phase} is renamed`);
+  }
+  // The option the /deals table renders: the wire word in the value attribute,
+  // the display word in the text, so a write still sends 'On Deck'.
+  const app = await read("js/app.js");
+  assert.match(app, /<option value="\$\{esc\(phase\)\}"/, "the option carries the wire value explicitly");
+  assert.match(app, /\$\{esc\(phaseLabel\(phase\)\)\}<\/option>/, "the option text is the display label");
+  assert.match(app, /event\.target\.dataset\.phase, *'phase', *event\.target\.value/, "a phase write reads .value, never the option text");
 });
 
 test("every phase slug round-trips through the map that defect 5e355b84 made lossy", () => {
