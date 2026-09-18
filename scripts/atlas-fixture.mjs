@@ -43,6 +43,7 @@ const ATLAS_NODES = [
   node("control:demo.uninstalled", "control", "demo.uninstalled", "Demo control: declared but never installed", "installed", "declared_only", "ops.control", "installed"),
   node("rule_pack:demo-pack", "rule_pack", "demo-pack", "Demo rule pack", "installed", "active", "ops.rule_pack", "installed"),
   node("doctrine_section:demo-section", "doctrine_section", "demo-section", "Demo doctrine section", "installed", "active", "public.doctrine_section", "installed"),
+  node("rule:22222222-2222-4222-8222-222222222222", "rule", "demo.rule.clockless", "Demo rule: observed without a clock", "installed", "blocked", "ops.rule_admission", "observed", observed(null, null, "ops.v_rule_enforcement_status")),
   node("workflow:demo-release", "workflow", "demo-release", "Demo release workflow", "observed", "succeeded", "ops.run", "observed", observed("2026-09-16T09:30:00.000Z", "succeeded", "ops.run")),
   { ...node("service:demo-md-renderer", "service", "demo-md-renderer", "Demo markdown renderer", "installed", "retired", "ops.service", "installed"), retired_at: "2026-08-19T00:00:00.000Z" },
 ];
