@@ -380,11 +380,11 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 
 /* ----------------------------------------------------------------------- B05-14 */
 
-test("B05-14 the interface contract pins both verbs alphabetically at 1.14.0 and no route moves", () => {
+test("B05-14 the interface contract pins both verbs alphabetically at 1.15.0 and no route moves", () => {
   assert.equal(routes.version, "1.10.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/business"], "business-workspace.html");
-  assert.equal(contract.version, "1.14.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.producer.source_commit, "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3", "both verbs already exist at the pinned commit, so it is not re-pinned");
+  assert.equal(contract.version, "1.15.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.producer.source_commit, "3c8f619d9a243be421c817bdf2947bd04cb55852", "B12 repinned the producer to the release that first serves the preference verbs");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");

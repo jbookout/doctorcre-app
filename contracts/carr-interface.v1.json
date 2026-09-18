@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3"
+    "source_commit": "3c8f619d9a243be421c817bdf2947bd04cb55852"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -45,6 +45,7 @@
     "presence-lease",
     "read-doc-conversation",
     "read-loop",
+    "read-notification-preferences",
     "read-portfolio",
     "rename-doc-conversation",
     "resolve-candidate",
@@ -56,6 +57,7 @@
     "set-market-agent",
     "set-national-account-owner",
     "set-next-step",
+    "set-notification-preference",
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",

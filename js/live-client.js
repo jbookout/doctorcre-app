@@ -379,6 +379,17 @@ export function createLiveClient(opts = {}) {
     async notificationFeed(args = {}) { return rpc('notification-feed', args); },
     async acknowledgeNotification(args) { return write('acknowledge-notification', args); },
 
+    // ------------------------------- notification preferences (B12, WR-000116)
+    // One read and one write, passed through untouched. The read declares ZERO
+    // properties under additionalProperties:false — that is the whole defence
+    // that no caller argument names an actor, so nothing is passed to it at
+    // all, not even an empty option bag that a later edit could fill. The write
+    // goes through `write` because it carries an idempotency key, and its
+    // `base_version` is a compare-and-swap the caller must have READ: this
+    // layer never supplies, defaults or increments it.
+    async notificationPreferences() { return rpc('read-notification-preferences', {}); },
+    async setNotificationPreference(args) { return write('set-notification-preference', args); },
+
     // -------------------------------------------- Doc conversations page (B07)
     // One read and three writes, passed through untouched. NONE of them names an
     // actor: the creator, the grantor and every timestamp are derived inside the

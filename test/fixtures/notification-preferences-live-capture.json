@@ -1,0 +1,36 @@
+{
+  "schema": "doctorcre-notification-preferences-live-capture.v1",
+  "captured": "2026-09-18",
+  "source": "./run.sh call <verb> '{}' from the carr-system worktree, READ-ONLY, against the deployed record layer (Worker bdcb0597, registry v33, producer 3c8f619d)",
+  "why": "defect 33e8409b — the payload validators are run against REAL responses, not against this repository's own fixtures, so a validator that refuses production cannot pass review.",
+  "captures": [
+    {
+      "verb": "read-notification-preferences",
+      "args": {},
+      "payload": {
+        "ok": true,
+        "exists": true,
+        "device_opt_in": false,
+        "quiet_hours_start": null,
+        "quiet_hours_end": null,
+        "timezone": "UTC",
+        "version": 3,
+        "quiet_now": false
+      }
+    },
+    {
+      "verb": "notification-feed",
+      "args": {},
+      "payload": {
+        "ok": true,
+        "unread_count": 0,
+        "quiet_now": false,
+        "notifications": []
+      }
+    }
+  ],
+  "not_captured": {
+    "verb": "set-notification-preference",
+    "why": "it is a WRITE. This build was forbidden to write to the record layer, so no set payload was taken by this seat; the fixture client's shape is derived from the handler's own return object in mcp-server/src/notifications.js and from the captures quoted in the build brief (00:00-23:59 UTC -> version 2, clear -> version 3)."
+  }
+}

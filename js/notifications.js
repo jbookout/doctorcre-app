@@ -19,8 +19,12 @@
 //      notification id and one idempotency key, and its receipt is the shared
 //      dock's. An unknown outcome keeps its entry so "Check outcome" re-sends
 //      the SAME frozen request.
-//   4. Nothing here sets a preference. The quiet-hours panel is text, because
-//      no verb reads or writes the preference it would have to edit.
+//   4. The quiet-hours panel is now a REAL form over WR-000116's two doors, and
+//      every save is a compare-and-swap on the version the page last READ. The
+//      form is never the source of that version: a `version_conflict` re-reads
+//      the preference, re-renders the fields from the answer, and says so, and
+//      it is never retried automatically — the value on screen changed, so the
+//      person decides again. A suppressed row is MARKED, never hidden.
 import { createCommandDock } from "./command-dock.js";
 import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
@@ -29,9 +33,12 @@ import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
-  ACKNOWLEDGE_SCOPE, EXPOSURE_STATEMENT, QUIET_HOURS_EFFECT, QUIET_HOURS_UNAVAILABLE,
-  acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyReadFailure, feedState,
-  notificationCards, unreadLine,
+  ACKNOWLEDGE_SCOPE, EXPOSURE_STATEMENT, PREFERENCE_OPERATION_KEY, QUIET_HOURS_EFFECT,
+  QUIET_HOURS_SCOPE, QUIET_SUPPRESSED_MARK,
+  acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
+  classifyPreferenceReadFailure, classifyReadFailure, feedState, notificationCards,
+  preferenceOriginSentence, preferenceState, preferenceSummary, preferenceView,
+  quietNowBanner, setPreferenceArgs, unreadLine,
 } from "./notifications-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -49,6 +56,7 @@ const view = {
   sequence: 0,
   feed: { state: "pending" },
   activity: { state: "pending" },
+  preference: { state: "pending" },
 };
 
 let client = null;
@@ -56,6 +64,9 @@ let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
+/** True while a save is in flight, and true while the fields hold an edit. */
+let saving = false;
+let dirty = false;
 
 function announce(text) {
   const live = $("feedLive");
@@ -77,6 +88,9 @@ function cardHtml(card) {
       ? `<p class="note-link" data-link="routed"><a href="${escapeHtml(card.link.href)}">${escapeHtml(card.link.path)}</a></p>`
       : `<p class="note-link" data-link="unrouted"><span class="mono">${escapeHtml(card.link.path)}</span> — ${escapeHtml(card.link.sentence)}</p>`)
     : "";
+  const quiet = card.quietSuppressed
+    ? `<p class="quiet-mark" data-quiet="suppressed">${escapeHtml(QUIET_SUPPRESSED_MARK)}</p>`
+    : "";
   const act = card.read
     ? `<p class="read-mark" data-read="true">Acknowledged at ${escapeHtml(card.readClock || "unknown")}</p>`
     : `<div class="note-act"><button class="btn btn-primary" type="button" data-ack="${escapeHtml(card.id)}">Acknowledge this notification</button></div>`;
@@ -89,6 +103,7 @@ function cardHtml(card) {
       <h3 class="note-reason">${escapeHtml(card.reason)}</h3>
       <p class="note-subject">${escapeHtml(card.subject)}</p>
       <ul class="note-delivery">${delivery}</ul>
+      ${quiet}
       ${link}
       ${act}
     </div>
@@ -111,6 +126,43 @@ function renderFeed() {
       : ["refused", "unavailable", "unknown"].includes(state.state) ? "urgent" : "still",
   );
   $("feedList").innerHTML = notificationCards(payload).map(cardHtml).join("");
+  const banner = $("quietNowBanner");
+  const sentence = quietNowBanner(payload, view.preference.payload);
+  banner.textContent = sentence || "";
+  banner.setAttribute("data-quiet", sentence ? "now" : "off");
+  banner.hidden = !sentence;
+}
+
+/**
+ * The preference panel. The fields are painted from the ANSWER and never from
+ * what was typed: a save that landed shows what the record layer now holds, and
+ * a save that was refused shows what it still holds. While a save is in flight
+ * the form is disabled, because a second save would carry the same stale
+ * version and earn a conflict this page could have prevented.
+ */
+function renderPreference() {
+  const read = view.preference;
+  const state = preferenceState(read);
+  const block = $("prefState");
+  block.setAttribute("data-state", state.state);
+  $("prefStateTitle").textContent = state.sentence || "";
+  block.hidden = state.state === "ready";
+  $("prefAsOf").textContent = asOf(read);
+  const model = state.state === "ready" ? preferenceView(read.payload) : null;
+  $("prefOrigin").textContent = preferenceOriginSentence(model);
+  $("prefSummary").textContent = preferenceSummary(model);
+  const form = $("prefForm");
+  form.hidden = !model;
+  form.setAttribute("data-disabled", String(saving));
+  for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
+    const field = $(id);
+    if (field) field.disabled = saving || !model;
+  }
+  if (!model || dirty) return;
+  $("deviceOptIn").checked = model.deviceOptIn;
+  $("quietStart").value = model.start || "";
+  $("quietEnd").value = model.end || "";
+  $("quietTimezone").value = model.timezone;
 }
 
 function renderActivity() {
@@ -131,6 +183,7 @@ function renderActivity() {
 function render() {
   renderFeed();
   renderActivity();
+  renderPreference();
 }
 
 /* --------------------------------------------------------------------- reading */
@@ -156,6 +209,24 @@ async function takeFeed() {
   render();
 }
 
+/**
+ * The preference read. It passes NOTHING: the verb declares zero properties,
+ * and the client method takes no arguments, so there is no place an actor, a
+ * tenant or a filter could be introduced here.
+ */
+async function takePreference() {
+  const sequence = view.sequence;
+  try {
+    const payload = await client.notificationPreferences();
+    if (view.sequence !== sequence) return;
+    view.preference = { state: "read", payload, observed_at: new Date().toISOString() };
+  } catch (error) {
+    if (view.sequence !== sequence) return;
+    view.preference = classifyPreferenceReadFailure(error);
+  }
+  render();
+}
+
 async function takeActivity() {
   const sequence = view.sequence;
   try {
@@ -171,21 +242,23 @@ async function takeActivity() {
 
 async function load() {
   view.sequence += 1;
-  await Promise.all([takeFeed(), takeActivity()]);
+  await Promise.all([takeFeed(), takeActivity(), takePreference()]);
   const state = feedState(view.feed, { after: view.after, limit: LIMIT });
   announce(state.sentence || unreadLine(view.feed.payload));
 }
 
 /* --------------------------------------------------------------------- writing */
 
-async function dispatch(operationKey, args, summary) {
+async function dispatch(operationKey, args, summary, preference = false) {
   const result = await performCommand({
     operationKey,
     args,
     getState: () => commandState,
     setState: (next) => { commandState = next; },
     newKey: uuidv4,
-    call: (request) => client.acknowledgeNotification(request),
+    call: (request) => (preference
+      ? client.setNotificationPreference(request)
+      : client.acknowledgeNotification(request)),
   });
   operations.set(operationKey, { args, summary });
   dock.record(operationKey, {
@@ -211,6 +284,91 @@ function acknowledge(id) {
   dispatch(operationKey, built.args, summary);
 }
 
+/* --------------------------------------------------- the preference write */
+
+/**
+ * One save. The arguments are built from the form and from the LAST READ's
+ * version; a refusal is rendered by the record layer's own reason id, and a
+ * `version_conflict` re-reads before it says anything, so the sentence a person
+ * reads is true about the values now on screen.
+ */
+async function savePreference(form) {
+  const model = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
+  const built = setPreferenceArgs(form, model);
+  const message = $("prefMessage");
+  if (!built.ok) {
+    message.textContent = built.message;
+    announce(built.message);
+    return built;
+  }
+  saving = true;
+  message.textContent = "";
+  renderPreference();
+  const summary = form.clear_quiet_hours === true
+    ? "Clear quiet hours"
+    : `Save notification preferences (version ${built.args.base_version})`;
+  dock.record(PREFERENCE_OPERATION_KEY, { summary, status: "sending", undo: false });
+  const result = await performCommand({
+    operationKey: PREFERENCE_OPERATION_KEY,
+    args: built.args,
+    getState: () => commandState,
+    setState: (next) => { commandState = next; },
+    newKey: uuidv4,
+    call: (request) => client.setNotificationPreference(request),
+  });
+  operations.set(PREFERENCE_OPERATION_KEY, { args: built.args, summary, preference: true });
+  saving = false;
+  let sentence = result.message || null;
+  if (result.status === "refused" || result.status === "conflict") {
+    // The kernel classifies `version_conflict` as a CONFLICT and every other
+    // reason id as a REFUSAL, and both are settled answers that saved nothing,
+    // so both are rendered by the record layer's own name for them.
+    const refusal = classifyPreferenceFailure(result);
+    sentence = refusal.message;
+    // A conflict is not retried: the stored value moved, so the form is re-read
+    // and re-rendered at the FRESH version and the person decides again.
+    if (refusal.conflict) {
+      dirty = false;
+      await takePreference();
+    }
+  }
+  dock.record(PREFERENCE_OPERATION_KEY, {
+    summary, status: result.status, reason: sentence, retry: result.retry, undo: false,
+    request: result.request,
+  });
+  if (result.status === "ok") {
+    dirty = false;
+    await load();
+    sentence = sentence || "Saved. This is what the record layer now holds.";
+  }
+  $("prefMessage").textContent = sentence || "";
+  if (sentence) announce(sentence);
+  renderPreference();
+  return result;
+}
+
+/** What the four controls currently say, read once, at submit time. */
+const formValues = () => ({
+  device_opt_in: $("deviceOptIn").checked,
+  quiet_hours_start: $("quietStart").value,
+  quiet_hours_end: $("quietEnd").value,
+  timezone: $("quietTimezone").value,
+});
+
+/**
+ * The timezone suggestions, from the BROWSER's own IANA database. It is a
+ * convenience and never a validator: `pg_timezone_names` is the list that
+ * decides, and a name this list does not carry is still sent and still refused
+ * by name.
+ */
+function mountTimezoneNames() {
+  const list = $("timezoneNames");
+  if (!list || typeof Intl.supportedValuesOf !== "function") return;
+  let names = [];
+  try { names = Intl.supportedValuesOf("timeZone"); } catch { return; }
+  list.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
+}
+
 function mountDock() {
   const root = $("receiptDock");
   if (!root) return;
@@ -220,13 +378,22 @@ function mountDock() {
     // with the same arguments and a new key, which is the only correct retry.
     onDispatch: (operationKey) => {
       const entry = operations.get(operationKey);
-      if (entry?.args) dispatch(operationKey, entry.args, entry.summary);
+      if (!entry?.args) return;
+      // The preference save rebuilds its arguments from the form and from the
+      // version the page holds NOW, because a refused save may have been
+      // refused precisely for holding a stale one.
+      if (entry.preference) savePreference(formValues());
+      else dispatch(operationKey, entry.args, entry.summary);
     },
     // An unknown outcome is reconciled by re-sending the SAME frozen request;
     // the kernel returns the retained one, so the same arguments are passed.
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
-      if (entry?.args) dispatch(operationKey, entry.args, entry.summary);
+      if (!entry?.args) return;
+      // An unknown outcome is reconciled with the SAME frozen request, for the
+      // preference too: the kernel returns the retained one, so the retained
+      // base_version and key are what go back, never a rebuilt pair.
+      dispatch(operationKey, entry.args, entry.summary, entry.preference === true);
     },
     onUndo: null,
   });
@@ -240,14 +407,24 @@ async function boot() {
   mountDocDock("Notifications");
   mountDock();
   $("quietHoursEffect").textContent = QUIET_HOURS_EFFECT;
-  $("quietHoursUnavailable").textContent = QUIET_HOURS_UNAVAILABLE;
+  $("quietHoursScope").textContent = QUIET_HOURS_SCOPE;
   $("exposureStatement").textContent = EXPOSURE_STATEMENT;
+  mountTimezoneNames();
   const footnote = $("vocabularyLine");
   if (footnote) footnote.textContent = `${footnote.textContent} ${ACKNOWLEDGE_SCOPE}`;
   const location = globalThis.location || { hostname: "", search: "" };
   const params = new URLSearchParams(location.search || "");
   view.after = params.get("after") || null;
   $("retryRead")?.addEventListener("click", () => load());
+  $("prefForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    savePreference(formValues());
+  });
+  $("prefForm")?.addEventListener("input", () => { dirty = true; });
+  $("prefClear")?.addEventListener("click", () => {
+    dirty = false;
+    savePreference({ clear_quiet_hours: true });
+  });
   $("feedList")?.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target.closest("[data-ack]") : null;
     if (target) acknowledge(target.getAttribute("data-ack"));

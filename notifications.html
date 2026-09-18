@@ -54,6 +54,7 @@
         </div>
       </div>
       <p class="headline" id="unreadLine">unknown</p>
+      <p class="quiet-banner" id="quietNowBanner" data-quiet="off" hidden></p>
       <p class="caption" id="vocabularyLine">A notification is only ever an action-required item or a failure. Routine progress mints nothing, so nothing routine can appear here.</p>
     </section>
 
@@ -66,9 +67,31 @@
     </section>
 
     <section class="card glass" data-section="quiet_hours" id="quietHoursBlock" aria-labelledby="quietHoursTitle">
-      <div class="card-heading"><div><p class="eyebrow">Quiet hours</p><h2 id="quietHoursTitle">What quiet hours do, and what this app cannot show</h2></div></div>
+      <div class="card-heading">
+        <div><p class="eyebrow">Quiet hours</p><h2 id="quietHoursTitle">Your notification preferences</h2></div>
+        <span class="as-of" id="prefAsOf">unknown</span>
+      </div>
       <p class="headline" id="quietHoursEffect">unknown</p>
-      <p class="caption" id="quietHoursUnavailable">unknown</p>
+      <p class="caption" id="prefOrigin">unknown</p>
+      <div class="state-block" id="prefState" data-state="loading"><h3 id="prefStateTitle">Reading your preferences…</h3></div>
+      <form class="pref-form" id="prefForm" novalidate>
+        <div class="switch-field">
+          <input id="deviceOptIn" type="checkbox">
+          <label for="deviceOptIn">Send a device push when something is addressed to me</label>
+        </div>
+        <div class="pref-grid">
+          <div class="field"><label for="quietStart">Quiet hours start</label><input id="quietStart" type="time" autocomplete="off"></div>
+          <div class="field"><label for="quietEnd">Quiet hours end</label><input id="quietEnd" type="time" autocomplete="off"></div>
+          <div class="field"><label for="quietTimezone">Timezone</label><input id="quietTimezone" type="text" list="timezoneNames" autocomplete="off" spellcheck="false" placeholder="UTC"><datalist id="timezoneNames"></datalist></div>
+        </div>
+        <p class="caption" id="prefSummary">unknown</p>
+        <div class="pref-act">
+          <button class="btn btn-primary" type="submit" id="prefSave">Save preferences</button>
+          <button class="btn" type="button" id="prefClear">Clear quiet hours</button>
+        </div>
+        <p class="caption pref-message" id="prefMessage" role="status" aria-live="polite"></p>
+      </form>
+      <p class="caption" id="quietHoursScope">unknown</p>
     </section>
 
     <section class="card glass" data-section="activity" id="activityBlock" aria-labelledby="activityTitle">

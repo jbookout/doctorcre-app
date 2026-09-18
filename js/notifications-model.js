@@ -1,6 +1,7 @@
 // V5-UX-B12a — what the Notifications page shows, decided without a DOM.
 //
-// The producer is `mcp-server/src/notifications.js` over migration 0521, and
+// The producer is `mcp-server/src/notifications.js` over migrations 0521 and
+// 0527, and
 // every rule below is a reading of what that producer can actually do. Five
 // shapes govern the file, and each one exists because the alternative would
 // let the page say something the record layer cannot back.
@@ -12,10 +13,16 @@
 //      enum has no informational member, and `record-signal` mints nothing for
 //      a signal of severity `info`. "No routine progress spam" is therefore a
 //      fact about the producer, not a filter this page applies.
-//   3. Quiet hours are reported as an OBSERVED EFFECT and never as a setting.
-//      No verb reads or writes `ops.notification_preference`, so the page says
-//      what the record layer did and says plainly that the window itself is not
-//      reachable from here. A dead toggle would be a lie with a control on it.
+//   3. Quiet hours are now BOTH an observed effect and a setting. WR-000116
+//      shipped `read-notification-preferences` and `set-notification-preference`,
+//      so the honesty paragraph B12a wrote ("no verb exposes the notification
+//      preference") is false as of producer 3c8f619d and is gone. What replaces
+//      it is a real form under a compare-and-swap on `version`: every save
+//      carries the version the page last read, and a `version_conflict` is
+//      re-read and re-rendered rather than retried over somebody's change.
+//      `quiet_suppressed` and `quiet_now` are OUTPUT-ONLY fields of the feed —
+//      a suppressed row is MARKED and never hidden, because hiding it would be
+//      this page inventing a filter the record layer did not apply.
 //   4. A deep link is rendered as an anchor only when this application has a
 //      page for it. The two shapes a production mint can produce are
 //      `/signals/<id>` and `/doc-conversations/<ref>`, and neither is a route
@@ -55,11 +62,25 @@ export const DELIVERY_PHRASES = Object.freeze({
  */
 export const DEVICE_OFF = "device push is off for you";
 
-/** The two sentences the quiet-hours panel is allowed to say. */
+/** What quiet hours DO. Unchanged from B12a: the producer did not change. */
 export const QUIET_HOURS_EFFECT =
   "Inside your quiet hours the record layer holds a device push instead of dropping it, and records that it held it. The in-app item is never suppressed.";
-export const QUIET_HOURS_UNAVAILABLE =
-  "The quiet-hours window itself cannot be read or changed from this app yet: no verb exposes the notification preference, so this page shows no value and offers no control.";
+
+/**
+ * The scope sentence that replaces B12a's honesty paragraph. The window is
+ * readable and settable now; what is still true is the boundary — these are
+ * YOUR preferences, the verbs take no actor, and nothing here changes anybody
+ * else's.
+ */
+export const QUIET_HOURS_SCOPE =
+  "These are your own preferences. Neither verb takes an actor, so this form can only read and set yours, and a save carries the version this page last read so it can never silently overwrite a change made somewhere else.";
+
+/** The banner shown when the record layer says quiet hours cover this moment. */
+export const QUIET_NOW_BANNER =
+  "Quiet hours cover this moment. Device push is being held; the items below still arrived in-app.";
+
+/** The marker a suppressed row carries. It is marked, never hidden. */
+export const QUIET_SUPPRESSED_MARK = "held by your quiet hours";
 
 /** The candid mobile-exposure statement rule f0f9156e asks a page to make. */
 export const EXPOSURE_STATEMENT =
@@ -165,6 +186,12 @@ export function notificationCards(payload, routes = APP_ROUTE_PATHS) {
       read: isText(row.read_at),
       readClock: formatClock(row.read_at) || null,
       delivery: deliveryPhrases(row.delivery),
+      // OUTPUT-ONLY, and printed exactly as the producer decided it. The page
+      // does not recompute suppression from the delivery rows: the producer's
+      // value is a DISJUNCTION of "quiet hours cover now" and "a push was
+      // suppressed at mint time", and a page that recomputed it would lose the
+      // first term the moment the window closed.
+      quietSuppressed: row.quiet_suppressed === true,
       link: deepLinkView(row.deep_link, routes),
     }));
 }
@@ -274,4 +301,205 @@ export function acknowledgeArgs(id) {
   const value = String(id || "").trim();
   if (!UUID.test(value)) return { ok: false, message: ID_REFUSAL };
   return { ok: true, args: { notification_id: value } };
+}
+
+/* ------------------------------------------ the preference form (WR-000116) */
+
+/**
+ * `read-notification-preferences`' own shape, and `set-notification-preference`'s
+ * too — the set answer is the same object minus `quiet_now` and plus
+ * `deduplicated`, so `quiet_now` is read with `=== true` and never required.
+ * `exists` is a first-class boolean here because "no row yet" is an answer the
+ * page prints, not a hole it fills in.
+ */
+export function validPreferencePayload(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.ok !== true) return false;
+  if (typeof payload.exists !== "boolean") return false;
+  if (typeof payload.device_opt_in !== "boolean") return false;
+  if (!Number.isInteger(payload.version) || payload.version < 1) return false;
+  if (!isText(payload.timezone)) return false;
+  for (const field of ["quiet_hours_start", "quiet_hours_end"]) {
+    const value = payload[field];
+    if (value !== null && typeof value !== "string") return false;
+  }
+  return true;
+}
+
+/**
+ * A stored `time` reaches the browser as `HH:MM:SS`, and the verb accepts
+ * `HH:MM`. This is the ONE place the two spellings meet; a null stays null,
+ * and anything that is not a clock time is null rather than a guess.
+ */
+const CLOCK = /^([01][0-9]|2[0-3]):([0-5][0-9])(?::[0-5][0-9](?:\.\d+)?)?$/;
+export function toInputTime(value) {
+  const match = CLOCK.exec(typeof value === "string" ? value.trim() : "");
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
+/** Everything the panel draws, decided once, from the payload alone. */
+export function preferenceView(payload) {
+  if (!validPreferencePayload(payload)) return null;
+  const start = toInputTime(payload.quiet_hours_start);
+  const end = toInputTime(payload.quiet_hours_end);
+  return {
+    exists: payload.exists,
+    deviceOptIn: payload.device_opt_in,
+    start,
+    end,
+    timezone: payload.timezone,
+    version: payload.version,
+    quietNow: payload.quiet_now === true,
+    quietHoursSet: start !== null && end !== null,
+  };
+}
+
+/**
+ * What the record layer holds, in one line, ending in the version — because the
+ * version is what the next save is compared against and a person about to save
+ * should be able to see it.
+ */
+export function preferenceSummary(view) {
+  if (!view) return "unknown";
+  const window = view.quietHoursSet
+    ? `Quiet hours ${view.start} to ${view.end} ${view.timezone}`
+    : `No quiet hours set · ${view.timezone}`;
+  return `${window} · device push ${view.deviceOptIn ? "on" : "off"} · version ${view.version}`;
+}
+
+/** The documented answer when no row exists, said as an absence, not a value. */
+export const PREFERENCE_DEFAULTS_SENTENCE =
+  "You have never saved a notification preference, so these are the record layer's documented defaults: no quiet hours, device push off, UTC. Nothing has been written on your behalf.";
+export const PREFERENCE_SAVED_SENTENCE =
+  "These are your saved preferences, read back from the record layer.";
+export function preferenceOriginSentence(view) {
+  if (!view) return "unknown";
+  return view.exists ? PREFERENCE_SAVED_SENTENCE : PREFERENCE_DEFAULTS_SENTENCE;
+}
+
+/** The five states the panel can be in, each with the sentence it renders. */
+export const PREFERENCE_STATES = Object.freeze({
+  loading: "Reading your preferences…",
+  ready: null,
+  unavailable: "Your preferences did not answer. They may have been read; nothing was retried for you.",
+  refused: "The record layer refused this read. It was decided before the verb ran, and nothing was read.",
+  unknown: "Your preferences could not be shaped, so this page shows nothing rather than a guess.",
+});
+
+export function classifyPreferenceReadFailure(error) {
+  const code = error?.payload?.error || null;
+  const status = Number(error?.status ?? 0) || null;
+  if (code === "notification_preferences_unavailable") return { state: "unknown" };
+  if (status === 401 || status === 403) return { state: "refused" };
+  if (status) return { state: "unavailable" };
+  return { state: "unknown" };
+}
+
+export function preferenceState(read = {}) {
+  if (read.state === "read" && validPreferencePayload(read.payload)) return { state: "ready", sentence: null };
+  if (["refused", "unavailable", "unknown"].includes(read.state)) {
+    return { state: read.state, sentence: PREFERENCE_STATES[read.state] };
+  }
+  return { state: "loading", sentence: PREFERENCE_STATES.loading };
+}
+
+/* ------------------------------------------------------- the preference write */
+
+/** One operation key for the whole form: two saves are the same operation. */
+export const PREFERENCE_OPERATION_KEY = "notifications:preference";
+
+export const BASE_VERSION_REFUSAL =
+  "This form has not read your preferences yet, so it holds no version to save against. Nothing was sent.";
+export const TIME_REFUSAL =
+  "A quiet-hours time is a 24-hour clock time written HH:MM. Nothing was sent.";
+
+/**
+ * The arguments for `set-notification-preference`, or the refusal.
+ *
+ * Two things are DELIBERATELY not checked here. A half pair — a start with no
+ * end — is sent, because `notification_preference_quiet_hours_incomplete` is
+ * the record layer's own refusal and rendering it by name is what proves the
+ * page is reading the store's answer instead of guessing it. So is an unknown
+ * timezone: `pg_timezone_names` is the list, and this page does not hold a copy
+ * of it. `base_version` comes from the last READ, never from a caller.
+ */
+export function setPreferenceArgs(form = {}, view = null) {
+  if (!view || !Number.isInteger(view.version)) return { ok: false, message: BASE_VERSION_REFUSAL };
+  const args = { base_version: view.version };
+  if (typeof form.device_opt_in === "boolean") args.device_opt_in = form.device_opt_in;
+  if (form.clear_quiet_hours === true) {
+    args.clear_quiet_hours = true;
+    return { ok: true, args };
+  }
+  for (const field of ["quiet_hours_start", "quiet_hours_end"]) {
+    const raw = typeof form[field] === "string" ? form[field].trim() : "";
+    if (raw === "") continue;
+    const time = toInputTime(raw);
+    if (!time) return { ok: false, message: TIME_REFUSAL };
+    args[field] = time;
+  }
+  const timezone = typeof form.timezone === "string" ? form.timezone.trim() : "";
+  if (timezone) args.timezone = timezone;
+  return { ok: true, args };
+}
+
+/**
+ * Every refusal `ops.set_notification_preference` can return, in this page's
+ * plain English. A reason id this page has not been taught is named as itself:
+ * a refusal the record layer issued is still a refusal, and swallowing it would
+ * leave a person looking at a form that did nothing and said nothing.
+ */
+export const PREFERENCE_REFUSALS = Object.freeze({
+  version_conflict:
+    "Your preferences changed somewhere else while this form was open, so nothing was saved. The form has been read again and now shows the current values and the current version — check them and save again.",
+  notification_preference_quiet_hours_incomplete:
+    "Quiet hours are two times. Set a start and an end together, or clear them together. Nothing was saved.",
+  notification_preference_quiet_hours_conflicting_request:
+    "Clearing quiet hours and setting one are the same request here, so the record layer refused it. Do one or the other. Nothing was saved.",
+  notification_preference_timezone_unknown:
+    "The record layer does not know that timezone. Use an IANA name such as America/Chicago. Nothing was saved.",
+  notification_preference_idempotency_key_required:
+    "That save carried no idempotency key, so the record layer refused it. Nothing was saved.",
+  notification_preference_idempotency_key_reused:
+    "That key has already been used for a different save, so the record layer refused it. Nothing was saved.",
+  notification_preference_not_set:
+    "The record layer refused the save without naming a reason. Nothing was saved.",
+});
+
+export const VERSION_CONFLICT = "version_conflict";
+
+/**
+ * The refusal, from EITHER shape it can arrive in: the thrown client error
+ * (`payload.error`) or the command kernel's settled outcome (`code`), because
+ * the kernel classifies `version_conflict` as a CONFLICT and never lets the
+ * raw error out. One function reads both so the sentence cannot depend on
+ * which door the page happened to come through.
+ */
+export function classifyPreferenceFailure(source) {
+  const payload = source?.payload || {};
+  const code = isText(payload.error) ? payload.error
+    : (isText(source?.code) ? source.code : null);
+  return {
+    code,
+    conflict: code === VERSION_CONFLICT,
+    currentVersion: Number.isInteger(payload.current_version) ? payload.current_version
+      : (Number.isInteger(source?.conflict?.current_version) ? source.conflict.current_version : null),
+    message: code
+      ? (PREFERENCE_REFUSALS[code] || `The record layer refused this save as ${code}. Nothing was saved.`)
+      : REFUSAL_SENTENCE,
+  };
+}
+
+/* --------------------------------------------------------- quiet, right now */
+
+/**
+ * Whether quiet hours cover this instant. BOTH doors answer it and they are
+ * read on one snapshot each, so either saying yes is yes; the page never
+ * computes it from a clock of its own.
+ */
+export function quietNowBanner(feedPayload, preferencePayload) {
+  const fromFeed = !!feedPayload && typeof feedPayload === "object" && feedPayload.quiet_now === true;
+  const fromPreference = !!preferencePayload && typeof preferencePayload === "object"
+    && preferencePayload.quiet_now === true;
+  return fromFeed || fromPreference ? QUIET_NOW_BANNER : null;
 }
