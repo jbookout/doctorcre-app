@@ -27,6 +27,8 @@ import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { mountSearch } from "./search.js";
+import { mountCharts } from "./charts.js";
+import { parseChartsAddress } from "./charts-model.js";
 import { parseSearchAddress } from "./search-model.js";
 import { formatClock, formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import { operationKeys, partnerName, quickAddPlan, quickAddRecords } from "./task-records-model.js";
@@ -454,6 +456,13 @@ async function boot() {
   // on the surface they name.
   mountSearch({ client });
   if (parseSearchAddress(globalThis.location?.search || "").present) tabs?.select("tabSearch");
+  // V5-UX-B06 — the Charts tab. Same admitted path, same reasoning: its address
+  // is a query (?charts=1&group=&pick=) on /business, which the gate does not
+  // inspect, so no route moves and no gate entry is needed. It reads the board
+  // through the same adapter the workspace already uses, so there is exactly
+  // one phase vocabulary and exactly one as-of.
+  mountCharts({ client });
+  if (parseChartsAddress(globalThis.location?.search || "").present) tabs?.select("tabCharts");
   viewer = client.selfActor || "joe";
   const boardRead = loadBoardRecords();
   await load();

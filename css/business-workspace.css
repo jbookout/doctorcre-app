@@ -93,3 +93,48 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
 @media (max-width: 640px) {
   .search-row .work-meta { flex-direction: column; gap: 4px; }
 }
+
+/* V5-UX-B06 Charts tab — a table first, a bar second, on the same shared ground.
+ *
+ * No colour of its own, no type scale of its own, no new component vocabulary:
+ * a chart is a <table> inside the card this page already draws, and the bar is
+ * a single decorative span drawn from the shared orange. What is added here is
+ * only what a table of counts needs and the shared sheet does not have.
+ *
+ * Three rules are enforced here rather than merely described:
+ *  1. The row is the control. The pick is a full-width button that clears the
+ *     touch floor, so keyboard, mouse and thumb all reach the same target.
+ *  2. The bar is paint. It is aria-hidden in the markup and it is drawn at its
+ *     final width with NO transition when motion is reduced.
+ *  3. 360 px is the design width: below 480 px the bar column collapses and the
+ *     table scrolls vertically. Nothing on this tab scrolls sideways except the
+ *     seven-column accounts table, which says so by being in its own scroller.
+ */
+.charts-canvas { display: grid; gap: 12px; }
+.chart-card table { width: 100%; border-collapse: collapse; }
+.chart-table th, .chart-table td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.chart-table thead th { font: 600 11px/1.4 var(--display); color: var(--quiet); text-transform: uppercase; letter-spacing: 0.06em; }
+.chart-table tbody th { font-weight: 500; overflow-wrap: anywhere; }
+.chart-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chart-count[data-unknown="true"] { color: var(--quiet); font-style: italic; }
+.chart-table tr[data-missing="true"] th { color: var(--muted); }
+.chart-table tr[data-selected="true"] { background: color-mix(in srgb, var(--orange) 12%, transparent); }
+
+/* The row's control: full width, over the touch floor, visible focus. */
+.chart-pick { display: flex; align-items: center; width: 100%; min-height: var(--touch); padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.chart-pick[aria-pressed="true"] { color: var(--text); font-weight: 600; }
+
+/* Paint, and nothing else. */
+.chart-bar-cell { width: 45%; }
+.chart-bar { display: block; height: 8px; width: var(--share, 0%); min-width: 2px; border-radius: 4px; background: color-mix(in srgb, var(--orange) 70%, transparent); transition: width 240ms ease; }
+@media (prefers-reduced-motion: reduce) { .chart-bar { transition: none; } }
+:root[data-motion="reduced"] .chart-bar { transition: none; }
+
+/* The one table this tab cannot fit in 360 px says so by scrolling itself. */
+.chart-scroll { overflow-x: auto; }
+.chart-card details summary { min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
+
+@media (max-width: 480px) {
+  .chart-bar-cell { display: none; }
+  .chart-table thead th:last-child { display: none; }
+}
