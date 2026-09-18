@@ -60,16 +60,16 @@
 
     <p class="sr-only" id="conversationLive" aria-live="polite" role="status">Reading this conversation…</p>
 
-    <section class="card glass" data-section="roster" aria-labelledby="rosterTitle">
+    <section class="card glass" data-section="list" aria-labelledby="listTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Conversations on this device</p><h2 id="rosterTitle">Conversations on this device</h2></div>
+        <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
         <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
       </div>
-      <p class="caption" id="rosterScope">unknown</p>
+      <p class="caption" id="listScope">unknown</p>
       <p class="headline" id="visibleCountLine">unknown</p>
-      <div class="state-block" id="rosterState" data-state="loading" hidden><h3 id="rosterStateTitle"></h3></div>
-      <ul class="work-list" id="rosterList"></ul>
-      <ul class="work-list" id="archivedList" hidden></ul>
+      <div class="state-block" id="listState" data-state="loading" hidden><h3 id="listStateTitle"></h3></div>
+      <ul class="work-list" id="conversationList"></ul>
+      <div class="note-act" id="listPagingBlock" hidden><button class="btn" type="button" id="showMoreConversations">Show more conversations</button></div>
     </section>
 
     <section class="card glass" data-section="turns" id="turnsBlock" aria-labelledby="turnsTitle">

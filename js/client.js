@@ -94,14 +94,16 @@
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
  * @property {() => Promise<void>} [simulatePartnerCall] fixture-only demo of presence + distill
  * @property {(args:{conversation_id:string, after_sequence?:number, limit?:number}) => Promise<DocConversation>} readDocConversation
+ * @property {(args:{cursor?:string, limit?:number, include_archived?:boolean}) => Promise<DocConversationList>} listDocConversations
  * @property {(args:{idempotency_key:string, title:string, visibility?:'private'|'shared'}) => Promise<{ok:true, conversation_id:string}>} createDocConversation
  * @property {(args:{idempotency_key:string, conversation_id:string, base_version:number, title?:string, pinned?:boolean, archived?:boolean}) => Promise<{ok:true, version:number}>} renameDocConversation
  * @property {(args:{idempotency_key:string, conversation_id:string, grantee_slug:string, granted:boolean}) => Promise<{ok:true, already:boolean, granted:boolean}>} shareDocConversation
  *
  * The projection `read-doc-conversation` returns. The identity and the turns are
  * kept apart because a rename moves the identity and must move nothing else, and
- * `visible_conversation_count` is a FLEET fact returned inside a single read —
- * it is the only list-shaped thing the store exposes, and there is no list door.
+ * `visible_conversation_count` is a FLEET fact: it is computed inside the
+ * definer over what the acting actor may see, and both the single read and the
+ * list door return it.
  *
  * @typedef {Object} DocConversation
  * @property {{id:string,title:string,visibility:'private'|'shared',pinned_at:string|null,archived_at:string|null,version:number,created_by:string}} identity
@@ -109,6 +111,16 @@
  * @property {number} latest_sequence
  * @property {boolean} more
  * @property {{grantee_actor:string,granted_at:string,granted_by_actor:string}[]} effective_grants
+ * @property {number} visible_conversation_count
+ *
+ * The projection `list-doc-conversations` returns. Its rows carry no turns: a
+ * list is identity and recency, and the words of a conversation are read one
+ * conversation at a time. `next_cursor` is OPAQUE — it is passed back unread.
+ *
+ * @typedef {Object} DocConversationList
+ * @property {{id:string,title:string,visibility:'private'|'shared',pinned_at:string|null,archived_at:string|null,version:number,created_by:string,latest_sequence:number,latest_turn_at:string|null}[]} conversations
+ * @property {boolean} more
+ * @property {string|null} next_cursor
  * @property {number} visible_conversation_count
  *
  * @typedef {Object} ConfirmProposal

@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "6d3396e6949b54164b0ac24417a5da3d3b3ac618"
+    "source_commit": "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -34,6 +34,7 @@
     "get-incident",
     "incident-board",
     "link-incident-work-request",
+    "list-doc-conversations",
     "loop-board",
     "loop-headers",
     "new-deal",

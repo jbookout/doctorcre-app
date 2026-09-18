@@ -1295,6 +1295,56 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    /**
+     * `list-doc-conversations` (WR-000115, registry v32). A READ that names no
+     * actor: the acting actor is derived by the record layer, so this fixture
+     * derives it from `selfActor` and accepts no actor argument at all — an
+     * argument the verb's `additionalProperties:false` schema would reject.
+     *
+     * The order is the store's: PINNED FIRST, then most recently updated. It is
+     * produced here rather than left to the caller precisely so a client that
+     * re-sorted would be caught by a test.
+     */
+    async listDocConversations({ cursor = null, limit = null, include_archived = null } = {}) {
+      refuseIfOutage('conversations', 'list-doc-conversations');
+      // The store's own clamp: 1..100, defaulting when unnamed.
+      const capped = Math.min(100, Math.max(1, Number.isInteger(limit) ? limit : 25));
+      const visible = [...docConversations.values()].filter((row) => docVisibleTo(row, selfActor));
+      const eligible = include_archived === true ? visible : visible.filter((row) => !row.archived_at);
+      const updatedAt = (row) => (row.turns.length ? row.turns[row.turns.length - 1].at : '');
+      const ordered = [...eligible].sort((a, b) => {
+        if (Boolean(a.pinned_at) !== Boolean(b.pinned_at)) return a.pinned_at ? -1 : 1;
+        const byClock = String(updatedAt(b)).localeCompare(String(updatedAt(a)));
+        return byClock !== 0 ? byClock : String(a.id).localeCompare(String(b.id));
+      });
+      // The cursor is OPAQUE to the caller. Here it is the id of the row the
+      // next page starts at, encoded, so a client that tried to read or build
+      // one would be reading a shape it was never given.
+      let offset = 0;
+      if (cursor !== null && cursor !== undefined && cursor !== '') {
+        let decoded = null;
+        try { decoded = JSON.parse(atob(String(cursor))); } catch { decoded = null; }
+        const at = decoded && ordered.findIndex((row) => row.id === decoded.after);
+        if (!decoded || at === undefined || at < 0) refuse('list-doc-conversations', 'doc_conversation_cursor_invalid', { cursor });
+        offset = at + 1;
+      }
+      const page = ordered.slice(offset, offset + capped);
+      const more = offset + page.length < ordered.length;
+      return {
+        ok: true,
+        conversations: page.map((row) => ({
+          id: row.id, title: row.title, visibility: row.visibility,
+          pinned_at: row.pinned_at, archived_at: row.archived_at,
+          version: row.version, created_by: row.created_by,
+          latest_sequence: row.turns.length ? row.turns[row.turns.length - 1].sequence : -1,
+          latest_turn_at: row.turns.length ? row.turns[row.turns.length - 1].at : null,
+        })),
+        more,
+        next_cursor: more ? btoa(JSON.stringify({ after: page[page.length - 1].id })) : null,
+        visible_conversation_count: docVisibleCount(selfActor),
+      };
+    },
+
     async createDocConversation({ idempotency_key, title, visibility = 'private' } = {}) {
       docGuardKey('create-doc-conversation', idempotency_key, { title, visibility });
       return withIdem(idempotency_key, () => {
