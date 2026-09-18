@@ -298,14 +298,14 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.9.0");
-  assert.equal(contract.version, "1.10.0");
-  assert.equal(contract.producer.source_commit, "69df0ae6cfeef5caada6104f66a98c60a5bda709");
+  assert.equal(routes.version, "1.10.0");
+  assert.equal(contract.version, "1.11.0");
+  assert.equal(contract.producer.source_commit, "6d3396e6949b54164b0ac24417a5da3d3b3ac618");
   assert.equal(routes.routes["/notifications"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 42);
+  assert.equal(contract.mcp_operations.length, 46);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   // The model's route list is served to a browser with no build step, so it is
   // a COPY of the contract. This is what stops the copy drifting from it.

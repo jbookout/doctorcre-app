@@ -22,7 +22,7 @@ assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["control-room.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html"]) await read(path);
+for (const path of ["control-room.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
@@ -39,6 +39,8 @@ assert.equal(routes.routes["/incidents"], "incidents.html", "the incident route 
 for (const verb of ["get-incident", "link-incident-work-request"]) assert.ok(contract.mcp_operations.includes(verb), `the incident page needs ${verb} pinned`);
 assert.equal(routes.routes["/notifications"], "notifications.html", "the notifications route must stay in the route contract");
 for (const verb of ["notification-feed", "acknowledge-notification"]) assert.ok(contract.mcp_operations.includes(verb), `the notifications page needs ${verb} pinned`);
+assert.equal(routes.routes["/conversations"], "conversations.html", "the Doc conversations route must stay in the route contract");
+for (const verb of ["read-doc-conversation", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) assert.ok(contract.mcp_operations.includes(verb), `the conversations page needs ${verb} pinned`);
 assert.ok(contract.http_surfaces.includes("/api/v1/command-center"), "the command-center path must stay pinned in the CARR interface");
 for (const verb of ["add-critical-date", "add-deal-note", "set-next-step", "presence-lease", "resolve-conflict"]) assert.ok(contract.mcp_operations.includes(verb), `the Deals board needs ${verb} pinned`);
 assert.ok(contract.mcp_operations.includes("update-deal"), "the Deals board Closed column needs update-deal pinned");

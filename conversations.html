@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Doc conversations — what you and Doc have said, who else can read it, and what turning sharing off can and cannot undo">
+  <title>Conversations · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/conversations.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the conversations</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>conversations</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/control-room">Control Room</a>
+      <a href="/conversations" aria-current="page">Conversations</a>
+      <a href="/notifications">Notifications</a>
+      <a href="/incidents">Incidents</a>
+      <a href="/work-inventory">Inventory</a>
+    </nav>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass hero-card" data-section="hero" aria-labelledby="pageTitle">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="still" id="conversationOrb" aria-hidden="true"></span> <span class="mono" id="conversationId">no conversation open</span></p>
+          <h1 id="pageTitle">Conversations</h1>
+        </div>
+        <div class="hero-meta">
+          <span class="as-of" id="conversationAsOf">unknown</span>
+          <button class="btn" type="button" id="retryRead">Read again</button>
+        </div>
+      </div>
+      <p class="visibility-badge" id="visibilityBadge" data-visibility="none"><span class="lock-glyph" id="visibilityGlyph" aria-hidden="true">🔒</span> <span id="visibilityWord">No conversation is open</span></p>
+      <ul class="hero-facts" id="heroFacts"></ul>
+      <p class="caption" id="titleHistoryLine">unknown</p>
+    </section>
+
+    <p class="sr-only" id="conversationLive" aria-live="polite" role="status">Reading this conversation…</p>
+
+    <section class="card glass" data-section="roster" aria-labelledby="rosterTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Conversations on this device</p><h2 id="rosterTitle">Conversations on this device</h2></div>
+        <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
+      </div>
+      <p class="caption" id="rosterScope">unknown</p>
+      <p class="headline" id="visibleCountLine">unknown</p>
+      <div class="state-block" id="rosterState" data-state="loading" hidden><h3 id="rosterStateTitle"></h3></div>
+      <ul class="work-list" id="rosterList"></ul>
+      <ul class="work-list" id="archivedList" hidden></ul>
+    </section>
+
+    <section class="card glass" data-section="turns" id="turnsBlock" aria-labelledby="turnsTitle">
+      <div class="card-heading"><div><p class="eyebrow">What was said</p><h2 id="turnsTitle">The conversation</h2></div></div>
+      <div class="state-block" id="turnsState" data-state="loading"><h3 id="turnsStateTitle">Reading this conversation…</h3></div>
+      <ol class="turn-list" id="turnList"></ol>
+      <p class="caption" id="composerAbsent">unknown</p>
+      <p class="caption" id="docReplyPending">unknown</p>
+    </section>
+
+    <section class="card glass" data-section="paging" id="pagingBlock" aria-labelledby="pagingTitle" hidden>
+      <div class="card-heading"><div><p class="eyebrow">Earlier</p><h2 id="pagingTitle">More turns are held</h2></div></div>
+      <div class="note-act"><button class="btn" type="button" id="showMore">Show more turns</button></div>
+    </section>
+
+    <section class="card glass" data-section="access" aria-labelledby="accessTitle">
+      <div class="card-heading"><div><p class="eyebrow">Who can read this</p><h2 id="accessTitle">Access</h2></div></div>
+      <ul class="work-list" id="accessList"></ul>
+      <p class="headline" id="sharingCaveat">unknown</p>
+      <div class="action-row" id="shareControls"></div>
+    </section>
+
+    <section class="card glass" data-section="identity" aria-labelledby="identityTitle">
+      <div class="card-heading"><div><p class="eyebrow">Name and state</p><h2 id="identityTitle">Rename, pin, archive</h2></div></div>
+      <div class="field"><label for="renameInput">New title</label><input id="renameInput" type="text" autocomplete="off" maxlength="200" placeholder="A concise name for this conversation"></div>
+      <div class="action-row">
+        <button class="btn btn-primary" type="button" id="renameSave">Save the new title</button>
+        <button class="btn" type="button" id="pinToggle" aria-pressed="false">Pin this conversation</button>
+        <button class="btn" type="button" id="archiveToggle" aria-pressed="false">Archive this conversation</button>
+      </div>
+      <p class="caption" id="identityNote">Rename, pin and archive ride one door on a compare-and-swap. If a partner moved this conversation first, the page re-reads it and asks you to press again.</p>
+    </section>
+
+    <section class="card glass" data-section="create" aria-labelledby="createTitle">
+      <div class="card-heading"><div><p class="eyebrow">Start one</p><h2 id="createTitle">New conversation</h2></div></div>
+      <div class="field"><label for="createTitleInput">Title</label><input id="createTitleInput" type="text" autocomplete="off" maxlength="200" placeholder="What is this conversation about?"></div>
+      <div class="field"><label for="createVisibility">Who can read it</label>
+        <select id="createVisibility">
+          <option value="private" selected>Private — only you</option>
+          <option value="shared">Shared with your partner</option>
+        </select>
+      </div>
+      <div class="action-row"><button class="btn btn-primary" type="button" id="createSave">Create this conversation</button></div>
+    </section>
+
+    <section class="card glass" data-section="exposure" aria-labelledby="exposureTitle">
+      <div class="card-heading"><div><p class="eyebrow">On a phone</p><h2 id="exposureTitle">What this page shows a passer-by</h2></div></div>
+      <p class="caption" id="exposureStatement">unknown</p>
+    </section>
+  </main>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Conversations</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Conversations · Turning sharing off ends future access, and never unreads what was already read.</p></footer>
+  <script type="module" src="/js/conversations.js"></script>
+</body>
+</html>

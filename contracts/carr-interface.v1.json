@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "69df0ae6cfeef5caada6104f66a98c60a5bda709"
+    "source_commit": "6d3396e6949b54164b0ac24417a5da3d3b3ac618"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -20,6 +20,7 @@
     "add-loop",
     "capture-queue",
     "close-loop",
+    "create-doc-conversation",
     "create-national-account",
     "create-national-market-deal",
     "current-work-item",
@@ -39,8 +40,10 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "read-doc-conversation",
     "read-loop",
     "read-portfolio",
+    "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
     "resolve-post-call-candidate",
@@ -51,6 +54,7 @@
     "set-national-account-owner",
     "set-next-step",
     "set-work-shape-disposition",
+    "share-doc-conversation",
     "start-deal-review",
     "supersede-work-request",
     "update-deal",

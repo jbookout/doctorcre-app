@@ -505,6 +505,107 @@ export async function createFixtureClient(opts = {}) {
     }],
   ]);
 
+  /* -------------------------------------- Doc conversation fixtures (V5-UX-B07)
+   * The synthetic twin of `ops.doc_conversation`, in the producer's OWN shape.
+   * Three things about this fixture are the point of it, and a friendlier one
+   * would let the page pass its tests while shipping a disclosure:
+   *
+   *  1. ABSENT and NOT-YOURS are ONE answer. `doc_conversation_not_found` is
+   *     returned for an id that does not exist, for one this actor cannot see,
+   *     and for an id that is not a uuid — byte-identical in all three cases.
+   *  2. `doc_conversation_creator_only` is NOT collapsed into that. A grantee
+   *     already knows the conversation exists, so a distinct refusal discloses
+   *     nothing and is the honest answer a share toggle needs.
+   *  3. `visible_conversation_count` is computed the way the definer computes
+   *     it — over conversations this ACTING actor created or holds an unrevoked
+   *     grant on — so `?actor=dell` demonstrably changes the number.
+   *
+   * Every title starts with "Demo " so nothing here can be mistaken for a record.
+   */
+  const DOC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /** The active actor slugs `share-doc-conversation` can resolve. */
+  const DOC_ACTORS = [seed.actors?.self || 'joe', partnerActor];
+  const docTurn = (sequence, role, body, at) => ({
+    sequence, role, body, msg_id: `demo-msg-${String(sequence).padStart(2, '0')}`,
+    origin_channel: 'app', origin_actor: role === 'assistant' ? 'doc' : 'joe', at,
+  });
+  const docConversation = (row) => ({
+    id: row.id, title: row.title, pinned_at: row.pinned_at || null,
+    archived_at: row.archived_at || null, version: row.version, created_by: row.created_by,
+    turns: row.turns, grants: row.grants || [],
+  });
+  const DOC_PRIVATE = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01';
+  const DOC_SHARED = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c02';
+  const DOC_REVOKED = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c03';
+  const docConversations = new Map([
+    [DOC_PRIVATE, docConversation({
+      id: DOC_PRIVATE, title: 'Demo — Gulf Breeze LOI and the survey window', version: 3, created_by: 'joe',
+      turns: [
+        docTurn(0, 'human', 'Demo: what is still open on the Gulf Breeze letter of intent?', '2026-09-10T13:05:00.000Z'),
+        docTurn(1, 'assistant', 'Demo: the survey window and the demo tenant improvement allowance are both unresolved.', '2026-09-10T13:05:30.000Z'),
+        docTurn(2, 'human', 'Demo: when does the survey window close?', '2026-09-10T13:07:00.000Z'),
+        docTurn(3, 'assistant', 'Demo: the demo window closes thirty days after the demo effective date.', '2026-09-10T13:07:20.000Z'),
+        // Two hostile bodies, so the page's escaping is exercised by a real turn
+        // rather than by a test-only fabrication.
+        docTurn(4, 'human', 'Demo: the counterparty pasted <script>alert(1)</script> into the demo portal.', '2026-09-10T13:09:00.000Z'),
+        docTurn(5, 'assistant', 'Demo: recorded verbatim, including "><img onerror=alert(2) src=x>, and never executed.', '2026-09-10T13:09:40.000Z'),
+        docTurn(6, 'human', 'Demo: keep this one private for now.', '2026-09-10T13:12:00.000Z'),
+      ],
+      grants: [],
+    })],
+    [DOC_SHARED, docConversation({
+      id: DOC_SHARED, title: 'Demo — Crestview derm site search', version: 2, created_by: 'joe',
+      pinned_at: '2026-09-11T09:00:00.000Z',
+      turns: [
+        docTurn(0, 'human', 'Demo: which Crestview demo suites are still on the short list?', '2026-09-11T08:40:00.000Z'),
+        docTurn(1, 'assistant', 'Demo: three demo suites remain, and one demo landlord has not answered.', '2026-09-11T08:40:25.000Z'),
+        docTurn(2, 'human', 'Demo: share this one so the demo partner can read it.', '2026-09-11T08:45:00.000Z'),
+        docTurn(3, 'assistant', 'Demo: sharing is a record-layer grant, and it is revocable.', '2026-09-11T08:45:30.000Z'),
+      ],
+      grants: [{ grantee_actor: partnerActor, granted_at: '2026-09-11T08:46:00.000Z', granted_by_actor: 'joe', revoked_at: null }],
+    })],
+    [DOC_REVOKED, docConversation({
+      id: DOC_REVOKED, title: 'Demo — Coastal survey follow-up', version: 4, created_by: 'joe',
+      archived_at: '2026-09-12T17:00:00.000Z',
+      turns: [
+        docTurn(0, 'human', 'Demo: has the demo surveyor answered yet?', '2026-09-12T15:10:00.000Z'),
+        docTurn(1, 'assistant', 'Demo: no demo answer since Monday.', '2026-09-12T15:10:30.000Z'),
+        docTurn(2, 'human', 'Demo: put it away, and take the demo partner back off it.', '2026-09-12T16:55:00.000Z'),
+      ],
+      // Revoked, never deleted: the row stays and carries its `revoked_at`.
+      grants: [{ grantee_actor: partnerActor, granted_at: '2026-09-12T15:20:00.000Z', granted_by_actor: 'joe', revoked_at: '2026-09-12T16:58:00.000Z' }],
+    })],
+  ]);
+  /**
+   * Written by every rename and read back by nothing, exactly as
+   * `ops.doc_conversation_title_revision` is written and projected by no verb.
+   * It exists here so a test can prove the page does NOT show it.
+   */
+  const docTitleRevisions = [];
+  /** What each spent key was spent ON; a different payload is `key_reuse`. */
+  const docIdemArgs = new Map();
+
+  const docLiveGrants = (row) => row.grants.filter((grant) => !grant.revoked_at);
+  const docVisibility = (row) => (docLiveGrants(row).length ? 'shared' : 'private');
+  const docVisibleTo = (row, actor) => row.created_by === actor
+    || docLiveGrants(row).some((grant) => grant.grantee_actor === actor);
+  const docVisibleCount = (actor) => [...docConversations.values()]
+    .filter((row) => docVisibleTo(row, actor)).length;
+  /**
+   * The envelope's key check, which fires BEFORE the function: a key already
+   * spent on different arguments is `key_reuse`, which is what the app actually
+   * sees. (The store's own `doc_conversation_idempotency_key_reuse` is reachable
+   * only when a conversation row exists with no matching tool_call row, and is
+   * shadowed by this one everywhere the app can reach.)
+   */
+  function docGuardKey(verb, key, args) {
+    if (!key) refuse(verb, 'missing_idempotency_key');
+    const signature = JSON.stringify({ verb, args, actor: selfActor });
+    const seen = docIdemArgs.get(key);
+    if (seen && seen !== signature) refuse(verb, 'key_reuse', { idempotency_key: key });
+    docIdemArgs.set(key, signature);
+  }
+
   const held = (row) => ({
     human_ref: row.human_ref, title: row.title, state: row.state, owner: row.owner,
     executor: row.executor, done_predicate: row.done_predicate, blocker: row.blocker || null,
@@ -1119,6 +1220,122 @@ export async function createFixtureClient(opts = {}) {
         if (row.read_at) return { ok: true, notification_id: row.id, read_at: row.read_at, deduplicated: true };
         row.read_at = nowIso();
         return { ok: true, notification_id: row.id, read_at: row.read_at, deduplicated: false };
+      });
+    },
+
+    // ------------------------------------------ Doc conversations (V5-UX-B07)
+    // One read and three writes, refusing what the record layer refuses. The
+    // read's THREE not-found cases return the same code deliberately; the
+    // rename's creator-only refusal is raised BEFORE the compare-and-swap, so a
+    // refused rename leaves the row's version exactly where it was; and
+    // `create`'s idempotency key BECOMES the conversation id, so a second key
+    // would be a second conversation rather than a retry.
+    async readDocConversation({ conversation_id, after_sequence = null, limit = 50 } = {}) {
+      refuseIfOutage('conversations', 'read-doc-conversation');
+      const id = String(conversation_id || '');
+      const row = DOC_UUID.test(id) ? docConversations.get(id) : null;
+      if (!row || !docVisibleTo(row, selfActor)) refuse('read-doc-conversation', 'doc_conversation_not_found');
+      const capped = Number.isInteger(limit) ? Math.min(200, Math.max(1, limit)) : 50;
+      const after = Number.isInteger(after_sequence) ? after_sequence : -1;
+      const eligible = row.turns.filter((turn) => turn.sequence > after);
+      const page = eligible.slice(0, capped);
+      return {
+        ok: true,
+        identity: {
+          id: row.id, title: row.title, visibility: docVisibility(row),
+          pinned_at: row.pinned_at, archived_at: row.archived_at,
+          version: row.version, created_by: row.created_by,
+        },
+        turns: page.map((turn) => ({ ...turn })),
+        latest_sequence: row.turns.length ? row.turns[row.turns.length - 1].sequence : -1,
+        more: eligible.length > page.length,
+        effective_grants: docLiveGrants(row).map((grant) => ({
+          grantee_actor: grant.grantee_actor, granted_at: grant.granted_at, granted_by_actor: grant.granted_by_actor,
+        })),
+        visible_conversation_count: docVisibleCount(selfActor),
+      };
+    },
+
+    async createDocConversation({ idempotency_key, title, visibility = 'private' } = {}) {
+      docGuardKey('create-doc-conversation', idempotency_key, { title, visibility });
+      return withIdem(idempotency_key, () => {
+        const key = String(idempotency_key || '');
+        if (!DOC_UUID.test(key)) refuse('create-doc-conversation', 'doc_conversation_idempotency_key_invalid', { idempotency_key });
+        const name = String(title ?? '').trim();
+        if (name.length < 1 || name.length > 200) refuse('create-doc-conversation', 'doc_conversation_title_invalid', { title });
+        const shared = visibility === 'shared';
+        // The key IS the id. That is the store's own rule, and it is what makes
+        // a replay of the retained request a retry instead of a second row.
+        docConversations.set(key, docConversation({
+          id: key, title: name, version: 1, created_by: selfActor, turns: [],
+          grants: shared ? [{ grantee_actor: DOC_ACTORS.find((slug) => slug !== selfActor) || partnerActor, granted_at: nowIso(), granted_by_actor: selfActor, revoked_at: null }] : [],
+        }));
+        return { ok: true, conversation_id: key, title: name, visibility: shared ? 'shared' : 'private', version: 1 };
+      });
+    },
+
+    async shareDocConversation({ idempotency_key, conversation_id, grantee_slug, granted } = {}) {
+      docGuardKey('share-doc-conversation', idempotency_key, { conversation_id, grantee_slug, granted });
+      return withIdem(idempotency_key, () => {
+        const verb = 'share-doc-conversation';
+        const id = String(conversation_id || '');
+        if (!DOC_UUID.test(id)) refuse(verb, 'doc_conversation_id_invalid', { conversation_id });
+        const slug = String(grantee_slug ?? '').trim();
+        if (!slug) refuse(verb, 'doc_conversation_grantee_slug_invalid', { grantee_slug });
+        const row = docConversations.get(id);
+        if (!row || !docVisibleTo(row, selfActor)) refuse(verb, 'doc_conversation_not_found');
+        if (row.created_by !== selfActor) refuse(verb, 'doc_conversation_creator_only', { conversation_id: id });
+        if (!DOC_ACTORS.includes(slug)) refuse(verb, 'doc_conversation_grantee_not_found', { grantee_slug: slug });
+        if (slug === row.created_by) refuse(verb, 'doc_conversation_grantee_is_creator', { grantee_slug: slug });
+        const live = docLiveGrants(row).find((grant) => grant.grantee_actor === slug);
+        // Granting twice and revoking twice are NOT refusals: the store answers
+        // both with `already: true`, having written nothing the second time.
+        if (granted === true) {
+          if (live) return { ok: true, conversation_id: id, grantee_slug: slug, already: true, granted: true, visibility: docVisibility(row) };
+          row.grants.push({ grantee_actor: slug, granted_at: nowIso(), granted_by_actor: selfActor, revoked_at: null });
+          return { ok: true, conversation_id: id, grantee_slug: slug, already: false, granted: true, visibility: docVisibility(row) };
+        }
+        if (!live) return { ok: true, conversation_id: id, grantee_slug: slug, already: true, granted: false, visibility: docVisibility(row) };
+        // Revoked, never deleted: the row stays and carries when it ended.
+        live.revoked_at = nowIso();
+        return { ok: true, conversation_id: id, grantee_slug: slug, already: false, granted: false, visibility: docVisibility(row) };
+      });
+    },
+
+    async renameDocConversation({ idempotency_key, conversation_id, base_version, title, pinned, archived } = {}) {
+      docGuardKey('rename-doc-conversation', idempotency_key, { conversation_id, base_version, title, pinned, archived });
+      return withIdem(idempotency_key, () => {
+        const verb = 'rename-doc-conversation';
+        const id = String(conversation_id || '');
+        if (!DOC_UUID.test(id)) refuse(verb, 'doc_conversation_id_invalid', { conversation_id });
+        let name;
+        if (title !== undefined) {
+          name = String(title ?? '').trim();
+          if (name.length < 1 || name.length > 200) refuse(verb, 'doc_conversation_title_invalid', { title });
+        }
+        const row = docConversations.get(id);
+        if (!row || !docVisibleTo(row, selfActor)) refuse(verb, 'doc_conversation_not_found');
+        // BEFORE the comparison and before any write: a non-creator's rename
+        // leaves the version exactly where it was.
+        if (row.created_by !== selfActor) refuse(verb, 'doc_conversation_creator_only', { conversation_id: id });
+        if (name === undefined && pinned === undefined && archived === undefined) {
+          refuse(verb, 'doc_conversation_no_change_requested', { conversation_id: id });
+        }
+        if (!Number.isInteger(base_version) || base_version !== row.version) {
+          refuse(verb, 'version_conflict', { conversation_id: id, current_version: row.version });
+        }
+        if (name !== undefined) {
+          // The PRIOR title, appended to an immutable history no verb reads back.
+          docTitleRevisions.push({ conversation_id: id, title: row.title, version: row.version, recorded_at: nowIso() });
+          row.title = name;
+        }
+        if (pinned !== undefined) row.pinned_at = pinned === true ? nowIso() : null;
+        if (archived !== undefined) row.archived_at = archived === true ? nowIso() : null;
+        row.version += 1;
+        return {
+          ok: true, conversation_id: id, version: row.version, title: row.title,
+          pinned_at: row.pinned_at, archived_at: row.archived_at,
+        };
       });
     },
 

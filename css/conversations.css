@@ -1,0 +1,83 @@
+/* V5-UX-B07 Doc conversations page — page layer over css/system.css.
+ *
+ * The shared sheet is contract-bound, so nothing here invents a colour or a
+ * type scale; the dark cinematic register comes from its tokens alone. This
+ * page adds only what the shared sheet leaves to a page:
+ *
+ *  1. PRIVATE VERSUS SHARED, drawn as the strongest distinction on the page.
+ *     Private carries the CARR orange ring and a closed lock; shared carries
+ *     the navy accent and an open lock. Colour is never the only carrier — each
+ *     state has its own word and its own glyph, so the difference survives a
+ *     monochrome screen and a reader who cannot tell the two hues apart.
+ *  2. The one-column transcript, authored at 360px and widened once. A turn is
+ *     a sentence somebody said, not a table row, and a long body wraps rather
+ *     than pushing a horizontal scrollbar onto a phone.
+ *  3. The 44px floor on every control this page adds, and full-width buttons in
+ *     the action rows, because every one of them is a thumb target first.
+ *  4. Nothing in the transcript card draws a control. There is no door that
+ *     appends a turn from here, and a greyed-out box would be a lie with a
+ *     cursor in it.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hero-card { display: grid; gap: 12px; }
+
+.headline { margin: 0; font: 600 20px/1.3 var(--display); }
+.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.02em; overflow-wrap: anywhere; }
+
+.btn { min-height: var(--touch); }
+.chip { min-height: var(--touch); overflow-wrap: anywhere; }
+.field input, .field select { min-height: var(--touch); }
+
+/* The slice's central distinction: a word, a glyph and an accent, never a hue alone. */
+.visibility-badge { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; min-height: var(--touch); padding: 8px 12px; border-radius: 999px; font: 700 13px/1.3 var(--body); overflow-wrap: anywhere; }
+.visibility-badge[data-visibility="private"] { border: 1px solid var(--orange); color: var(--orange-text); background: color-mix(in srgb, var(--orange) 12%, transparent); }
+.visibility-badge[data-visibility="shared"] { border: 1px solid var(--navy); color: var(--text); background: color-mix(in srgb, var(--navy) 26%, transparent); }
+.visibility-badge[data-visibility="none"] { border: 1px dashed var(--line); color: var(--quiet); background: transparent; }
+.lock-glyph { font-size: 15px; line-height: 1; }
+
+.hero-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--quiet); font-size: 11px; }
+.hero-facts li { overflow-wrap: anywhere; }
+
+/* One column, always: a turn is a sentence, not a table row. */
+.turn-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.turn { padding: 10px 12px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 12px; }
+.turn[data-role="human"] { border-left-color: var(--orange); }
+.turn[data-role="assistant"] { border-left-color: var(--navy); }
+.turn-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: var(--quiet); font-size: 11px; }
+.turn-role { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.turn-body { margin: 6px 0 0; font: 400 15px/1.45 var(--body); overflow-wrap: anywhere; white-space: pre-wrap; }
+
+#rosterList { grid-template-columns: minmax(0, 1fr); }
+#rosterList .work-item, #archivedList .work-item { grid-template-columns: minmax(0, 1fr); }
+.roster-title { margin: 0; font: 600 16px/1.25 var(--body); overflow-wrap: anywhere; }
+.roster-meta { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.roster-open { margin-top: 10px; }
+.roster-open .btn { width: 100%; }
+
+.access-row { margin: 0; overflow-wrap: anywhere; }
+.action-row { display: grid; gap: 8px; margin-top: 10px; }
+.action-row .btn { width: 100%; }
+.note-act { margin-top: 10px; }
+.note-act .btn { width: 100%; }
+.share-toggle[aria-pressed="true"] { border-color: var(--navy); color: var(--text); background: color-mix(in srgb, var(--navy) 22%, transparent); }
+.share-toggle[aria-pressed="false"] { border-color: var(--line-strong); color: var(--muted); }
+
+.state-block { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; color: var(--quiet); }
+.state-block[data-state="ready"] { display: none; }
+.state-block[data-state="not_found"] { border-style: solid; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
+
+@media (min-width: 720px) {
+  .action-row { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .hero { flex-direction: column; align-items: stretch; }
+  .hero-meta { justify-content: flex-start; }
+  .turn-top { flex-direction: column; align-items: flex-start; }
+}
