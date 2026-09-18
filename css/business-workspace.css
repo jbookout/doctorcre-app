@@ -63,3 +63,33 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
   /* The bottom navigation mirrors the tabs, so the page keeps clear of it. */
   main.shell { padding-bottom: 96px; }
 }
+
+/* V5-UX-B05 Search tab — one column at 360 px, on the same shared ground.
+ *
+ * No colour of its own, no type scale of its own, no new component vocabulary:
+ * a result is the work-item row this page already draws, a chip is the chip the
+ * page already draws, and a state is the state-block. What is added here is
+ * only what a list of grouped results needs and the shared sheet does not have:
+ * the gap between groups, the monospace ref chip, and the quiet register for a
+ * row that opens nothing.
+ */
+.search-results { display: grid; gap: 12px; }
+.search-results > .card + .card { margin-top: 0; }
+.search-row .work-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-row .chip-list { margin-top: 8px; }
+.search-row[data-retired="true"] { opacity: 0.85; }
+.search-row[data-retired="true"] h3 { color: var(--muted); }
+
+/* A ref is an address the record layer prints, so it is set as one. */
+.ref-chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 6px; padding: 2px 6px; }
+
+/* Every control the tab adds clears the touch floor, including a chip that is
+ * a scope toggle rather than a label. */
+#searchChips .chip, #savedViewList .chip, .saved-view .chip { min-height: var(--touch); display: inline-flex; align-items: center; }
+#searchChips .chip[aria-pressed="false"] { opacity: 0.6; }
+.saved-view { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.quiet { color: var(--quiet); }
+
+@media (max-width: 640px) {
+  .search-row .work-meta { flex-direction: column; gap: 4px; }
+}

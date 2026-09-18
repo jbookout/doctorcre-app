@@ -655,6 +655,186 @@ export async function createFixtureClient(opts = {}) {
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
   ];
 
+  /* ------------------------------------------------ search fixtures (V5-UX-B05)
+   * The synthetic twin of `find` and `find-and-catch-up`, reproducing the
+   * PRODUCER'S semantics rather than a friendlier version of them:
+   *
+   *  - two predicates ORed, as in tools.js:2140-2144 — a case-insensitive
+   *    substring (`display_name ilike '%q%'`) and a similarity stand-in;
+   *  - `merged` first, then similarity descending (:2145) — the survivors-first
+   *    repair from loop #132, which a fixture that sorted on similarity alone
+   *    would silently undo;
+   *  - the caps as numbers copied from the producer;
+   *  - refusal codes exactly as captured from the live verbs.
+   *
+   * Every name starts with "Demo " so nothing here can be mistaken for a record.
+   */
+  const SEARCH_CAPS = { parties: 10, organizations: 5, deals: 5, connections: 12, retiredRefs: 10, links: 20, candidates: 25 };
+
+  /**
+   * A STAND-IN for `pg_trgm`, and named as one. It is a deterministic trigram
+   * overlap ratio over lowercased names with a 0.3 floor. It is NOT similarity
+   * as Postgres computes it, and this fixture does not claim to reproduce that
+   * ranking — it claims only to rank deterministically so a test can assert the
+   * order the page must not disturb.
+   */
+  function trigrams(value) {
+    const padded = `  ${String(value).toLowerCase().trim()} `;
+    const out = new Set();
+    for (let i = 0; i + 3 <= padded.length; i += 1) out.add(padded.slice(i, i + 3));
+    return out;
+  }
+  function searchSimilarity(name, query) {
+    const a = trigrams(name);
+    const b = trigrams(query);
+    if (a.size === 0 || b.size === 0) return 0;
+    let shared = 0;
+    for (const gram of b) if (a.has(gram)) shared += 1;
+    return shared / (a.size + b.size - shared);
+  }
+  const SEARCH_SIMILARITY_FLOOR = 0.3;
+  function searchMatches(name, query) {
+    const needle = String(query).toLowerCase();
+    return String(name).toLowerCase().includes(needle) || searchSimilarity(name, query) >= SEARCH_SIMILARITY_FLOOR;
+  }
+
+  /** `kindFromRef` (tools.js:2065-2071), copied prefix for prefix. */
+  function searchKindFromRef(ref) {
+    const value = String(ref || '');
+    if (value.startsWith('C-')) return 'client';
+    if (value.startsWith('L-')) return 'lead';
+    if (value.startsWith('V-')) return 'vendor';
+    if (value.startsWith('P-')) return 'party';
+    return 'record';
+  }
+
+  const searchParties = [
+    { name: 'Demo Pensacola Family Dentistry', city: 'Pensacola', specialty: 'General dentistry', org_name: 'Demo Gulf Coast Dental Group', ref: 'L-901', kind: 'lead', merged: false },
+    { name: 'Demo Pensacola Orthopedic Partners', city: null, specialty: null, org_name: null, ref: 'C-902', kind: 'client', merged: false },
+    { name: 'Demo Pensacola Buildout Contractors', city: 'Pensacola', specialty: null, org_name: null, ref: 'V-903', kind: 'vendor', merged: false },
+    // A bare party: no kind of its own beyond "party", and no ref at all. The
+    // producer selects `ref` as a plain column and guards it with a string test,
+    // which is the producer telling you it can be absent.
+    { name: 'Demo Pensacola Referring Physician', city: null, specialty: null, org_name: null, ref: null, kind: 'party', merged: false },
+    // A retired alias. It sorts FIRST by `merged, similarity desc`, carries a
+    // retired badge and opens nothing.
+    { name: 'Demo Pensacola Smiles (retired alias)', city: null, specialty: null, org_name: null, ref: 'L-904', kind: 'lead', merged: true },
+  ];
+
+  const searchOrganizations = [
+    // The observed shape: a live row whose aggregated ref is a NULL ELEMENT.
+    { name: 'Demo Pensacola Imaging Partners', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
+    { name: 'Demo Specialty Center Of Pensacola', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 1, role_refs: ['L-905'], all_retired: false },
+    { name: 'Demo Pensacola Surgical Suites', live_rows: 2, refs: ['P-906', 'P-907'], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
+    { name: 'Demo Pensacola Retired Holdings', live_rows: 0, refs: [], retired_aliases: 3, retired_refs: ['P-908', 'P-909', 'P-910'], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: true },
+    // Twelve retired aliases, ten refs listed: the producer truncates at
+    // RETIRED_REF_CAP and SAYS SO rather than slicing silently.
+    { name: 'Demo Pensacola Legacy Practices', live_rows: 1, refs: ['P-911'], retired_aliases: 12, retired_refs: ['P-912', 'P-913', 'P-914', 'P-915', 'P-916', 'P-917', 'P-918', 'P-919', 'P-920', 'P-921'], retired_refs_truncated: true, live_as_role: 0, role_refs: [], all_retired: false },
+  ];
+
+  const searchDeals = [
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-902' },
+    // TWO deals sharing a name. The producer does NOT deduplicate deals when it
+    // derives candidates, and a fixture that did would certify a client that
+    // silently drops one of them.
+    { name: 'Demo Pensacola medical office building', phase: 'research', owner: 'joe', client_ref: null },
+    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-902' },
+  ];
+
+  const searchConnections = [
+    { from_ref: 'P-906', from_name: 'Demo Pensacola Surgical Suites', kind: 'refers_to', to_ref: 'L-901', to_name: 'Demo Pensacola Family Dentistry', note: 'introduced at a demo society meeting' },
+    { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-902', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
+  ];
+
+  /** Each of the three `link_basis` values the producer can report. */
+  const searchLeadClientLinks = [
+    { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
+    { lead_ref: 'L-905', lead_name: 'Demo Specialty Center Of Pensacola', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
+    { lead_ref: 'L-904', lead_name: 'Demo Pensacola Smiles (retired alias)', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_org' },
+  ];
+  const searchDealsViaLink = [
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', client_ref: 'C-902', link_basis: 'conversion' },
+  ];
+
+  /**
+   * The `note`, assembled from the producer's branches. The first sentence is
+   * VERBATIM from a live capture; the other three are this fixture's honest
+   * rendering of the same branches, and are marked as such here rather than
+   * presented as captured text.
+   */
+  function searchNote(organizations, parties) {
+    const retiredOrganizations = organizations.filter((row) => row.retired_aliases > 0 || row.all_retired);
+    const retiredParties = parties.filter((row) => row.merged === true);
+    if (retiredOrganizations.length === 0 && retiredParties.length === 0) {
+      return 'No retired aliases among these matches — every ref listed is live.';
+    }
+    if (organizations.length > 0 && organizations.every((row) => row.all_retired)) {
+      return 'Every organization matched here is retired — no live ref remains behind these names.';
+    }
+    if (retiredOrganizations.some((row) => row.retired_refs_truncated)) {
+      return 'Some matches carry retired aliases, and the list of retired refs was truncated — the counts beside each name are the full ones.';
+    }
+    return 'Some matches carry retired aliases — they are listed apart from the live refs and are never counted with them.';
+  }
+
+  /**
+   * `findCatchUpCandidates` (tools.js:2079-2111), reimplemented exactly: live
+   * parties only, every non-empty string in `refs` and `role_refs`, every named
+   * deal with NO deduplication, ordered by `target.localeCompare`. A client that
+   * guessed at a single candidate fails against this.
+   */
+  function searchCandidates(payload) {
+    const out = [];
+    const seen = new Set();
+    for (const row of payload.parties) {
+      if (row.merged !== false) continue;
+      const target = row.name;
+      if (seen.has(`party|${target}`)) continue;
+      seen.add(`party|${target}`);
+      out.push({ kind: typeof row.ref === 'string' && row.ref !== '' ? searchKindFromRef(row.ref) : 'record', name: row.name, target });
+    }
+    for (const row of payload.organizations) {
+      for (const ref of [...row.refs, ...row.role_refs]) {
+        if (typeof ref !== 'string' || ref === '') continue;
+        if (seen.has(`org|${row.name}`)) continue;
+        seen.add(`org|${row.name}`);
+        out.push({ kind: searchKindFromRef(ref), name: row.name, target: row.name });
+      }
+    }
+    // Deals are NOT deduplicated. Two deals with one name are two candidates.
+    for (const row of payload.deals) {
+      if (typeof row.name !== 'string' || row.name === '') continue;
+      out.push({ kind: 'deal', name: row.name, target: row.name });
+    }
+    return out.sort((a, b) => a.target.localeCompare(b.target));
+  }
+
+  function searchFind(query) {
+    const parties = searchParties
+      .filter((row) => searchMatches(row.name, query))
+      .sort((a, b) => (Number(a.merged) - Number(b.merged)) || (searchSimilarity(b.name, query) - searchSimilarity(a.name, query)))
+      .slice(0, SEARCH_CAPS.parties)
+      .map((row) => ({ ...row }));
+    const organizations = searchOrganizations
+      .filter((row) => searchMatches(row.name, query))
+      .sort((a, b) => searchSimilarity(b.name, query) - searchSimilarity(a.name, query))
+      .slice(0, SEARCH_CAPS.organizations)
+      .map((row) => ({ ...row, refs: [...row.refs], retired_refs: [...row.retired_refs].slice(0, SEARCH_CAPS.retiredRefs), role_refs: [...row.role_refs] }));
+    const deals = searchDeals.filter((row) => searchMatches(row.name, query)).slice(0, SEARCH_CAPS.deals).map((row) => ({ ...row }));
+    const names = new Set([...parties.map((row) => row.name), ...organizations.map((row) => row.name), ...deals.map((row) => row.name)]);
+    const connections = searchConnections
+      .filter((row) => names.has(row.from_name) || names.has(row.to_name))
+      .slice(0, SEARCH_CAPS.connections).map((row) => ({ ...row }));
+    const lead_client_links = searchLeadClientLinks
+      .filter((row) => names.has(row.lead_name) || names.has(row.client_name))
+      .slice(0, SEARCH_CAPS.links).map((row) => ({ ...row }));
+    const deals_via_link = (lead_client_links.length > 0 ? searchDealsViaLink : []).slice(0, SEARCH_CAPS.links).map((row) => ({ ...row }));
+    return {
+      parties, deals, connections, organizations, lead_client_links, deals_via_link,
+      note: searchNote(organizations, parties),
+    };
+  }
+
   const client = {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
@@ -1342,6 +1522,72 @@ export async function createFixtureClient(opts = {}) {
         more,
         next_cursor: more ? btoa(JSON.stringify({ after: page[page.length - 1].id })) : null,
         visible_conversation_count: docVisibleCount(selfActor),
+      };
+    },
+
+    // ------------------------------------------------ global search (V5-UX-B05)
+    // Two READS, refusing exactly what the live verbs refuse. Neither names an
+    // actor, a tenant or a kind: `find` declares ONE property and
+    // `find-and-catch-up` declares two under additionalProperties:false, and a
+    // third key is refused by the gateway before either handler runs. A no-match
+    // is a 200 with six empty arrays and the note — never an error.
+    async find(args = {}) {
+      refuseIfOutage('search', 'find');
+      const keys = Object.keys(args || {});
+      const extra = keys.filter((key) => key !== 'query');
+      if (extra.length > 0) refuse('find', 'unregistered_operation_fields', { operation: 'find', fields: extra });
+      if (!('query' in (args || {})) || args.query === undefined || args.query === null || args.query === '') {
+        refuse('find', 'missing_required', { missing: ['query'], hint: 'this verb requires "query"' });
+      }
+      return searchFind(String(args.query));
+    },
+
+    async findAndCatchUp(args = {}) {
+      refuseIfOutage('search', 'find-and-catch-up');
+      const keys = Object.keys(args || {});
+      const extra = keys.filter((key) => key !== 'query' && key !== 'limit');
+      if (extra.length > 0) refuse('find-and-catch-up', 'unregistered_operation_fields', { operation: 'find-and-catch-up', fields: extra });
+      const limit = args.limit === undefined ? 20 : args.limit;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+        refuse('find-and-catch-up', 'invalid_limit', { hint: 'limit must be an integer from 1 to 50' });
+      }
+      const query = typeof args.query === 'string' ? args.query : '';
+      if (query.trim() === '' || query.length > 200) {
+        refuse('find-and-catch-up', 'invalid_query', { hint: 'query must be a nonempty string of at most 200 characters' });
+      }
+      const payload = searchFind(query);
+      const candidates = searchCandidates(payload);
+      if (candidates.length === 0) {
+        const retired = payload.parties.filter((row) => row.merged === true).length +
+          payload.organizations.filter((row) => row.all_retired).length;
+        return {
+          state: 'not_found', query, candidates: [], retired_matches: retired,
+          hint: retired > 0
+            ? 'Only retired aliases matched; no live record stands behind this name.'
+            : 'No live record matched this name.',
+        };
+      }
+      if (candidates.length === 1) {
+        const match = candidates[0];
+        return {
+          state: 'completed', query,
+          match: { kind: match.kind, name: match.name, target: match.target },
+          catch_up: {
+            subject: { type: match.kind, id: `demo-${match.kind}-catch-up` },
+            timeline: [{
+              entry_kind: 'event', occurred_at: '2026-08-19T12:51:04.522Z', actor: 'hermes-pilot',
+              verb: 'record-finding', summary: 'verified', detail: null, owed: null,
+            }],
+          },
+        };
+      }
+      const shown = candidates.slice(0, Math.min(limit, SEARCH_CAPS.candidates));
+      return {
+        state: 'needs_disambiguation', query,
+        candidate_count: candidates.length,
+        candidates: shown.map((row) => ({ kind: row.kind, name: row.name, target: row.target })),
+        candidates_truncated: shown.length < candidates.length,
+        hint: 'Choose one exact target and call catch-me-up; this verb never guesses.',
       };
     },
 

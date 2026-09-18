@@ -25,6 +25,7 @@
       <a href="/deals">Deals</a>
       <a href="/clients">Clients</a>
       <a href="/vendors">Vendors</a>
+      <a href="/business?q=">Search</a>
       <a href="/work-inventory">Work Inventory</a>
     </nav>
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
@@ -60,6 +61,7 @@
 
     <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
       <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
+      <button class="tab" type="button" role="tab" id="tabSearch" aria-controls="panelSearch" aria-selected="false">Search</button>
       <a class="tab" href="/tasks">Work</a>
       <a class="tab" href="/pipeline">Pipeline</a>
       <button class="tab" type="button" id="tabDocHistory">Doc history</button>
@@ -129,6 +131,53 @@
         </div>
         <ul class="work-list" id="teamReviewList"></ul>
         <div class="state-block" id="teamReviewState" data-state="offline" hidden><h3>Your share could not be verified</h3></div>
+      </section>
+    </section>
+
+    <section class="tabpanel" id="panelSearch" role="tabpanel" aria-labelledby="tabSearch" tabindex="0" hidden>
+      <section class="card glass" data-search="ask" aria-labelledby="searchTitle">
+        <div class="card-heading"><div><p class="eyebrow">Record layer</p><h2 id="searchTitle">Search</h2></div></div>
+        <form id="searchForm">
+          <div class="field">
+            <label for="searchQuery">Name to search</label>
+            <input id="searchQuery" type="search" maxlength="200" autocomplete="off" placeholder="A person, practice, building, deal, lead or vendor">
+          </div>
+          <div class="row-wrap"><button class="btn btn-primary" type="submit">Search</button><span class="small" id="searchCount"></span></div>
+        </form>
+        <p class="caption" id="searchAuthorization">This search shows what the record layer returns to you when you are signed in. This page adds no filter of its own and asks for nobody else's records.</p>
+      </section>
+
+      <p class="sr-only" id="searchLive" aria-live="polite" role="status"></p>
+
+      <section class="card glass" data-search="scope" aria-labelledby="searchScopeTitle">
+        <div class="card-heading"><div><p class="eyebrow">This answer</p><h2 id="searchScopeTitle">Scope</h2></div></div>
+        <div class="chip-bar"><span class="chip-list" id="searchChips"></span></div>
+        <p class="caption" id="searchScopeNote">These chips hide rows from the answer you already received. They do not ask the record layer for a narrower search — it has no such door.</p>
+      </section>
+
+      <section class="card glass" data-search="views" aria-labelledby="savedViewTitle">
+        <div class="card-heading"><div><p class="eyebrow">This device</p><h2 id="savedViewTitle">Saved views</h2></div></div>
+        <div class="field">
+          <label for="saveViewName">Name for this view</label>
+          <input id="saveViewName" type="text" maxlength="60" autocomplete="off">
+        </div>
+        <div class="row-wrap"><button class="btn" type="button" id="saveViewButton">Save this view</button><button class="btn btn-quiet" type="button" id="resetViewsButton">Reset</button></div>
+        <div class="chip-bar"><span class="chip-list" id="savedViewList"></span></div>
+        <p class="caption" id="savedViewNote">Saved views live in this browser on this device. There is no verb that stores a partner preference yet, so a view you save here does not follow you to another phone or computer, and it changes none of your workspace preferences.</p>
+      </section>
+
+      <div class="state-block" id="searchState" data-state="empty" hidden></div>
+      <div class="card glass" id="searchRefusal" data-search="refusal" hidden></div>
+      <div class="card glass" id="searchCandidates" data-search="disambiguation" hidden></div>
+
+      <div id="searchResults" class="search-results" aria-live="off" aria-busy="false"></div>
+
+      <div class="card glass" id="searchRetired" data-search="retired" hidden></div>
+
+      <section class="card glass" data-search="not_searched" aria-labelledby="searchNotSearchedTitle">
+        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="searchNotSearchedTitle">What this does not search</h2></div></div>
+        <p class="caption" id="searchNotSearched">This searches people, practices, buildings, deals, leads and vendors — the records the record layer can search by name. Tasks, documents and your Doc conversation history are not searched here, because no door exists that searches them yet. This page will not pretend an empty result for those means there is nothing to find.</p>
+        <p class="caption" id="searchExposure">This search names real people, practices and deals, so on a shared or unlocked phone a passer-by reads those names at a glance — and what you typed stays in the address bar until you clear it. The words of a search are kept in this browser only when you save a view; nothing here is cached offline, and closing the page leaves nothing behind but the views you chose to save.</p>
       </section>
     </section>
   </main>

@@ -26,6 +26,8 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
+import { mountSearch } from "./search.js";
+import { parseSearchAddress } from "./search-model.js";
 import { formatClock, formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import { operationKeys, partnerName, quickAddPlan, quickAddRecords } from "./task-records-model.js";
 import {
@@ -428,7 +430,7 @@ function wire() {
 async function boot() {
   mountPrefs();
   const doc = mountDocDock("Business home");
-  wireTabs("businessTabs");
+  const tabs = wireTabs("businessTabs");
   // Doc history is Doc's own history view. Doc owns that surface, so the tab
   // asks Doc for it and never renders a second copy of it here.
   const openDocHistory = (event) => {
@@ -445,6 +447,13 @@ async function boot() {
   watchExpiry();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  // V5-UX-B05 — the Search tab. It is a tab on an already-admitted path, so no
+  // route moves and no sign-in gate entry is needed: its address is a query
+  // (?q= and ?kinds=) on /business, which the gate does not inspect. The tab is
+  // selected when an address carries ?q=, so a saved view or a Back both land
+  // on the surface they name.
+  mountSearch({ client });
+  if (parseSearchAddress(globalThis.location?.search || "").present) tabs?.select("tabSearch");
   viewer = client.selfActor || "joe";
   const boardRead = loadBoardRecords();
   await load();
