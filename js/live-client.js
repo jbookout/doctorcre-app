@@ -370,6 +370,15 @@ export function createLiveClient(opts = {}) {
     async getIncident(args = {}) { return rpc('get-incident', args); },
     async linkIncidentWorkRequest(args) { return write('link-incident-work-request', args); },
 
+    // ------------------------------------------------ notifications page (B12a)
+    // One read and one write, passed through untouched. NEITHER takes a
+    // recipient: `ops.notification_feed_facts` resolves the caller itself, and
+    // a recipient argument is exactly what those verbs exist to refuse. The
+    // feed goes through `rpc` because it carries no idempotency key; the
+    // acknowledgement goes through `write` because it does.
+    async notificationFeed(args = {}) { return rpc('notification-feed', args); },
+    async acknowledgeNotification(args) { return write('acknowledge-notification', args); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

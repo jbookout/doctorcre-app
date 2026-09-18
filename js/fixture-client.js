@@ -444,6 +444,22 @@ export async function createFixtureClient(opts = {}) {
     incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
     incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
   ];
+  /* -------------------------------------------- notification fixtures (B12a)
+   * The synthetic twin of `ops.notification`, in the producer's OWN shape: a
+   * closed two-value severity set with no informational member, a per-channel
+   * delivery list, and a relative deep link with no scheme, host or query.
+   * `read_at` is the ONLY thing an acknowledgement is allowed to move, which is
+   * why the rows carry nothing else an acknowledgement could plausibly touch.
+   */
+  const notifications = (seed.notifications || []).map((row) => ({
+    ...row, delivery: (row.delivery || []).map((entry) => ({ ...entry })),
+  }));
+  /** The feed function's own clamp: 1..200, applied before anything is read. */
+  const clampLimit = (value) => {
+    if (!Number.isInteger(value)) return 50;
+    return Math.min(200, Math.max(1, value));
+  };
+
   /* --------------------------------------------- incident detail fixtures (C14)
    * The synthetic twin of `get-incident`, in the verb's OWN shape: the row,
    * then FOUR separate lists. Facts and hypotheses are separate arrays here for
@@ -1063,6 +1079,46 @@ export async function createFixtureClient(opts = {}) {
         }
         detail.links.push({ kind: 'work_request', ref: String(work_request), label: `Linked work request ${work_request}` });
         return { ok: true, incident_ref: String(incident_ref), work_request: String(work_request), links: detail.links.length };
+      });
+    },
+
+    // ----------------------------------------------- notifications (B12a)
+    // `notification-feed` takes NO recipient: the feed function resolves the
+    // caller itself, so a recipient argument is unreachable here exactly as it
+    // is unreachable through the verb's closed schema. `unread_count` is
+    // counted over EVERY row the recipient holds, while the list is capped at
+    // `limit` — a fixture that counted the visible rows instead would let a
+    // page recompute the number and still pass.
+    async notificationFeed({ after = null, limit = 50 } = {}) {
+      refuseIfOutage('notifications', 'notification-feed');
+      const capped = clampLimit(limit);
+      const rows = notifications
+        .filter((row) => (after ? String(row.created_at) > String(after) : true))
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .slice(0, capped);
+      return {
+        ok: true,
+        unread_count: notifications.filter((row) => !row.read_at).length,
+        notifications: rows.map((row) => ({ ...row, delivery: row.delivery.map((entry) => ({ ...entry })) })),
+      };
+    },
+
+    // The one write this page offers, refusing what the record layer refuses.
+    // A malformed id and an id addressed to somebody else are the SAME code,
+    // `notification_not_found`, because the feed function answers both the same
+    // way and a friendlier fixture would teach the page a distinction that does
+    // not exist. A second acknowledgement is not a refusal: it returns
+    // `deduplicated: true` carrying the FIRST `read_at`, and moves nothing.
+    async acknowledgeNotification({ idempotency_key, notification_id }) {
+      return withIdem(idempotency_key, () => {
+        const id = String(notification_id || '');
+        const row = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+          ? notifications.find((candidate) => candidate.id === id)
+          : null;
+        if (!row) refuse('acknowledge-notification', 'notification_not_found', { notification_id });
+        if (row.read_at) return { ok: true, notification_id: row.id, read_at: row.read_at, deduplicated: true };
+        row.read_at = nowIso();
+        return { ok: true, notification_id: row.id, read_at: row.read_at, deduplicated: false };
       });
     },
 
