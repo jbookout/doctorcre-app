@@ -150,9 +150,51 @@
     </section>
 
     <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>
-      <section class="card glass" aria-labelledby="atlasTitle">
-        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="atlasTitle">Atlas</h2></div></div>
-        <div class="state-block" data-state="not_in_release"><h3>Atlas: not in this release</h3><p>The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09.</p></div>
+      <section class="card glass" data-section="atlas" aria-labelledby="atlasTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Inventory of machinery</p><h2 id="atlasTitle">Atlas</h2></div>
+          <span class="status" id="atlasStatus" data-state="still"><span class="orb" id="atlasOrb" data-state="still" aria-hidden="true"></span> Atlas</span>
+        </div>
+        <div class="atlas-version" id="atlasVersionLine"></div>
+        <div class="state-block" id="atlasState" data-state="idle"></div>
+        <div class="row-wrap"><button class="btn" type="button" id="atlasRetry" hidden>Try the atlas read again</button></div>
+      </section>
+
+      <section class="card glass" data-section="atlas_coverage" aria-labelledby="atlasCoverageHeading">
+        <div class="card-heading"><div><p class="eyebrow">Coverage</p><h2 id="atlasCoverageHeading">Coverage</h2></div></div>
+        <p class="small" id="atlasSafeExplanation"></p>
+        <h3 class="atlas-subhead">Sources that answered</h3>
+        <ul class="work-list" id="atlasCoverageAnswered"></ul>
+        <h3 class="atlas-subhead">Known gaps in this release</h3>
+        <ul class="work-list" id="atlasCoverageGaps"></ul>
+      </section>
+
+      <section class="card glass" data-section="atlas_controls" aria-labelledby="atlasControlsTitle">
+        <div class="card-heading"><div><p class="eyebrow">Ask the graph</p><h2 id="atlasControlsTitle">Search the index</h2></div></div>
+        <div class="field"><label for="atlasSearch">Search id, key or title</label><input id="atlasSearch" type="search" autocomplete="off" placeholder="dealroom-worker"></div>
+        <div class="btn-group atlas-filters" id="atlasLayerFilters" role="group" aria-label="Layer"></div>
+        <label class="switch" for="atlasRetired"><input type="checkbox" id="atlasRetired"> Show retired</label>
+        <p class="small mono" id="atlasRequestPath"></p>
+        <p class="caption">Search, layer and retired are read from CARR on every change. Nothing on this page is re-sorted or re-filtered in the browser.</p>
+      </section>
+
+      <section class="card glass" data-section="atlas_index" aria-labelledby="atlasIndexTitle">
+        <div class="card-heading"><div><p class="eyebrow">Hierarchy</p><h2 id="atlasIndexTitle">Layer, class, node</h2></div></div>
+        <div id="atlasIndex"></div>
+        <div class="row-wrap">
+          <button class="btn" type="button" id="atlasMore" hidden>Show more</button>
+          <span class="as-of" id="atlasPagingLine"></span>
+        </div>
+      </section>
+
+      <section class="card glass" data-section="atlas_selection" aria-labelledby="atlasSelectionTitle">
+        <div class="card-heading"><div><p class="eyebrow">Selection</p><h2 id="atlasSelectionTitle">This node</h2></div></div>
+        <div id="atlasSelection"></div>
+      </section>
+
+      <section class="card glass" data-section="atlas_exposure" aria-labelledby="atlasExposureTitle">
+        <div class="card-heading"><div><p class="eyebrow">Exposure</p><h2 id="atlasExposureTitle">What this page shows and holds</h2></div></div>
+        <p class="small" id="atlasExposure"></p>
       </section>
     </section>
   </main>

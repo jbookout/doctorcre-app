@@ -23,11 +23,12 @@ import { acceptsResponse } from "./workspace-command-center-model.js";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
+import { mountAtlas } from "./atlas.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 
 const $ = (id) => document.getElementById(id);
-const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+export const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[char]));
 
@@ -398,10 +399,23 @@ function storeSnapshot() {
 
 /* ------------------------------------------------------------------------ boot */
 
+/** Mounted once, on demand. mountAtlas itself refuses a second mount. */
+function openAtlas(node = null) {
+  mountAtlas({ outage: view.outage, node });
+}
+
+
 async function boot() {
   mountPrefs();
   mountDocDock("Control Room");
   tabs = wireTabs("controlRoomTabs");
+  // V5-UX-C07: the atlas read is LAZY. It fires on the first selection of the
+  // Atlas tab, never on page boot, so the four dashboard reads above keep the
+  // Control Room's time-to-glance. A  deep link selects the tab,
+  // which is what mounts it.
+  document.getElementById("controlRoomTabs")?.addEventListener("click", (event) => {
+    if (event.target.closest("#tabAtlas")) openAtlas();
+  }, true);
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());
   renderOperations();
@@ -413,6 +427,13 @@ async function boot() {
   client = resolved.mode === "live"
     ? createLiveClient()
     : await createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
+  // ?tab=atlas&node=<id> is a query on an already admitted path, so it needs no
+  // new route and no gate change. Back restores the previous selection.
+  const parameters = new URLSearchParams(location.search || "");
+  if (parameters.get("tab") === "atlas") {
+    tabs?.select("tabAtlas");
+    openAtlas(parameters.get("node"));
+  }
   const label = $("viewerLabel");
   if (label) label.textContent = client.selfActor === "dell" ? "Dell's workspace" : "Joe's workspace";
   await load();

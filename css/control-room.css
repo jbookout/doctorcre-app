@@ -72,3 +72,29 @@
   /* The bottom navigation mirrors the tabs, so the page keeps clear of it. */
   main.shell { padding-bottom: 96px; }
 }
+
+/* V5-UX-C07 Atlas tab. system.css tokens only: no literal colour, no fixed
+ * width, one column at 360px, every control the page adds at the 44px floor.
+ * Ids, source refs and the bundle digest are unbroken tokens and wrap rather
+ * than push the page sideways. */
+.atlas-version { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; }
+.atlas-fact { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.atlas-subhead { margin: 14px 0 8px; color: var(--muted); font-size: 13px; }
+.atlas-filters { flex-wrap: wrap; margin: 10px 0; }
+.atlas-filters .btn { min-height: var(--touch); }
+#atlasSearch { min-height: var(--touch); }
+#atlasRetired { min-height: var(--touch); min-width: 24px; }
+#atlasMore, #atlasRetry { min-height: var(--touch); }
+#atlasRequestPath, .atlas-node h3, .atlas-identity h3,
+#atlasIndex .work-meta span, #atlasSelection .work-meta span { min-width: 0; overflow-wrap: anywhere; }
+.atlas-layer, .atlas-class { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; }
+.atlas-layer > summary, .atlas-class > summary { min-height: var(--touch); display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 800; font-size: 13px; }
+.atlas-node[data-selected="true"] { border-left-color: var(--orange); }
+.atlas-evidence { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.atlas-evidence p { margin: 0; font-size: 13px; }
+.atlas-run h4, #atlasSelection h4 { margin: 12px 0 6px; font-size: 14px; }
+
+@media (max-width: 640px) {
+  .atlas-evidence { grid-template-columns: 1fr; }
+  .atlas-version { gap: 8px; }
+}

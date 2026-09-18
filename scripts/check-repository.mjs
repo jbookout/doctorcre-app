@@ -29,6 +29,7 @@ for (const path of ["control-room.html", "workspace.html", "index.html", "leads.
 const routes = await json("contracts/app-routes.v1.json");
 assert.equal(routes.routes["/work-inventory"], "work-inventory.html", "the Work Inventory route must stay in the route contract");
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
+assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path must stay pinned in the CARR interface");
 assert.equal(routes.routes["/tasks"], "tasks.html", "the Tasks route must stay in the route contract");
 assert.equal(routes.routes["/pipeline"], "pipeline.html", "the Deals board route must stay in the route contract");
 assert.equal(routes.routes["/business"], "business-workspace.html", "the business workspace route must stay in the route contract");
