@@ -82,9 +82,13 @@ export const NO_VALUE_KEY = "__none__";
  * `"0"` narrows to a real 0 rather than staying truthy.
  */
 export function countValue(raw) {
-  if (raw === null || raw === undefined || raw === "") return Object.freeze({ value: null, text: "unknown", known: false });
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return Object.freeze({ value: null, text: "unknown", known: false });
+  // A `count(*)` is a string of digits or it is not a count. `Number()` alone is
+  // far more permissive than the producer: it turns `[]` into 0, `true` into 1
+  // and "0x10" into 16, and it loses precision silently above 2^53. None of
+  // those can come out of Postgres, so none of them is accepted as a count.
+  if (typeof raw !== "string" || !/^\d+$/.test(raw.trim())) return Object.freeze({ value: null, text: "unknown", known: false });
+  const value = Number(raw.trim());
+  if (!Number.isSafeInteger(value)) return Object.freeze({ value: null, text: "unknown", known: false });
   return Object.freeze({ value, text: String(value), known: true });
 }
 
@@ -336,13 +340,18 @@ export const CHARTS_STATE_COPY = Object.freeze({
   ready: Object.freeze({ title: "The open board", copy: "Every chart below is one read of the board, filtered in this browser.", retry: false }),
   empty: Object.freeze({ title: "The board answered and holds no open deals", copy: "There is nothing to chart. This is an answer, not an outage, and no chart is drawn as a row of zeros.", retry: false }),
   partial: Object.freeze({ title: "The board answered without any national accounts", copy: "The deal charts below are complete. The accounts card has nothing to roll up, and says so rather than showing zeros.", retry: false }),
-  unknown: Object.freeze({ title: "This answer did not match the shape this page knows how to read", copy: "Nothing is shown from it, because a shape this page cannot read is a shape it cannot report honestly.", retry: true }),
+  no_match: Object.freeze({ title: "Nothing on this board matches that slice", copy: "The board answered and holds records, but none carries the value this address names. No chart is drawn from an empty slice, because a grid of zeros would read as a finding.", retry: false }),
+  unreadable: Object.freeze({ title: "This answer did not match the shape this page knows how to read", copy: "Nothing is shown from it, because a shape this page cannot read is a shape it cannot report honestly.", retry: true }),
   refused: Object.freeze({ title: "The record layer refused this read for your session.", copy: "A decision was taken before the read ran. Nothing was read, and there is nothing here to retry.", retry: false }),
   unavailable: Object.freeze({ title: "The board could not be reached. Nothing here has been inferred.", copy: "No earlier answer is being shown as current, and no chart has been drawn from a guess.", retry: true }),
   stale: Object.freeze({ title: "Reading the board…", copy: "An older answer arrived after a newer one and was dropped.", retry: false }),
 });
 
-export const CHARTS_STATES = Object.freeze(["loading", "ready", "empty", "partial", "unknown", "refused", "unavailable", "stale"]);
+// `unknown` is NOT in this list, and deliberately: the spec gives that word to a
+// CELL whose count is not finite after narrowing (`countValue`), and the chart
+// around it still paints. A page-level answer this surface cannot read is
+// `unreadable`, so one word does not name two different things.
+export const CHARTS_STATES = Object.freeze(["loading", "ready", "no_match", "empty", "partial", "unreadable", "refused", "unavailable", "stale"]);
 
 /**
  * A thrown error to its state. 401 and 403 are DECIDED refusals and offer no
@@ -354,12 +363,22 @@ export function classifyBoardFailure(error) {
   return "unavailable";
 }
 
-/** What the tab shows. A failed read has already dropped the payload. */
-export function chartsPhase({ status, payload }) {
+/**
+ * What the tab shows. A failed read has already dropped the payload.
+ *
+ * The SELECTION is part of this answer, because an address is editable and
+ * copyable: `?group=segment&pick=NoSuchSegment` is a legal address that matches
+ * nothing, and painting it as eight charts of zeros would dress an empty set as
+ * a finding. It gets its own heading and no chart at all, exactly as `empty`
+ * does — the two differ in what is absent, so they differ in what they say.
+ */
+export function chartsPhase({ status, payload, group = null, pick = null }) {
   if (status === "loading") return "loading";
-  if (status === "refused" || status === "unavailable" || status === "unknown") return status;
-  if (!validBoardPayload(payload)) return "loading";
+  if (status === "refused" || status === "unavailable" || status === "unreadable") return status;
+  // Never `loading`: a shape this page will never accept cannot be waited out.
+  if (!validBoardPayload(payload)) return status === "ready" ? "unreadable" : "loading";
   if (payload.deals.length === 0) return "empty";
+  if (selectionLabel(group, pick) && filterDeals(payload.deals, group, pick).length === 0) return "no_match";
   if (payload.accounts.length === 0) return "partial";
   return "ready";
 }

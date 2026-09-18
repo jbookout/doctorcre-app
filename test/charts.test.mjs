@@ -164,6 +164,13 @@ test("B06-4 the account counts arrive as strings and are narrowed to numbers, wi
   assert.equal(bad.text, "unknown");
   assert.equal(countValue(null).text, "unknown");
   assert.equal(countValue(undefined).text, "unknown");
+  // A `count(*)` is a string of digits. Everything Number() would happily
+  // narrow but Postgres cannot produce is refused rather than charted.
+  for (const notACount of [[], true, false, {}, "0x10", "1e3", "-1", "1.5", " ", "９"]) {
+    assert.equal(countValue(notACount).text, "unknown", `${JSON.stringify(notACount)} is not a count`);
+  }
+  assert.equal(countValue(" 12 ").value, 12, "the producer's own whitespace is tolerated");
+  assert.equal(countValue("9007199254740993").text, "unknown", "a count past 2^53 is unknown, never silently rounded");
   const broken = accountRows([{ ...capture.accounts[1], open_deals: "abc" }]);
   assert.equal(broken[0].counts[0].text, "unknown");
   assert.equal(broken[0].counts[3].text, "15", "one unreadable count does not take the readable ones down with it");
@@ -215,7 +222,7 @@ test("B06-6 a null last_review_at renders never reviewed here, on all three acco
 
 /* ------------------------------------------------------------------------ B06-7 */
 
-test("B06-7 empty, refused and unavailable are three renderings, and only one offers Retry", async () => {
+test("B06-7 empty, no-match, refused and unavailable are four renderings, and only one offers Retry", async () => {
   // An answered board with no deals is an ANSWER, not an outage.
   assert.equal(chartsPhase({ status: "ready", payload: { deals: [], accounts: [] } }), "empty");
   assert.equal(CHARTS_STATE_COPY.empty.title, "The board answered and holds no open deals");
@@ -236,12 +243,20 @@ test("B06-7 empty, refused and unavailable are three renderings, and only one of
   assert.equal(CHARTS_STATE_COPY.unavailable.retry, true);
   assert.match(CHARTS_STATE_COPY.unavailable.title, /Nothing here has been inferred/);
 
-  // A payload whose shape this page cannot read paints nothing from it.
-  assert.equal(chartsPhase({ status: "unknown", payload: null }), "unknown");
+  // A payload whose shape this page cannot read paints nothing from it, and it
+  // is never parked on a loading that cannot end (advisory A3).
+  assert.equal(chartsPhase({ status: "unreadable", payload: null }), "unreadable");
+  assert.equal(chartsPhase({ status: "ready", payload: { deals: [], accounts: {} } }), "unreadable");
+  // The word `unknown` belongs to a CELL, not to the page (advisory A1).
+  assert.equal(CHARTS_STATE_COPY.unknown, undefined);
+  assert.equal(CHARTS_STATES.includes("unknown"), false);
+  assert.equal(countValue("abc").text, "unknown", "the cell keeps the word the spec gave it");
+  // §4's own wording: a NON-OBJECT payload is the unanswered path (advisory A2).
+  assert.match(pageJs, /view\.status = payload === null \|\| typeof payload !== "object" \? "unavailable" : "unreadable";/);
   assert.equal(chartsPhase({ status: "ready", payload: { deals: board.deals, accounts: [] } }), "partial");
   assert.equal(chartsPhase({ status: "ready", payload: board }), "ready");
   for (const state of CHARTS_STATES) assert.ok(CHARTS_STATE_COPY[state], `${state} carries its own rendered text`);
-  assert.equal(new Set(CHARTS_STATES.map((state) => CHARTS_STATE_COPY[state].title)).size < CHARTS_STATES.length, true,
+  assert.equal(new Set(CHARTS_STATES.map((state) => CHARTS_STATE_COPY[state].title)).size, CHARTS_STATES.length - 1,
     "loading and stale deliberately share one heading; every other state has its own");
 
   // No refusal body ever reaches a rendered string.
@@ -251,7 +266,7 @@ test("B06-7 empty, refused and unavailable are three renderings, and only one of
   // The empty and unavailable branches draw no chart at all: a chart of zeros
   // would be a claim the read did not make.
   const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("export async function read("));
-  assert.match(renderBody, /phase === "empty" \|\| phase === "refused" \|\| phase === "unavailable" \|\| phase === "unknown"\) \{\s*\n\s*\/\/[^\n]*\n\s*canvas\.innerHTML = "";/);
+  assert.match(renderBody, /phase === "empty" \|\| phase === "refused" \|\| phase === "unavailable" \|\| phase === "unreadable"\) \{\s*\n\s*\/\/[^\n]*\n\s*canvas\.innerHTML = "";/);
 });
 
 /* ------------------------------------------------------------------------ B06-8 */
@@ -406,7 +421,7 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
   assert.match(html, /id="tabCharts" aria-controls="panelCharts"/);
   assert.match(html, /<section class="tabpanel" id="panelCharts"/);
   assert.match(workspaceJs, /if \(parseChartsAddress\(globalThis\.location\?\.search \|\| ""\)\.present\) tabs\?\.select\("tabCharts"\);/);
-  assert.match(workspaceJs, /mountCharts\(\{ client \}\);/);
+  assert.match(workspaceJs, /mountCharts\(\{ client, board: boardRead, onRestore: \(\) => tabs\?\.select\("tabCharts"\) \}\);/);
 
   // UX19: the row is the control, it clears the touch floor, the bar is paint,
   // and reduced motion is honoured by having no transition at all.
@@ -422,4 +437,109 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
 
   // Every dimension the address can name is one this page actually charts.
   assert.deepEqual([...DIMENSION_IDS], ["phase", "type", "segment", "market", "operating_state", "owner"]);
+});
+
+/* ----------------------------------------------------------------------- B06-13 */
+
+test("B06-13 a pick no record carries renders the no-match state and draws no chart at all", () => {
+  // An address is editable and copyable (§3.4), so a slice that matches nothing
+  // is ordinary traffic: a segment that was on the board yesterday and is not
+  // today produces exactly this.
+  const address = parseChartsAddress("?charts=1&group=segment&pick=NoSuchSegment");
+  assert.equal(address.present, true);
+  assert.equal(address.group, "segment");
+  assert.equal(address.pick, "NoSuchSegment");
+  assert.equal(filterDeals(board.deals, "segment", "NoSuchSegment").length, 0);
+
+  // It is its OWN state, with its own heading, and it is not `ready`.
+  const phase = chartsPhase({ status: "ready", payload: board, group: "segment", pick: "NoSuchSegment" });
+  assert.equal(phase, "no_match");
+  assert.equal(CHARTS_STATE_COPY.no_match.title, "Nothing on this board matches that slice");
+  assert.equal(CHARTS_STATE_COPY.no_match.retry, false, "the board answered; there is nothing to retry");
+  assert.notEqual(CHARTS_STATE_COPY.no_match.title, CHARTS_STATE_COPY.empty.title, "an empty board and an empty slice say different things");
+
+  // Every other dimension reaches it the same way, and a pick that DOES match
+  // never does.
+  for (const [group, pick] of [["market", "Atlantis"], ["type", "barter"], ["owner", "nobody"], ["phase", "abandoned"], ["operating_state", "frozen"]]) {
+    assert.equal(chartsPhase({ status: "ready", payload: board, group, pick }), "no_match", `${group}=${pick}`);
+  }
+  assert.equal(chartsPhase({ status: "ready", payload: board, group: "segment", pick: "Dental" }), "ready");
+  assert.equal(chartsPhase({ status: "ready", payload: board, group: "segment", pick: NO_VALUE_KEY }), "ready");
+  assert.equal(chartsPhase({ status: "ready", payload: board, group: null, pick: null }), "ready");
+
+  // And the page paints no chart from it — only the way back out. A grid of
+  // zeros would read as a finding, which is what the empty-state copy forbids.
+  const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("export async function read("));
+  assert.match(renderBody, /\} else if \(phase === "no_match"\) \{[\s\S]*?canvas\.innerHTML = selectionHtml\(deals, all\);/);
+  const noMatchBranch = renderBody.slice(renderBody.indexOf('phase === "no_match"'), renderBody.indexOf("    } else {"));
+  assert.ok(noMatchBranch.length > 0 && noMatchBranch.length < renderBody.length);
+  assert.doesNotMatch(noMatchBranch, /chartHtml\(|accountsHtml\(|ownerHtml\(/, "the no-match branch draws not one chart");
+  // The selection strip it does draw offers the way out and names the miss.
+  assert.match(pageJs, /id="chartsClear">Clear this slice</);
+  assert.equal(selectionLabel("segment", "NoSuchSegment"), "Segment: NoSuchSegment");
+});
+
+/* ----------------------------------------------------------------------- B06-14 */
+
+/**
+ * A DOM small enough to drive the real `mountCharts` and nothing more. The
+ * point of this test is the CALL COUNT at the fetch, which no assertion over
+ * the text of `js/charts.js` alone can reach: B06-10 counts the call sites
+ * inside one file, and a second read taken by the page that mounts it would
+ * slip straight past that.
+ */
+function stubDom({ search = "?charts=1" } = {}) {
+  const nodes = new Map();
+  for (const id of ["chartsCanvas", "chartsState", "chartsLive", "chartsReadAt", "chartsOneRead", "chartsSnapshot", "chartsForecast"]) {
+    nodes.set(id, {
+      id, innerHTML: "", textContent: "", hidden: false, open: false, attrs: {},
+      setAttribute(key, value) { this.attrs[key] = value; },
+      getAttribute(key) { return this.attrs[key]; },
+      addEventListener() {},
+    });
+  }
+  globalThis.document = { getElementById: (id) => nodes.get(id) || null, addEventListener() {}, querySelectorAll: () => [] };
+  globalThis.location = { search };
+  globalThis.history = { pushState() {}, replaceState() {} };
+  return nodes;
+}
+
+test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is handed the page's read and takes none of its own", async () => {
+  const nodes = stubDom();
+  const { client, calls } = captureClient();
+  const { mountCharts } = await import("../js/charts.js");
+
+  // Exactly the wiring `js/business-workspace.js` boot() performs: the page
+  // takes ONE board read and hands the promise to both consumers.
+  const boardRead = client.getBoard({ workspace: "all" });
+  assert.equal(calls.length, 1, "the page's own read");
+  mountCharts({ client, storage: null, board: boardRead });
+  const quickAdd = await boardRead;            // the Quick add consumer
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  // The tab painted from that same answer and issued nothing of its own. TWO
+  // is the failure this test exists to catch.
+  assert.equal(calls.length, 1, "the Charts tab adds no board read of its own");
+  assert.deepEqual(calls.map((call) => call.verb), ["deal-room-board"]);
+  assert.equal(quickAdd.deals.length, 74);
+  const painted = nodes.get("chartsCanvas").innerHTML;
+  assert.match(painted, /73 of 74 have no next date on file/, "the tab painted from the page's answer");
+  assert.match(nodes.get("chartsReadAt").textContent, /^Read at \d\d:\d\d$/);
+  assert.equal(nodes.get("chartsState").hidden, true, "a ready paint shows no state block");
+
+  // Only a person pressing Retry takes a new one, and that is a new as-of they
+  // asked for — one call, not two.
+  const { read } = await import("../js/charts.js");
+  await read({ push: false });
+  assert.equal(calls.length, 2, "a deliberate re-read is exactly one more call");
+
+  // And the page's wiring is the shared promise, not two reads racing.
+  assert.equal((workspaceJs.match(/client\.getBoard\(/g) || []).length, 1, "business-workspace.js takes exactly one board read");
+  assert.match(workspaceJs, /const boardRead = client\.getBoard\(\{ workspace: "all" \}\);/);
+  assert.match(workspaceJs, /async function loadBoardRecords\(boardRead\) \{/, "Quick add is handed the read rather than taking one");
+  assert.match(workspaceJs, /const board = await boardRead;/);
+  assert.match(pageJs, /const pending = sharedBoard \|\| client\.getBoard\(\{ workspace: "all" \}\);\s*\n\s*sharedBoard = null;/);
+  // popstate restores the TAB as well as the selection (advisory A6).
+  assert.match(pageJs, /if \(address\.present\) selectTab\?\.\(\);/);
+  assert.match(workspaceJs, /onRestore: \(\) => tabs\?\.select\("tabCharts"\)/);
 });

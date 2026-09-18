@@ -3,9 +3,11 @@
 // Every decision this file paints is made in ./charts-model.js. Nothing here
 // sorts, ranks, counts, or invents a field:
 //
-//   1. ONE `getBoard()` per paint, through the client adapter — never the verb
-//      directly — so the live and fixture modes speak one phase vocabulary and
-//      there is no second as-of to disagree with.
+//   1. ONE board read for the WHOLE page. The workspace takes it, and hands the
+//      promise here; this tab adds no call of its own on load, so /business
+//      issues exactly one `tools/call deal-room-board` per load whether or not
+//      the Charts tab is ever opened. Only a person pressing Retry takes a new
+//      one, and that is a new as-of they asked for.
 //   2. The drilldown filters the rows already in hand. Choosing a slice issues
 //      no read at all, so a filtered total is a subset of the total it came
 //      out of, always.
@@ -36,6 +38,13 @@ const view = {
 
 let client = null;
 let storage = null;
+/**
+ * The page's own board read, handed in by the workspace. The first paint
+ * consumes it instead of taking a second read of the same board at a second
+ * as-of. It is cleared once consumed, so a Retry is a real, deliberate re-read.
+ */
+let sharedBoard = null;
+let selectTab = null;
 
 /** The clock of the moment the response resolved. The verb returns no time of
  * its own, so this page says "Read at" and never "as of". */
@@ -95,7 +104,7 @@ function accountsHtml(accounts) {
       <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <p class="caption">These five counts arrive from the record layer as text and are read as numbers here. A count this page cannot read as a number says "unknown" rather than nothing, and a record layer that has never recorded a review here says "${escapeHtml(NEVER_REVIEWED)}" rather than a clock of zero days.</p>
+    <p class="caption">These counts are the record layer's own totals for each account across the whole board. Choosing a slice above does not filter them, because they are an aggregate this page cannot re-derive from the rows without inventing a total. These five counts arrive from the record layer as text and are read as numbers here. A count this page cannot read as a number says "unknown" rather than nothing, and a record layer that has never recorded a review here says "${escapeHtml(NEVER_REVIEWED)}" rather than a clock of zero days.</p>
   </section>`;
 }
 
@@ -146,7 +155,7 @@ function renderState(phase) {
 }
 
 function render() {
-  const phase = chartsPhase({ status: view.status, payload: view.payload });
+  const phase = chartsPhase({ status: view.status, payload: view.payload, group: view.group, pick: view.pick });
   const all = view.payload && validBoardPayload(view.payload) ? view.payload.deals : [];
   const deals = filterDeals(all, view.group, view.pick);
   const canvas = $("chartsCanvas");
@@ -158,9 +167,13 @@ function render() {
     canvas.setAttribute("aria-busy", String(phase === "loading"));
     if (phase === "loading") {
       canvas.innerHTML = '<section class="card glass chart-card" data-skeleton="true" aria-hidden="true"><p class="caption">Reading the board…</p></section>';
-    } else if (phase === "empty" || phase === "refused" || phase === "unavailable" || phase === "unknown") {
+    } else if (phase === "empty" || phase === "refused" || phase === "unavailable" || phase === "unreadable") {
       // No chart is drawn at all. A chart of zeros here would be a claim.
       canvas.innerHTML = "";
+    } else if (phase === "no_match") {
+      // The board answered and holds records; this SLICE holds none. The way
+      // back out is offered, and not one chart is painted from the empty set.
+      canvas.innerHTML = selectionHtml(deals, all);
     } else {
       const coverage = nextDateCoverage(deals);
       const touch = touchCoverage(deals);
@@ -207,8 +220,12 @@ export async function read({ push = false } = {}) {
   render();
   if (push) pushAddress();
   let payload = null;
+  // The page's read if it has not been consumed yet, and a new one only when a
+  // person asked for one. This is the whole of "one read, one as-of".
+  const pending = sharedBoard || client.getBoard({ workspace: "all" });
+  sharedBoard = null;
   try {
-    payload = await client.getBoard({ workspace: "all" });
+    payload = await pending;
   } catch (error) {
     if (!acceptsBoardResponse(view.sequence, sequence)) return;
     view.status = classifyBoardFailure(error);
@@ -219,7 +236,9 @@ export async function read({ push = false } = {}) {
   }
   if (!acceptsBoardResponse(view.sequence, sequence)) return;
   if (!validBoardPayload(payload)) {
-    view.status = "unknown";
+    // §4's own wording: a NON-OBJECT payload is the unanswered path. An object
+    // that is merely the wrong shape is the one this page cannot read.
+    view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
     view.payload = null;
     view.readAt = null;
     render();
@@ -250,11 +269,16 @@ function choose(group, pick) {
   render();
 }
 
-/** Back. The selection is restored from the URL and repainted without a read. */
+/**
+ * Back. The selection AND the tab are restored from the URL, and the page
+ * repaints from the payload in hand — no read. Restoring the selection without
+ * the tab would land a partner on Home holding a filter they cannot see.
+ */
 function restoreFromAddress() {
   const address = parseChartsAddress(globalThis.location?.search || "");
   view.group = address.group;
   view.pick = address.pick;
+  if (address.present) selectTab?.();
   render();
   return address;
 }
@@ -275,8 +299,10 @@ function wire() {
  * key this surface writes and assert that neither the workspace preference key
  * nor the saved-views key is ever one of them.
  */
-export function mountCharts({ client: boardClient, storage: storageImpl } = {}) {
+export function mountCharts({ client: boardClient, storage: storageImpl, board = null, onRestore = null } = {}) {
   client = boardClient;
+  sharedBoard = board;
+  selectTab = typeof onRestore === "function" ? onRestore : null;
   storage = storageImpl === undefined ? (globalThis.localStorage || null) : storageImpl;
   view.ownerOpen = readChartsView(storage).ownerOpen;
   for (const [id, text] of [

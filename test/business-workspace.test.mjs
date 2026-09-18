@@ -215,7 +215,12 @@ test("Home's Quick add names come from a board read, and a late board response c
 
   // The page issues the board read ALONGSIDE the command-centre read, under a
   // second sequence of its own, and the two guards never share a counter.
-  assert.match(pageJs, /client\.getBoard\(\)/, "the names come from the deal-room-board read");
+  // V5-UX-B06 — the read moved up into boot() and is now SHARED with the Charts
+  // tab rather than taken twice. It is still the same one board read, still
+  // alongside the command-centre read, still under its own sequence.
+  assert.match(pageJs, /const boardRead = client\.getBoard\(\{ workspace: "all" \}\);/, "the names come from the deal-room-board read");
+  assert.equal((pageJs.match(/client\.getBoard\(/g) || []).length, 1, "the page takes exactly one board read");
+  assert.match(pageJs, /const board = await boardRead;/, "Quick add is handed that one read");
   assert.match(pageJs, /boardSequence/, "the board read has its own sequence");
   assert.match(pageJs, /acceptsResponse\(view\.boardSequence, sequence\)/, "a late board answer is discarded");
   assert.match(pageJs, /records: view\.records/);

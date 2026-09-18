@@ -253,12 +253,17 @@ async function load() {
  * paint whether or not the board answers. A failed or unanswered board read
  * leaves Quick add with an empty list — no guessed names, and no record-layer
  * error text on a page whose own read succeeded.
+ *
+ * V5-UX-B06 — the read is now passed IN rather than taken here, because the
+ * Charts tab needs the same answer and the page promises one board read at one
+ * as-of. Two consumers of one promise is one call; two calls would be two
+ * snapshots of the same board taken milliseconds apart.
  */
-async function loadBoardRecords() {
+async function loadBoardRecords(boardRead) {
   const sequence = ++view.boardSequence;
   let records = [];
   try {
-    const board = await client.getBoard();
+    const board = await boardRead;
     records = quickAddRecords(board?.deals);
   } catch {
     records = Object.freeze([]);
@@ -456,17 +461,22 @@ async function boot() {
   // on the surface they name.
   mountSearch({ client });
   if (parseSearchAddress(globalThis.location?.search || "").present) tabs?.select("tabSearch");
+  viewer = client.selfActor || "joe";
+  // V5-UX-B06 — ONE board read for the whole page, taken here and shared. Quick
+  // add's record list and every chart on the Charts tab are derived from this
+  // single answer, so /business issues exactly one `deal-room-board` call per
+  // load and the tab's totals are the same as-of as the page's own.
+  const boardRead = client.getBoard({ workspace: "all" });
   // V5-UX-B06 — the Charts tab. Same admitted path, same reasoning: its address
   // is a query (?charts=1&group=&pick=) on /business, which the gate does not
-  // inspect, so no route moves and no gate entry is needed. It reads the board
-  // through the same adapter the workspace already uses, so there is exactly
-  // one phase vocabulary and exactly one as-of.
-  mountCharts({ client });
+  // inspect, so no route moves and no gate entry is needed. It reads nothing of
+  // its own: it is handed the page's board, so there is exactly one phase
+  // vocabulary and exactly one as-of.
+  mountCharts({ client, board: boardRead, onRestore: () => tabs?.select("tabCharts") });
   if (parseChartsAddress(globalThis.location?.search || "").present) tabs?.select("tabCharts");
-  viewer = client.selfActor || "joe";
-  const boardRead = loadBoardRecords();
+  const quickAddRead = loadBoardRecords(boardRead);
   await load();
-  await boardRead;
+  await quickAddRead;
 }
 
 boot();
