@@ -15,6 +15,8 @@ import {
 import { createCommandState, feedbackStateFor, performCommand } from "./command-feedback.mjs";
 import { createCommandDock } from "./command-dock.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
+import { ATLAS_DEMO_PAYLOAD } from "./atlas-demo-graph.js";
+import { mountAtlasScene } from "./atlas-scene.js";
 
 const VIEWER = "joe";
 const $ = (id) => document.getElementById(id);
@@ -665,17 +667,6 @@ function wireStateGallery() {
 }
 
 // ---------------------------------------------------------------- operations fixtures
-const COMPONENTS = [
-  { id: "records", label: "RECORD LAYER", sub: "Neon · canonical", cat: "data", x: 60, y: 120, health: "ok", purpose: "Canonical business records and events.", deps: ["Neon"], pending: "0 unfinished items" },
-  { id: "verbs", label: "VERBS", sub: "MCP · 246", cat: "execution", x: 260, y: 40, health: "ok", purpose: "Typed commands over the record layer.", deps: ["records", "rules"], pending: "2 slices in review" },
-  { id: "rules", label: "RULES", sub: "gates · hooks", cat: "rules", x: 260, y: 200, health: "ok", purpose: "Doctrine, permissions and gates.", deps: ["records"], pending: "1 proposed rule" },
-  { id: "worker", label: "CARR WORKER", sub: "Cloudflare", cat: "infra", x: 460, y: 120, health: "failed", purpose: "Serves the API and MCP to DoctorCRE.", deps: ["verbs", "rules"], pending: "release 0515 observed" },
-  { id: "app", label: "DOCTORCRE", sub: "app.doctorcre.com", cat: "infra", x: 660, y: 120, health: "blocked", purpose: "The human application.", deps: ["worker"], pending: "UX-S01 in prototype" },
-  { id: "doc", label: "DOC", sub: "model routes", cat: "execution", x: 660, y: 260, health: "ok", purpose: "Qualified model routing.", deps: ["verbs"], pending: "F04 live" },
-];
-const EDGES = [["records", "verbs", "healthy"], ["records", "rules", "healthy"], ["verbs", "worker", "stopped"], ["rules", "worker", "stopped"], ["worker", "app", "stopped"], ["verbs", "doc", "healthy"], ["doc", "app", "inferred"]];
-const HEALTH_COPY = { ok: "Healthy, verified 2 min ago", failed: "Failed: 42501 permission denied on deal-room-board (fact)", blocked: "Blocked downstream: this component is healthy but starved of input (hypothesis)", degraded: "Degraded", unknown: "Unknown: collector silent since 1:10 PM" };
-
 // Every dashboard tile is a briefing button. The tile carries a number and a
 // state; the reasoning, the evidence and what to do about it live in the popup.
 const DASHBOARD_TILES = [
@@ -739,56 +730,13 @@ const MODEL_TICKETS = [
   },
 ];
 
-function renderAtlas() {
-  const svg = $("atlasSvg");
-  if (!svg) return;
-  const ns = "http://www.w3.org/2000/svg";
-  const make = (tag, attrs, text) => { const node = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v); if (text) node.textContent = text; return node; };
-  svg.replaceChildren();
-  const byId = Object.fromEntries(COMPONENTS.map((c) => [c.id, c]));
-  for (const [from, to, flow] of EDGES) {
-    const a = byId[from]; const b = byId[to];
-    svg.append(make("path", { class: "atlas-edge", "data-flow": flow, d: `M${a.x + 150} ${a.y + 35} C ${a.x + 200} ${a.y + 35}, ${b.x - 50} ${b.y + 35}, ${b.x} ${b.y + 35}` }));
-  }
-  for (const c of COMPONENTS) {
-    const g = make("g", { class: "atlas-node", "data-cat": c.cat, "data-health": c.health, "data-id": c.id, tabindex: "0", role: "button", "aria-label": `${c.label}, ${c.cat}, ${HEALTH_COPY[c.health]}`, transform: `translate(${c.x} ${c.y})` });
-    g.append(make("rect", { width: 150, height: 70, rx: 16 }));
-    g.append(make("text", { x: 75, y: 32 }, c.label));
-    g.append(make("text", { class: "sub", x: 75, y: 52 }, c.sub));
-    if (c.health === "failed") g.append(make("circle", { class: "atlas-marker", cx: 150, cy: 0, r: 8 }));
-    svg.append(g);
-  }
-  renderAtlasIndex();
-}
-function renderAtlasIndex() {
-  const list = $("atlasIndex");
-  if (!list) return;
-  list.replaceChildren(...COMPONENTS.map((c) => el("li", {}, [el("button", { class: "btn btn-quiet", type: "button", "data-focus": c.id, style: "justify-content:flex-start;width:100%", "aria-current": c.id === focusedId ? "true" : null }, [
-    el("span", { class: "swatch", "data-cat": c.cat, "aria-hidden": "true" }), document.createTextNode(` ${c.label} `), el("small", { text: HEALTH_COPY[c.health].split(":")[0] }),
-  ])])));
-}
-let focusedId = null;
-const focusHistory = [];
-function focusComponent(id, push = true) {
-  if (push && focusedId && focusedId !== id) focusHistory.push(focusedId);
-  focusedId = id;
-  document.querySelectorAll(".atlas-node").forEach((node) => node.setAttribute("aria-current", String(node.dataset.id === id)));
-  const c = COMPONENTS.find((x) => x.id === id);
-  const drawer = $("componentDrawer");
-  if (c && drawer) {
-    drawer.hidden = false;
-    $("componentTitle").textContent = c.label;
-    $("componentBody").replaceChildren(el("dl", { class: "detail-list" }, [
-      el("dt", { text: "Purpose" }), el("dd", { text: c.purpose }),
-      el("dt", { text: "Status" }), el("dd", { text: HEALTH_COPY[c.health] }),
-      el("dt", { text: "Depends on" }), el("dd", { text: c.deps.join(", ") }),
-      el("dt", { text: "Unfinished" }), el("dd", { text: c.pending }),
-      el("dt", { text: "Basis" }), el("dd", { text: "Declared wiring (services.json); observed run at 1:58 PM" }),
-    ]));
-  }
-  renderAtlasIndex();
-  $("atlasBack")?.toggleAttribute("disabled", focusHistory.length === 0);
-}
+// ---------------------------------------------------------------- the atlas
+// V5-UX-C08. The six hand-drawn boxes this file used to paint were a sketch of
+// an atlas; they are replaced by the renderer in js/atlas-scene.js drawing the
+// REAL fixture graph — twelve node classes, four evidence classes, a retired
+// node and an unlinked one — through the C07 consumer contract. Nothing here
+// reaches the live route: the payload is embedded in js/atlas-demo-graph.js.
+let atlasScene = null;
 
 function renderDashboardTiles() {
   const grid = $("dashboardTiles");
@@ -814,7 +762,9 @@ function renderModelHistory() {
 
 function wireOperations() {
   const tabs = wireTabs("operationsTabs");
-  renderAtlas();
+  atlasScene = mountAtlasScene(ATLAS_DEMO_PAYLOAD, {
+    announce: (message) => { const live = $("layerLive"); if (live) live.textContent = message; },
+  });
   renderDashboardTiles();
   renderModelHistory();
   modelBoard = createBoard({
@@ -852,18 +802,6 @@ function wireOperations() {
     openDetail({ eyebrow: "Model ticket", title: ticket.name, rows: [["Model", ticket.model], ...ticket.trail] }, card);
   });
 
-  $("atlasSvg")?.addEventListener("click", (event) => { const node = event.target.closest(".atlas-node"); if (node) focusComponent(node.dataset.id); });
-  $("atlasSvg")?.addEventListener("keydown", (event) => { const node = event.target.closest(".atlas-node"); if (node && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); focusComponent(node.dataset.id); } });
-  $("atlasIndex")?.addEventListener("click", (event) => { const button = event.target.closest("button[data-focus]"); if (button) { focusComponent(button.dataset.focus); document.querySelector(`.atlas-node[data-id="${button.dataset.focus}"]`)?.focus(); } });
-  $("atlasBack")?.addEventListener("click", () => { const previous = focusHistory.pop(); if (previous) focusComponent(previous, false); else { focusedId = null; $("componentDrawer").hidden = true; document.querySelectorAll(".atlas-node").forEach((n) => n.setAttribute("aria-current", "false")); renderAtlasIndex(); } $("atlasBack").toggleAttribute("disabled", focusHistory.length === 0 && !focusedId); });
-  $("layerSwitch")?.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-layer]");
-    if (!button) return;
-    $("layerSwitch").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
-    const atlas = $("atlas");
-    if (button.dataset.layer === "all") atlas.removeAttribute("data-layer"); else atlas.dataset.layer = button.dataset.layer;
-    $("layerLive").textContent = `Layer: ${button.textContent.trim()}. Components keep their positions.`;
-  });
   $("timeSwitch")?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-time]");
     if (!button) return;
@@ -884,7 +822,7 @@ function wireOperations() {
     event.preventDefault();
     dispatchCommand(`msg:${Date.now()}`, `Message to Sol (session f3cd…): “${$("composerInput").value.slice(0, 32)}”`, outcomeChoice());
   });
-  void tabs;
+  void tabs; void atlasScene;
   mountDocDock("Control Room dashboard");
 }
 
