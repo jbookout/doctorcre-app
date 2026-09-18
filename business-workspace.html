@@ -62,6 +62,7 @@
     <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
       <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
       <button class="tab" type="button" role="tab" id="tabSearch" aria-controls="panelSearch" aria-selected="false">Search</button>
+      <button class="tab" type="button" role="tab" id="tabCharts" aria-controls="panelCharts" aria-selected="false">Charts</button>
       <a class="tab" href="/tasks">Work</a>
       <a class="tab" href="/pipeline">Pipeline</a>
       <button class="tab" type="button" id="tabDocHistory">Doc history</button>
@@ -179,6 +180,21 @@
         <p class="caption" id="searchNotSearched">This searches people, practices, buildings, deals, leads and vendors — the records the record layer can search by name. Tasks, documents and your Doc conversation history are not searched here, because no door exists that searches them yet. This page will not pretend an empty result for those means there is nothing to find.</p>
         <p class="caption" id="searchExposure">This search names real people, practices and deals, so on a shared or unlocked phone a passer-by reads those names at a glance — and what you typed stays in the address bar until you clear it. The words of a search are kept in this browser only when you save a view; nothing here is cached offline, and closing the page leaves nothing behind but the views you chose to save.</p>
       </section>
+    </section>
+
+    <section class="tabpanel" id="panelCharts" role="tabpanel" aria-labelledby="tabCharts" tabindex="0" hidden>
+      <section class="card glass" data-charts="read" aria-labelledby="chartsTitle">
+        <div class="card-heading"><div><p class="eyebrow">The open board</p><h2 id="chartsTitle">Charts</h2></div><span class="caption" id="chartsReadAt">Reading the board…</span></div>
+        <p class="caption" id="chartsOneRead">Every number on this tab comes from one read of the board.</p>
+        <p class="caption" id="chartsSnapshot">This is the open board as it answered a moment ago, not a history.</p>
+        <p class="caption" id="chartsForecast">There is no forecast here.</p>
+      </section>
+
+      <p class="sr-only" id="chartsLive" aria-live="polite" role="status"></p>
+
+      <div class="state-block" id="chartsState" data-state="loading" hidden></div>
+
+      <div id="chartsCanvas" class="charts-canvas" aria-busy="false"></div>
     </section>
   </main>
 
