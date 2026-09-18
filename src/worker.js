@@ -16,6 +16,22 @@ const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"]
 // page cannot be its own fallback (CR-AC-26). This page reads nothing from CARR
 // on the server side; what it can and cannot say is decided in the browser.
 const UNGATED_PAGES = new Set(["/status"]);
+// V5-UX-S01/C08: the design prototypes (/design, /design/business,
+// /design/operations) run on embedded synthetic data and are for the partners'
+// visual review only, so they stay behind the sign-in gate. The CARR gate admits
+// an exact list of app page paths that the prototypes are not on, so the app asks
+// the gate about the Control Room page path on their behalf: same session cookie,
+// same refusal or redirect, same 200 for a signed-in partner.
+const DESIGN_PROTOTYPE_PREFIX = "/design";
+const DESIGN_PROTOTYPE_GATE_PATH = "/control-room";
+
+function gateRequestFor(request, pathname) {
+  if (pathname !== DESIGN_PROTOTYPE_PREFIX && !pathname.startsWith(`${DESIGN_PROTOTYPE_PREFIX}/`)) return request;
+  const url = new URL(request.url);
+  url.pathname = DESIGN_PROTOTYPE_GATE_PATH;
+  url.search = "";
+  return new Request(url, request);
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -119,7 +135,7 @@ export async function handleDoctorcreRequest(request, env) {
   const routeAsset = APP_ROUTES.get(pathname);
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
-    const gate = await carrResponse(request, env, true);
+    const gate = await carrResponse(gateRequestFor(request, pathname), env, true);
     if (gate.status !== 200) return gate;
     return copySessionCookies(gate, await assetResponse(request, env, `/${routeAsset}`));
   }

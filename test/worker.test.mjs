@@ -100,6 +100,28 @@ test("the incident page is served on the gated route", async () => {
   assert.equal((await handleDoctorcreRequest(request("/incidents", { method: "POST" }), env)).status, 405);
 });
 
+// V5-UX-S01/C08: the design prototypes are gated, but the CARR gate does not
+// list their paths, so the app asks it about /control-room instead. A signed-out
+// answer still passes straight through; a signed-in one serves the prototype.
+test("design prototypes are gated through the Control Room page path", async () => {
+  const forwarded = [];
+  const env = environment({ carr: { fetch: async (value) => { forwarded.push(value); return new Response(); } } });
+  assert.equal(await (await handleDoctorcreRequest(request("/design/operations?tab=atlas", { headers: { cookie: "__Host-dealroom_session=opaque" } }), env)).text(), "asset:/design-operations.html");
+  assert.equal(await (await handleDoctorcreRequest(request("/design"), env)).text(), "asset:/design.html");
+  assert.equal(forwarded.length, 2, "every prototype request consults the CARR gate");
+  for (const value of forwarded) assert.equal(new URL(value.url).pathname, "/control-room");
+  assert.equal(new URL(forwarded[0].url).search, "");
+  assert.equal(forwarded[0].headers.get("cookie"), "__Host-dealroom_session=opaque");
+  const signedOut = await handleDoctorcreRequest(request("/design/operations"), environment({
+    carr: { fetch: async () => new Response(null, { status: 302, headers: { location: `https://${HOST}/auth/login` } }) },
+  }));
+  assert.equal(signedOut.status, 302);
+  // /designer is not a prototype path and must not borrow the Control Room gate.
+  let other;
+  await handleDoctorcreRequest(request("/leads"), environment({ carr: { fetch: async (value) => { other = value; return new Response(); } } }));
+  assert.equal(new URL(other.url).pathname, "/leads");
+});
+
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
   const share = await handleDoctorcreRequest(request("/share?tour=T-1"), environment());
   assert.equal(share.status, 302);
