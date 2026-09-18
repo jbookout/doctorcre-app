@@ -378,6 +378,7 @@ import {
   NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
   atlasDegraded, atlasPhase, atlasRequestPath, classifyAtlasFailure, coverageGroups, coverageOrbFor,
   groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload,
+  NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS,
 } from "../js/atlas-model.js";
 
 const atlasJs = await read("js/atlas.js");
@@ -629,6 +630,33 @@ test("C07-8 the unlinked node survives in the full inventory and the page scope 
   // Page scoping is real: the retired node's edge exists only when it is on the page.
   assert.ok(!body.edges.some((edge) => edge.to === "service:demo-md-renderer"), "an edge to an off-page node is drawn");
   assert.ok(atlasBody("?include_retired=true").edges.some((edge) => edge.to === "service:demo-md-renderer"));
+});
+
+test("C07-13 an observation with no clock and no status is accepted and rendered as absent, never as a blank or a zero", () => {
+  // The producer attaches observations from ops.v_rule_enforcement_status with
+  // observed_at null and observed_status null (isoOrNull, `?? null`). On
+  // 2026-09-18 production returned 128 such rule nodes and the validator refused
+  // the whole atlas. The fixture carries one such node so this cannot recur.
+  const body = atlasBody();
+  const clockless = body.nodes.find((node) => node.id === "rule:22222222-2222-4222-8222-222222222222");
+  assert.ok(clockless, "the fixture carries no clockless observed node");
+  assert.equal(clockless.observed_at, null);
+  assert.equal(clockless.observed_status, null);
+  assert.equal(validAtlasPayload(body), true, "a null observed clock or status is refused");
+  const stillOwed = atlasExample();
+  stillOwed.nodes[0].observed_at = null;
+  stillOwed.nodes[0].observed_status = null;
+  assert.equal(validAtlasPayload(stillOwed), true, "a null observed clock or status is refused on the producer's example");
+  const noRef = atlasExample();
+  noRef.nodes[0].observed_source_ref = null;
+  assert.equal(validAtlasPayload(noRef), false, "a null observed source ref is accepted");
+  const selection = selectionFor(body, clockless.id);
+  assert.ok(selection.observed, "the clockless observation did not travel with the node");
+  assert.match(atlasJs, /observed_status \?\? NO_OBSERVED_STATUS/, "a null status renders as a blank");
+  assert.match(atlasJs, /observed_at \? \(formatClock/, "a null clock is handed to formatClock");
+  assert.match(atlasJs, /: NO_OBSERVED_CLOCK/, "a null clock renders as a blank");
+  assert.equal(NO_OBSERVED_CLOCK, "no clock recorded for this observation");
+  assert.equal(NO_OBSERVED_STATUS, "no status recorded for this observation");
 });
 
 test("C07-9 the selection contract is what V5-UX-C08 consumes", () => {

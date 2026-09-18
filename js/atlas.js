@@ -19,8 +19,7 @@ import {
   LAYER_LABEL, NO_ENFORCEMENT_SENTENCE, NO_RUN_HEADING, NO_SUCCESSOR_SENTENCE, NO_TEST_EVIDENCE_SENTENCE,
   PAGE_SCOPE_SENTENCE, RUN_HEADING, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
   atlasPhase, atlasRequestPath, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex,
-  mergeNodePages, pagingState, selectionFor, validAtlasPayload,
-} from "./atlas-model.js";
+  mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS } from "./atlas-model.js";
 import { escapeHtml } from "./control-room.js";
 import { formatClock } from "./visual-system.js";
 
@@ -260,8 +259,8 @@ function renderSelection() {
   const run = selection.observed
     ? `<h4>${escapeHtml(RUN_HEADING)}</h4>
        <div class="work-meta">
-         <span>${escapeHtml(selection.observed.observed_status)}</span>
-         <span>${escapeHtml(formatClock(selection.observed.observed_at) || selection.observed.observed_at)}</span>
+         <span>${escapeHtml(selection.observed.observed_status ?? NO_OBSERVED_STATUS)}</span>
+         <span>${escapeHtml(selection.observed.observed_at ? (formatClock(selection.observed.observed_at) || selection.observed.observed_at) : NO_OBSERVED_CLOCK)}</span>
          <span class="mono">${escapeHtml(selection.observed.observed_source_ref)}</span>
        </div>`
     : `<h4>${escapeHtml(NO_RUN_HEADING)}</h4>`;

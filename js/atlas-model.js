@@ -83,6 +83,8 @@ export const UNLINKED_SENTENCE = "Nothing on this page points at this node.";
 /** The heading whenever a source failed beyond the four declared gaps. */
 export const INCOMPLETE_HEADING = "This atlas is incomplete, not empty";
 
+export const NO_OBSERVED_CLOCK = "no clock recorded for this observation";
+export const NO_OBSERVED_STATUS = "no status recorded for this observation";
 export const NO_RUN_HEADING = "No run has been observed for this node";
 export const RUN_HEADING = "What happened on a run";
 
@@ -192,7 +194,11 @@ export function validAtlasNode(node) {
   if (!nonEmptyString(node.source_ref)) return false;
   if (typeof node.unlinked !== "boolean") return false;
   if (observed.length === 0) return true;
-  return iso(node.observed_at) && nonEmptyString(node.observed_status) && nonEmptyString(node.observed_source_ref);
+  // The producer attaches an observation with a null clock and a null status
+  // when its source has neither (ops.v_rule_enforcement_status carries no run
+  // clock: atlas-inventory-graph.v5.js emits isoOrNull and `?? null`). Refusing
+  // those 128 rule nodes refused the whole production atlas on 2026-09-18.
+  return nullableIso(node.observed_at) && nullableString(node.observed_status) && nonEmptyString(node.observed_source_ref);
 }
 
 export function validAtlasEdge(edge) {
