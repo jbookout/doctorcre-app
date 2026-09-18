@@ -53,12 +53,12 @@
 .turn-role { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .turn-body { margin: 6px 0 0; font: 400 15px/1.45 var(--body); overflow-wrap: anywhere; white-space: pre-wrap; }
 
-#rosterList { grid-template-columns: minmax(0, 1fr); }
-#rosterList .work-item, #archivedList .work-item { grid-template-columns: minmax(0, 1fr); }
-.roster-title { margin: 0; font: 600 16px/1.25 var(--body); overflow-wrap: anywhere; }
-.roster-meta { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.roster-open { margin-top: 10px; }
-.roster-open .btn { width: 100%; }
+#conversationList { grid-template-columns: minmax(0, 1fr); }
+#conversationList .work-item, #archivedList .work-item { grid-template-columns: minmax(0, 1fr); }
+.list-title { margin: 0; font: 600 16px/1.25 var(--body); overflow-wrap: anywhere; }
+.list-meta { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.list-open { margin-top: 10px; }
+.list-open .btn { width: 100%; }
 
 .access-row { margin: 0; overflow-wrap: anywhere; }
 .action-row { display: grid; gap: 8px; margin-top: 10px; }

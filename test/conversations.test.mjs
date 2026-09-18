@@ -17,12 +17,12 @@ import { readFile } from "node:fs/promises";
 
 import {
   COMPOSER_ABSENT, CONVERSATION_ID, CONVERSATION_STATES, DOC_REPLY_PENDING, EXPOSURE_STATEMENT,
-  MISSING_SENTENCE, PARTNER_SLUGS, ROSTER_LIMIT, ROSTER_SCOPE, SHARING_CAVEAT,
+  LIST_EMPTY, LIST_PAGE_SIZE, LIST_SCOPE, PARTNER_SLUGS, SHARING_CAVEAT,
   TITLE_HISTORY_UNREADABLE, accessRows, archiveOperationKey, classifyReadFailure,
-  conversationState, createArgs, createOperationKey, idFromSearch, identityHeader, pagingState,
-  pinOperationKey, readRoster, renameArgs, renameOperationKey, rosterCard, rosterRows, shareArgs,
-  shareCandidates, shareOperationKey, turnRows, validDocConversationPayload, visibleCountLine,
-  writeRoster,
+  conversationState, createArgs, createOperationKey, idFromSearch, identityHeader, listArgs,
+  listPagingState, listRows, pagingState, pinOperationKey, renameArgs, renameOperationKey,
+  shareArgs, shareCandidates, shareOperationKey, turnRows, validDocConversationPayload,
+  visibleCountLine,
 } from "../js/conversations-model.js";
 import { APP_ROUTE_PATHS } from "../js/notifications-model.js";
 import { classifyCommandOutcome, createCommandState, settleCommand } from "../js/command-feedback.mjs";
@@ -94,20 +94,21 @@ test("clause 2: the visible count is the payload's own number, and the page prin
   assert.equal((await dell.readDocConversation({ conversation_id: SHARED })).visible_conversation_count, 1,
     "the partner's count includes a conversation that is not shared with him");
 
-  const payload = await joe.readDocConversation({ conversation_id: PRIVATE });
-  assert.equal(visibleCountLine(payload, 4), "You can see 4 conversations. This device remembers 4 of them.");
-  // The roster and the count are DIFFERENT numbers with different meanings, and
-  // the page says both rather than reconciling them into one.
-  assert.match(visibleCountLine(payload, 1), /This device remembers 1 of them\./);
-  assert.match(visibleCountLine(payload, 1), new RegExp(MISSING_SENTENCE.slice(0, 40).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.equal(visibleCountLine(null, 0), "unknown");
-  assert.equal(visibleCountLine({ ...payload, visible_conversation_count: 1 }, 1),
-    "You can see 1 conversation. This device remembers 1 of them.");
+  // The list door carries the same definer-computed scalar, and it is the one
+  // the page prints. It is NOT the number of rows on screen: the default page
+  // hides the archived conversation, so the rows and the count differ here.
+  const listed = await joe.listDocConversations(listArgs({}));
+  assert.equal(listed.visible_conversation_count, 4);
+  assert.equal(listRows(listed).length, 3, "the archived conversation is in the default page");
+  assert.equal(visibleCountLine(listed), "You can see 4 conversations.");
+  assert.equal(visibleCountLine(await dell.listDocConversations(listArgs({}))), "You can see 1 conversation.");
+  assert.equal(visibleCountLine(null), "unknown");
+  assert.equal(visibleCountLine({ conversations: [], visible_conversation_count: null }), "unknown");
 
-  assert.match(pageJs, /\$\("visibleCountLine"\)\.textContent = visibleCountLine\(payload, view\.roster\.length\)/);
-  assert.equal(/visible_conversation_count\s*=|conversations\.filter\(/.test(pageJs), false,
+  assert.match(pageJs, /\$\("visibleCountLine"\)\.textContent = visibleCountLine\(payload\)/);
+  assert.equal(/visible_conversation_count\s*=|rows\.length \+|conversations\.filter\(/.test(pageJs), false,
     "the page derives a visible count of its own");
-  assert.match(ROSTER_SCOPE, /The record layer has no door that lists your conversations/);
+  assert.match(LIST_SCOPE, /read from the record layer/);
 });
 
 /* ------------------------------------------------------------------ clause 3 */
@@ -257,17 +258,15 @@ test("clause 7: pin and archive ride the same door, and a non-creator is refused
   assert.ok(archived.archived_at, "archiving recorded no archived_at");
   assert.equal(archived.version, held.identity.version + 1);
 
-  // Ordering: pinned first, archived hidden behind the toggle.
-  const cards = [
-    { id: PRIVATE, title: "B demo", pinned: true, archived: false, visibility: "private", version: 1 },
-    { id: SHARED, title: "A demo", pinned: false, archived: false, visibility: "shared", version: 1 },
-    { id: REVOKED, title: "C demo", pinned: false, archived: true, visibility: "private", version: 1 },
-  ];
-  const closed = rosterRows(cards, { showArchived: false });
-  assert.deepEqual(closed.live.map((row) => row.title), ["B demo", "A demo"], "pinned is not first");
-  assert.deepEqual(closed.archived, [], "an archived row is shown before the toggle is pressed");
-  assert.equal(closed.archivedCount, 1);
-  assert.deepEqual(rosterRows(cards, { showArchived: true }).archived.map((row) => row.title), ["C demo"]);
+  // Both landed in the store, and the list door is where the page learns it:
+  // the now-archived conversation leaves the default page and comes back under
+  // `include_archived`, carrying its archived flag.
+  const closed = listRows(await joe.listDocConversations(listArgs({})));
+  assert.equal(closed.some((row) => row.id === PRIVATE), false, "an archived conversation is still in the default page");
+  const opened = listRows(await joe.listDocConversations(listArgs({ includeArchived: true })));
+  const back = opened.find((row) => row.id === PRIVATE);
+  assert.equal(back.archived, true);
+  assert.equal(back.pinned, true, "the pin did not survive the archive");
 
   // A grantee may READ the shared conversation and may not rename it, and the
   // refusal is raised BEFORE the comparison, so the version does not move.
@@ -360,8 +359,9 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
   assert.match(html, /<section class="card glass" data-section="paging" id="pagingBlock"[^>]*hidden>/);
 
   // UX09 "stale response ignored": the guard is a sequence compared BEFORE the
-  // answer is stored, on both reads, and it is what makes Back safe.
-  assert.equal([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length, 3);
+  // answer is stored, on BOTH reads and on both of each read's outcomes — four
+  // in all — and it is what makes Back safe.
+  assert.equal([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length, 4);
   assert.match(pageJs, /view\.sequence \+= 1;/);
   assert.match(pageJs, /globalThis\.history\?\.pushState\?\.\(\{ id \}, "", `\/conversations\?id=\$\{id\}`\)/);
   assert.match(pageJs, /globalThis\.addEventListener\?\.\("popstate"/);
@@ -402,55 +402,169 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 
 /* ----------------------------------------------------------------- clause 10 */
 
-test("clause 10: the route, the versions, the producer pin and the four verbs are in the contracts", () => {
+test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
   assert.equal(routes.version, "1.10.0");
-  assert.equal(contract.version, "1.11.0");
-  assert.equal(contract.producer.source_commit, "6d3396e6949b54164b0ac24417a5da3d3b3ac618");
+  assert.equal(contract.version, "1.12.0");
+  assert.equal(contract.producer.source_commit, "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3");
   assert.equal(routes.routes["/conversations"], "conversations.html");
-  for (const verb of ["read-doc-conversation", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
+  for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   // The turn verb is authorityOnly and the app holds no authority binding, so
   // pinning it would be a false contract.
   assert.equal(contract.mcp_operations.includes("add-doc-conversation-turn"), false);
-  assert.equal(contract.mcp_operations.length, 46);
+  assert.equal(contract.mcp_operations.length, 47);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   assert.deepEqual([...APP_ROUTE_PATHS], Object.keys(routes.routes), "the model's route list has drifted from the contract");
 });
 
-/* -------------------------------------------------- the roster, ids and nothing else */
+/* ------------------------------------- the list door, one test per behaviour */
 
-test("the device roster holds ids only, drops what the record layer will not answer, and is capped", async () => {
-  const store = new Map();
-  const storage = {
-    getItem: (name) => (store.has(name) ? store.get(name) : null),
-    setItem: (name, value) => store.set(name, value),
-  };
-  writeRoster(storage, [PRIVATE, SHARED, PRIVATE, "not-a-uuid", null]);
-  assert.deepEqual(readRoster(storage), [PRIVATE, SHARED], "the roster kept a duplicate or a non-id");
-  const stored = JSON.parse([...store.values()][0]);
-  assert.ok(stored.every((value) => typeof value === "string"), "the roster stored something that is not an id");
-  assert.equal(/title|body|count/.test([...store.values()][0]), false, "the roster stored business content");
-  const many = new Array(40).fill(0).map((_, index) => `0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b${String(index).padStart(4, "0")}`);
-  assert.ok(many.every((id) => CONVERSATION_ID.test(id)), "the cap is being tested with ids the roster would reject anyway");
-  assert.equal(writeRoster(storage, many).length, ROSTER_LIMIT, "the roster is not capped");
-  assert.equal(readRoster(storage).length, ROSTER_LIMIT);
-
-  // A device that refuses storage is a supported device: it loses the roster
-  // and keeps the page.
-  const hostile = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
-  assert.deepEqual(readRoster(hostile), []);
-  assert.deepEqual(writeRoster(hostile, [PRIVATE]), [PRIVATE]);
-  assert.deepEqual(readRoster(undefined), []);
-
+test("the list is read from list-doc-conversations and rendered in the verb's order, never re-sorted", async () => {
   const joe = await fixture();
-  const card = rosterCard(await joe.readDocConversation({ conversation_id: SHARED }));
-  assert.deepEqual(card, { id: SHARED, title: "Demo — Crestview derm site search", visibility: "shared", pinned: true, archived: false, version: 2 });
-  assert.equal(rosterCard(null), null);
-  // An id the record layer will not answer is dropped, because a kept title
-  // would be exactly the disclosure the revocation withdrew.
-  assert.match(pageJs, /if \(failure\.state === "not_found"\) forget\(view\.route\.id\);/);
-  assert.match(pageJs, /Promise\.allSettled\(/);
+  const listed = await joe.listDocConversations(listArgs({}));
+  const rows = listRows(listed);
+  // Pinned first, then most recently updated — the store's order. SHARED is the
+  // pinned one; REVOKED is archived and therefore absent from the default page.
+  assert.deepEqual(rows.map((row) => row.id), [SHARED, SHARED_NO_GRANT, PRIVATE]);
+  assert.equal(rows[0].pinned, true);
+  assert.deepEqual(rows.map((row) => row.id), listed.conversations.map((row) => row.id),
+    "the model re-ordered what the verb returned");
+  assert.deepEqual(rows[0], {
+    id: SHARED, title: "Demo — Crestview derm site search", visibility: "shared",
+    pinned: true, archived: false, version: 2, latestSequence: 3,
+    latestClock: rows[0].latestClock,
+  });
+  assert.ok(rows[0].latestClock, "the row carries no latest-turn clock");
+  // The model sorts nothing: its only array operations are filter and map.
+  assert.equal(/\.sort\(/.test(await read("js/conversations-model.js")), false,
+    "the model sorts the list the record layer already ordered");
+  assert.match(pageJs, /view\.list = \{ state: "read", payload, rows: \[\.\.\.held, \.\.\.listRows\(payload\)\] \}/);
+  assert.equal(/\.sort\(/.test(pageJs), false, "the page sorts the list the record layer already ordered");
+  // Nothing on this device: the roster and its storage are gone.
+  assert.equal(/localStorage|sessionStorage|roster/i.test(pageJs), false, "the page still keeps a device roster");
+  assert.equal(/localStorage|ROSTER_KEY/.test(await read("js/conversations-model.js")), false);
+});
+
+test("Show more passes the cursor the verb handed back, and appends the next page", async () => {
+  const joe = await fixture();
+  const head = await joe.listDocConversations({ limit: 2 });
+  assert.equal(head.conversations.length, 2);
+  assert.equal(head.more, true);
+  assert.equal(typeof head.next_cursor, "string");
+  assert.deepEqual(listPagingState(head), { more: true, cursor: head.next_cursor });
+
+  const tail = await joe.listDocConversations({ limit: 2, cursor: head.next_cursor });
+  assert.deepEqual(listRows(tail).map((row) => row.id), [PRIVATE]);
+  assert.equal(tail.more, false);
+  assert.deepEqual(listPagingState(tail), { more: false, cursor: null });
+  // A `more` with no cursor is not a page this client can ask for: there is no
+  // offset and no page number to fall back on.
+  assert.deepEqual(listPagingState({ conversations: [], more: true, next_cursor: null }), { more: false, cursor: null });
+  assert.deepEqual(listPagingState(null), { more: false, cursor: null });
+
+  // The cursor is OPAQUE: it is passed back unread, never parsed or built here.
+  assert.deepEqual(listArgs({ cursor: head.next_cursor }), { limit: LIST_PAGE_SIZE, cursor: head.next_cursor });
+  assert.equal(/next_cursor.*(?:split|slice|JSON\.parse|atob)/.test(pageJs), false, "the page reads inside the cursor");
+  assert.match(pageJs, /if \(paging\.more\) takeList\(\{ cursor: paging\.cursor \}\)/);
+  assert.match(pageJs, /\$\("listPagingBlock"\)\.hidden = !listPagingState\(payload\)\.more/);
+  assert.match(html, /<div class="note-act" id="listPagingBlock" hidden><button class="btn" type="button" id="showMoreConversations">/);
+  // Paging APPENDS, in one sequence across pages.
+  assert.match(pageJs, /const held = cursor \? view\.list\.rows : \[\];/);
+});
+
+test("Show archived is the verb's include_archived, and pressing it costs a fresh read", async () => {
+  const joe = await fixture();
+  const plain = await joe.listDocConversations(listArgs({}));
+  assert.equal(listRows(plain).some((row) => row.id === REVOKED), false, "the archived conversation is in the default page");
+
+  const withArchived = await joe.listDocConversations(listArgs({ includeArchived: true }));
+  const rows = listRows(withArchived);
+  assert.ok(rows.some((row) => row.id === REVOKED && row.archived === true), "include_archived did not bring the archived one back");
+  assert.equal(rows.length, 4);
+
+  assert.deepEqual(listArgs({ includeArchived: true }), { limit: LIST_PAGE_SIZE, include_archived: true });
+  // False is OMITTED rather than sent: the verb's default is the exclusion, and
+  // naming it would be this page restating a rule it does not own.
+  assert.deepEqual(listArgs({ includeArchived: false }), { limit: LIST_PAGE_SIZE });
+  // The toggle is not a filter over rows already held: it re-reads.
+  assert.match(pageJs, /view\.includeArchived = !view\.includeArchived;\s*\n\s*view\.sequence \+= 1;\s*\n\s*takeList\(\);/);
+  assert.match(pageJs, /listArgs\(\{ cursor, includeArchived: view\.includeArchived \}\)/);
+  assert.match(html, /<button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived<\/button>/);
+});
+
+test("after a create the list is read again, and so it is after rename, pin, archive and share", async () => {
+  const joe = await fixture();
+  const before = listRows(await joe.listDocConversations(listArgs({})));
+  assert.equal(before.length, 3);
+
+  const made = await joe.createDocConversation({ idempotency_key: key(1), title: "Demo — a brand new one" });
+  const after = listRows(await joe.listDocConversations(listArgs({})));
+  assert.equal(after.length, 4);
+  assert.ok(after.some((row) => row.id === made.conversation_id), "a fresh list read does not carry the new conversation");
+
+  // A pin moves it to the front of the SAME read, which is why the page re-reads
+  // rather than patching the row it is holding.
+  await joe.renameDocConversation({ idempotency_key: key(2), conversation_id: made.conversation_id, base_version: 1, pinned: true });
+  const pinned = listRows(await joe.listDocConversations(listArgs({})));
+  const at = pinned.findIndex((row) => row.id === made.conversation_id);
+  assert.equal(pinned[at].pinned, true);
+  assert.ok(pinned.slice(at + 1).every((row) => row.pinned === false), "a pinned conversation sits behind an unpinned one");
+  await joe.renameDocConversation({ idempotency_key: key(3), conversation_id: made.conversation_id, base_version: 2, archived: true });
+  assert.equal(listRows(await joe.listDocConversations(listArgs({}))).some((row) => row.id === made.conversation_id), false,
+    "an archived conversation is still in the default page");
+
+  // The page's own wiring: every settled write re-reads, and load() reads BOTH.
+  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\)\]\)/);
+  assert.match(pageJs, /if \(result\.status === "ok" \|\| result\.status === "conflict"\) \{/);
+  assert.match(pageJs, /await load\(\);/);
+  // Create opens the new conversation, and open() runs the same load().
+  assert.match(pageJs, /open\(result\.response\.conversation_id\);/);
+  assert.match(pageJs, /function open\(id\) \{[\s\S]*?load\(\);\n\}/);
+});
+
+test("the list request carries exactly cursor, limit and include_archived — and never an actor", async () => {
+  const allowed = new Set(["cursor", "limit", "include_archived"]);
+  for (const built of [listArgs({}), listArgs({ cursor: "c" }), listArgs({ includeArchived: true }), listArgs({ cursor: "c", includeArchived: true })]) {
+    for (const name of Object.keys(built)) assert.ok(allowed.has(name), `the request carries ${name}`);
+    assert.equal(built.limit, LIST_PAGE_SIZE);
+    for (const name of ["actor", "actor_slug", "acting_actor", "partner", "created_by", "offset", "sort"]) {
+      assert.equal(name in built, false, `the request names ${name}`);
+    }
+  }
+  // The verb derives the acting actor itself, so an actor field would be a
+  // schema error rather than a refusal the page could explain. Nothing in the
+  // model or the page offers one.
+  const modelJs = await read("js/conversations-model.js");
+  const liveJs = await read("js/live-client.js");
+  assert.equal(/actor/.test(JSON.stringify(listArgs({ cursor: "c", includeArchived: true }))), false);
+  assert.equal(/listArgs\([^)]*actor/.test(modelJs + pageJs), false, "an actor reaches the list request");
+  assert.match(liveJs, /async listDocConversations\(args = \{\}\) \{ return rpc\('list-doc-conversations', args\); \}/);
+  assert.equal(/list-doc-conversations'[^)]*actor/.test(liveJs), false);
+  // And the live answer is the same for both partners' own lists: each sees its
+  // own, because neither one asked.
+  const dell = await fixture({ selfActor: "dell" });
+  assert.deepEqual(listRows(await dell.listDocConversations(listArgs({}))).map((row) => row.id), [SHARED]);
+});
+
+test("an empty list says so, and says nothing about this device", async () => {
+  // An actor who created nothing and holds no grant gets an EMPTY list, not a
+  // refusal: "you may see none" is an answer, and the page renders it as one.
+  const stranger = await fixture({ selfActor: "someone-else" });
+  const empty = await stranger.listDocConversations(listArgs({}));
+  assert.deepEqual(empty.conversations, []);
+  assert.equal(empty.more, false);
+  assert.equal(empty.next_cursor, null);
+  assert.deepEqual(listRows(empty), []);
+  assert.equal(visibleCountLine(empty), "You can see 0 conversations.");
+
+  assert.equal(LIST_EMPTY, "You have no conversation yet. Create one below.");
+  assert.equal(/device|remember|roster/i.test(LIST_EMPTY), false, "the empty state still talks about this device");
+  assert.equal(/device remembers|opened on this device|no door that lists/i.test(LIST_SCOPE + EXPOSURE_STATEMENT + html), false,
+    "the page still claims the record layer cannot list conversations");
+  assert.match(pageJs, /const bare = view\.list\.state === "read" && rows\.length === 0;/);
+  assert.match(pageJs, /\$\("listStateTitle"\)\.textContent = view\.list\.state === "unavailable"/);
+  assert.match(html, /<div class="state-block" id="listState" data-state="loading" hidden><h3 id="listStateTitle"><\/h3><\/div>/);
 });
 
 /* ---------------------------------------- the shell, the missing composer, 360px */
@@ -506,7 +620,8 @@ test("the page is the shared shell, carries no composer in the transcript, and h
   assert.match(css, /\.turn-body \{[^}]*overflow-wrap: anywhere;/);
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width can force a horizontal scroll");
   assert.match(EXPOSURE_STATEMENT, /on a shared or unlocked phone/);
-  assert.match(EXPOSURE_STATEMENT, /never a title and never a message/);
+  assert.match(EXPOSURE_STATEMENT, /Nothing is kept on this device/);
+  assert.match(EXPOSURE_STATEMENT, /the list above names every conversation you can see/);
   assert.match(html, /<p class="caption" id="exposureStatement">/);
 });
 

@@ -7,15 +7,16 @@
 //
 // Five shapes govern the file:
 //
-//   1. THE RECORD LAYER IS THE AUTHORITY FOR EVERY WORD ON THE LIST. This
-//      device remembers conversation IDS and nothing else; each card's title,
-//      visibility, pin and archive state comes from a fresh read. An id that
-//      answers `doc_conversation_not_found` is dropped from the roster, because
-//      that is exactly what a revoked grant looks like from the grantee's side
-//      and keeping the stale title would be the disclosure the store refuses.
-//   2. `visible_conversation_count` is PRINTED from the payload. The roster
-//      length is a different number with a different meaning, and the page
-//      says both rather than reconciling them into one.
+//   1. THE LIST IS A READ, NOT A MEMORY. `list-doc-conversations` returns the
+//      conversations the signed-in actor may see, and this page keeps nothing
+//      on the device: no id, no title, no cursor. The rows are painted in the
+//      order the verb returned them — pinned first, then most recently updated
+//      — and nothing here re-sorts them. Every write re-reads the list, because
+//      only the record layer knows what the store now holds.
+//   2. `visible_conversation_count` is PRINTED from the list payload. The page
+//      never counts its own rows: a first page of 25 is not the number of
+//      conversations a person can see, and printing it as one would be a lie
+//      the store never told.
 //   3. Each read stamps its OWN clock, and a read that answers after a newer
 //      one was issued is IGNORED — the `view.sequence` guard. The server's
 //      prose never reaches the page: only its STATUS and its CODE cross.
@@ -35,12 +36,12 @@ import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
-  COMPOSER_ABSENT, DOC_REPLY_PENDING, EXPOSURE_STATEMENT, PARTNER_SLUGS, ROSTER_EMPTY,
-  ROSTER_SCOPE, SHARING_CAVEAT, TITLE_HISTORY_UNREADABLE,
+  COMPOSER_ABSENT, DOC_REPLY_PENDING, EXPOSURE_STATEMENT, LIST_EMPTY, LIST_SCOPE,
+  PARTNER_SLUGS, SHARING_CAVEAT, TITLE_HISTORY_UNREADABLE,
   accessRows, archiveOperationKey, classifyReadFailure, conversationState, createArgs,
-  createOperationKey, idFromSearch, identityHeader, pagingState, pinOperationKey,
-  readRoster, renameArgs, renameOperationKey, rosterCard, rosterRows, shareArgs,
-  shareCandidates, shareOperationKey, turnRows, visibleCountLine, writeRoster,
+  createOperationKey, idFromSearch, identityHeader, listArgs, listPagingState, listRows,
+  pagingState, pinOperationKey, renameArgs, renameOperationKey, shareArgs,
+  shareCandidates, shareOperationKey, turnRows, visibleCountLine,
 } from "./conversations-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -57,9 +58,8 @@ const view = {
   route: { state: "missing", id: null, given: null },
   sequence: 0,
   conversation: { state: "pending" },
-  roster: [],
-  cards: [],
-  showArchived: false,
+  list: { state: "pending", payload: null, rows: [] },
+  includeArchived: false,
 };
 
 let client = null;
@@ -67,14 +67,6 @@ let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
-
-const storage = () => {
-  try {
-    return globalThis.localStorage || null;
-  } catch {
-    return null;
-  }
-};
 
 function announce(text) {
   const live = $("conversationLive");
@@ -155,36 +147,36 @@ function renderAccess() {
   $("archiveToggle").textContent = header?.archived ? "Take this out of the archive" : "Archive this conversation";
 }
 
-function renderRoster() {
-  const payload = payloadOf();
-  $("visibleCountLine").textContent = visibleCountLine(payload, view.roster.length);
-  const { live, archived, archivedCount } = rosterRows(view.cards, { showArchived: view.showArchived });
-  const rowHtml = (row) => `<li class="work-item" data-priority="${row.pinned ? "deadline" : "ordinary"}" data-conversation="${escapeHtml(row.id)}" data-visibility="${escapeHtml(row.visibility)}">
+function renderList() {
+  const payload = view.list.state === "read" ? view.list.payload : null;
+  $("visibleCountLine").textContent = visibleCountLine(payload);
+  const rows = view.list.rows;
+  // IN THE VERB'S ORDER. `.map` walks the array as the record layer handed it
+  // over; nothing here sorts, filters or regroups, because pinned-first then
+  // most-recently-updated is the store's rule and not this page's.
+  $("conversationList").innerHTML = rows.map((row) => `<li class="work-item" data-priority="${row.pinned ? "deadline" : "ordinary"}" data-conversation="${escapeHtml(row.id)}" data-visibility="${escapeHtml(row.visibility)}">
     <div>
-      <h3 class="roster-title">${escapeHtml(row.title)}</h3>
-      <p class="roster-meta">${escapeHtml(row.visibility === "shared" ? "shared" : "private")}${row.pinned ? " · pinned" : ""}${row.archived ? " · archived" : ""} · <span class="mono">${escapeHtml(row.id)}</span></p>
-      <div class="roster-open"><button class="btn" type="button" data-open="${escapeHtml(row.id)}">Open this conversation</button></div>
+      <h3 class="list-title">${escapeHtml(row.title)}</h3>
+      <p class="list-meta">${escapeHtml(row.visibility === "shared" ? "shared" : "private")}${row.pinned ? " · pinned" : ""}${row.archived ? " · archived" : ""}${row.latestClock ? ` · last said ${escapeHtml(row.latestClock)}` : ""} · <span class="mono">${escapeHtml(row.id)}</span></p>
+      <div class="list-open"><button class="btn" type="button" data-open="${escapeHtml(row.id)}">Open this conversation</button></div>
     </div>
-  </li>`;
-  $("rosterList").innerHTML = live.map(rowHtml).join("");
-  const archivedList = $("archivedList");
-  archivedList.hidden = !view.showArchived;
-  archivedList.innerHTML = archived.map(rowHtml).join("");
-  $("archivedToggle").setAttribute("aria-pressed", String(view.showArchived));
-  $("archivedToggle").textContent = view.showArchived
-    ? `Hide the ${archivedCount} archived`
-    : `Show archived (${archivedCount})`;
-  const block = $("rosterState");
-  const bare = live.length === 0 && archived.length === 0;
-  block.hidden = !bare;
-  $("rosterStateTitle").textContent = bare ? ROSTER_EMPTY : "";
+  </li>`).join("");
+  $("archivedToggle").setAttribute("aria-pressed", String(view.includeArchived));
+  $("archivedToggle").textContent = view.includeArchived ? "Hide archived" : "Show archived";
+  $("listPagingBlock").hidden = !listPagingState(payload).more;
+  const block = $("listState");
+  const bare = view.list.state === "read" && rows.length === 0;
+  block.hidden = !(bare || view.list.state === "unavailable");
+  $("listStateTitle").textContent = view.list.state === "unavailable"
+    ? view.list.sentence
+    : (bare ? LIST_EMPTY : "");
 }
 
 function render() {
   renderHero();
   renderTurns();
   renderAccess();
-  renderRoster();
+  renderList();
 }
 
 /* --------------------------------------------------------------------- reading */
@@ -214,55 +206,44 @@ async function takeConversation({ after = null } = {}) {
       ? { ...payload, turns: [...held.turns, ...payload.turns] }
       : payload;
     view.conversation = { state: "read", payload: merged, observed_at: new Date().toISOString() };
-    rememberCard(merged);
   } catch (error) {
     if (view.sequence !== sequence) return;
     const failure = classifyReadFailure(error);
     view.conversation = { state: failure.state, sentence: failure.sentence };
-    if (failure.state === "not_found") forget(view.route.id);
   }
   render();
 }
 
-/** The roster's own read: one card per remembered id, every refusal survived. */
-async function takeRoster() {
+/**
+ * The list read. One call, one page, and a cursor that is passed back UNREAD.
+ *
+ * A `cursor` APPENDS: the verb's order is a single sequence across pages, so
+ * the next page continues the one on screen and re-sorting the union would
+ * destroy the ordering paging exists to preserve. No cursor means a fresh
+ * first page, which is what every write settles into.
+ */
+async function takeList({ cursor = null } = {}) {
   const sequence = view.sequence;
-  const ids = readRoster(storage());
-  const settled = await Promise.allSettled(
-    ids.map((id) => client.readDocConversation({ conversation_id: id, limit: 1 })),
-  );
-  if (view.sequence !== sequence) return;
-  const cards = [];
-  const kept = [];
-  settled.forEach((result, index) => {
-    if (result.status !== "fulfilled") return;
-    const card = rosterCard(result.value);
-    if (!card) return;
-    cards.push(card);
-    kept.push(ids[index]);
-  });
-  view.cards = cards;
-  view.roster = writeRoster(storage(), kept);
+  const held = cursor ? view.list.rows : [];
+  try {
+    const payload = await client.listDocConversations(
+      listArgs({ cursor, includeArchived: view.includeArchived }),
+    );
+    if (view.sequence !== sequence) return;
+    view.list = { state: "read", payload, rows: [...held, ...listRows(payload)] };
+  } catch (error) {
+    if (view.sequence !== sequence) return;
+    const failure = classifyReadFailure(error);
+    view.list = { state: "unavailable", payload: null, rows: held, sentence: failure.sentence };
+  }
   render();
-}
-
-function rememberCard(payload) {
-  const card = rosterCard(payload);
-  if (!card) return;
-  view.roster = writeRoster(storage(), [card.id, ...view.roster]);
-  view.cards = [card, ...view.cards.filter((row) => row.id !== card.id)];
-}
-
-function forget(id) {
-  view.roster = writeRoster(storage(), view.roster.filter((row) => row !== id));
-  view.cards = view.cards.filter((row) => row.id !== id);
 }
 
 async function load() {
   view.sequence += 1;
-  await Promise.all([takeConversation(), takeRoster()]);
+  await Promise.all([takeConversation(), takeList()]);
   const state = conversationState(view.conversation, view.route);
-  announce(state.sentence || visibleCountLine(payloadOf(), view.roster.length));
+  announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
 }
 
 /** Opening one sets `?id=` so Back restores the list this page came from. */
@@ -372,7 +353,7 @@ async function boot() {
   mountPrefs();
   mountDocDock("Conversations");
   mountDock();
-  $("rosterScope").textContent = ROSTER_SCOPE;
+  $("listScope").textContent = LIST_SCOPE;
   $("sharingCaveat").textContent = SHARING_CAVEAT;
   $("composerAbsent").textContent = COMPOSER_ABSENT;
   $("docReplyPending").textContent = DOC_REPLY_PENDING;
@@ -386,11 +367,19 @@ async function boot() {
     const paging = pagingState(payloadOf());
     if (paging.more) takeConversation({ after: paging.after });
   });
+  // The toggle is not a filter over rows this page already holds: it is the
+  // verb's `include_archived`, so pressing it costs a fresh read and the page
+  // shows exactly what the record layer returns for that argument.
   $("archivedToggle")?.addEventListener("click", () => {
-    view.showArchived = !view.showArchived;
-    render();
+    view.includeArchived = !view.includeArchived;
+    view.sequence += 1;
+    takeList();
   });
-  for (const list of ["rosterList", "archivedList"]) {
+  $("showMoreConversations")?.addEventListener("click", () => {
+    const paging = listPagingState(view.list.state === "read" ? view.list.payload : null);
+    if (paging.more) takeList({ cursor: paging.cursor });
+  });
+  for (const list of ["conversationList"]) {
     $(list)?.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target.closest("[data-open]") : null;
       if (target) open(target.getAttribute("data-open"));

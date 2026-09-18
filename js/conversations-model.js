@@ -5,16 +5,16 @@
 // do. Six shapes govern the file, and each one exists because the alternative
 // would let the page say something the record layer cannot back.
 //
-//   1. THERE IS NO LIST DOOR. `read-doc-conversation` takes one id and nothing
-//      else, and no other verb reads the store. So the list on this page is a
-//      roster of ids kept on THIS DEVICE, and it is labelled as one. The only
-//      fleet-level fact is the scalar `visible_conversation_count`, which is
-//      PRINTED from the payload and never recomputed from the roster.
-//   2. The roster holds ids and nothing else — no title, no body, no count.
-//      Conversation titles are business content, and the record layer is the
-//      authority for every one of them. An id that answers
-//      `doc_conversation_not_found` is DROPPED, because that is exactly what a
-//      revoked grant looks like from the grantee's side.
+//   1. THE LIST COMES FROM THE RECORD LAYER. `list-doc-conversations` returns
+//      the conversations the signed-in actor may see, pinned first then most
+//      recently updated, paged by an opaque cursor. That order is the store's
+//      and it is NEVER re-sorted here: re-ordering would be this page inventing
+//      a precedence the record layer did not state.
+//   2. NOTHING NAMES AN ACTOR. The list verb declares exactly three optional
+//      fields — `cursor`, `limit`, `include_archived` — with
+//      `additionalProperties:false`, and derives the acting actor itself. An
+//      actor field sent from here would be a schema error, and that is the
+//      point: the app cannot ask to see somebody else's conversations.
 //   3. "Absent" and "not yours" are ONE answer. The read function returns
 //      `doc_conversation_not_found` for a conversation that does not exist, for
 //      one that is not shared with the caller, and for an id that is not a uuid.
@@ -43,13 +43,11 @@ export const COMPOSER_ABSENT =
 export const DOC_REPLY_PENDING =
   "Doc's replies arrive in the next slice. Nothing on this page is waiting on an answer.";
 
-/** What the device roster IS, said before anybody mistakes it for a feed. */
-export const ROSTER_SCOPE =
-  "This list is the conversations opened on this device. The record layer has no door that lists your conversations, so this page cannot show one you have never opened here.";
-export const MISSING_SENTENCE =
-  "You can see more conversations than this device remembers. Open one by its link to add it here.";
-export const ROSTER_EMPTY =
-  "This device remembers no conversation yet. Create one below, or open one by its link.";
+/** What the list IS, said before anybody mistakes it for a feed. */
+export const LIST_SCOPE =
+  "This list is read from the record layer: the conversations you created and the ones shared with you, pinned first and then most recently updated. It is not a roster kept on this device.";
+export const LIST_EMPTY =
+  "You have no conversation yet. Create one below.";
 
 /** The standing caveat the share control carries, in the slice's own words. */
 export const SHARING_CAVEAT =
@@ -61,7 +59,7 @@ export const TITLE_HISTORY_UNREADABLE =
 
 /** The candid mobile-exposure statement rule f0f9156e asks a page to make. */
 export const EXPOSURE_STATEMENT =
-  "This page shows the words of your conversations with Doc, so on a shared or unlocked phone a passer-by reads them at a glance. The record layer's membership check is the only gate and this app adds none. This device remembers conversation ids only — never a title and never a message — and nothing here is cached offline.";
+  "This page shows the words of your conversations with Doc, so on a shared or unlocked phone a passer-by reads them at a glance — and the list above names every conversation you can see. The record layer's membership check is the only gate and this app adds none. Nothing is kept on this device and nothing here is cached offline: close the page and it is gone until the record layer answers again.";
 
 /** The refusals this page raises before anything is sent. */
 export const VERSION_REFUSAL =
@@ -76,9 +74,8 @@ export const TITLE_REFUSAL =
 /** The two partner slugs this workspace has. The page invents no third. */
 export const PARTNER_SLUGS = Object.freeze(["joe", "dell"]);
 
-/** The roster cap: a page load is at most this many reads. */
-export const ROSTER_LIMIT = 20;
-export const ROSTER_KEY = "doctorcre.conversations.roster.v1";
+/** The page of conversations this page asks the list door for. */
+export const LIST_PAGE_SIZE = 25;
 
 /**
  * The verb's OWN uuid shape (`doc-conversation.js:30`), copied exactly. The
@@ -97,7 +94,7 @@ const isText = (value) => typeof value === "string" && value.length > 0;
  * The conversation this page was opened on, read from the query string alone.
  *
  * Three answers, and the two failures are different on purpose: a bare page is
- * a person who arrived with no link and should be given the roster, while a
+ * a person who arrived with no link and should be given the list, while a
  * malformed one is a person holding something that looks like an id and is not.
  */
 export function idFromSearch(search) {
@@ -153,16 +150,16 @@ export function identityHeader(payload) {
 }
 
 /**
- * The authoritative count line. `N` is the payload's own number, printed; `M`
- * is the roster length. When the device remembers fewer than the record layer
- * can show, the page says so rather than letting the gap read as an absence.
+ * The authoritative count line, printed from `list-doc-conversations`' own
+ * `visible_conversation_count`. The page never counts the rows it happens to
+ * be holding: the scalar is computed inside the definer over everything the
+ * ACTING actor may see, and a first page of 25 is not that number.
  */
-export function visibleCountLine(payload, rosterLength = 0) {
-  if (!validDocConversationPayload(payload)) return "unknown";
-  const visible = payload.visible_conversation_count;
-  const remembered = Number.isInteger(rosterLength) && rosterLength > 0 ? rosterLength : 0;
-  const line = `You can see ${visible} ${visible === 1 ? "conversation" : "conversations"}. This device remembers ${remembered} of them.`;
-  return remembered < visible ? `${line} ${MISSING_SENTENCE}` : line;
+export function visibleCountLine(listPayload) {
+  if (!validDocConversationListPayload(listPayload)) return "unknown";
+  const visible = listPayload.visible_conversation_count;
+  if (!Number.isInteger(visible)) return "unknown";
+  return `You can see ${visible} ${visible === 1 ? "conversation" : "conversations"}.`;
 }
 
 /* ------------------------------------------------------------------- the turns */
@@ -240,76 +237,64 @@ export function shareCandidates(payload, slugs = PARTNER_SLUGS) {
     .map((slug) => ({ slug, granted: granted.has(slug) }));
 }
 
-/* ------------------------------------------------------------------ the roster */
+/* -------------------------------------------------------------------- the list */
 
-/**
- * The device roster. IDS ONLY — never a title, never a body, never a count —
- * and every read of it is wrapped, because a device that refuses storage is a
- * supported device and must not lose the page.
- */
-export function readRoster(storage) {
-  try {
-    const raw = storage?.getItem?.(ROSTER_KEY);
-    if (!isText(raw)) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id) => typeof id === "string" && CONVERSATION_ID.test(id)).slice(0, ROSTER_LIMIT);
-  } catch {
-    return [];
-  }
-}
-
-export function writeRoster(storage, ids) {
-  const clean = [];
-  for (const id of Array.isArray(ids) ? ids : []) {
-    if (typeof id !== "string" || !CONVERSATION_ID.test(id)) continue;
-    if (!clean.includes(id)) clean.push(id);
-    if (clean.length >= ROSTER_LIMIT) break;
-  }
-  try {
-    storage?.setItem?.(ROSTER_KEY, JSON.stringify(clean));
-  } catch {
-    // A device that refuses storage keeps the page; it just forgets the roster.
-  }
-  return clean;
+/** `list-doc-conversations`' own shape: the rows, the paging, the scalar. */
+export function validDocConversationListPayload(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  return Array.isArray(payload.conversations);
 }
 
 /**
- * The roster, ordered. Pinned first, then by title; archived rows are a
- * SEPARATE group that stays hidden until the toggle is pressed, because an
- * archived conversation is one a person has already put away.
+ * What this page sends to `list-doc-conversations`, and it is the WHOLE request.
+ *
+ * The verb declares exactly three optional properties and `additionalProperties:
+ * false`, so a fourth key — an actor above all — is a schema error rather than a
+ * refusal the page could explain. `cursor` is opaque: it is the `next_cursor`
+ * the previous page returned, passed back unread and never constructed here.
  */
-export function rosterRows(cards, { showArchived = false } = {}) {
-  const rows = (Array.isArray(cards) ? cards : [])
-    .filter((card) => card && typeof card === "object" && CONVERSATION_ID.test(String(card.id)))
-    .map((card) => ({
-      id: card.id,
-      title: isText(card.title) ? card.title : "untitled",
-      visibility: card.visibility === "shared" ? "shared" : "private",
-      pinned: card.pinned === true,
-      archived: card.archived === true,
-      version: Number.isInteger(card.version) ? card.version : null,
+export function listArgs({ cursor = null, includeArchived = false } = {}) {
+  const args = { limit: LIST_PAGE_SIZE };
+  if (isText(cursor)) args.cursor = cursor;
+  if (includeArchived === true) args.include_archived = true;
+  return args;
+}
+
+/**
+ * The rows, IN THE ORDER THE VERB RETURNED THEM. Pinned first then most
+ * recently updated is the store's ordering (its own `order by`), and nothing
+ * here sorts, groups or re-buckets it. A page that re-ordered this list would
+ * be asserting a precedence the record layer never stated, and the two would
+ * disagree the moment the store's rule changed.
+ */
+export function listRows(payload) {
+  if (!validDocConversationListPayload(payload)) return [];
+  return payload.conversations
+    .filter((row) => row && typeof row === "object" && CONVERSATION_ID.test(String(row.id)))
+    .map((row) => ({
+      id: row.id,
+      title: isText(row.title) ? row.title : "untitled",
+      visibility: row.visibility === "shared" ? "shared" : "private",
+      pinned: isText(row.pinned_at),
+      archived: isText(row.archived_at),
+      version: Number.isInteger(row.version) ? row.version : null,
+      latestSequence: Number.isInteger(row.latest_sequence) ? row.latest_sequence : null,
+      latestClock: formatClock(row.latest_turn_at) || null,
     }));
-  const order = (a, b) => (a.pinned === b.pinned
-    ? a.title.localeCompare(b.title)
-    : (a.pinned ? -1 : 1));
-  const live = rows.filter((row) => !row.archived).sort(order);
-  const archived = rows.filter((row) => row.archived).sort(order);
-  return { live, archived: showArchived ? archived : [], archivedCount: archived.length };
 }
 
-/** A roster card built from one read's payload; the record layer is its author. */
-export function rosterCard(payload) {
-  if (!validDocConversationPayload(payload)) return null;
-  const identity = payload.identity;
-  return {
-    id: identity.id,
-    title: identity.title,
-    visibility: identity.visibility === "shared" ? "shared" : "private",
-    pinned: isText(identity.pinned_at),
-    archived: isText(identity.archived_at),
-    version: identity.version,
-  };
+/**
+ * Whether a "Show more" control exists, and the cursor it would carry.
+ *
+ * The control appears ONLY when the verb said `more: true` AND handed back a
+ * cursor. There is no offset and no page number to fall back on: the cursor is
+ * the only thing that names where the next page starts, so a `more` with no
+ * cursor is not a page this client can ask for.
+ */
+export function listPagingState(payload) {
+  if (!validDocConversationListPayload(payload)) return { more: false, cursor: null };
+  if (payload.more !== true || !isText(payload.next_cursor)) return { more: false, cursor: null };
+  return { more: true, cursor: payload.next_cursor };
 }
 
 /* -------------------------------------------------------------- the UX20 states */
