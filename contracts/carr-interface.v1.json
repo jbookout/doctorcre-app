@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "d42737800b3452eeee443c8011604245108b32b0"
+    "source_commit": "69df0ae6cfeef5caada6104f66a98c60a5bda709"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -14,6 +14,7 @@
     "database_access": "forbidden"
   },
   "mcp_operations": [
+    "acknowledge-notification",
     "add-critical-date",
     "add-deal-note",
     "add-loop",
@@ -35,6 +36,7 @@
     "loop-board",
     "loop-headers",
     "new-deal",
+    "notification-feed",
     "patch-deal-field",
     "presence-lease",
     "read-loop",

@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-app-routes.v1",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "routes": {
     "/": "workspace.html",
     "/control-room": "control-room.html",
@@ -22,6 +22,7 @@
     "/pipeline": "pipeline.html",
     "/business": "business-workspace.html",
     "/status": "status.html",
-    "/incidents": "incidents.html"
+    "/incidents": "incidents.html",
+    "/notifications": "notifications.html"
   }
 }

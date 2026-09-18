@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE notifications — the items addressed to you, what was delivered and what quiet hours held, and who did what">
+  <title>Notifications · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/notifications.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the notifications</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>notifications</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/control-room">Control Room</a>
+      <a href="/notifications" aria-current="page">Notifications</a>
+      <a href="/incidents">Incidents</a>
+      <a href="/work-inventory">Inventory</a>
+    </nav>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass hero-card" aria-labelledby="pageTitle">
+      <div class="hero">
+        <div>
+          <p class="eyebrow"><span class="orb" data-state="still" id="feedOrb" aria-hidden="true"></span> Addressed to you</p>
+          <h1 id="pageTitle">Notifications</h1>
+        </div>
+        <div class="hero-meta">
+          <span class="as-of" id="feedAsOf">unknown</span>
+          <button class="btn" type="button" id="retryRead">Read again</button>
+        </div>
+      </div>
+      <p class="headline" id="unreadLine">unknown</p>
+      <p class="caption" id="vocabularyLine">A notification is only ever an action-required item or a failure. Routine progress mints nothing, so nothing routine can appear here.</p>
+    </section>
+
+    <p class="sr-only" id="feedLive" aria-live="polite" role="status">Reading your notifications…</p>
+
+    <section class="card glass" data-section="feed" id="feedBlock" aria-labelledby="feedTitle">
+      <div class="card-heading"><div><p class="eyebrow">Your feed</p><h2 id="feedTitle">Notifications</h2></div></div>
+      <div class="state-block" id="feedState" data-state="loading"><h3 id="feedStateTitle">Reading your notifications…</h3></div>
+      <ul class="work-list" id="feedList"></ul>
+    </section>
+
+    <section class="card glass" data-section="quiet_hours" id="quietHoursBlock" aria-labelledby="quietHoursTitle">
+      <div class="card-heading"><div><p class="eyebrow">Quiet hours</p><h2 id="quietHoursTitle">What quiet hours do, and what this app cannot show</h2></div></div>
+      <p class="headline" id="quietHoursEffect">unknown</p>
+      <p class="caption" id="quietHoursUnavailable">unknown</p>
+    </section>
+
+    <section class="card glass" data-section="activity" id="activityBlock" aria-labelledby="activityTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Accountable activity</p><h2 id="activityTitle">Who did what</h2></div>
+        <span class="as-of" id="activityAsOf">unknown</span>
+      </div>
+      <p class="caption">This is the activity stream, not your feed. A notification is addressed to you; an event is something that happened.</p>
+      <ul class="work-list" id="activityList"></ul>
+      <div class="state-block" id="activityState" data-state="unknown" hidden><h3>The activity stream could not be verified</h3></div>
+    </section>
+
+    <section class="card glass" data-section="exposure" aria-labelledby="exposureTitle">
+      <div class="card-heading"><div><p class="eyebrow">On a phone</p><h2 id="exposureTitle">What this page shows a passer-by</h2></div></div>
+      <p class="caption" id="exposureStatement">unknown</p>
+    </section>
+  </main>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Notifications</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Notifications · Acknowledging clears the notification, never the work behind it.</p></footer>
+  <script type="module" src="/js/notifications.js"></script>
+</body>
+</html>

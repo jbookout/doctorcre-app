@@ -34,6 +34,14 @@
       {"id":"h-d14-2","actor":"joe","summary":"moved demo deal from Negotiation to Legal","recorded_at":"2026-01-10T16:00:00Z"}
     ]
   },
+  "notifications": [
+    {"id":"11111111-1111-4111-8111-111111111101","severity":"action_required","reason":"Demo lease abstract needs a decision before the demo option date","subject_type":"deal","subject_ref":"d05","deep_link":"/signals/11111111-1111-4111-8111-111111111101","created_at":"2026-01-14T15:40:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"pending"},{"channel":"device","state":"suppressed_quiet_hours"}]},
+    {"id":"11111111-1111-4111-8111-111111111102","severity":"failure","reason":"Demo nightly export did not produce a generation","subject_type":"run","subject_ref":"RUN-demo-0042","deep_link":"/signals/11111111-1111-4111-8111-111111111102","created_at":"2026-01-14T14:05:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"pending"}]},
+    {"id":"11111111-1111-4111-8111-111111111103","severity":"action_required","reason":"Demo counterparty asked for a fictional revised proposal","subject_type":"deal","subject_ref":"d14","deep_link":"/signals/11111111-1111-4111-8111-111111111103","created_at":"2026-01-13T18:20:00Z","read_at":"2026-01-13T19:00:00Z","delivery":[{"channel":"in_app","state":"delivered"},{"channel":"device","state":"delivered"}]},
+    {"id":"11111111-1111-4111-8111-111111111104","severity":"failure","reason":"Demo staging deploy failed twice on the sample pipeline","subject_type":"run","subject_ref":"RUN-demo-0043","deep_link":"/signals/11111111-1111-4111-8111-111111111104","created_at":"2026-01-13T09:30:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"pending"},{"channel":"device","state":"failed"}]},
+    {"id":"11111111-1111-4111-8111-111111111105","severity":"action_required","reason":"Demo document conversation is waiting on your answer","subject_type":"doc_conversation","subject_ref":"dc-demo-0007","deep_link":"/doc-conversations/dc-demo-0007","created_at":"2026-01-12T16:45:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"pending"}]},
+    {"id":"11111111-1111-4111-8111-111111111106","severity":"failure","reason":"Demo search read timed out under the sample load","subject_type":"run","subject_ref":"RUN-demo-0044","deep_link":"/signals/11111111-1111-4111-8111-111111111106","created_at":"2026-01-12T07:10:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"delivered"},{"channel":"device","state":"suppressed_quiet_hours"}]}
+  ],
   "seed_events": [
     {"id":"e-seed-0","recorded_at":"2026-01-10T16:00:00Z","actor":"joe","verb":"patch-deal-field","subject_type":"deal","subject_id":"d14","field":"phase","old_value":"Negotiation","new_value":"Legal"},
     {"id":"e-seed-1","recorded_at":"2026-01-14T14:20:00Z","actor":"joe","verb":"set-next-step","subject_type":"deal","subject_id":"d14","field":"next_step","old_value":"Review fictional redlines","new_value":"Confirm fictional commencement"},
