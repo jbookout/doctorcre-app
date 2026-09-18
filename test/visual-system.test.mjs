@@ -13,6 +13,7 @@ const contract = JSON.parse(await read("contracts/visual-system.v1.json"));
 const css = await read("css/system.css");
 const pages = Object.fromEntries(await Promise.all(Object.entries(contract.prototypes).map(async ([key, file]) => [key, await read(file)])));
 const prototypeJs = await read("js/design-prototype.js");
+const atlasSceneJs = await read("js/atlas-scene.js");
 const docDockJs = await read("js/doc-dock.js");
 const workInventoryHtml = await read("work-inventory.html");
 const tasksHtml = await read("tasks.html");
@@ -306,7 +307,9 @@ test("the Control Room prototype briefs from popups and reports repairs instead 
   assert.match(prototypeJs, /MODEL_COLUMNS = \["Assigned", "In progress", "Blocked", "Done"\]/);
   const repaired = prototypeJs.slice(prototypeJs.indexOf('id: "repaired"'), prototypeJs.indexOf('id: "changed"'));
   assert.doesNotMatch(repaired, /Approve|Decline/, "a repair briefing carries no approve or decline control");
-  assert.match(prototypeJs, /aria-current/);
+  // V5-UX-C08 moved the Atlas out of this file into the anatomical renderer, so
+  // the current-item marking it used to carry is asserted where it now lives.
+  assert.match(atlasSceneJs, /aria-current/);
   assert.match(prototypeJs, /"data-time"|data-time/);
 });
 
