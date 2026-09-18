@@ -1,0 +1,160 @@
+{
+  "schema": "doctorcre-search-live-capture.v1",
+  "captured": "2026-09-18",
+  "verb": "find",
+  "source": "./run.sh call find, read-only, against the deployed record layer",
+  "why": "defect 33e8409b — the payload validator is run against a REAL response, not a fixture, so a validator that refuses production cannot pass review.",
+  "captures": [
+    {
+      "query": "Dell",
+      "payload": {
+        "parties": [],
+        "deals": [
+          {
+            "name": "Brady Frank - Jason Baker-Dell McCraney-Destin, FL",
+            "phase": "pending",
+            "owner": null,
+            "client_ref": "C-037"
+          }
+        ],
+        "connections": [],
+        "organizations": [
+          {
+            "name": "Dell McCraney",
+            "live_rows": 1,
+            "refs": [
+              "P-1083"
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          },
+          {
+            "name": "Scott Spidell",
+            "live_rows": 1,
+            "refs": [
+              null
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          }
+        ],
+        "lead_client_links": [],
+        "deals_via_link": [],
+        "note": "No retired aliases among these matches — every ref listed is live."
+      }
+    },
+    {
+      "query": "Pensacola",
+      "payload": {
+        "parties": [
+          {
+            "name": "Specialty Center Of Pensacola",
+            "city": "Pensacola",
+            "specialty": "Healthcare tenant",
+            "org_name": "Specialty Center Of Pensacola",
+            "ref": "L-225",
+            "kind": "lead",
+            "merged": false
+          },
+          {
+            "name": "Pensacola Smiles (Ste 49) — owner name unresolved",
+            "city": null,
+            "specialty": null,
+            "org_name": null,
+            "ref": "L-230",
+            "kind": "lead",
+            "merged": false
+          }
+        ],
+        "deals": [
+          {
+            "name": "Dr. Jenna Beasley — Pensacola Purchase",
+            "phase": "research",
+            "owner": "joe",
+            "client_ref": "C-117"
+          },
+          {
+            "name": "Pelham Tire — Pensacola distribution warehouse",
+            "phase": "research",
+            "owner": null,
+            "client_ref": "C-207"
+          },
+          {
+            "name": "Joseph Lee - Pensacola Location",
+            "phase": "closed",
+            "owner": null,
+            "client_ref": "C-101"
+          }
+        ],
+        "connections": [],
+        "organizations": [
+          {
+            "name": "NAI Pensacola",
+            "live_rows": 1,
+            "refs": [
+              null
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          },
+          {
+            "name": "Specialty Center Of Pensacola",
+            "live_rows": 1,
+            "refs": [
+              null
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 1,
+            "role_refs": [
+              "L-225"
+            ],
+            "all_retired": false
+          },
+          {
+            "name": "Gulf Coast Pelvic Floor (fka Pensacola Pelvic Floor)",
+            "live_rows": 1,
+            "refs": [
+              "P-0312"
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          },
+          {
+            "name": "Pensacola Center for Endodontics (private endodontic group practice)",
+            "live_rows": 1,
+            "refs": [
+              "P-0884"
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          }
+        ],
+        "lead_client_links": [],
+        "deals_via_link": [],
+        "note": "No retired aliases among these matches — every ref listed is live."
+      }
+    }
+  ]
+}

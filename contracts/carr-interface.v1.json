@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3"
@@ -29,6 +29,8 @@
     "decline-work-request",
     "end-deal-review",
     "engineering-passport",
+    "find",
+    "find-and-catch-up",
     "get-call-context",
     "get-deal-room",
     "get-incident",

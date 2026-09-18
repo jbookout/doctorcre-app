@@ -37,6 +37,7 @@ assert.equal(routes.routes["/control-room"], "control-room.html", "the Control R
 assert.equal(routes.routes["/status"], "status.html", "the independent status route must stay in the route contract");
 for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);
 assert.equal(routes.routes["/incidents"], "incidents.html", "the incident route must stay in the route contract");
+for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `the search tab needs ${verb} pinned`);
 for (const verb of ["get-incident", "link-incident-work-request"]) assert.ok(contract.mcp_operations.includes(verb), `the incident page needs ${verb} pinned`);
 assert.equal(routes.routes["/notifications"], "notifications.html", "the notifications route must stay in the route contract");
 for (const verb of ["notification-feed", "acknowledge-notification"]) assert.ok(contract.mcp_operations.includes(verb), `the notifications page needs ${verb} pinned`);

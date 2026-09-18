@@ -393,6 +393,15 @@ export function createLiveClient(opts = {}) {
     async renameDocConversation(args) { return write('rename-doc-conversation', args); },
     async shareDocConversation(args) { return write('share-doc-conversation', args); },
 
+    // ------------------------------------------------ global search (B05)
+    // Two READS, passed through untouched. NEITHER names an actor, a tenant or
+    // a kind: `find` declares one property and `find-and-catch-up` two, both
+    // under additionalProperties:false, so a third argument is refused by the
+    // gateway with `unregistered_operation_fields` before the handler runs.
+    // They go through `rpc` because they carry no idempotency key.
+    async find(args = {}) { return rpc('find', args); },
+    async findAndCatchUp(args = {}) { return rpc('find-and-catch-up', args); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },
