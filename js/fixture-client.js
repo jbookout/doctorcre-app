@@ -532,14 +532,25 @@ export async function createFixtureClient(opts = {}) {
   const docConversation = (row) => ({
     id: row.id, title: row.title, pinned_at: row.pinned_at || null,
     archived_at: row.archived_at || null, version: row.version, created_by: row.created_by,
+    // A STORED column, not a derivation. `ops.doc_conversation.visibility` is
+    // set at create (0523:75-78), overwritten to 'shared' by a grant
+    // (0523:181-183) and recomputed from the REMAINING unrevoked grants by a
+    // revoke (0523:196-201). The read door returns that column verbatim
+    // (0520:218). Deriving it from the grant list agrees with the store for
+    // share and revoke and DISAGREES for create, where the store reaches
+    // "visibility shared, zero grants" — a real state that a derived field
+    // cannot represent, and therefore that no test could ever cover.
+    visibility: row.visibility === 'shared' ? 'shared' : 'private',
     turns: row.turns, grants: row.grants || [],
   });
   const DOC_PRIVATE = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01';
   const DOC_SHARED = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c02';
   const DOC_REVOKED = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c03';
+  const DOC_SHARED_NO_GRANT = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c04';
   const docConversations = new Map([
     [DOC_PRIVATE, docConversation({
       id: DOC_PRIVATE, title: 'Demo — Gulf Breeze LOI and the survey window', version: 3, created_by: 'joe',
+      visibility: 'private',
       turns: [
         docTurn(0, 'human', 'Demo: what is still open on the Gulf Breeze letter of intent?', '2026-09-10T13:05:00.000Z'),
         docTurn(1, 'assistant', 'Demo: the survey window and the demo tenant improvement allowance are both unresolved.', '2026-09-10T13:05:30.000Z'),
@@ -555,6 +566,7 @@ export async function createFixtureClient(opts = {}) {
     })],
     [DOC_SHARED, docConversation({
       id: DOC_SHARED, title: 'Demo — Crestview derm site search', version: 2, created_by: 'joe',
+      visibility: 'shared',
       pinned_at: '2026-09-11T09:00:00.000Z',
       turns: [
         docTurn(0, 'human', 'Demo: which Crestview demo suites are still on the short list?', '2026-09-11T08:40:00.000Z'),
@@ -566,6 +578,8 @@ export async function createFixtureClient(opts = {}) {
     })],
     [DOC_REVOKED, docConversation({
       id: DOC_REVOKED, title: 'Demo — Coastal survey follow-up', version: 4, created_by: 'joe',
+      // The revoke recomputed the column back to private; the grant row remains.
+      visibility: 'private',
       archived_at: '2026-09-12T17:00:00.000Z',
       turns: [
         docTurn(0, 'human', 'Demo: has the demo surveyor answered yet?', '2026-09-12T15:10:00.000Z'),
@@ -574,6 +588,21 @@ export async function createFixtureClient(opts = {}) {
       ],
       // Revoked, never deleted: the row stays and carries its `revoked_at`.
       grants: [{ grantee_actor: partnerActor, granted_at: '2026-09-12T15:20:00.000Z', granted_by_actor: 'joe', revoked_at: '2026-09-12T16:58:00.000Z' }],
+    })],
+    // The state EVERY shared create reaches in production, and the one a fixture
+    // that derived visibility from the grant list could not represent at all:
+    // the header column says `shared` (0523:75-78 writes it) and the grant table
+    // is empty (that function inserts no grant). The read door gates on
+    // creator-or-unrevoked-grant (0520:186-189), so the partner is refused —
+    // a header that says shared is not a grant.
+    [DOC_SHARED_NO_GRANT, docConversation({
+      id: DOC_SHARED_NO_GRANT, title: 'Demo — Navarre imaging suite, shared at birth', version: 1, created_by: 'joe',
+      visibility: 'shared',
+      turns: [
+        docTurn(0, 'human', 'Demo: start this one shared so I do not forget to share it.', '2026-09-13T10:00:00.000Z'),
+        docTurn(1, 'assistant', 'Demo: the header says shared; nobody holds a grant until you issue one.', '2026-09-13T10:00:20.000Z'),
+      ],
+      grants: [],
     })],
   ]);
   /**
@@ -586,7 +615,11 @@ export async function createFixtureClient(opts = {}) {
   const docIdemArgs = new Map();
 
   const docLiveGrants = (row) => row.grants.filter((grant) => !grant.revoked_at);
-  const docVisibility = (row) => (docLiveGrants(row).length ? 'shared' : 'private');
+  /** 0523:196-201: a revoke recomputes the column from what is LEFT unrevoked. */
+  const docRecomputeVisibility = (row) => {
+    row.visibility = docLiveGrants(row).length ? 'shared' : 'private';
+    return row.visibility;
+  };
   const docVisibleTo = (row, actor) => row.created_by === actor
     || docLiveGrants(row).some((grant) => grant.grantee_actor === actor);
   const docVisibleCount = (actor) => [...docConversations.values()]
@@ -1235,20 +1268,26 @@ export async function createFixtureClient(opts = {}) {
       const id = String(conversation_id || '');
       const row = DOC_UUID.test(id) ? docConversations.get(id) : null;
       if (!row || !docVisibleTo(row, selfActor)) refuse('read-doc-conversation', 'doc_conversation_not_found');
-      const capped = Number.isInteger(limit) ? Math.min(200, Math.max(1, limit)) : 50;
-      const after = Number.isInteger(after_sequence) ? after_sequence : -1;
-      const eligible = row.turns.filter((turn) => turn.sequence > after);
+      // The store's own clamps and its own predicate, copied rather than
+      // approximated: `least(greatest(coalesce(p_limit,200),1),200)` (0520:181),
+      // `greatest(coalesce(p_after_sequence,0),0)` (0520:182), and the page
+      // selection `where sequence >= v_after` (0520:198) — INCLUSIVE. A fixture
+      // that paged exclusively would certify a client that duplicates a turn.
+      const capped = Math.min(200, Math.max(1, Number.isInteger(limit) ? limit : 200));
+      const after = Math.max(0, Number.isInteger(after_sequence) ? after_sequence : 0);
+      const eligible = row.turns.filter((turn) => turn.sequence >= after);
       const page = eligible.slice(0, capped);
       return {
         ok: true,
         identity: {
-          id: row.id, title: row.title, visibility: docVisibility(row),
+          id: row.id, title: row.title, visibility: row.visibility,
           pinned_at: row.pinned_at, archived_at: row.archived_at,
           version: row.version, created_by: row.created_by,
         },
         turns: page.map((turn) => ({ ...turn })),
         latest_sequence: row.turns.length ? row.turns[row.turns.length - 1].sequence : -1,
-        more: eligible.length > page.length,
+        // 0520:202-204 verbatim: `exists sequence >= v_after + count(returned)`.
+        more: row.turns.some((turn) => turn.sequence >= after + page.length),
         effective_grants: docLiveGrants(row).map((grant) => ({
           grantee_actor: grant.grantee_actor, granted_at: grant.granted_at, granted_by_actor: grant.granted_by_actor,
         })),
@@ -1263,12 +1302,24 @@ export async function createFixtureClient(opts = {}) {
         if (!DOC_UUID.test(key)) refuse('create-doc-conversation', 'doc_conversation_idempotency_key_invalid', { idempotency_key });
         const name = String(title ?? '').trim();
         if (name.length < 1 || name.length > 200) refuse('create-doc-conversation', 'doc_conversation_title_invalid', { title });
+        if (visibility !== undefined && visibility !== 'private' && visibility !== 'shared') {
+          refuse('create-doc-conversation', 'doc_conversation_visibility_invalid', { visibility });
+        }
         const shared = visibility === 'shared';
+        // ONE HEADER ROW AND NO GRANT. `ops.create_doc_conversation` is a single
+        // insert into `ops.doc_conversation` (0523:75-78) and touches
+        // `ops.doc_conversation_grant` nowhere. A conversation created `shared`
+        // is a header that SAYS shared with an EMPTY grant list, and the read
+        // door gates on creator-or-unrevoked-grant (0520:186-189), so the
+        // partner is refused until somebody explicitly shares it with him.
+        // Minting a grant here would show a partner, in demo mode, holding a
+        // read that production refuses him.
+        //
         // The key IS the id. That is the store's own rule, and it is what makes
         // a replay of the retained request a retry instead of a second row.
         docConversations.set(key, docConversation({
           id: key, title: name, version: 1, created_by: selfActor, turns: [],
-          grants: shared ? [{ grantee_actor: DOC_ACTORS.find((slug) => slug !== selfActor) || partnerActor, granted_at: nowIso(), granted_by_actor: selfActor, revoked_at: null }] : [],
+          visibility: shared ? 'shared' : 'private', grants: [],
         }));
         return { ok: true, conversation_id: key, title: name, visibility: shared ? 'shared' : 'private', version: 1 };
       });
@@ -1291,14 +1342,18 @@ export async function createFixtureClient(opts = {}) {
         // Granting twice and revoking twice are NOT refusals: the store answers
         // both with `already: true`, having written nothing the second time.
         if (granted === true) {
-          if (live) return { ok: true, conversation_id: id, grantee_slug: slug, already: true, granted: true, visibility: docVisibility(row) };
+          if (live) return { ok: true, conversation_id: id, grantee_slug: slug, already: true, granted: true, visibility: row.visibility };
           row.grants.push({ grantee_actor: slug, granted_at: nowIso(), granted_by_actor: selfActor, revoked_at: null });
-          return { ok: true, conversation_id: id, grantee_slug: slug, already: false, granted: true, visibility: docVisibility(row) };
+          // 0523:181-183: a grant OVERWRITES the column to 'shared'. It is not
+          // recomputed, and it does not bump the version.
+          row.visibility = 'shared';
+          return { ok: true, conversation_id: id, grantee_slug: slug, already: false, granted: true, visibility: row.visibility };
         }
-        if (!live) return { ok: true, conversation_id: id, grantee_slug: slug, already: true, granted: false, visibility: docVisibility(row) };
+        if (!live) return { ok: true, conversation_id: id, grantee_slug: slug, already: true, granted: false, visibility: row.visibility };
         // Revoked, never deleted: the row stays and carries when it ended.
         live.revoked_at = nowIso();
-        return { ok: true, conversation_id: id, grantee_slug: slug, already: false, granted: false, visibility: docVisibility(row) };
+        docRecomputeVisibility(row);
+        return { ok: true, conversation_id: id, grantee_slug: slug, already: false, granted: false, visibility: row.visibility };
       });
     },
 

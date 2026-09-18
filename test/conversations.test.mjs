@@ -45,6 +45,7 @@ const fixture = async (options = {}) => {
 const PRIVATE = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01";
 const SHARED = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c02";
 const REVOKED = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c03";
+const SHARED_NO_GRANT = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c04";
 const ABSENT = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3cff";
 const key = (tail) => `9b8a7c6d-5e4f-4a3b-8c2d-${String(tail).padEnd(12, "0")}`;
 const codeOf = async (run) => {
@@ -89,12 +90,12 @@ test("clause 2: the visible count is the payload's own number, and the page prin
   const joe = await fixture();
   const dell = await fixture({ selfActor: "dell" });
 
-  assert.equal((await joe.readDocConversation({ conversation_id: PRIVATE })).visible_conversation_count, 3);
+  assert.equal((await joe.readDocConversation({ conversation_id: PRIVATE })).visible_conversation_count, 4);
   assert.equal((await dell.readDocConversation({ conversation_id: SHARED })).visible_conversation_count, 1,
     "the partner's count includes a conversation that is not shared with him");
 
   const payload = await joe.readDocConversation({ conversation_id: PRIVATE });
-  assert.equal(visibleCountLine(payload, 3), "You can see 3 conversations. This device remembers 3 of them.");
+  assert.equal(visibleCountLine(payload, 4), "You can see 4 conversations. This device remembers 4 of them.");
   // The roster and the count are DIFFERENT numbers with different meanings, and
   // the page says both rather than reconciling them into one.
   assert.match(visibleCountLine(payload, 1), /This device remembers 1 of them\./);
@@ -342,10 +343,13 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
   const head = await joe.readDocConversation({ conversation_id: PRIVATE, limit: 3 });
   assert.equal(head.turns.length, 3);
   assert.equal(head.more, true);
-  assert.equal(head.latest_sequence, 6, "latest_sequence is the page's last sequence, not the conversation's");
-  assert.deepEqual(pagingState(head), { more: true, after: 2 });
+  assert.equal(head.latest_sequence, 6, "latest_sequence is the conversation's last sequence, not this page's");
+  // `after_sequence` is INCLUSIVE (0520:198), so the next page starts at the
+  // sequence AFTER the last one rendered. Naming the last rendered sequence
+  // would ask for it a second time.
+  assert.deepEqual(pagingState(head), { more: true, after: 3 });
 
-  const tail = await joe.readDocConversation({ conversation_id: PRIVATE, after_sequence: 2, limit: 50 });
+  const tail = await joe.readDocConversation({ conversation_id: PRIVATE, after_sequence: 3, limit: 50 });
   assert.deepEqual(tail.turns.map((turn) => turn.sequence), [3, 4, 5, 6]);
   assert.equal(tail.more, false);
   assert.deepEqual(pagingState(tail), { more: false, after: null });
@@ -543,4 +547,104 @@ test("a hostile turn body renders as text, and create refuses what the verb refu
   assert.equal(validDocConversationPayload({ identity: { id: PRIVATE, title: "t", version: 0 } }), false);
   assert.equal(shareArgs("not-a-uuid", "dell", true).ok, false);
   assert.deepEqual(shareArgs(PRIVATE, " dell ", true).args, { conversation_id: PRIVATE, grantee_slug: "dell", granted: true });
+});
+
+/* ------------------------------------------- B1: the store's paging predicate */
+
+test("clause 9b: after_sequence is INCLUSIVE, so the next page starts at last+1 and the boundary turn renders exactly once", async () => {
+  const joe = await fixture();
+
+  // The store's own predicate, pinned directly: asking AT a sequence returns
+  // that sequence. This is the assertion the first build got backwards, and it
+  // is what makes the `+ 1` in `pagingState` load-bearing rather than cosmetic.
+  const atBoundary = await joe.readDocConversation({ conversation_id: PRIVATE, after_sequence: 2, limit: 50 });
+  assert.deepEqual(atBoundary.turns.map((turn) => turn.sequence), [2, 3, 4, 5, 6],
+    "after_sequence is being treated as exclusive; the record layer selects `sequence >= v_after` (0520:198)");
+  assert.equal(atBoundary.turns[0].sequence, 2, "the boundary turn was not returned");
+
+  // 0520:182: the argument is clamped at zero, and a missing one is zero — so a
+  // first page and an explicit 0 are the same page, and neither drops turn 0.
+  const first = await joe.readDocConversation({ conversation_id: PRIVATE, limit: 50 });
+  assert.equal(first.turns[0].sequence, 0, "the first page dropped turn 0");
+  assert.deepEqual((await joe.readDocConversation({ conversation_id: PRIVATE, after_sequence: 0, limit: 50 })).turns.map((t) => t.sequence), first.turns.map((t) => t.sequence));
+  assert.deepEqual((await joe.readDocConversation({ conversation_id: PRIVATE, after_sequence: -5, limit: 50 })).turns.map((t) => t.sequence), first.turns.map((t) => t.sequence));
+
+  // Now the page's own arithmetic, end to end: read a page, take the offset the
+  // model hands the page, read the next page, merge the way the page merges —
+  // and assert EVERY sequence appears exactly once. A page whose whole job is
+  // "original messages retained" must not show a message that was said once twice.
+  const head = await joe.readDocConversation({ conversation_id: PRIVATE, limit: 3 });
+  const offset = pagingState(head);
+  assert.equal(offset.more, true);
+  assert.equal(offset.after, head.turns[head.turns.length - 1].sequence + 1);
+  const next = await joe.readDocConversation({ conversation_id: PRIVATE, after_sequence: offset.after, limit: 50 });
+  const merged = [...head.turns, ...next.turns].map((turn) => turn.sequence);
+  assert.deepEqual(merged, [0, 1, 2, 3, 4, 5, 6], "the merged transcript is not the conversation");
+  assert.equal(new Set(merged).size, merged.length, "a turn was rendered twice across the page boundary");
+  const boundary = merged.filter((sequence) => sequence === 2);
+  assert.equal(boundary.length, 1, "the boundary turn was rendered twice");
+
+  // And the merge in the page is the plain append this test just modelled: no
+  // de-duplication layer hides a wrong offset.
+  assert.match(pageJs, /\{ \.\.\.payload, turns: \[\.\.\.held\.turns, \.\.\.payload\.turns\] \}/);
+  assert.match(pageJs, /if \(Number\.isInteger\(after\)\) args\.after_sequence = after;/);
+});
+
+/* ------------------------------ B2: a shared create writes a header, no grant */
+
+test("clause 3b: a shared create writes one header row and NO grant, so the partner is refused until an explicit share", async () => {
+  const joe = await fixture();
+  const dell = await fixture({ selfActor: "dell" });
+
+  // The seeded twin of what every shared create produces: header `shared`,
+  // grant table empty. It is seeded because a conversation created inside one
+  // fixture client exists only in that client's store, so the cross-actor half
+  // of this proof needs a row both clients hold.
+  const mine = await joe.readDocConversation({ conversation_id: SHARED_NO_GRANT });
+  assert.equal(mine.identity.visibility, "shared", "the stored visibility column was not carried");
+  assert.deepEqual(mine.effective_grants, [], "a grant exists that the record layer never writes");
+  assert.deepEqual(accessRows(mine), []);
+
+  // The partner is REFUSED. The read door gates on creator-or-unrevoked-grant
+  // (0520:186-189); a header that says shared is not a grant. This is the
+  // assertion that a fabricated create-grant made impossible: in demo mode the
+  // page would have shown him holding a read production refuses him.
+  assert.equal(await codeOf(() => dell.readDocConversation({ conversation_id: SHARED_NO_GRANT })),
+    "doc_conversation_not_found", "a shared-at-birth conversation was readable without a grant");
+  assert.equal((await dell.readDocConversation({ conversation_id: SHARED })).visible_conversation_count, 1,
+    "the shared-at-birth conversation leaked into the partner's authorized count");
+
+  // The page renders that state honestly rather than naming somebody.
+  const header = identityHeader(mine);
+  assert.equal(header.visibility, "shared");
+  assert.equal(header.word, "Shared — no one right now");
+  assert.equal(header.glyph, "🔓");
+  assert.deepEqual(shareCandidates(mine, PARTNER_SLUGS), [{ slug: "dell", granted: false }]);
+
+  // An explicit share is what actually lets him in, and it is the only thing that does.
+  await joe.shareDocConversation({ idempotency_key: key("5ba7ee"), conversation_id: SHARED_NO_GRANT, grantee_slug: "dell", granted: true });
+  assert.deepEqual(accessRows(await joe.readDocConversation({ conversation_id: SHARED_NO_GRANT })).map((row) => row.grantee), ["dell"]);
+
+  // And the create path itself reaches exactly that shape: header shared, no grant.
+  const made = await joe.createDocConversation({ idempotency_key: key("5ba7ed"), title: "Demo — shared at birth", visibility: "shared" });
+  assert.equal(made.visibility, "shared");
+  const born = await joe.readDocConversation({ conversation_id: made.conversation_id });
+  assert.equal(born.identity.visibility, "shared");
+  assert.deepEqual(born.effective_grants, [], "the create fabricated a grant the record layer never writes");
+  assert.equal(identityHeader(born).word, "Shared — no one right now");
+
+  // Visibility is a STORED column, not a derivation: a private create is private
+  // with no grants, and a revoke recomputes it back from what is left unrevoked.
+  const priv = await joe.createDocConversation({ idempotency_key: key("5ba7ef"), title: "Demo — private at birth", visibility: "private" });
+  const privRead = await joe.readDocConversation({ conversation_id: priv.conversation_id });
+  assert.equal(privRead.identity.visibility, "private");
+  assert.deepEqual(privRead.effective_grants, []);
+  await joe.shareDocConversation({ idempotency_key: key("5ba7f0"), conversation_id: SHARED_NO_GRANT, grantee_slug: "dell", granted: false });
+  assert.equal((await joe.readDocConversation({ conversation_id: SHARED_NO_GRANT })).identity.visibility, "private",
+    "a revoke did not recompute the stored column");
+  assert.equal(await codeOf(() => joe.createDocConversation({ idempotency_key: key("5ba7f1"), title: "Demo — bad visibility", visibility: "everyone" })), "doc_conversation_visibility_invalid");
+
+  // The fixture must CARRY the column, never derive it from the grant list.
+  assert.equal(/visibility: docLiveGrants\(row\)|const docVisibility =/.test(fixtureJs), false,
+    "visibility is derived from the grants again; the shared-with-zero-grants state becomes unrepresentable");
 });

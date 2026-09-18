@@ -191,12 +191,24 @@ export function turnRows(payload) {
  * Whether a "Show more" control exists at all, and what it would ask for. The
  * control appears ONLY when the server said `more: true`; a page that offered
  * it otherwise would be inviting a read the record layer already answered.
+ *
+ * `after_sequence` IS INCLUSIVE. `ops.doc_conversation_facts` selects
+ * `where sequence >= v_after` (0520:198) after clamping the argument at zero
+ * (0520:182), so naming the last sequence already rendered asks the store to
+ * send that turn AGAIN — and this page appends what comes back, which would
+ * render a message that was said once twice. The offset is therefore
+ * `last + 1`: the client speaks the producer's own predicate.
+ *
+ * The alternative — keep `last` and drop the overlapping turn on merge — was
+ * rejected. It leaves the page asking for a turn it already holds, pays for it
+ * over the wire, and hides a wrong request behind a correction layer that every
+ * future caller of this model would have to remember to apply.
  */
 export function pagingState(payload) {
   if (!validDocConversationPayload(payload)) return { more: false, after: null };
   const rows = turnRows(payload);
   if (payload.more !== true || rows.length === 0) return { more: false, after: null };
-  return { more: true, after: rows[rows.length - 1].sequence };
+  return { more: true, after: rows[rows.length - 1].sequence + 1 };
 }
 
 /* ------------------------------------------------------------------ the access */
