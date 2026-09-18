@@ -105,7 +105,7 @@
     <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>
       <section class="card glass" aria-labelledby="atlasTitle">
         <div class="card-heading">
-          <div><p class="eyebrow">System Atlas</p><h2 id="atlasTitle">Atlas</h2></div>
+          <div><p class="eyebrow">System Atlas</p><h2 id="atlasTitle">Anatomical Atlas</h2></div>
           <div class="btn-group" id="layerSwitch" role="group" aria-label="Layer">
             <button class="btn" type="button" data-layer="all" aria-pressed="true">All</button>
             <button class="btn" type="button" data-layer="data" aria-pressed="false">Data</button>
@@ -114,19 +114,38 @@
             <button class="btn" type="button" data-layer="infra" aria-pressed="false">Infrastructure</button>
           </div>
         </div>
+        <p class="atlas-note" id="atlasStableNote"></p>
+        <div class="atlas-toolbar">
+          <div class="btn-group" id="atlasViewSwitch" role="group" aria-label="View">
+            <button class="btn" type="button" data-view="assembled" aria-pressed="true">Assembled</button>
+            <button class="btn" type="button" data-view="exploded" aria-pressed="false">Exploded</button>
+            <button class="btn" type="button" data-view="flat" aria-pressed="false">Flat list</button>
+          </div>
+          <div class="atlas-rotate">
+            <button class="btn icon-btn" type="button" id="atlasRotateLeft" aria-label="Rotate left"><span aria-hidden="true">↺</span></button>
+            <label for="atlasRotate">Rotate</label>
+            <input type="range" id="atlasRotate" min="-60" max="60" step="15" value="-18">
+            <button class="btn icon-btn" type="button" id="atlasRotateRight" aria-label="Rotate right"><span aria-hidden="true">↻</span></button>
+            <output id="atlasRotateValue" for="atlasRotate">-18°</output>
+          </div>
+          <button class="btn" type="button" id="atlasRetired" aria-pressed="false">Include retired</button>
+        </div>
         <p class="sr-only" id="layerLive" aria-live="polite"></p>
         <div class="atlas-layout">
           <div class="atlas glass" id="atlas">
-            <svg id="atlasSvg" viewBox="0 0 860 360" role="group" aria-label="System Atlas. Six components in a stable anatomical layout; select one to focus it. The same components are listed beside the scene."></svg>
-            <div class="atlas-controls"><button class="btn" type="button" id="atlasBack" disabled>Back</button><a class="btn" href="#atlasIndex">Flat list</a></div>
+            <nav class="atlas-crumbs" id="atlasCrumbs" aria-label="Where you are in the body"></nav>
+            <svg id="atlasSvg" viewBox="0 0 1040 500" tabindex="0" role="group" aria-label="Anatomical Atlas. Four organs in a fixed layout; depth is evidence, not importance. Rotate with the left and right arrow keys. Every component is also listed beside the scene."></svg>
+            <div class="atlas-controls"><button class="btn" type="button" id="atlasBack" disabled>Return to whole system</button><a class="btn" href="#atlasIndex">Flat list</a></div>
+            <p class="atlas-motion" id="atlasMotionNote"></p>
           </div>
           <div class="atlas-side">
-            <ul class="legend" aria-label="Category legend">
-              <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data</li>
-              <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution</li>
-              <li><span class="swatch" data-cat="rules" aria-hidden="true"></span> Rules</li>
-              <li><span class="swatch" data-cat="infra" aria-hidden="true"></span> Infrastructure</li>
+            <ul class="legend" aria-label="Layer legend: shape and colour together">
+              <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data · Senses · circle</li>
+              <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution · Spine · square</li>
+              <li><span class="swatch" data-cat="rules" aria-hidden="true"></span> Rules · Nervous system · diamond</li>
+              <li><span class="swatch" data-cat="infra" aria-hidden="true"></span> Infrastructure · Muscle and bone · tab</li>
             </ul>
+            <ul class="legend legend-evidence" id="atlasEvidenceLegend" aria-label="Evidence legend: depth, outline and word"></ul>
             <ul class="atlas-index" id="atlasIndex" aria-label="Components, flat list"></ul>
             <div id="componentDrawer" class="component-drawer" aria-live="polite" hidden>
               <div class="panel-head"><div><p class="eyebrow">Component</p><h2 id="componentTitle" style="font-size:24px"></h2></div></div>
@@ -134,6 +153,14 @@
             </div>
           </div>
         </div>
+        <section class="atlas-coverage" aria-labelledby="atlasCoverageTitle">
+          <div class="card-heading"><div><p class="eyebrow">What was read</p><h2 id="atlasCoverageTitle" style="font-size:24px">Coverage</h2></div></div>
+          <p class="atlas-explanation" id="atlasSafeExplanation"></p>
+          <ul class="coverage-list" id="atlasCoverageAnswered"></ul>
+          <h3 class="eyebrow" id="atlasGapsTitle">Known gaps in this release</h3>
+          <ul class="coverage-list" id="atlasCoverageGaps"></ul>
+          <ul class="rule-list" id="atlasLimits"></ul>
+        </section>
       </section>
     </section>
 
