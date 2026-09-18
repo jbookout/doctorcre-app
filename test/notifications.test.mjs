@@ -299,7 +299,7 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
   assert.equal(routes.version, "1.10.0");
-  assert.equal(contract.version, "1.12.0");
+  assert.equal(contract.version, "1.13.0");
   assert.equal(contract.producer.source_commit, "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3");
   assert.equal(routes.routes["/notifications"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification"]) {

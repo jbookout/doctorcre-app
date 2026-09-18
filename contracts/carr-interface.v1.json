@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "a7b7bf46bfbd6d2cb1337c4ef851632873a422e3"
@@ -66,6 +66,7 @@
     "/pipeline/changes",
     "/api/v1/business/*",
     "/api/v1/command-center",
+    "/api/v1/atlas-graph",
     "/api/v1/work-inventory",
     "/api/room/*",
     "/api/system-work/*",

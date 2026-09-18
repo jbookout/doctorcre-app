@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { atlasFixtureResponse } from "./atlas-fixture.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const routeContract = JSON.parse(await readFile(new URL("../contracts/app-routes.v1.json", import.meta.url), "utf8"));
@@ -120,6 +121,14 @@ createServer(async (request, response) => {
         carr_contract: { schema: carrContract.schema, version: carrContract.version },
         route_contract: { schema: routeContract.schema, version: routeContract.version },
       }));
+      return;
+    }
+    if (url.pathname === "/api/v1/atlas-graph") {
+      // One function decides this route, and test/control-room.test.mjs imports
+      // that same function: the fixture cannot drift from what the test certifies.
+      const answer = atlasFixtureResponse(url, request.method);
+      response.writeHead(answer.status, { ...answer.headers, "cache-control": "no-store" });
+      response.end(answer.body === null ? undefined : JSON.stringify(answer.body));
       return;
     }
     if (url.pathname === "/api/v1/work-inventory") {
