@@ -379,6 +379,19 @@ export function createLiveClient(opts = {}) {
     async notificationFeed(args = {}) { return rpc('notification-feed', args); },
     async acknowledgeNotification(args) { return write('acknowledge-notification', args); },
 
+    // -------------------------------------------- Doc conversations page (B07)
+    // One read and three writes, passed through untouched. NONE of them names an
+    // actor: the creator, the grantor and every timestamp are derived inside the
+    // definer functions, and additionalProperties:false turns an attempt to name
+    // one into a schema error. The read goes through `rpc` because it carries no
+    // idempotency key; the three writes go through `write` because they do. Note
+    // that create's key BECOMES the conversation id, so a second key is a second
+    // conversation — the kernel's retained request is what keeps that honest.
+    async readDocConversation(args = {}) { return rpc('read-doc-conversation', args); },
+    async createDocConversation(args) { return write('create-doc-conversation', args); },
+    async renameDocConversation(args) { return write('rename-doc-conversation', args); },
+    async shareDocConversation(args) { return write('share-doc-conversation', args); },
+
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

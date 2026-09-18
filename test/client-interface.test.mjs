@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createLiveClient } from "../js/live-client.js";
 
-const required = ["getBoard", "getDeal", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification"];
+const required = ["getBoard", "getDeal", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "readDocConversation", "createDocConversation", "renameDocConversation", "shareDocConversation"];
 
 test("synthetic and live adapters satisfy the same DealRoomClient interface", async () => {
   const fixtureText = await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8");

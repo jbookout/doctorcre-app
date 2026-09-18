@@ -52,6 +52,10 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `notifications.html` | V5-UX-B12a Notifications at `/notifications`: the items addressed to you, the delivery state per channel including what quiet hours held, and the accountable activity stream beside them |
 | `js/notifications-model.js` | Pure notification rules: the feed payload's exact keys, the two-value severity vocabulary, the delivery phrases, the deep-link route lookup, the eight UX20 states and the one write's arguments |
 | `js/notifications.js` | Notifications DOM wiring over `notification-feed` and `GET /pipeline/changes`, with `acknowledge-notification` sent through the shared command kernel and dock |
+| `conversations.html` | V5-UX-B07 Doc conversations at `/conversations?id=…`: the device roster of conversations, one conversation's turns, who can read it, and create / rename / pin / archive / share through the record layer |
+| `css/conversations.css` | The conversations page layer: private versus shared drawn with a word, a glyph and an accent, the one-column transcript, and the 44px floor at 360px |
+| `js/conversations-model.js` | Pure conversation rules: the verb's own uuid shape, the read payload's exact keys, the device roster (ids only), the eight UX20 states, the compare-and-swap argument builders and the five operation keys |
+| `js/conversations.js` | Conversations DOM wiring over `read-doc-conversation`, with `create-`, `rename-` and `share-doc-conversation` sent through the shared command kernel and dock |
 | `status.html` | V5-UX-C15 Status at `/status`: the one page served ahead of the CARR sign-in gate, so an app outage and a record-layer outage can be told apart without signing in |
 | `js/status-model.js` | Pure status rules: the four headline scenarios, the sanitized refusal sentence, the payload-free last-known snapshot and the named integration gaps |
 | `js/status.js` | Status DOM wiring over `GET /app-release` and the four Control Room reads, each settled on its own |

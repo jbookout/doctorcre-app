@@ -93,6 +93,23 @@
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
  * @property {() => Promise<void>} [simulatePartnerCall] fixture-only demo of presence + distill
+ * @property {(args:{conversation_id:string, after_sequence?:number, limit?:number}) => Promise<DocConversation>} readDocConversation
+ * @property {(args:{idempotency_key:string, title:string, visibility?:'private'|'shared'}) => Promise<{ok:true, conversation_id:string}>} createDocConversation
+ * @property {(args:{idempotency_key:string, conversation_id:string, base_version:number, title?:string, pinned?:boolean, archived?:boolean}) => Promise<{ok:true, version:number}>} renameDocConversation
+ * @property {(args:{idempotency_key:string, conversation_id:string, grantee_slug:string, granted:boolean}) => Promise<{ok:true, already:boolean, granted:boolean}>} shareDocConversation
+ *
+ * The projection `read-doc-conversation` returns. The identity and the turns are
+ * kept apart because a rename moves the identity and must move nothing else, and
+ * `visible_conversation_count` is a FLEET fact returned inside a single read —
+ * it is the only list-shaped thing the store exposes, and there is no list door.
+ *
+ * @typedef {Object} DocConversation
+ * @property {{id:string,title:string,visibility:'private'|'shared',pinned_at:string|null,archived_at:string|null,version:number,created_by:string}} identity
+ * @property {{sequence:number,role:'human'|'assistant'|'system',body:string,msg_id:string|null,origin_channel:string|null,origin_actor:string|null,at:string}[]} turns
+ * @property {number} latest_sequence
+ * @property {boolean} more
+ * @property {{grantee_actor:string,granted_at:string,granted_by_actor:string}[]} effective_grants
+ * @property {number} visible_conversation_count
  *
  * @typedef {Object} ConfirmProposal
  * @property {string} id
