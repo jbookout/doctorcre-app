@@ -57,14 +57,6 @@ const viewCode = stripJs(viewSource);
 const modelCode = stripJs(modelSource);
 const htmlMarkup = stripHtml(html);
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-const gitShow = async (path) => {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const { stdout } = await promisify(execFile)("git", ["show", `origin/main:${path}`],
-    { cwd: new URL(".", root).pathname, maxBuffer: 32 * 1024 * 1024 });
-  return stdout;
-};
-const mainContract = JSON.parse(await gitShow("contracts/carr-interface.v1.json"));
 
 /** A session row in the producer's exact shape, for the branches live rows miss. */
 const sessionRow = (over = {}) => ({
@@ -385,8 +377,17 @@ test("C12-16 the browser does not sort, filter or re-rank the server's arrays", 
 
 // MUTATION: touch one line of js/room.js.
 test("C12-17 the Observatory is untouched by this slice", async () => {
-  for (const path of ["room.html", "js/room.js"]) {
-    assert.equal(await read(path), await gitShow(path), `${path} is byte-identical to origin/main`);
+  // Pinned by content digest, not by `git show origin/main`: the hosted runner
+  // checks out a single commit with no origin/main ref, so a trunk diff fails
+  // there with "invalid object name" (that is why PR 40's check went red).
+  const { createHash } = await import("node:crypto");
+  const pinned = {
+    "room.html": "354f74c7546dbd583504015674426a7afe964170b027268d2fe459d16b79c2f5",
+    "js/room.js": "711e143b4872169e4039aa85b6763126fcce459d5824748f122b8b236c1d9880",
+  };
+  for (const [path, digest] of Object.entries(pinned)) {
+    const actual = createHash("sha256").update(await read(path)).digest("hex");
+    assert.equal(actual, digest, `${path} is byte-identical to the Observatory that shipped before this slice`);
   }
   // Not modified, not retired, not redirected: nothing in this slice links to it
   // as a replacement, and retiring it is Joe's decision, not this build's.
@@ -408,11 +409,16 @@ test("C12-18 the contract pins all four verbs, sorted, at 1.17.0 with 55 operati
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // No new producer commit is involved: S02 already pinned this release.
   assert.equal(contract.producer.source_commit, "0f6cb388424e83a75396a3e2d3bfc14839e81b35");
-  // Nothing new is read over HTTP, so http_surfaces does not move at all. It is
-  // compared to origin/main rather than grepped: `/api/room/*` was already there
-  // for the Observatory, and a grep would read that as this slice's doing.
-  assert.deepEqual(contract.http_surfaces, mainContract.http_surfaces, "http_surfaces does not move");
-  assert.equal(mainContract.mcp_operations.length, 53, "the branch adds exactly two operations to main's 53");
+  // Nothing new is read over HTTP, so http_surfaces is pinned to the exact set
+  // that shipped before this slice. It is a static pin, not a diff against
+  // origin/main: once this branch IS origin/main a diff against it passes for
+  // any value, and a "main has 53" count fails by construction after merge
+  // (that is how PR 40 turned main red on 2026-09-19). `/api/room/*` was already
+  // present for the Observatory, so its presence here is not this slice's doing.
+  assert.deepEqual(contract.http_surfaces, [
+    "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
+    "/api/v1/work-inventory", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
+  ], "http_surfaces does not move");
 });
 
 /* ------------------------------------------- the validators, on real payloads */
