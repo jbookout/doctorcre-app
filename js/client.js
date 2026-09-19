@@ -95,6 +95,8 @@
  * @property {() => Promise<void>} [simulatePartnerCall] fixture-only demo of presence + distill
  * @property {(args:{query?:string, limit?:number, include_closed?:boolean}) => Promise<SessionIdentityResponse>} sessionIdentity
  * @property {(args:{session_id:string, cursor?:string, limit?:number}) => Promise<DispatchHistoryResponse>} dispatchHistory
+ * @property {(args:{room?:string}) => Promise<RoomQueueResponse>} roomQueue the assignment projection for one room; the room is a constant in js/model-room-model.js and is never the tab's own name
+ * @property {(args:{room?:string, after_seq?:number, limit?:number}) => Promise<RoomTurnsResponse>} roomTurns room turns exactly as written; `body` is untrusted prose and is never parsed
  * @property {(args:{conversation_id:string, after_sequence?:number, limit?:number}) => Promise<DocConversation>} readDocConversation
  * @property {(args:{cursor?:string, limit?:number, include_archived?:boolean}) => Promise<DocConversationList>} listDocConversations
  * @property {(args:{idempotency_key:string, title:string, visibility?:'private'|'shared'}) => Promise<{ok:true, conversation_id:string}>} createDocConversation
@@ -190,6 +192,52 @@
  * @property {null} acknowledged unavailable on this substrate
  * @property {string|null} stage_unavailable_reason
  * @property {DispatchEvent[]} events newest first
+ *
+ * @typedef {Object} QueueCard V5-UX-C12. Every field is one the producer already validated.
+ * @property {string} title
+ * @property {string} target
+ * @property {string|Object} effective_model a string OR an object; the producer checks both, so a view needs a branch
+ * @property {string} status
+ * @property {string} priority
+ * @property {string} cap
+ * @property {string} updated_at
+ * @property {number|null} source_seq
+ *
+ * @typedef {Object} QueueEvent
+ * @property {1} v
+ * @property {'carr-build'} board
+ * @property {number} event_id
+ * @property {string} event
+ * @property {string} task_id
+ * @property {QueueCard} card
+ * @property {string} summary
+ * @property {string} projected_at
+ *
+ * @typedef {Object} RoomQueueResponse
+ * @property {true} ok
+ * @property {string} room the room the projection was read FROM, which is the server's answer and not the argument
+ * @property {QueueEvent[]} events already sorted by card.updated_at descending, archived removed
+ * @property {string|null} projected_at null means nothing has EVER been projected here, which is not staleness
+ * @property {boolean} live a 120-second window around projected_at, not an opinion
+ *
+ * @typedef {Object} RoomTurn
+ * @property {string|number} seq a bigint, serialised as a decimal string by the driver
+ * @property {string} room_id
+ * @property {string} at
+ * @property {string} sponsor
+ * @property {string} seat
+ * @property {string} kind
+ * @property {string} body untrusted prose, never parsed, even when it is valid JSON
+ * @property {string} msg_id
+ * @property {string} origin_channel
+ * @property {string} origin_actor
+ *
+ * @typedef {Object} RoomTurnsResponse
+ * @property {true} ok
+ * @property {string} room
+ * @property {RoomTurn[]} turns oldest first, exactly as written
+ * @property {string|number} latest_seq the caller's poll cursor; a quiet room returns the `after` it was given
+ * @property {boolean} more true means this is a window, never a total
  *
  * @typedef {Object} ConfirmProposal
  * @property {string} id

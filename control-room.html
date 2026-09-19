@@ -145,10 +145,47 @@
     </section>
 
     <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
-      <section class="card glass" aria-labelledby="modelRoomTitle">
-        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="modelRoomTitle">Model Room</h2></div></div>
-        <div class="state-block" data-state="not_in_release"><h3>Model Room: not in this release</h3><p>The ticket board and its history ship in V5-UX-C12 and V5-UX-C13.</p></div>
+      <section class="card glass" data-section="model_room_assignments" aria-labelledby="modelRoomTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Who is assigned what</p><h2 id="modelRoomTitle">Model Room</h2></div>
+          <button class="btn" type="button" id="modelRoomRetry">Read again</button>
+        </div>
+        <!-- V5-UX-C12: written from js/model-room-model.js, because the room the
+             queue is projected into is NOT the room this tab is named after. -->
+        <p class="caption" id="modelRoomQueueRoom"></p>
+        <p class="model-room-freshness" id="modelRoomFreshness" data-state="idle">unknown</p>
+        <div class="row-wrap"><button class="btn" type="button" id="modelRoomQueueRetry" hidden>Try the queue read again</button></div>
+        <p class="model-room-dropped" id="modelRoomDropped" hidden></p>
+        <p class="model-room-empty" id="modelRoomAssignmentsEmpty" hidden></p>
+        <div class="assignment-rail" id="modelRoomAssignments"></div>
+        <p class="caption">Assignments are shown in the order the record layer returned them. Nothing on this tab is re-sorted, re-filtered or re-ranked in the browser.</p>
       </section>
+
+      <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
+        <div class="card-heading"><div><p class="eyebrow">Who is working</p><h2 id="modelRoomSessionsTitle">Sessions</h2></div></div>
+        <p class="count-line" id="modelRoomCounts" data-state="unavailable">unknown</p>
+        <p class="session-banner" id="modelRoomBanner" hidden></p>
+        <p class="model-room-empty" id="modelRoomSessionsEmpty" hidden></p>
+        <div class="session-picks" id="modelRoomSessions"></div>
+      </section>
+
+      <section class="card glass" data-section="model_room_context" aria-labelledby="modelRoomContextTitle">
+        <div class="card-heading"><div><p class="eyebrow">Evidence behind one session</p><h2 id="modelRoomContextTitle">Context</h2></div></div>
+        <div id="modelRoomContext"></div>
+      </section>
+
+      <section class="card glass" data-section="model_room_participants" aria-labelledby="modelRoomParticipantsTitle">
+        <div class="card-heading"><div><p class="eyebrow">Who is in the room</p><h2 id="modelRoomParticipantsTitle">Participants and acknowledgment</h2></div></div>
+        <!-- V5-UX-C12: written from js/model-room-model.js. No element on this
+             page renders a pending-acknowledgment count, not even a zero. -->
+        <p class="model-room-no-ack" id="modelRoomNoAck"></p>
+        <p class="model-room-window" id="modelRoomWindow" data-state="idle"></p>
+        <ul class="participant-list" id="modelRoomParticipants"></ul>
+        <h3 class="atlas-subhead">Turns, exactly as written</h3>
+        <ul class="room-turns" id="modelRoomTurns"></ul>
+      </section>
+
+      <p class="sr-only" id="modelRoomLive" aria-live="polite"></p>
     </section>
 
     <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>

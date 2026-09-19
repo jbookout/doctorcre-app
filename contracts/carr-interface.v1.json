@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "0f6cb388424e83a75396a3e2d3bfc14839e81b35"
@@ -48,6 +48,8 @@
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
+    "read-room",
+    "read-room-queue",
     "read-session-identity",
     "rename-doc-conversation",
     "resolve-candidate",

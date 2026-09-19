@@ -141,3 +141,62 @@
   .session-head { flex-direction: column; }
   .dispatch-stages { gap: 4px; flex-direction: column; }
 }
+
+/* V5-UX-C12 Model Room tab. system.css tokens only: no literal colour, no fixed
+ * width, one column at 360px, every control this tab adds at the 44px floor.
+ * Task ids, session ids and room bodies are unbroken tokens and wrap rather than
+ * push the page sideways.
+ *
+ * Every state below is carried by COLOUR and by SHAPE (a border weight or a
+ * border style) and by its own TEXT, so a still screenshot in one colour still
+ * reads correctly, and prefers-reduced-motion has nothing to turn off because
+ * nothing on this tab moves. */
+#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId { min-height: var(--touch); }
+.model-room-freshness { margin: 8px 0 0; font-size: 13px; line-height: 1.6; padding-left: 10px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+/* Stale is the ORDINARY state of this queue, so it is drawn quiet rather than
+ * loud: dashed, muted, and stating its own age. It is not an error. */
+.model-room-freshness[data-state="stale"] { border-left-style: dashed; border-left-color: var(--line-strong); color: var(--muted); }
+.model-room-freshness[data-state="never"] { border-left-style: dotted; border-left-color: var(--line-strong); color: var(--quiet); }
+.model-room-freshness[data-state="live"] { border-left-width: 4px; border-left-color: var(--orange); color: var(--text); }
+.model-room-freshness[data-state="unavailable"] { border-left-width: 4px; border-left-style: double; color: var(--amber-text); }
+.model-room-dropped { margin: 8px 0 0; color: var(--amber-text); font-size: 12px; line-height: 1.5; }
+.model-room-empty, .model-room-no-ack, .model-room-no-open, .model-room-window { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.model-room-window[data-state="unavailable"] { color: var(--amber-text); }
+
+.assignment-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.assignment-card { display: grid; gap: 8px; margin: 0; padding: 16px; min-width: 0; }
+.assignment-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.assignment-head h4 { margin: 0; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.assignment-chips { flex-wrap: wrap; }
+.assignment-summary { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.assignment-meta { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--quiet); }
+.assignment-card[data-status="blocked"] { border-left: 3px solid var(--amber-text); }
+
+.session-picks { display: grid; gap: 10px; margin-top: 12px; }
+.session-pick { display: grid; gap: 6px; text-align: left; margin: 0; padding: 14px; min-height: var(--touch); min-width: 0; cursor: pointer; }
+.session-pick[aria-pressed="true"] { border-left: 3px solid var(--orange); }
+.session-pick-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.session-pick-id { color: var(--quiet); overflow-wrap: anywhere; }
+.session-pick-chips { flex-wrap: wrap; }
+
+.context-head h4 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.context-evidence { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.context-parent, .context-lineage { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.context-parent[data-parent="outside"], .context-parent[data-parent="unrecorded"], .context-lineage[data-relation="not_recorded"] { color: var(--quiet); }
+.context-dispatch { margin-top: 12px; display: grid; gap: 8px; }
+
+.participant-list, .room-turns { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.participant { border-left: 2px solid var(--line-strong); padding-left: 10px; min-width: 0; }
+.participant p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.participant-name { font-weight: 700; font-size: 13px; }
+.room-turn { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+.room-turn p { margin: 0; overflow-wrap: anywhere; }
+.room-turn-head { color: var(--quiet); }
+/* A body is TEXT. It is pre-wrapped so a JSON envelope stays legible without
+ * ever being parsed, and it is never rendered as structure. */
+.room-turn-body { margin-top: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+
+@media (max-width: 640px) {
+  .assignment-rail { grid-template-columns: 1fr; }
+  .assignment-head { flex-direction: column; }
+}

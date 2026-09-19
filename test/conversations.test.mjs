@@ -404,7 +404,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
   assert.equal(routes.version, "1.10.0");
-  assert.equal(contract.version, "1.16.0");
+  assert.equal(contract.version, "1.17.0");
   assert.equal(contract.producer.source_commit, "0f6cb388424e83a75396a3e2d3bfc14839e81b35");
   assert.equal(routes.routes["/conversations"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
@@ -413,7 +413,7 @@ test("clause 10: the route, the versions, the producer pin and the five verbs ar
   // The turn verb is authorityOnly and the app holds no authority binding, so
   // pinning it would be a false contract.
   assert.equal(contract.mcp_operations.includes("add-doc-conversation-turn"), false);
-  assert.equal(contract.mcp_operations.length, 53);
+  assert.equal(contract.mcp_operations.length, 55);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   assert.deepEqual([...APP_ROUTE_PATHS], Object.keys(routes.routes), "the model's route list has drifted from the contract");
 });

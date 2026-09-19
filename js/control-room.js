@@ -25,6 +25,7 @@ import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountAtlas } from "./atlas.js";
 import { mountSessions } from "./sessions.js";
+import { mountModelRoom } from "./model-room.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 
@@ -414,6 +415,15 @@ function openSessions() {
   mountSessions({ outage: view.outage });
 }
 
+/**
+ * V5-UX-C12: the Model Room's three reads are LAZY for the same reason. They
+ * fire on the first selection of the tab, never on page boot, and
+ * mountModelRoom itself refuses a second mount. Nothing here polls.
+ */
+function openModelRoom() {
+  mountModelRoom({ outage: view.outage });
+}
+
 
 async function boot() {
   mountPrefs();
@@ -426,6 +436,7 @@ async function boot() {
   document.getElementById("controlRoomTabs")?.addEventListener("click", (event) => {
     if (event.target.closest("#tabAtlas")) openAtlas();
     if (event.target.closest("#tabSessions")) openSessions();
+    if (event.target.closest("#tabModelRoom")) openModelRoom();
   }, true);
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());
@@ -448,6 +459,10 @@ async function boot() {
   if (parameters.get("tab") === "sessions") {
     tabs?.select("tabSessions");
     openSessions();
+  }
+  if (parameters.get("tab") === "model-room") {
+    tabs?.select("tabModelRoom");
+    openModelRoom();
   }
   const label = $("viewerLabel");
   if (label) label.textContent = client.selfActor === "dell" ? "Dell's workspace" : "Joe's workspace";

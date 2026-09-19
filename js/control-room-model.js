@@ -374,7 +374,7 @@ export function notInReleaseBlocks() {
     { id: "accomplishments", title: "Accomplishments: not in this release", slice: "V5-UX-C01", reason: "no verified-accomplishment producer exists" },
     { id: "detected_and_repaired", title: "Detected and repaired: not in this release", slice: "V5-UX-C01", reason: "no producer records a detection and its repair" },
     { id: "resources", title: "Resources: not in this release", slice: "V5-UX-C02 through V5-UX-C06", reason: "resource metering is read in those slices" },
-    { id: "model_room", title: "Model Room: not in this release", slice: "V5-UX-C12 and V5-UX-C13", reason: "the ticket board and its history ship there" },
+    { id: "model_room", title: "Model Room ticket board: not in this release", slice: "V5-UX-C13", reason: "V5-UX-C12 shipped the Model Room tab's assignments, sessions, context and participants; the Kanban board, its topics and its history ship in C13" },
     { id: "atlas_renderer", title: "Atlas renderer: not in this release", slice: "V5-UX-C08 and V5-UX-C09", reason: "the anatomical renderer, incidents and tours ship there; the searchable index is on the Atlas tab now" },
   ];
 }

@@ -651,6 +651,62 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
+  /* ------------------------------------------- Model Room fixtures (C12)
+   * The four captured queue events and five captured room turns, in the
+   * producer's shape. One card carries `source_seq: null` and one body is a
+   * JSON STATUS envelope, because both are true of the live answer and both
+   * are branches the tab must render without inventing anything.
+   */
+  const QUEUE_EVENTS = [
+    { v: 1, board: 'carr-build', event_id: 1302, event: 'created', task_id: 't_185f2c38',
+      card: { title: 'Fresh independent review of PR 832 exact corrected head', target: 'deepseek',
+        effective_model: 'DeepSeek', status: 'ready', priority: 'P1', cap: 'read',
+        updated_at: '2026-09-01T04:08:15Z', source_seq: 9166 },
+      summary: 'Fresh independent review of PR 832 exact corrected head created.',
+      projected_at: '2026-09-01T04:08:15Z' },
+    { v: 1, board: 'carr-build', event_id: 1301, event: 'blocked', task_id: 't_4f0bead4',
+      card: { title: 'Repair cross-surface context handoff enforcement', target: 'claude',
+        effective_model: 'claude', status: 'blocked', priority: 'P1', cap: 'repo-write',
+        updated_at: '2026-09-01T02:09:54Z', source_seq: 9001 },
+      summary: 'Repair cross-surface context handoff enforcement is blocked.',
+      projected_at: '2026-09-01T02:09:54Z' },
+    // The OBJECT branch of `effective_model`. The producer accepts a string or
+    // an object; no live row carries an object today, so only a fixture can
+    // prove the branch renders instead of printing [object Object].
+    { v: 1, board: 'carr-build', event_id: 1297, event: 'review_requested', task_id: 't_a80efc8b',
+      card: { title: 'Fresh independent Opus 5 High review', target: 'claude-desktop',
+        effective_model: { id: 'claude-opus-5-high', host: 'desktop' }, status: 'review',
+        priority: 'P2', cap: 'read', updated_at: '2026-08-31T22:41:10Z', source_seq: 8529 },
+      summary: 'Fresh independent Opus 5 High review is awaiting review.',
+      projected_at: '2026-08-31T22:41:10Z' },
+    // `source_seq: null`, which the producer explicitly permits.
+    { v: 1, board: 'carr-build', event_id: 1290, event: 'blocked', task_id: 't_3ca30a9e',
+      card: { title: 'Reconcile the production source of truth', target: 'claude-desktop',
+        effective_model: 'Claude Opus 5 High (background to Desktop)', status: 'blocked',
+        priority: 'P1', cap: 'read', updated_at: '2026-08-30T18:02:00Z', source_seq: null },
+      summary: 'Reconcile the production source of truth is blocked.',
+      projected_at: '2026-08-30T18:02:00Z' },
+  ];
+
+  const ROOM_TURNS = [
+    { seq: '6446', room_id: 'model-room', at: '2026-08-28T13:48:34.449372+00:00', sponsor: 'joe',
+      seat: 'sol', kind: 'system', msg_id: 'm-6446', origin_channel: 'mcp', origin_actor: 'codex',
+      // A JSON envelope, carried as TEXT. The page never parses it.
+      body: '{"event":"STATUS","task_id":"A01","exact_revision":"local-main:eb00add0"}' },
+    { seq: '6461', room_id: 'model-room', at: '2026-08-29T09:12:01.000000+00:00', sponsor: 'joe',
+      seat: 'sol', kind: 'system', msg_id: 'm-6461', origin_channel: 'mcp', origin_actor: 'joe-local',
+      body: 'The reconciliation packet is registered and waiting on review.' },
+    { seq: '6467', room_id: 'model-room', at: '2026-08-30T11:40:22.000000+00:00', sponsor: 'joe',
+      seat: 'hermes', kind: 'turn', msg_id: 'm-6467', origin_channel: 'mcp', origin_actor: 'joe-local',
+      body: 'Routing the review to the seat that already holds the branch.' },
+    { seq: '6468', room_id: 'model-room', at: '2026-08-30T11:55:09.000000+00:00', sponsor: 'joe',
+      seat: 'sol', kind: 'system', msg_id: 'm-6468', origin_channel: 'mcp', origin_actor: 'joe-local',
+      body: 'Acknowledged in prose only; no acknowledgement column exists behind this.' },
+    { seq: '6475', room_id: 'model-room', at: '2026-09-01T04:08:19.914333+00:00', sponsor: 'joe',
+      seat: 'sol', kind: 'system', msg_id: 'm-6475', origin_channel: 'mcp', origin_actor: 'joe-local',
+      body: 'The queue projection was last written here.' },
+  ];
+
   const outage = opts.outage || null;
   const refuseIfOutage = (read, verb) => {
     if (outage !== read) return;
@@ -1767,6 +1823,46 @@ export async function createFixtureClient(opts = {}) {
       // Every other id — real, synthetic or nonsense — answers identically,
       // which is precisely why the drawer never says "this session has none".
       return dispatchNoSpine(String(session_id));
+    },
+
+    // ------------------------------- Model Room assignments and turns (C12)
+    // Synthetic twins of the two captured answers, in the PRODUCER'S OWN shape.
+    // `live` is false and `projected_at` is old, because that is what the real
+    // queue answers: a fixture that made the projection fresh would let a page
+    // pass while the stale branch — the ordinary one — was never drawn. The
+    // room argument is honoured exactly as the producer honours it, so reading
+    // the queue from `model-room` here answers empty, as it does in production.
+    async roomQueue({ room = 'partner-line' } = {}) {
+      refuseIfOutage('model_room', 'read-room-queue');
+      if (room !== 'partner-line') {
+        // Nothing has EVER been projected into that room: projected_at null,
+        // which is a different truth from a stale projection.
+        return { ok: true, room: String(room), events: [], projected_at: null, live: false };
+      }
+      return {
+        ok: true,
+        room: 'partner-line',
+        events: structuredClone(QUEUE_EVENTS),
+        projected_at: '2026-09-01T04:08:19.914333+00:00',
+        live: false,
+      };
+    },
+
+    async roomTurns({ room = 'model-room', after_seq = null, limit = null } = {}) {
+      refuseIfOutage('model_room', 'read-room');
+      void after_seq;
+      const capped = Number.isInteger(limit) && limit >= 1 && limit <= 200 ? limit : 50;
+      const turns = ROOM_TURNS.slice(0, capped).map((turn) => ({ ...turn }));
+      return {
+        ok: true,
+        room: String(room),
+        turns,
+        // A bigint, serialised by the driver as a decimal STRING, exactly as
+        // production returns it. A fixture that made it a number would let a
+        // validator demanding an integer pass here and refuse production.
+        latest_seq: turns.length ? String(turns[turns.length - 1].seq) : '0',
+        more: turns.length === capped,
+      };
     },
 
     async notificationPreferences() {
