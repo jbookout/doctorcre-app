@@ -57,13 +57,6 @@ const viewCode = stripJs(viewSource);
 const modelCode = stripJs(modelSource);
 const htmlMarkup = stripHtml(html);
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-const gitShow = async (path) => {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const { stdout } = await promisify(execFile)("git", ["show", `origin/main:${path}`],
-    { cwd: new URL(".", root).pathname, maxBuffer: 32 * 1024 * 1024 });
-  return stdout;
-};
 
 /** A session row in the producer's exact shape, for the branches live rows miss. */
 const sessionRow = (over = {}) => ({
@@ -384,8 +377,17 @@ test("C12-16 the browser does not sort, filter or re-rank the server's arrays", 
 
 // MUTATION: touch one line of js/room.js.
 test("C12-17 the Observatory is untouched by this slice", async () => {
-  for (const path of ["room.html", "js/room.js"]) {
-    assert.equal(await read(path), await gitShow(path), `${path} is byte-identical to origin/main`);
+  // Pinned by content digest, not by `git show origin/main`: the hosted runner
+  // checks out a single commit with no origin/main ref, so a trunk diff fails
+  // there with "invalid object name" (that is why PR 40's check went red).
+  const { createHash } = await import("node:crypto");
+  const pinned = {
+    "room.html": "354f74c7546dbd583504015674426a7afe964170b027268d2fe459d16b79c2f5",
+    "js/room.js": "711e143b4872169e4039aa85b6763126fcce459d5824748f122b8b236c1d9880",
+  };
+  for (const [path, digest] of Object.entries(pinned)) {
+    const actual = createHash("sha256").update(await read(path)).digest("hex");
+    assert.equal(actual, digest, `${path} is byte-identical to the Observatory that shipped before this slice`);
   }
   // Not modified, not retired, not redirected: nothing in this slice links to it
   // as a replacement, and retiring it is Joe's decision, not this build's.
