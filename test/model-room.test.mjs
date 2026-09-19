@@ -64,7 +64,6 @@ const gitShow = async (path) => {
     { cwd: new URL(".", root).pathname, maxBuffer: 32 * 1024 * 1024 });
   return stdout;
 };
-const mainContract = JSON.parse(await gitShow("contracts/carr-interface.v1.json"));
 
 /** A session row in the producer's exact shape, for the branches live rows miss. */
 const sessionRow = (over = {}) => ({
@@ -408,11 +407,16 @@ test("C12-18 the contract pins all four verbs, sorted, at 1.17.0 with 55 operati
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // No new producer commit is involved: S02 already pinned this release.
   assert.equal(contract.producer.source_commit, "0f6cb388424e83a75396a3e2d3bfc14839e81b35");
-  // Nothing new is read over HTTP, so http_surfaces does not move at all. It is
-  // compared to origin/main rather than grepped: `/api/room/*` was already there
-  // for the Observatory, and a grep would read that as this slice's doing.
-  assert.deepEqual(contract.http_surfaces, mainContract.http_surfaces, "http_surfaces does not move");
-  assert.equal(mainContract.mcp_operations.length, 53, "the branch adds exactly two operations to main's 53");
+  // Nothing new is read over HTTP, so http_surfaces is pinned to the exact set
+  // that shipped before this slice. It is a static pin, not a diff against
+  // origin/main: once this branch IS origin/main a diff against it passes for
+  // any value, and a "main has 53" count fails by construction after merge
+  // (that is how PR 40 turned main red on 2026-09-19). `/api/room/*` was already
+  // present for the Observatory, so its presence here is not this slice's doing.
+  assert.deepEqual(contract.http_surfaces, [
+    "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
+    "/api/v1/work-inventory", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
+  ], "http_surfaces does not move");
 });
 
 /* ------------------------------------------- the validators, on real payloads */
