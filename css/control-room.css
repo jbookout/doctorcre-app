@@ -98,3 +98,46 @@
   .atlas-evidence { grid-template-columns: 1fr; }
   .atlas-version { gap: 8px; }
 }
+
+/* V5-UX-S02 Sessions tab. system.css tokens only: no literal colour, no fixed
+ * width, one column at 360px, every control this tab adds at the 44px floor.
+ * Session ids, host ids and cwds are unbroken tokens and wrap rather than push
+ * the page sideways; the work-state evidence sentence is always visible, never
+ * clamped and never behind a tooltip, because it is the reason the state is
+ * believable. */
+#sessionsLookup { min-height: var(--touch); }
+#sessionsIncludeClosed { min-height: var(--touch); min-width: 24px; }
+#sessionsRetry { min-height: var(--touch); }
+.session-no-open { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.session-banner { margin: 8px 0 0; color: var(--amber-text); font-size: 12px; line-height: 1.5; }
+.session-lineage-summary { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.session-empty { margin: 12px 0; color: var(--muted); font-size: 13px; }
+.session-card { display: grid; gap: 8px; }
+.session-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.session-identity { min-width: 0; display: grid; gap: 2px; }
+.session-identity h3 { margin: 0; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
+.session-id, .session-meta { margin: 0; min-width: 0; overflow-wrap: anywhere; font-size: 11px; color: var(--quiet); }
+.chip[data-derived="true"] { color: var(--muted); }
+.session-chips { flex-wrap: wrap; }
+.session-evidence { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.session-lineage { margin: 0; font-size: 13px; }
+.session-lineage[data-relation="not_recorded"] { color: var(--quiet); }
+.session-attempts { margin: 0; font-size: 12px; color: var(--muted); }
+/* Every host state is a statement, and none of them is a control. */
+.session-host { margin: 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.session-history > summary { min-height: var(--touch); display: flex; align-items: center; cursor: pointer; font-weight: 800; font-size: 13px; }
+.session-history-body { display: grid; gap: 8px; padding-top: 8px; }
+.dispatch-stages { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; font-size: 12px; color: var(--muted); }
+.dispatch-stages span[data-state="unavailable"] { color: var(--quiet); }
+.dispatch-honesty, .dispatch-empty { margin: 0; color: var(--quiet); font-size: 12px; line-height: 1.6; }
+.dispatch-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.dispatch-event { border-left: 2px solid var(--line-strong); padding-left: 10px; min-width: 0; }
+.dispatch-event p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.dispatch-when { font-weight: 700; }
+.dispatch-evidence, .dispatch-rationale { color: var(--muted); line-height: 1.5; }
+.session-history-body .btn { min-height: var(--touch); }
+
+@media (max-width: 640px) {
+  .session-head { flex-direction: column; }
+  .dispatch-stages { gap: 4px; flex-direction: column; }
+}

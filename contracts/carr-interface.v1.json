@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "3c8f619d9a243be421c817bdf2947bd04cb55852"
+    "source_commit": "0f6cb388424e83a75396a3e2d3bfc14839e81b35"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -43,10 +43,12 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "read-dispatch-history",
     "read-doc-conversation",
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
+    "read-session-identity",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",

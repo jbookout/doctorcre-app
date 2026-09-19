@@ -24,6 +24,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountAtlas } from "./atlas.js";
+import { mountSessions } from "./sessions.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 
@@ -404,6 +405,15 @@ function openAtlas(node = null) {
   mountAtlas({ outage: view.outage, node });
 }
 
+/**
+ * V5-UX-S02: the session-identity read is LAZY for the same reason the atlas
+ * read is. It fires on the first selection of the Sessions tab, never on page
+ * boot, and mountSessions itself refuses a second mount.
+ */
+function openSessions() {
+  mountSessions({ outage: view.outage });
+}
+
 
 async function boot() {
   mountPrefs();
@@ -415,6 +425,7 @@ async function boot() {
   // which is what mounts it.
   document.getElementById("controlRoomTabs")?.addEventListener("click", (event) => {
     if (event.target.closest("#tabAtlas")) openAtlas();
+    if (event.target.closest("#tabSessions")) openSessions();
   }, true);
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());
@@ -433,6 +444,10 @@ async function boot() {
   if (parameters.get("tab") === "atlas") {
     tabs?.select("tabAtlas");
     openAtlas(parameters.get("node"));
+  }
+  if (parameters.get("tab") === "sessions") {
+    tabs?.select("tabSessions");
+    openSessions();
   }
   const label = $("viewerLabel");
   if (label) label.textContent = client.selfActor === "dell" ? "Dell's workspace" : "Joe's workspace";

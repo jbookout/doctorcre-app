@@ -422,6 +422,235 @@ export async function createFixtureClient(opts = {}) {
    * work items with distinct silences and one blocker; two shared requests.
    * Every name starts with "Demo " so nothing here can be mistaken for a record.
    */
+
+  /* ------------------------------------------- Sessions tab fixtures (V5-UX-S02)
+   *
+   * The identity corpus is the REAL production answer, captured read-only as Joe
+   * on 2026-09-18 against producer 0f6cb388 and held verbatim in
+   * test/fixtures/session-identity.json. Three numbers in it are the point:
+   * total_seen 603, total_returned 124, and 25 rows. `total_returned` is the
+   * post-permission-filter total BEFORE `limit`, so a fixture whose
+   * total_returned equalled sessions.length would hide the one invariant this
+   * tab exists to render honestly, and is forbidden.
+   *
+   * Every live row carries the same seven constants — harvested surface, derived
+   * alias, unknown state, harvest observation, unsupported host, unknown parent,
+   * one attempt — so they are spelled once in `harvested()` and the 25 rows below
+   * differ only where the production rows differ. Test S02-20 compares the whole
+   * corpus against the captured file, so "verbatim" is checked rather than
+   * asserted.
+   *
+   * FOUR synthetic rows follow, and no more. Each one exists for a branch the
+   * live corpus cannot reach, each is named with the branch it serves, and each
+   * is marked `synthetic: true` in the capture file. That marker is NOT part of
+   * the payload the page sees: the page must not be able to render it.
+   */
+  const harvested = (id, name, affinity, evidence, observedAt) => ({
+    canonical_session_id: id,
+    surface: 'harvested',
+    display_name: name,
+    alias_source: 'derived',
+    parent_session_id: null,
+    parent_known: false,
+    native_host_id: null,
+    native_host_supported: false,
+    work_state: 'unknown',
+    work_state_evidence: evidence,
+    last_observed_at: observedAt,
+    observation_source: 'harvest',
+    project_affinity: affinity,
+    latest_cwd: null,
+    latest_model_id: null,
+    attempt_count: 1,
+    latest_attempt_ref: null,
+  });
+
+  const SESSION_LIVE_ROWS = [
+    harvested("promise:phone-doc-no-claude", "Phone Doc does not spawn Claude", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
+    harvested("promise:loop-455-waits-fable", "Loop 455 waits for Fable", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
+    harvested("promise:codex-trees-stay", "Codex control-plane trees stay", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
+    harvested("promise:bot-mode-parked", "Bot Mode parked", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
+    harvested("kanban:t_deed8d22", "Partner line: cross-Mac relay Joe Claude to Dell Claude", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
+    harvested("kanban:t_93cfd1ee", "STANDING: land or kill \u2014 3 live, local CI, one paid run", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
+    harvested("kanban:t_1d8844ea", "Build the Doc\u2194Claude live bridge (named inject, not claude -p)", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
+    harvested("kanban:t_0834239a", "Post-turn review writes to Neon, not MEMORY.md", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
+    harvested("hermes_session:20260821_164448_e1a4cc", "Create Designer agent prof   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260821_160917_5b69c4", "Industry strategies for AI   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260820_112318_0b157a", "work kanban task t_4d48865   \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260820_112218_4c7b27", "\u2014                            \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260820_112117_f34276", "\u2014                            \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260820_112017_8e5ae8", "work kanban task t_4d48865   \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260819_141911_fd5c46", "Create Dell systems connec   carr-system        2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260819_070417_0cb77a", "Merge Pelham Tire property   carr-system        2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260819_001819_7ab8f5", "Work kanban task t_3c1b692   \u2014                  2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260818_215618_9476d2", "Work kanban task t_bfeef20   \u2014                  2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260818_200318_ec907827", "Friendly greeting            \u2014                  3d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("hermes_session:20260816_102322_1bf766", "Reply with exactly: defaul   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
+    harvested("worktree:/private/tmp/claude-501/-Users-booko-carr-system/b491f57b-8a8b-4456-967f-5173fe0f5934/scratchpad/carr-mainchk", "carr-mainchk", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
+    harvested("worktree:/private/tmp/carr-typed-guidance-final-ci.aARZr2/worktree", "worktree", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
+    harvested("worktree:/private/tmp/carr-system-release-418", "carr-system-release-418", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
+    harvested("worktree:/private/tmp/carr-system-program6-final2", "carr-system-program6-final2", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
+    harvested("worktree:/private/tmp/carr-system-program6-final", "carr-system-program6-final", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
+  ];
+
+  const SESSION_SYNTHETIC_ROWS = [
+    // retry — attempt_count > 1 with a latest_attempt_ref; rule 1 of the lineage procedure. No live row reaches it.
+    {
+          "canonical_session_id": "11111111-1111-4111-8111-111111111111",
+          "surface": "claude",
+          "display_name": "Synthetic retry seat",
+          "alias_source": "derived",
+          "parent_session_id": null,
+          "parent_known": false,
+          "native_host_id": null,
+          "native_host_supported": false,
+          "work_state": "working",
+          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
+          "last_observed_at": "2026-09-18T12:00:00+00:00",
+          "observation_source": "continuity_event",
+          "project_affinity": "doctorcre-app",
+          "latest_cwd": "/synthetic/doctorcre-app",
+          "latest_model_id": "claude-opus-5[1m]",
+          "attempt_count": 3,
+          "latest_attempt_ref": "WR-000117#3"
+    },
+    // replacement — a non-null parent_session_id; rule 2. No live row reaches it.
+    {
+          "canonical_session_id": "22222222-2222-4222-8222-222222222222",
+          "surface": "codex",
+          "display_name": "Synthetic replacement seat",
+          "alias_source": "derived",
+          "parent_session_id": "11111111-1111-4111-8111-111111111111",
+          "parent_known": true,
+          "native_host_id": null,
+          "native_host_supported": false,
+          "work_state": "idle",
+          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
+          "last_observed_at": "2026-09-18T11:30:00+00:00",
+          "observation_source": "checkpoint",
+          "project_affinity": "doctorcre-app",
+          "latest_cwd": null,
+          "latest_model_id": null,
+          "attempt_count": 1,
+          "latest_attempt_ref": null
+    },
+    // resume — parent_known true with a null parent and attempt_count 1; rule 3. No live row reaches it.
+    {
+          "canonical_session_id": "33333333-3333-4333-8333-333333333333",
+          "surface": "capability",
+          "display_name": "Synthetic resumed root",
+          "alias_source": "derived",
+          "parent_session_id": null,
+          "parent_known": true,
+          "native_host_id": null,
+          "native_host_supported": false,
+          "work_state": "complete_unacknowledged",
+          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
+          "last_observed_at": "2026-09-18T10:00:00+00:00",
+          "observation_source": "server_session",
+          "project_affinity": null,
+          "latest_cwd": null,
+          "latest_model_id": null,
+          "attempt_count": 1,
+          "latest_attempt_ref": null
+    },
+    // host title mismatch — native_host_supported true with a native_host_id the display_name differs from; the third branch of clause 2. No live row reaches it.
+    {
+          "canonical_session_id": "44444444-4444-4444-8444-444444444444",
+          "surface": "claude",
+          "display_name": "Synthetic mismatched title",
+          "alias_source": "derived",
+          "parent_session_id": null,
+          "parent_known": false,
+          "native_host_id": "host-window-7",
+          "native_host_supported": true,
+          "work_state": "disconnected",
+          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
+          "last_observed_at": "2026-09-18T09:00:00+00:00",
+          "observation_source": "continuity_event",
+          "project_affinity": null,
+          "latest_cwd": null,
+          "latest_model_id": "claude-opus-5[1m]",
+          "attempt_count": 1,
+          "latest_attempt_ref": null
+    },
+  ];
+
+  const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
+
+  /** The one synthetic session that carries dispatch events to render. */
+  const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
+
+  const DISPATCH_WITH_EVENTS = {
+      "ok": true,
+      "session_id": "55555555-5555-4555-8555-555555555555",
+      "parent_session_id": "11111111-1111-4111-8111-111111111111",
+      "permission_filtered": false,
+      "total_seen": 3,
+      "total_returned": 3,
+      "more": true,
+      "next_cursor": "synthetic-cursor-2",
+      "received": null,
+      "acknowledged": null,
+      "stage_unavailable_reason": "no_dispatch_spine",
+      "events": [
+          {
+              "event_id": "ev-2",
+              "at": "2026-09-18T12:05:00+00:00",
+              "stage": "acted",
+              "stage_evidence": "a room turn recorded the seat acting on the dispatch",
+              "rationale": "the builder seat took the slice",
+              "from_seat": "orchestrator",
+              "to_seat": "builder",
+              "sponsor": "joe",
+              "room_id": "model-room",
+              "session_id": "55555555-5555-4555-8555-555555555555",
+              "parent_session_id": "11111111-1111-4111-8111-111111111111",
+              "attempt_ref": "WR-000117#3",
+              "superseded_by": null,
+              "work_request_ref": "WR-000117"
+          },
+          {
+              "event_id": "ev-1",
+              "at": "2026-09-18T12:00:00+00:00",
+              "stage": "sent",
+              "stage_evidence": "a room turn recorded the dispatch leaving the orchestrator",
+              "rationale": null,
+              "from_seat": "orchestrator",
+              "to_seat": null,
+              "sponsor": null,
+              "room_id": null,
+              "session_id": "55555555-5555-4555-8555-555555555555",
+              "parent_session_id": null,
+              "attempt_ref": null,
+              "superseded_by": "ev-2",
+              "work_request_ref": null
+          }
+      ]
+  };
+
+  /**
+   * The captured no-spine answer, which production returns for EVERY id —
+   * including ids that do not exist. `received`, `acknowledged` and
+   * `stage_unavailable_reason` are identical in every fixture, live or
+   * synthetic: a fixture that filled them would manufacture the exact claim
+   * V5-UX-C13 clause 1 is still open on.
+   */
+  const dispatchNoSpine = (sessionId) => ({
+    ok: true,
+    session_id: sessionId,
+    parent_session_id: null,
+    permission_filtered: false,
+    total_seen: 0,
+    total_returned: 0,
+    more: false,
+    next_cursor: null,
+    received: null,
+    acknowledged: null,
+    stage_unavailable_reason: 'no_dispatch_spine',
+    events: [],
+  });
+
   const outage = opts.outage || null;
   const refuseIfOutage = (read, verb) => {
     if (outage !== read) return;
@@ -1486,6 +1715,60 @@ export async function createFixtureClient(opts = {}) {
     // The preference read. It takes NO arguments, and it is spelled with no
     // parameter list at all so an argument cannot be added here by accident:
     // the verb declares zero properties under additionalProperties:false.
+    // ------------------------------------ session identity and dispatch (S02)
+    // Both are READS and neither takes an actor, exactly as the verbs declare.
+    // `total_seen` and `total_returned` are the production numbers and do NOT
+    // move with `limit` — that is what makes the three-number counts line
+    // testable here instead of only against production.
+    async sessionIdentity({ query = null, limit = null, include_closed = false } = {}) {
+      refuseIfOutage('sessions', 'read-session-identity');
+      const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
+      // `include_closed` is passed through to the producer and changes nothing
+      // here: no captured row carries a closed state, so a fixture that made the
+      // toggle move rows would be inventing a corpus production did not return.
+      void include_closed;
+      // BOTH fields, because clause 1 is "name/ID lookup" and a fixture that
+      // matched on the name alone would let an id lookup pass while broken.
+      const matched = text.length === 0
+        ? SESSION_ROWS
+        : SESSION_ROWS.filter((row) => String(row.display_name).toLowerCase().includes(text)
+          || String(row.canonical_session_id).toLowerCase().includes(text));
+      if (text === 'reverent') {
+        // The captured FILTERED-EMPTY answer: four rows match and none is the
+        // caller's to see. An empty list with permission_filtered true.
+        return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
+      }
+      if (matched.length === 0) {
+        // The captured GENUINELY-EMPTY answer: nothing matched at all.
+        return { ok: true, permission_filtered: false, total_seen: 0, total_returned: 0, sessions: [] };
+      }
+      const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
+      const page = matched.slice(0, capped);
+      // 603 and 124 are production's own numbers for the unfiltered page, and
+      // they do NOT shrink when `limit` does.
+      const seen = text.length === 0 ? 603 : matched.length;
+      const visible = text.length === 0 ? 124 : matched.length;
+      return {
+        ok: true,
+        permission_filtered: text.length === 0,
+        total_seen: seen,
+        total_returned: visible,
+        sessions: page.map((row) => ({ ...row })),
+      };
+    },
+
+    async dispatchHistory({ session_id, cursor = null, limit = null } = {}) {
+      refuseIfOutage('sessions', 'read-dispatch-history');
+      void cursor;
+      void limit;
+      if (session_id === SESSION_WITH_DISPATCH) {
+        return structuredClone(DISPATCH_WITH_EVENTS);
+      }
+      // Every other id — real, synthetic or nonsense — answers identically,
+      // which is precisely why the drawer never says "this session has none".
+      return dispatchNoSpine(String(session_id));
+    },
+
     async notificationPreferences() {
       refuseIfOutage('notifications', 'read-notification-preferences');
       return { ...preferencePayload(), quiet_now: quietNow() };

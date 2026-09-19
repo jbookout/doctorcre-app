@@ -304,7 +304,7 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   // Route and contract, both bumped for an additive change.
   assert.equal(routes.routes["/tasks"], "tasks.html");
   assert.equal(routes.version, "1.10.0");
-  assert.equal(carr.version, "1.15.0");
+  assert.equal(carr.version, "1.16.0");
   for (const verb of ["add-loop", "close-loop", "loop-board", "loop-headers", "read-loop", "update-loop"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }

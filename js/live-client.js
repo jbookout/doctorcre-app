@@ -388,6 +388,18 @@ export function createLiveClient(opts = {}) {
     // `base_version` is a compare-and-swap the caller must have READ: this
     // layer never supplies, defaults or increments it.
     async notificationPreferences() { return rpc('read-notification-preferences', {}); },
+
+    // --------------------------------- session identity and dispatch (S02)
+    // TWO READS, passed through untouched. NEITHER names an actor: both verbs
+    // declare additionalProperties:false with no actor property at all, and the
+    // acting actor is resolved server-side from a transaction-local setting the
+    // browser cannot reach. That absence is what makes the permission filtering
+    // these reads report unforgeable rather than merely unrequested. They go
+    // through `rpc` because they carry no idempotency key, and there is no
+    // matching write: nothing on the Sessions tab opens, resumes or takes over
+    // a session, because no verb exists that would.
+    async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
+    async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
     // -------------------------------------------- Doc conversations page (B07)
