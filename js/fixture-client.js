@@ -460,6 +460,61 @@ export async function createFixtureClient(opts = {}) {
     return Math.min(200, Math.max(1, value));
   };
 
+  /* ------------------------------ notification preferences (B12, WR-000116)
+   * The synthetic twin of `ops.notification_preference`. It starts with NO ROW
+   * unless the seed names one, because "no row yet" is a state the page prints
+   * and a fixture that started saved would never show it: `exists` is false,
+   * `version` is 1, the window is null and the timezone is UTC — migration
+   * 0527's documented defaults, not this file's invention.
+   *
+   * `quiet_now` is computed here the way 0527 computes it, INCLUDING the
+   * wrap-around window (23:00-07:00 is a window that crosses midnight, and a
+   * fixture that only handled start<=end would certify a page against half the
+   * real behaviour). The timezone list is the browser's own IANA list, so an
+   * unknown zone is refused here for the same reason the store refuses it.
+   */
+  const preference = {
+    exists: seed.notification_preference?.exists === true,
+    device_opt_in: seed.notification_preference?.device_opt_in === true,
+    quiet_hours_start: seed.notification_preference?.quiet_hours_start ?? null,
+    quiet_hours_end: seed.notification_preference?.quiet_hours_end ?? null,
+    timezone: seed.notification_preference?.timezone || 'UTC',
+    version: Number.isInteger(seed.notification_preference?.version) ? seed.notification_preference.version : 1,
+  };
+  const PREF_CLOCK = /^([01][0-9]|2[0-3]):([0-5][0-9])(?::[0-5][0-9])?$/;
+  const knownTimezone = (name) => {
+    try {
+      // The browser's own database answers this; a hand-written list would be
+      // a second, staler copy of `pg_timezone_names`.
+      new Intl.DateTimeFormat('en-US', { timeZone: String(name) });
+      return true;
+    } catch { return false; }
+  };
+  const localClock = (timezone) => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date());
+    const hour = parts.find((part) => part.type === 'hour')?.value || '00';
+    const minute = parts.find((part) => part.type === 'minute')?.value || '00';
+    return `${hour === '24' ? '00' : hour}:${minute}`;
+  };
+  function quietNow() {
+    if (!preference.quiet_hours_start || !preference.quiet_hours_end) return false;
+    const start = String(preference.quiet_hours_start).slice(0, 5);
+    const end = String(preference.quiet_hours_end).slice(0, 5);
+    const now = localClock(knownTimezone(preference.timezone) ? preference.timezone : 'UTC');
+    return start <= end ? (now >= start && now < end) : (now >= start || now < end);
+  }
+  const preferencePayload = () => ({
+    ok: true,
+    exists: preference.exists,
+    device_opt_in: preference.device_opt_in === true,
+    quiet_hours_start: preference.quiet_hours_start ?? null,
+    quiet_hours_end: preference.quiet_hours_end ?? null,
+    timezone: preference.timezone || 'UTC',
+    version: preference.version,
+  });
+
   /* --------------------------------------------- incident detail fixtures (C14)
    * The synthetic twin of `get-incident`, in the verb's OWN shape: the row,
    * then FOUR separate lists. Facts and hypotheses are separate arrays here for
@@ -1410,11 +1465,79 @@ export async function createFixtureClient(opts = {}) {
         .filter((row) => (after ? String(row.created_at) > String(after) : true))
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, capped);
+      // `quiet_now` and `quiet_suppressed` are OUTPUT-ONLY, exactly as the
+      // producer emits them, and `quiet_suppressed` is the same DISJUNCTION:
+      // quiet hours across now, OR a push the store already recorded as
+      // suppressed. A fixture that used only the second term would let a page
+      // pass while ignoring the live window.
+      const quiet = quietNow();
       return {
         ok: true,
         unread_count: notifications.filter((row) => !row.read_at).length,
-        notifications: rows.map((row) => ({ ...row, delivery: row.delivery.map((entry) => ({ ...entry })) })),
+        quiet_now: quiet,
+        notifications: rows.map((row) => ({
+          ...row,
+          delivery: row.delivery.map((entry) => ({ ...entry })),
+          quiet_suppressed: quiet || row.delivery.some((entry) => entry.state === 'suppressed_quiet_hours'),
+        })),
       };
+    },
+
+    // The preference read. It takes NO arguments, and it is spelled with no
+    // parameter list at all so an argument cannot be added here by accident:
+    // the verb declares zero properties under additionalProperties:false.
+    async notificationPreferences() {
+      refuseIfOutage('notifications', 'read-notification-preferences');
+      return { ...preferencePayload(), quiet_now: quietNow() };
+    },
+
+    // The preference write, refusing what the record layer refuses, IN ORDER
+    // and every refusal before any change — 0527's four ordered refusals, then
+    // the compare-and-swap. `version_conflict` carries `current_version`, which
+    // is what lets the page re-read and say what happened instead of retrying.
+    async setNotificationPreference({
+      idempotency_key, base_version, device_opt_in,
+      quiet_hours_start, quiet_hours_end, timezone, clear_quiet_hours,
+    }) {
+      refuseIfOutage('notifications', 'set-notification-preference');
+      return withIdem(idempotency_key, () => {
+        const clear = clear_quiet_hours === true;
+        if (clear && (quiet_hours_start != null || quiet_hours_end != null)) {
+          refuse('set-notification-preference', 'notification_preference_quiet_hours_conflicting_request');
+        }
+        for (const value of [quiet_hours_start, quiet_hours_end]) {
+          if (value != null && !PREF_CLOCK.test(String(value))) {
+            refuse('set-notification-preference', 'notification_preference_quiet_hours_incomplete');
+          }
+        }
+        if (!clear) {
+          // The store coalesces each side over the row it already holds, so a
+          // half pair is only incomplete when the OTHER side is still absent.
+          const start = quiet_hours_start ?? preference.quiet_hours_start;
+          const end = quiet_hours_end ?? preference.quiet_hours_end;
+          if ((start == null) !== (end == null)) {
+            refuse('set-notification-preference', 'notification_preference_quiet_hours_incomplete');
+          }
+        }
+        if (timezone != null && !knownTimezone(timezone)) {
+          refuse('set-notification-preference', 'notification_preference_timezone_unknown', { timezone });
+        }
+        if (!Number.isInteger(base_version) || base_version !== preference.version) {
+          refuse('set-notification-preference', 'version_conflict', { current_version: preference.version });
+        }
+        if (typeof device_opt_in === 'boolean') preference.device_opt_in = device_opt_in;
+        if (clear) {
+          preference.quiet_hours_start = null;
+          preference.quiet_hours_end = null;
+        } else {
+          if (quiet_hours_start != null) preference.quiet_hours_start = String(quiet_hours_start);
+          if (quiet_hours_end != null) preference.quiet_hours_end = String(quiet_hours_end);
+        }
+        if (timezone != null) preference.timezone = String(timezone);
+        preference.exists = true;
+        preference.version += 1;
+        return { ...preferencePayload(), deduplicated: false };
+      });
     },
 
     // The one write this page offers, refusing what the record layer refuses.

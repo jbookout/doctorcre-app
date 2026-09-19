@@ -49,7 +49,7 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `incidents.html` | V5-UX-C14 Incident at `/incidents?ref=INC-…`: one operational incident, its facts kept visibly apart from its hypotheses, and who can clear it |
 | `js/incidents-model.js` | Pure incident rules: the reference test, the detail payload's exact keys, facts and hypotheses as separate rows, the "Who can clear this" line and the one write's arguments |
 | `js/incidents.js` | Incident DOM wiring over `get-incident`, with `link-incident-work-request` sent through the shared command kernel and dock |
-| `notifications.html` | V5-UX-B12a Notifications at `/notifications`: the items addressed to you, the delivery state per channel including what quiet hours held, and the accountable activity stream beside them |
+| `notifications.html` | V5-UX-B12a/B12 Notifications at `/notifications`: the items addressed to you, the delivery state per channel including what quiet hours held, a real quiet-hours and device opt-in preference form under a compare-and-swap on `version`, and the accountable activity stream beside them |
 | `js/notifications-model.js` | Pure notification rules: the feed payload's exact keys, the two-value severity vocabulary, the delivery phrases, the deep-link route lookup, the eight UX20 states and the one write's arguments |
 | `js/notifications.js` | Notifications DOM wiring over `notification-feed` and `GET /pipeline/changes`, with `acknowledge-notification` sent through the shared command kernel and dock |
 | `conversations.html` | V5-UX-B07 Doc conversations at `/conversations?id=…`: the record layer's list of conversations, one conversation's turns, who can read it, and create / rename / pin / archive / share through the record layer |

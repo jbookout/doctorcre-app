@@ -13,8 +13,12 @@
  *  3. The visible separation of the accountable-activity panel. An event is
  *     not a notification, and a stream drawn like a feed would merge the two;
  *     that panel is dashed, quieter, and sits UNDER the feed on a phone.
- *  4. The quiet-hours panel, which carries text and no control, because there
- *     is no verb behind a control. Nothing in here draws an input.
+ *  4. The quiet-hours panel, which now carries a REAL form (V5-UX-B12,
+ *     WR-000116): a switch, two clock fields, a timezone field and two
+ *     actions. Every control clears the 44px floor, the grid is one column at
+ *     360px and only widens when there is room, and the quiet-now banner and
+ *     the per-row quiet marker use the shared amber token rather than a new
+ *     colour — a suppressed row is MARKED, never hidden.
  */
 
 .topbar { flex-wrap: wrap; }
@@ -53,6 +57,40 @@
 
 [data-section="activity"] { border-style: dashed; }
 [data-section="activity"] .work-item { color: var(--quiet); }
+
+/* The quiet-now banner and the per-row marker share one amber, from the shared
+ * sheet's token. They are a state, not an error: nothing failed. */
+.quiet-banner { margin: 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 12px;
+  background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--amber-text);
+  font-size: 12px; line-height: 1.45; }
+.quiet-mark { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 10px;
+  border: 1px solid var(--amber); border-radius: 999px; background: color-mix(in srgb, var(--amber) 10%, transparent);
+  color: var(--amber-text); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* The preference form. One column at 360px; the grid only widens where there
+ * is room for two clock fields to sit side by side without either shrinking. */
+.pref-form { display: grid; gap: 12px; margin-top: 12px; }
+.pref-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.pref-form .field { display: grid; gap: 6px; min-width: 0; }
+.pref-form label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+.pref-form input[type="time"], .pref-form input[type="text"] {
+  min-height: var(--touch); width: 100%; box-sizing: border-box; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--ground-1);
+  color: var(--text); font: 500 14px/1.2 var(--body); }
+.pref-form input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch-field { display: flex; align-items: center; gap: 10px; min-height: var(--touch); }
+.switch-field input { width: 22px; height: 22px; flex: 0 0 auto; accent-color: var(--focus); }
+.switch-field label { color: var(--text); font-size: 13px; font-weight: 500; }
+.pref-act { display: flex; flex-wrap: wrap; gap: 8px; }
+.pref-act .btn { flex: 1 1 160px; }
+.pref-message { color: var(--amber-text); overflow-wrap: anywhere; }
+.pref-message:empty { display: none; }
+.pref-form[data-disabled="true"] { opacity: 0.55; }
+
+@media (min-width: 560px) {
+  .pref-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pref-grid .field:last-child { grid-column: 1 / -1; }
+}
 
 @media (max-width: 480px) {
   .hero { flex-direction: column; align-items: stretch; }

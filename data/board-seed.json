@@ -34,6 +34,15 @@
       {"id":"h-d14-2","actor":"joe","summary":"moved demo deal from Negotiation to Legal","recorded_at":"2026-01-10T16:00:00Z"}
     ]
   },
+  "notification_preference": {
+    "_note": "the DOCUMENTED default state of ops.notification_preference: no row yet. exists is false, the window is null, device push is off and the timezone is UTC at version 1, which is what read-notification-preferences answers before anything has ever been saved.",
+    "exists": false,
+    "device_opt_in": false,
+    "quiet_hours_start": null,
+    "quiet_hours_end": null,
+    "timezone": "UTC",
+    "version": 1
+  },
   "notifications": [
     {"id":"11111111-1111-4111-8111-111111111101","severity":"action_required","reason":"Demo lease abstract needs a decision before the demo option date","subject_type":"deal","subject_ref":"d05","deep_link":"/signals/11111111-1111-4111-8111-111111111101","created_at":"2026-01-14T15:40:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"pending"},{"channel":"device","state":"suppressed_quiet_hours"}]},
     {"id":"11111111-1111-4111-8111-111111111102","severity":"failure","reason":"Demo nightly export did not produce a generation","subject_type":"run","subject_ref":"RUN-demo-0042","deep_link":"/signals/11111111-1111-4111-8111-111111111102","created_at":"2026-01-14T14:05:00Z","read_at":null,"delivery":[{"channel":"in_app","state":"pending"}]},
