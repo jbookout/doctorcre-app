@@ -65,6 +65,7 @@
       <button class="tab" type="button" role="tab" id="tabAttention" aria-controls="panelAttention" aria-selected="false">Attention</button>
       <button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room</button>
       <button class="tab" type="button" role="tab" id="tabAtlas" aria-controls="panelAtlas" aria-selected="false">Atlas</button>
+      <button class="tab" type="button" role="tab" id="tabSessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
       <a class="tab" href="/status">Status</a>
     </div>
 
@@ -197,6 +198,32 @@
         <div class="card-heading"><div><p class="eyebrow">Exposure</p><h2 id="atlasExposureTitle">What this page shows and holds</h2></div></div>
         <p class="small" id="atlasExposure"></p>
       </section>
+    </section>
+
+    <section class="tabpanel" id="panelSessions" role="tabpanel" aria-labelledby="tabSessions" tabindex="0" hidden>
+      <section class="card glass" data-section="sessions" aria-labelledby="sessionsTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Who is working</p><h2 id="sessionsTitle">Sessions</h2></div>
+          <button class="btn" type="button" id="sessionsRetry">Take the read again</button>
+        </div>
+        <!-- V5-UX-S02: permanent, and written from js/sessions-model.js so it
+             cannot be deleted from the page alone. This tab opens nothing. -->
+        <p class="session-no-open" id="sessionsNoOpen"></p>
+        <div class="field"><label for="sessionsLookup">Find a session by name or id</label><input id="sessionsLookup" type="search" autocomplete="off" placeholder="reverent-bardeen"></div>
+        <label class="switch" for="sessionsIncludeClosed"><input type="checkbox" id="sessionsIncludeClosed"> Include closed sessions</label>
+        <p class="caption">The lookup and the closed toggle are read from CARR on every change. Nothing on this page is re-sorted, re-filtered or re-ranked in the browser.</p>
+      </section>
+
+      <section class="card glass" data-section="sessions_counts" aria-labelledby="sessionsCountsTitle">
+        <div class="card-heading"><div><p class="eyebrow">Counts</p><h2 id="sessionsCountsTitle">What this answer covers</h2></div></div>
+        <p class="count-line" id="sessionsCounts" data-state="unavailable">unknown</p>
+        <p class="session-banner" id="sessionsBanner" hidden></p>
+        <p class="session-lineage-summary" id="sessionsLineageSummary" hidden></p>
+      </section>
+
+      <p class="sr-only" id="sessionsLive" aria-live="polite"></p>
+      <p class="session-empty" id="sessionsEmpty" hidden></p>
+      <div id="sessionsList"></div>
     </section>
   </main>
 

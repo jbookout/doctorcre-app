@@ -326,18 +326,24 @@ test("the fixture serves the three reads in the record layer's own shapes, and o
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.10.0");
-  assert.equal(contract.version, "1.15.0");
+  assert.equal(contract.version, "1.16.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   assert.equal(routes.routes["/incidents"], "incidents.html", "the incident queue links to a route that exists");
+  // V5-UX-S02: the Sessions tab is a fifth tab on an already-admitted route, so
+  // its two reads are pinned and NO route moves.
+  for (const verb of ["read-session-identity", "read-dispatch-history"]) {
+    assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
+  }
+  assert.equal(contract.mcp_operations.length, 53);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 
 test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede, and 44px targets", () => {
   assert.match(html, /<title>Control Room · DoctorCRE<\/title>/);
   assert.match(html, /<div class="tabs" id="controlRoomTabs" role="tablist"/);
-  for (const label of ["Dashboard", "Attention", "Model Room", "Atlas"]) {
+  for (const label of ["Dashboard", "Attention", "Model Room", "Atlas", "Sessions"]) {
     assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
   }
   assert.equal([...html.matchAll(/aria-live="polite" role="status"/g)].length, 1, "one status live region");

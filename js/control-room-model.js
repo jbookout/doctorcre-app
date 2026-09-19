@@ -31,6 +31,20 @@ export const READ_LABEL = Object.freeze({
   census: "Work census",
 });
 
+/**
+ * The tab strip, in the order control-room.html draws it. V5-UX-S02 added
+ * `sessions` as the fifth panel; `model_room` stays exactly where it is and
+ * keeps its own placeholder, because V5-UX-C12 and V5-UX-C13 are unshipped and
+ * S02 does not deliver them.
+ */
+export const CONTROL_ROOM_TABS = Object.freeze([
+  { id: "tabDashboard", panel: "panelDashboard", label: "Dashboard" },
+  { id: "tabAttention", panel: "panelAttention", label: "Attention" },
+  { id: "tabModelRoom", panel: "panelModelRoom", label: "Model Room" },
+  { id: "tabAtlas", panel: "panelAtlas", label: "Atlas" },
+  { id: "tabSessions", panel: "panelSessions", label: "Sessions" },
+]);
+
 /** The five questions, in doctrine order. */
 export const TILES = Object.freeze(["broken", "running", "stuck", "needs_joe", "changed"]);
 
