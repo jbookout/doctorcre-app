@@ -400,6 +400,16 @@ export function createLiveClient(opts = {}) {
     // a session, because no verb exists that would.
     async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
     async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
+
+    // ------------------------------- Model Room assignments and turns (C12)
+    // TWO MORE READS, passed through untouched, and neither names an actor
+    // either: both verbs derive the acting actor server-side. `roomQueue` is
+    // the projected assignment board and `roomTurns` is the room's own turns,
+    // returned exactly as written. There is no matching write on this surface:
+    // the composer and the Kanban drag are V5-UX-C13, and a read-only tab
+    // cannot fake either.
+    async roomQueue(args = {}) { return rpc('read-room-queue', args); },
+    async roomTurns(args = {}) { return rpc('read-room', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
     // -------------------------------------------- Doc conversations page (B07)

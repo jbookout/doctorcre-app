@@ -1,0 +1,162 @@
+{
+  "source": "live reads taken on 2026-09-18 from /Users/booko/carr-system/.claude/worktrees/reverent-bardeen-40dd80 with ./run.sh call <verb>, against producer 0f6cb388424e83a75396a3e2d3bfc14839e81b35. Verbatim; nothing edited, nothing synthesised.",
+  "read_room_queue_default": {
+    "ok": true,
+    "room": "partner-line",
+    "events": [
+      {
+        "v": 1,
+        "board": "carr-build",
+        "event_id": 1302,
+        "event": "created",
+        "task_id": "t_185f2c38",
+        "card": {
+          "title": "Fresh independent review of PR 832 exact corrected head",
+          "target": "deepseek",
+          "effective_model": "DeepSeek",
+          "status": "ready",
+          "priority": "P1",
+          "cap": "read",
+          "updated_at": "2026-09-01T04:08:15Z",
+          "source_seq": 9166
+        },
+        "summary": "Fresh independent review of PR 832 exact corrected head created.",
+        "projected_at": "2026-09-01T04:08:15Z"
+      },
+      {
+        "v": 1,
+        "board": "carr-build",
+        "event_id": 1301,
+        "event": "blocked",
+        "task_id": "t_4f0bead4",
+        "card": {
+          "title": "Repair cross-surface context handoff enforcement",
+          "target": "claude",
+          "effective_model": "claude",
+          "status": "blocked",
+          "priority": "P1",
+          "cap": "repo-write",
+          "updated_at": "2026-09-01T02:09:54Z",
+          "source_seq": 9001
+        },
+        "summary": "Repair cross-surface context handoff enforcement is blocked.",
+        "projected_at": "2026-09-01T02:09:54Z"
+      },
+      {
+        "v": 1,
+        "board": "carr-build",
+        "event_id": 1297,
+        "event": "review_requested",
+        "task_id": "t_a80efc8b",
+        "card": {
+          "title": "Fresh independent Opus 5 High review",
+          "target": "claude-desktop",
+          "effective_model": "Claude Opus 5 High (background to Desktop)",
+          "status": "review",
+          "priority": "P1",
+          "cap": "record-write",
+          "updated_at": "2026-08-31T21:11:00Z",
+          "source_seq": 8529
+        },
+        "summary": "Fresh independent Opus 5 High review is ready for review.",
+        "projected_at": "2026-08-31T21:11:00Z"
+      },
+      {
+        "v": 1,
+        "board": "carr-build",
+        "event_id": 1290,
+        "event": "blocked",
+        "task_id": "t_3ca30a9e",
+        "card": {
+          "title": "Fresh independent Opus 5 High review",
+          "target": "claude-desktop",
+          "effective_model": "Claude Opus 5 High (background to Desktop)",
+          "status": "blocked",
+          "priority": "P1",
+          "cap": "record-write",
+          "updated_at": "2026-08-31T20:50:38Z",
+          "source_seq": null
+        },
+        "summary": "Fresh independent Opus 5 High review is blocked.",
+        "projected_at": "2026-08-31T20:50:38Z"
+      }
+    ],
+    "projected_at": "2026-09-01T04:08:19.914333+00:00",
+    "live": false
+  },
+  "read_room_queue_model_room": {
+    "ok": true,
+    "room": "model-room",
+    "events": [],
+    "projected_at": null,
+    "live": false
+  },
+  "read_room_model_room": {
+    "ok": true,
+    "room": "model-room",
+    "turns": [
+      {
+        "seq": "6446",
+        "room_id": "model-room",
+        "at": "2026-08-28T13:48:34.449372+00:00",
+        "sponsor": "joe",
+        "seat": "sol",
+        "kind": "system",
+        "body": "{\"event\":\"STATUS\",\"task_id\":\"A01\",\"packet_id\":\"A01\",\"exact_revision\":\"local-main:eb00add03e518a1b60f239377576f120a29ca5e6; origin-main:resolving; live-release:resolving\",\"affected_contract_or_write_set\":{\"lease_mode\":\"read-only\",\"repositories\":[\"/Users/booko/carr-system\"],\"origins\":[\"doctorcre.com\",\"app.doctorcre.com\",\"share.doctorcre.com\",\"ops.doctorcre.com\",\"api.doctorcre.com\",\"dealroom.doctorcre.com\"],\"canonical_write\":\"A01 handoff registration only after AO/high review\",\"exclusions\":[\"Ship Tour Operations\",\"business records\",\"repository\",\"production\",\"deployments\",\"configuration\"]},\"evidence_link\":\"handoff:A01.production-source-reconciliation.v1 (expected)\",\"requested_owner\":\"program-controller\",\"urgency\":\"normal\",\"downstream_pause\":true,\"status\":\"evidence collection started; A01 is the only dispatched implementation seed\"}",
+        "msg_id": "0e8bbdc4-f4ff-4e13-a9f4-ad87c94ce8b5",
+        "origin_channel": "mcp",
+        "origin_actor": "codex"
+      },
+      {
+        "seq": "6461",
+        "room_id": "model-room",
+        "at": "2026-08-28T14:08:06.921157+00:00",
+        "sponsor": "joe",
+        "seat": "sol",
+        "kind": "system",
+        "body": "{\"event_type\":\"REVIEW_REQUEST\",\"task_id\":\"A01\",\"packet_id\":\"A01\",\"artifact_ref\":\"A01.evidence.v1:sha256:4b6aec28d52cd2d686c58e60b6f3e3db5c79f8aef5e79e8a934a7e8d543a23d5\",\"artifact_scope\":\"minimum review artifact: eight-origin matrix, immutable refs, evidence locators, Unknown/contradiction register, completeness checklist\",\"requested_reviewer\":{\"provider\":\"Anthropic Claude CLI\",\"model\":\"Claude Opus 5\",\"effort\":\"high\",\"context\":\"fresh\"},\"review_questions\":[\"unsupported production claims\",\"origin completeness\",\"compatibility and asset qualification\",\"blocker classification\",\"deterministic checklist\"],\"write_set\":[],\"downstream_pause\":true,\"expected_handoff_key\":\"A01.production-source-reconciliation.v1\"}",
+        "msg_id": "0553a0dd-7dce-40b6-bf09-3aca24585848",
+        "origin_channel": "mcp",
+        "origin_actor": "joe-local"
+      },
+      {
+        "seq": "6467",
+        "room_id": "model-room",
+        "at": "2026-08-28T14:16:32.204341+00:00",
+        "sponsor": "joe",
+        "seat": "sol",
+        "kind": "system",
+        "body": "{\"event_type\":\"STATUS\",\"task_id\":\"A01\",\"state\":\"review_blockers_resolved\",\"reviewer\":{\"transport\":\"authenticated Claude CLI 2.1.236\",\"canonical_model\":\"claude-opus-5\",\"provider\":\"firstParty\",\"effort\":\"high\",\"fresh_context\":true,\"session_id\":\"fc5895df-11a0-482c-862a-2b9067d8ef2a\"},\"reviewed_artifact_ref\":\"A01.evidence.v1:sha256:4b6aec28d52cd2d686c58e60b6f3e3db5c79f8aef5e79e8a934a7e8d543a23d5\",\"review_verdict\":\"BLOCK\",\"blockers\":[\"B1 provider route negative unsupported\",\"B2 negative coverage overstated\"],\"disposition\":\"closed by direct Cloudflare account workers/domains and doctorcre.com zone workers/routes enumeration; all advisories incorporated\",\"corrected_artifact_ref\":\"A01.evidence.v2:sha256:575a762e95dc971de52d1011611f5ab80a171cc0d777c8934c23e303d5d988e3\",\"write_set\":[],\"downstream_pause\":true}",
+        "msg_id": "aef78f68-cee8-45b8-800d-69c838973d71",
+        "origin_channel": "mcp",
+        "origin_actor": "joe-local"
+      },
+      {
+        "seq": "6468",
+        "room_id": "model-room",
+        "at": "2026-08-28T14:16:32.846182+00:00",
+        "sponsor": "joe",
+        "seat": "sol",
+        "kind": "system",
+        "body": "{\"event_type\":\"REVIEW_REQUEST\",\"task_id\":\"A01\",\"packet_id\":\"A01\",\"artifact_ref\":\"A01.evidence.v2:sha256:575a762e95dc971de52d1011611f5ab80a171cc0d777c8934c23e303d5d988e3\",\"artifact_scope\":\"corrected eight-origin matrix, provider route/domain refs, source/live asset hashes, Unknown register, review history, deterministic checklist\",\"requested_reviewer\":{\"provider\":\"Anthropic Claude CLI\",\"model\":\"Claude Opus 5\",\"effort\":\"high\",\"context\":\"fresh\"},\"focus\":[\"B1/B2 closure\",\"unsupported production claim audit\",\"deterministic checklist\"],\"prior_review_ref\":\"A01.evidence.v1:sha256:4b6aec28d52cd2d686c58e60b6f3e3db5c79f8aef5e79e8a934a7e8d543a23d5\",\"write_set\":[],\"downstream_pause\":true,\"expected_handoff_key\":\"A01.production-source-reconciliation.v1\"}",
+        "msg_id": "b55c3f83-45ad-451f-8222-b792fa7ff020",
+        "origin_channel": "mcp",
+        "origin_actor": "joe-local"
+      },
+      {
+        "seq": "6475",
+        "room_id": "model-room",
+        "at": "2026-08-28T14:20:58.669449+00:00",
+        "sponsor": "joe",
+        "seat": "sol",
+        "kind": "system",
+        "body": "{\"event_type\":\"STATUS\",\"task_id\":\"A01\",\"state\":\"independent_review_passed\",\"artifact_ref\":\"A01.evidence.v2:sha256:575a762e95dc971de52d1011611f5ab80a171cc0d777c8934c23e303d5d988e3\",\"reviewer\":{\"transport\":\"authenticated Claude CLI 2.1.236\",\"canonical_model\":\"claude-opus-5\",\"provider\":\"firstParty\",\"effort\":\"high\",\"fresh_context\":true,\"session_id\":\"07e7a226-2c10-4821-8b5b-7b6c50017518\",\"thinking_tokens\":3269},\"verdict\":\"PASS\",\"unsupported_production_claims\":0,\"blockers\":[],\"prior_blockers_closed\":[\"B1\",\"B2\"],\"deterministic_checklist\":true,\"write_set\":[],\"downstream_pause\":true,\"next_action\":\"register and read back canonical keyed handoff A01.production-source-reconciliation.v1\"}",
+        "msg_id": "429f4765-b5aa-4d79-8c1a-800e693d61d5",
+        "origin_channel": "mcp",
+        "origin_actor": "joe-local"
+      }
+    ],
+    "latest_seq": "6475",
+    "more": true
+  }
+}

@@ -367,9 +367,9 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 /* --------------------------------------------------------------- the contract */
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
-test("S02-21 the contract pins both verbs alphabetically at 1.16.0 with 53 operations", () => {
-  assert.equal(contract.version, "1.16.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 53);
+test("S02-21 the contract pins both verbs alphabetically at 1.17.0 with 55 operations", () => {
+  assert.equal(contract.version, "1.17.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 55);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -378,7 +378,9 @@ test("S02-21 the contract pins both verbs alphabetically at 1.16.0 with 53 opera
   assert.equal(contract.mcp_operations[dispatch - 1], "presence-lease");
   assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-conversation");
   const identity = contract.mcp_operations.indexOf("read-session-identity");
-  assert.equal(contract.mcp_operations[identity - 1], "read-portfolio");
+  // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
+  // this verb. The neighbour moved; the sorted invariant above did not.
+  assert.equal(contract.mcp_operations[identity - 1], "read-room-queue");
   assert.equal(contract.mcp_operations[identity + 1], "rename-doc-conversation");
   // No route moves: /control-room was admitted at 04139737 and this is a tab.
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
@@ -394,10 +396,13 @@ test("S02-22 producer.source_commit is the 0f6cb388 release", () => {
 
 /* -------------------------------------------------------------------- scope */
 
-// MUTATION: reuse the Model Room placeholder for Sessions.
-test("S02-23 the Model Room placeholder is unchanged and still names C12 and C13", () => {
-  assert.match(html, /<h3>Model Room: not in this release<\/h3>/);
-  assert.match(html, /The ticket board and its history ship in V5-UX-C12 and V5-UX-C13\./);
+// MUTATION: absorb the Model Room panel into the Sessions panel.
+// V5-UX-C12 replaced the Model Room placeholder this test once pinned. What S02
+// owns here is unchanged: Sessions is its OWN fifth panel and never reuses the
+// Model Room's, whatever the Model Room now holds.
+test("S02-23 Sessions is its own panel beside the Model Room's", () => {
+  assert.equal(/id="panelModelRoom"[\s\S]*?not in this release/.test(html), false,
+    "V5-UX-C12 shipped the Model Room tab, so its placeholder is gone");
   assert.match(html, /<section class="tabpanel" id="panelModelRoom"/, "Model Room keeps its own panel");
   assert.match(html, /<section class="tabpanel" id="panelSessions"/, "Sessions is a fifth panel, not an absorption");
   assert.equal(
