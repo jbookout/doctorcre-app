@@ -38,7 +38,7 @@ import {
   acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
   classifyPreferenceReadFailure, classifyReadFailure, feedState, notificationCards,
   preferenceOriginSentence, preferenceState, preferenceSummary, preferenceView,
-  quietNowBanner, setPreferenceArgs, unreadLine,
+  quietNowBanner, setPreferenceArgs, unreadLine, versionConflictLine,
 } from "./notifications-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -260,7 +260,16 @@ async function dispatch(operationKey, args, summary, preference = false) {
       ? client.setNotificationPreference(request)
       : client.acknowledgeNotification(request)),
   });
-  operations.set(operationKey, { args, summary });
+  // THE FLAG IS CARRIED, and this is the whole of blocker B1. `dispatch` is
+  // reached twice for one preference save — once from `savePreference` and once
+  // from the dock's reconcile — and a write-back that dropped `preference`
+  // would leave the retained entry looking like an acknowledgement. The next
+  // "Try again" would then send a base_version and a quiet-hours pair to
+  // `acknowledge-notification`, which refuses it as `notification_not_found`:
+  // a preference save reported as a missing notification, having never reached
+  // the preference verb at all. Every `operations.set` in this file names the
+  // verb, and B12-10 asserts that of all of them.
+  operations.set(operationKey, { args, summary, preference });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
     retry: result.retry, undo: false, request: result.request,
@@ -330,6 +339,14 @@ async function savePreference(form) {
     if (refusal.conflict) {
       dirty = false;
       await takePreference();
+      // F3: the number the refusal named, SHOWN. It is preferred from the
+      // refusal itself when the refusal carried it, and otherwise taken from
+      // the re-read that just landed — the two are the same number, and the
+      // re-read is the one the person is now looking at.
+      const fresh = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
+      const current = refusal.currentVersion ?? fresh?.version ?? null;
+      const line = versionConflictLine(current, built.args.base_version);
+      if (line) sentence = `${sentence} ${line}`;
     }
   }
   dock.record(PREFERENCE_OPERATION_KEY, {

@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises";
 import {
   ACKNOWLEDGE_SCOPE, APP_ROUTE_PATHS, BASE_VERSION_REFUSAL, DEVICE_OFF, EXPOSURE_STATEMENT,
   FEED_STATES, NO_PAGE_SENTENCE, PREFERENCE_DEFAULTS_SENTENCE, PREFERENCE_OPERATION_KEY,
-  PREFERENCE_REFUSALS, QUIET_HOURS_EFFECT, QUIET_HOURS_SCOPE, QUIET_NOW_BANNER,
+  PREFERENCE_REFUSALS, QUIET_HOURS_EFFECT, QUIET_HOURS_SCOPE, QUIET_NOW_BANNER, versionConflictLine,
   QUIET_SUPPRESSED_MARK, SEVERITIES, SEVERITY_LABELS, TIME_REFUSAL,
   acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
   classifyPreferenceReadFailure, classifyReadFailure, deepLinkView, deliveryPhrases, feedState,
@@ -731,4 +731,88 @@ test("B12-9 the contracts pin the two new verbs, the producer release and the mi
   assert.equal(PREFERENCE_OPERATION_KEY, "notifications:preference");
   assert.match(pageJs, /operationKey: PREFERENCE_OPERATION_KEY/);
   assert.match(pageJs, /newKey: uuidv4/);
+});
+
+/* ------------------------------------------------------------ behaviour 10 */
+
+test("B12-10 reconcile-then-retry: a dispatched save keeps its VERB, so a later Try again can never reach acknowledge-notification", () => {
+  // The regression this pins (review blocker B1). `dispatch` is reached twice
+  // for one preference save: once from `savePreference`, and once from the
+  // dock's `onReconcile` when an outcome came back unknown. The second pass
+  // writes the retained entry back. If that write-back dropped `preference`,
+  // the entry would look like an acknowledgement, and the dock's "Try again"
+  // — which branches on exactly that flag — would send a `base_version` and a
+  // quiet-hours pair to `acknowledge-notification`, refused as
+  // `notification_not_found` for a save that never reached the preference verb.
+
+  // 1. EVERY write-back in the file names the verb. This is the invariant, not
+  //    one line of it: a second `operations.set` added later without the flag
+  //    reopens the same hole, so the assertion is over all of them.
+  const writes = [...pageJs.matchAll(/operations\.set\([^;]*?\);/gs)].map((match) => match[0]);
+  assert.equal(writes.length, 2, "the set of write-backs changed; re-read this test");
+  for (const write of writes) {
+    assert.match(write, /preference/, `a write-back drops the verb flag: ${write}`);
+  }
+  assert.match(pageJs, /operations\.set\(operationKey, \{ args, summary, preference \}\);/);
+  assert.match(pageJs, /operations\.set\(PREFERENCE_OPERATION_KEY, \{ args: built\.args, summary, preference: true \}\);/);
+
+  // 2. The two dock doors still read and pass that flag, in opposite ways and
+  //    both deliberately: a REFUSAL is settled, so "Try again" rebuilds the
+  //    arguments against the version the page holds now; an UNKNOWN outcome is
+  //    reconciled with the SAME frozen request, flag and all.
+  assert.match(pageJs, /if \(entry\.preference\) savePreference\(formValues\(\)\);\n\s*else dispatch\(operationKey, entry\.args, entry\.summary\);/);
+  assert.match(pageJs, /dispatch\(operationKey, entry\.args, entry\.summary, entry\.preference === true\);/);
+
+  // 3. The flag is what picks the verb, and there is exactly one place it does.
+  assert.match(pageJs, /call: \(request\) => \(preference\n\s*\? client\.setNotificationPreference\(request\)\n\s*: client\.acknowledgeNotification\(request\)\),/);
+  assert.match(pageJs, /async function dispatch\(operationKey, args, summary, preference = false\)/);
+
+  // 4. The two payloads are disjoint, which is why the wrong verb is not a
+  //    harmless no-op: a preference request carries no `notification_id`, and
+  //    the live verb's UUID guard refuses it as `notification_not_found`.
+  assert.deepEqual(Object.keys(acknowledgeArgs(QUIET).args), ["notification_id"]);
+  const preferenceArgs = setPreferenceArgs(
+    { device_opt_in: true, quiet_hours_start: "22:00", quiet_hours_end: "06:00" },
+    { version: 3 },
+  ).args;
+  assert.equal("notification_id" in preferenceArgs, false, "a preference save carries no notification id");
+  assert.deepEqual(Object.keys(preferenceArgs).sort(),
+    ["base_version", "device_opt_in", "quiet_hours_end", "quiet_hours_start"]);
+});
+
+/* ------------------------------------------ review round 1, findings F2/F3 */
+
+test("B12-11 a version_conflict names both versions and says the typed values were replaced", async () => {
+  // F3: the number the refusal carries is SHOWN, beside the one the form was
+  // saving against. A person told only that "something changed" has been handed
+  // a fact they cannot check.
+  assert.equal(versionConflictLine(3, 1), "It was saving against version 1; the record layer holds version 3.");
+  assert.equal(versionConflictLine(3, null), null, "half this sentence is not worth saying");
+  assert.equal(versionConflictLine(null, 1), null);
+
+  // The number really is the one the store sent: the refusal's `current_version`
+  // and the version the next read answers are the same number.
+  const client = await fixture();
+  const first = await client.notificationPreferences();
+  await client.setNotificationPreference({
+    idempotency_key: "b12-11-a", base_version: first.version, device_opt_in: true,
+  });
+  await assert.rejects(
+    () => client.setNotificationPreference({ idempotency_key: "b12-11-b", base_version: first.version }),
+    (error) => {
+      const refusal = classifyPreferenceFailure(error);
+      assert.equal(refusal.currentVersion, 2);
+      assert.equal(versionConflictLine(refusal.currentVersion, first.version),
+        "It was saving against version 1; the record layer holds version 2.");
+      return true;
+    },
+  );
+  assert.equal((await client.notificationPreferences()).version, 2, "the re-read answers the same number");
+
+  // F2: the discard is stated rather than silent. The typed values are NOT
+  // preserved across the re-read, on purpose — see the comment on the constant.
+  assert.match(PREFERENCE_REFUSALS.version_conflict,
+    /anything you had typed and not saved has been replaced by them/);
+  assert.match(pageJs, /const line = versionConflictLine\(current, built\.args\.base_version\);/);
+  assert.match(pageJs, /const current = refusal\.currentVersion \?\? fresh\?\.version \?\? null;/);
 });

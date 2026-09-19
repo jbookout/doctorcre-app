@@ -450,8 +450,16 @@ export function setPreferenceArgs(form = {}, view = null) {
  * leave a person looking at a form that did nothing and said nothing.
  */
 export const PREFERENCE_REFUSALS = Object.freeze({
+  // F2: the discard is STATED. A conflict repaints the four controls from the
+  // record layer's answer, so anything typed and not saved is gone, and a page
+  // that dropped it silently would look like it had simply ignored the person.
+  // The values are not preserved across the re-read on purpose: the whole point
+  // of the re-read is that the person is deciding again against what the record
+  // layer actually holds, and a form that kept the old typing over fresh values
+  // would invite saving a change that was composed against a picture that is no
+  // longer true.
   version_conflict:
-    "Your preferences changed somewhere else while this form was open, so nothing was saved. The form has been read again and now shows the current values and the current version — check them and save again.",
+    "Your preferences changed somewhere else while this form was open, so nothing was saved. The form has been read again and now shows the current values and the current version, and anything you had typed and not saved has been replaced by them — check them and save again.",
   notification_preference_quiet_hours_incomplete:
     "Quiet hours are two times. Set a start and an end together, or clear them together. Nothing was saved.",
   notification_preference_quiet_hours_conflicting_request:
@@ -502,4 +510,15 @@ export function quietNowBanner(feedPayload, preferencePayload) {
   const fromPreference = !!preferencePayload && typeof preferencePayload === "object"
     && preferencePayload.quiet_now === true;
   return fromFeed || fromPreference ? QUIET_NOW_BANNER : null;
+}
+
+/**
+ * F3: the two versions, named. The refusal carries `current_version` and the
+ * form carried the `base_version` it was saving against, and a person told only
+ * that "something changed" has been given a fact they cannot check. Null when
+ * either number is missing, because half of this sentence is not worth saying.
+ */
+export function versionConflictLine(currentVersion, baseVersion) {
+  if (!Number.isInteger(currentVersion) || !Number.isInteger(baseVersion)) return null;
+  return `It was saving against version ${baseVersion}; the record layer holds version ${currentVersion}.`;
 }
