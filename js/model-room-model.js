@@ -97,19 +97,20 @@ export const NO_OPEN_SENTENCE = "This page can identify the exact session but ca
   + "here answers native_host_supported: false, and a control that appeared here would imply otherwise. "
   + "Copy the canonical session ID instead.";
 
-/** Under the Participants heading, always, whether or not turns came back. */
-export const NO_ACKNOWLEDGEMENT_SENTENCE = "Acknowledgment is not recorded in this substrate. The dispatch read "
-  + "returns acknowledged: null with reason no_dispatch_spine, so no turn on this page is shown as acknowledged "
-  + "or as unacknowledged; both would be invented.";
+/** Under Participants: room turns and dispatch acknowledgements are different records. */
+export const ACKNOWLEDGEMENT_SENTENCE = "Room participants come from conversation turns. Dispatch receipt and "
+  + "acknowledgment come only from the selected session's dispatch history; this participant list never infers "
+  + "either state from a message.";
 
 /** Beside the dispatch lineage, always. */
-export const NO_DISPATCH_SEARCH_SENTENCE = "Dispatch history for this session shows the stages this substrate "
-  + "can prove. Searching the whole dispatch record by name or ID is V5-UX-C13 and is not in this release.";
+export const DISPATCH_SEARCH_SENTENCE = "Search by a session's friendly name or canonical ID, including closed "
+  + "sessions, then choose one result to read its evidence-bound dispatch trail. Search and history are read-only; "
+  + "historical instructions are displayed as records and never executed.";
 
 /** Beside the dispatch stages, always. */
-export const UNPROVABLE_STAGES_SENTENCE = "Queued, waiting and verified are not shown because they are not "
-  + "recorded. The dispatch read answers stage_unavailable_reason: no_dispatch_spine; only sent and acted carry "
-  + "evidence, and received and acknowledged are returned as null by the producer rather than inferred.";
+export const DISPATCH_STAGES_SENTENCE = "Sent, received, acknowledged and acted remain separate evidence rows. "
+  + "A missing stage stays unavailable: not_acknowledged means a linked dispatch has no receipt for that stage; "
+  + "no_dispatch_spine marks pre-spine history matched only from its room-turn body.";
 
 /** Beside the assignments board, stating where the cards actually come from. */
 export const QUEUE_ROOM_SENTENCE = `Assignments are read from room ${QUEUE_ROOM}, board ${QUEUE_BOARD}, which is `
@@ -253,6 +254,13 @@ export function humanAge(ms) {
   if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"}`;
   const days = Math.floor(hours / 24);
   return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+/** C13 clause 3: the name/ID lookup is explicit, bounded and includes history. */
+export function dispatchSearchRequest(query) {
+  const text = String(query ?? "").trim();
+  if (text.length === 0) return null;
+  return { query: text.slice(0, 200), include_closed: true, limit: 50 };
 }
 
 /* ---------------------------------------------------------- the assignments */

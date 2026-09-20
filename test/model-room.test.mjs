@@ -22,11 +22,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  NO_ACKNOWLEDGEMENT_SENTENCE, NO_DISPATCH_SEARCH_SENTENCE, NO_OPEN_SENTENCE,
-  QUEUE_BOARD, QUEUE_ROOM, TURN_ROOM, UNPROVABLE_STAGES_SENTENCE, WINDOW_SENTENCE,
-  WORK_STATES, WORK_STATE_LABEL, assignmentBoard, contextPanel, effectiveModelText,
+  ACKNOWLEDGEMENT_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
+  QUEUE_BOARD, QUEUE_ROOM, TURN_ROOM, WINDOW_SENTENCE,
+  WORK_STATES, WORK_STATE_LABEL, assignmentBoard, contextPanel, dispatchSearchRequest, dispatchView,
+  effectiveModelText,
   listState, participants, parentLine, queueFreshness, queueRequest, refuseQueueEvent,
-  refuseRoomQueue, refuseRoomTurns, turnRequest, turnWindow,
+  refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns, turnRequest, turnWindow,
 } from "../js/model-room-model.js";
 
 const root = new URL("..", import.meta.url);
@@ -236,22 +237,20 @@ test("C12-09 no open control exists in any branch, and the honesty sentence is p
   assert.equal(/<button[^>]*>[^<]*[Oo]pen/.test(htmlMarkup), false, "no button on the page begins with Open");
 });
 
-// MUTATION: render a "0 pending" acknowledgment chip.
-test("C12-10 nothing claims acknowledged or unacknowledged, and the sentence says why", () => {
-  assert.match(NO_ACKNOWLEDGEMENT_SENTENCE, /Acknowledgment is not recorded in this substrate/);
-  assert.match(NO_ACKNOWLEDGEMENT_SENTENCE, /no_dispatch_spine/);
-  assert.match(NO_ACKNOWLEDGEMENT_SENTENCE, /both would be invented/);
+// MUTATION: infer dispatch acknowledgement from a participant's room turn.
+test("C12-10 room participants never stand in for dispatch acknowledgment", () => {
+  assert.match(ACKNOWLEDGEMENT_SENTENCE, /Room participants come from conversation turns/);
+  assert.match(ACKNOWLEDGEMENT_SENTENCE, /Dispatch receipt and acknowledgment come only/);
+  assert.match(ACKNOWLEDGEMENT_SENTENCE, /never infers/);
   const people = participants(LIVE_TURNS);
   assert.ok(people.length > 0, "participants ARE derivable from turns and are shown");
   for (const person of people) {
     assert.equal(Object.hasOwn(person, "acknowledged"), false);
     assert.equal(Object.hasOwn(person, "pending"), false);
   }
-  // Not zero, not unknown, not a dash: no element renders a pending count.
-  assert.equal(/pending/i.test(viewCode.replace(NO_ACKNOWLEDGEMENT_SENTENCE, " ")), false,
-    "the shipped code of js/model-room.js renders no pending-acknowledgment count of any kind");
-  assert.equal(/unacknowledged/i.test(viewCode.replace(NO_ACKNOWLEDGEMENT_SENTENCE, " ")), false,
-    "and it never labels anything unacknowledged either");
+  // The participant list never renders a pending count. Dispatch history owns
+  // its own evidence-bound received/acknowledged labels elsewhere.
+  assert.equal(/pending/i.test(htmlMarkup), false, "the participant markup carries no pending count");
   assert.equal(/pending/i.test(htmlMarkup), false, "control-room.html renders no pending-acknowledgment count either");
   // Structural, not a grep: no OUTPUT of the model carries an acknowledgment
   // field, in any branch — not a zero, not an unknown, not a dash.
@@ -269,8 +268,58 @@ test("C12-10 nothing claims acknowledged or unacknowledged, and the sentence say
       assert.equal(/pending/i.test(key), false, `${key} is a pending count the substrate cannot fill`);
     }
   }
-  assert.match(UNPROVABLE_STAGES_SENTENCE, /Queued, waiting and verified are not shown/);
-  assert.match(NO_DISPATCH_SEARCH_SENTENCE, /V5-UX-C13 and is not in this release/);
+  assert.match(DISPATCH_STAGES_SENTENCE, /Sent, received, acknowledged and acted remain separate/);
+  assert.match(DISPATCH_SEARCH_SENTENCE, /Search by a session's friendly name or canonical ID/);
+});
+
+test("C13-01 dispatch search is bounded, includes closed sessions and never names an actor", () => {
+  assert.deepEqual(dispatchSearchRequest("  reverent-bardeen  "), {
+    query: "reverent-bardeen", include_closed: true, limit: 50,
+  });
+  assert.equal(dispatchSearchRequest("   "), null);
+  assert.equal(dispatchSearchRequest("x".repeat(250)).query.length, 200);
+  assert.equal(Object.hasOwn(dispatchSearchRequest("session-id"), "actor"), false);
+  assert.match(htmlMarkup, /id="modelRoomDispatchSearch" role="search"/);
+  assert.match(htmlMarkup, /Find dispatch history by session name or canonical ID/);
+});
+
+test("C13-02 all four dispatch stages stay distinct and carry their own evidence", () => {
+  const payload = {
+    ok: true, session_id: "session-1", parent_session_id: "parent-1",
+    permission_filtered: false, total_seen: 4, total_returned: 4,
+    more: false, next_cursor: null,
+    received: "2026-09-20T12:01:00Z", acknowledged: "2026-09-20T12:02:00Z",
+    stage_unavailable_reason: null,
+    events: ["sent", "received", "acknowledged", "acted"].map((stage, index) => ({
+      event_id: `event-${index}`, at: `2026-09-20T12:0${index}:00Z`, stage,
+      stage_evidence: `evidence-${stage}`, rationale: `why-${stage}`,
+      session_id: "session-1", parent_session_id: "parent-1",
+      attempt_ref: "attempt-7", work_request_ref: "WR-000119", superseded_by: null,
+      link_source: ["sent", "received", "acknowledged"].includes(stage) ? "proved" : null,
+      dispatch_ref: ["sent", "received", "acknowledged"].includes(stage) ? "dispatch-1" : null,
+      stage_unavailable_reason: null,
+    })),
+  };
+  assert.equal(refuseDispatchHistory(payload), null);
+  const drawer = dispatchView(payload);
+  assert.deepEqual(drawer.events.map((event) => event.stage), ["sent", "received", "acknowledged", "acted"]);
+  assert.equal(new Set(drawer.events.map((event) => event.evidence)).size, 4);
+  assert.equal(drawer.receivedState, "recorded");
+  assert.equal(drawer.acknowledgedState, "recorded");
+  assert.equal(refuseDispatchHistory({ ...payload, received: "bogus" }), "received_not_a_timestamp");
+  assert.equal(refuseDispatchHistory({ ...payload, received: "2026-09-20T12:09:00Z" }),
+    "received_without_matching_event");
+  assert.equal(refuseDispatchHistory({ ...payload, acknowledged: "2026-09-20T12:09:00Z" }),
+    "acknowledged_without_matching_event");
+});
+
+test("C13-03 history exposes parent, attempt, rationale and supersession without an execute path", () => {
+  assert.match(viewCode, /event\.parentSessionId/);
+  assert.match(viewCode, /event\.attemptRef/);
+  assert.match(viewCode, /event\.rationale/);
+  assert.match(viewCode, /event\.supersededBy/);
+  assert.match(DISPATCH_SEARCH_SENTENCE, /never executed/);
+  assert.equal(/execute|rerun|retry instruction/i.test(viewCode.replace(DISPATCH_SEARCH_SENTENCE, " ")), false);
 });
 
 /* ------------------------------------------------ the producer's own branches */
@@ -397,18 +446,20 @@ test("C12-17 the Observatory is untouched by this slice", async () => {
 /* ----------------------------------------------------------- the contract pin */
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
-test("C12-18 the contract pins all four verbs, sorted, at 1.17.0 with 55 operations", () => {
-  assert.equal(contract.version, "1.17.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 55);
+test("C13-04 the contract pins the v35 producer and its two dispatch writes", () => {
+  assert.equal(contract.version, "1.18.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 57);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
+    assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
+  }
+  for (const verb of ["record-dispatch-link", "acknowledge-dispatch"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   const queue = contract.mcp_operations.indexOf("read-room-queue");
   assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
-  // No new producer commit is involved: S02 already pinned this release.
-  assert.equal(contract.producer.source_commit, "0f6cb388424e83a75396a3e2d3bfc14839e81b35");
+  assert.equal(contract.producer.source_commit, "b84cec2ca84c69971bdc28e00f4a8999d09f4f3d");
   // Nothing new is read over HTTP, so http_surfaces is pinned to the exact set
   // that shipped before this slice. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
@@ -471,7 +522,7 @@ test("C12-20 the Model Room placeholder is gone and the tab wiring is unchanged"
   assert.match(html, /<button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room<\/button>/);
   assert.match(html, /id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden/);
   // 360px: one column, and every control this tab adds at the 44px floor.
-  assert.match(css, /#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId \{ min-height: var\(--touch\); \}/);
+  assert.match(css, /#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId,\s*\n#modelRoomDispatchSearch \.btn, #modelRoomDispatchQuery \{ min-height: var\(--touch\); \}/);
   assert.match(css, /@media \(max-width: 640px\) \{\s*\n  \.assignment-rail \{ grid-template-columns: 1fr; \}/);
   // Every freshness state is carried by colour AND shape AND text.
   for (const state of ["stale", "never", "live", "unavailable"]) {

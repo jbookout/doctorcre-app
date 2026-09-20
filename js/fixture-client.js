@@ -586,13 +586,13 @@ export async function createFixtureClient(opts = {}) {
       "session_id": "55555555-5555-4555-8555-555555555555",
       "parent_session_id": "11111111-1111-4111-8111-111111111111",
       "permission_filtered": false,
-      "total_seen": 3,
-      "total_returned": 3,
+      "total_seen": 4,
+      "total_returned": 4,
       "more": true,
       "next_cursor": "synthetic-cursor-2",
-      "received": null,
-      "acknowledged": null,
-      "stage_unavailable_reason": "no_dispatch_spine",
+      "received": "2026-09-18T12:02:00+00:00",
+      "acknowledged": "2026-09-18T12:03:00+00:00",
+      "stage_unavailable_reason": null,
       "events": [
           {
               "event_id": "ev-2",
@@ -608,7 +608,48 @@ export async function createFixtureClient(opts = {}) {
               "parent_session_id": "11111111-1111-4111-8111-111111111111",
               "attempt_ref": "WR-000117#3",
               "superseded_by": null,
-              "work_request_ref": "WR-000117"
+              "work_request_ref": "WR-000117",
+              "link_source": null,
+              "dispatch_ref": null,
+              "stage_unavailable_reason": null
+          },
+          {
+              "event_id": "ack-2",
+              "at": "2026-09-18T12:03:00+00:00",
+              "stage": "acknowledged",
+              "stage_evidence": "public.room_dispatch_ack id 12 for dispatch_ref 99999999-9999-4999-8999-999999999999",
+              "rationale": "the builder accepted the bounded assignment",
+              "from_seat": "orchestrator",
+              "to_seat": "builder",
+              "sponsor": "joe",
+              "room_id": "model-room",
+              "session_id": "55555555-5555-4555-8555-555555555555",
+              "parent_session_id": "11111111-1111-4111-8111-111111111111",
+              "attempt_ref": "WR-000117#3",
+              "superseded_by": null,
+              "work_request_ref": "WR-000117",
+              "link_source": "proved",
+              "dispatch_ref": "99999999-9999-4999-8999-999999999999",
+              "stage_unavailable_reason": null
+          },
+          {
+              "event_id": "ack-1",
+              "at": "2026-09-18T12:02:00+00:00",
+              "stage": "received",
+              "stage_evidence": "public.room_dispatch_ack id 11 for dispatch_ref 99999999-9999-4999-8999-999999999999",
+              "rationale": "the builder desk received the assignment",
+              "from_seat": "orchestrator",
+              "to_seat": "builder",
+              "sponsor": "joe",
+              "room_id": "model-room",
+              "session_id": "55555555-5555-4555-8555-555555555555",
+              "parent_session_id": "11111111-1111-4111-8111-111111111111",
+              "attempt_ref": "WR-000117#3",
+              "superseded_by": null,
+              "work_request_ref": "WR-000117",
+              "link_source": "proved",
+              "dispatch_ref": "99999999-9999-4999-8999-999999999999",
+              "stage_unavailable_reason": null
           },
           {
               "event_id": "ev-1",
@@ -624,17 +665,17 @@ export async function createFixtureClient(opts = {}) {
               "parent_session_id": null,
               "attempt_ref": null,
               "superseded_by": "ev-2",
-              "work_request_ref": null
+              "work_request_ref": "WR-000117",
+              "link_source": "proved",
+              "dispatch_ref": "99999999-9999-4999-8999-999999999999",
+              "stage_unavailable_reason": null
           }
       ]
   };
 
   /**
-   * The captured no-spine answer, which production returns for EVERY id —
-   * including ids that do not exist. `received`, `acknowledged` and
-   * `stage_unavailable_reason` are identical in every fixture, live or
-   * synthetic: a fixture that filled them would manufacture the exact claim
-   * V5-UX-C13 clause 1 is still open on.
+   * An empty answer. Production cannot distinguish an unknown id from a real
+   * session with no visible dispatch events, so the UI never makes that claim.
    */
   const dispatchNoSpine = (sessionId) => ({
     ok: true,
@@ -647,7 +688,7 @@ export async function createFixtureClient(opts = {}) {
     next_cursor: null,
     received: null,
     acknowledged: null,
-    stage_unavailable_reason: 'no_dispatch_spine',
+    stage_unavailable_reason: null,
     events: [],
   });
 

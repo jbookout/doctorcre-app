@@ -151,7 +151,8 @@
  * border style) and by its own TEXT, so a still screenshot in one colour still
  * reads correctly, and prefers-reduced-motion has nothing to turn off because
  * nothing on this tab moves. */
-#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId { min-height: var(--touch); }
+#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId,
+#modelRoomDispatchSearch .btn, #modelRoomDispatchQuery { min-height: var(--touch); }
 .model-room-freshness { margin: 8px 0 0; font-size: 13px; line-height: 1.6; padding-left: 10px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
 /* Stale is the ORDINARY state of this queue, so it is drawn quiet rather than
  * loud: dashed, muted, and stating its own age. It is not an error. */
@@ -173,6 +174,10 @@
 .assignment-card[data-status="blocked"] { border-left: 3px solid var(--amber-text); }
 
 .session-picks { display: grid; gap: 10px; margin-top: 12px; }
+.dispatch-search { display: grid; gap: 8px; margin-top: 12px; }
+.dispatch-search label { font-size: 13px; font-weight: 700; }
+.dispatch-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
+.dispatch-search-row input { min-width: 0; }
 .session-pick { display: grid; gap: 6px; text-align: left; margin: 0; padding: 14px; min-height: var(--touch); min-width: 0; cursor: pointer; }
 .session-pick[aria-pressed="true"] { border-left: 3px solid var(--orange); }
 .session-pick-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
@@ -184,6 +189,10 @@
 .context-parent, .context-lineage { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
 .context-parent[data-parent="outside"], .context-parent[data-parent="unrecorded"], .context-lineage[data-relation="not_recorded"] { color: var(--quiet); }
 .context-dispatch { margin-top: 12px; display: grid; gap: 8px; }
+.dispatch-availability { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 12px; }
+.dispatch-availability span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; }
+.dispatch-availability span[data-state="unavailable"] { border-style: dashed; color: var(--quiet); }
+.dispatch-links { margin-top: 8px; }
 
 .participant-list, .room-turns { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
 .participant { border-left: 2px solid var(--line-strong); padding-left: 10px; min-width: 0; }
@@ -199,4 +208,5 @@
 @media (max-width: 640px) {
   .assignment-rail { grid-template-columns: 1fr; }
   .assignment-head { flex-direction: column; }
+  .dispatch-search-row { grid-template-columns: 1fr; }
 }

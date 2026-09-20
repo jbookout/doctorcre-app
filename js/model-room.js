@@ -1,4 +1,4 @@
-// V5-UX-C12 — the Model Room tab: DOM wiring only.
+// V5-UX-C12 plus V5-UX-C13 clause 3 — the Model Room tab: DOM wiring only.
 //
 // Every decision about a payload is in ./model-room-model.js. This file reads,
 // paints, and does nothing else. It writes nothing: all four verbs on this
@@ -10,16 +10,13 @@
 // dashboard reads keep their time-to-glance. Nothing polls: one read per panel
 // per visit, plus the explicit "Read again" control the other tabs carry.
 //
-// THERE IS NO OPEN CONTROL IN THIS FILE, in any branch, and no element claims a
-// session was acknowledged or unacknowledged. Search it: `open` appears only as
-// `contextPanel().open`, false everywhere, and as the <details> that reveals
-// dispatch already read. The two sentences that say why are written from the
-// model, so deleting them from the page cannot leave a tab that quietly implies
-// otherwise.
+// THERE IS NO OPEN OR EXECUTE CONTROL IN THIS FILE. Search only narrows the
+// permission-filtered session read; choosing a row reads history and never
+// treats historical rationale as a fresh instruction.
 import {
-  NO_ACKNOWLEDGEMENT_SENTENCE, NO_DISPATCH_SEARCH_SENTENCE, NO_OPEN_SENTENCE,
-  QUEUE_ROOM_SENTENCE, UNPROVABLE_STAGES_SENTENCE,
-  assignmentBoard, contextPanel, countsLine, dispatchView, listState, participants,
+  ACKNOWLEDGEMENT_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
+  QUEUE_ROOM_SENTENCE,
+  assignmentBoard, contextPanel, countsLine, dispatchSearchRequest, dispatchView, listState, participants,
   queueFreshness, queueRequest, refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns,
   refuseSessionIdentity, sessionCards, turnRequest, turnWindow,
 } from "./model-room-model.js";
@@ -47,6 +44,7 @@ const view = {
   /** canonical_session_id of the selected card; null until one is chosen. */
   selected: null,
   dispatch: { state: "idle", payload: null, refusal: null },
+  searchQuery: "",
 };
 
 const clock = (value) => formatClock(value) || "unknown";
@@ -178,23 +176,39 @@ function renderSessions() {
 function dispatchHtml() {
   const stages = `<p class="dispatch-stages">
     <span data-stage="sent">sent: recorded per event</span>
+    <span data-stage="received">received: recorded per event</span>
+    <span data-stage="acknowledged">acknowledged: recorded per event</span>
     <span data-stage="acted">acted: recorded per event</span>
   </p>
-  <p class="dispatch-honesty">${escapeHtml(UNPROVABLE_STAGES_SENTENCE)}</p>
-  <p class="dispatch-honesty">${escapeHtml(NO_DISPATCH_SEARCH_SENTENCE)}</p>`;
+  <p class="dispatch-honesty">${escapeHtml(DISPATCH_STAGES_SENTENCE)}</p>
+  <p class="dispatch-honesty">${escapeHtml(DISPATCH_SEARCH_SENTENCE)}</p>`;
   if (view.dispatch.state === "loading") return `${stages}<p class="small">Taking the dispatch read…</p>`;
   if (view.dispatch.refusal) {
     return `${stages}<p class="small">The dispatch read could not be rendered: ${escapeHtml(view.dispatch.refusal)}.</p>`;
   }
   if (!view.dispatch.payload) return stages;
   const drawer = dispatchView(view.dispatch.payload);
+  const availability = `<p class="dispatch-availability">
+    <span data-stage="received" data-state="${escapeHtml(drawer.receivedState)}">received: ${escapeHtml(drawer.receivedState)}</span>
+    <span data-stage="acknowledged" data-state="${escapeHtml(drawer.acknowledgedState)}">acknowledged: ${escapeHtml(drawer.acknowledgedState)}</span>
+    ${drawer.stageUnavailableReason ? `<span data-state="unavailable">reason: ${escapeHtml(drawer.stageUnavailableReason)}</span>` : ""}
+  </p>`;
   const empty = drawer.emptySentence ? `<p class="dispatch-empty">${escapeHtml(drawer.emptySentence)}</p>` : "";
   const events = drawer.events.map((event) => `<li class="dispatch-event" data-stage="${escapeHtml(event.stage)}">
     <p class="dispatch-when">${escapeHtml(event.stage)} · ${escapeHtml(clock(event.at))}</p>
     <p class="dispatch-evidence">${escapeHtml(event.evidence ?? "no evidence recorded")}</p>
     ${event.rationale ? `<p class="dispatch-rationale">${escapeHtml(event.rationale)}</p>` : ""}
+    <dl class="dispatch-links detail-rows">
+      <dt>parent</dt><dd>${escapeHtml(event.parentSessionId ?? drawer.parentSessionId ?? "not recorded")}</dd>
+      <dt>attempt</dt><dd>${escapeHtml(event.attemptRef ?? "not recorded")}</dd>
+      <dt>work request</dt><dd>${escapeHtml(event.workRequestRef ?? "not recorded")}</dd>
+      <dt>dispatch</dt><dd>${escapeHtml(event.dispatchRef ?? "pre-spine / not recorded")}</dd>
+      <dt>link evidence</dt><dd>${escapeHtml(event.linkSource ?? "not recorded")}</dd>
+      <dt>superseded by</dt><dd>${escapeHtml(event.supersededBy ?? "current / not superseded")}</dd>
+      <dt>missing-stage reason</dt><dd>${escapeHtml(event.stageUnavailableReason ?? "none")}</dd>
+    </dl>
   </li>`).join("");
-  return `${stages}${empty}<ul class="dispatch-list">${events}</ul>`;
+  return `${stages}${availability}${empty}<ul class="dispatch-list">${events}</ul>`;
 }
 
 function renderContext() {
@@ -328,6 +342,29 @@ async function readAll() {
   announce("The Model Room reads have answered.");
 }
 
+async function searchSessions(query) {
+  const args = dispatchSearchRequest(query);
+  if (!args) {
+    announce("Enter a session name or canonical ID to search dispatch history.");
+    return;
+  }
+  view.searchQuery = args.query;
+  view.selected = null;
+  view.dispatch = { state: "idle", payload: null, refusal: null };
+  await take("sessions", () => client.sessionIdentity(args), refuseSessionIdentity);
+  announce(`The dispatch-history search for ${args.query} has answered.`);
+}
+
+async function clearSessionSearch() {
+  view.searchQuery = "";
+  view.selected = null;
+  view.dispatch = { state: "idle", payload: null, refusal: null };
+  const input = $("modelRoomDispatchQuery");
+  if (input) input.value = "";
+  await take("sessions", () => client.sessionIdentity({}), refuseSessionIdentity);
+  announce("The full visible session list has been restored.");
+}
+
 function selectSession(id) {
   view.selected = id ?? null;
   view.dispatch = { state: "idle", payload: null, refusal: null };
@@ -362,14 +399,19 @@ export function mountModelRoom({ outage = null } = {}) {
   if (mounted) return;
   mounted = true;
   view.outage = outage;
-  // Written from the model so deleting them from the page alone cannot leave a
-  // tab that implies it opens sessions or knows about acknowledgment.
+  // Written from the model so deleting them from the page alone cannot blur
+  // room participation into dispatch acknowledgement.
   const room = $("modelRoomQueueRoom");
   if (room) room.textContent = QUEUE_ROOM_SENTENCE;
   const ack = $("modelRoomNoAck");
-  if (ack) ack.textContent = NO_ACKNOWLEDGEMENT_SENTENCE;
+  if (ack) ack.textContent = ACKNOWLEDGEMENT_SENTENCE;
   $("modelRoomRetry")?.addEventListener("click", () => readAll());
   $("modelRoomQueueRetry")?.addEventListener("click", () => readAll());
+  $("modelRoomDispatchSearch")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    searchSessions($("modelRoomDispatchQuery")?.value ?? "");
+  });
+  $("modelRoomDispatchClear")?.addEventListener("click", () => clearSessionSearch());
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"

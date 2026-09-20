@@ -163,6 +163,15 @@
 
       <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
         <div class="card-heading"><div><p class="eyebrow">Who is working</p><h2 id="modelRoomSessionsTitle">Sessions</h2></div></div>
+        <form class="dispatch-search" id="modelRoomDispatchSearch" role="search">
+          <label for="modelRoomDispatchQuery">Find dispatch history by session name or canonical ID</label>
+          <div class="dispatch-search-row">
+            <input id="modelRoomDispatchQuery" name="query" type="search" maxlength="200" autocomplete="off" required>
+            <button class="btn" type="submit">Search</button>
+            <button class="btn" type="button" id="modelRoomDispatchClear">Clear</button>
+          </div>
+          <p class="caption">Search includes closed sessions you are allowed to see. Results and history are read-only.</p>
+        </form>
         <p class="count-line" id="modelRoomCounts" data-state="unavailable">unknown</p>
         <p class="session-banner" id="modelRoomBanner" hidden></p>
         <p class="model-room-empty" id="modelRoomSessionsEmpty" hidden></p>
@@ -176,8 +185,8 @@
 
       <section class="card glass" data-section="model_room_participants" aria-labelledby="modelRoomParticipantsTitle">
         <div class="card-heading"><div><p class="eyebrow">Who is in the room</p><h2 id="modelRoomParticipantsTitle">Participants and acknowledgment</h2></div></div>
-        <!-- V5-UX-C12: written from js/model-room-model.js. No element on this
-             page renders a pending-acknowledgment count, not even a zero. -->
+        <!-- Conversation participants and dispatch acknowledgments are separate
+             evidence sources; the model writes the boundary sentence here. -->
         <p class="model-room-no-ack" id="modelRoomNoAck"></p>
         <p class="model-room-window" id="modelRoomWindow" data-state="idle"></p>
         <ul class="participant-list" id="modelRoomParticipants"></ul>
