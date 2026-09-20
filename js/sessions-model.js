@@ -36,8 +36,8 @@ export const SURFACES = Object.freeze(["claude", "codex", "capability", "harvest
 export const ALIAS_SOURCES = Object.freeze(["human", "derived"]);
 export const WORK_STATES = Object.freeze(["working", "idle", "complete_unacknowledged", "disconnected", "unknown"]);
 export const OBSERVATION_SOURCES = Object.freeze(["continuity_event", "checkpoint", "server_session", "harvest"]);
-/** `sent` and `acted` are the only stages this substrate can prove. */
-export const PROVABLE_STAGES = Object.freeze(["sent", "acted"]);
+/** WR-000119's dispatch spine gives every stage an evidence-bearing row. */
+export const PROVABLE_STAGES = Object.freeze(["sent", "received", "acknowledged", "acted"]);
 
 export const WORK_STATE_LABEL = Object.freeze({
   working: "working", idle: "idle", complete_unacknowledged: "complete, unacknowledged",
@@ -55,11 +55,10 @@ export const NO_OPEN_SENTENCE = "This tab finds sessions and shows their lineage
   + "so no control here launches, resumes or takes over anything.";
 
 /** In the drawer, whenever `stage_unavailable_reason` is non-null. */
-export const STAGE_UNAVAILABLE_SENTENCE = "Sent and acted are the only stages this record layer can prove. "
-  + "Received and acknowledged are returned as unavailable, reason no_dispatch_spine, because the underlying "
-  + "room-turn table carries no session id and no acknowledgement column. V5-UX-C13's first clause — "
-  + "\"Sent/received/acknowledged/acted are not conflated\" — is therefore not closed by this slice, and this "
-  + "tab does not claim it.";
+export const STAGE_UNAVAILABLE_SENTENCE = "A missing stage is not a failed stage. Each dispatch names why its "
+  + "received or acknowledged evidence is unavailable: not_acknowledged means the dispatch link exists but the "
+  + "desk has not recorded that stage; no_dispatch_spine identifies pre-spine history that can only be matched "
+  + "from its room-turn body.";
 
 /** In the drawer whenever `events` is empty. Never "this session has none". */
 export const EMPTY_HISTORY_SENTENCE = "No dispatch events are recorded for this id. That is not the same as "
@@ -73,6 +72,7 @@ export const LINEAGE_UNRECORDED_SENTENCE = "Lineage is not recorded for this ses
 
 const isText = (value) => typeof value === "string" && value.length > 0;
 const isCount = (value) => Number.isInteger(value) && value >= 0;
+const isStamp = (value) => isText(value) && Number.isFinite(Date.parse(value));
 
 /**
  * Refuse a `read-session-identity` payload BY NAME, before any view sees it.
@@ -118,8 +118,7 @@ export function refuseDispatchHistory(payload) {
   if (!isText(payload.session_id)) return "dispatch_without_session_id";
   if (!isCount(payload.total_seen) || !isCount(payload.total_returned)) return "dispatch_counts_not_counts";
   if (payload.events.length > payload.total_returned) return "dispatch_page_exceeds_total_returned";
-  // The conflation C13 clause 1 forbids, caught before it can be painted: a
-  // stage the substrate says it cannot prove must not arrive carrying a value.
+  // A top-level unavailable reason and a proved top-level stage cannot coexist.
   if (payload.stage_unavailable_reason === "no_dispatch_spine"
     && (payload.received != null || payload.acknowledged != null)) {
     return "unprovable_stage_carries_a_value";
@@ -128,7 +127,25 @@ export function refuseDispatchHistory(payload) {
   for (const event of payload.events) {
     if (!event || typeof event !== "object") return "dispatch_event_not_an_object";
     if (!isText(event.event_id)) return "dispatch_event_without_an_id";
+    if (!isStamp(event.at)) return "dispatch_event_without_a_timestamp";
+    if (!isText(event.stage_evidence)) return "dispatch_event_without_evidence";
     if (!PROVABLE_STAGES.includes(event.stage)) return "unprovable_stage";
+    if (![null, "proved", "body_match"].includes(event.link_source ?? null)) return "dispatch_link_source_unknown";
+    if (![null, "not_acknowledged", "no_dispatch_spine"].includes(event.stage_unavailable_reason ?? null)) {
+      return "dispatch_stage_reason_unknown";
+    }
+    if (["received", "acknowledged"].includes(event.stage)
+      && (event.link_source !== "proved" || event.stage_unavailable_reason != null)) {
+      return "acknowledgement_without_proved_dispatch";
+    }
+  }
+  for (const stage of ["received", "acknowledged"]) {
+    const topLevel = payload[stage];
+    if (topLevel == null) continue;
+    if (!isStamp(topLevel)) return `${stage}_not_a_timestamp`;
+    const proof = payload.events.find((event) => event.stage === stage
+      && event.link_source === "proved" && event.stage_unavailable_reason == null && event.at === topLevel);
+    if (!proof) return `${stage}_without_matching_event`;
   }
   return null;
 }
@@ -340,8 +357,8 @@ export function dispatchView(payload) {
   return {
     sessionId: payload?.session_id ?? null,
     parentSessionId: payload?.parent_session_id ?? null,
-    // Not "no", not false, not zero: the stage is UNAVAILABLE and the reason is
-    // named. Rendering "acknowledged: no" would assert an absence nobody proved.
+    // Not "no", not false, not zero: an absent stage is UNAVAILABLE and the
+    // producer's reason remains visible.
     stagesUnavailable: payload?.stage_unavailable_reason != null,
     stageUnavailableReason: payload?.stage_unavailable_reason ?? null,
     receivedState: payload?.received == null ? "unavailable" : "recorded",
@@ -365,9 +382,13 @@ export function dispatchView(payload) {
       toSeat: event.to_seat ?? null,
       sponsor: event.sponsor ?? null,
       roomId: event.room_id ?? null,
+      parentSessionId: event.parent_session_id ?? null,
       attemptRef: event.attempt_ref ?? null,
       supersededBy: event.superseded_by ?? null,
       workRequestRef: event.work_request_ref ?? null,
+      linkSource: event.link_source ?? null,
+      dispatchRef: event.dispatch_ref ?? null,
+      stageUnavailableReason: event.stage_unavailable_reason ?? null,
     })),
   };
 }

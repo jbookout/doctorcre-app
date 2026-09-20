@@ -229,21 +229,22 @@ test("S02-14 the no-open honesty sentence is present on the tab", () => {
 });
 
 // MUTATION: render "acknowledged: no" instead of unavailable in dispatchView().
-test("S02-15 received/acknowledged null with no_dispatch_spine renders the C13 honesty sentence", () => {
+test("S02-15 pre-spine null stages stay unavailable and name their reason", () => {
   const drawer = dispatchView(NO_SPINE);
   assert.equal(drawer.stagesUnavailable, true);
   assert.equal(drawer.stageUnavailableReason, "no_dispatch_spine");
   assert.equal(drawer.receivedState, "unavailable");
   assert.equal(drawer.acknowledgedState, "unavailable");
   assert.equal(drawer.stageSentence, STAGE_UNAVAILABLE_SENTENCE);
-  assert.match(drawer.stageSentence, /Sent and acted are the only stages this record layer can prove/);
-  assert.match(drawer.stageSentence, /not closed by this slice, and this tab does not claim it/);
-  // Even with events present the two unprovable stages stay unavailable.
+  assert.match(drawer.stageSentence, /A missing stage is not a failed stage/);
+  assert.match(drawer.stageSentence, /pre-spine history/);
+  // The historic capture predates the spine, while the current contract can
+  // also carry received and acknowledged evidence.
   const withEvents = dispatchView(WITH_EVENTS);
   assert.equal(withEvents.receivedState, "unavailable");
   assert.equal(withEvents.acknowledgedState, "unavailable");
   assert.deepEqual([...new Set(withEvents.events.map((event) => event.stage))].sort(), ["acted", "sent"]);
-  assert.deepEqual([...PROVABLE_STAGES].sort(), ["acted", "sent"]);
+  assert.deepEqual([...PROVABLE_STAGES].sort(), ["acknowledged", "acted", "received", "sent"]);
 });
 
 // MUTATION: change "for this id" to "this session has none".
@@ -281,8 +282,11 @@ test("S02-18 the validator refuses a non-null received beside no_dispatch_spine 
   assert.equal(refuseDispatchHistory({ ...NO_SPINE, more: true }), "more_without_a_cursor");
   assert.equal(
     refuseDispatchHistory({ ...WITH_EVENTS, events: [{ ...WITH_EVENTS.events[0], stage: "received" }] }),
-    "unprovable_stage",
+    "acknowledgement_without_proved_dispatch",
   );
+  assert.equal(refuseDispatchHistory({ ...WITH_EVENTS, events: [{ ...WITH_EVENTS.events[0],
+    stage: "received", link_source: "proved", dispatch_ref: "dispatch-1", stage_unavailable_reason: null,
+  }] }), null);
 });
 
 // MUTATION: allow empty evidence in the `work_state_without_evidence` rule.
@@ -352,7 +356,11 @@ test("S02-20 every fixture payload passes the validator and matches the captured
   assert.match(capture.note_on_volatility, /computed at READ time/);
   assert.deepEqual(await client.sessionIdentity({ query: "reverent", limit: 5 }), FILTERED_EMPTY);
   assert.deepEqual(await client.sessionIdentity({ query: "zzzznope" }), PLAIN_EMPTY);
-  assert.deepEqual(await client.dispatchHistory({ session_id: "zzzznope" }), NO_SPINE);
+  const emptyDispatch = await client.dispatchHistory({ session_id: "zzzznope" });
+  assert.equal(refuseDispatchHistory(emptyDispatch), null);
+  assert.deepEqual(emptyDispatch.events, []);
+  assert.equal(emptyDispatch.stage_unavailable_reason, null,
+    "the v35 producer no longer assigns a no-spine reason to an empty answer");
   // Every nullable field is null somewhere and non-null somewhere.
   const all = [...DEFAULT_PAGE.sessions, ...capture.synthetic_sessions.map((entry) => entry.row)];
   for (const field of ["parent_session_id", "native_host_id", "project_affinity", "latest_cwd", "latest_model_id", "latest_attempt_ref"]) {
@@ -367,9 +375,9 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 /* --------------------------------------------------------------- the contract */
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
-test("S02-21 the contract pins both verbs alphabetically at 1.17.0 with 55 operations", () => {
-  assert.equal(contract.version, "1.17.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 55);
+test("S02-21 the contract pins both verbs alphabetically at 1.18.0 with 57 operations", () => {
+  assert.equal(contract.version, "1.18.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 57);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -381,15 +389,15 @@ test("S02-21 the contract pins both verbs alphabetically at 1.17.0 with 55 opera
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.
   assert.equal(contract.mcp_operations[identity - 1], "read-room-queue");
-  assert.equal(contract.mcp_operations[identity + 1], "rename-doc-conversation");
+  assert.equal(contract.mcp_operations[identity + 1], "record-dispatch-link");
   // No route moves: /control-room was admitted at 04139737 and this is a tab.
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });
 
 // MUTATION: leave `3c8f619d` in place as producer.source_commit.
-test("S02-22 producer.source_commit is the 0f6cb388 release", () => {
-  assert.equal(contract.producer.source_commit, "0f6cb388424e83a75396a3e2d3bfc14839e81b35",
-    "S02 repinned the producer to the release that first serves the session-identity verbs");
+test("S02-22 producer.source_commit is the v35 dispatch-spine release", () => {
+  assert.equal(contract.producer.source_commit, "b84cec2ca84c69971bdc28e00f4a8999d09f4f3d",
+    "C13 repins the producer to the release that adds the dispatch spine");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");
 });

@@ -158,15 +158,15 @@
  * @property {number} total_returned what the actor may see, before `limit`
  * @property {SessionIdentityRow[]} sessions
  *
- * The projection `read-dispatch-history` returns (V5-UX-S02). `received` and
- * `acknowledged` arrive NULL with `stage_unavailable_reason` naming why: the
- * room-turn table carries no session id and no acknowledgement column, so those
- * two stages cannot be proved and a non-null value would be a conflation.
+ * The projection `read-dispatch-history` returns (V5-UX-S02 plus WR-000119).
+ * Every stage carries its own evidence. A null received/acknowledged value is
+ * unavailable, never false; the per-dispatch reason distinguishes a silent
+ * linked desk from pre-spine body-matched history.
  *
  * @typedef {Object} DispatchEvent
  * @property {string} event_id
  * @property {string} at ISO-8601
- * @property {'sent'|'acted'} stage
+ * @property {'sent'|'received'|'acknowledged'|'acted'} stage
  * @property {string} stage_evidence
  * @property {string|null} rationale
  * @property {string|null} from_seat
@@ -178,6 +178,9 @@
  * @property {string|null} attempt_ref
  * @property {string|null} superseded_by
  * @property {string|null} work_request_ref
+ * @property {'proved'|'body_match'|null} link_source
+ * @property {string|null} dispatch_ref
+ * @property {'not_acknowledged'|'no_dispatch_spine'|null} stage_unavailable_reason
  *
  * @typedef {Object} DispatchHistoryResponse
  * @property {true} ok
@@ -188,8 +191,8 @@
  * @property {number} total_returned
  * @property {boolean} more
  * @property {string|null} next_cursor
- * @property {null} received unavailable on this substrate
- * @property {null} acknowledged unavailable on this substrate
+ * @property {string|null} received newest proved received timestamp, else null
+ * @property {string|null} acknowledged newest proved acknowledged timestamp, else null
  * @property {string|null} stage_unavailable_reason
  * @property {DispatchEvent[]} events newest first
  *

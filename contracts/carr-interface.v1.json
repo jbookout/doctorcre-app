@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "0f6cb388424e83a75396a3e2d3bfc14839e81b35"
+    "source_commit": "b84cec2ca84c69971bdc28e00f4a8999d09f4f3d"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -14,6 +14,7 @@
     "database_access": "forbidden"
   },
   "mcp_operations": [
+    "acknowledge-dispatch",
     "acknowledge-notification",
     "add-critical-date",
     "add-deal-note",
@@ -51,6 +52,7 @@
     "read-room",
     "read-room-queue",
     "read-session-identity",
+    "record-dispatch-link",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
