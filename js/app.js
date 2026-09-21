@@ -1139,7 +1139,7 @@ async function readJevDeal(button) {
     const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
     if (!reading.judged) {
       const message = reading.reason === 'insufficient_recorded_evidence'
-        ? `Not enough recorded evidence (${reading.evidence_chars} of ${reading.evidence_floor} characters).`
+        ? 'Not enough recorded deal evidence for a reliable reading yet.'
         : 'Jev is unavailable for this reading.';
       target.innerHTML = `<div class="detail-row">${esc(message)}</div>`;
       return;
