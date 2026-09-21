@@ -10,12 +10,13 @@ import { readFile } from "node:fs/promises";
 
 import {
   NO_CADENCE_REASON, TILES, canonicalHref, coverageLine, dashboardTiles, groupedIncidents,
-  incidentFilters, notInReleaseBlocks, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates,
+  incidentFilters, needsJoeAdvisoryLabel, notInReleaseBlocks, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates,
   validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload,
   workInProgressLine, STUCK_SILENCE_HOURS,
 } from "../js/control-room-model.js";
 import { acceptsResponse } from "../js/workspace-command-center-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
+import { createLiveClient } from "../js/live-client.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -319,6 +320,40 @@ test("the fixture serves the three reads in the record layer's own shapes, and o
   await assert.rejects(() => outage.incidentBoard({}), /fixture outage/);
   assert.equal((await outage.currentWorkItem()).ok, true, "the other reads keep answering");
   assert.equal((await outage.currentWorkRequests()).ok, true);
+});
+
+test("live Needs Joe uses the authenticated GET and preserves received item order", async () => {
+  const paths = [];
+  const canonical = { ok: true, items: [
+    { human_ref: "WR-000124", title: "First", state: "ready", source: { label: "source", freshness: "current" }, next_human_action: "Review" },
+    { human_ref: "WR-000123", title: "Second", state: "ready", source: { label: "source", freshness: "current" }, next_human_action: "Decide" },
+  ], advisory: { schema: "jev_c13_decision_queue_advisory/v1", status: "available",
+    snapshot_digest: `sha256:${"a".repeat(64)}`, question_config_digest: `sha256:${"b".repeat(64)}`,
+    model: "jev-1.13.0", source_observed_at: "2026-09-21T22:00:00.000Z", items: [
+    { human_ref: "WR-000124", index: 0, judged: true, attention_class: "routine_review", priority_probability: 0.2, relevance_probability: 0.7, ambiguity_probability: 0.1 },
+    { human_ref: "WR-000123", index: 1, judged: false },
+  ] } };
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canonical.items)));
+  canonical.advisory.snapshot_digest = `sha256:${[...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    paths.push({ path, init });
+    return { ok: true, json: async () => ({ ok: true, data: canonical }) };
+  } });
+  const readback = await client.currentWorkRequests();
+  assert.deepEqual(readback.items.map(item => item.human_ref), ["WR-000124", "WR-000123"]);
+  assert.deepEqual(paths[0], { path: "/api/system-work/current", init: {
+    credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store",
+  } });
+  assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate.*priority 20%/);
+  assert.equal(needsJoeAdvisoryLabel(readback, 1), "Jev abstained");
+  const swapped = structuredClone(readback);
+  swapped.advisory.items.reverse();
+  assert.equal(needsJoeAdvisoryLabel(swapped, 0), "Jev advisory unavailable");
+  assert.deepEqual(swapped.items, canonical.items);
+  canonical.advisory.snapshot_digest = `sha256:${"c".repeat(64)}`;
+  const stale = await client.currentWorkRequests();
+  assert.deepEqual(stale.items, canonical.items);
+  assert.equal(needsJoeAdvisoryLabel(stale, 0), "Jev advisory unavailable");
 });
 
 /* --------------------------------------------------------------- static page */

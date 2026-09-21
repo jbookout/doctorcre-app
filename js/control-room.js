@@ -13,7 +13,7 @@
 // than painted over the newer one.
 import {
   canonicalHref, coverageLine, dashboardTiles, groupedIncidents, incidentFilters, notInReleaseBlocks,
-  operationsBlocks, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
+  needsJoeAdvisoryLabel, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
 import { snapshotFromReads, writeSnapshot } from "./status-model.js";
@@ -183,12 +183,13 @@ function renderNeedsJoe() {
     return;
   }
   state.hidden = true;
-  list.innerHTML = payload.items.map((item) => rowHtml({
+  list.innerHTML = payload.items.map((item, index) => rowHtml({
     title: item.title,
     meta: [
       `${item.human_ref} · ${item.state}`,
       `source ${item.source.label || "unknown"} (${item.source.freshness || "unknown"})`,
       item.next_human_action || "no next action recorded",
+      needsJoeAdvisoryLabel(payload, index),
     ].join(" · "),
     end: canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : "",
   })).join("") || rowHtml({ title: "No shared request carries a bounded next action", meta: "read from the shared queue" });

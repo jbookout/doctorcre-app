@@ -128,6 +128,32 @@ export function validCurrentWorkRequestsPayload(payload) {
     && orNull(row.next_human_action, isText));
 }
 
+const JEV_CLASSES = new Set(["decision_ready", "information_needed", "blocked", "routine_review", "unclear"]);
+
+// Advisory fields are optional. Validate their item binding before showing them;
+// the queue item, its position and action always come from the canonical read.
+export function needsJoeAdvisoryLabel(payload, index) {
+  const advisory = payload?.advisory;
+  if (advisory?.schema !== "jev_c13_decision_queue_advisory/v1") return "Jev advisory unavailable";
+  if (advisory.status === "unavailable") return "Jev advisory unavailable";
+  if (payload.advisory_binding_verified !== true) return "Jev advisory unavailable";
+  if (!/^sha256:[0-9a-f]{64}$/.test(advisory.snapshot_digest || "") ||
+      !/^sha256:[0-9a-f]{64}$/.test(advisory.question_config_digest || "") ||
+      advisory.model !== "jev-1.13.0" || !Number.isFinite(Date.parse(advisory.source_observed_at || "")))
+    return "Jev advisory unavailable";
+  const item = payload.items?.[index];
+  const judged = advisory.items?.[index];
+  if (!item || !judged || judged.index !== index || judged.human_ref !== item.human_ref)
+    return "Jev advisory unavailable";
+  if (!judged.judged) return "Jev abstained";
+  const values = [judged.priority_probability, judged.relevance_probability, judged.ambiguity_probability];
+  if (!JEV_CLASSES.has(judged.attention_class) || values.some(value =>
+    typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1))
+    return "Jev advisory unavailable";
+  const pct = value => `${Math.round(value * 100)}%`;
+  return `Jev estimate: ${judged.attention_class.replaceAll("_", " ")} · priority ${pct(values[0])} · DoctorCRE relevance ${pct(values[1])} · action ambiguity ${pct(values[2])}`;
+}
+
 /* ------------------------------------------------------------ read bookkeeping */
 
 /**
