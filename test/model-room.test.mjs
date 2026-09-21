@@ -459,7 +459,7 @@ test("C13-04 the contract pins the v35 producer and its two dispatch writes", ()
   const queue = contract.mcp_operations.indexOf("read-room-queue");
   assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
-  assert.equal(contract.producer.source_commit, "3ec74f5749e2739284c8f51d256674fa24e5c7e1");
+  assert.equal(contract.producer.source_commit, "0337947af37025e778e8a14efebee28e951f372e");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for

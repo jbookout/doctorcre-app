@@ -320,7 +320,7 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
   assert.equal(routes.version, "1.10.0");
   assert.equal(contract.version, "1.19.0");
-  assert.equal(contract.producer.source_commit, "3ec74f5749e2739284c8f51d256674fa24e5c7e1");
+  assert.equal(contract.producer.source_commit, "0337947af37025e778e8a14efebee28e951f372e");
   assert.equal(routes.routes["/notifications"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -701,7 +701,7 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 
 test("B12-9 the contracts pin the two new verbs, the producer release and the minor bump, and nothing else moved", async () => {
   assert.equal(contract.version, "1.19.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.producer.source_commit, "3ec74f5749e2739284c8f51d256674fa24e5c7e1",
+  assert.equal(contract.producer.source_commit, "0337947af37025e778e8a14efebee28e951f372e",
     "the producer is repinned to the release that first serves the preference verbs");
   assert.equal(contract.mcp_operations.length, 57);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
