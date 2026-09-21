@@ -1265,6 +1265,10 @@ export async function createFixtureClient(opts = {}) {
         premises: [], negotiation_rounds: [], documents: [] };
     },
 
+    async getJevDealReading() {
+      return { schema: 'carr.jev-deal-reading.v1', judged: false, reason: 'jev_unavailable' };
+    },
+
     async getChanges(cursor) {
       pruneLeases();
       const fresh = eventsAfter(cursor);

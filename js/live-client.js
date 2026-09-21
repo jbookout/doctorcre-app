@@ -170,6 +170,18 @@ export function createLiveClient(opts = {}) {
       };
     },
 
+    // The app sends only the deal id to CARR. CARR performs the bounded
+    // on-demand TypeSafe call authorized by Joe in this task.
+    async getJevDealReading(dealId) {
+      const res = await fetchImpl('/api/v1/jev-deal-reading', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ deal: dealId }),
+      });
+      if (!res.ok) throw new Error(`Jev deal reading unavailable (${res.status})`);
+      return res.json();
+    },
+
     // The confirm strip, live: proposals distilled from a recorded call. The
     // label is built here from the candidate's own shape, never from a
     // server-supplied string, and every disposition goes through
