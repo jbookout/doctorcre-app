@@ -1116,6 +1116,7 @@ async function openDeal(dealId) {
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
       <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.market_agent || actorName(deal.owner))}</p></div>
       <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
+      <section class="detail-section"><h3>Jev deal reading</h3><p class="subhead">On-demand advice from the recorded evidence. It does not change the deal.</p><button type="button" data-jev-deal="${esc(deal.id)}">Read this deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
       <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))} · source: ${esc(d.source || 'not captured')}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Premises</h3><div class="detail-list">${detailRows(detail.premises, (p) => `<div class="detail-row"><b>${esc(p.label)}</b><small>${esc([p.address,p.suite,p.city,p.state].filter(Boolean).join(' · '))}${p.area_amount ? ` · ${esc(p.area_amount)} ${esc(p.area_basis || 'SF')}` : ''}</small></div>`)}</div></section>
@@ -1128,6 +1129,31 @@ async function openDeal(dealId) {
     </div>`;
   $('#dealDetail').innerHTML = html;
   $('#dealDialog').showModal();
+}
+
+async function readJevDeal(button) {
+  const target = $('#dealDialog [data-jev-result]');
+  button.disabled = true;
+  target.innerHTML = '<div class="detail-row">Reading recorded evidence…</div>';
+  try {
+    const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
+    if (!reading.judged) {
+      const message = reading.reason === 'insufficient_recorded_evidence'
+        ? 'Not enough recorded deal evidence for a reliable reading yet.'
+        : 'Jev is unavailable for this reading.';
+      target.innerHTML = `<div class="detail-row">${esc(message)}</div>`;
+      return;
+    }
+    const waiting = String(reading.waiting_on || 'not recorded').replaceAll('_', ' ');
+    const silence = Math.round(Number(reading.silence_is_bad) * 100);
+    target.innerHTML = `<div class="detail-row"><b>Movement ${esc(reading.movement_rung)} of ${esc(reading.movement_rungs)}</b><small>${esc(reading.movement_label)}</small></div>
+      <div class="detail-row"><b>Waiting on: ${esc(waiting)}</b><small>Jev judgment; verify against the record.</small></div>
+      <div class="detail-row"><b>Silence concern: ${esc(silence)}%</b><small>Model probability, not a deal-close forecast.</small></div>`;
+  } catch {
+    target.innerHTML = '<div class="detail-row">Jev is unavailable for this reading.</div>';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function agendaDeals() {
@@ -1211,6 +1237,7 @@ function wireEvents() {
       return;
     }
     const open = event.target.closest('[data-open-deal]'); if (open) { await openDeal(open.dataset.openDeal); return; }
+    const jevDeal = event.target.closest('[data-jev-deal]'); if (jevDeal) { await readJevDeal(jevDeal); return; }
     const attention = event.target.closest('[data-attention]'); if (attention) { const deal=state.deals.get(attention.dataset.attention); await patchField(deal.id,'attention',!deal.attention); return; }
     const step = event.target.closest('[data-next-step],[data-agenda-step]'); if (step) { nextStepForm(step.dataset.nextStep || step.dataset.agendaStep); return; }
     const agent = event.target.closest('[data-market-agent]'); if (agent) { marketAgentForm(agent.dataset.marketAgent); return; }

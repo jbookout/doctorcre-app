@@ -447,7 +447,7 @@ test("C12-17 the Observatory is untouched by this slice", async () => {
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the v35 producer and its two dispatch writes", () => {
-  assert.equal(contract.version, "1.18.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.version, "1.19.0", "two added operations are an additive, minor bump");
   assert.equal(contract.mcp_operations.length, 57);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
@@ -459,16 +459,16 @@ test("C13-04 the contract pins the v35 producer and its two dispatch writes", ()
   const queue = contract.mcp_operations.indexOf("read-room-queue");
   assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
-  assert.equal(contract.producer.source_commit, "b84cec2ca84c69971bdc28e00f4a8999d09f4f3d");
-  // Nothing new is read over HTTP, so http_surfaces is pinned to the exact set
-  // that shipped before this slice. It is a static pin, not a diff against
+  assert.equal(contract.producer.source_commit, "0337947af37025e778e8a14efebee28e951f372e");
+  // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
+  // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
   // any value, and a "main has 53" count fails by construction after merge
   // (that is how PR 40 turned main red on 2026-09-19). `/api/room/*` was already
   // present for the Observatory, so its presence here is not this slice's doing.
   assert.deepEqual(contract.http_surfaces, [
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
-    "/api/v1/work-inventory", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
+    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
   ], "http_surfaces does not move");
 });
 

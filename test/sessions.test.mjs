@@ -375,8 +375,8 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 /* --------------------------------------------------------------- the contract */
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
-test("S02-21 the contract pins both verbs alphabetically at 1.18.0 with 57 operations", () => {
-  assert.equal(contract.version, "1.18.0", "two added operations are an additive, minor bump");
+test("S02-21 the contract pins both verbs alphabetically at 1.19.0 with 57 operations", () => {
+  assert.equal(contract.version, "1.19.0", "two added operations are an additive, minor bump");
   assert.equal(contract.mcp_operations.length, 57);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
@@ -396,7 +396,7 @@ test("S02-21 the contract pins both verbs alphabetically at 1.18.0 with 57 opera
 
 // MUTATION: leave `3c8f619d` in place as producer.source_commit.
 test("S02-22 producer.source_commit is the v35 dispatch-spine release", () => {
-  assert.equal(contract.producer.source_commit, "b84cec2ca84c69971bdc28e00f4a8999d09f4f3d",
+  assert.equal(contract.producer.source_commit, "0337947af37025e778e8a14efebee28e951f372e",
     "C13 repins the producer to the release that adds the dispatch spine");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");

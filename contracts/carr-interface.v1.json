@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "b84cec2ca84c69971bdc28e00f4a8999d09f4f3d"
+    "source_commit": "0337947af37025e778e8a14efebee28e951f372e"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -78,6 +78,7 @@
     "/api/v1/command-center",
     "/api/v1/atlas-graph",
     "/api/v1/work-inventory",
+    "/api/v1/jev-deal-reading",
     "/api/room/*",
     "/api/system-work/*",
     "/api/share/*",

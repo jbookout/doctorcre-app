@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createLiveClient } from "../js/live-client.js";
 
-const required = ["getBoard", "getDeal", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation"];
+const required = ["getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation"];
 
 test("synthetic and live adapters satisfy the same DealRoomClient interface", async () => {
   const fixtureText = await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8");
@@ -27,4 +27,19 @@ test("the live adapter uses the pinned MCP seam rather than a database", async (
   assert.equal(calls[0].path, "/mcp");
   assert.equal(JSON.parse(calls[0].init.body).params.name, "deal-room-board");
   assert.equal(calls[0].init.credentials, "same-origin");
+});
+
+test("Jev reading sends one deal id to the same-origin CARR API", async () => {
+  const calls = [];
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    calls.push({ path, init });
+    return new Response(JSON.stringify({ schema: "carr.jev-deal-reading.v1", judged: false,
+      reason: "insufficient_recorded_evidence" }), { status: 200 });
+  } });
+  const answer = await live.getJevDealReading("00000000-0000-4000-8000-000000000001");
+  assert.equal(answer.reason, "insufficient_recorded_evidence");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/api/v1/jev-deal-reading");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.deepEqual(JSON.parse(calls[0].init.body), { deal: "00000000-0000-4000-8000-000000000001" });
 });
