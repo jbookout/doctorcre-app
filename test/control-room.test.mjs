@@ -330,7 +330,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
   ], advisory: { schema: "jev_c13_decision_queue_advisory/v1", status: "available",
     snapshot_digest: `sha256:${"a".repeat(64)}`, question_config_digest: `sha256:${"b".repeat(64)}`,
     model: "jev-1.13.0", source_observed_at: "2026-09-21T22:00:00.000Z", items: [
-    { human_ref: "WR-000124", index: 0, judged: true, attention_class: "routine_review", priority_probability: 0.2, relevance_probability: 0.7, ambiguity_probability: 0.1 },
+    { human_ref: "WR-000124", index: 0, judged: true, attention_class: "routine_review", priority_probability: 0.2, relevance_probability: 0.7, ambiguity_probability: 0.1, calibration_status: "unverified_model_output" },
     { human_ref: "WR-000123", index: 1, judged: false },
   ] } };
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canonical.items)));
@@ -344,8 +344,11 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
   assert.deepEqual(paths[0], { path: "/api/system-work/current", init: {
     credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store",
   } });
-  assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate.*priority 20%/);
+  assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate \(uncalibrated\).*priority 20%/);
   assert.equal(needsJoeAdvisoryLabel(readback, 1), "Jev abstained");
+  const unsupportedCalibration = structuredClone(readback);
+  delete unsupportedCalibration.advisory.items[0].calibration_status;
+  assert.equal(needsJoeAdvisoryLabel(unsupportedCalibration, 0), "Jev advisory unavailable");
   const swapped = structuredClone(readback);
   swapped.advisory.items.reverse();
   assert.equal(needsJoeAdvisoryLabel(swapped, 0), "Jev advisory unavailable");

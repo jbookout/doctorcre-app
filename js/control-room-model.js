@@ -147,11 +147,12 @@ export function needsJoeAdvisoryLabel(payload, index) {
     return "Jev advisory unavailable";
   if (!judged.judged) return "Jev abstained";
   const values = [judged.priority_probability, judged.relevance_probability, judged.ambiguity_probability];
-  if (!JEV_CLASSES.has(judged.attention_class) || values.some(value =>
+  if (judged.calibration_status !== "unverified_model_output" ||
+      !JEV_CLASSES.has(judged.attention_class) || values.some(value =>
     typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1))
     return "Jev advisory unavailable";
   const pct = value => `${Math.round(value * 100)}%`;
-  return `Jev estimate: ${judged.attention_class.replaceAll("_", " ")} · priority ${pct(values[0])} · DoctorCRE relevance ${pct(values[1])} · action ambiguity ${pct(values[2])}`;
+  return `Jev estimate (uncalibrated): ${judged.attention_class.replaceAll("_", " ")} · priority ${pct(values[0])} · DoctorCRE relevance ${pct(values[1])} · action ambiguity ${pct(values[2])}`;
 }
 
 /* ------------------------------------------------------------ read bookkeeping */
