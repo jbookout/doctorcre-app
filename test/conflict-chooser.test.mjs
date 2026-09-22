@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { escapeText, fieldLabel, readableValue } from '../js/change-receipts.mjs';
+import { classifyCommandOutcome } from '../js/command-feedback.mjs';
 
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
 const source = app.slice(app.indexOf('function showConflict('), app.indexOf('function detailRows('));
@@ -13,10 +14,10 @@ function chooser(resolveConflict) {
   let keys = 0;
   const state = { client:{ resolveConflict } };
   const show = new Function('esc', 'readableValue', 'actorName', 'fieldLabel', 'openForm',
-    'state', 'uuidv4', '$$', '$', 'loadHome', 'showToast', `${source}; return showConflict;`)(
+    'state', 'uuidv4', '$$', '$', 'loadHome', 'showToast', 'classifyCommandOutcome', `${source}; return showConflict;`)(
     escapeText, readableValue, (actor) => ({ joe:'Joe', dell:'Dell' })[actor] || actor,
     fieldLabel, (options) => { form = options; }, state, () => `key-${++keys}`,
-    () => radios, () => button, async () => {}, () => {});
+    () => radios, () => button, async () => {}, () => {}, classifyCommandOutcome);
   show({ conflict_id:'c1', field:'attention', a:{ actor:'dell', value:true }, b:{ actor:'joe', value:false } });
   return { form:() => form, radios, button, keys:() => keys };
 }
@@ -64,4 +65,15 @@ test('offline refusal leaves the choice editable because no request was sent', a
   await view.form().onSubmit(new Map([['winner', 'b']]));
   assert.equal(sent[1].winner, 'b');
   assert.notEqual(sent[1].idempotency_key, sent[0].idempotency_key);
+});
+
+test('a definitive authorization refusal does not offer outcome reconciliation', async () => {
+  const view = chooser(async () => {
+    const error = new Error('Unauthorized');
+    error.status = 401;
+    throw error;
+  });
+  await assert.rejects(view.form().onSubmit(new Map([['winner', 'a']])), /Unauthorized/);
+  assert.ok(view.radios.every((radio) => !radio.disabled));
+  assert.equal(view.button.textContent, 'Keep selected value');
 });

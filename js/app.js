@@ -13,6 +13,7 @@ import {
   cellKey, createFieldWriteState, performFieldWrite, unresolvedFieldWrites,
   pendingFieldWrite, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
+import { classifyCommandOutcome } from './command-feedback.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -1110,8 +1111,9 @@ function showConflict(conflict) {
         await loadHome();
         showToast('Conflict resolved with both values preserved in history');
       } catch (error) {
-        if (error.payload?.error === 'offline') {
-          request = null; // The live client refused locally; nothing was sent.
+        const outcome = classifyCommandOutcome({ error });
+        if (outcome.status !== 'unknown' || outcome.reason === 'offline') {
+          request = null; // The server refused, or the client never sent it.
           for (const radio of $$('#dialogBody input[name="winner"]')) radio.disabled = false;
         } else {
           $('#dialogSubmit').textContent = 'Check outcome';
