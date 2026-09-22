@@ -18,10 +18,9 @@
 //      room is a named constant (QUEUE_ROOM) and a test pins it.
 //   2. `live` IS A TWO-MINUTE WINDOW, NOT AN OPINION. The producer sets
 //      `live = freshest && now >= freshest && now - freshest <= 120_000`
-//      (partner-room.js QUEUE_STALE_MS). Today's real answer is `live: false`
-//      with a projection eighteen days old. That is this queue's ORDINARY
-//      state: the age is printed plainly beside the board, never as an error
-//      and never as zero assignments.
+//      (partner-room.js QUEUE_STALE_MS). The September 18 capture is `live: false`
+//      with a projection eighteen days old; the queue has since recovered.
+//      The age is printed plainly beside the board, never as an error or zero assignments.
 //   3. `projected_at: null` WITH AN EMPTY LIST IS A DIFFERENT TRUTH from a
 //      stale projection. Nothing has ever been projected there. Two states,
 //      two sentences, and no helper collapses them.
