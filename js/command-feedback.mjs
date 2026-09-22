@@ -66,6 +66,7 @@ const DEFINITIVE_HTTP = new Set([401, 403]);
 // Sentence tails. The caller supplies the subject — "Attention flag on
 // Riverbank Dental", or the default "This change".
 const COMMAND_SENTENCE = Object.freeze({
+  offline: 'was not sent — this device is offline. Reconnect and review it before saving.',
   superseded: 'was recorded. Something newer has since landed on this record, so the page is showing what it holds now rather than applying this one.',
   no_answer: 'could not be confirmed — nothing came back from the server. It may already be saved: use Check outcome on the command dock, or open the record to check, before changing it again.',
   server_error: 'could not be confirmed — the server reported an error instead of confirming it. It may already be saved: use Check outcome on the command dock, or open the record to check, before changing it again.',
@@ -216,6 +217,7 @@ export function classifyCommandOutcome({ response = null, error = null } = {}) {
     if (code && BASE_VERSION_CODES.has(code)) return { status: 'conflict', reason: 'base_version', code, hint, http_status: httpStatus };
     if (code === 'key_reuse') return { status: 'refused', reason: 'key_reuse', code, hint, http_status: httpStatus };
     if (code && SERVER_FAULT_CODES.has(code)) return { status: 'unknown', reason: 'server_error', code, hint: null, http_status: httpStatus };
+    if (code === 'offline') return { status: 'unknown', reason: 'offline', code, hint: null, http_status: httpStatus };
     if (code) return { status: 'refused', reason: 'declined', code, hint, http_status: httpStatus };
     if (DEFINITIVE_HTTP.has(httpStatus)) {
       return { status: 'refused', reason: 'unauthorized', code: `http_${httpStatus}`, hint: null, http_status: httpStatus };
@@ -352,7 +354,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
     : classified;
   setState(settleCommand(getState(), operationKey, outcome));
   return {
-    operationKey, started: true, sent: true, status: outcome.status,
+    operationKey, started: true, sent: outcome.reason !== 'offline', status: outcome.status,
     reason: outcome.reason || null, code: outcome.code || null, hint: outcome.hint || null,
     http_status: outcome.http_status || null,
     replayed: outcome.replayed === true, superseded: outcome.superseded === true,

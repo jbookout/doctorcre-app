@@ -535,7 +535,8 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
 
   // And the page's wiring is the shared promise, not two reads racing.
   assert.equal((workspaceJs.match(/client\.getBoard\(/g) || []).length, 1, "business-workspace.js takes exactly one board read");
-  assert.match(workspaceJs, /const boardRead = client\.getBoard\(\{ workspace: "all" \}\);/);
+  assert.match(workspaceJs, /const boardRead = readBoard\(\);/);
+  assert.match(workspaceJs, /function readBoard\(\) \{\s*return client\.getBoard\(\{ workspace: 'all' \}\);\s*\}/);
   assert.match(workspaceJs, /async function loadBoardRecords\(boardRead\) \{/, "Quick add is handed the read rather than taking one");
   assert.match(workspaceJs, /const board = await boardRead;/);
   assert.match(pageJs, /const pending = sharedBoard \|\| client\.getBoard\(\{ workspace: "all" \}\);\s*\n\s*sharedBoard = null;/);

@@ -76,6 +76,7 @@ const REFUSAL_MESSAGE = Object.freeze({
 const SERVER_FAULT_CODES = new Set(['unhandled_verb_failure', 'internal_error']);
 
 const UNKNOWN_MESSAGE = Object.freeze({
+  offline: 'Undo was not sent — this device is offline. Reconnect and review the change before trying again.',
   fault: 'Undo could not be confirmed — the server hit an error before it answered. Open the deal to check before trying again.',
   silent: 'Undo could not be confirmed — no answer from the server. Open the deal to check before trying again.',
 });
@@ -405,6 +406,7 @@ function declineOutcome(code, hint) {
 export function classifyUndoOutcome({ response = null, error = null } = {}) {
   if (error) {
     const code = error?.payload?.error || null;
+    if (code === 'offline') return { status: 'unknown', code, message: UNKNOWN_MESSAGE.offline };
     if (code) return declineOutcome(code, error?.payload?.hint);
     return { status: 'unknown', code: null, message: UNKNOWN_MESSAGE.silent };
   }

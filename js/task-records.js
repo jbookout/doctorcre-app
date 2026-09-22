@@ -30,6 +30,7 @@ import {
   dueDateArgs, validBoardPayload,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
+import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -42,7 +43,6 @@ const view = {
   status: "loading",
   rows: [],
   message: null,
-  drafts: [],
   open: null,
   closing: null,
   sequence: 0,
@@ -50,6 +50,10 @@ const view = {
 
 let client = null;
 let viewer = "joe";
+let localDrafts = createLocalDrafts({ storage: null, viewer: 'unverified' });
+let draftViewer = null;
+let restoredDraftId = null;
+const draftOperations = new Map();
 let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
@@ -203,6 +207,7 @@ async function load() {
       : "The shared record could not be read. Nothing here has been inferred.";
   }
   render();
+  renderDrafts();
 }
 
 /** The fresh read every write is built from. Errors arrive in the payload. */
@@ -266,9 +271,17 @@ async function dispatch(operationKey, args, send, summary) {
   });
   if (result.message) announce(result.message);
   if (result.status === "ok") {
+    const draftId = draftOperations.get(operationKey);
+    if (draftId) {
+      localDrafts.remove(draftId);
+      draftOperations.delete(operationKey);
+      if (restoredDraftId === draftId) restoredDraftId = null;
+      renderDrafts();
+    }
     showToast(`${summary} — confirmed`);
     await load();
   } else if (result.status === "conflict" || result.status === "refused") {
+    draftOperations.delete(operationKey);
     await load();
   }
   return result;
@@ -373,8 +386,14 @@ function renderDrafts() {
   const bar = $("draftBar");
   const list = $("draftList");
   if (!bar || !list) return;
-  bar.hidden = view.drafts.length === 0;
-  list.innerHTML = view.drafts.map((text) => `<span class="chip">${escapeHtml(text)}</span>`).join("");
+  const drafts = localDrafts?.list() || [];
+  bar.hidden = drafts.length === 0 || view.status === 'unauthorized';
+  bar.querySelector('.chip-label').textContent = draftViewer && localDrafts.isPersisted()
+    ? 'Drafts on this device · select to review' : 'Drafts kept on this page only · select to review';
+  if (view.status === 'unauthorized') { list.innerHTML = ''; return; }
+  list.innerHTML = drafts.map((draft) =>
+    `<button class="chip" type="button" data-restore-draft="${escapeHtml(draft.id)}">${escapeHtml(draft.sentence)}${draft.dueDate ? ` · ${escapeHtml(draft.dueDate)}` : ""}</button>`
+  ).join("");
 }
 
 /* ---------------------------------------------------------------------- wiring */
@@ -451,6 +470,14 @@ function wire() {
 
   $("quickAddForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (globalThis.navigator?.onLine === false) {
+      announce("Offline. Keep this as a draft on this device; reconnect and review it before saving.");
+      return;
+    }
+    if (!draftViewer) {
+      announce("Confirming your account. Keep this as a draft until it is ready.");
+      return;
+    }
     const current = renderQuickAdd();
     if (!current) return;
     if (!current.plan.args) {
@@ -458,6 +485,8 @@ function wire() {
       return;
     }
     const operationKey = operationKeys.quickAdd(current.sentence, viewer);
+    const matchedId = matchingDraftId(localDrafts.list(), restoredDraftId, current.sentence, $("quickAddDate")?.value || "");
+    if (matchedId) draftOperations.set(operationKey, matchedId);
     operations.set(operationKey, { summary: current.plan.summary, send: (request) => client.addLoop(request) });
     const result = await dispatch(operationKey, current.plan.args, (request) => client.addLoop(request), current.plan.summary);
     // A refusal keeps the person's sentence exactly where it is; only an
@@ -468,16 +497,31 @@ function wire() {
       if (input) input.value = "";
       if (date) date.value = "";
       renderQuickAdd();
+      renderDrafts();
     }
   });
 
   $("quickAddDraft")?.addEventListener("click", () => {
-    const current = renderQuickAdd();
-    const text = current?.parsed?.action || current?.sentence?.trim();
-    if (!text) { announce("There is nothing to keep as a draft yet."); return; }
-    view.drafts = [...view.drafts, text];
+    const sentence = $("quickAddInput")?.value || "";
+    const dueDate = $("quickAddDate")?.value || "";
+    const draft = localDrafts?.save(sentence, dueDate);
+    if (!draft) { announce("There is nothing to keep as a draft yet."); return; }
     renderDrafts();
-    announce(`Draft kept on this page: ${text}. Nothing was written to the record.`);
+    announce(localDrafts.isPersisted()
+      ? "Draft saved on this device only. Reconnect and review it before filing."
+      : "Draft kept on this page only; this browser could not save it for a reload.");
+  });
+
+  $("draftList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-restore-draft]");
+    const draft = localDrafts?.list().find((item) => item.id === button?.dataset.restoreDraft);
+    if (!draft) return;
+    restoredDraftId = draft.id;
+    $("quickAddInput").value = draft.sentence;
+    $("quickAddDate").value = draft.dueDate;
+    renderQuickAdd();
+    $("quickAddInput").focus();
+    announce("Draft restored for review. Nothing was sent.");
   });
 }
 
@@ -515,6 +559,25 @@ function mountDock() {
   dock.mount();
 }
 
+async function loadViewer() {
+  try {
+    const board = await client.getBoard({ workspace: 'all' });
+    if (!board?.actor) return;
+    if (board.actor === draftViewer) return;
+    const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
+    if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
+    localDrafts = saved;
+    draftViewer = board.actor;
+    restoredDraftId = null;
+    viewer = board.actor;
+    renderDrafts();
+    renderQuickAdd();
+    render();
+  } catch {
+    // A disconnected page can keep drafts in memory until identity is verified.
+  }
+}
+
 /* ------------------------------------------------------------------------ boot */
 
 async function boot() {
@@ -527,7 +590,18 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   viewer = client.selfActor || "joe";
+  if (client.selfActor) {
+    localDrafts = createLocalDrafts({ storage: browserDraftStorage(), viewer });
+    draftViewer = viewer;
+  }
+  window.addEventListener('online', async () => {
+    if (!client) return;
+    await loadViewer();
+    await load();
+  });
+  renderDrafts();
   await load();
+  if (!client.selfActor) await loadViewer();
 }
 
 boot();

@@ -38,6 +38,7 @@ import {
 } from "./workspace-command-center-model.js";
 import { needLabel, teamReviewRows, unavailableCopy } from "./business-workspace-model.js";
 import { uuidv4 } from "./uuid.js";
+import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 
 const EXPIRY_TICK_MS = 5_000;
 const SIGN_IN_HREF = "/auth/login?return_to=/business";
@@ -49,7 +50,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 
 /** One place holds what this page believes; nothing else keeps a copy. */
 const view = {
-  status: "loading", payload: null, message: null, sequence: 0, freshnessKey: null, drafts: [],
+  status: "loading", payload: null, message: null, sequence: 0, freshnessKey: null,
   // The Quick add record list and its OWN sequence. The board read is a second
   // read with a second lifetime, so it gets a second guard: a late board answer
   // must not paint over a newer one, and it must never touch view.sequence.
@@ -58,6 +59,10 @@ const view = {
 
 let client = null;
 let viewer = "joe";
+let localDrafts = createLocalDrafts({ storage: null, viewer: 'unverified' });
+let draftViewer = null;
+let restoredDraftId = null;
+const draftOperations = new Map();
 let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
@@ -262,15 +267,30 @@ async function load() {
 async function loadBoardRecords(boardRead) {
   const sequence = ++view.boardSequence;
   let records = [];
+  let actor = null;
   try {
     const board = await boardRead;
     records = quickAddRecords(board?.deals);
+    actor = board?.actor || null;
   } catch {
     records = Object.freeze([]);
   }
   if (!acceptsResponse(view.boardSequence, sequence)) return;
+  if (actor && actor !== draftViewer) {
+      const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: actor });
+      if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
+      localDrafts = saved;
+      draftViewer = actor;
+      restoredDraftId = null;
+      viewer = actor;
+      renderDrafts();
+  }
   view.records = records;
   renderQuickAdd();
+}
+
+function readBoard() {
+  return client.getBoard({ workspace: 'all' });
 }
 
 function settle({ status, payload = null, message = null }, sequence) {
@@ -280,6 +300,7 @@ function settle({ status, payload = null, message = null }, sequence) {
   // A failed or refused read never keeps an older payload alive as if current.
   view.payload = status === "ready" ? payload : null;
   render();
+  renderDrafts();
 }
 
 /**
@@ -344,8 +365,14 @@ function renderDrafts() {
   const bar = $("draftBar");
   const list = $("draftList");
   if (!bar || !list) return;
-  bar.hidden = view.drafts.length === 0;
-  list.innerHTML = view.drafts.map((text) => `<span class="chip">${escapeHtml(text)}</span>`).join("");
+  const drafts = localDrafts?.list() || [];
+  bar.hidden = drafts.length === 0 || view.status === 'unauthorized';
+  bar.querySelector('.chip-label').textContent = draftViewer && localDrafts.isPersisted()
+    ? 'Drafts on this device · select to review' : 'Drafts kept on this page only · select to review';
+  if (view.status === 'unauthorized') { list.innerHTML = ''; return; }
+  list.innerHTML = drafts.map((draft) =>
+    `<button class="chip" type="button" data-restore-draft="${escapeHtml(draft.id)}">${escapeHtml(draft.sentence)}${draft.dueDate ? ` · ${escapeHtml(draft.dueDate)}` : ""}</button>`
+  ).join("");
 }
 
 async function dispatch(operationKey, args, send, summary) {
@@ -364,10 +391,19 @@ async function dispatch(operationKey, args, send, summary) {
   });
   if (result.message) announce(result.message);
   if (result.status === "ok") {
+    const draftId = draftOperations.get(operationKey);
+    if (draftId) {
+      localDrafts.remove(draftId);
+      draftOperations.delete(operationKey);
+      if (restoredDraftId === draftId) restoredDraftId = null;
+      renderDrafts();
+    }
     showToast(`${summary} — confirmed`);
     // The capture changed the record layer, so the aggregate read is taken again
     // rather than patched here from what this page believes it just did.
     await load();
+  } else if (result.status === 'refused' || result.status === 'conflict') {
+    draftOperations.delete(operationKey);
   }
   return result;
 }
@@ -402,6 +438,14 @@ function wire() {
 
   $("quickAddForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (globalThis.navigator?.onLine === false) {
+      announce("Offline. Keep this as a draft on this device; reconnect and review it before saving.");
+      return;
+    }
+    if (!draftViewer) {
+      announce("Confirming your account. Keep this as a draft until it is ready.");
+      return;
+    }
     const current = renderQuickAdd();
     if (!current) return;
     if (!current.plan.args) {
@@ -409,6 +453,8 @@ function wire() {
       return;
     }
     const operationKey = operationKeys.quickAdd(current.sentence, viewer);
+    const matchedId = matchingDraftId(localDrafts.list(), restoredDraftId, current.sentence, $("quickAddDate")?.value || "");
+    if (matchedId) draftOperations.set(operationKey, matchedId);
     operations.set(operationKey, { summary: current.plan.summary, send: (request) => client.addLoop(request) });
     const result = await dispatch(operationKey, current.plan.args, (request) => client.addLoop(request), current.plan.summary);
     // A refusal keeps the person's sentence exactly where it is; only an
@@ -419,16 +465,31 @@ function wire() {
       if (input) input.value = "";
       if (date) date.value = "";
       renderQuickAdd();
+      renderDrafts();
     }
   });
 
   $("quickAddDraft")?.addEventListener("click", () => {
-    const current = renderQuickAdd();
-    const text = current?.parsed?.action || current?.sentence?.trim();
-    if (!text) { announce("There is nothing to keep as a draft yet."); return; }
-    view.drafts = [...view.drafts, text];
+    const sentence = $("quickAddInput")?.value || "";
+    const dueDate = $("quickAddDate")?.value || "";
+    const draft = localDrafts?.save(sentence, dueDate);
+    if (!draft) { announce("There is nothing to keep as a draft yet."); return; }
     renderDrafts();
-    announce(`Draft kept on this page: ${text}. Nothing was written to the record.`);
+    announce(localDrafts.isPersisted()
+      ? "Draft saved on this device only. Reconnect and review it before filing."
+      : "Draft kept on this page only; this browser could not save it for a reload.");
+  });
+
+  $("draftList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-restore-draft]");
+    const draft = localDrafts?.list().find((item) => item.id === button?.dataset.restoreDraft);
+    if (!draft) return;
+    restoredDraftId = draft.id;
+    $("quickAddInput").value = draft.sentence;
+    $("quickAddDate").value = draft.dueDate;
+    renderQuickAdd();
+    $("quickAddInput").focus();
+    announce("Draft restored for review. Nothing was sent.");
   });
 }
 
@@ -449,6 +510,11 @@ async function boot() {
   $("mobileDocHistory")?.addEventListener("click", openDocHistory);
   mountDock();
   wire();
+  window.addEventListener('online', () => {
+    if (!client) return;
+    load();
+    loadBoardRecords(readBoard());
+  });
   renderQuickAdd();
   renderDrafts();
   watchExpiry();
@@ -462,11 +528,16 @@ async function boot() {
   mountSearch({ client });
   if (parseSearchAddress(globalThis.location?.search || "").present) tabs?.select("tabSearch");
   viewer = client.selfActor || "joe";
+  if (client.selfActor) {
+    localDrafts = createLocalDrafts({ storage: browserDraftStorage(), viewer });
+    draftViewer = viewer;
+  }
+  renderDrafts();
   // V5-UX-B06 — ONE board read for the whole page, taken here and shared. Quick
   // add's record list and every chart on the Charts tab are derived from this
   // single answer, so /business issues exactly one `deal-room-board` call per
   // load and the tab's totals are the same as-of as the page's own.
-  const boardRead = client.getBoard({ workspace: "all" });
+  const boardRead = readBoard();
   // V5-UX-B06 — the Charts tab. Same admitted path, same reasoning: its address
   // is a query (?charts=1&group=&pick=) on /business, which the gate does not
   // inspect, so no route moves and no gate entry is needed. It reads nothing of

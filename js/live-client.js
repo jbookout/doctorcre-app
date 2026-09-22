@@ -12,11 +12,13 @@ import { uuidv4 } from './uuid.js';
  * @param {string} [opts.baseUrl] same-origin by default; override for dev
  * @param {string} [opts.selfActor]
  * @param {(path:string, init?:RequestInit)=>Promise<Response>} [opts.fetchImpl]
+ * @param {()=>boolean} [opts.online] connection signal; injectable in tests
  */
 export function createLiveClient(opts = {}) {
   const baseUrl = (opts.baseUrl || '').replace(/\/$/, '');
   let selfActor = opts.selfActor || null;
   const fetchImpl = opts.fetchImpl || ((path, init) => fetch(`${baseUrl}${path}`, init));
+  const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   let rpcId = 0;
 
   async function rpc(verb, args = {}) {
@@ -61,6 +63,13 @@ export function createLiveClient(opts = {}) {
   }
 
   async function write(verb, args) {
+    // A disconnected app may keep local drafts, but must never attempt a
+    // canonical write. The caller retains the same request for reconciliation.
+    if (!online()) {
+      const error = new Error('Offline. Reconnect and review before saving.');
+      error.payload = { error: 'offline' };
+      throw error;
+    }
     return rpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
   }
 
