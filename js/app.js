@@ -13,7 +13,7 @@ import {
   cellKey, createFieldWriteState, performFieldWrite, unresolvedFieldWrites,
   pendingFieldWrite, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
-import { classifyCommandOutcome } from './command-feedback.mjs';
+import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -54,6 +54,7 @@ const state = {
   // SAME operation and not a second one. Never a value store; the board's values
   // come from a snapshot. See field-write-reconciliation.mjs.
   fieldWrites: createFieldWriteState(),
+  nextStepRequests: new Map(), nextStepInFlight: new Set(),
   presence: [], captureSessions: [],
   confirms: [], review: null, pollTimer: null, boardRefreshTimer: null,
   // Recent changes are session memory only: bounded, never stored, and never
@@ -1004,14 +1005,46 @@ function openForm({ eyebrow='Deal Room', title, submit='Save', body, onSubmit })
 
 function nextStepForm(dealId) {
   const deal = state.deals.get(dealId);
-  openForm({ title:`Next step — ${deal.name}`, submit:'Set next step', body:`
-    <div class="field"><label for="stepText">What happens next?</label><textarea id="stepText" name="text" required>${esc(deal.next_step || '')}</textarea><small>This becomes a real next action in today’s triage; the prior step stays in history.</small></div>
-    <div class="field"><label for="stepDate">When?</label><input id="stepDate" name="next_date" type="date" value="${esc(deal.next_date || '')}"></div>`,
+  const pending = state.nextStepRequests.get(dealId);
+  openForm({ title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', body:`
+    <div class="field"><label for="stepText">What happens next?</label><textarea id="stepText" name="text" required${pending ? ' disabled' : ''}>${esc(pending?.text ?? deal.next_step ?? '')}</textarea><small>This becomes a real next action in today’s triage; the prior step stays in history.</small></div>
+    <div class="field"><label for="stepDate">When?</label><input id="stepDate" name="next_date" type="date" value="${esc(pending?.next_date ?? deal.next_date ?? '')}"${pending ? ' disabled' : ''}></div>`,
     onSubmit:async (data) => {
-      const text = String(data.get('text') || '').trim();
-      await state.client.setNextStep({ deal:dealId, text, next_date:data.get('next_date') || null, idempotency_key:uuidv4() });
-      const current = confirmLocalWrite(dealId, { next_step:text, next_date:data.get('next_date') || null });
-      showToast(`Next step set on ${current?.name || deal.name}`); renderBoardOnly();
+      if (state.nextStepInFlight.has(dealId)) throw new Error('Next step is still being sent. Wait for the server to answer.');
+      const checking = state.nextStepRequests.has(dealId);
+      const request = state.nextStepRequests.get(dealId) || { deal:dealId,
+        text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
+        idempotency_key:uuidv4() };
+      state.nextStepRequests.set(dealId, request);
+      state.nextStepInFlight.add(dealId);
+      try {
+        await state.client.setNextStep(request);
+      } catch (error) {
+        const outcome = classifyCommandOutcome({ error });
+        if (outcome.status === 'unknown' && outcome.reason !== 'offline') {
+          // The write may have landed. Keep its text, date and key intact until
+          // CARR answers a deliberate replay of that same request.
+          $('#stepText').value = request.text;
+          $('#stepDate').value = request.next_date || '';
+          $('#stepText').disabled = true;
+          $('#stepDate').disabled = true;
+          $('#dialogSubmit').textContent = 'Check outcome';
+          throw new Error(commandMessage(outcome, 'Next step'));
+        }
+        state.nextStepRequests.delete(dealId); // Definitive refusal or a local offline no-send.
+        $('#stepText').disabled = false;
+        $('#stepDate').disabled = false;
+        $('#dialogSubmit').textContent = 'Set next step';
+        throw error;
+      } finally {
+        state.nextStepInFlight.delete(dealId);
+      }
+      state.nextStepRequests.delete(dealId);
+      // A replay can confirm an older action after a partner made a newer one.
+      // Read the current board instead of painting the replay over it.
+      const current = checking ? state.deals.get(dealId) : confirmLocalWrite(dealId, { next_step:request.text, next_date:request.next_date });
+      if (checking) state.boardSync.requestRefresh('after-write');
+      showToast(`Next step confirmed on ${current?.name || deal.name}`); renderBoardOnly();
     } });
 }
 
