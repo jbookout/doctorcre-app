@@ -243,7 +243,7 @@ test("an incident resolves to the same canonical identity from the tile and from
 test("every prototype panel without a producer is a named scope statement", () => {
   const blocks = notInReleaseBlocks();
   const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "model_room", "atlas_renderer"]) {
+  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_renderer"]) {
     assert.ok(ids.includes(id), `${id} has no scope statement`);
   }
   for (const block of blocks) {
@@ -251,6 +251,7 @@ test("every prototype panel without a producer is a named scope statement", () =
     assert.match(block.slice, /^V5-UX-C[0-9]/, `${block.id} names no owning slice`);
     assert.ok(block.reason.length > 0);
   }
+  assert.ok(!ids.includes("model_room"), "the live Model Room board is not an out-of-release panel");
 });
 
 // V5-UX-C14 — the Operations section. Neither card may carry a digit: there is
