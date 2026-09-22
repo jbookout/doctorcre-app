@@ -4,7 +4,7 @@ import { uuidv4 } from './uuid.js';
 import {
   REVERTIBLE_FIELDS, escapeText, parkingReasonLabel, ingestChangeEvents,
   receiptViews, receiptListHtml, receiptsSignature, receiptsAnnouncement,
-  createFeedProgress, observeChangeBatch, createUndoState, performUndo, fieldLabel,
+  createFeedProgress, observeChangeBatch, createUndoState, performUndo, fieldLabel, readableValue,
 } from './change-receipts.mjs';
 import {
   createBoardSync, batchTouchesBoard, resolveCurrentRow, SYNC_STATES, HEALTH,
@@ -1093,13 +1093,32 @@ function accountOwnerForm() {
 }
 
 function showConflict(conflict) {
-  const display = (value) => value && typeof value === 'object'
-    ? value.state === 'parked' ? `Parked — ${parkingReasonLabel(value.reason)}` : 'Active work'
-    : value ?? '(empty)';
-  openForm({ eyebrow:'Two edits crossed', title:`Choose the value for ${conflict.field}`, submit:'Keep selected value', body:`
-    <div class="field"><label><input type="radio" name="winner" value="a" checked> ${esc(actorName(conflict.a.actor))}: ${esc(display(conflict.a.value))}</label></div>
-    <div class="field"><label><input type="radio" name="winner" value="b"> ${esc(actorName(conflict.b.actor))}: ${esc(display(conflict.b.value))}</label></div>`,
-    onSubmit:async (data) => { await state.client.resolveConflict({ conflict_id:conflict.conflict_id, winner:data.get('winner'), idempotency_key:uuidv4() }); await loadHome(); showToast('Conflict resolved with both values preserved in history'); } });
+  // Keep the request whole after an unanswered send. A second click must ask
+  // about the same choice under the same key, never create a second decision.
+  let request = null;
+  const choice = (side, caption) => `<div class="field"><label><input type="radio" name="winner" value="${side}" required> <strong>${caption}</strong> · ${esc(actorName(conflict[side].actor))}: ${esc(readableValue(conflict.field, conflict[side].value, { actorLabel: actorName }))}</label></div>`;
+  openForm({ eyebrow:'Two edits crossed', title:`Choose the ${fieldLabel(conflict.field)} value`, submit:'Keep selected value', body:`
+    <p>Review both values, then choose one. Both edits remain in the deal history.</p>
+    ${choice('a', 'Current value')} ${choice('b', 'Your proposed value')}`,
+    onSubmit:async (data) => {
+      if (!request) request = { conflict_id:conflict.conflict_id, winner:data.get('winner'), idempotency_key:uuidv4() };
+      // Once a resolution may have reached CARR, changing sides would reuse a
+      // key with different arguments. Hold the selected side for reconciliation.
+      for (const radio of $$('#dialogBody input[name="winner"]')) radio.disabled = true;
+      try {
+        await state.client.resolveConflict(request);
+        await loadHome();
+        showToast('Conflict resolved with both values preserved in history');
+      } catch (error) {
+        if (error.payload?.error === 'offline') {
+          request = null; // The live client refused locally; nothing was sent.
+          for (const radio of $$('#dialogBody input[name="winner"]')) radio.disabled = false;
+        } else {
+          $('#dialogSubmit').textContent = 'Check outcome';
+        }
+        throw error;
+      }
+    } });
 }
 
 function detailRows(items, renderer, empty='Nothing captured yet.') {
