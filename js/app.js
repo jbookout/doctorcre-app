@@ -1100,7 +1100,7 @@ function showConflict(conflict) {
   const choice = (side, caption) => `<div class="field"><label><input type="radio" name="winner" value="${side}" required> <strong>${caption}</strong> · ${esc(actorName(conflict[side].actor))}: ${esc(readableValue(conflict.field, conflict[side].value, { actorLabel: actorName }))}</label></div>`;
   openForm({ eyebrow:'Two edits crossed', title:`Choose the ${fieldLabel(conflict.field)} value`, submit:'Keep selected value', body:`
     <p>Review both values, then choose one. Both edits remain in the deal history.</p>
-    ${choice('a', 'Current value')} ${choice('b', 'Your proposed value')}`,
+    ${choice('a', 'Previously recorded value')} ${choice('b', 'Your proposed value')}`,
     onSubmit:async (data) => {
       if (!request) request = { conflict_id:conflict.conflict_id, winner:data.get('winner'), idempotency_key:uuidv4() };
       // Once a resolution may have reached CARR, changing sides would reuse a

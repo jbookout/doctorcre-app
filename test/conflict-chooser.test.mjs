@@ -26,7 +26,7 @@ test('conflict requires an explicit choice and renders both attributed values', 
   const view = chooser(async () => ({ ok:true }));
   const { body, title } = view.form();
   assert.equal(title, 'Choose the Attention flag value');
-  assert.match(body, /Current value.*Dell: Flagged/s);
+  assert.match(body, /Previously recorded value.*Dell: Flagged/s);
   assert.match(body, /Your proposed value.*Joe: Not flagged/s);
   assert.match(body, /name="winner" value="a" required/);
   assert.match(body, /name="winner" value="b" required/);
