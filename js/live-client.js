@@ -373,7 +373,31 @@ export function createLiveClient(opts = {}) {
     // those verbs exist to refuse.
     async incidentBoard(args = {}) { return rpc('incident-board', args); },
     async currentWorkItem() { return rpc('current-work-item', {}); },
-    async currentWorkRequests() { return rpc('current-work-requests', {}); },
+    async currentWorkRequests() {
+      const res = await fetchImpl('/api/system-work/current', {
+        credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store',
+      });
+      if (!res.ok) {
+        const error = new Error(`live current work requests -> HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
+      }
+      const envelope = await res.json();
+      if (envelope?.ok !== true || !envelope.data) throw new Error('live current work requests -> invalid response');
+      const data = envelope.data;
+      // Bind optional advice to the exact canonical array this client will render.
+      // A forged or stale digest is displayed as unavailable, never as a score.
+      let advisoryBindingVerified = false;
+      if (Array.isArray(data.items) && data.advisory?.snapshot_digest && globalThis.crypto?.subtle) {
+        try {
+          const bytes = new TextEncoder().encode(JSON.stringify(data.items));
+          const hash = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+          const digest = `sha256:${[...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
+          advisoryBindingVerified = digest === data.advisory.snapshot_digest;
+        } catch { /* Advisory validation may fail; the canonical queue still reads. */ }
+      }
+      return { ...data, advisory_binding_verified: advisoryBindingVerified };
+    },
 
     // ---------------------------------------------------- incident page (C14)
     // One read and one write, passed through untouched. The write's arguments

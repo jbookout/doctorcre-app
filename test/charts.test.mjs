@@ -406,7 +406,7 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
   assert.equal(contract.version, "1.19.0", "S02 added the two session-identity verbs after B12 shipped");
   assert.equal(contract.mcp_operations.length, 57);
-  assert.equal(contract.producer.source_commit, "0337947af37025e778e8a14efebee28e951f372e");
+  assert.equal(contract.producer.source_commit, "12133fc69c8cf4e42dc2afc8d71a3f8cf2f38482");
   assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 
   // No route is added. `/business` already resolves, and the gate does not
