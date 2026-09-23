@@ -246,6 +246,37 @@ test("operations stay reachable, in a secondary More rather than as a business t
   assert.match(css, /\.nav-more-panel a\{[^}]*min-height:44px/);
 });
 
+/**
+ * The newer shared pages (Meeting, Tasks, Conversations, Notifications) carry
+ * their own nav, so the workspace shell must link to them too or a partner who
+ * signs in to Home has no way there. They live in the same More disclosure as
+ * Operations, under their own heading and above it, so the primary tabs and the
+ * five phone shortcuts stay exactly as they are.
+ */
+test("the workspace shell's More reaches Meeting, Tasks, Conversations and Notifications", async () => {
+  const expected = [["/meeting", "Meeting"], ["/tasks", "Tasks"], ["/conversations", "Conversations"], ["/notifications", "Notifications"]];
+  for (const file of ["workspace.html", "business.html"]) {
+    const html = await readFile(`${ROOT}/${file}`, "utf8");
+    const more = html.match(/<details class="nav-more">[\s\S]*?<\/details>/)?.[0] || "";
+    assert.match(more, /class="nav-more-heading">Workspace</, file);
+    const workspaceGroup = more.split('class="nav-more-heading">Workspace<')[1]?.split('class="nav-more-heading">')[0] || "";
+    const links = [...workspaceGroup.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map((match) => [match[1], match[2]]);
+    assert.deepEqual(links, expected, `${file} Workspace group`);
+    assert.ok(more.indexOf(">Workspace<") < more.indexOf(">Operations<"), `${file}: Workspace sits above Operations`);
+    const primary = html.match(/<nav class="primary-nav"[\s\S]*?<\/nav>/)?.[0] || "";
+    assert.doesNotMatch(primary, /\/meeting|\/tasks|\/conversations|\/notifications/, `${file} primary nav stays business-only`);
+  }
+});
+
+test("Home carries a Meeting card that says nothing is recorded", async () => {
+  const html = await readFile(`${ROOT}/workspace.html`, "utf8");
+  const card = html.match(/<a class="module-card glass pulse-calm" href="\/meeting">[\s\S]*?<\/a>/)?.[0] || "";
+  assert.notEqual(card, "", "Home has no Meeting module card");
+  assert.match(card, /<span class="module-kicker">Conversation<\/span><h2>Meeting<\/h2>/);
+  assert.match(card, /typed notes/);
+  assert.match(card, /[Nn]othing is recorded/);
+});
+
 test("Home and the business pages carry the same five phone shortcuts", async () => {
   const expected = [["/", "Home"], ["/leads", "Leads"], ["/deals", "Deals"], ["/clients", "Clients"], ["/vendors", "Vendors"]];
   for (const file of ["workspace.html", "business.html"]) {
