@@ -56,6 +56,12 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `css/conversations.css` | The conversations page layer: private versus shared drawn with a word, a glyph and an accent, the one-column transcript, and the 44px floor at 360px |
 | `js/conversations-model.js` | Pure conversation rules: the verb's own uuid shape, the read and list payloads' exact keys, the list door's three optional arguments, the eight UX20 states, the compare-and-swap argument builders and the five operation keys |
 | `js/conversations.js` | Conversations DOM wiring over `list-doc-conversations` and `read-doc-conversation`, with `create-`, `rename-` and `share-doc-conversation` sent through the shared command kernel and dock |
+| `meeting.html` | V5-UX-B11 shared, non-recording Meeting Mode at `/meeting?id=…`: one meeting both partners' devices join, the processing owner, attributed notes, the numbered action list with Confirm / Skip, and the done / delegated / needs-approval / unresolved recap |
+| `css/meeting.css` | The meeting page layer: each action state drawn with its own word and rule so a proposal never looks done, Confirm / Skip, and the 44px floor at 360px |
+| `js/meeting-model.js` | Pure Meeting Mode rules over CARR's eight meeting verbs: the payload's exact shape (recording denied or not drawn), owner, notes and action rows, stream merge by seq, the recap, operation keys, argument builders, and reconcile-before-retry for accepted actions |
+| `js/meeting-memory.mjs` | What one device keeps per meeting between loads: drafts, and the command kernel's unanswered requests so a reload re-sends the same key |
+| `js/meeting-fixture.js` | The synthetic Meeting Mode store the fixture adapter serves, mirroring CARR migration 0556's dedupe, lease fencing, revision compare-and-swap and ledger reconciliation |
+| `js/meeting.js` | Meeting DOM wiring over `read-meeting`, with the seven meeting writes and the accepted action's canonical `add-loop` sent through the shared command kernel and dock |
 | `status.html` | V5-UX-C15 Status at `/status`: the one page served ahead of the CARR sign-in gate, so an app outage and a record-layer outage can be told apart without signing in |
 | `js/status-model.js` | Pure status rules: the four headline scenarios, the sanitized refusal sentence, the payload-free last-known snapshot and the named integration gaps |
 | `js/status.js` | Status DOM wiring over `GET /app-release` and the four Control Room reads, each settled on its own |

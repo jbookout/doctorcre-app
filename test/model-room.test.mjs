@@ -447,8 +447,8 @@ test("C12-17 the Observatory is untouched by this slice", async () => {
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the v35 producer and its two dispatch writes", () => {
-  assert.equal(contract.version, "1.19.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 57);
+  assert.equal(contract.version, "1.20.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 65);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -459,7 +459,7 @@ test("C13-04 the contract pins the v35 producer and its two dispatch writes", ()
   const queue = contract.mcp_operations.indexOf("read-room-queue");
   assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
-  assert.equal(contract.producer.source_commit, "12133fc69c8cf4e42dc2afc8d71a3f8cf2f38482");
+  assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
