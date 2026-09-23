@@ -180,7 +180,7 @@ test("the provider links are anchors this page never fetches", () => {
 
 test("the route is pinned and the contract moved on additively", () => {
   assert.equal(routes.routes["/status"], "status.html");
-  assert.equal(routes.version, "1.10.0");
+  assert.equal(routes.version, "1.11.0");
 });
 
 test("the page is read-only: no command dock, no Doc mount, no write verb", () => {

@@ -6,6 +6,7 @@
  * staging; one may be passed directly for isolated client tests.
  */
 import { uuidv4 } from './uuid.js';
+import { DISPATCHABLE_VERBS } from './meeting-model.js';
 
 /**
  * @param {Object} [opts]
@@ -479,6 +480,33 @@ export function createLiveClient(opts = {}) {
     // They go through `rpc` because they carry no idempotency key.
     async find(args = {}) { return rpc('find', args); },
     async findAndCatchUp(args = {}) { return rpc('find-and-catch-up', args); },
+
+    // ----------------------------------------- shared Meeting Mode page (B11)
+    // One read and seven writes, passed through untouched, plus the canonical
+    // call an accepted action names. NONE names an actor or a tenant: CARR's
+    // definer doors derive both, and client_instance is attribution only.
+    // `read-meeting` goes through `rpc` because it carries no key.
+    //
+    // dispatchMeetingCommand sends ONLY a verb this app carries, and ONLY under
+    // the idempotency key the store minted at acceptance. `write` would mint a
+    // fresh key for a missing one, and a fresh key here is a second effect, so
+    // a missing key is refused before anything is sent.
+    async readMeeting(args) { return rpc('read-meeting', args); },
+    async startMeeting(args) { return write('start-meeting', args); },
+    async claimMeetingProcessing(args) { return write('claim-meeting-processing', args); },
+    async addMeetingNote(args) { return write('add-meeting-note', args); },
+    async proposeMeetingAction(args) { return write('propose-meeting-action', args); },
+    async decideMeetingAction(args) { return write('decide-meeting-action', args); },
+    async recordMeetingActionOutcome(args) { return write('record-meeting-action-outcome', args); },
+    async endMeeting(args) { return write('end-meeting', args); },
+    async dispatchMeetingCommand({ verb, args, idempotency_key }) {
+      if (!DISPATCHABLE_VERBS.includes(verb) || !idempotency_key) {
+        const error = new Error(`live meeting dispatch refused: ${verb}`);
+        error.payload = { error: 'meeting_dispatch_not_carried', verb };
+        throw error;
+      }
+      return write(verb, { ...args, idempotency_key });
+    },
 
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },

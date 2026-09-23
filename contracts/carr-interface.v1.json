@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "12133fc69c8cf4e42dc2afc8d71a3f8cf2f38482"
+    "source_commit": "35009e9dedab3a603836c662d0f7f12dfeb1a284"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -19,7 +19,9 @@
     "add-critical-date",
     "add-deal-note",
     "add-loop",
+    "add-meeting-note",
     "capture-queue",
+    "claim-meeting-processing",
     "close-loop",
     "create-doc-conversation",
     "create-national-account",
@@ -27,8 +29,10 @@
     "current-work-item",
     "current-work-requests",
     "deal-room-board",
+    "decide-meeting-action",
     "decline-work-request",
     "end-deal-review",
+    "end-meeting",
     "engineering-passport",
     "find",
     "find-and-catch-up",
@@ -44,15 +48,18 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "propose-meeting-action",
     "read-dispatch-history",
     "read-doc-conversation",
     "read-loop",
+    "read-meeting",
     "read-notification-preferences",
     "read-portfolio",
     "read-room",
     "read-room-queue",
     "read-session-identity",
     "record-dispatch-link",
+    "record-meeting-action-outcome",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
@@ -67,6 +74,7 @@
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",
+    "start-meeting",
     "supersede-work-request",
     "update-deal",
     "update-loop",
@@ -91,6 +99,7 @@
     "Retries reuse the same idempotency key and reconcile against CARR.",
     "Fixture data is synthetic and cannot become production state.",
     "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
-    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one."
+    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one.",
+    "A meeting proposal is never shown as a record effect: an action is done or delegated only when record-meeting-action-outcome finds the canonical verb's committed row under the operation key the store minted, and the app never mints that key."
   ]
 }

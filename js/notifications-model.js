@@ -101,7 +101,7 @@ export const APP_ROUTE_PATHS = Object.freeze([
   "/", "/control-room", "/workspace", "/deals", "/leads", "/clients", "/vendors",
   "/system-work.html", "/room.html", "/queue.html", "/tours", "/share", "/design",
   "/design/business", "/design/operations", "/work-inventory", "/tasks", "/pipeline",
-  "/business", "/status", "/incidents", "/notifications", "/conversations",
+  "/business", "/status", "/incidents", "/notifications", "/conversations", "/meeting",
 ]);
 
 /** The sentence an unroutable deep link carries. */

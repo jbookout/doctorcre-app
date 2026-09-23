@@ -364,8 +364,8 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.10.0");
-  assert.equal(contract.version, "1.19.0");
+  assert.equal(routes.version, "1.11.0");
+  assert.equal(contract.version, "1.20.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -375,7 +375,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 57);
+  assert.equal(contract.mcp_operations.length, 65);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 
@@ -798,7 +798,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(pageJs, /export const escapeHtml/, "the one escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.10.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.11.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
   assert.match(pageJs, /parameters\.get\("tab"\) === "atlas"/, "the deep link is not read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");
