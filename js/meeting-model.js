@@ -13,7 +13,7 @@
 //   2. ONE LOGICAL OPERATION, ONE KEY. Every write is claimed through the shared
 //      command kernel under an operation key named here, so a double click, a
 //      reconnect and a reload re-send the SAME frozen request (see
-//      meeting-persistence.mjs for the reload half).
+//      meeting-memory.mjs for the reload half).
 //   3. A PROPOSAL IS NEVER A RECORD EFFECT. Only `executed` and `delegated`
 //      carry reconciled canonical evidence, and only those are drawn as done.
 //      `accepted` means a partner decided; it is "effect not yet observed" until
@@ -33,7 +33,8 @@ export const MEETING_SCHEMA_VERSION = "doctorcre-meeting-mode.v1";
 export const MEETING_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /** The producer's identifier shape for client_instance, dedupe keys and native ids. */
 export const IDENT = /^[A-Za-z0-9][A-Za-z0-9._:/@!+=-]{0,127}$/;
-const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F​-‏‪-‮⁠-⁤⁦-⁩﻿]/u;
+// C0/C1 controls (tab and newline allowed), zero-width and bidi overrides.
+const CONTROL = new RegExp("[\\u0000-\\u0008\\u000B-\\u001F\\u007F-\\u009F\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]", "u");
 
 /** J201's recording fragments (`meeting-call-mode-j201.v5.js`), the one list. */
 export const RECORDING_FRAGMENTS = Object.freeze([

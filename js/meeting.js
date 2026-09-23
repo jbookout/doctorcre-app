@@ -61,6 +61,17 @@ function announce(text) {
 }
 
 const payloadOf = () => (view.read.state === "read" ? view.read.payload : null);
+
+/**
+ * Write a list only when its markup changed. The page polls, and rewriting an
+ * unchanged list would reset a half-chosen select and take focus from a button.
+ */
+const painted = new Map();
+function paint(id, html) {
+  if (painted.get(id) === html) return;
+  painted.set(id, html);
+  $(id).innerHTML = html;
+}
 const meetingId = () => view.route.id;
 
 /* -------------------------------------------------------------------- painting */
@@ -111,12 +122,12 @@ function renderPresence() {
 
 function renderNotes() {
   const rows = noteRows(payloadOf());
-  $("noteList").innerHTML = rows.map((note) => `<li class="note-item" data-note="${note.number}">
+  paint("noteList", rows.map((note) => `<li class="note-item" data-note="${note.number}">
     <div class="item-top"><span class="item-number">Note ${note.number}</span><span>${escapeHtml(note.current.author)} · ${escapeHtml(note.current.clock)}${note.revision > 1 ? ` · revision ${note.revision}` : ""}</span></div>
     <p class="item-body">${escapeHtml(note.current.body)}</p>
     ${note.history.length ? `<details class="item-history"><summary>Earlier revisions (${note.history.length})</summary><ol>${note.history.map((r) => `<li>Revision ${r.revision} · ${escapeHtml(r.author)} · ${escapeHtml(r.clock)}: ${escapeHtml(r.body)}</li>`).join("")}</ol></details>` : ""}
     ${meetingHeader(payloadOf())?.ended ? "" : `<div class="decide-row"><button class="btn" type="button" data-revise-note="${note.number}">Revise this note</button></div>`}
-  </li>`).join("");
+  </li>`).join(""));
   const revising = view.revising;
   $("revisingLine").hidden = revising === null;
   $("revisingLine").textContent = revising === null ? "" : `Revising note ${revising}. The earlier text is kept.`;
@@ -130,7 +141,7 @@ function renderNotes() {
 function renderActions() {
   const rows = actionRows(payloadOf());
   $("proposalLine").textContent = PROPOSAL_IS_NOT_DONE;
-  $("actionList").innerHTML = rows.map((row) => {
+  paint("actionList", rows.map((row) => {
     const meta = [`proposed by ${row.proposedBy}`, row.basis === "explicit_instruction" ? "a partner's instruction" : "tentative"];
     if (row.decidedBy) meta.push(`decided by ${row.decidedBy}`);
     if (row.disposition === "delegate" && row.assignee) meta.push(`delegated to ${row.assignee}`);
@@ -152,22 +163,22 @@ function renderActions() {
       ${row.history.length ? `<details class="item-history"><summary>Earlier revisions (${row.history.length})</summary><ol>${row.history.map((r) => `<li>Revision ${r.revision} · ${escapeHtml(r.by)} · ${escapeHtml(r.clock)}: ${escapeHtml(r.summary)}</li>`).join("")}</ol></details>` : ""}
       ${controls.length ? `<div class="decide-row">${controls.join("")}</div>` : ""}
     </li>`;
-  }).join("");
+  }).join(""));
 }
 
 function renderRecap() {
   const recap = recapView(payloadOf());
   if (!recap) return;
-  $("recapLines").innerHTML = recap.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("");
-  $("recapBuckets").innerHTML = recap.buckets.map((bucket) => `<div class="recap-bucket" data-bucket="${bucket.key}">
+  paint("recapLines", recap.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join(""));
+  paint("recapBuckets", recap.buckets.map((bucket) => `<div class="recap-bucket" data-bucket="${bucket.key}">
     <h3>${escapeHtml(bucket.title)} · ${bucket.count}</h3>
     ${bucket.items.length ? `<ul>${bucket.items.map((item) => `<li>${item.number}. ${escapeHtml(item.summary)}${item.assignee && bucket.key === "delegated" ? ` → ${escapeHtml(item.assignee)}` : ""}</li>`).join("")}</ul>` : ""}
-  </div>`).join("");
+  </div>`).join(""));
 }
 
 function renderStream() {
-  $("streamList").innerHTML = streamRows(view.stream).slice(-50).reverse()
-    .map((row) => `<li data-seq="${row.seq}"><span><span class="stream-seq">#${row.seq}</span> ${escapeHtml(row.sentence)}</span><span>${escapeHtml(row.clock)}</span></li>`).join("");
+  paint("streamList", streamRows(view.stream).slice(-50).reverse()
+    .map((row) => `<li data-seq="${row.seq}"><span><span class="stream-seq">#${row.seq}</span> ${escapeHtml(row.sentence)}</span><span>${escapeHtml(row.clock)}</span></li>`).join(""));
 }
 
 function render() {
@@ -187,7 +198,7 @@ function render() {
  */
 async function load() {
   if (view.route.state !== "ok") {
-    view.read = view.route.state === "malformed" ? { state: "pending" } : { state: "pending" };
+    view.read = { state: "pending" };
     render();
     return;
   }

@@ -415,6 +415,27 @@ test("the route, the versions, the producer pin and the eight verbs are in the c
   assert.equal(contract.transport.database_access, "forbidden");
 });
 
+test("the builders refuse what the verbs refuse, before anything is sent", async () => {
+  const { a, readA } = await sharedMeeting();
+  const payload = await readA();
+  assert.equal(noteArgs(payload, { body: "line one\n\tline two", instance: a.instance }).ok, true, "a newline or tab was refused");
+  const char = (code) => String.fromCodePoint(code);
+  for (const hostile of [`bidi ${char(0x202e)} override`, `zero${char(0x200b)}width`, `nul ${char(0)}`, `bom ${char(0xfeff)}`, "   "]) {
+    assert.equal(noteArgs(payload, { body: hostile, instance: a.instance }).ok, false, `${JSON.stringify(hostile)} was accepted`);
+  }
+  assert.equal(startArgs({ title: "two\nlines", instance: a.instance, newId: uuid }).ok, false);
+  assert.equal(startArgs({ title: "x".repeat(201), instance: a.instance, newId: uuid }).ok, false);
+  assert.equal(proposeArgs(payload, { summary: "go", basis: "explicit_instruction", instance: a.instance }).ok, false, "an instruction with nothing to run was sent");
+  assert.equal(followUpCommand({ title: "t", owner: "someone-else" }), null);
+});
+
+test("the meeting sources carry no invisible or bidi characters", async () => {
+  const invisible = new RegExp("[\\u0000-\\u0008\\u000B-\\u001F\\u007F-\\u009F\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF]", "u");
+  for (const file of ["js/meeting-model.js", "js/meeting.js", "js/meeting-fixture.js", "js/meeting-memory.mjs", "meeting.html", "css/meeting.css", "test/meeting.test.mjs"]) {
+    assert.equal(invisible.test(await read(file)), false, `${file} hides a character a reviewer cannot see`);
+  }
+});
+
 test("every name the page imports from its model exists, so the browser module links", async () => {
   const model = await import("../js/meeting-model.js");
   const memory = await import("../js/meeting-memory.mjs");
