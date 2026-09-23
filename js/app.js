@@ -1,6 +1,8 @@
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
+import { createPostCallClient } from './post-call-client.js';
+import { createCallMode, CALL_MODE_URL, CALL_MODE_HEADER } from './call-mode.js';
 import {
   REVERTIBLE_FIELDS, escapeText, parkingReasonLabel, ingestChangeEvents,
   receiptViews, receiptListHtml, receiptsSignature, receiptsAnnouncement,
@@ -66,10 +68,8 @@ const state = {
   // a render memo, exactly like receiptSignature. The operations themselves live
   // in fieldWrites and nowhere else.
   pendingSignature: null,
-  // No call state of any kind lives here. Recording is inactive in this release
-  // and this shell holds nothing that could start, stop, time or follow one.
-  // What the record layer already knows about past capture sessions still
-  // arrives on the ordinary feed above, and is only ever displayed.
+  // The Call Mode controller (./call-mode.js) owns every piece of call state.
+  callModeUi: null,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -569,73 +569,25 @@ function renderCaptureStatus() {
 }
 
 /**
- * Calls are inactive in this release, and this module is where that is TRUE
- * rather than merely intended.
- *
- * There is no recorder address, no start, no stop, no recorder-state read and
- * no poll of a local bridge anywhere in this file. The entrypoint opens a dialog
- * that says so, and does nothing else: no request leaves the page, no timer
- * starts, and no synthetic click, boot callback, query parameter or stored
- * preference can reach a recording path, because this workspace no longer
- * contains one.
- *
- * Nothing already recorded is affected. The recorder, its standalone controller
- * and every saved call, action and summary are untouched; what the record layer
- * holds about them still arrives through the same board read, change feed and
- * suggestions dock as any other work, and is only ever displayed.
+ * Deal Room Call Mode lives in ./call-mode.js (restored per decision 7dc47eea):
+ * record Joe and Dell's pipeline call through the local Quill companion, then
+ * review a post-call pack in which every item waits for a partner's approval.
+ * This shell only builds the controller and forwards clicks to it.
  */
-
-/**
- * Controls that belonged to the retired in-shell recorder.
- *
- * A stale index.html can outlive the module that goes with it: the service
- * worker caches a navigation and a script separately, so an installed app can
- * pair yesterday's markup with today's code. Such a control arrives with no
- * handler and is already inert — but it would still LOOK live, and a person
- * pressing "Start weekly deal call" deserves better than a button that silently
- * does nothing. They are disabled and hidden on sight, and never wired.
- */
-const RETIRED_RECORDER_CONTROLS = [
-  '#callModeButton', '#callModeStop', '[data-call-mode-start]', '#postCallRefresh',
-  '[data-post-call-confirm]', '[data-post-call-skip]', '[data-create-outlook-draft]',
-  '[data-retry-call-context]',
-];
-
-function neutralizeRetiredRecorderControls(root) {
-  const found = RETIRED_RECORDER_CONTROLS.flatMap((selector) => $$(selector, root));
-  // A link to a local controller is an entrypoint too, even though a person has
-  // to press it: this workspace does not offer one.
-  for (const link of $$('a', root)) {
-    if (/127\.0\.0\.1|localhost/i.test(link.getAttribute('href') || '')) found.push(link);
-  }
-  for (const node of found) {
-    node.disabled = true;
-    node.hidden = true;
-    node.setAttribute('aria-hidden', 'true');
-    if (node.getAttribute('href') !== null) node.removeAttribute('href');
-  }
-  return found;
-}
-
-/**
- * Wire the Calls entrypoint: one dialog, opened and closed, and nothing else.
- *
- * Exported so the boundary can be exercised as BEHAVIOUR — installed on a
- * document, pressed, and observed to make no request and start no timer —
- * rather than only read as source.
- */
-export function installCallsBoundary(root = document) {
-  const neutralized = neutralizeRetiredRecorderControls(root);
-  const button = $('#callsButton', root);
-  const dialog = $('#callsDialog', root);
-  const close = $('#callsClose', root);
-  if (button && dialog) button.addEventListener('click', () => {
-    if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+function installCallMode() {
+  state.callModeUi = createCallMode({
+    root: document,
+    client: () => state.client,
+    postCallClient: createPostCallClient({ loopbackUrl: CALL_MODE_URL, postHeaders: CALL_MODE_HEADER }),
+    agendaDeals,
+    scope: () => ({ workspace_kind: state.workspace, ...(state.accountId ? { account_client_id: state.accountId } : {}) }),
+    dealName: (id) => state.deals.get(id)?.name,
+    dateLabel,
+    toast: (message) => showToast(message),
+    startAgenda,
+    onConfirmed: loadHome,
   });
-  if (close && dialog) close.addEventListener('click', () => {
-    if (dialog.open) dialog.close();
-  });
-  return { entrypoint: Boolean(button), dialog: Boolean(dialog), neutralized: neutralized.length };
+  return state.callModeUi;
 }
 
 function renderConfirms() {
@@ -1299,11 +1251,8 @@ function wireEvents() {
     if (event.target.closest('[data-close-deal]')) { $('#dealDialog').close(); return; }
     const undoButton = event.target.closest('[data-undo]'); if (undoButton) { await runUndo(undoButton.dataset.undo, undoButton); return; }
     const confirm = event.target.closest('[data-confirm]'); if (confirm) { const chip=confirm.closest('[data-proposal]'); const yes=confirm.dataset.confirm==='yes'; await state.client.resolveConfirm({proposal_id:chip.dataset.proposal,accept:yes,idempotency_key:uuidv4()}); state.confirms=state.confirms.filter((p)=>p.id!==chip.dataset.proposal); renderConfirms(); if(yes)await loadHome(); showToast(yes?'Suggestion confirmed':'Suggestion skipped'); return; }
+    if (state.callModeUi && await state.callModeUi.handleClick(event.target)) return;
     if (event.target.closest('[data-dialog-cancel]')) { $('#formDialog').close(); return; }
-    // Deliberately no recorder branch below this line. This delegated listener
-    // sees every click in the page, so a branch here is the one thing that could
-    // turn a synthetic click into a recording; the Calls entrypoint is wired to
-    // its own control instead, and it opens a dialog and nothing more.
   });
 
   document.addEventListener('change', async (event) => {
@@ -1318,6 +1267,9 @@ function wireEvents() {
   $('#receiptsJump').onclick = goToReceipts;
   $('#ownerButton').onclick = accountOwnerForm;
   $('#agendaButton').onclick = startAgenda;
+  $('#callModeButton').onclick = () => state.callModeUi.open();
+  $('#callModeStop').onclick = () => state.callModeUi.stop();
+  $('#postCallRefresh').onclick = () => state.callModeUi.refreshPostCall();
   $('#agendaReviewed').onclick = () => advanceAgenda('reviewed');
   $('#agendaSkip').onclick = () => advanceAgenda('skipped');
   $('#agendaEnd').onclick = () => finishAgenda('completed');
@@ -1351,13 +1303,6 @@ function wireEvents() {
 }
 
 async function boot() {
-  // FIRST, ahead of every read that can fail. The whole of Calls in this
-  // release is a control that explains its own absence, plus a sweep for any
-  // recorder control a cached page is still carrying — and the sweep has to run
-  // even when the rest of boot does not. If sign-in or the network fails after
-  // this line, the failure is a shell that offers nothing; if it ran later, the
-  // same failure would leave a stale "Start weekly deal call" on screen.
-  installCallsBoundary();
   if (localStorage.getItem('dealroom-theme') === 'night') document.body.classList.add('night');
   if (localStorage.getItem('dealroom-color-assist') === 'on') {
     document.body.classList.add('color-assist');
@@ -1384,6 +1329,7 @@ async function boot() {
     applyBoard: (board) => { applyBoardSnapshot(board); if (!userIsEditing()) renderPreservingFocus(); },
     onStatus: setSync,
   });
+  installCallMode();
   wireEvents();
   await loadHome();
   // A tick that arrives while the last poll is still open is dropped by the
@@ -1401,20 +1347,13 @@ async function boot() {
   state.boardRefreshTimer = setInterval(() => {
     state.boardSync.requestRefresh('periodic');
   }, BOARD_REFRESH_MS);
-  // Two timers, both about the board. There is deliberately no third one for a
-  // recorder clock: this release has no recording to time and nothing local to
-  // ask about one.
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }
 
 /**
- * The shell starts itself only when it is actually in its own page.
- *
- * The condition is the board's own root element, not a flag or a setting: a
- * harness that imports this module to exercise a function gets the functions and
- * none of the timers, reads or listeners, and there is no switch that changes
- * that in either direction. `#rows` is asserted to exist in index.html by the
- * release tests, so the sentinel cannot drift away from the markup it names.
+ * The shell starts itself only when it is actually in its own page: `#rows` is
+ * the board's root element. A harness that imports this module gets the
+ * functions and none of the timers, reads or listeners.
  */
 if (typeof document !== 'undefined' && document.getElementById('rows')) {
   boot().catch((error) => {

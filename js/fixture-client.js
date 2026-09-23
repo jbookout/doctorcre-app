@@ -7,10 +7,6 @@ import { PHASES } from './client.js';
 import {
   MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
 } from './workspace-command-center-model.js';
-import { createMeetingStore, meetingFixtureMethods } from './meeting-fixture.js';
-
-/** One synthetic meeting store per page, so every fixture client shares it. */
-const defaultMeetingStore = createMeetingStore();
 
 const LEASE_TTL_MS = 3000;
 const IDEM_TTL_MS = 60 * 60 * 1000;
@@ -1220,22 +1216,9 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
-  // V5-UX-B11 Meeting Mode. The store is shared by every fixture client on the
-  // page (or the one a test passes), so two "devices" meet in ONE meeting. The
-  // only canonical verb an accepted action may run here is this fixture's own
-  // add-loop, reached lazily through `client` below.
-  const meeting = meetingFixtureMethods(opts.meetingStore || defaultMeetingStore, {
-    actor: selfActor,
-    outage,
-    dispatchCanonical: (verb, args) => (verb === 'add-loop'
-      ? client.addLoop(args)
-      : refuse(verb, 'unregistered_operation', { verb })),
-  });
-
   const client = {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
-    ...meeting,
 
     async getBoard() {
       const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId);
