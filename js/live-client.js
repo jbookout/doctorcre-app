@@ -191,6 +191,23 @@ export function createLiveClient(opts = {}) {
       return res.json();
     },
 
+    // V5-UX-B04: the same pinned `/api/v1/business/{clients,vendors}/<id>`
+    // single-record read the Clients and Vendors pages already use, called
+    // here for one id at a time so the deal record panel's context drawer can
+    // show the linked client's contact detail. `id` must be that record's own
+    // uuid (client.id / vendor.id) — a participant's party_id is a different
+    // id space and is never passed here; see loadDealContext in
+    // pipeline-model.js for why. A non-ok response throws, same as every
+    // other live read, so the caller's catch is the one honest place that
+    // decides "unavailable".
+    async getPartyRecord({ dataset, id }) {
+      const res = await fetchImpl(`/api/v1/business/${dataset}/${id}`, {
+        headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`live business ${dataset} record -> HTTP ${res.status}`);
+      return res.json();
+    },
+
     // The confirm strip, live: proposals distilled from a recorded call. The
     // label is built here from the candidate's own shape, never from a
     // server-supplied string, and every disposition goes through

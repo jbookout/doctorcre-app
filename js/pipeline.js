@@ -47,8 +47,9 @@ import {
 } from './change-receipts.mjs';
 import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
-  columnLabel, completionPlan, filterDeals, groupByColumn, keyboardTarget, moveIntent,
-  moveSummary, moveTitle, orderColumn, presenceChip, recordPanelSections, typeFilters,
+  columnLabel, completionPlan, contextDrawerSections, filterDeals, groupByColumn, keyboardTarget,
+  loadDealContext, moveIntent, moveSummary, moveTitle, orderColumn, presenceChip,
+  recordPanelSections, typeFilters,
 } from './pipeline-model.js';
 import { uuidv4 } from './uuid.js';
 
@@ -608,10 +609,12 @@ async function openPanel(dealId, trigger) {
   const panel = $('recordPanel');
   if (!panel) return;
   state.panelDeal = dealId;
+  state.panelDetail = null;
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   panel.hidden = false;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Record';
   $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Reading the record…</h3></div>';
+  setContextOpenVisible(false);
   $('panelClose')?.focus();
   let detail = null;
   try {
@@ -623,10 +626,14 @@ async function openPanel(dealId, trigger) {
   // The panel may have moved on while the read was open; a late answer never
   // paints over a record the person has since opened.
   if (state.panelDeal !== dealId) return;
+  state.panelDetail = detail;
   $('panelTitle').textContent = detail.deal?.name || 'Record';
   $('panelBody').innerHTML = recordPanelSections(detail, { actorLabel: actorName, dateLabel: dateWords })
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
       <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('');
+  // V5-UX-B04: the context drawer reuses this same read, so it opens only
+  // once there is a detail to open it on.
+  setContextOpenVisible(true);
 }
 
 function closePanel() {
@@ -636,8 +643,41 @@ function closePanel() {
   panel.hidden = true;
   const returnTo = state.panelReturnTo;
   state.panelDeal = null;
+  state.panelDetail = null;
   state.panelReturnTo = null;
+  setContextOpenVisible(false);
   if (returnTo) document.querySelector(`.kanban-card[data-id="${CSS.escape(returnTo)}"]`)?.focus();
+}
+
+function setContextOpenVisible(visible) {
+  const wrap = $('panelContextOpenWrap');
+  if (wrap) wrap.hidden = !visible;
+}
+
+/* ------------------------------------------------- V5-UX-B04: context drawer */
+
+/**
+ * Read-only client/vendor/calendar context for whichever deal the record
+ * panel currently holds. It never re-reads the deal itself — `state.panelDetail`
+ * is the same `get-deal-room` answer the panel already painted — and its one
+ * further read (the linked client's contact record) is made fresh every open,
+ * because a fixed drawer that is opened, closed, and reopened without a page
+ * reload must not go on showing a read that has since gone stale.
+ */
+async function openContextDrawer() {
+  const dialog = $('contextDrawer');
+  const detail = state.panelDetail;
+  if (!dialog || !detail) return;
+  $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Reading the record…</h3></div>';
+  if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+  const dealId = state.panelDeal;
+  const context = await loadDealContext(state.client, detail);
+  // Same late-answer guard as the record panel: a slower client read must
+  // never paint over a drawer the person has since moved on from.
+  if (state.panelDeal !== dealId || !dialog.open) return;
+  $('contextDrawerBody').innerHTML = contextDrawerSections(context, { dateLabel: dateWords })
+    .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
+      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('');
 }
 
 /* -------------------------------------------------------- drag and keyboard */
@@ -785,6 +825,9 @@ function wire() {
     if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   });
   $('receiptsClose')?.addEventListener('click', () => $('receiptsDialog')?.close());
+
+  $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
+  $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());
 
   $('completionCritical')?.addEventListener('change', renderCriticalState);
   $('completionOutcomeField')?.addEventListener('change', renderOutcomeState);
