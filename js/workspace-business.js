@@ -31,6 +31,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge } from "./shell.js";
+import { activityCopy, activityRequest, activityState } from "./record-activity-model.js";
 
 const EXPIRY_TICK_MS = 5_000;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -83,7 +84,25 @@ const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[da
 // session-state transitions live in the model so they can be tested without a
 // browser.
 const view = Object.assign(createBusinessState(), { freshnessKey: null, returnFocusId: null });
+// V5-UX-B04: the open record's recent activity, verified against its ref (see
+// js/record-activity-model.js). Its own sequence, so a slow answer for a record
+// that has since been closed or replaced never paints.
+view.activity = { id: null, sequence: 0, result: null };
 let searchTimer = null;
+let dealroomClientPromise = null;
+
+/**
+ * The one dealroom client this page builds, for the MCP reads it makes (the
+ * unread badge and a record's activity). The list and record reads above stay
+ * plain REST against DATASET_ROUTE.
+ */
+function dealroomClient() {
+  if (!dealroomClientPromise) {
+    const bootMode = resolveDealroomBoot(window.location);
+    dealroomClientPromise = bootMode.mode === "live" ? Promise.resolve(createLiveClient()) : createFixtureClient(bootMode.options);
+  }
+  return dealroomClientPromise;
+}
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -520,7 +539,46 @@ function renderRecordPanel() {
     `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.map((field) =>
       `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.text)}${field.known && !field.resolved ? '<span class="unresolved-flag">code with no name</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `${current ? "" : '<div class="notice notice-stale"><p class="notice-title">Checked a while ago</p><p class="notice-copy">Check again before acting on it.</p><button type="button" class="action secondary-action" data-retry="record">Check again</button></div>'}<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span class="tone tone-plain${kind.known ? "" : " unknown"}">${escapeHtml(kind.text)}</span></p><p class="record-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</p><p class="record-note">${escapeHtml(payload.recorded_field_note)}</p>${payload.partial ? `<div class="notice notice-partial"><p class="notice-title">Code with no name</p><p class="notice-copy">${escapeHtml(payload.partial.note)}</p></div>` : ""}${sections}<p class="record-note">Not shown here: ${escapeHtml(payload.not_in_this_read.join(", "))}.</p><p class="source">${escapeHtml(sourceLabel(payload.source, dataset))}</p>`;
+    dom.panelBody.innerHTML = `${current ? "" : '<div class="notice notice-stale"><p class="notice-title">Checked a while ago</p><p class="notice-copy">Check again before acting on it.</p><button type="button" class="action secondary-action" data-retry="record">Check again</button></div>'}<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span class="tone tone-plain${kind.known ? "" : " unknown"}">${escapeHtml(kind.text)}</span></p><p class="record-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</p><p class="record-note">${escapeHtml(payload.recorded_field_note)}</p>${payload.partial ? `<div class="notice notice-partial"><p class="notice-title">Code with no name</p><p class="notice-copy">${escapeHtml(payload.partial.note)}</p></div>` : ""}${sections}${activityHtml(payload.record.id)}<p class="record-note">Not shown here: ${escapeHtml(payload.not_in_this_read.join(", "))}.</p><p class="source">${escapeHtml(sourceLabel(payload.source, dataset))}</p>`;
+    // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
+    // refuses a `style` attribute written into markup, so the activity-row
+    // template above only emits `data-stagger-ms`, and this reads it back.
+    dom.panelBody.querySelectorAll(".activity-row").forEach((node) => {
+      node.style.setProperty("--stagger", `${node.dataset.staggerMs}ms`);
+    });
+  }
+}
+
+/** The record's recent activity, or the plain reason none is shown. */
+function activityHtml(recordId) {
+  const result = view.activity.id === recordId ? view.activity.result : null;
+  const state = result || { state: "loading" };
+  const body = state.state === "ready"
+    ? `<ol class="activity-list">${state.rows.map((row, index) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}" data-stagger-ms="${Math.min(index * 30, 540)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
+    : `<p class="record-note activity-note" data-state="${escapeHtml(state.state)}">${escapeHtml(activityCopy(state))}</p>`;
+  return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note">Source: find-and-catch-up, shown only when its one match is this record's own reference.</p></section>`;
+}
+
+/**
+ * One activity read per opened record. The answer paints only while the same
+ * record is still open and no newer read has started.
+ */
+async function loadActivity(id, record) {
+  const sequence = ++view.activity.sequence;
+  view.activity.id = id;
+  view.activity.result = null;
+  const request = activityRequest(record);
+  const settle = (result) => {
+    if (view.activity.sequence !== sequence || view.recordId !== id) return;
+    view.activity.result = result;
+    renderRecordPanel();
+  };
+  if (!request) return settle({ state: "no_ref" });
+  try {
+    const client = await dealroomClient();
+    settle(activityState(record, await client.findAndCatchUp(request)));
+  } catch {
+    settle({ state: "unavailable" });
   }
 }
 
@@ -632,6 +690,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     const payload = await response.json().catch(() => null);
     if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
     settle("ready", null, payload);
+    if (acceptsResponse(view.record.sequence, sequence) && view.recordId === id) loadActivity(id, payload.record);
   } catch {
     settle("error", "DEPENDENCY_UNAVAILABLE");
   }
@@ -857,9 +916,7 @@ function start() {
  */
 async function mountBadge() {
   try {
-    const bootMode = resolveDealroomBoot(window.location);
-    const client = bootMode.mode === "live" ? createLiveClient() : await createFixtureClient(bootMode.options);
-    await mountNotificationBadge(client);
+    await mountNotificationBadge(await dealroomClient());
   } catch {
     // Fails quiet, same as mountNotificationBadge's own catch.
   }

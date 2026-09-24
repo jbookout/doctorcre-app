@@ -20,6 +20,8 @@ const tasksHtml = await read("tasks.html");
 const pipelineHtml = await read("pipeline.html");
 const businessWorkspaceHtml = await read("business-workspace.html");
 const controlRoomHtml = await read("control-room.html");
+const calendarHtml = await read("calendar.html");
+const ideasHtml = await read("ideas.html");
 const shellJs = await read("js/shell.js");
 
 // Every surface the review covered: the three prototype pages and the product
@@ -36,6 +38,8 @@ const SURFACES = {
   "pipeline.html": pipelineHtml,
   "business-workspace.html": businessWorkspaceHtml,
   "control-room.html": controlRoomHtml,
+  "calendar.html": calendarHtml,
+  "ideas.html": ideasHtml,
   "js/design-prototype.js": prototypeJs,
   "js/shell.js": shellJs,
   "js/doc-dock.js": docDockJs,

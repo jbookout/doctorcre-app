@@ -58,6 +58,13 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `css/conversations.css` | The conversations page layer: private versus shared drawn with a word, a glyph and an accent, the one-column transcript, and the 44px floor at 360px |
 | `js/conversations-model.js` | Pure conversation rules: the verb's own uuid shape, the read and list payloads' exact keys, the list door's three optional arguments, the eight UX20 states, the compare-and-swap argument builders and the five operation keys |
 | `js/conversations.js` | Conversations DOM wiring over `list-doc-conversations` and `read-doc-conversation`, with `create-`, `rename-` and `share-doc-conversation` sent through the shared command kernel and dock |
+| `calendar.html` | V5-UX-B04 Calendar at `/calendar?view=month\|week&d=…&day=…`: every deal's critical dates by month or week, read only, with the approach pulse, the day panel, the upcoming agenda and the undated rows |
+| `js/calendar-model.js` | Pure calendar rules: YYYY-MM-DD arithmetic, the month grid and week strip, the URL state, the approach bands, the bounded board-then-each-deal read and its partial/undated/signed-out states |
+| `js/calendar.js` | Calendar DOM wiring over `deal-room-board` and `get-deal-room` (one per deal, at most four in flight) |
+| `ideas.html` | V5-UX-B04 Ideas at `/ideas?tab=ideas\|events&q=…&idea=…`: the open parked ideas (`loop` kind `idea`) with a read-only detail, and an Events tab that names the missing read |
+| `js/ideas-model.js` | Pure idea rules: the board arguments, row normalisation, search, the read-loop answer states, the detail rows and the URL state |
+| `js/ideas.js` | Ideas DOM wiring over `loop-board` and `read-loop` |
+| `js/record-activity-model.js` | V5-UX-B04 recent activity on a Vendors or Clients record: `find-and-catch-up` shown only when its one match is the record's own ref |
 | `status.html` | V5-UX-C15 Status at `/status`: the one page served ahead of the CARR sign-in gate, so an app outage and a record-layer outage can be told apart without signing in |
 | `js/status-model.js` | Pure status rules: the four headline scenarios, the sanitized refusal sentence, the payload-free last-known snapshot and the named integration gaps |
 | `js/status.js` | Status DOM wiring over `GET /app-release` and the four Control Room reads, each settled on its own |

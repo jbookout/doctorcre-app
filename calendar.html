@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Calendar — every deal's critical dates by month and week, read from the record layer">
+  <title>Calendar · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/calendar.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the calendar</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>calendar</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/deals">Deals</a>
+      <a href="/clients">Clients</a>
+      <a href="/vendors">Vendors</a>
+      <a href="/calendar" aria-current="page">Calendar</a>
+      <a href="/ideas">Ideas</a>
+      <a href="/tasks">Tasks</a>
+    </nav>
+    <a class="pref-icon nav-notif" href="/notifications" title="Notifications">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.1c0 .86-.34 1.68-.94 2.3L4.6 15h14.8l-1.46-1.6a3.3 3.3 0 0 1-.94-2.3V8a5 5 0 0 0-5-5Z"></path><path d="M9.6 18a2.6 2.6 0 0 0 4.8 0"></path></svg>
+      <span class="sr-only">Notifications</span>
+      <span class="nav-badge" id="navUnreadBadge" hidden></span>
+    </a>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow"><span class="orb" data-state="still" id="calOrb" aria-hidden="true"></span> Critical dates · one shared record for both partners</p>
+        <h1 id="pageTitle">Calendar</h1>
+      </div>
+      <div class="chip-bar">
+        <span class="status" data-state="unknown" id="calStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="calStatusLabel">Reading the record…</span></span>
+        <span class="as-of" id="calAsOf">Reading the record layer…</span>
+      </div>
+    </section>
+
+    <p class="sr-only" id="calLive" aria-live="polite" role="status">Reading the record…</p>
+
+    <div class="cal-notices" id="calNotices"></div>
+
+    <div class="cal-layout">
+      <section class="card glass cal-board" aria-labelledby="calPeriod">
+        <div class="cal-toolbar">
+          <div class="btn-group" id="calViewSwitch" role="group" aria-label="Calendar view">
+            <button class="btn" type="button" data-view="month" aria-pressed="true">Month</button>
+            <button class="btn" type="button" data-view="week" aria-pressed="false">Week</button>
+          </div>
+          <div class="cal-steps" role="group" aria-label="Move through the calendar">
+            <button class="btn icon-btn" type="button" id="calPrev" aria-label="Previous month">‹</button>
+            <button class="btn" type="button" id="calToday">Today</button>
+            <button class="btn icon-btn" type="button" id="calNext" aria-label="Next month">›</button>
+          </div>
+          <h2 class="cal-period" id="calPeriod" aria-live="polite">Calendar</h2>
+          <ul class="cal-legend" aria-label="What the pulse means">
+            <li><span class="cal-pulse" data-pulse="urgent" aria-hidden="true"></span>Today or overdue</li>
+            <li><span class="cal-pulse" data-pulse="attention" aria-hidden="true"></span>This week</li>
+            <li><span class="cal-pulse" data-pulse="calm" aria-hidden="true"></span>This month</li>
+            <li><span class="cal-pulse" data-pulse="still" aria-hidden="true"></span>Later or settled</li>
+          </ul>
+        </div>
+        <div class="state-block" id="calState" data-state="loading"><h3>Reading every deal's critical dates…</h3></div>
+        <div class="cal-grid" id="calGrid" role="grid" aria-labelledby="calPeriod" data-view="month"></div>
+        <div class="chip-bar">
+          <button class="btn" type="button" id="calRefresh">Check again</button>
+          <p class="small" id="calSource">Source pending</p>
+        </div>
+      </section>
+
+      <aside class="side-panel glass cal-day-panel" id="dayPanel" aria-labelledby="dayPanelTitle">
+        <p class="eyebrow">Selected day</p>
+        <h2 id="dayPanelTitle">Choose a day</h2>
+        <div id="dayPanelBody"><p class="small">Select a day or a date to see what falls on it.</p></div>
+      </aside>
+    </div>
+
+    <section class="card glass" aria-labelledby="agendaTitle">
+      <div class="card-heading"><div><p class="eyebrow">Open dates, nearest first</p><h2 id="agendaTitle">Coming up</h2></div></div>
+      <ol class="cal-agenda" id="calAgenda"></ol>
+      <div class="cal-undated" id="calUndated" hidden>
+        <h3>No readable date</h3>
+        <ul id="calUndatedList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Calendar</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Calendar · Read only: dates are added on the deal itself.</p></footer>
+  <script type="module" src="/js/calendar.js"></script>
+</body>
+</html>

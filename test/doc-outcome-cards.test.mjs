@@ -412,7 +412,13 @@ test("1. entrance is staggered and bounded to about 1 second, measured from the 
   const worstCaseEntranceMs = (cardCount - 1) * staggerMs + motionEnterMs;
   assert.ok(worstCaseEntranceMs <= 1000, `${cardCount} cards at ${staggerMs}ms apart plus a ${motionEnterMs}ms entrance is ${worstCaseEntranceMs}ms, over the ~1s ceiling`);
   assert.match(pageCss, /animation-delay: var\(--outcome-card-delay, 0ms\)/);
-  assert.match(pageJs, /style="--outcome-card-delay: \$\{delayMs\}ms"/, "each card's own delay is set inline, per index");
+  // The Worker's CSP (src/worker.js, style-src with no 'unsafe-inline')
+  // refuses a `style=` attribute written into markup, so the delay is
+  // carried in a `data-outcome-card-delay` attribute and applied through
+  // CSSOM (`node.style.setProperty(...)`) in a post-render pass instead.
+  assert.doesNotMatch(pageJs, /style\s*=\s*["'`]/, "no style= attribute may be written into markup; the CSP drops it");
+  assert.match(pageJs, /data-outcome-card-delay="\$\{delayMs\}"/, "each card's own delay is carried in a data attribute, per index");
+  assert.match(pageJs, /node\.style\.setProperty\("--outcome-card-delay",/, "the delay is applied through CSSOM after render");
   assert.match(pageJs, /delayMs: index \* OUTCOME_CARD_STAGGER_MS/, "the delay must come from the card's position, i.e. an ORCHESTRATED stagger");
 });
 

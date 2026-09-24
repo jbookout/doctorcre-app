@@ -496,6 +496,10 @@ function stubDom({ search = "?charts=1" } = {}) {
       setAttribute(key, value) { this.attrs[key] = value; },
       getAttribute(key) { return this.attrs[key]; },
       addEventListener() {},
+      // `render()` runs a CSSOM pass over the painted bars after every
+      // `innerHTML` assignment (the Worker's CSP refuses `style=` written
+      // into markup); this stub's canvas has no real children to select.
+      querySelectorAll() { return []; },
     });
   }
   globalThis.document = { getElementById: (id) => nodes.get(id) || null, addEventListener() {}, querySelectorAll: () => [] };
