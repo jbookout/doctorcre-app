@@ -232,16 +232,32 @@ const UNAVAILABLE_WAITING = Object.freeze({ state: "unavailable", rows: Object.f
  * wait, so it never appears here.
  *
  * The row rules are the Tasks page's own (normalizeBoardRow, scopeRows), so a
- * record looks the same here as it does there. A wait owned by the system or
- * by two people at once is counted in `held` rather than dropped: the board
- * holds it, and the section says where to find it.
+ * record looks the same here as it does there. A wait owned by the system, by
+ * two people at once, or by nobody is counted in `held` rather than dropped:
+ * the board holds it, and the section says where to find it.
+ *
+ * Most historical loops keep `title` null and are named by the board's `label`
+ * (the title, or the first line of the body), so the label names the wait when
+ * the title is blank. A counterparty row this page still cannot read — nothing
+ * to call it, no version, a kind the filter excludes — refuses the whole read,
+ * exactly as This week does: dropping it would say less is waiting than is.
  *
  * Overdue follow-ups first, then the soonest follow-up date, then undated waits.
  */
 export function waitingView(payload, { today } = {}) {
   if (!validBoardPayload(payload)) return UNAVAILABLE_WAITING;
   const now = isoDay(today);
-  const rows = payload.loops.map(normalizeBoardRow).filter((row) => row && row.blocker_class === "counterparty");
+  const text = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
+  const rows = [];
+  let ownerless = 0;
+  for (const raw of payload.loops) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return UNAVAILABLE_WAITING;
+    if (raw.blocker_class !== "counterparty") continue;
+    if (raw.owner === null || raw.owner === undefined || raw.owner === "") { ownerless += 1; continue; }
+    const row = normalizeBoardRow({ ...raw, title: text(raw.title) || text(raw.label) });
+    if (!row) return UNAVAILABLE_WAITING;
+    rows.push(row);
+  }
   const { visible, systemOwned } = scopeRows(rows, { scope: "team" });
   const shaped = visible.map((row) => {
     const due = isoDay(row.due_on);
@@ -266,9 +282,21 @@ export function waitingView(payload, { today } = {}) {
   return Object.freeze({
     state: "read",
     rows: Object.freeze(shaped),
-    held: systemOwned.length,
+    held: systemOwned.length + ownerless,
     capped: payload.count >= WAITING_ROW_CAP,
   });
+}
+
+/**
+ * Whether a section's own read has failed, for Retry. A transport failure has,
+ * and so has an answer that arrived but did not project to a verified view: the
+ * section then says it could not be verified, and a person must be able to ask
+ * again. A read still on its way has not failed yet.
+ */
+export function sectionReadFailed(read, project) {
+  if (!read || read.status === "error") return true;
+  if (read.status === "loading") return false;
+  return project(read.payload).state !== "read";
 }
 
 /* ------------------------------------------------------ ambient + motion */

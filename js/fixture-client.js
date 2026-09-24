@@ -1749,13 +1749,14 @@ export async function createFixtureClient(opts = {}) {
       return { count: rows.length, loops: rows };
     },
 
-    // V5-UX-B01 — the synthetic twin of `today-triage`, in the verb's own row
-    // shape and with its own rules: open follow-ups due today or earlier, and
-    // critical dates due within fourteen days, ordered by due date and capped at
-    // fifty. It is BUILT FROM this client's records — a deal's next step and the
-    // critical dates written through addCriticalDate — so Home's This week and
-    // the deal panel can never disagree. Dates are minted against the current
-    // clock, since a frozen "today" would make every run look overdue.
+    // V5-UX-B01 — fixture mode only: a `today-triage` answer in the verb's row
+    // shape, built from this client's own records — a deal's next step due
+    // today or earlier, and critical dates due within fourteen days — so Home's
+    // This week and the deal panel can never disagree. It is NOT the record
+    // layer's rule set: this client holds no after-call actions, holds, notes,
+    // statuses or inbox, so it never answers those rows, and no test may treat
+    // it as evidence of what production returns. Dates are minted against the
+    // current clock, since a frozen "today" would make every run look overdue.
     async todayTriage() {
       const today = nowIso().slice(0, 10);
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);

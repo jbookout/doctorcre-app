@@ -43,7 +43,7 @@ import {
   safeDestination, sourceIsFresh, summarizeWorkspaceScope, validWorkspacePayload, viewerWorkspaceLabel,
 } from "./workspace-command-center-model.js";
 import {
-  WAITING_ROW_CAP, countFrames, dueWords, needLabel, sectionPulse, teamReviewRows, thisWeekView,
+  WAITING_ROW_CAP, countFrames, dueWords, needLabel, sectionPulse, sectionReadFailed, teamReviewRows, thisWeekView,
   unavailableCopy, waitingView, weekRail,
 } from "./business-workspace-model.js";
 import { uuidv4 } from "./uuid.js";
@@ -66,7 +66,7 @@ const view = {
   records: Object.freeze([]), boardSequence: 0,
   // V5-UX-B01 — the two section reads. Each keeps its own last verified answer
   // and its own sequence; `day` is the local day the sections were last drawn
-  // against, so crossing midnight re-derives "this week" from the same answer.
+  // against, so crossing midnight is noticed and both sections are read again.
   week: { status: "loading", payload: null, readAt: null }, weekSequence: 0,
   waiting: { status: "loading", payload: null, readAt: null }, waitingSequence: 0,
   day: null,
@@ -362,13 +362,20 @@ function renderWaiting() {
   }
 }
 
-/** Retry is offered while any read on Home is unverified, and it re-reads all of them. */
+/**
+ * Retry is offered while any read on Home is unverified, and it re-reads all of
+ * them. A section counts as unverified from what its answer projects to, not
+ * from the transport alone: an RPC that succeeded with an unreadable answer
+ * paints "could not be verified", and must offer the way out too.
+ */
 function renderRetry() {
   const retry = $("retryRead");
   if (!retry) return;
   const phase = homeReadPhase({ status: view.status, payload: view.payload });
   const countsVerified = Boolean(view.payload) && validWorkspacePayload(view.payload) && sourceIsFresh(view.payload.source);
-  const sectionFailed = [view.week, view.waiting].some((read) => read.status === "error");
+  const today = localDay();
+  const sectionFailed = sectionReadFailed(view.week, (payload) => thisWeekView(payload, { today }))
+    || sectionReadFailed(view.waiting, (payload) => waitingView(payload, { today }));
   retry.hidden = phase === "unauthorized" || phase === "loading" || (countsVerified && !sectionFailed);
 }
 
@@ -545,9 +552,12 @@ function settle({ status, payload = null, message = null }, sequence) {
  */
 function watchExpiry() {
   setInterval(() => {
-    // Crossing midnight moves "today", so the week is re-derived from the same
-    // answers; an unchanged day repaints nothing.
-    if (view.day !== localDay()) renderSections();
+    // Crossing midnight moves "today", and work that became due overnight is
+    // not in the old answer at all, so both sections are READ again. The old
+    // answer stays up, re-derived against the new day and marked refreshing,
+    // until the new one lands; readSections records the day at once, so the
+    // next tick does not read again. An unchanged day repaints nothing.
+    if (view.day !== localDay()) readSections();
     if (!view.payload || view.status === "loading") return;
     const signature = freshnessSignature(view.payload);
     if (signature === view.freshnessKey) return;

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import * as homeModel from "../js/business-workspace-model.js";
 import {
   CALLS_ABSENT, HOME_SECTIONS, SECTION_READ, SECTION_TITLE, TRIAGE_ROW_CAP, WAITING_ROW_CAP,
-  countFrames, dueWords, homeSections, needLabel, sectionPulse, teamReviewRows, thisWeekView,
+  countFrames, dueWords, homeSections, needLabel, sectionPulse, sectionReadFailed, teamReviewRows, thisWeekView,
   unavailableCopy, waitingView, weekRail,
 } from "../js/business-workspace-model.js";
 import { migratePreferences } from "../js/shell.js";
@@ -411,7 +411,6 @@ test("Waiting on others keeps only counterparty blocks, sets system and joint ro
       boardRow({ number: "212", blocker_class: "human_only", blocker_detail: "Joe does this personally" }),
       boardRow({ number: "213", owner: "claude" }),
       boardRow({ number: "214", owner: "joe/dell", joint_owner: true }),
-      boardRow({ number: "215", version: undefined }),
       boardRow({ number: "216", owner: "joe", due_on: "2026-09-25" }),
     ],
   };
@@ -426,6 +425,48 @@ test("Waiting on others keeps only counterparty blocks, sets system and joint ro
   }
   assert.equal(WAITING_ROW_CAP, 300, "loop-board's own ceiling");
   assert.equal(waitingView({ count: WAITING_ROW_CAP, loops: [] }, { today: TODAY }).capped, true);
+});
+
+test("Waiting on others reads a historical loop by its label, and refuses a read with a wait it cannot name", () => {
+  // loop-board keeps `title` null on most historical loops and names them by
+  // `label` (title, or the first line of the body). Such a wait is still a wait.
+  const labelled = waitingView({ count: 1, loops: [boardRow({ number: "220", title: null, label: "Chase the landlord for the TI letter" })] }, { today: TODAY });
+  assert.equal(labelled.state, "read");
+  assert.deepEqual(labelled.rows.map((row) => [row.number, row.title]), [["220", "Chase the landlord for the TI letter"]], "the label names the wait");
+  const blankTitle = waitingView({ count: 1, loops: [boardRow({ number: "221", title: "", label: "Lender term sheet" })] }, { today: TODAY });
+  assert.deepEqual(blankTitle.rows.map((row) => row.title), ["Lender term sheet"], "an empty title falls back to the label too");
+
+  // A wait the page cannot name or cannot write against is not quietly dropped:
+  // Home would then say less is waiting than is. The read is refused instead.
+  for (const bad of [
+    boardRow({ number: "222", title: null, label: null }),
+    boardRow({ number: "223", title: "  ", label: "" }),
+    boardRow({ number: "224", version: undefined }),
+    boardRow({ number: "225", kind: "idea" }),
+    "not a row",
+  ]) {
+    const view = waitingView({ count: 2, loops: [boardRow({ number: "230" }), bad] }, { today: TODAY });
+    assert.equal(view.state, "unavailable", `${JSON.stringify(bad)} refuses the read rather than vanishing`);
+  }
+
+  // An ownerless wait is the board's to hold, like a system-owned one: counted, not dropped.
+  const ownerless = waitingView({ count: 2, loops: [boardRow({ number: "240" }), boardRow({ number: "241", owner: null })] }, { today: TODAY });
+  assert.equal(ownerless.state, "read");
+  assert.deepEqual(ownerless.rows.map((row) => row.number), ["240"]);
+  assert.equal(ownerless.held, 1);
+});
+
+test("a section read that answered but cannot be verified counts as failed, so Retry is offered for it", () => {
+  const good = { items: [] };
+  const project = (payload) => thisWeekView(payload, { today: TODAY });
+  assert.equal(sectionReadFailed({ status: "loading", payload: null }, project), false, "still reading is not a failure");
+  assert.equal(sectionReadFailed({ status: "error", payload: null }, project), true, "a transport failure");
+  assert.equal(sectionReadFailed({ status: "ready", payload: good }, project), false, "a verified answer");
+  assert.equal(sectionReadFailed({ status: "refreshing", payload: good }, project), false, "a verified answer being refreshed");
+  assert.equal(sectionReadFailed({ status: "ready", payload: { rows: [] } }, project), true, "a successful RPC with a malformed answer");
+  assert.equal(sectionReadFailed({ status: "ready", payload: null }, project), true, "a successful RPC with no answer at all");
+  assert.equal(sectionReadFailed({ status: "ready", payload: { count: 1, loops: [boardRow({ title: null, label: null })] } }, (payload) => waitingView(payload, { today: TODAY })), true, "an unreadable wait");
+  assert.equal(sectionReadFailed(null, project), true);
 });
 
 /* ------------------------------------------------------------ ambient + motion */
@@ -463,6 +504,24 @@ test("the page reads the two verbs alongside the command centre, each under its 
   assert.match(pageJs, /\$\("retryRead"\)\?\.addEventListener\("click", \(\) => \{ load\(\); readSections\(\); \}\)/, "Retry re-reads every section, not only the counts");
   // A failed section read shows that section as unverified and nothing else.
   assert.match(pageJs, /thisWeekView\(view\.week\.payload, \{ today: localDay\(\) \}\)/, "the week is recomputed against today's clock, not the clock of the read");
+});
+
+test("crossing midnight reads the sections again, because work that became due overnight is not in the old answer", () => {
+  const tick = pageJs.slice(pageJs.indexOf("function watchExpiry()"), pageJs.indexOf("/* ---------------------------------------------------------------- Quick add"));
+  assert.match(tick, /if \(view\.day !== localDay\(\)\) readSections\(\);/, "a new day re-reads today-triage and loop-board");
+  assert.doesNotMatch(tick, /renderSections\(\)/, "a repaint of yesterday's answer is not enough");
+  // readSections repaints at once against the new day (marking the old answer
+  // refreshing) and records that day, so the next tick does not read again.
+  const loadWeek = pageJs.slice(pageJs.indexOf("async function loadThisWeek()"), pageJs.indexOf("async function loadWaiting()"));
+  assert.ok(loadWeek.indexOf("renderSections();") < loadWeek.indexOf("await client.todayTriage()"), "the day is recorded before the read leaves");
+  assert.match(pageJs, /function renderSections\(\) \{\s*view\.day = localDay\(\);/);
+});
+
+test("Retry is offered for a section whose answer arrived but could not be verified, not only for a failed transport", () => {
+  const retry = pageJs.slice(pageJs.indexOf("function renderRetry()"), pageJs.indexOf("function renderSections()"));
+  assert.match(retry, /sectionReadFailed\(view\.week, \(payload\) => thisWeekView\(payload, \{ today \}\)\)/);
+  assert.match(retry, /sectionReadFailed\(view\.waiting, \(payload\) => waitingView\(payload, \{ today \}\)\)/);
+  assert.doesNotMatch(retry, /read\.status === "error"/, "transport status alone no longer decides it");
 });
 
 test("the live client sends today-triage through the pinned MCP seam, and the fixture derives it from its own records", async () => {
