@@ -103,20 +103,6 @@
  * @property {(args:{idempotency_key:string, conversation_id:string, base_version:number, title?:string, pinned?:boolean, archived?:boolean}) => Promise<{ok:true, version:number}>} renameDocConversation
  * @property {(args:{idempotency_key:string, conversation_id:string, grantee_slug:string, granted:boolean}) => Promise<{ok:true, already:boolean, granted:boolean}>} shareDocConversation
  *
- * V5-UX-B11 shared Meeting Mode, over CARR's eight meeting verbs (35009e9d).
- * Every write carries client_instance, which is attribution and never
- * authority; none names an actor or a tenant. The recap, the lease and every
- * action state are the record layer's, printed rather than recomputed.
- * @property {(args:{meeting_id:string, after_seq?:number, limit?:number}) => Promise<Object>} readMeeting
- * @property {(args:{idempotency_key:string, title:string, platform?:'teams'|'zoom', native_identity:{source_system:string,native_id:string,native_id_epoch:string}, activation_intent:'one_tap_user_activation', client_instance:string}) => Promise<Object>} startMeeting
- * @property {(args:{idempotency_key:string, meeting_id:string, client_instance:string, release?:boolean}) => Promise<Object>} claimMeetingProcessing
- * @property {(args:{idempotency_key:string, meeting_id:string, body:string, client_instance:string, revises_note_number?:number, base_revision?:number}) => Promise<Object>} addMeetingNote
- * @property {(args:{idempotency_key:string, meeting_id:string, summary:string, basis:'tentative_discussion'|'explicit_instruction', client_instance:string, command?:{verb:string,args:Object}, revises_action_number?:number, base_revision?:number}) => Promise<Object>} proposeMeetingAction
- * @property {(args:{idempotency_key:string, meeting_id:string, action_number:number, decision:'accept'|'decline', base_revision:number, client_instance:string, disposition?:'execute'|'delegate', assignee_slug?:string}) => Promise<Object>} decideMeetingAction
- * @property {(args:{idempotency_key:string, meeting_id:string, action_number:number, client_instance:string}) => Promise<Object>} recordMeetingActionOutcome
- * @property {(args:{idempotency_key:string, meeting_id:string, client_instance:string}) => Promise<Object>} endMeeting
- * @property {(args:{verb:string, args:Object, idempotency_key:string}) => Promise<Object>} dispatchMeetingCommand the accepted action's canonical call, under the store-minted key only
- *
  * The projection `read-doc-conversation` returns. The identity and the turns are
  * kept apart because a rename moves the identity and must move nothing else, and
  * `visible_conversation_count` is a FLEET fact: it is computed inside the

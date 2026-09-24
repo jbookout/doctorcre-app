@@ -28,17 +28,18 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.match(html, /href="\/leads"/);
   assert.match(html, /href="\/deals/);
   assert.match(html, />CALLS</);
-  // Calls are excluded from this release (V5-J101), so Home keeps the card and
-  // tells the truth on it. Scoped to the card itself: "Calls" also appears in
+  // Calls are back (decision 7dc47eea supersedes the V5-J101 exclusion): the
+  // card sends a partner to the Deal Room, whose Call Mode records Joe and
+  // Dell's pipeline call. Scoped to the card itself: "Calls" also appears in
   // the flow diagram's label and node, and neither is an affordance.
   const callsCard = html.split("</a>").find((chunk) => chunk.includes("<h2>Calls</h2>")) || "";
   assert.notEqual(callsCard, "", "Home still carries the Calls card");
-  assert.match(callsCard, /Calls are not part of this release\./);
-  assert.match(callsCard, /already recorded still reach the board\./);
-  assert.doesNotMatch(callsCard, /Call Mode|captur/i,
-    "the Calls card must not promise capture the Deal Room no longer offers");
-  assert.doesNotMatch(html, /Deal Room Call Mode/i,
-    "Home must not advertise a recorder this release does not have");
+  assert.match(callsCard, /href="\/deals"/, "the Calls card opens the Deal Room, where Call Mode lives");
+  assert.match(callsCard, /Deal Room Call Mode/);
+  assert.match(callsCard, /Joe and Dell's pipeline call/);
+  assert.match(callsCard, /until a partner approves it\./,
+    "the card says nothing from a call reaches the record on its own");
+  assert.doesNotMatch(callsCard, /not part of this release/i, "the retired inactive copy is gone");
   assert.match(html, /href="\/system-work\.html"/);
   assert.match(html, /href="\/room\.html"/);
   assert.match(css, /--ink-0:#0/);
@@ -247,14 +248,14 @@ test("operations stay reachable, in a secondary More rather than as a business t
 });
 
 /**
- * The newer shared pages (Meeting, Tasks, Conversations, Notifications) carry
- * their own nav, so the workspace shell must link to them too or a partner who
- * signs in to Home has no way there. They live in the same More disclosure as
+ * The newer shared pages (Tasks, Conversations, Notifications) carry their own
+ * nav, so the workspace shell must link to them too or a partner who signs in
+ * to Home has no way there. They live in the same More disclosure as
  * Operations, under their own heading and above it, so the primary tabs and the
  * five phone shortcuts stay exactly as they are.
  */
-test("the workspace shell's More reaches Meeting, Tasks, Conversations and Notifications", async () => {
-  const expected = [["/meeting", "Meeting"], ["/tasks", "Tasks"], ["/conversations", "Conversations"], ["/notifications", "Notifications"]];
+test("the workspace shell's More reaches Tasks, Conversations and Notifications", async () => {
+  const expected = [["/tasks", "Tasks"], ["/conversations", "Conversations"], ["/notifications", "Notifications"]];
   for (const file of ["workspace.html", "business.html"]) {
     const html = await readFile(`${ROOT}/${file}`, "utf8");
     const more = html.match(/<details class="nav-more">[\s\S]*?<\/details>/)?.[0] || "";
@@ -264,17 +265,31 @@ test("the workspace shell's More reaches Meeting, Tasks, Conversations and Notif
     assert.deepEqual(links, expected, `${file} Workspace group`);
     assert.ok(more.indexOf(">Workspace<") < more.indexOf(">Operations<"), `${file}: Workspace sits above Operations`);
     const primary = html.match(/<nav class="primary-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-    assert.doesNotMatch(primary, /\/meeting|\/tasks|\/conversations|\/notifications/, `${file} primary nav stays business-only`);
+    assert.doesNotMatch(primary, /\/tasks|\/conversations|\/notifications/, `${file} primary nav stays business-only`);
   }
 });
 
-test("Home carries a Meeting card that says nothing is recorded", async () => {
-  const html = await readFile(`${ROOT}/workspace.html`, "utf8");
-  const card = html.match(/<a class="module-card glass pulse-calm" href="\/meeting">[\s\S]*?<\/a>/)?.[0] || "";
-  assert.notEqual(card, "", "Home has no Meeting module card");
-  assert.match(card, /<span class="module-kicker">Conversation<\/span><h2>Meeting<\/h2>/);
-  assert.match(card, /typed notes/);
-  assert.match(card, /[Nn]othing is recorded/);
+/**
+ * The typed shared Meeting page is removed (decision 7dc47eea): the partners'
+ * pipeline conversation is recorded by Deal Room Call Mode instead, and a
+ * meeting with a client or vendor stays a Teams meeting. No page may still
+ * link to it, and the route contract no longer carries it.
+ */
+test("no page links to the removed Meeting page and the route is gone", async () => {
+  const { readdir } = await import("node:fs/promises");
+  const pages = (await readdir(ROOT)).filter((name) => name.endsWith(".html"));
+  assert.ok(pages.includes("workspace.html"));
+  assert.equal(pages.includes("meeting.html"), false, "meeting.html is removed");
+  for (const file of pages) {
+    const html = await readFile(`${ROOT}/${file}`, "utf8");
+    assert.doesNotMatch(html, /href="\/meeting/, `${file} still links to /meeting`);
+    assert.doesNotMatch(html, /<h2>Meeting<\/h2>/, `${file} still carries a Meeting card`);
+  }
+  const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
+  assert.equal(routes.routes["/meeting"], undefined);
+  const contract = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
+  assert.deepEqual(contract.mcp_operations.filter((verb) => /meeting/.test(verb)), [],
+    "the app no longer consumes any meeting verb");
 });
 
 test("Home and the business pages carry the same five phone shortcuts", async () => {

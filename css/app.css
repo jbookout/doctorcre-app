@@ -72,3 +72,4 @@ body.color-assist .receipt{border-left:3px solid var(--warn)}body.color-assist .
 @media(prefers-reduced-motion:reduce){.receipt{animation:none}}
 #receiptsTitle:focus{outline:none}#receiptsTitle:focus-visible{outline:3px solid var(--orange);outline-offset:3px}
 @media(max-width:680px){.receipts-head{flex-direction:column;gap:8px}.receipt-actions .receipt-undo{width:100%}.receipts-jump{padding:7px 11px}}
+.call-mode-note{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.45;text-align:center}
