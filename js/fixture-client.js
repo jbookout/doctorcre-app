@@ -709,6 +709,50 @@ export async function createFixtureClient(opts = {}) {
   };
 
   /**
+   * V5-UX-C13b: the one session whose dispatch is still open for an
+   * acknowledgement, so `acknowledgeDispatch` has something real to change.
+   * `SESSION_WITH_DISPATCH` above already carries both stages recorded, which
+   * proves nothing about a write; this one starts at `sent` only, exactly
+   * the way a fresh dispatch answers before either stage lands.
+   */
+  const SESSION_WITH_PENDING_DISPATCH = "66666666-6666-4666-8666-666666666666";
+  const PENDING_DISPATCH_REF = "88888888-8888-4888-8888-888888888888";
+  const pendingDispatch = {
+    ok: true,
+    session_id: SESSION_WITH_PENDING_DISPATCH,
+    parent_session_id: null,
+    permission_filtered: false,
+    total_seen: 1,
+    total_returned: 1,
+    more: false,
+    next_cursor: null,
+    received: null,
+    acknowledged: null,
+    stage_unavailable_reason: null,
+    events: [
+      {
+        event_id: "pend-1",
+        at: "2026-09-22T09:00:00+00:00",
+        stage: "sent",
+        stage_evidence: "a room turn recorded the dispatch leaving the orchestrator",
+        rationale: null,
+        from_seat: "orchestrator",
+        to_seat: null,
+        sponsor: null,
+        room_id: null,
+        session_id: SESSION_WITH_PENDING_DISPATCH,
+        parent_session_id: null,
+        attempt_ref: null,
+        superseded_by: null,
+        work_request_ref: "WR-000120",
+        link_source: "proved",
+        dispatch_ref: PENDING_DISPATCH_REF,
+        stage_unavailable_reason: null,
+      },
+    ],
+  };
+
+  /**
    * An empty answer. Production cannot distinguish an unknown id from a real
    * session with no visible dispatch events, so the UI never makes that claim.
    */
@@ -1976,9 +2020,61 @@ export async function createFixtureClient(opts = {}) {
       if (session_id === SESSION_WITH_DISPATCH) {
         return structuredClone(DISPATCH_WITH_EVENTS);
       }
+      if (session_id === SESSION_WITH_PENDING_DISPATCH) {
+        return structuredClone(pendingDispatch);
+      }
       // Every other id — real, synthetic or nonsense — answers identically,
       // which is precisely why the drawer never says "this session has none".
       return dispatchNoSpine(String(session_id));
+    },
+
+    // V5-UX-C13b: the one admitted write on this tab. `acknowledge-dispatch`
+    // declares no idempotency_key, so unlike every write above this refuses
+    // and mutates directly rather than going through `withIdem`. It mutates
+    // ONLY `pendingDispatch` (the one fixture dispatch that starts without
+    // either stage recorded); `DISPATCH_WITH_EVENTS` stays fixed so the
+    // already-recorded proof it carries is never disturbed by this write.
+    async acknowledgeDispatch({ dispatch_ref, stage, evidence } = {}) {
+      refuseIfOutage('model_room', 'acknowledge-dispatch');
+      if (!dispatch_ref || String(dispatch_ref).trim().length === 0) {
+        refuse('acknowledge-dispatch', 'dispatch_ref_required');
+      }
+      if (!['received', 'acknowledged'].includes(stage)) {
+        refuse('acknowledge-dispatch', 'stage_invalid', { hint: 'stage must be received or acknowledged' });
+      }
+      if (String(dispatch_ref) !== PENDING_DISPATCH_REF) {
+        refuse('acknowledge-dispatch', 'dispatch_not_found', { dispatch_ref });
+      }
+      const field = stage === 'received' ? 'received' : 'acknowledged';
+      if (pendingDispatch[field] !== null) {
+        refuse('acknowledge-dispatch', 'stage_already_recorded', { stage });
+      }
+      if (stage === 'acknowledged' && pendingDispatch.received === null) {
+        refuse('acknowledge-dispatch', 'received_required_before_acknowledged');
+      }
+      const at = nowIso();
+      pendingDispatch[field] = at;
+      pendingDispatch.events.unshift({
+        event_id: `pend-${stage}`,
+        at,
+        stage,
+        stage_evidence: evidence && String(evidence).trim().length > 0
+          ? String(evidence).trim() : `fixture acknowledge-dispatch recorded ${stage}`,
+        rationale: null,
+        from_seat: null,
+        to_seat: 'builder',
+        sponsor: 'joe',
+        room_id: 'model-room',
+        session_id: SESSION_WITH_PENDING_DISPATCH,
+        parent_session_id: null,
+        attempt_ref: null,
+        superseded_by: null,
+        work_request_ref: 'WR-000120',
+        link_source: 'proved',
+        dispatch_ref: PENDING_DISPATCH_REF,
+        stage_unavailable_reason: null,
+      });
+      return { ok: true, dispatch_ref: PENDING_DISPATCH_REF, stage, at };
     },
 
     // ------------------------------- Model Room assignments and turns (C12)

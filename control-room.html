@@ -173,6 +173,31 @@
         <p class="model-room-empty" id="modelRoomAssignmentsEmpty" hidden></p>
         <div class="assignment-rail" id="modelRoomAssignments"></div>
         <p class="caption">Assignments are shown in the order the record layer returned them. Nothing on this tab is re-sorted, re-filtered or re-ranked in the browser.</p>
+        <!-- V5-UX-C13b: dragging a card is real; every drop is refused the same
+             honest way, because no pinned verb changes a projected card's
+             status. See ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE. -->
+        <div class="assignment-move-target" id="modelRoomMoveTarget" data-drop-zone="true">Drag a card here to move it</div>
+        <p class="model-room-move-result" id="modelRoomMoveResult" hidden></p>
+      </section>
+
+      <!-- V5-UX-C13b: the Model Room composer. Typing is real; sending is not
+           — add-room-turn is not one of the operations
+           contracts/carr-interface.v1.json pins for this client, so every
+           submit answers COMPOSER_UNAVAILABLE_SENTENCE and keeps the draft. -->
+      <section class="card glass" data-section="model_room_composer" aria-labelledby="modelRoomComposerTitle">
+        <div class="card-heading"><div><p class="eyebrow">Send a targeted request</p><h2 id="modelRoomComposerTitle">Composer</h2></div></div>
+        <form id="modelRoomComposerForm">
+          <div class="field">
+            <label for="modelRoomComposerTarget">Target</label>
+            <input id="modelRoomComposerTarget" name="target" type="text" maxlength="200" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="modelRoomComposerText">Message</label>
+            <textarea id="modelRoomComposerText" name="text" maxlength="2000" rows="3"></textarea>
+          </div>
+          <button class="btn" type="submit" id="modelRoomComposerSend">Send</button>
+        </form>
+        <p class="model-room-composer-result" id="modelRoomComposerResult" hidden></p>
       </section>
 
       <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
@@ -231,6 +256,9 @@
         <div id="modelRoomHistoryPanel">
           <p class="small">Choose a topic or a work item above to see its history.</p>
         </div>
+        <!-- V5-UX-C13b: answering a Waiting for Joe item has no pinned verb
+             either. Shown only once a work item is chosen. -->
+        <p class="model-room-answer-unavailable" id="modelRoomAnswerUnavailable" hidden></p>
       </section>
 
       <p class="sr-only" id="modelRoomLive" aria-live="polite"></p>

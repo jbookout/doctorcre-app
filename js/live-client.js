@@ -462,6 +462,14 @@ export function createLiveClient(opts = {}) {
     // a session, because no verb exists that would.
     async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
     async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
+    // V5-UX-C13b: the one admitted write V5-UX-C13's Kanban/composer scope
+    // actually has behind it. `acknowledge-dispatch` is pinned in
+    // contracts/carr-interface.v1.json and carries no idempotency key (the
+    // verb declares none), so it goes through `rpc`, not `write`. Sending a
+    // room turn (the composer) and moving an assignment card (the Kanban
+    // drag) have no admitted write at all — see model-room-model.js's
+    // COMPOSER_UNAVAILABLE_SENTENCE and ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE.
+    async acknowledgeDispatch(args) { return rpc('acknowledge-dispatch', args); },
 
     // ------------------------------- Model Room assignments and turns (C12)
     // TWO MORE READS, passed through untouched, and neither names an actor

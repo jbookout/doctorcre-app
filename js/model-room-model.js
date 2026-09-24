@@ -628,3 +628,113 @@ export function workRequestCardRequest(humanRef) {
   if (!/^WR-[0-9]{1,12}$/.test(ref)) return null;
   return { work_request: ref };
 }
+
+/* ------------------------------------------ C13b: composer, Kanban move, ack */
+//
+// V5-UX-C13b's included scope is the composer, the interactive Kanban, and
+// answering a Waiting for Joe item. Before drawing any of the three, this file
+// checked contracts/carr-interface.v1.json against list-verbs, and only ONE
+// of the three has an admitted, browser-callable write behind it:
+//
+//   * SENDING a targeted room request needs `add-room-turn`. It exists on the
+//     live registry, but it is NOT one of contracts/carr-interface.v1.json's
+//     pinned mcp_operations, so this client is not allowed to call it. The
+//     composer below is real (it keeps a draft, in full, across every
+//     attempt), but no attempt ever calls the record layer: COMPOSER_REQUEST
+//     always answers null and COMPOSER_UNAVAILABLE_SENTENCE says why, exactly
+//     as C13a said no pinned verb returns a recommended answer.
+//   * MOVING an assignment card has no admitted write at all: no pinned verb
+//     changes a `read-room-queue` card's status. Every drop is a real
+//     interaction and every drop is refused, by name, the same way.
+//   * ACKNOWLEDGING a dispatch is different: `acknowledge-dispatch` IS pinned
+//     and carries no restricted-identity note the way `record-dispatch-link`
+//     does ("only the server-derived hermes-pilot identity may write one").
+//     It is wired for real below and in ./model-room.js.
+//
+// ANSWERING a Waiting for Joe item (CR-AC-20) has the same gap as sending: no
+// pinned verb attaches a response to a Work Request or resolves it from this
+// app, so ANSWER_REQUEST also always answers null.
+
+export const COMPOSER_UNAVAILABLE_SENTENCE = "Sending a targeted Model Room request is not available from this "
+  + "app: add-room-turn is not one of the operations contracts/carr-interface.v1.json pins for this client, so "
+  + "this page cannot compose one. The draft above is kept exactly as typed; nothing here simulates a send.";
+
+export const ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE = "This move is not supported: no pinned verb changes a "
+  + "projected assignment's status. Source or shipping status can only change at its source, never by dragging "
+  + "this card.";
+
+export const ANSWER_UNAVAILABLE_SENTENCE = "Answering this Waiting for Joe item is not available from this app: "
+  + "no pinned verb attaches a response to a Work Request or resolves one from here. The detail above is "
+  + "everything the record layer will show; resolve the request at its source.";
+
+/**
+ * The composer's would-be request. ALWAYS null: `add-room-turn` is not
+ * admitted, so there is no shape to build toward. Kept as a function, in the
+ * same refuse-and-request vocabulary as the rest of this file, so a future
+ * admission needs only to fill this in rather than invent a new pattern.
+ */
+export function composerRequest() {
+  return null;
+}
+
+/** The one thing a failed (which here means: every) composer attempt must
+ * do — keep the draft exactly as typed. A pure function so the view never has
+ * to re-derive the rule under a click handler. */
+export function composerDraftAfterAttempt(draft) {
+  return { text: draft?.text ?? "", target: draft?.target ?? "" };
+}
+
+/** Answering a Waiting for Joe item, always unbuildable for the same reason
+ * as the composer. */
+export function answerRequest() {
+  return null;
+}
+
+/**
+ * Every drop on the assignments board answers the same way, because there is
+ * exactly one true reason: no pinned verb performs the move. The task id
+ * travels on the outcome so a caller can name the card in its own message
+ * without this function's shape ever needing to change.
+ */
+export function assignmentMoveOutcome(card) {
+  return {
+    allowed: false,
+    taskId: card?.taskId ?? null,
+    reason: "no_pinned_status_write",
+    text: ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE,
+  };
+}
+
+/** `acknowledge-dispatch`'s own two stages. Kept local: this is the one verb
+ * in this file with a write, and its vocabulary does not belong beside the
+ * read-only DISPATCH_STAGES_SENTENCE above. */
+export const ACK_STAGES = Object.freeze(["received", "acknowledged"]);
+
+/**
+ * `acknowledge-dispatch`'s request, built and validated exactly as the verb
+ * declares it (`dispatch_ref`, `stage`, optional `evidence` capped at 500):
+ * `null` means "do not send it," in the same vocabulary as every other
+ * request-builder in this file.
+ */
+export function acknowledgeDispatchRequest({ dispatchRef, stage, evidence = "" } = {}) {
+  const ref = String(dispatchRef ?? "").trim();
+  if (ref.length === 0) return null;
+  if (!ACK_STAGES.includes(stage)) return null;
+  const args = { dispatch_ref: ref, stage };
+  const note = String(evidence ?? "").trim();
+  if (note.length > 0) args.evidence = note.slice(0, 500);
+  return args;
+}
+
+/**
+ * Whether a stage is already recorded, straight from `dispatchView`'s own
+ * `receivedState` / `acknowledgedState` (never re-derived from the events
+ * array, which would risk disagreeing with the drawer already shown).
+ * `null` drawer means "not read yet," which is also not acknowledgeable.
+ */
+export function ackStageAvailable(drawer, stage) {
+  if (!drawer) return false;
+  if (stage === "received") return drawer.receivedState !== "recorded";
+  if (stage === "acknowledged") return drawer.acknowledgedState !== "recorded";
+  return false;
+}

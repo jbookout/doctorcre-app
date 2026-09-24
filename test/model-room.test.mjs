@@ -22,10 +22,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  ACKNOWLEDGEMENT_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
+  ACKNOWLEDGEMENT_SENTENCE, ACK_STAGES, ANSWER_UNAVAILABLE_SENTENCE, ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE,
+  COMPOSER_UNAVAILABLE_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
   QUEUE_BOARD, QUEUE_ROOM, TOPIC_HISTORY_SENTENCE, TURN_ROOM, WINDOW_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
-  WORK_STATES, WORK_STATE_LABEL, assignmentBoard, contextPanel, dispatchSearchRequest, dispatchView,
-  effectiveModelText, historyTopics, historyWorkItems,
+  WORK_STATES, WORK_STATE_LABEL, ackStageAvailable, acknowledgeDispatchRequest, answerRequest, assignmentBoard,
+  assignmentMoveOutcome, composerDraftAfterAttempt, composerRequest, contextPanel, dispatchSearchRequest,
+  dispatchView, effectiveModelText, historyTopics, historyWorkItems,
   listState, needsJoeCardFields, participants, parentLine, queueFreshness, queueRequest, refuseQueueEvent,
   refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns, refuseWorkRequestCard, topicHistory, turnRequest,
   turnWindow, workItemLedger, workRequestCardRequest,
@@ -519,13 +521,112 @@ test("C13a-05 the enriched Waiting-for-Joe fields never synthesize an absent one
   assert.equal(needsJoeCardFields(null).available, false);
 });
 
-test("C13a-06 the history view opens no execute path and adds no new write", () => {
+test("C13a-06 the history view opens no execute path", () => {
   assert.equal(/take\("historyCard"/.test(viewCode), true, "the work-item card is read, not executed");
-  assert.equal(/composer|compose/i.test(viewCode), false, "no composer lives on this tab");
-  assert.equal(/idempotency_key/.test(viewCode), false, "no write is issued from this file");
+  // V5-UX-C13b adds one admitted write (acknowledge-dispatch), but the verb
+  // itself declares no idempotency_key, so this file still mints none.
+  assert.equal(/idempotency_key/.test(viewCode), false, "no idempotency-keyed write is issued from this file");
   assert.match(htmlMarkup, /id="modelRoomHistoryTopic"/);
   assert.match(htmlMarkup, /id="modelRoomHistoryWorkItem"/);
   assert.equal(/open[\s_-]?session/i.test(viewCode.replace(NO_OPEN_SENTENCE, " ")), false);
+});
+
+/* ----------------------------------------------------- V5-UX-C13b: the composer */
+
+test("C13b-01 the composer never has a request to send, and the sentence says why", () => {
+  assert.equal(composerRequest(), null, "add-room-turn is not admitted; there is nothing to send");
+  assert.equal(answerRequest(), null, "no pinned verb answers a Work Request either");
+  assert.match(COMPOSER_UNAVAILABLE_SENTENCE, /add-room-turn/);
+  assert.match(COMPOSER_UNAVAILABLE_SENTENCE, /carr-interface\.v1\.json/);
+  assert.match(COMPOSER_UNAVAILABLE_SENTENCE, /nothing here simulates a send/);
+  assert.match(ANSWER_UNAVAILABLE_SENTENCE, /no pinned verb attaches a response/);
+});
+
+test("C13b-02 a failed composer attempt keeps the draft exactly as typed", () => {
+  const draft = { text: "Please review the demo lease abstract.", target: "joe" };
+  assert.deepEqual(composerDraftAfterAttempt(draft), draft);
+  assert.deepEqual(composerDraftAfterAttempt(null), { text: "", target: "" });
+  assert.deepEqual(composerDraftAfterAttempt({}), { text: "", target: "" });
+});
+
+test("C13b-03 every assignment move is refused by name, never silently and never as a fake success", () => {
+  const card = { taskId: "t_demo_1" };
+  const outcome = assignmentMoveOutcome(card);
+  assert.equal(outcome.allowed, false);
+  assert.equal(outcome.taskId, "t_demo_1");
+  assert.equal(outcome.text, ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE);
+  assert.match(ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, /no pinned verb changes/);
+  assert.match(ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, /never by dragging/);
+  assert.equal(assignmentMoveOutcome(null).taskId, null, "a card-less drop still answers, never throws");
+  assert.equal(assignmentMoveOutcome(undefined).allowed, false);
+});
+
+test("C13b-04 acknowledge-dispatch's request is built exactly as the verb declares it", () => {
+  assert.deepEqual(acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "received" }), {
+    dispatch_ref: "d-1", stage: "received",
+  });
+  assert.deepEqual(acknowledgeDispatchRequest({ dispatchRef: " d-2 ", stage: "acknowledged", evidence: " seen " }), {
+    dispatch_ref: "d-2", stage: "acknowledged", evidence: "seen",
+  });
+  assert.equal(acknowledgeDispatchRequest({ dispatchRef: "", stage: "received" }), null, "an empty ref is refused");
+  assert.equal(acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "acted" }), null, "acted is not an ack stage");
+  assert.equal(acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "sent" }), null, "sent is not an ack stage");
+  assert.equal(acknowledgeDispatchRequest({}), null);
+  assert.deepEqual([...ACK_STAGES], ["received", "acknowledged"]);
+  const long = acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "received", evidence: "x".repeat(600) });
+  assert.equal(long.evidence.length, 500, "evidence is capped exactly as the verb declares (maxLength 500)");
+});
+
+test("C13b-05 a stage renders available only when the drawer has not already recorded it", () => {
+  const recordedBoth = dispatchView({
+    ok: true, session_id: "s", parent_session_id: null, permission_filtered: false,
+    total_seen: 0, total_returned: 0, more: false, next_cursor: null,
+    received: "2026-09-20T00:00:00Z", acknowledged: "2026-09-20T00:01:00Z", stage_unavailable_reason: null,
+    events: [],
+  });
+  assert.equal(ackStageAvailable(recordedBoth, "received"), false);
+  assert.equal(ackStageAvailable(recordedBoth, "acknowledged"), false);
+  const recordedNeither = dispatchView({
+    ok: true, session_id: "s", parent_session_id: null, permission_filtered: false,
+    total_seen: 0, total_returned: 0, more: false, next_cursor: null,
+    received: null, acknowledged: null, stage_unavailable_reason: null, events: [],
+  });
+  assert.equal(ackStageAvailable(recordedNeither, "received"), true);
+  assert.equal(ackStageAvailable(recordedNeither, "acknowledged"), true);
+  assert.equal(ackStageAvailable(null, "received"), false, "an unread drawer is not acknowledgeable");
+  assert.equal(ackStageAvailable(recordedNeither, "acted"), false, "acted is not a stage this file can send");
+});
+
+test("C13b-06 the composer, the drop zone and the acknowledgment control are wired in the view, honestly", () => {
+  assert.match(htmlMarkup, /id="modelRoomComposerForm"/);
+  assert.match(htmlMarkup, /id="modelRoomComposerText"/);
+  assert.match(htmlMarkup, /id="modelRoomComposerTarget"/);
+  assert.match(htmlMarkup, /id="modelRoomMoveTarget"/);
+  assert.match(htmlMarkup, /id="modelRoomMoveResult"/);
+  assert.match(htmlMarkup, /id="modelRoomAnswerUnavailable"/);
+  // The submit path calls composerRequest() (always null) rather than ever
+  // building its own ad hoc "ok: true" — a fake success could not slip in
+  // without touching this exact call.
+  assert.match(viewCode, /composerRequest\(\)/);
+  assert.match(viewCode, /composerDraftAfterAttempt\(/);
+  assert.match(viewCode, /assignmentMoveOutcome\(/);
+  assert.match(viewCode, /acknowledgeDispatchRequest\(/);
+  assert.match(viewCode, /client\.acknowledgeDispatch\(/);
+  // The only write this file issues. No other client.<verb> write is added
+  // for the composer or the Kanban move, because neither has an admitted one.
+  assert.equal(/client\.(addRoomTurn|moveAssignment|updateQueueCard|answerWorkRequest)/.test(viewCode), false);
+  assert.match(viewSource, /draggable="true"/);
+  assert.match(viewSource, /dragstart|dataTransfer/);
+});
+
+test("C13b-07 the two unsupported request-builders and the live client agree on which verb is admitted", async () => {
+  const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+  assert.ok(contract.mcp_operations.includes("acknowledge-dispatch"), "the one C13b write must stay pinned");
+  assert.equal(contract.mcp_operations.includes("add-room-turn"), false,
+    "add-room-turn staying unpinned is exactly why composerRequest() is always null");
+  const liveSource = await read("js/live-client.js");
+  assert.match(liveSource, /acknowledgeDispatch\(args\)\s*\{\s*return rpc\('acknowledge-dispatch', args\)/);
+  assert.equal(/add-room-turn/.test(liveSource), false, "the live client calls no verb this contract does not pin");
 });
 
 /* ----------------------------------------------------------- the contract pin */
