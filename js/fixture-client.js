@@ -1069,7 +1069,67 @@ export async function createFixtureClient(opts = {}) {
   const sharedRequests = [
     { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window in the record layer' },
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
+    // V5-UX-C13a: two more shared requests, distinct from WR-000901..905 above
+    // (those keep the sparse engineering-passport card shape B10a already
+    // tests). WR-000906 exercises the enriched card with every honest field
+    // PRESENT; WR-000907 exercises the same shape with the optional ones
+    // explicitly ABSENT, which is the honesty case this slice exists to prove.
+    { human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names', state: 'needs_joe', source: { label: 'Demo vendor merge review', freshness: 'fresh' }, next_human_action: 'Confirm the demo vendor merge' },
+    { human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card', state: 'needs_joe', source: { label: 'Demo rate card review', freshness: 'stale' }, next_human_action: 'Approve or hold the demo rate card' },
+    // WR-000908 is named here but carries NO card below and NO passport entry:
+    // its work-request-card read genuinely refuses, which is C13a's
+    // fetch-failure case for the enriched "Waiting for Joe" detail.
+    { human_ref: 'WR-000908', title: 'Demo bounded request: retire the demo legacy export', state: 'needs_joe', source: { label: 'Demo retirement note', freshness: 'fresh' }, next_human_action: 'Confirm the demo legacy export is retired' },
   ];
+  /**
+   * V5-UX-C13a: the enriched `work-request-card` shape for WR-000906 and
+   * WR-000907, in the PRODUCER'S OWN field names (ops.work_request_card,
+   * migration 0493): `desired_outcome`, `acting_identity` (ordered by
+   * `acted_at`, ascending — never re-sorted here or in the browser),
+   * `outcome_feedback_history` (ordered oldest-first) and `incident_evidence`.
+   * Neither row carries `recommended_answer` or `business_impact`, because no
+   * pinned verb returns either field today — that absence is production's own
+   * shape, not an omission of this fixture.
+   */
+  const sharedRequestCards = new Map([
+    ['WR-000906', {
+      ok: true, human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names',
+      desired_outcome: 'Every demo vendor row resolves to exactly one canonical demo vendor name.',
+      state: 'needs_joe', version: 3, projection_state: 'queued',
+      acceptance_criteria: [{ id: 'AC-1', text: 'No two demo vendor rows share a canonical name after the merge.' }],
+      source: { label: 'Demo vendor merge review', freshness: 'fresh' },
+      triage: { classification: 'data_quality', human_actor_slug: 'joe', triaged_at: '2026-09-19T14:00:00Z' },
+      plan: null, outcome_feedback: null, pending_outcome_feedback: null, outcome_feedback_history: [],
+      accepted_feedback_count: 0,
+      incident_evidence: [
+        { kind: 'incident', ref: 'INC-20260918-01', label: 'Demo vendor duplication incident' },
+        { kind: 'link', ref: 'https://example.invalid/demo-vendor-merge-review', label: 'Demo vendor merge review note' },
+      ],
+      shape: null, withdrawal: null,
+      acting_identity: [
+        { act: 'review-and-triage', recorded_as: 'joe', performed_by: 'joe', authorization_class: null, via: 'mcp', hand: 'human', acted_at: '2026-09-19T14:00:00Z' },
+        { act: 'accept-ready-plan', recorded_as: 'joe', performed_by: 'claude', authorization_class: 'sponsored_agent', via: 'mcp', hand: 'agent', acted_at: '2026-09-20T09:15:00Z' },
+      ],
+      next_human_action: { label: 'Confirm the demo vendor merge', effect: 'none' }, actions: [],
+    }],
+    ['WR-000907', {
+      ok: true, human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card',
+      // No desired_outcome on this row: the card genuinely carries no field
+      // for it, and the enrichment must say so rather than fall back to the
+      // title or the next_human_action.
+      desired_outcome: null,
+      state: 'needs_joe', version: 1, projection_state: 'queued',
+      acceptance_criteria: [],
+      source: { label: 'Demo rate card review', freshness: 'stale' },
+      triage: null, plan: null, outcome_feedback: null, pending_outcome_feedback: null,
+      outcome_feedback_history: [], accepted_feedback_count: 0,
+      // An empty evidence list is a REAL answer (the field exists, and is
+      // empty), never confused with the field being absent.
+      incident_evidence: [],
+      shape: null, withdrawal: null, acting_identity: [],
+      next_human_action: { label: 'Approve or hold the demo rate card', effect: 'none' }, actions: [],
+    }],
+  ]);
 
   /* ------------------------------------------------ search fixtures (V5-UX-B05)
    * The synthetic twin of `find` and `find-and-catch-up`, reproducing the
@@ -1707,6 +1767,11 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async workRequestCard({ work_request } = {}) {
+      // V5-UX-C13a's enriched cards are checked FIRST and are a strict
+      // addition: WR-000901..905 below are untouched and keep answering the
+      // sparse shape V5-UX-B10a already tests.
+      const enriched = sharedRequestCards.get(String(work_request));
+      if (enriched) return structuredClone(enriched);
       const row = workRequestOrRefuse('work-request-card', work_request);
       return {
         ok: true, human_ref: row.ref, title: row.title, state: row.state, version: Number(row.version),
