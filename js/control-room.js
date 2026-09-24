@@ -26,7 +26,7 @@ import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountAtlas } from "./atlas.js";
 import { mountSessions } from "./sessions.js";
 import { mountModelRoom } from "./model-room.js";
-import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
+import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 
 const $ = (id) => document.getElementById(id);
@@ -450,6 +450,7 @@ async function boot() {
   client = resolved.mode === "live"
     ? createLiveClient()
     : await createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
+  mountNotificationBadge(client);
   // ?tab=atlas&node=<id> is a query on an already admitted path, so it needs no
   // new route and no gate change. Back restores the previous selection.
   const parameters = new URLSearchParams(location.search || "");

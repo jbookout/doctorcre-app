@@ -24,14 +24,21 @@
 //      a suppressed row is MARKED and never hidden, because hiding it would be
 //      this page inventing a filter the record layer did not apply.
 //   4. A deep link is rendered as an anchor only when this application has a
-//      page for it. The two shapes a production mint can produce are
-//      `/signals/<id>` and `/doc-conversations/<ref>`, and neither is a route
-//      today, so the honest rendering is the path plus a sentence.
+//      page for it. Of the two shapes a production mint can produce, B12b
+//      makes `/doc-conversations/<ref>` an anchor into `conversations.html`'s
+//      existing `?id=` route whenever the ref is the conversation uuid the
+//      viewer can open — `deepLinkView` in this file does the translation, so
+//      the card still shows the record's own path as its text. `/signals/<id>`
+//      stays the path plus a sentence: no CARR verb reads a signal by its own
+//      id (`next-signals` lists queued ones; `get-investigation` takes an
+//      investigation `run_id`, which a signal id is not), so there is nothing
+//      for a route to fetch.
 //   5. Acknowledging clears THE NOTIFICATION and nothing else. That is all
 //      `ops.acknowledge_notification` is granted to touch, so it is all the
 //      page's copy is allowed to claim.
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
+import { CONVERSATION_ID } from "./conversations-model.js";
 
 export { REFUSAL_SENTENCE };
 
@@ -155,13 +162,36 @@ export function deliveryPhrases(delivery) {
 }
 
 /**
+ * The one deep-link shape this page can translate rather than merely match:
+ * `record-signal` mints `/doc-conversations/<ref>` (investigation.js:24), and
+ * `conversations.html` already opens one conversation from `?id=<uuid>`
+ * (conversations-model.js's own `idFromSearch`). The ref is only ever the doc
+ * conversation's own uuid when it can be opened at all — `CONVERSATION_ID` is
+ * copied from the same verb boundary conversations.html reads against, so a
+ * ref this page cannot route is a ref the conversation viewer could not open
+ * either, and the honest unrouted rendering below still applies to it.
+ */
+const DOC_CONVERSATION_LINK = /^\/doc-conversations\/([^/]+)$/;
+
+/**
  * How a deep link is rendered. An anchor only where this application has the
  * page; otherwise the path itself, in monospace, with the sentence saying why.
+ *
+ * `/signals/<id>` is deliberately left unrouted: no CARR verb reads a signal
+ * by its own id (`next-signals` lists queued ones, `get-investigation` takes
+ * an investigation `run_id` a signal id is not), so there is no page this
+ * application could show without inventing a route to a record it cannot
+ * fetch.
  */
 export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   const path = isText(deepLink) ? deepLink : null;
   if (!path) return { path: null, href: null, routed: false, sentence: null };
-  const routed = (Array.isArray(routes) ? routes : []).includes(path);
+  const routeList = Array.isArray(routes) ? routes : [];
+  const docMatch = DOC_CONVERSATION_LINK.exec(path);
+  if (docMatch && CONVERSATION_ID.test(docMatch[1]) && routeList.includes("/conversations")) {
+    return { path, href: `/conversations?id=${docMatch[1]}`, routed: true, sentence: null };
+  }
+  const routed = routeList.includes(path);
   return { path, href: routed ? path : null, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
 }
 

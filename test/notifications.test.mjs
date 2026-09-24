@@ -180,6 +180,52 @@ test("clause 5: an unroutable deep link is text plus a sentence, and a routable 
   assert.match(css, /\.note-link \{[^}]*overflow-wrap: anywhere; \}/);
 });
 
+/* -------------------------------------------------------------- clause 5, B12b */
+
+test("B12b-1: a /doc-conversations/<ref> deep link is an anchor into conversations.html's ?id= route when the ref is the conversation's own uuid", () => {
+  const uuid = "22222222-2222-4222-8222-222222222222";
+  const view = deepLinkView(`/doc-conversations/${uuid}`);
+  assert.equal(view.routed, true);
+  // The card still shows the record's own path as its text (notifications.js
+  // renders `card.link.path`); only the href is translated to a real route.
+  assert.equal(view.path, `/doc-conversations/${uuid}`);
+  assert.equal(view.href, `/conversations?id=${uuid}`);
+  assert.equal(view.sentence, null);
+});
+
+test("B12b-2: a /doc-conversations/<ref> deep link whose ref is not the conversation's own uuid shape stays unrouted", () => {
+  // This is the fixture's own row (data/board-seed.json, notification 105):
+  // `dc-demo-0007` is not the uuid shape `ops.doc_conversation` assigns, and
+  // conversations.html's own `idFromSearch` would call it malformed too, so
+  // an anchor here would point at a page that could not open it either.
+  const view = deepLinkView("/doc-conversations/dc-demo-0007");
+  assert.equal(view.routed, false);
+  assert.equal(view.href, null);
+  assert.equal(view.sentence, NO_PAGE_SENTENCE);
+});
+
+test("B12b-3: a /doc-conversations/<ref> deep link stays unrouted if /conversations is ever missing from the route list", () => {
+  const uuid = "22222222-2222-4222-8222-222222222222";
+  const withoutConversations = APP_ROUTE_PATHS.filter((path) => path !== "/conversations");
+  const view = deepLinkView(`/doc-conversations/${uuid}`, withoutConversations);
+  assert.equal(view.routed, false);
+  assert.equal(view.href, null);
+});
+
+test("B12b-4: /signals/<id> has no CARR read verb by signal id, so it stays the path plus the sentence, never an anchor", async () => {
+  // next-signals lists queued signals; get-investigation takes an
+  // investigation run_id, which a signal id is not. There is nothing this
+  // page could route a signal deep link to without inventing a page that
+  // cannot fetch the record.
+  const client = await fixture();
+  const feed = await client.notificationFeed({ limit: 25 });
+  const signalCard = cardFor(feed, QUIET);
+  assert.match(signalCard.link.path, /^\/signals\//);
+  assert.equal(signalCard.link.routed, false);
+  assert.equal(signalCard.link.href, null);
+  assert.equal(signalCard.link.sentence, NO_PAGE_SENTENCE);
+});
+
 /* ------------------------------------------------------------------ clause 6 */
 
 test("clause 6: one acknowledgement, one operation key, one idempotency key, replayed on a second click", async () => {

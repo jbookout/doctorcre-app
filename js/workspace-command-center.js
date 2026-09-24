@@ -4,6 +4,10 @@ import {
   DEAL_ROOM_DESTINATION, DEFAULT_SCOPE, SCOPES, SCOPE_LABEL, acceptsResponse, aggregateCardState, displayedFreshness, freshnessSignature, homeCardCopy,
   homeReadPhase, humanSourceLabel, needsJoeWork, primaryHomeAction, safeDestination, scopeNote, summarizeWorkspaceScope, validWorkspacePayload, viewerWorkspaceLabel,
 } from "./workspace-command-center-model.js";
+import { createFixtureClient } from "./fixture-client.js";
+import { createLiveClient } from "./live-client.js";
+import { resolveDealroomBoot } from "./boot-mode.js";
+import { mountNotificationBadge } from "./shell.js";
 
 const card = document.querySelector("#dealAttention");
 const observedAt = document.querySelector("#observedAt");
@@ -289,3 +293,18 @@ function settle({ status, payload = null, message = null }, sequence) {
 wireScopeSwitch();
 watchExpiry();
 load();
+
+// V5-UX-B12b: the unread badge next to Notifications in the More disclosure.
+// One read, no polling loop, and a failure or a zero hides it — see
+// mountNotificationBadge in shell.js. This module has no client of its own
+// (ENDPOINT above is a plain REST read), so a small dealroom client is built
+// for this one call alone, the same way notifications.js and its siblings do.
+(async () => {
+  try {
+    const bootMode = resolveDealroomBoot(location);
+    const client = bootMode.mode === "live" ? createLiveClient() : await createFixtureClient(bootMode.options);
+    await mountNotificationBadge(client);
+  } catch {
+    // Fails quiet, same as mountNotificationBadge's own catch.
+  }
+})();

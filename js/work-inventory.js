@@ -25,7 +25,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountPrefs } from "./shell.js";
+import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
 import { uuidv4 } from "./uuid.js";
 
 const censusOrb = document.querySelector("#censusOrb");
@@ -665,6 +665,7 @@ async function boot() {
   mountDock();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  mountNotificationBadge(client);
   await read();
 }
 

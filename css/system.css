@@ -197,6 +197,16 @@ small, .small { font-size: 11px; color: var(--muted); }
 .primary-nav a { display: inline-flex; align-items: center; min-height: 40px; padding: 8px 12px; border-radius: 8px; color: var(--muted); font-size: 12px; font-weight: 700; text-decoration: none; white-space: nowrap; }
 .primary-nav a:hover, .primary-nav a[aria-current="page"] { background: color-mix(in srgb, var(--orange) 15%, transparent); color: var(--text); }
 .primary-nav a[aria-current="page"] { box-shadow: inset 0 -2px var(--orange); }
+/* V5-UX-B12b: the notifications control every shared top bar carries, and its
+   unread-count badge. The link reuses .pref-icon's own frame so it sits with
+   the presentation icons rather than inventing a second visual language.
+   The badge is hidden by default in markup so a page whose read has not yet
+   landed, or failed, shows nothing rather than a zero or a stale figure — see
+   `mountNotificationBadge` in js/shell.js, which is the only code that ever
+   clears `hidden`. */
+.nav-notif { position: relative; text-decoration: none; }
+.nav-badge { position: absolute; top: -4px; right: -4px; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--orange); color: #1a0f05; font: 700 10px/16px var(--body); }
+.nav-badge[hidden] { display: none; }
 .global-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .shell { width: min(1400px, 100%); margin: 0 auto; padding: clamp(26px, 4vw, 54px) max(18px, 4vw) 90px; }
 .mobile-nav { display: none; }

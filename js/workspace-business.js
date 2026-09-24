@@ -27,6 +27,10 @@ import {
   rememberPayload, restoreSession, rowTone, sameQuery, scrollIntent, searchBoxValue, sourceIsFresh,
   validListPayload, validRecordPayload, viewHref,
 } from "./workspace-business-model.js";
+import { createFixtureClient } from "./fixture-client.js";
+import { createLiveClient } from "./live-client.js";
+import { resolveDealroomBoot } from "./boot-mode.js";
+import { mountNotificationBadge } from "./shell.js";
 
 const EXPIRY_TICK_MS = 5_000;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -841,6 +845,24 @@ function start() {
   watchExpiry();
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
+  mountBadge();
+}
+
+/**
+ * V5-UX-B12b: the unread badge next to Notifications in the More disclosure.
+ * One read, no polling loop, and a failure or a zero hides it — see
+ * mountNotificationBadge in shell.js. This page has no dealroom client of its
+ * own (its reads above are plain REST against DATASET_ROUTE), so a small one
+ * is built for this one call alone, the same way notifications.js does.
+ */
+async function mountBadge() {
+  try {
+    const bootMode = resolveDealroomBoot(window.location);
+    const client = bootMode.mode === "live" ? createLiveClient() : await createFixtureClient(bootMode.options);
+    await mountNotificationBadge(client);
+  } catch {
+    // Fails quiet, same as mountNotificationBadge's own catch.
+  }
 }
 
 start();

@@ -25,7 +25,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
+import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { mountSearch } from "./search.js";
 import { mountCharts } from "./charts.js";
 import { parseChartsAddress } from "./charts-model.js";
@@ -520,6 +520,7 @@ async function boot() {
   watchExpiry();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  mountNotificationBadge(client);
   // V5-UX-B05 — the Search tab. It is a tab on an already-admitted path, so no
   // route moves and no sign-in gate entry is needed: its address is a query
   // (?q= and ?kinds=) on /business, which the gate does not inspect. The tab is

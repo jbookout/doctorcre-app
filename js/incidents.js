@@ -23,7 +23,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountPrefs } from "./shell.js";
+import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import { groupedIncidents, validIncidentBoardPayload } from "./control-room-model.js";
 import {
@@ -263,6 +263,7 @@ async function boot() {
   client = boot_.mode === "live"
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+  mountNotificationBadge(client);
   await load();
 }
 
