@@ -22,10 +22,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE, ANSWER_UNAVAILABLE_SENTENCE,
+  ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE,
+  ANSWER_EVIDENCE_MAX, ANSWER_TEXT_MAX, ANSWER_VERSION_CONFLICT_SENTENCE, ANSWER_VERSION_UNAVAILABLE_SENTENCE,
   ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, COMPOSER_BODY_MAX, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE,
   NO_OPEN_SENTENCE, QUEUE_BOARD, QUEUE_ROOM, TOPIC_HISTORY_SENTENCE, TURN_ROOM, WINDOW_SENTENCE,
-  WORK_ITEM_HISTORY_SENTENCE, WORK_STATES, WORK_STATE_LABEL, answerRequest, assignmentBoard,
+  WORK_ITEM_HISTORY_SENTENCE, WORK_STATES, WORK_STATE_LABEL,
+  answerBaseVersion, answerDraftAfterAttempt, answerWorkRequestRequest, assignmentBoard,
   assignmentMoveOutcome, composerDraftAfterAttempt, composerRequest, contextPanel, dispatchSearchRequest,
   dispatchView, effectiveModelText, historyTopics, historyWorkItems,
   listState, needsJoeCardFields, participants, parentLine, queueFreshness, queueRequest, refuseQueueEvent,
@@ -235,7 +237,18 @@ test("C12-09 no open control exists in any branch, and the honesty sentence is p
   // Not even a refused one: a disabled control implies one could be enabled.
   assert.equal(/open[\s_-]?session/i.test(viewCode.replace(NO_OPEN_SENTENCE, " ")), false,
     "the shipped code of js/model-room.js contains no open control, disabled or otherwise");
-  assert.equal(/disabled/.test(viewCode), false, "no disabled control stands in for the one that cannot exist");
+  // V5-UX-C13c added ONE real, legitimately-disabled control — the answer
+  // form's own Submit, disabled until the scope checkbox is ticked and there
+  // is answer text (a real write behind it, unlike Open session). Strip that
+  // one named block out before re-asserting no OTHER disabled control has
+  // crept in anywhere else in this file.
+  const withoutAnswerForm = viewCode.replace(
+    /function currentAnswerBaseVersion\(\)[\s\S]*?(?=function render\(\) \{)/,
+    " ",
+  );
+  assert.notEqual(withoutAnswerForm, viewCode, "the answer-form block must be found and stripped before this check means anything");
+  assert.equal(/disabled/.test(withoutAnswerForm), false,
+    "no disabled control outside the answer form's own Submit stands in for one that cannot exist");
   assert.equal(/open[\s_-]?session/i.test(htmlMarkup), false, "control-room.html carries no open control either");
   assert.equal(/<button[^>]*>[^<]*[Oo]pen/.test(htmlMarkup), false, "no button on the page begins with Open");
 });
@@ -523,9 +536,12 @@ test("C13a-05 the enriched Waiting-for-Joe fields never synthesize an absent one
 
 test("C13a-06 the history view opens no execute path", () => {
   assert.equal(/take\("historyCard"/.test(viewCode), true, "the work-item card is read, not executed");
-  // V5-UX-C13b adds one admitted write (acknowledge-dispatch), but the verb
-  // itself declares no idempotency_key, so this file still mints none.
-  assert.equal(/idempotency_key/.test(viewCode), false, "no idempotency-keyed write is issued from this file");
+  // V5-UX-C13c: both real writes on this tab (add-room-turn and
+  // answer-work-request-for-joe) mint a fresh idempotency key per attempt via
+  // uuidv4() — so idempotency_key now appears, twice, and this file still
+  // opens no execute path for anything else.
+  assert.equal((viewCode.match(/idempotency_key: uuidv4\(\)/g) ?? []).length, 2,
+    "exactly the composer's and the answer form's own writes mint a fresh key");
   assert.match(htmlMarkup, /id="modelRoomHistoryTopic"/);
   assert.match(htmlMarkup, /id="modelRoomHistoryWorkItem"/);
   assert.equal(/open[\s_-]?session/i.test(viewCode.replace(NO_OPEN_SENTENCE, " ")), false);
@@ -546,8 +562,6 @@ test("C13b-01 the composer's request is add-room-turn's own shape: model-room, h
   // No target field: add-room-turn's inputSchema has none, and this file
   // invents no structure the record layer does not carry.
   assert.equal(Object.hasOwn(composerRequest({ text: "hi" }), "target"), false);
-  assert.equal(answerRequest(), null, "no pinned verb answers a Work Request either");
-  assert.match(ANSWER_UNAVAILABLE_SENTENCE, /no pinned verb attaches a response/);
 });
 
 test("C13b-02 a failed or refused composer attempt keeps the draft exactly as typed", () => {
@@ -591,11 +605,13 @@ test("C13b-05 the composer and the drop zone are wired in the view, honestly", (
   assert.match(viewCode, /composerRequest\(\{\s*text: view\.composer\.text\s*\}\)/);
   assert.match(viewCode, /composerDraftAfterAttempt\(/);
   assert.match(viewCode, /assignmentMoveOutcome\(/);
-  assert.match(viewCode, /client\.addRoomTurn\(request\)/);
-  // The one write this file issues. No other client.<verb> write is added
+  // V5-UX-C13c: a fresh idempotency key is minted per attempt, so the call is
+  // no longer the bare request object.
+  assert.match(viewCode, /client\.addRoomTurn\(\{\s*\.\.\.request,\s*idempotency_key: uuidv4\(\)\s*\}\)/);
+  // The two writes this file issues. No other client.<verb> write is added
   // for the Kanban move, because it has no admitted one, and none at all for
   // acknowledging a dispatch (removed; see C13b-04).
-  assert.equal(/client\.(moveAssignment|updateQueueCard|answerWorkRequest|acknowledgeDispatch)/.test(viewCode), false);
+  assert.equal(/client\.(moveAssignment|updateQueueCard|acknowledgeDispatch)/.test(viewCode), false);
   assert.match(viewSource, /draggable="true"/);
   assert.match(viewSource, /dragstart|dataTransfer/);
 });
@@ -622,12 +638,115 @@ test("C13b-07 the composer write is add-room-turn, pinned as a pure app-side con
   assert.equal(/acknowledgeDispatch/.test(fixtureSource), false);
 });
 
+/* ------------------------------------------------- V5-UX-C13c: the answer form */
+
+test("C13c-01 answerBaseVersion carries work-request-card's own version, never a default", () => {
+  const ledgerCard = { ok: true, human_ref: "WR-000906", title: "x", state: "needs_joe", version: 3 };
+  assert.equal(answerBaseVersion(ledgerCard), 3);
+  assert.equal(answerBaseVersion({ ok: true, human_ref: "WR-000907", title: "x", state: "needs_joe" }), null,
+    "a card with no integer version offers no base_version to guess with");
+  assert.equal(answerBaseVersion({ ok: true, human_ref: "WR-000908", title: "x", state: "needs_joe", version: "3" }), null,
+    "a non-integer version (e.g. a string) is not silently coerced");
+  assert.equal(answerBaseVersion({ human_ref: "WR-000909", title: "x", state: "needs_joe", version: 3 }), null,
+    "a payload work-request-card itself refused (no ok: true) carries no version either");
+  assert.equal(answerBaseVersion(null), null);
+});
+
+test("C13c-02 answerWorkRequestRequest validates every field answer-work-request-for-joe declares", () => {
+  const valid = { humanRef: "WR-000906", baseVersion: 3, answerText: "Confirmed.", scopeConfirmed: true };
+  assert.deepEqual(answerWorkRequestRequest(valid), {
+    human_ref: "WR-000906", base_version: 3, answer_text: "Confirmed.", scope_confirmed: true,
+  });
+  assert.deepEqual(answerWorkRequestRequest({ ...valid, evidenceRef: "https://example.invalid/e" }), {
+    human_ref: "WR-000906", base_version: 3, answer_text: "Confirmed.", scope_confirmed: true,
+    evidence_ref: "https://example.invalid/e",
+  });
+  assert.equal(answerWorkRequestRequest({ ...valid, humanRef: "not-a-ref" }), null);
+  assert.equal(answerWorkRequestRequest({ ...valid, baseVersion: null }), null);
+  assert.equal(answerWorkRequestRequest({ ...valid, baseVersion: 0 }), null, "version 0 is never valid: versions start at 1");
+  assert.equal(answerWorkRequestRequest({ ...valid, baseVersion: 1.5 }), null, "a non-integer version is refused");
+  assert.equal(answerWorkRequestRequest({ ...valid, answerText: "" }), null, "empty answer text is refused");
+  assert.equal(answerWorkRequestRequest({ ...valid, answerText: "   " }), null, "whitespace-only answer text is refused");
+  assert.equal(answerWorkRequestRequest({ ...valid, answerText: "x".repeat(ANSWER_TEXT_MAX + 1) }), null,
+    "over the verb's own 500-character max is refused client-side too");
+  assert.equal(answerWorkRequestRequest({ ...valid, answerText: "x".repeat(ANSWER_TEXT_MAX) }).answer_text.length, ANSWER_TEXT_MAX);
+  assert.equal(answerWorkRequestRequest({ ...valid, scopeConfirmed: false }), null,
+    "scope_confirmed must be the literal true, not merely truthy");
+  assert.equal(answerWorkRequestRequest({ ...valid, scopeConfirmed: "true" }), null, "a string 'true' is not the literal true");
+  assert.equal(answerWorkRequestRequest({ ...valid, evidenceRef: "x".repeat(ANSWER_EVIDENCE_MAX + 1) }), null,
+    "an over-long evidence_ref is refused client-side too");
+  assert.equal(Object.hasOwn(answerWorkRequestRequest(valid), "evidence_ref"), false,
+    "an omitted evidence_ref is left off the request entirely, never sent as an empty string");
+  assert.equal(answerWorkRequestRequest({}), null);
+});
+
+test("C13c-03 a failed or refused answer attempt keeps the draft exactly as typed", () => {
+  const draft = { answerText: "Confirmed.", evidenceRef: "https://example.invalid/e", scopeConfirmed: true };
+  assert.deepEqual(answerDraftAfterAttempt(draft), draft);
+  assert.deepEqual(answerDraftAfterAttempt(null), { answerText: "", evidenceRef: "", scopeConfirmed: false });
+  assert.deepEqual(answerDraftAfterAttempt({}), { answerText: "", evidenceRef: "", scopeConfirmed: false });
+});
+
+test("C13c-04 the honest unavailable and version-conflict sentences name the real cause", () => {
+  assert.match(ANSWER_VERSION_UNAVAILABLE_SENTENCE, /work-request-card/);
+  assert.match(ANSWER_VERSION_UNAVAILABLE_SENTENCE, /needs_joe/);
+  assert.match(ANSWER_VERSION_UNAVAILABLE_SENTENCE, /compare-and-swap/);
+  assert.equal(ANSWER_VERSION_CONFLICT_SENTENCE,
+    "This request changed since you opened it; reload to see the current version.");
+});
+
+test("C13c-05 the answer form is wired in the view, honestly, gated on a real base_version", () => {
+  assert.match(htmlMarkup, /id="modelRoomAnswerForm"/);
+  assert.match(htmlMarkup, /id="modelRoomAnswerText"/);
+  assert.match(htmlMarkup, /id="modelRoomAnswerEvidence"/);
+  assert.match(htmlMarkup, /id="modelRoomAnswerScopeConfirmed"/);
+  assert.match(htmlMarkup, /id="modelRoomAnswerSubmit"/);
+  assert.match(htmlMarkup, /I've re-checked the scope and acceptance criteria shown above/);
+  assert.match(htmlMarkup, /maxlength="500"[^>]*>|maxlength="500"/, "the textarea carries the same 500-char cap client-side");
+  // The gate is answerBaseVersion(card), read from the currently loaded
+  // history card — never a guessed or hardcoded version.
+  assert.match(viewCode, /answerBaseVersion\(view\.historyCard\.payload\)/);
+  assert.match(viewCode, /answerWorkRequestRequest\(\{/);
+  assert.match(viewCode, /answerDraftAfterAttempt\(/);
+  assert.match(viewCode, /client\.answerWorkRequestForJoe\(/);
+  // Submit is a REAL disabled control, unlike the removed Open session
+  // button: it is gated on the checkbox AND non-empty answer text.
+  assert.match(viewCode, /view\.answer\.scopeConfirmed && view\.answer\.answerText\.trim\(\)\.length > 0/);
+});
+
+test("C13c-06 a version_conflict reads as the reload sentence; any other refusal is shown verbatim", () => {
+  assert.match(viewCode, /code === "version_conflict" \? ANSWER_VERSION_CONFLICT_SENTENCE : `Not sent: \$\{code\}\.`/);
+  assert.match(viewCode, /error\?\.payload\?\.error \|\| error\?\.message \|\| "the write did not answer"/);
+});
+
+test("C13c-07 a successful answer re-reads the card and the queue, never fabricating the new state", () => {
+  // take() re-reads historyCard (the card) and workItems (the queue) after a
+  // successful send — the same pattern the composer already uses for turns.
+  const submitAnswerBody = viewSource.slice(viewSource.indexOf("async function submitAnswer"), viewSource.indexOf("async function searchSessions"));
+  assert.match(submitAnswerBody, /take\("historyCard", \(\) => client\.workRequestCard\(args\), refuseWorkRequestCard\)/);
+  assert.match(submitAnswerBody, /take\("workItems", \(\) => client\.currentWorkRequests\(\)/);
+});
+
+test("C13c-08 choosing a different work item clears the answer draft and send state", () => {
+  const selectBody = viewSource.slice(viewSource.indexOf("async function selectHistoryWorkItem"), viewSource.indexOf("async function searchSessions"));
+  assert.match(selectBody, /view\.answer = \{ answerText: "", evidenceRef: "", scopeConfirmed: false \}/);
+  assert.match(selectBody, /view\.answerSend = \{ state: "idle", message: null \}/);
+});
+
+test("C13c-09 the answer write is pinned and implemented in both clients", async () => {
+  const liveSource = await read("js/live-client.js");
+  assert.match(liveSource, /answerWorkRequestForJoe\(args\)\s*\{\s*return write\('answer-work-request-for-joe', args\)/);
+  const fixtureSource = await read("js/fixture-client.js");
+  assert.match(fixtureSource, /async answerWorkRequestForJoe\(/);
+  assert.match(fixtureSource, /version_conflict/);
+});
+
 /* ----------------------------------------------------------- the contract pin */
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the v35 producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.22.0", "one added operation (add-room-turn) is an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 58);
+  assert.equal(contract.version, "1.23.0", "one added operation (add-room-turn) is an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 59);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -646,6 +765,13 @@ test("C13-04 the contract pins the v35 producer, its two dispatch writes, and V5
   const queue = contract.mcp_operations.indexOf("read-room-queue");
   assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
+  // V5-UX-C13c: answer-work-request-for-joe (carr PR #1190) is the answer
+  // form's one write, pinned the same way add-room-turn was — an app-side
+  // contract addition, sorted immediately after add-room-turn.
+  assert.ok(contract.mcp_operations.includes("answer-work-request-for-joe"), "answer-work-request-for-joe is not pinned");
+  const answerAt = contract.mcp_operations.indexOf("answer-work-request-for-joe");
+  assert.equal(contract.mcp_operations[answerAt - 1], "add-room-turn");
+  assert.equal(contract.mcp_operations[answerAt + 1], "capture-queue");
   assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against

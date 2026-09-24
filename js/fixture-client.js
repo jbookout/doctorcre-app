@@ -1809,6 +1809,48 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    // V5-UX-C13c: the sole needs_joe -> triaged write. WR-000906/907/908 live
+    // only in `sharedRequestCards` (the enriched card read) and `sharedRequests`
+    // (the queue list) — never in the `workRequests` Map that backs
+    // decline/supersede — so this mutates both of those, keeping the two
+    // fixture surfaces in agreement the same way production's single row does.
+    async answerWorkRequestForJoe({ idempotency_key, human_ref, base_version, answer_text, scope_confirmed, evidence_ref } = {}) {
+      return withIdem(idempotency_key, () => {
+        const ref = String(human_ref ?? '');
+        const card = sharedRequestCards.get(ref);
+        const listed = sharedRequests.find((row) => row.human_ref === ref);
+        if (!card || !listed || card.state !== 'needs_joe') {
+          refuse('answer-work-request-for-joe', 'work_request_not_found', { human_ref: ref });
+        }
+        if (!Number.isInteger(base_version)) {
+          refuse('answer-work-request-for-joe', 'missing_base_version', { hint: 'Re-read the Work Request card and send the version it holds now.' });
+        }
+        if (Number(base_version) !== Number(card.version)) {
+          refuse('answer-work-request-for-joe', 'version_conflict', { human_ref: card.human_ref, resolution: 're-read the Work Request card; only its current version may be answered' });
+        }
+        if (scope_confirmed !== true) refuse('answer-work-request-for-joe', 'scope_not_confirmed', { human_ref: ref });
+        const text = String(answer_text ?? '').trim();
+        if (!text || text.length > 500) refuse('answer-work-request-for-joe', 'answer_text_invalid', { human_ref: ref });
+        const evidence = evidence_ref === undefined || evidence_ref === null ? '' : String(evidence_ref).trim();
+        if (evidence.length > 500) refuse('answer-work-request-for-joe', 'evidence_ref_invalid', { human_ref: ref });
+        card.state = 'triaged';
+        card.version = Number(card.version) + 1;
+        card.answer_text = text;
+        card.scope_confirmed = true;
+        card.evidence_ref = evidence.length ? evidence : null;
+        card.answered_by_actor_slug = selfActor;
+        card.answered_at = nowIso();
+        card.next_human_action = { label: 'Review the triaged answer', effect: 'none' };
+        listed.state = 'triaged';
+        listed.next_human_action = 'Review the triaged answer';
+        return {
+          ok: true, human_ref: card.human_ref, state: card.state, version: card.version,
+          answer_text: card.answer_text, evidence_ref: card.evidence_ref,
+          answered_by_actor_slug: card.answered_by_actor_slug, answered_at: card.answered_at,
+        };
+      });
+    },
+
     async declineWorkRequest({ idempotency_key, human_ref, base_version, exit_reason }) {
       return withIdem(idempotency_key, () => {
         const row = workRequestOrRefuse('decline-work-request', human_ref);

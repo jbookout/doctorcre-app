@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "35009e9dedab3a603836c662d0f7f12dfeb1a284"
@@ -20,6 +20,7 @@
     "add-deal-note",
     "add-loop",
     "add-room-turn",
+    "answer-work-request-for-joe",
     "capture-queue",
     "close-loop",
     "create-doc-conversation",

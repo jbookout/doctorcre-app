@@ -238,6 +238,21 @@
 .dispatch-ack-unavailable { margin: 8px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--quiet); font-size: 12px; line-height: 1.6; }
 .model-room-answer-unavailable { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); font-size: 12px; line-height: 1.6; }
 
+/* V5-UX-C13c: the Waiting-for-Joe answer form. Same tokens and touch floor as
+ * the composer above; the submit is a REAL disabled control (unlike the
+ * removed Open session button) because a real write sits behind it once the
+ * checkbox is ticked and there is answer text. */
+#modelRoomAnswerText, #modelRoomAnswerEvidence, #modelRoomAnswerSubmit { min-height: var(--touch); }
+#modelRoomAnswerForm .field { display: grid; gap: 6px; margin-top: 10px; min-width: 0; }
+#modelRoomAnswerForm label { font-size: 13px; font-weight: 700; }
+#modelRoomAnswerForm .field-checkbox label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+#modelRoomAnswerText { resize: vertical; }
+#modelRoomAnswerCounter { margin: 0; color: var(--muted); }
+#modelRoomAnswerSubmit[disabled] { opacity: 0.55; cursor: not-allowed; }
+.model-room-answer-result { margin: 10px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.model-room-answer-result[data-state="sent"] { border-left-style: solid; color: var(--text); }
+.model-room-answer-result[data-state="failed"] { border-left-color: var(--amber-text); color: var(--amber-text); }
+
 @media (max-width: 640px) {
   .assignment-rail { grid-template-columns: 1fr; }
   .assignment-head { flex-direction: column; }

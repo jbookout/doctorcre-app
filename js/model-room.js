@@ -25,10 +25,11 @@
 // permission-filtered session read; choosing a row reads history and never
 // treats historical rationale as a fresh instruction.
 import {
-  ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE, ANSWER_UNAVAILABLE_SENTENCE,
+  ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE,
+  ANSWER_EVIDENCE_MAX, ANSWER_TEXT_MAX, ANSWER_VERSION_CONFLICT_SENTENCE, ANSWER_VERSION_UNAVAILABLE_SENTENCE,
   ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
   QUEUE_ROOM_SENTENCE, TOPIC_HISTORY_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
-  answerRequest, assignmentBoard, assignmentMoveOutcome,
+  answerBaseVersion, answerDraftAfterAttempt, answerWorkRequestRequest, assignmentBoard, assignmentMoveOutcome,
   composerDraftAfterAttempt, composerRequest, contextPanel, countsLine, dispatchSearchRequest, dispatchView,
   historyTopics, historyWorkItems, listState, participants, queueFreshness, queueRequest, refuseDispatchHistory,
   refuseRoomQueue, refuseRoomTurns, refuseSessionIdentity, refuseWorkRequestCard, sessionCards, topicHistory,
@@ -39,6 +40,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
+import { uuidv4 } from "./uuid.js";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -72,6 +74,13 @@ const view = {
   // see composerDraftAfterAttempt.
   composer: { text: "" },
   composerSend: { state: "idle", message: null },
+  // V5-UX-C13c: the Waiting-for-Joe answer form's draft and send state. Kept
+  // per-item only in the sense that choosing a different work item clears it
+  // (selectHistoryWorkItem) — the same rule the composer follows for its own
+  // draft, applied here so a stale answer can never be sent against a
+  // different card than the one it was written for.
+  answer: { answerText: "", evidenceRef: "", scopeConfirmed: false },
+  answerSend: { state: "idle", message: null },
   // The last drop's outcome on the assignments board. Always unsupported
   // (assignmentMoveOutcome), because no pinned verb moves a projected card.
   moveMessage: null,
@@ -509,7 +518,11 @@ async function submitComposer() {
   view.composerSend = { state: "sending", message: "Sending…" };
   renderComposer();
   try {
-    const result = await client.addRoomTurn(request);
+    // A fresh idempotency key per attempt — minted here, not left to the
+    // client. live-client.js's write() would mint one on its own, but
+    // fixture-client.js requires the caller to supply one; this line is what
+    // makes the composer actually send in fixture/demo mode as well as live.
+    const result = await client.addRoomTurn({ ...request, idempotency_key: uuidv4() });
     // Sent, not fabricated: the confirmation is the server's own answer
     // (its sequence number), never an "ok" this file invented.
     view.composer = { text: "" };
@@ -530,15 +543,93 @@ async function submitComposer() {
   renderComposer();
 }
 
-/* -------------------------------------------------- V5-UX-C13b: answer unavailable */
+/* ------------------------------------------------- V5-UX-C13c: answer form */
+
+/**
+ * `answer-work-request-for-joe`'s base_version comes from the card currently
+ * loaded for view.historyWorkItemId — never re-derived, never defaulted. A
+ * null result (no work item chosen, the read failed, or the read succeeded
+ * but carried no version) is the sole gate for the honest-unavailable state.
+ */
+function currentAnswerBaseVersion() {
+  if (!view.historyWorkItemId || view.historyCard.refusal || !view.historyCard.payload) return null;
+  return answerBaseVersion(view.historyCard.payload);
+}
 
 function renderAnswer() {
-  const root = $("modelRoomAnswerUnavailable");
-  if (!root) return;
-  // answerRequest() is always null: no pinned verb attaches a response to a
-  // Work Request. Shown only once a work item is chosen, beside its ledger.
-  root.hidden = !view.historyWorkItemId || answerRequest() !== null;
-  root.textContent = view.historyWorkItemId ? ANSWER_UNAVAILABLE_SENTENCE : "";
+  const unavailable = $("modelRoomAnswerUnavailable");
+  const form = $("modelRoomAnswerForm");
+  const result = $("modelRoomAnswerResult");
+  if (!unavailable || !form) return;
+  const baseVersion = currentAnswerBaseVersion();
+  const offered = Boolean(view.historyWorkItemId) && baseVersion !== null;
+  unavailable.hidden = !view.historyWorkItemId || offered;
+  unavailable.textContent = view.historyWorkItemId && !offered ? ANSWER_VERSION_UNAVAILABLE_SENTENCE : "";
+  form.hidden = !offered;
+  if (offered) {
+    const textInput = $("modelRoomAnswerText");
+    const evidenceInput = $("modelRoomAnswerEvidence");
+    const scopeInput = $("modelRoomAnswerScopeConfirmed");
+    const counter = $("modelRoomAnswerCounter");
+    const submit = $("modelRoomAnswerSubmit");
+    if (textInput && textInput.value !== view.answer.answerText) textInput.value = view.answer.answerText;
+    if (evidenceInput && evidenceInput.value !== view.answer.evidenceRef) evidenceInput.value = view.answer.evidenceRef;
+    if (scopeInput && scopeInput.checked !== view.answer.scopeConfirmed) scopeInput.checked = view.answer.scopeConfirmed;
+    if (counter) counter.textContent = `${view.answer.answerText.length} / ${ANSWER_TEXT_MAX}`;
+    // Submit stays disabled until the checkbox is ticked AND there is answer
+    // text — never a fake-disabled control, a real one with a real reason.
+    const ready = view.answer.scopeConfirmed && view.answer.answerText.trim().length > 0
+      && view.answerSend.state !== "sending";
+    if (submit) submit.toggleAttribute("disabled", !ready);
+  }
+  if (result) {
+    result.hidden = !view.answerSend.message;
+    result.dataset.state = view.answerSend.state;
+    result.textContent = view.answerSend.message ?? "";
+  }
+}
+
+async function submitAnswer() {
+  if (view.answerSend.state === "sending") return;
+  const baseVersion = currentAnswerBaseVersion();
+  const request = answerWorkRequestRequest({
+    humanRef: view.historyWorkItemId,
+    baseVersion,
+    answerText: view.answer.answerText,
+    scopeConfirmed: view.answer.scopeConfirmed,
+    evidenceRef: view.answer.evidenceRef,
+  });
+  if (!request) {
+    view.answer = answerDraftAfterAttempt(view.answer);
+    view.answerSend = { state: "invalid", message: "Tick the checkbox and enter an answer before sending; the draft is kept." };
+    renderAnswer();
+    return;
+  }
+  view.answerSend = { state: "sending", message: "Sending…" };
+  renderAnswer();
+  try {
+    // A fresh idempotency key per attempt, minted here for the same reason as
+    // the composer's: fixture-client.js requires one, and this is the one
+    // real write this form makes.
+    const result = await client.answerWorkRequestForJoe({ ...request, idempotency_key: uuidv4() });
+    view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
+    view.answerSend = { state: "sent", message: `Sent — recorded as ${result?.state ?? "triaged"}.` };
+    announce(`The answer for ${view.historyWorkItemId} was sent.`);
+    // Re-read the card and the queue, so the ledger and the picker both show
+    // the transition rather than a state this file invented.
+    const args = workRequestCardRequest(view.historyWorkItemId);
+    if (args) await take("historyCard", () => client.workRequestCard(args), refuseWorkRequestCard);
+    await take("workItems", () => client.currentWorkRequests(),
+      (payload) => (validCurrentWorkRequestsPayload(payload) ? null : "current_work_requests_unavailable"));
+  } catch (error) {
+    const code = String(error?.payload?.error || error?.message || "the write did not answer");
+    view.answer = answerDraftAfterAttempt(view.answer);
+    view.answerSend = {
+      state: "failed",
+      message: code === "version_conflict" ? ANSWER_VERSION_CONFLICT_SENTENCE : `Not sent: ${code}.`,
+    };
+  }
+  renderAnswer();
 }
 
 function render() {
@@ -597,6 +688,12 @@ function selectHistoryTopic(taskId) {
 
 async function selectHistoryWorkItem(humanRef) {
   view.historyWorkItemId = humanRef ?? "";
+  // A different work item means a different card and a different
+  // base_version: the answer draft and send state from the last one would be
+  // stale evidence for this one, so both are cleared exactly like the
+  // composer clears on a successful send.
+  view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
+  view.answerSend = { state: "idle", message: null };
   if (!view.historyWorkItemId) {
     view.historyCard = { state: "idle", payload: null, refusal: null };
     render();
@@ -693,6 +790,26 @@ export function mountModelRoom({ outage = null } = {}) {
   $("modelRoomComposerForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     submitComposer();
+  });
+  // V5-UX-C13c: the Waiting-for-Joe answer form. Typing is kept in
+  // view.answer; submitting calls `answer-work-request-for-joe` for real
+  // (see submitAnswer). Re-rendered on every keystroke so the character
+  // counter and the submit-ready state stay live.
+  $("modelRoomAnswerText")?.addEventListener("input", (event) => {
+    view.answer.answerText = event.target.value;
+    renderAnswer();
+  });
+  $("modelRoomAnswerEvidence")?.addEventListener("input", (event) => {
+    view.answer.evidenceRef = event.target.value;
+    renderAnswer();
+  });
+  $("modelRoomAnswerScopeConfirmed")?.addEventListener("change", (event) => {
+    view.answer.scopeConfirmed = event.target.checked === true;
+    renderAnswer();
+  });
+  $("modelRoomAnswerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAnswer();
   });
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
