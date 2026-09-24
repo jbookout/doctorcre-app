@@ -158,7 +158,7 @@ test("idea tiles enter on a stagger, lift and tilt under the pointer and press d
   assert.match(css, /\.idea-tile \{[^}]*animation: receipt-in var\(--motion-enter\) var\(--ease\) backwards/);
   assert.match(css, /animation-delay: var\(--stagger, 0ms\)/);
   assert.match(css, /\.idea-tile:hover[^{]*\{[^}]*transform:[^;]*rotateX/, "a depth response on hover");
-  assert.match(css, /\.idea-tile:active[^{]*\{[^}]*transform/);
+  assert.match(css, /\.idea-tile:active \{[^}]*transform: (?!none)/, "the full-motion press, not the reduced-motion reset");
   const durations = [...css.matchAll(/var\((--motion-[a-z]+)\)/g)].map((match) => match[1]);
   for (const token of durations) assert.match(token, /^--motion-(calm|attention|urgent|flow|enter|move|ring|toast)$/);
 });

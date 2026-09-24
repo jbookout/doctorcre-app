@@ -90,6 +90,6 @@ test("the Vendors and Clients panel reads activity through the pinned verb and n
   assert.ok(css.includes(`.activity-row{`) && css.includes(`animation:receipt-in var(--motion-enter,${enter})`), "rows enter on the shared keyframe and duration");
   assert.match(css, /\.activity-row\{[^}]*backwards/);
   assert.match(css, /@keyframes receipt-in\{from\{opacity:0;transform:translateY\(6px\)\}to\{opacity:1;transform:none\}\}/, "the same keyframe the system sheet defines");
-  assert.match(css, /\.activity-row:hover\{[^}]*transform/);
+  assert.match(css, /\.activity-row:hover\{transform:translateX/, "the full-motion hover, not the reduced-motion reset");
   assert.match(css, /prefers-reduced-motion:reduce[^{]*\{[^@]*\.activity-row:hover\{transform:none/);
 });

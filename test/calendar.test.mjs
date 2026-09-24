@@ -247,10 +247,13 @@ test("a deal whose record cannot be read makes the page PARTIAL and names it; it
 });
 
 test("a malformed deal answer counts as unread, never as a deal with no dates", async () => {
-  const client = stubClient({ board: { deals: [deal] }, details: { d1: { critical_dates: "soon" } } });
-  const result = await readCalendar(client);
-  assert.deepEqual(result.failed.map((row) => row.deal_id), ["d1"]);
-  assert.equal(calendarPhase(result), "partial");
+  for (const detail of [{ critical_dates: "soon" }, {}, null]) {
+    const client = stubClient({ board: { deals: [deal] }, details: { d1: detail } });
+    const result = await readCalendar(client);
+    assert.deepEqual(result.failed.map((row) => row.deal_id), ["d1"], JSON.stringify(detail));
+    assert.equal(result.readCount, 0);
+    assert.equal(calendarPhase(result), "partial");
+  }
 });
 
 test("an ended session on any read shows nothing at all", async () => {
@@ -359,11 +362,10 @@ test("the Calendar page carries the shared shell, an accessible grid and an agen
 const css = await read("css/calendar.css");
 
 test("month and week transitions animate between before and after on the shared tokens", () => {
-  for (const direction of ["forward", "back", "zoom-in", "zoom-out"]) {
-    assert.match(css, new RegExp(`\\.cal-grid\\[data-enter="${direction}"\\][^{]*\\{[^}]*animation:[^;]*var\\(--motion-move\\)[^;]*var\\(--ease\\)`), direction);
-  }
-  for (const frame of ["cal-slide-forward", "cal-slide-back", "cal-zoom-in", "cal-zoom-out"]) {
-    assert.match(css, new RegExp(`@keyframes ${frame}`), frame);
+  const frames = { forward: "cal-slide-forward", back: "cal-slide-back", "zoom-in": "cal-zoom-in", "zoom-out": "cal-zoom-out" };
+  for (const [direction, frame] of Object.entries(frames)) {
+    assert.match(css, new RegExp(`\\.cal-grid\\[data-enter="${direction}"\\] \\{ animation: ${frame} var\\(--motion-move\\) var\\(--ease\\); \\}`), direction);
+    assert.match(css, new RegExp(`@keyframes ${frame} \\{ from \\{[^}]*transform: (?:translateX|scale)\\(`), `${frame} moves`);
   }
 });
 
@@ -375,9 +377,14 @@ test("dates pulse on the shared state durations as they approach", () => {
 });
 
 test("every interactive calendar element answers hover and press", () => {
+  // Read with the reduced-motion rules taken out: those set `transform: none`
+  // on purpose and must not stand in for the full-motion feedback.
+  const fullMotion = css
+    .replace(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g, "")
+    .replace(/^:root\[data-motion="reduced"\].*$/gm, "");
   for (const selector of ["\\.cal-day", "\\.cal-chip", "\\.cal-agenda-item"]) {
-    assert.match(css, new RegExp(`${selector}:hover[^{]*\\{[^}]*transform`), `${selector} hover`);
-    assert.match(css, new RegExp(`${selector}:active[^{]*\\{[^}]*transform`), `${selector} press`);
+    assert.match(fullMotion, new RegExp(`${selector}:hover \\{[^}]*transform: (?!none)`), `${selector} hover`);
+    assert.match(fullMotion, new RegExp(`${selector}:active \\{[^}]*transform: (?!none)`), `${selector} press`);
   }
 });
 
