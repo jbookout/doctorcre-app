@@ -205,6 +205,26 @@ export function createCallMode(deps) {
 
   // ------------------------------------------------------------ review pack
 
+  /**
+   * The visible signal from post_call_jev.py's RIGHT DEAL / RIGHT SPEAKER /
+   * RIGHT DETAILS checks (decision 008d682a): a flagged item shows its
+   * plain-English reasons, and an item Jev never reached shows a neutral
+   * note. Never hides or removes the item either way -- Joe and Dell still
+   * approve or reject every candidate by hand.
+   */
+  function checksNote(item) {
+    const checks = item?.checks;
+    if (!checks) return '';
+    if (checks.unavailable) {
+      return `<p class="post-call-checks post-call-checks-unavailable">Automatic Jev checks did not run for this item.</p>`;
+    }
+    if (checks.flagged) {
+      const reasons = Array.isArray(checks.reasons) ? checks.reasons : [];
+      return `<div class="post-call-checks post-call-checks-flagged" role="alert"><b>⚠ Flagged for review</b>${reasons.length ? `<ul>${reasons.map((reason) => `<li>${esc(reportText(reason))}</li>`).join('')}</ul>` : ''}</div>`;
+    }
+    return '';
+  }
+
   function taskCard(item, owner) {
     const status = postCallItemStatus(item);
     const pending = status === 'pending';
@@ -212,6 +232,7 @@ export function createCallMode(deps) {
     return `<article class="post-call-card" data-post-call-item="${esc(item.candidate_id || '')}">
     <div class="post-call-card-head"><b>${esc(postCallDealName(item))}</b><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <p>${esc(reportText(text))}</p>${item.due_on ? `<small>Due ${esc(dateLabel(item.due_on))}</small>` : ''}
+    ${checksNote(item)}
     ${pending ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(item.candidate_id)}" data-candidate-resolver="post_call">Confirm ${esc(owner)} task</button><button type="button" class="secondary" data-post-call-skip="${esc(item.candidate_id)}" data-candidate-resolver="post_call">Skip</button></div>` : ''}
   </article>`;
   }
@@ -224,6 +245,7 @@ export function createCallMode(deps) {
     return `<article class="post-call-card" data-post-call-item="${esc(item.candidate_id || '')}">
     <div class="post-call-card-head"><b>${esc(postCallDealName(item))}</b><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <p>${esc(reportText(summary))}</p>
+    ${checksNote(item)}
     ${pending ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Confirm update</button><button type="button" class="secondary" data-post-call-skip="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Skip</button></div>` : ''}
   </article>`;
   }
@@ -244,6 +266,7 @@ export function createCallMode(deps) {
     return `<article class="post-call-card vendor-draft" data-post-call-draft-card="${esc(draft.draft_id)}">
     <div class="post-call-card-head"><div><b>${esc(postCallDealName(draft))}</b><small>${esc(recipient)}${draft.recipient_email ? ` · ${esc(draft.recipient_email)}` : ''}</small></div><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <h5>${esc(reportText(draft.subject || 'Deal update'))}</h5><p class="draft-body">${esc(reportText(draft.body || ''))}</p>
+    ${checksNote(draft)}
     ${busyError ? `<p class="post-call-inline-error" role="alert">${esc(busyError)} You can retry safely.</p>` : ''}
     <div class="post-call-card-actions"><button type="button" class="primary create-draft" data-create-outlook-draft="${esc(draft.draft_id)}" data-draft-candidate="${esc(draft.candidate_id || '')}" data-draft-status="${esc(status)}" data-content-hash="${esc(draft.content_hash || '')}"${created || skipped || awaitingReceipt ? ' disabled' : ''}>${created ? 'Created in Outlook' : skipped ? 'Skipped' : awaitingReceipt ? 'Preparing draft…' : busyError ? 'Retry Outlook draft' : 'Approve and create Outlook draft'}</button>${status === 'pending' && draft.candidate_id ? `<button type="button" class="secondary" data-post-call-skip="${esc(draft.candidate_id)}" data-candidate-resolver="post_call">Skip</button>` : ''}</div>
     <small class="human-gate">Creates a draft only. Joe or Dell reviews and sends it in Outlook.</small>
