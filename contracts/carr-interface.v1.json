@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.24.0",
+  "version": "1.25.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "35009e9dedab3a603836c662d0f7f12dfeb1a284"
@@ -37,6 +37,7 @@
     "get-call-context",
     "get-deal-room",
     "get-incident",
+    "governance-queue",
     "incident-board",
     "link-incident-work-request",
     "list-doc-conversations",

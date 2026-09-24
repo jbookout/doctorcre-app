@@ -2627,6 +2627,39 @@ export async function createFixtureClient(opts = {}) {
       return { ok: true, items: sharedRequests.map((row) => ({ ...row, source: { ...row.source } })) };
     },
 
+    // V5-UX-C14: the synthetic twin of `governance-queue`, in the producer's own
+    // lane and field names (ops.read_governance_queue, migration 0345). Every
+    // row is visibly fictional and every id is a made-up uuid; no real rule,
+    // batch or proposal is copied here. The timestamps are relative to the
+    // current clock so the approvals card's ambient waiting clock exercises all
+    // three tempos (under a day, a day or more, past the 48-hour cadence).
+    async governanceQueue() {
+      refuseIfOutage('approvals', 'governance-queue');
+      const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
+      const rules = [
+        { rule_id: 'd0000000-0000-4000-8000-00000000c141', statement: 'Demo rule: a demo surface names its missing read instead of drawing a zero.', human_quote: 'demo partner words about honest zeros', scope: 'demo', taught_at: ago(74), enforcement_class: 'demo_hook', binding_moment: 'before a demo surface ships', admission_reason: 'Demo admission: enforcement checked against the demo fixture', enforcement_status: 'checked', fixture_refs: [], admitted_at: ago(72) },
+      ];
+      const batches = [
+        { batch_id: 'd0000000-0000-4000-8000-00000000c142', manifest_digest: `sha256:${'d'.repeat(64)}`, reason: 'Demo guidance import: three demo leasing notes', staging_key: 'demo-leasing-notes', staged_at: ago(30), entry_count: 3 },
+      ];
+      const proposals = [
+        { proposal_id: 'd0000000-0000-4000-8000-00000000c143', proposal_type: 'phrase', payload: { phrase: 'demo phrase' }, reason: 'Demo retrieval phrase for the demo vendor list', proposer_actor_id: 'joe', version: 1, proposed_at: ago(5) },
+        { proposal_id: 'd0000000-0000-4000-8000-00000000c144', proposal_type: 'concept', payload: {}, reason: null, proposer_actor_id: 'dell', version: 1, proposed_at: ago(2) },
+      ];
+      return {
+        ok: true,
+        pending_rule_approvals: rules,
+        pending_guidance_import_batches: batches,
+        pending_retrieval_proposals: proposals,
+        counts: {
+          pending_rule_approvals: rules.length,
+          pending_guidance_import_batches: batches.length,
+          pending_retrieval_proposals: proposals.length,
+          total: rules.length + batches.length + proposals.length,
+        },
+      };
+    },
+
     // ---------------------------------------------------------- command centre
     // The synthetic twin of the aggregate Home read. It is BUILT FROM THE SAME
     // fixture board the rest of this client serves, so the counts a person sees
