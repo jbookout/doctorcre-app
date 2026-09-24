@@ -27,6 +27,9 @@ import {
   keyboardTarget, moveIntent, moveSummary, moveTitle, orderColumn, presenceChip,
   recordPanelSections, typeFilters,
 } from "../js/pipeline-model.js";
+import {
+  createUndoState, ingestChangeEvents, performUndo, receiptViews,
+} from "../js/change-receipts.mjs";
 
 const ROOT = new URL("..", import.meta.url);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
@@ -322,6 +325,163 @@ test("a re-send under the same key replays the stored answer instead of writing 
   const changes = await client.getChanges(null);
   const phaseEvents = changes.events.filter((event) => event.subject_id === "d05" && event.field === "phase");
   assert.equal(phaseEvents.length, 1, "the second send wrote nothing");
+});
+
+/**
+ * Undo (V5-UX-B10a): a canonical correction through revert-deal-field, never a
+ * local rollback. Exercised through performUndo — exactly what pipeline.js's
+ * own runUndo calls — against the fixture client, which now mirrors the
+ * record layer's own gate: the reverted event must still be the LATEST event
+ * on that deal+field, or the server refuses `newer_change_exists`.
+ */
+test("an undo the actor made succeeds: revert-deal-field lands a canonical correction, not a rollback", async () => {
+  const client = await newClient();
+  const row = await boardRow(client, "d05");
+  const before = row.phase;
+  const write = await client.patchDealField({
+    deal: "d05", field: "phase", value: "Research",
+    base_event_id: row.field_base?.phase?.id || null, idempotency_key: "key-undo-write",
+  });
+  assert.equal(write.status, "ok");
+  assert.equal((await boardRow(client, "d05")).phase, "Research");
+
+  let undoState = createUndoState();
+  const result = await performUndo({
+    eventId: write.event_id,
+    getState: () => undoState,
+    setState: (next) => { undoState = next; },
+    newKey: () => "key-undo-1",
+    revert: (request) => client.revertDealField(request),
+  });
+  assert.equal(result.started, true);
+  assert.equal(result.outcome.status, "succeeded");
+  assert.equal((await boardRow(client, "d05")).phase, before, "the field reads back to what it held before");
+
+  // A canonical correction, not a silent rewrite of history: the revert is
+  // itself a new durable event, on the change feed like any other.
+  const changes = await client.getChanges(null);
+  const revertEvents = changes.events.filter((event) => event.subject_id === "d05" && event.verb === "revert-deal-field");
+  assert.equal(revertEvents.length, 1);
+  assert.equal(revertEvents[0].field, "phase");
+  assert.equal(revertEvents[0].new_value, before);
+});
+
+test("undo is refused, not clobbered, when a newer edit landed on the same field first", async () => {
+  const client = await newClient();
+  const row = await boardRow(client, "d01");
+  const firstWrite = await client.patchDealField({
+    deal: "d01", field: "phase", value: "Research",
+    base_event_id: row.field_base?.phase?.id || null, idempotency_key: "key-conflict-first",
+  });
+  assert.equal(firstWrite.status, "ok");
+  // A partner's own later edit to the same field — the case an undo must never
+  // overwrite.
+  const secondWrite = await client.patchDealField({
+    deal: "d01", field: "phase", value: "Legal",
+    base_event_id: firstWrite.event_id, idempotency_key: "key-conflict-second",
+  });
+  assert.equal(secondWrite.status, "ok");
+
+  let undoState = createUndoState();
+  const result = await performUndo({
+    eventId: firstWrite.event_id,
+    getState: () => undoState,
+    setState: (next) => { undoState = next; },
+    newKey: () => "key-undo-refused",
+    revert: (request) => client.revertDealField(request),
+  });
+  assert.equal(result.started, true);
+  assert.equal(result.outcome.status, "refused");
+  assert.equal(result.outcome.code, "newer_change_exists");
+  assert.match(result.outcome.message, /newer value/i);
+  // The newer edit is untouched — this is the whole point of the refusal.
+  assert.equal((await boardRow(client, "d01")).phase, "Legal");
+
+  // The Recent Changes view reflects the same refusal, via the shared kernel.
+  const receipts = ingestChangeEvents([], (await client.getChanges(null)).events, {
+    dealName: () => "Riverbank Dental",
+    actorLabel: (slug) => slug,
+  });
+  const views = receiptViews(receipts, { selfActor: client.selfActor, undo: undoState, now: Date.now() });
+  const view = views.find((v) => v.event_id === firstWrite.event_id);
+  assert.equal(view.undo_status, "refused");
+  assert.equal(view.can_undo, false, "a refused undo does not offer to retry the same clobber");
+  assert.match(view.message, /newer value/i);
+});
+
+test("a change to a field revert-deal-field cannot act on shows in Recent Changes with no undo button", async () => {
+  const client = await newClient();
+  const row = await boardRow(client, "d02");
+  const write = await client.setNextStep({
+    deal: "d02", text: "Confirm rent roll with landlord", idempotency_key: "key-next-step",
+  });
+  assert.ok(write.event?.id || write.event_id, "the fixture recorded the next-step event");
+
+  const changes = await client.getChanges(null);
+  const receipts = ingestChangeEvents([], changes.events, {
+    dealName: () => row.name,
+    actorLabel: (slug) => slug,
+  });
+  const nextStepReceipt = receipts.find((r) => r.field === "next_step");
+  assert.ok(nextStepReceipt, "the change appears in the feed this view is built from");
+  assert.equal(nextStepReceipt.revertible_field, false);
+
+  const views = receiptViews(receipts, { selfActor: client.selfActor, undo: createUndoState(), now: Date.now() });
+  const view = views.find((v) => v.event_id === nextStepReceipt.event_id);
+  assert.equal(view.undo_status, "unsupported");
+  assert.equal(view.can_undo, false);
+  assert.equal(view.badge, null, "not offering undo is silent here, not a refusal badge");
+});
+
+test("a lost response is reconciled by resending the SAME idempotency key, not by writing twice", async () => {
+  const client = await newClient();
+  const row = await boardRow(client, "d20");
+  const write = await client.patchDealField({
+    deal: "d20", field: "phase", value: "Legal",
+    base_event_id: row.field_base?.phase?.id || null, idempotency_key: "key-undo-lost-write",
+  });
+  assert.equal(write.status, "ok");
+
+  // A transport that commits the revert on the server but loses the answer on
+  // the way back — exactly the case classifyUndoOutcome treats as "unknown",
+  // never as a refusal and never as a silent success.
+  let dropNextAnswer = true;
+  const flakyRevert = async (request) => {
+    const response = await client.revertDealField(request);
+    if (dropNextAnswer) { dropNextAnswer = false; throw new Error("connection reset"); }
+    return response;
+  };
+
+  let undoState = createUndoState();
+  const lost = await performUndo({
+    eventId: write.event_id,
+    getState: () => undoState,
+    setState: (next) => { undoState = next; },
+    newKey: () => "key-undo-retry",
+    revert: flakyRevert,
+  });
+  assert.equal(lost.outcome.status, "unknown");
+  assert.match(lost.outcome.message, /could not be confirmed/);
+  // The write already landed even though the answer was lost.
+  assert.equal((await boardRow(client, "d20")).phase, row.phase);
+
+  // The SAME event, retried: beginUndo keeps the entry retryable while it is
+  // unknown, and reuses the same idempotency key rather than minting a new one.
+  const retried = await performUndo({
+    eventId: write.event_id,
+    getState: () => undoState,
+    setState: (next) => { undoState = next; },
+    newKey: () => "should-not-be-used",
+    revert: flakyRevert,
+  });
+  assert.equal(retried.started, true);
+  assert.equal(retried.idempotency_key, "key-undo-retry", "the retry replays under the original key");
+  assert.equal(retried.outcome.status, "succeeded");
+  assert.equal((await boardRow(client, "d20")).phase, row.phase, "reverted exactly once");
+
+  const changes = await client.getChanges(null);
+  const revertEvents = changes.events.filter((event) => event.subject_id === "d20" && event.verb === "revert-deal-field");
+  assert.equal(revertEvents.length, 1, "the reconciled retry replayed the stored answer instead of writing a second time");
 });
 
 test("the follow-ups run after the phase is accepted, each on its own key, and a failure does not un-move the card", async () => {
