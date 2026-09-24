@@ -790,10 +790,17 @@ export async function createFixtureClient(opts = {}) {
     error.status = 503;
     throw error;
   };
+  // V5-UX-C09: `fingerprint` follows the REAL server shape, documented in
+  // mcp-server/src/incident.js (`incidentFingerprint`):
+  // service|environment|operation|failure_class. The service key names the
+  // SAME `demo-worker` / `demo-exporter` service nodes scripts/atlas-fixture.mjs
+  // already emits, so the fixture can demonstrate the real, non-fabricated
+  // atlas-incident join (js/atlas-model.js serviceKeyFromIncidentFingerprint)
+  // end to end rather than only in a unit test.
   const incident = (row) => ({
     ref: row.ref, title: row.title, severity: row.severity, state: row.state,
     environment: 'staging', owner_actor: row.owner_actor, next_action: row.next_action,
-    business_impact: row.business_impact, fingerprint: `demo-service|${row.severity}|demo`,
+    business_impact: row.business_impact, fingerprint: row.fingerprint,
     detected_at: row.detected_at, observed_at: row.detected_at, monitoring_until: null,
     duplicate_of: null, monitoring_window_open: false, age_days: row.age_days,
     occurrences: row.occurrences, occurrence_evidence_status: 'complete',
@@ -801,9 +808,9 @@ export async function createFixtureClient(opts = {}) {
     ready_to_close: row.ready_to_close, blocked_by: row.blocked_by || null,
   });
   const incidents = [
-    incident({ ref: 'INC-20260915-01', title: 'Demo export service stopped writing its nightly generation', severity: 'SEV-1', state: 'investigating', owner_actor: 'joe', next_action: 'Read the demo export log and name the failing generation', business_impact: 'The demo nightly export is not being produced', detected_at: '2026-09-13T04:10:00.000Z', age_days: 4, occurrences: 6, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
-    incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
-    incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
+    incident({ ref: 'INC-20260915-01', title: 'Demo export service stopped writing its nightly generation', severity: 'SEV-1', state: 'investigating', owner_actor: 'joe', next_action: 'Read the demo export log and name the failing generation', business_impact: 'The demo nightly export is not being produced', fingerprint: 'demo-exporter|production|nightly-export|timeout', detected_at: '2026-09-13T04:10:00.000Z', age_days: 4, occurrences: 6, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
+    incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', fingerprint: 'demo-worker|production|search-read|slow_response', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
+    incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', fingerprint: 'demo-worker|staging|deploy|transient_error', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
   ];
   /* -------------------------------------------- notification fixtures (B12a)
    * The synthetic twin of `ops.notification`, in the producer's OWN shape: a
@@ -897,6 +904,16 @@ export async function createFixtureClient(opts = {}) {
         { observed_at: '2026-09-16T04:11:00.000Z', note: 'Demo failure repeated on the nightly run' },
       ],
       links: [{ kind: 'work_request', ref: 'WR-000901', label: 'Demo bounded request: reconcile the demo vendor rows' }],
+      // V5-UX-C09: the synthetic twin of `get-incident`'s REAL `services` and
+      // `trace` arrays (mcp-server/src/incident.js — an `ops.incident_service`
+      // join and the correlated `ops.v_trace` rows). Neither is fabricated
+      // shape: both are named fields the real verb already returns.
+      services: [{ key: 'demo-exporter', name: 'Demo exporter', criticality: 'high' }],
+      trace: [
+        { correlation_id: 'demo-correlation-01', kind: 'deployment', ref: 'DEP-demo-901', state: 'succeeded', environment: 'production', service_key: 'demo-exporter', failure_class: null, detail: 'Demo deploy that shipped the export writer', source_kind: 'deployment', source_ref: 'ops.deployment', freshness_state: 'fresh', occurred_at: '2026-09-12T22:00:00.000Z' },
+        { correlation_id: 'demo-correlation-01', kind: 'run', ref: 'RUN-demo-9001', state: 'failed', environment: 'production', service_key: 'demo-exporter', failure_class: 'timeout', detail: 'Demo nightly export run exited before writing its generation', source_kind: 'run', source_ref: 'ops.run', freshness_state: 'fresh', occurred_at: '2026-09-13T04:10:00.000Z' },
+        { correlation_id: 'demo-correlation-01', kind: 'work_request', ref: 'WR-000901', state: 'captured', environment: 'production', service_key: null, failure_class: null, detail: 'Demo bounded request opened from the failed run', source_kind: 'work_request', source_ref: 'ops.work_request', freshness_state: 'fresh', occurred_at: '2026-09-13T04:30:00.000Z' },
+      ],
     }],
     ['INC-20260916-02', {
       facts: [
@@ -908,6 +925,10 @@ export async function createFixtureClient(opts = {}) {
       ],
       occurrences: [{ observed_at: '2026-09-15T11:25:00.000Z', note: 'Demo slow read observed under demo load' }],
       links: [{ kind: 'run', ref: 'RUN-demo-0042', label: 'Demo load run 0042' }],
+      services: [{ key: 'demo-worker', name: 'Demo worker', criticality: 'critical' }],
+      trace: [
+        { correlation_id: 'demo-correlation-02', kind: 'check', ref: 'CHK-demo-42', state: 'degraded', environment: 'production', service_key: 'demo-worker', failure_class: 'slow_response', detail: 'Demo search read check crossed the demo budget', source_kind: 'check', source_ref: 'ops.check', freshness_state: 'fresh', occurred_at: '2026-09-15T11:25:00.000Z' },
+      ],
     }],
     ['INC-20260916-03', {
       facts: [
@@ -918,6 +939,11 @@ export async function createFixtureClient(opts = {}) {
       ],
       occurrences: [{ observed_at: '2026-09-16T09:40:00.000Z', note: 'Demo deploy retried once' }],
       links: [],
+      services: [{ key: 'demo-worker', name: 'Demo worker', criticality: 'critical' }],
+      trace: [
+        { correlation_id: 'demo-correlation-03', kind: 'deployment', ref: 'DEP-demo-902', state: 'failed', environment: 'staging', service_key: 'demo-worker', failure_class: 'transient_error', detail: 'Demo staging deploy failed once', source_kind: 'deployment', source_ref: 'ops.deployment', freshness_state: 'fresh', occurred_at: '2026-09-16T09:40:00.000Z' },
+        { correlation_id: 'demo-correlation-03', kind: 'deployment', ref: 'DEP-demo-903', state: 'succeeded', environment: 'staging', service_key: 'demo-worker', failure_class: null, detail: 'Demo staging deploy retried and succeeded', source_kind: 'deployment', source_ref: 'ops.deployment', freshness_state: 'fresh', occurred_at: '2026-09-16T09:42:00.000Z' },
+      ],
     }],
   ]);
 
@@ -1872,6 +1898,13 @@ export async function createFixtureClient(opts = {}) {
         hypotheses: detail.hypotheses.map((hypothesis) => ({ ...hypothesis })),
         occurrences: detail.occurrences.map((occurrence) => ({ ...occurrence })),
         links: detail.links.map((link) => ({ ...link })),
+        // V5-UX-C09: `services` (the real `ops.incident_service` join) and
+        // `trace` (the real `ops.v_trace` correlated rows) — see the fixture
+        // seed above. Absent from a fixture entry that predates this slice
+        // would mean "no service and no trace recorded", which is itself an
+        // honest state atlas.js already handles.
+        services: (detail.services || []).map((service) => ({ ...service })),
+        trace: (detail.trace || []).map((step) => ({ ...step })),
       };
     },
 

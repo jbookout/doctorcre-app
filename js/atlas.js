@@ -25,7 +25,14 @@ import {
   EXPOSURE_STATEMENT, INCOMPLETE_HEADING, LAYER_LABEL, NO_ENFORCEMENT_SENTENCE, NO_RUN_HEADING, NO_SUCCESSOR_SENTENCE,
   NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, RUN_HEADING, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
   atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex,
-  mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS } from "./atlas-model.js";
+  mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS,
+  // V5-UX-C09 — incidents, recorded trace and the Doc tour.
+  CAUSAL_GRAPH_GAP_SENTENCE, DOC_TOUR_EMPTY, DOC_TOUR_END, DOC_TOUR_INTRO, HOW_THIS_WORKS_VS_RUN_SENTENCE,
+  INCIDENT_JOIN_SENTENCE, INCIDENT_TRACE_HEADING,
+  NO_INCIDENT_READ_SENTENCE, NO_INCIDENT_TRACE_SENTENCE, TRACE_NOT_COMMAND_FLOW_SENTENCE,
+  buildDocTour, groupHasOpenIncident, incidentServiceIndex, incidentTraceRows, serviceNodeOpenIncidents,
+} from "./atlas-model.js";
+import { canonicalHref, validIncidentBoardPayload } from "./control-room-model.js";
 import { escapeHtml } from "./control-room.js";
 import { formatClock } from "./visual-system.js";
 import { mountAtlasScene } from "./atlas-scene.js";
@@ -60,12 +67,32 @@ const view = {
   // "index" is the accessible primary surface; "anatomical" is the added,
   // toggled view. Neither persists past this page's life.
   rendererView: "index",
+  // The incident trace drawer for the currently selected service node: at
+  // most one open incident's `get-incident` read, fetched lazily on request
+  // and never on a plain node selection.
+  trace: { ref: null, state: "idle", payload: null },
+  // The Doc tour: a scripted sequence of the SAME selections a click would
+  // make. `active` false means ordinary browsing; a selection made outside
+  // `advance`/`retreat` while active marks the tour "diverged" so it stops
+  // claiming to be at a scripted step without losing the user's own move.
+  tour: { active: false, steps: [], index: -1, diverged: false, before: null },
 };
 
 let mounted = false;
 let debounce = null;
 let scene = null;
 let scenePayload = null;
+// V5-UX-C09: the same record-layer client control-room.js already built, used
+// ONLY to lazily read one incident's trace on request. No second incidentBoard
+// call is ever made from here — that read is handed in, not re-fetched.
+let recordClient = null;
+// A GETTER, not a snapshot: control-room.js's incidents read settles
+// asynchronously after boot and REPLACES its own `view.reads.incidents`
+// object rather than mutating it, so a value captured once at mount time
+// could go stale. Reading it live, on every render, means the badge appears
+// the moment the dashboard's own read lands — the exact "same dashboard
+// records" this binds to (C14) — with no second incident-board request.
+let getIncidentsRead = () => null;
 
 const requestOptions = (cursor = null) => ({
   layer: view.layer, q: view.q, includeRetired: view.includeRetired, limit: ATLAS_LIMIT_DEFAULT, cursor,
@@ -213,13 +240,39 @@ function renderControls() {
   if (retired) retired.checked = view.includeRetired;
 }
 
-function nodeRow(node) {
+/** V5-UX-C09: the SAME incident-board read handed in by control-room.js, read
+ * live and indexed once per render rather than scanned per node. `null` when
+ * nothing has been read yet, or the read is still pending or failed — the
+ * honest "not read" state, never an empty match. */
+function incidentIndex() {
+  const read = getIncidentsRead();
+  const payload = read?.state === "read" && validIncidentBoardPayload(read.payload) ? read.payload : null;
+  return payload ? incidentServiceIndex(payload) : null;
+}
+
+/** Whether the incident-board read handed in by control-room.js has settled,
+ * regardless of whether it found anything. Distinguishes "not read yet" from
+ * "read, and nothing on this page carries an open incident". */
+function incidentsAvailable() {
+  const read = getIncidentsRead();
+  return read?.state === "read" && validIncidentBoardPayload(read.payload);
+}
+
+function incidentChip(node, index) {
+  const incidents = serviceNodeOpenIncidents(node, index);
+  if (incidents.length === 0) return "";
+  const label = incidents.length === 1 ? incidents[0].ref : `${incidents.length} open incidents`;
+  return `<span class="chip" data-atlas-chip="incident" data-state="urgent"><span class="chip-label">open incident</span>${escapeHtml(label)}</span>`;
+}
+
+function nodeRow(node, index) {
   const chips = [
     chip("layer", node.layer),
     chip("evidence", node.evidence),
     chip("status", node.status ?? "unstated"),
     node.unlinked ? chip("unlinked", "on this page") : "",
     node.retired_at ? chip("retired", formatClock(node.retired_at) || node.retired_at) : "",
+    incidentChip(node, index),
   ].join("");
   return `<li class="work-item atlas-node" data-node="${escapeHtml(node.id)}" data-selected="${node.id === view.selected}">
     <div>
@@ -235,17 +288,26 @@ function renderIndex() {
   const root = $("atlasIndex");
   if (!root) return;
   if (!view.payload) { root.innerHTML = ""; return; }
-  root.innerHTML = groupIndex(view.payload).map((group) => `
+  const index = incidentIndex();
+  // CR-AC-03: "collapsed ancestors retain alert visibility." A <details> the
+  // reader has collapsed must still show that something inside it carries an
+  // open incident, so the alert marker is printed on every <summary>, not
+  // only on the leaf row.
+  const alertMark = (nodes) => (groupHasOpenIncident(nodes, index) ? ` <span class="chip" data-atlas-chip="incident" data-state="urgent">open incident inside</span>` : "");
+  root.innerHTML = groupIndex(view.payload).map((group) => {
+    const groupNodes = group.classes.flatMap((entry) => entry.nodes);
+    return `
     <details class="atlas-layer" open>
-      <summary><span class="eyebrow">Layer</span> ${escapeHtml(group.label)}</summary>
+      <summary><span class="eyebrow">Layer</span> ${escapeHtml(group.label)}${alertMark(groupNodes)}</summary>
       ${group.classes.map((entry) => `
         <details class="atlas-class" open>
-          <summary><span class="eyebrow">${escapeHtml(entry.class)}</span> ${escapeHtml(entry.label)} · ${entry.nodes.length} on this page</summary>
+          <summary><span class="eyebrow">${escapeHtml(entry.class)}</span> ${escapeHtml(entry.label)} · ${entry.nodes.length} on this page${alertMark(entry.nodes)}</summary>
           ${entry.nodes.length === 0
             ? `<p class="small">This class returned no node on this page.</p>`
-            : `<ul class="work-list">${entry.nodes.map(nodeRow).join("")}</ul>`}
+            : `<ul class="work-list">${entry.nodes.map((node) => nodeRow(node, index)).join("")}</ul>`}
         </details>`).join("")}
-    </details>`).join("");
+    </details>`;
+  }).join("");
   for (const button of root.querySelectorAll("button[data-atlas-select]")) {
     button.addEventListener("click", () => selectNode(button.dataset.atlasSelect));
   }
@@ -272,6 +334,71 @@ function edgeRow(edge, direction) {
       </div>
     </div>
   </li>`;
+}
+
+/** V5-UX-C09: the incident section of the selection drawer. Only a `service`
+ * node can carry one, per the real `ops.incident_service` join this app can
+ * actually read — see INCIDENT_JOIN_SENTENCE. */
+function incidentSection(node) {
+  if (node.class !== "service") return "";
+  if (!incidentsAvailable()) return `<p class="small">${escapeHtml(NO_INCIDENT_READ_SENTENCE)}</p>`;
+  const incidents = serviceNodeOpenIncidents(node, incidentIndex());
+  if (incidents.length === 0) return `<p class="small">No open incident names this service on the same incident-board read the dashboard holds.</p>`;
+  const rows = incidents.map((row) => {
+    const href = canonicalHref(row);
+    return `<li class="work-item" data-incident="${escapeHtml(row.ref)}">
+      <div><h3 class="mono">${escapeHtml(row.ref)}</h3><div class="work-meta"><span>${escapeHtml(row.severity || "unknown severity")}</span><span>${escapeHtml(row.state || "unknown state")}</span></div></div>
+      <div class="stack-end">
+        ${href ? `<a class="btn" href="${escapeHtml(href)}">Open ${escapeHtml(row.ref)}</a>` : ""}
+        <button class="btn" type="button" data-atlas-trace="${escapeHtml(row.ref)}">${view.trace.ref === row.ref && view.trace.state !== "idle" ? "Hide trace" : "Trace this incident"}</button>
+      </div>
+    </li>`;
+  }).join("");
+  return `<h4>Open incidents</h4><p class="small">${escapeHtml(INCIDENT_JOIN_SENTENCE)}</p><ul class="work-list">${rows}</ul>${traceDrawer()}`;
+}
+
+/** The recorded, correlated trace for whichever incident the reader asked to
+ * trace. Fetched lazily (see readTrace) and rendered from get-incident's REAL
+ * `trace` rows — never a second incident-board read, never a fabricated step. */
+function traceDrawer() {
+  if (!view.trace.ref || view.trace.state === "idle") return "";
+  if (view.trace.state === "loading") return `<div class="state-block" data-state="loading"><h4>${escapeHtml(INCIDENT_TRACE_HEADING)}</h4><p>Reading ${escapeHtml(view.trace.ref)}…</p></div>`;
+  if (view.trace.state === "unknown") return `<div class="state-block" data-state="urgent"><h4>${escapeHtml(INCIDENT_TRACE_HEADING)}</h4><p>${escapeHtml(view.trace.ref)} could not be read. Nothing here has been inferred.</p></div>`;
+  const rows = incidentTraceRows(view.trace.payload?.trace);
+  return `
+    <div class="atlas-trace">
+      <h4>${escapeHtml(INCIDENT_TRACE_HEADING)}</h4>
+      <p class="small">${escapeHtml(TRACE_NOT_COMMAND_FLOW_SENTENCE)}</p>
+      ${rows.length === 0
+        ? `<p class="small">${escapeHtml(NO_INCIDENT_TRACE_SENTENCE)}</p>`
+        : `<ul class="work-list">${rows.map((row) => `<li class="work-item" data-trace-kind="${escapeHtml(row.kind)}">
+            <div><h3>${escapeHtml(row.kind)} · ${escapeHtml(row.ref)}</h3>
+            <div class="work-meta"><span>${escapeHtml(row.state)}</span><span>${escapeHtml(row.environment)}</span>${row.service_key ? `<span class="mono">${escapeHtml(row.service_key)}</span>` : ""}<span>${escapeHtml(row.occurred_at ? (formatClock(row.occurred_at) || row.occurred_at) : "no clock recorded")}</span></div></div>
+          </li>`).join("")}</ul>`}
+    </div>`;
+}
+
+/** Lazy, on-request only: no node selection eagerly reads get-incident. */
+async function readTrace(ref) {
+  if (view.trace.ref === ref && view.trace.state !== "idle") {
+    // Toggling the same incident closed again is a local state change, not a
+    // fresh read: the drawer hides without re-hitting the record layer.
+    view.trace = { ref: null, state: "idle", payload: null };
+    render();
+    return;
+  }
+  view.trace = { ref, state: "loading", payload: null };
+  render();
+  if (!recordClient) { view.trace = { ref, state: "unknown", payload: null }; render(); return; }
+  try {
+    const payload = await recordClient.getIncident({ ref, fact_limit: 1 });
+    if (view.trace.ref !== ref) return; // superseded by a newer request
+    view.trace = { ref, state: "ready", payload };
+  } catch {
+    if (view.trace.ref !== ref) return;
+    view.trace = { ref, state: "unknown", payload: null };
+  }
+  render();
 }
 
 function renderSelection() {
@@ -313,11 +440,15 @@ function renderSelection() {
     ${ruleNotes}
     ${node.unlinked ? `<p class="small">${escapeHtml(UNLINKED_SENTENCE)}</p>` : ""}
     ${node.retired_at ? `<p class="small">Retired ${escapeHtml(formatClock(node.retired_at) || node.retired_at)} · status ${escapeHtml(node.status ?? "unstated")}. ${escapeHtml(NO_SUCCESSOR_SENTENCE)}</p>` : ""}
+    <div class="atlas-incidents">${incidentSection(node)}${node.class === "service" && serviceNodeOpenIncidents(node, incidentIndex()).length > 0 ? `<p class="small">${escapeHtml(CAUSAL_GRAPH_GAP_SENTENCE)}</p>` : ""}</div>
     <h4>Relationships</h4>
     <p class="small">${escapeHtml(PAGE_SCOPE_SENTENCE)}</p>
     ${selection.out.length + selection.in.length === 0
       ? `<p class="small">No relationship to a node on this page is recorded.</p>`
       : `<ul class="work-list">${selection.out.map((edge) => edgeRow(edge, "points at")).join("")}${selection.in.map((edge) => edgeRow(edge, "pointed at by")).join("")}</ul>`}`;
+  for (const button of root.querySelectorAll("button[data-atlas-trace]")) {
+    button.addEventListener("click", () => readTrace(button.dataset.atlasTrace));
+  }
 }
 
 function renderState() {
@@ -405,6 +536,39 @@ function renderRenderer() {
   }
 }
 
+/** V5-UX-C09 — Doc's tour: what to show above/beside the selection drawer. */
+function renderTour() {
+  const panel = $("atlasTourPanel");
+  const start = $("atlasTourStart");
+  if (start) start.disabled = !view.payload || (Array.isArray(view.payload.nodes) && view.payload.nodes.length === 0);
+  if (!panel) return;
+  const tour = view.tour;
+  if (!tour.active) {
+    panel.hidden = true;
+    if (start) start.hidden = false;
+    return;
+  }
+  if (start) start.hidden = true;
+  panel.hidden = false;
+  const intro = $("atlasTourIntro");
+  if (intro) intro.textContent = DOC_TOUR_INTRO;
+  const atEnd = tour.steps.length === 0 || tour.index >= tour.steps.length;
+  const status = $("atlasTourStatus");
+  if (status) status.textContent = tour.steps.length === 0
+    ? DOC_TOUR_EMPTY
+    : atEnd ? DOC_TOUR_END : `Step ${tour.index + 1} of ${tour.steps.length}`;
+  const narration = $("atlasTourNarration");
+  if (narration) {
+    narration.textContent = atEnd || tour.steps.length === 0 ? "" : tour.diverged
+      ? `You moved the selection yourself — this is still where the tour was pointing. ${tour.steps[tour.index].narration}`
+      : tour.steps[tour.index].narration;
+  }
+  $("atlasTourPrev")?.toggleAttribute("disabled", tour.index <= 0);
+  $("atlasTourNext")?.toggleAttribute("disabled", atEnd);
+  const live = $("atlasTourLive");
+  if (live && !atEnd && tour.steps.length > 0) live.textContent = `Doc: ${tour.steps[tour.index].narration}`;
+}
+
 function render() {
   renderState();
   renderVersion();
@@ -414,12 +578,25 @@ function render() {
   renderPaging();
   renderSelection();
   renderRenderer();
+  renderTour();
 }
 
 /* ------------------------------------------------------------------ selection */
 
 function selectNode(id, { push = true } = {}) {
   view.selected = id || null;
+  // A fresh selection retires whatever incident trace was open for the
+  // PREVIOUS node: the drawer never shows one node's trace under another
+  // node's heading.
+  view.trace = { ref: null, state: "idle", payload: null };
+  // The tour's own steps call this too (see advanceTour/retreatTour). A
+  // selection that does not match where the tour currently points is a
+  // reader's own move — "branch" — and is marked rather than silently
+  // overwritten, so the narration stays honest about what is on screen.
+  if (view.tour.active) {
+    const current = view.tour.steps[view.tour.index];
+    view.tour.diverged = !current || current.id !== id;
+  }
   if (push && globalThis.history?.pushState) {
     const url = new URL(globalThis.location.href);
     url.searchParams.set("tab", "atlas");
@@ -432,18 +609,73 @@ function selectNode(id, { push = true } = {}) {
   render();
 }
 
+/* --------------------------------------------------------------- Doc tour (C09) */
+
+/**
+ * `before` remembers exactly the selection this tab held before the tour
+ * started, so exiting RESTORES it rather than leaving the tour's last stop
+ * selected — the "no camera hijack" half of checkable_done's tour bullet, and
+ * consistent with C14's "Back restores camera/filter/context".
+ */
+function startTour() {
+  if (view.tour.active) return;
+  view.tour = {
+    active: true,
+    steps: buildDocTour(view.payload, incidentIndex()),
+    index: -1,
+    diverged: false,
+    before: { selected: view.selected },
+  };
+  advanceTour();
+}
+
+function advanceTour() {
+  if (!view.tour.active) return;
+  if (view.tour.index + 1 >= view.tour.steps.length) {
+    view.tour.index = view.tour.steps.length; // past the last step: DOC_TOUR_END
+    render();
+    return;
+  }
+  view.tour.index += 1;
+  view.tour.diverged = false;
+  selectNode(view.tour.steps[view.tour.index].id, { push: false });
+}
+
+function retreatTour() {
+  if (!view.tour.active || view.tour.index <= 0) return;
+  view.tour.index -= 1;
+  view.tour.diverged = false;
+  selectNode(view.tour.steps[view.tour.index].id, { push: false });
+}
+
+function exitTour() {
+  if (!view.tour.active) return;
+  const before = view.tour.before;
+  view.tour = { active: false, steps: [], index: -1, diverged: false, before: null };
+  selectNode(before ? before.selected : null, { push: false });
+}
+
 /* ---------------------------------------------------------------------- mount */
 
 /**
  * Mounted on FIRST selection of the Atlas tab, never on page boot: the Control
  * Room's four existing reads must not wait behind this one.
  */
-export function mountAtlas({ outage = null, node = null } = {}) {
+export function mountAtlas({ outage = null, node = null, getIncidentsRead: incidentsReader = null, client = null } = {}) {
   if (mounted) return;
   mounted = true;
   view.outage = outage;
+  // V5-UX-C09: reuse control-room.js's OWN incident-board read (a getter, so
+  // it is read live rather than snapshotted stale — see the module comment
+  // above) and its already-built record-layer client, for the lazy per-
+  // incident trace read only. Neither performs a request atlas.js did not
+  // already have a reason to make.
+  if (typeof incidentsReader === "function") getIncidentsRead = incidentsReader;
+  recordClient = client;
   const exposure = $("atlasExposure");
   if (exposure) exposure.textContent = EXPOSURE_STATEMENT;
+  const howNote = $("atlasHowThisWorksNote");
+  if (howNote) howNote.textContent = HOW_THIS_WORKS_VS_RUN_SENTENCE;
   const filters = $("atlasLayerFilters");
   if (filters) {
     filters.innerHTML = [["all", "All"], ...ATLAS_LAYERS.map((layer) => [layer, LAYER_LABEL[layer]])]
@@ -480,6 +712,10 @@ export function mountAtlas({ outage = null, node = null } = {}) {
     view.rendererView = button.dataset.atlasView === "anatomical" ? "anatomical" : "index";
     render();
   });
+  $("atlasTourStart")?.addEventListener("click", () => startTour());
+  $("atlasTourNext")?.addEventListener("click", () => advanceTour());
+  $("atlasTourPrev")?.addEventListener("click", () => retreatTour());
+  $("atlasTourExit")?.addEventListener("click", () => exitTour());
   if (node) view.selected = node;
   read().then(() => { if (node) selectNode(node, { push: false }); });
 }

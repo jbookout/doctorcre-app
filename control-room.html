@@ -271,6 +271,29 @@
         <div class="atlas-version" id="atlasVersionLine"></div>
         <div class="state-block" id="atlasState" data-state="idle"></div>
         <div class="row-wrap"><button class="btn" type="button" id="atlasRetry" hidden>Try the atlas read again</button></div>
+        <!-- V5-UX-C09 — C15/CR-AC-07: how this system is wired, separated up
+             front from what has actually been seen running. -->
+        <p class="small" id="atlasHowThisWorksNote"></p>
+      </section>
+
+      <section class="card glass" data-section="atlas_tour" aria-labelledby="atlasTourTitle">
+        <div class="card-heading"><div><p class="eyebrow">Optional</p><h2 id="atlasTourTitle">Doc's tour</h2></div></div>
+        <p class="small">A scripted walkthrough of real components on this page. It explains; it does not replay a run.</p>
+        <div class="row-wrap">
+          <button class="btn" type="button" id="atlasTourStart">Start Doc's tour</button>
+        </div>
+        <div id="atlasTourPanel" hidden>
+          <p class="small" id="atlasTourIntro"></p>
+          <p class="atlas-tour-status" id="atlasTourStatus"></p>
+          <p class="atlas-tour-narration" id="atlasTourNarration"></p>
+          <div class="row-wrap">
+            <button class="btn" type="button" id="atlasTourPrev">Back</button>
+            <button class="btn" type="button" id="atlasTourNext">Next</button>
+            <button class="btn" type="button" id="atlasTourExit">Exit tour</button>
+          </div>
+          <p class="caption">Select any other component at any time — the tour keeps its place and picks up again on Next.</p>
+        </div>
+        <p class="sr-only" id="atlasTourLive" aria-live="polite"></p>
       </section>
 
       <section class="card glass" data-section="atlas_coverage" aria-labelledby="atlasCoverageHeading">

@@ -401,10 +401,31 @@ export function notInReleaseBlocks() {
     { id: "accomplishments", title: "Accomplishments: not in this release", slice: "V5-UX-C01", reason: "no verified-accomplishment producer exists" },
     { id: "detected_and_repaired", title: "Detected and repaired: not in this release", slice: "V5-UX-C01", reason: "no producer records a detection and its repair" },
     { id: "resources", title: "Resources: not in this release", slice: "V5-UX-C02 through V5-UX-C06", reason: "resource metering is read in those slices" },
-    // V5-UX-C08b wired the anatomical renderer into the live Atlas tab, so it
-    // is no longer a scope statement: only C09's causal traces, incident
-    // overlays and Doc-guided tours remain unbuilt.
-    { id: "atlas_incidents_tours", title: "Atlas incidents and tours: not in this release", slice: "V5-UX-C09", reason: "causal traces, incident overlays and Doc-guided tours ship there; the anatomical renderer is live on the Atlas tab now" },
+    // V5-UX-C08b wired the anatomical renderer into the live Atlas tab, and
+    // V5-UX-C09 bound incident markers, a recorded/correlated incident trace
+    // and an optional Doc tour to it — all from verbs already pinned
+    // (incident-board, get-incident) and no second canonical work store. Two
+    // pieces of C09's spec remain genuinely unbuilt, each for a reason named
+    // where the reader can see it rather than silently dropped:
+    //
+    //  1. A structured per-component failure map (CR-AC-05 / C31: failed vs
+    //     downstream-blocked vs healthy-parallel). No verb ties an atlas node
+    //     id to a live per-node health status, and investigation-neighborhood
+    //     — the only candidate — is a different subsystem keyed by an
+    //     investigation run id, whose own description forbids inventing an
+    //     edge it was not given (js/atlas-model.js CAUSAL_GRAPH_GAP_SENTENCE).
+    //  2. A planned/proposed architecture overlay and its links to affected
+    //     work (CR-AC-13, C28). No verb reads a proposed addition distinct
+    //     from operating architecture, and no verb links an atlas node to the
+    //     work that would finish it, so an overlay here would be invented.
+    {
+      id: "atlas_causal_failure_graph_and_planned_layer",
+      title: "Atlas causal failure map and planned-architecture layer: not in this release",
+      slice: "V5-UX-C09",
+      reason: "incident markers, a recorded incident trace and an optional Doc tour are live on the Atlas tab now; a " +
+        "per-component failure/health map and a planned-vs-operating overlay are not — no verb supplies either " +
+        "without inventing an edge (see js/atlas-model.js CAUSAL_GRAPH_GAP_SENTENCE)",
+    },
   ];
 }
 

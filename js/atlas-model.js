@@ -472,3 +472,198 @@ export function atlasSceneAvailability(payload) {
   if (nodes.length > ATLAS_SCENE_NODE_CAP) return Object.freeze({ available: false, reason: "too_large", count: nodes.length });
   return Object.freeze({ available: true, reason: null, count: nodes.length });
 }
+
+/* ---------------------------------------------------------- V5-UX-C09: incidents
+ *
+ * `incident-board`'s own row carries no `service` field — its de-dupe identity
+ * (`i.signature`, returned as `fingerprint`) is the ONLY place a service key
+ * survives on a board row, and mcp-server/src/incident.js says so itself:
+ * "The fingerprint's first field IS the service key" (incident.js:511-514,
+ * `incidentFingerprint`: service|environment|operation|failure_class). A
+ * fingerprint that is not exactly that four-part shape yields no service key
+ * rather than a guessed one — a malformed or legacy fingerprint is a gap, not
+ * a match.
+ *
+ * `get-incident` carries an exact `services[].key` join instead (a real
+ * `ops.incident_service` -> `ops.service` join), but reading it costs a
+ * request per incident, so the BOARD-WIDE badge below — the one bound to
+ * "same dashboard records" (C14) — uses the fingerprint prefix, which is
+ * already on the SAME incident-board read the dashboard itself reads. Nothing
+ * here performs a second incident-board request: the caller hands over the
+ * exact payload already on screen elsewhere.
+ */
+export const INCIDENT_JOIN_SENTENCE =
+  "An atlas service node is marked with an open incident when the incident's own fingerprint " +
+  "(service|environment|operation|failure_class, mcp-server/src/incident.js) names this service's key. " +
+  "This is the same incident-board read the dashboard already holds, not a second request.";
+
+export const NO_INCIDENT_READ_SENTENCE =
+  "The incident ledger has not been read on this device yet, so no service is marked with an open incident here.";
+
+/** The service|environment|operation|failure_class shape, or null. Never a guess. */
+export function serviceKeyFromIncidentFingerprint(fingerprint) {
+  if (typeof fingerprint !== "string" || fingerprint.length === 0) return null;
+  const parts = fingerprint.split("|");
+  if (parts.length !== 4 || parts.some((part) => part.length === 0)) return null;
+  return parts[0];
+}
+
+/** Every open incident, indexed by the service key its own fingerprint names. */
+export function incidentServiceIndex(incidentBoardPayload) {
+  const rows = Array.isArray(incidentBoardPayload?.incidents) ? incidentBoardPayload.incidents : [];
+  const index = new Map();
+  for (const row of rows) {
+    const key = serviceKeyFromIncidentFingerprint(row?.fingerprint);
+    if (key === null) continue;
+    const existing = index.get(key) || [];
+    existing.push(row);
+    index.set(key, existing);
+  }
+  return index;
+}
+
+/** The open incidents this node's own key names, or an empty list. Service nodes only:
+ * the join is to `ops.service`, and no other node class carries a service key. */
+export function serviceNodeOpenIncidents(node, incidentIndex) {
+  if (!node || node.class !== "service" || !(incidentIndex instanceof Map)) return [];
+  return incidentIndex.get(node.key) || [];
+}
+
+/** True for a layer/class group (an "ancestor") that contains a node carrying
+ * an open incident — so a collapsed `<details>` group still shows the alert
+ * that a reader collapsing it would otherwise hide (CR-AC-03's "collapsed
+ * ancestors retain alert visibility"). */
+export function groupHasOpenIncident(nodes, incidentIndex) {
+  return (Array.isArray(nodes) ? nodes : []).some((node) => serviceNodeOpenIncidents(node, incidentIndex).length > 0);
+}
+
+/* --------------------------------------------------- V5-UX-C09: recorded trace
+ *
+ * `get-incident` already returns a real `trace` array — `ops.v_trace` rows
+ * sharing the incident's correlation id(s), in time order (deploys, job runs,
+ * checks, work requests). It is a RECORDED, correlated timeline, not a
+ * per-atlas-node health map and not a rule-by-rule command walk (C15's entry /
+ * permission / rules / hooks / code / data / outcome chain): a row here names
+ * a `kind` and a `ref`, never a hook or a gate. CR-AC-07's "unknown steps
+ * remain gaps" is honoured by naming what this data cannot show rather than
+ * dressing it up as more than it is.
+ */
+export const INCIDENT_TRACE_HEADING = "Recorded steps for this incident";
+
+export const NO_INCIDENT_TRACE_SENTENCE =
+  "This incident's ledger carries no correlated step yet.";
+
+export const TRACE_NOT_COMMAND_FLOW_SENTENCE =
+  "These are the deploys, runs, checks and work requests recorded against this incident's correlation id, in the " +
+  "order they happened. They are not a rule-by-rule walk through entry, permission, rules, hooks, code and data — " +
+  "no verb reads that chain for this app yet — and nothing below is replayed or animated as if it were live.";
+
+/** `get-incident`'s `trace` rows, painted with a clock this file formats once. */
+export function incidentTraceRows(trace) {
+  return (Array.isArray(trace) ? trace : [])
+    .filter((row) => row && typeof row === "object" && typeof row.kind === "string" && row.kind.length > 0)
+    .map((row) => ({
+      kind: row.kind,
+      ref: typeof row.ref === "string" ? row.ref : "unknown",
+      state: typeof row.state === "string" && row.state.length > 0 ? row.state : "unknown",
+      environment: typeof row.environment === "string" && row.environment.length > 0 ? row.environment : "unknown",
+      service_key: typeof row.service_key === "string" && row.service_key.length > 0 ? row.service_key : null,
+      occurred_at: typeof row.occurred_at === "string" ? row.occurred_at : null,
+      freshness_state: typeof row.freshness_state === "string" && row.freshness_state.length > 0 ? row.freshness_state : "unknown",
+    }));
+}
+
+/**
+ * CR-AC-05 / C31's structured per-component health propagation — failed vs
+ * merely downstream-and-blocked vs healthy-parallel — is NOT built. No verb
+ * ties an atlas node id to a live per-node health status: `investigation-
+ * neighborhood`'s own description says "the caller may not invent an edge",
+ * it is keyed by an investigation `run_id` with no join to an incident ref or
+ * an atlas node id, and `get-incident`'s `trace` above names EVENTS, not
+ * component health. Inventing that graph from either would be exactly the
+ * fabricated-edge failure this slice exists to refuse, so this sentence is
+ * shown instead wherever that graph would otherwise be drawn.
+ */
+export const CAUSAL_GRAPH_GAP_SENTENCE =
+  "This release does not read a per-component failure map. No verb ties an atlas node id to a live health status, " +
+  "and the closest candidate (investigation-neighborhood) is a different, unrelated subsystem: it is keyed by an " +
+  "investigation run id, not an incident or an atlas node, and its own description forbids inventing an edge it " +
+  "was not given. What CAN be shown honestly is this incident's recorded, correlated trace, above.";
+
+/* --------------------------------------------------------------- V5-UX-C09: Doc tour
+ *
+ * A Doc tour is a scripted sequence of SELECTIONS over the exact payload
+ * already on screen — never a second read, never a fabricated node. Each step
+ * only exists when a real node on THIS page can carry it; a category with no
+ * example on the current page is skipped rather than invented.
+ */
+export const DOC_TOUR_INTRO =
+  "Doc's tour explains what is on this page. It moves the same selection a click would make, in order, and it " +
+  "does not replay a run: What happened on a run stays a separate, labeled fact for any node that carries one.";
+
+export const DOC_TOUR_END =
+  "That is everything Doc has to point out on this page. Keep exploring freely, or start the tour again.";
+
+export const DOC_TOUR_EMPTY = "Doc has nothing to point out on this page yet.";
+
+/**
+ * C15 / CR-AC-07's split, stated once and up front rather than only implied by
+ * the per-node labels below it. The atlas graph already carries the split
+ * structurally: `declared`/`installed` are how this system is wired to work,
+ * and `observed` (the run block on every node's own selection) is what has
+ * actually been seen running. Nothing new is read for this; it names what
+ * C07/C08 already return.
+ */
+export const HOW_THIS_WORKS_VS_RUN_SENTENCE =
+  "Declared and installed describe how this system is wired to work. Observed, on a node's own selection, is " +
+  "what has actually been seen running — a separate fact, never inferred from the wiring, and never shown as if " +
+  "it were happening now.";
+
+/**
+ * Pure and deterministic: same payload and incident index always produce the
+ * same steps, in the same order. `incidentIndex` may be null/undefined, which
+ * simply skips the incident step — a tour never fabricates a node to fill a
+ * category the current page has no example of.
+ */
+export function buildDocTour(payload, incidentIndex = null) {
+  const nodes = Array.isArray(payload?.nodes) ? payload.nodes : [];
+  const edges = Array.isArray(payload?.edges) ? payload.edges : [];
+  const steps = [];
+
+  const withIncident = nodes.find((node) => serviceNodeOpenIncidents(node, incidentIndex).length > 0);
+  if (withIncident) {
+    steps.push({
+      id: withIncident.id, kind: "incident",
+      narration: `${withIncident.title || withIncident.key} carries an open incident. Select it to open the same incident the dashboard shows.`,
+    });
+  }
+
+  const unenforcedRule = nodes.find((node) => node.class === "rule" &&
+    !edges.some((edge) => edge.from === node.id && edge.type === "enforced_by"));
+  if (unenforcedRule) {
+    steps.push({
+      id: unenforcedRule.id, kind: "gap",
+      narration: `${unenforcedRule.title || unenforcedRule.key} is a rule. ${NO_ENFORCEMENT_SENTENCE}`,
+    });
+  }
+
+  const verb = nodes.find((node) => node.class === "verb");
+  if (verb) {
+    steps.push({ id: verb.id, kind: "gap", narration: `${verb.title || verb.key} is a verb. ${VERB_RUN_GAP_SENTENCE}` });
+  }
+
+  const unlinked = nodes.find((node) => node.unlinked === true);
+  if (unlinked) {
+    steps.push({ id: unlinked.id, kind: "scope", narration: `${unlinked.title || unlinked.key}: ${UNLINKED_SENTENCE}` });
+  }
+
+  const observedNode = nodes.find((node) => "observed_at" in node);
+  if (observedNode) {
+    steps.push({
+      id: observedNode.id, kind: "run",
+      narration: `${observedNode.title || observedNode.key} carries a real observation — ${RUN_HEADING.toLowerCase()}.`,
+    });
+  }
+
+  return steps;
+}

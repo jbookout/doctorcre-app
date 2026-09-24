@@ -495,9 +495,17 @@ function storeSnapshot() {
 
 /* ------------------------------------------------------------------------ boot */
 
-/** Mounted once, on demand. mountAtlas itself refuses a second mount. */
+/**
+ * Mounted once, on demand. mountAtlas itself refuses a second mount.
+ *
+ * V5-UX-C09: hands atlas.js the SAME incident-board read this dashboard
+ * already takes (a getter, since that read settles asynchronously and can
+ * still be pending the first time a reader opens this tab) and the same
+ * record-layer client, so an incident marked on the atlas resolves to the
+ * exact incident this dashboard shows — never a second incident-board read.
+ */
 function openAtlas(node = null) {
-  mountAtlas({ outage: view.outage, node });
+  mountAtlas({ outage: view.outage, node, getIncidentsRead: () => view.reads.incidents, client });
 }
 
 /**
