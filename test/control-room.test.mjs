@@ -17,6 +17,7 @@ import {
 import { acceptsResponse } from "../js/workspace-command-center-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createLiveClient } from "../js/live-client.js";
+import { needsJoeCardFields, refuseWorkRequestCard, workItemLedger } from "../js/model-room-model.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -312,7 +313,10 @@ test("the fixture serves the three reads in the record layer's own shapes, and o
 
   const needsJoe = await client.currentWorkRequests();
   assert.ok(validCurrentWorkRequestsPayload(needsJoe));
-  assert.equal(needsJoe.items.length, 2);
+  // V5-UX-C13a added three shared requests exercising the enriched card:
+  // WR-000906 (every honest field present), WR-000907 (the optional fields
+  // explicitly absent) and WR-000908 (a genuine work-request-card refusal).
+  assert.equal(needsJoe.items.length, 5);
 
   const seed = await read("data/board-seed.json");
   const outage = await createFixtureClient({
@@ -831,6 +835,79 @@ test("C07-12 the atlas scope block moved on to the renderer slices", () => {
   // The hard-coded panel copy went with the block it sat in.
   assert.doesNotMatch(html, /The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09\./);
   assert.doesNotMatch(html, /Atlas: not in this release/);
+});
+
+/* ------------------------------------------------- V5-UX-C13a: Waiting for Joe */
+
+test("C13a-01 the enriched card is present, absent and refused, exactly as work-request-card answers", async () => {
+  const client = await fixture();
+  const present = await client.workRequestCard({ work_request: "WR-000906" });
+  const presentFields = needsJoeCardFields(present);
+  assert.equal(presentFields.available, true);
+  assert.equal(presentFields.originalRequest.present, true);
+  assert.match(presentFields.originalRequest.value, /canonical demo vendor name/);
+  // Neither field exists on any card this fixture (or CARR today) returns.
+  assert.equal(presentFields.recommendedAnswer.present, false);
+  assert.match(presentFields.recommendedAnswer.reason, /no pinned verb returns a recommended answer/);
+  assert.equal(presentFields.businessImpact.present, false);
+  assert.match(presentFields.businessImpact.reason, /no pinned verb returns a business-impact statement/);
+  assert.equal(presentFields.evidence.present, true);
+  assert.equal(presentFields.evidence.items.length, 2);
+  assert.equal(presentFields.evidence.items[0].ref, "INC-20260918-01");
+
+  const absent = await client.workRequestCard({ work_request: "WR-000907" });
+  const absentFields = needsJoeCardFields(absent);
+  assert.equal(absentFields.originalRequest.present, false, "no field is synthesized from the title");
+  assert.match(absentFields.originalRequest.reason, /carried no desired_outcome field/);
+  assert.equal(absentFields.evidence.present, true, "an empty evidence array is still a present field");
+  assert.equal(absentFields.evidence.items.length, 0);
+  assert.match(absentFields.evidence.emptyText, /is empty for this request/);
+  assert.notDeepEqual(absentFields, presentFields);
+
+  await assert.rejects(() => client.workRequestCard({ work_request: "WR-000908" }),
+    (error) => error.payload?.error === "work_request_not_found",
+    "WR-000908 is a genuine fetch-failure case: named in the queue, no card behind it");
+});
+
+test("C13a-02 the acting-identity and outcome-feedback ledgers keep server order and never merge", () => {
+  const card = {
+    ok: true, human_ref: "WR-000906", title: "Demo", state: "needs_joe",
+    acting_identity: [
+      { act: "review-and-triage", recorded_as: "joe", performed_by: "joe", authorization_class: null, via: "mcp", hand: "human", acted_at: "2026-09-19T14:00:00Z" },
+      { act: "accept-ready-plan", recorded_as: "joe", performed_by: "claude", authorization_class: "sponsored_agent", via: "mcp", hand: "agent", acted_at: "2026-09-20T09:15:00Z" },
+    ],
+    outcome_feedback_history: [
+      { outcome: "won", result_summary: "first pass", accepted_by_actor_slug: "joe", accepted_at: "2026-09-18T00:00:00Z", evidence_refs: [] },
+      { outcome: "lost", result_summary: "second pass", accepted_by_actor_slug: "dell", accepted_at: "2026-09-19T00:00:00Z", evidence_refs: ["e1"] },
+    ],
+  };
+  const ledger = workItemLedger(card);
+  assert.deepEqual(ledger.actingEvents.map((event) => event.act), ["review-and-triage", "accept-ready-plan"]);
+  assert.equal(ledger.actingEvents[0].deliveryState, "delivered by a human");
+  assert.equal(ledger.actingEvents[1].deliveryState, "delivered by a sponsored agent (sponsored_agent)");
+  assert.deepEqual(ledger.feedbackEvents.map((entry) => entry.outcome), ["won", "lost"]);
+  assert.equal(ledger.actingEmptyText, null);
+  const empty = workItemLedger({ ok: true, human_ref: "WR-000907", title: "Demo", state: "needs_joe" });
+  assert.match(empty.actingEmptyText, /No acting-identity event is recorded/);
+  assert.match(empty.feedbackEmptyText, /No accepted outcome feedback is recorded/);
+});
+
+test("C13a-03 a fetch failure carries the server's own refusal, never a fabricated one", () => {
+  assert.equal(refuseWorkRequestCard({ ok: false }), "work_request_card_unavailable");
+  assert.equal(refuseWorkRequestCard(null), "work_request_card_unavailable");
+  assert.equal(refuseWorkRequestCard({ ok: true, human_ref: "WR-000906" }), null);
+  assert.equal(needsJoeCardFields(null).available, false);
+  assert.equal(needsJoeCardFields(null).reason, "work_request_card_unavailable");
+});
+
+test("C13a-04 the extension binds to needsJoeAdvisoryLabel's row rather than replacing it", () => {
+  assert.match(pageJs, /needsJoeAdvisoryLabel\(payload, index\)/, "the existing advisory binding is untouched");
+  assert.match(pageJs, /needsJoeCardFields\(/, "the enrichment calls the same card projection the history view uses");
+  assert.match(pageJs, /import \{ needsJoeCardFields, refuseWorkRequestCard, workRequestCardRequest \} from "\.\/model-room-model\.js"/);
+  // Lazy, per-row, on demand — never one of the four eager dashboard reads.
+  assert.doesNotMatch(pageJs, /take\("needsJoeDetail"/, "the detail read does not join the dashboard's boot sequence");
+  assert.match(pageJs, /data-needs-joe-detail=/, "each row carries its own on-demand control");
+  assert.match(html, /id="needsJoeDetail" hidden/, "the detail panel starts hidden, not fetched on load");
 });
 
 // V5-UX-C08b — the anatomical renderer, wired into the live Atlas tab over the

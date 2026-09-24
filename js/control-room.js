@@ -16,6 +16,10 @@ import {
   needsJoeAdvisoryLabel, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
+// V5-UX-C13a: the enriched "Waiting for Joe" detail extends the row above
+// rather than replacing it, and reuses the same pure card projection the
+// Model Room tab's work-item history uses — one shape, read once each place.
+import { needsJoeCardFields, refuseWorkRequestCard, workRequestCardRequest } from "./model-room-model.js";
 import { snapshotFromReads, writeSnapshot } from "./status-model.js";
 import { renderCount, stageDenominator } from "./delivery-evidence-model.js";
 import { validWorkInventoryPayload, WORK_INVENTORY_ENDPOINT } from "./work-inventory-model.js";
@@ -46,6 +50,10 @@ const view = {
     needs_joe: { state: "pending" },
     census: { state: "pending" },
   },
+  // V5-UX-C13a: the "Waiting for Joe" detail is fetched ONLY when a row's own
+  // button is pressed — never for every row on dashboard load, which would
+  // turn one lazy read into N eager ones and blur this page's time-to-glance.
+  needsJoeDetail: { humanRef: null, state: "idle", payload: null, refusal: null },
 };
 
 let client = null;
@@ -171,6 +179,82 @@ function renderActiveWork() {
   })).join("") || rowHtml({ title: "No held work to order", meta: `nothing has been held without a change for ${STUCK_SILENCE_HOURS} hours or more` });
 }
 
+function needsJoeDetailFieldsHtml(fields) {
+  if (!fields.available) return `<p class="small">The detail could not be read: ${escapeHtml(fields.reason)}.</p>`;
+  const row = (label, field) => `<dt>${escapeHtml(label)}</dt><dd>${
+    field.present ? escapeHtml(field.value) : `not provided by the server${field.reason ? ` (${escapeHtml(field.reason)})` : ""}`
+  }</dd>`;
+  const evidenceRow = fields.evidence.present
+    ? `<dt>evidence links</dt><dd>${
+      fields.evidence.items.length
+        ? fields.evidence.items.map((entry) => escapeHtml(typeof entry === "string" ? entry : JSON.stringify(entry))).join("; ")
+        : escapeHtml(fields.evidence.emptyText)
+    }</dd>`
+    : `<dt>evidence links</dt><dd>not provided by the server (${escapeHtml(fields.evidence.reason)})</dd>`;
+  return `<dl class="detail-rows">
+    <dt>original request</dt><dd>${fields.originalRequest.present ? escapeHtml(fields.originalRequest.value) : `not provided by the server (${escapeHtml(fields.originalRequest.reason)})`}</dd>
+    ${row("recommended answer", fields.recommendedAnswer)}
+    ${row("business impact", fields.businessImpact)}
+    ${evidenceRow}
+  </dl>
+  ${fields.originalRequest.present ? `<p class="caption">${escapeHtml(fields.originalRequest.label)}</p>` : ""}`;
+}
+
+function renderNeedsJoeDetail() {
+  const panel = $("needsJoeDetail");
+  const title = $("needsJoeDetailTitle");
+  const asOfLine = $("needsJoeDetailAsOf");
+  const rows = $("needsJoeDetailRows");
+  if (!panel || !title || !rows) return;
+  const detail = view.needsJoeDetail;
+  if (!detail.humanRef) { panel.hidden = true; return; }
+  panel.hidden = false;
+  title.textContent = `${detail.humanRef}, in full`;
+  if (detail.state === "loading") {
+    asOfLine.textContent = "Taking the work-request-card read…";
+    rows.innerHTML = "";
+    return;
+  }
+  if (detail.refusal) {
+    asOfLine.textContent = `The detail could not be read: ${detail.refusal}.`;
+    rows.innerHTML = "";
+    return;
+  }
+  asOfLine.textContent = "As of this read";
+  rows.innerHTML = needsJoeDetailFieldsHtml(needsJoeCardFields(detail.payload));
+}
+
+async function openNeedsJoeDetail(humanRef) {
+  if (view.needsJoeDetail.humanRef === humanRef) {
+    // A second press of the same row's button closes it, rather than
+    // re-reading a card that already answered.
+    view.needsJoeDetail = { humanRef: null, state: "idle", payload: null, refusal: null };
+    renderNeedsJoeDetail();
+    return;
+  }
+  view.needsJoeDetail = { humanRef, state: "loading", payload: null, refusal: null };
+  renderNeedsJoeDetail();
+  const args = workRequestCardRequest(humanRef);
+  if (!args) {
+    view.needsJoeDetail = { humanRef, state: "ready", payload: null, refusal: "work_request_ref_invalid" };
+    renderNeedsJoeDetail();
+    return;
+  }
+  try {
+    const payload = await client.workRequestCard(args);
+    if (view.needsJoeDetail.humanRef !== humanRef) return;
+    const refusal = refuseWorkRequestCard(payload);
+    view.needsJoeDetail = { humanRef, state: "ready", payload: refusal ? null : payload, refusal };
+  } catch (error) {
+    if (view.needsJoeDetail.humanRef !== humanRef) return;
+    view.needsJoeDetail = {
+      humanRef, state: "ready", payload: null,
+      refusal: String(error?.payload?.error || error?.message || "the read did not answer"),
+    };
+  }
+  renderNeedsJoeDetail();
+}
+
 function renderNeedsJoe() {
   const read = view.reads.needs_joe;
   $("needsJoeAsOf").textContent = asOf(read);
@@ -180,6 +264,7 @@ function renderNeedsJoe() {
   if (!payload || !validCurrentWorkRequestsPayload(payload)) {
     list.innerHTML = "";
     state.hidden = false;
+    renderNeedsJoeDetail();
     return;
   }
   state.hidden = true;
@@ -191,8 +276,16 @@ function renderNeedsJoe() {
       item.next_human_action || "no next action recorded",
       needsJoeAdvisoryLabel(payload, index),
     ].join(" · "),
-    end: canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : "",
+    // V5-UX-C13a: extends this row with the original request, the recommended
+    // answer, the business impact and evidence links — each shown only where
+    // work-request-card actually carries it. The existing Open link, when the
+    // item has a canonical page, is untouched.
+    end: `${canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : ""}<button class="btn" type="button" data-needs-joe-detail="${escapeHtml(item.human_ref)}" aria-expanded="${view.needsJoeDetail.humanRef === item.human_ref}">${view.needsJoeDetail.humanRef === item.human_ref ? "Hide detail" : "Show more detail"}</button>`,
   })).join("") || rowHtml({ title: "No shared request carries a bounded next action", meta: "read from the shared queue" });
+  for (const button of list.querySelectorAll("button[data-needs-joe-detail]")) {
+    button.addEventListener("click", () => openNeedsJoeDetail(button.dataset.needsJoeDetail));
+  }
+  renderNeedsJoeDetail();
 }
 
 function renderDelivery() {

@@ -15,11 +15,13 @@
 // treats historical rationale as a fresh instruction.
 import {
   ACKNOWLEDGEMENT_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
-  QUEUE_ROOM_SENTENCE,
-  assignmentBoard, contextPanel, countsLine, dispatchSearchRequest, dispatchView, listState, participants,
-  queueFreshness, queueRequest, refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns,
-  refuseSessionIdentity, sessionCards, turnRequest, turnWindow,
+  QUEUE_ROOM_SENTENCE, TOPIC_HISTORY_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
+  assignmentBoard, contextPanel, countsLine, dispatchSearchRequest, dispatchView, historyTopics, historyWorkItems,
+  listState, participants, queueFreshness, queueRequest, refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns,
+  refuseSessionIdentity, refuseWorkRequestCard, sessionCards, topicHistory, turnRequest, turnWindow,
+  workItemLedger, workRequestCardRequest,
 } from "./model-room-model.js";
+import { validCurrentWorkRequestsPayload } from "./control-room-model.js";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -36,7 +38,7 @@ let client = null;
 const view = {
   outage: null,
   /** One counter per slot: three reads run together and must not cancel each other. */
-  sequence: { queue: 0, sessions: 0, turns: 0 },
+  sequence: { queue: 0, sessions: 0, turns: 0, workItems: 0, historyCard: 0 },
   status: "idle",
   queue: { state: "idle", payload: null, refusal: null },
   sessions: { state: "idle", payload: null, refusal: null },
@@ -45,6 +47,13 @@ const view = {
   selected: null,
   dispatch: { state: "idle", payload: null, refusal: null },
   searchQuery: "",
+  // V5-UX-C13a: the topic/work-item history picker. `workItems` is the
+  // current-work-requests read that fills the second <select>; `historyCard`
+  // is the work-request-card read for whichever work item is chosen.
+  workItems: { state: "idle", payload: null, refusal: null },
+  historyTopicId: "",
+  historyWorkItemId: "",
+  historyCard: { state: "idle", payload: null, refusal: null },
 };
 
 const clock = (value) => formatClock(value) || "unknown";
@@ -304,11 +313,107 @@ function renderParticipants() {
   </li>`).join("");
 }
 
+/* ------------------------------------------------- the topic/work-item history */
+
+function ledgerRowsHtml(ledger) {
+  const acting = ledger.actingEmptyText
+    ? `<p class="model-room-empty">${escapeHtml(ledger.actingEmptyText)}</p>`
+    : `<ul class="history-ledger">${ledger.actingEvents.map((event) => `<li class="history-ledger-row">
+        <p class="history-ledger-head small mono">${escapeHtml(clock(event.actedAt))} · ${escapeHtml(event.act)}</p>
+        <p class="small">${escapeHtml(event.deliveryState)}</p>
+        <dl class="detail-rows">
+          <dt>recorded as</dt><dd>${escapeHtml(event.recordedAs ?? "not recorded")}</dd>
+          <dt>performed by</dt><dd>${escapeHtml(event.performedBy ?? "not recorded in the call ledger")}</dd>
+          <dt>authorization class</dt><dd>${escapeHtml(event.authorizationClass ?? "not recorded")}</dd>
+          <dt>via</dt><dd>${escapeHtml(event.via ?? "not recorded")}</dd>
+        </dl>
+      </li>`).join("")}</ul>`;
+  const feedback = ledger.feedbackEmptyText
+    ? `<p class="model-room-empty">${escapeHtml(ledger.feedbackEmptyText)}</p>`
+    : `<ul class="history-ledger">${ledger.feedbackEvents.map((entry) => `<li class="history-ledger-row">
+        <p class="history-ledger-head small mono">${escapeHtml(clock(entry.acceptedAt))} · ${escapeHtml(entry.outcome ?? "outcome not recorded")}</p>
+        <p class="small">${escapeHtml(entry.resultSummary ?? "no result summary recorded")}</p>
+        <p class="small">accepted by ${escapeHtml(entry.acceptedByActorSlug ?? "not recorded")}</p>
+      </li>`).join("")}</ul>`;
+  return `<h3 class="atlas-subhead">Acting-identity ledger, server order</h3>${acting}
+    <h3 class="atlas-subhead">Accepted outcome feedback, server order</h3>${feedback}`;
+}
+
+function renderHistoryPickers() {
+  const topicSelect = $("modelRoomHistoryTopic");
+  const workItemSelect = $("modelRoomHistoryWorkItem");
+  const workItemsState = $("modelRoomHistoryWorkItemsState");
+  if (topicSelect) {
+    const topics = view.queue.refusal ? [] : historyTopics(view.queue.payload);
+    topicSelect.innerHTML = `<option value="">Choose a topic…</option>${topics.map((topic) => `<option value="${escapeHtml(topic.id)}" ${topic.id === view.historyTopicId ? "selected" : ""}>${escapeHtml(topic.title)} (${escapeHtml(topic.status)})</option>`).join("")}`;
+  }
+  if (workItemSelect) {
+    const items = view.workItems.refusal ? [] : historyWorkItems(view.workItems.payload);
+    workItemSelect.innerHTML = `<option value="">Choose a work item…</option>${items.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === view.historyWorkItemId ? "selected" : ""}>${escapeHtml(item.id)} · ${escapeHtml(item.title)}</option>`).join("")}`;
+  }
+  if (workItemsState) {
+    workItemsState.hidden = view.workItems.state !== "ready" || !view.workItems.refusal;
+    workItemsState.textContent = view.workItems.refusal
+      ? `The shared work-item list could not be read: ${view.workItems.refusal}.` : "";
+  }
+}
+
+function renderHistoryPanel() {
+  const root = $("modelRoomHistoryPanel");
+  if (!root) return;
+  if (view.historyWorkItemId) {
+    if (view.historyCard.state === "loading") {
+      root.innerHTML = "<p class=\"small\">Taking the work-request-card read…</p>";
+      return;
+    }
+    if (view.historyCard.refusal) {
+      root.innerHTML = `<p class="small">The work-item history could not be read: ${escapeHtml(view.historyCard.refusal)}.</p>`;
+      return;
+    }
+    const ledger = view.historyCard.payload ? workItemLedger(view.historyCard.payload) : null;
+    if (!ledger) { root.innerHTML = "<p class=\"small\">Choose a work item above to see its history.</p>"; return; }
+    root.innerHTML = `<div class="context-head">
+        <h4>${escapeHtml(ledger.humanRef)} · ${escapeHtml(ledger.title)}</h4>
+        <p class="small mono">state: ${escapeHtml(ledger.state)}</p>
+      </div>
+      <p class="caption">${escapeHtml(WORK_ITEM_HISTORY_SENTENCE)}</p>
+      ${ledgerRowsHtml(ledger)}`;
+    return;
+  }
+  if (view.historyTopicId) {
+    const found = view.queue.refusal ? null : topicHistory(view.historyTopicId, view.queue.payload);
+    if (!found || !found.found || !found.card) {
+      root.innerHTML = "<p class=\"small\">This topic is no longer in the current projection.</p>";
+      return;
+    }
+    root.innerHTML = `<div class="context-head">
+        <h4>${escapeHtml(found.card.taskId)} · ${escapeHtml(found.card.title)}</h4>
+        <p class="small mono">status: ${escapeHtml(found.card.status)} · target: ${escapeHtml(found.card.target)}</p>
+      </div>
+      <p class="caption">${escapeHtml(found.sentence)}</p>
+      <dl class="detail-rows">
+        <dt>updated</dt><dd>${escapeHtml(clock(found.card.updatedAt))}</dd>
+        <dt>priority</dt><dd>${escapeHtml(found.card.priority)}</dd>
+        <dt>cap</dt><dd>${escapeHtml(found.card.cap)}</dd>
+        <dt>summary</dt><dd>${escapeHtml(found.card.summary)}</dd>
+        <dt>${escapeHtml(found.card.sourceSeqText)}</dt><dd></dd>
+      </dl>`;
+    return;
+  }
+  root.innerHTML = "<p class=\"small\">Choose a topic or a work item above to see its history.</p>";
+}
+
+function renderHistory() {
+  renderHistoryPickers();
+  renderHistoryPanel();
+}
+
 function render() {
   renderAssignments();
   renderSessions();
   renderContext();
   renderParticipants();
+  renderHistory();
 }
 
 /* --------------------------------------------------------------------- reads */
@@ -338,8 +443,39 @@ async function readAll() {
     take("queue", () => client.roomQueue(queueRequest()), refuseRoomQueue),
     take("sessions", () => client.sessionIdentity({}), refuseSessionIdentity),
     take("turns", () => client.roomTurns(turnRequest()), refuseRoomTurns),
+    // V5-UX-C13a: the work-item picker's own list. Still lazy — it fires with
+    // the rest of this tab's reads, never on page boot.
+    take("workItems", () => client.currentWorkRequests(),
+      (payload) => (validCurrentWorkRequestsPayload(payload) ? null : "current_work_requests_unavailable")),
   ]);
   announce("The Model Room reads have answered.");
+}
+
+function selectHistoryTopic(taskId) {
+  view.historyTopicId = taskId ?? "";
+  if (view.historyTopicId) {
+    view.historyWorkItemId = "";
+    view.historyCard = { state: "idle", payload: null, refusal: null };
+  }
+  render();
+}
+
+async function selectHistoryWorkItem(humanRef) {
+  view.historyWorkItemId = humanRef ?? "";
+  if (!view.historyWorkItemId) {
+    view.historyCard = { state: "idle", payload: null, refusal: null };
+    render();
+    return;
+  }
+  view.historyTopicId = "";
+  const args = workRequestCardRequest(view.historyWorkItemId);
+  if (!args) {
+    view.historyCard = { state: "ready", payload: null, refusal: "work_request_ref_invalid" };
+    render();
+    return;
+  }
+  await take("historyCard", () => client.workRequestCard(args), refuseWorkRequestCard);
+  announce(`The history for ${view.historyWorkItemId} has answered.`);
 }
 
 async function searchSessions(query) {
@@ -412,6 +548,10 @@ export function mountModelRoom({ outage = null } = {}) {
     searchSessions($("modelRoomDispatchQuery")?.value ?? "");
   });
   $("modelRoomDispatchClear")?.addEventListener("click", () => clearSessionSearch());
+  // V5-UX-C13a: the topic/work-item history picker. Choosing one clears the
+  // other, so the panel below is never asked to render two histories at once.
+  $("modelRoomHistoryTopic")?.addEventListener("change", (event) => selectHistoryTopic(event.target.value));
+  $("modelRoomHistoryWorkItem")?.addEventListener("change", (event) => selectHistoryWorkItem(event.target.value));
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"

@@ -110,6 +110,15 @@
         </div>
         <ul class="work-list" id="needsJoeList"></ul>
         <div class="state-block" id="needsJoeState" data-state="unknown" hidden><h3>Shared requests could not be verified</h3></div>
+        <!-- V5-UX-C13a: on-demand detail, extending the row above rather than
+             replacing it. One shared panel, filled by work-request-card only
+             when a row's own button is pressed — never fetched for every row
+             on dashboard load. -->
+        <div class="needs-joe-detail" id="needsJoeDetail" hidden>
+          <h3 id="needsJoeDetailTitle"></h3>
+          <p class="caption" id="needsJoeDetailAsOf"></p>
+          <dl class="detail-rows" id="needsJoeDetailRows"></dl>
+        </div>
       </section>
 
       <section class="card glass" data-section="delivery" aria-labelledby="deliveryTitle">
@@ -197,6 +206,31 @@
         <ul class="participant-list" id="modelRoomParticipants"></ul>
         <h3 class="atlas-subhead">Turns, exactly as written</h3>
         <ul class="room-turns" id="modelRoomTurns"></ul>
+      </section>
+
+      <!-- V5-UX-C13a: topic/work-item history. Read-only; no composer, no
+           execute path lives here. A topic is the same Kanban ticket the
+           assignments board above already shows; a work item is a shared
+           Work Request read from current-work-requests and work-request-card. -->
+      <section class="card glass" data-section="model_room_history" aria-labelledby="modelRoomHistoryTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">One topic or work item, in full</p><h2 id="modelRoomHistoryTitle">Topic and work-item history</h2></div>
+        </div>
+        <p class="caption">Choose a Kanban topic or a shared Work Request to see its conversation and ledger history in the record layer's own order. No composer and no action lives here.</p>
+        <div class="history-picker">
+          <div class="field">
+            <label for="modelRoomHistoryTopic">Topic (Kanban ticket)</label>
+            <select id="modelRoomHistoryTopic"><option value="">Choose a topic…</option></select>
+          </div>
+          <div class="field">
+            <label for="modelRoomHistoryWorkItem">Work item (shared Work Request)</label>
+            <select id="modelRoomHistoryWorkItem"><option value="">Choose a work item…</option></select>
+          </div>
+        </div>
+        <p class="model-room-empty" id="modelRoomHistoryWorkItemsState" hidden></p>
+        <div id="modelRoomHistoryPanel">
+          <p class="small">Choose a topic or a work item above to see its history.</p>
+        </div>
       </section>
 
       <p class="sr-only" id="modelRoomLive" aria-live="polite"></p>

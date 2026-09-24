@@ -472,3 +472,159 @@ export function turnRequest({ afterSeq = null, limit = TURN_LIMIT } = {}) {
   if (Number.isInteger(limit) && limit >= 1 && limit <= 200) args.limit = limit;
   return args;
 }
+
+/* --------------------------------------------- C13a: topic/work-item history */
+//
+// "Topic" and "work item" name two different id spaces the record layer
+// already keeps, and this file never merges them into one invented list:
+//
+//   * A TOPIC is a Kanban ticket, keyed by `task_id`, projected by
+//     `read-room-queue` into the SAME cards `assignmentBoard` already shows
+//     (fact 4 above). The projector keeps only the LATEST event per task_id
+//     (partner-room.js readRoomQueue: `latest.set(event.task_id, event)`), so
+//     there is no per-ticket event history for this page to read — only the
+//     current projected card. That limit is stated in TOPIC_HISTORY_SENTENCE,
+//     never hidden and never worked around with an invented trail.
+//   * A WORK ITEM is a shared Work Request, keyed by `human_ref` (WR-xxxx),
+//     read from `current-work-requests` for the picker and from
+//     `work-request-card` for its history. `work-request-card` DOES carry
+//     real per-request history: `acting_identity` (ops.work_request_card's
+//     own ACTING_IDENTITY query, ordered `order by acted_at`) and
+//     `outcome_feedback_history` (ordered oldest-first by the same function).
+//     Both arrive already in the server's order and are never re-sorted here.
+
+/** Beside a chosen topic, always. The one honest limit on this half of the view. */
+export const TOPIC_HISTORY_SENTENCE = "The queue projector keeps only the latest state per ticket: "
+  + "read-room-queue overwrites by task_id, so it exposes no ticket-level event history. The card below is the "
+  + "entire history this page can show for this topic, not a claim that nothing came before it.";
+
+/** Beside a chosen work item, always. */
+export const WORK_ITEM_HISTORY_SENTENCE = "This ledger is work-request-card's own acting-identity and "
+  + "outcome-feedback history, in the order the record layer returned it. Nothing here is re-sorted, merged or "
+  + "inferred, and a delivery state that is not recorded reads as unknown rather than as a guess.";
+
+/** The topic (Kanban ticket) picker: reuses the same cards the assignments
+ * board already renders, so a topic chosen here is never a second list that
+ * could drift from the board above it. */
+export function historyTopics(queuePayload) {
+  return assignmentBoard(queuePayload).cards.map((card) => ({
+    id: card.taskId, title: card.title, status: card.status, target: card.target,
+  }));
+}
+
+/** One topic's "history": the single current card, plus the honest limit
+ * sentence. No new read is taken — the queue payload already answered it. */
+export function topicHistory(taskId, queuePayload) {
+  const card = historyTopics(queuePayload).find((candidate) => candidate.id === taskId) ?? null;
+  const full = assignmentBoard(queuePayload).cards.find((candidate) => candidate.taskId === taskId) ?? null;
+  return { taskId, card: full, found: card !== null, sentence: TOPIC_HISTORY_SENTENCE };
+}
+
+/** `current-work-requests`' items, projected into the work-item picker's own
+ * shape. Server order kept; nothing here sorts, filters or re-ranks. */
+export function historyWorkItems(workRequestsPayload) {
+  const items = Array.isArray(workRequestsPayload?.items) ? workRequestsPayload.items : [];
+  return items.map((item) => ({ id: item.human_ref, title: item.title, state: item.state }));
+}
+
+const isCardText = (value) => typeof value === "string" && value.length > 0;
+
+/** Refuse a `work-request-card` payload BY NAME, exactly as the other refuse*
+ * functions in this file do. `null` means renderable. */
+export function refuseWorkRequestCard(payload) {
+  if (!payload || typeof payload !== "object" || payload.ok !== true) return "work_request_card_unavailable";
+  if (!isCardText(payload.human_ref)) return "work_request_card_without_a_ref";
+  return null;
+}
+
+/**
+ * The ledger a work item's history panel renders: `acting_identity` and
+ * `outcome_feedback_history`, each kept as its OWN list in the server's OWN
+ * order (never interleaved, which would be a re-sort of two independently
+ * ordered server arrays). Each acting-identity row carries the delivery
+ * state exactly as the server reports it (`hand` / `authorization_class`),
+ * never inferred from the act name alone.
+ */
+export function workItemLedger(card) {
+  if (refuseWorkRequestCard(card)) return null;
+  const acting = Array.isArray(card.acting_identity) ? card.acting_identity : [];
+  const feedback = Array.isArray(card.outcome_feedback_history) ? card.outcome_feedback_history : [];
+  return {
+    humanRef: card.human_ref,
+    title: card.title,
+    state: card.state,
+    actingEvents: acting.map((row) => ({
+      act: row.act ?? "unknown",
+      recordedAs: row.recorded_as ?? null,
+      performedBy: row.performed_by ?? null,
+      authorizationClass: row.authorization_class ?? null,
+      via: row.via ?? null,
+      hand: row.hand ?? "unknown",
+      actedAt: row.acted_at ?? null,
+      deliveryState: row.hand === "agent"
+        ? `delivered by a sponsored agent (${row.authorization_class || "authorization class not recorded"})`
+        : row.hand === "human" ? "delivered by a human"
+          : "delivery actor unknown to the ledger",
+    })),
+    feedbackEvents: feedback.map((entry) => ({
+      outcome: entry.outcome ?? null,
+      resultSummary: entry.result_summary ?? null,
+      acceptedByActorSlug: entry.accepted_by_actor_slug ?? null,
+      acceptedAt: entry.accepted_at ?? null,
+      evidenceRefs: Array.isArray(entry.evidence_refs) ? entry.evidence_refs : [],
+    })),
+    actingEmptyText: acting.length === 0
+      ? "No acting-identity event is recorded for this Work Request." : null,
+    feedbackEmptyText: feedback.length === 0
+      ? "No accepted outcome feedback is recorded for this Work Request." : null,
+  };
+}
+
+/**
+ * C13a clause 2 — the enriched "Waiting for Joe" fields, extending
+ * `needsJoeAdvisoryLabel` rather than replacing it. Every field is present
+ * ONLY where `work-request-card` actually carries it; an absent field says so
+ * by name and is never synthesized from the title, the summary or the Jev
+ * advisory.
+ */
+export function needsJoeCardFields(card) {
+  const refusal = refuseWorkRequestCard(card);
+  if (refusal) return { available: false, reason: refusal };
+  // "Exact original request": the record layer stores no separate free-text
+  // situation on the card (report-problem's `situation` argument is consumed
+  // only for doctrine retrieval and is never persisted). `desired_outcome` is
+  // the one requester-authored field the card does carry, captured verbatim
+  // at report-problem time and never rewritten by any pinned verb.
+  const originalRequest = isCardText(card.desired_outcome)
+    ? {
+      present: true, value: card.desired_outcome,
+      label: "Desired outcome, as captured (verbatim; the card carries no separate original-request text)",
+    }
+    : { present: false, value: null, reason: "the card carried no desired_outcome field" };
+  // No pinned verb returns a recommended answer or a business-impact
+  // statement for a Work Request today. Both are checked by name so a future
+  // field would render automatically, and both stay explicitly absent now.
+  const recommendedAnswer = isCardText(card.recommended_answer)
+    ? { present: true, value: card.recommended_answer }
+    : { present: false, value: null, reason: "no pinned verb returns a recommended answer for a Work Request" };
+  const businessImpact = isCardText(card.business_impact)
+    ? { present: true, value: card.business_impact }
+    : { present: false, value: null, reason: "no pinned verb returns a business-impact statement for a Work Request" };
+  const evidenceItems = Array.isArray(card.incident_evidence) ? card.incident_evidence : null;
+  const evidence = evidenceItems
+    ? {
+      present: true, items: evidenceItems,
+      emptyText: evidenceItems.length === 0
+        ? "The card carries an evidence list; it is empty for this request." : null,
+    }
+    : { present: false, items: [], reason: "the card carried no incident_evidence field" };
+  return { available: true, humanRef: card.human_ref, originalRequest, recommendedAnswer, businessImpact, evidence };
+}
+
+/** The work-item card read's arguments: one field, the same pattern S02's
+ * dispatch-history request follows. */
+export function workRequestCardRequest(humanRef) {
+  const ref = String(humanRef ?? "").trim();
+  if (!/^WR-[0-9]{1,12}$/.test(ref)) return null;
+  return { work_request: ref };
+}
