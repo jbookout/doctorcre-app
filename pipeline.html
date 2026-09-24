@@ -85,6 +85,9 @@
           </div>
         </div>
         <div id="panelBody"></div>
+        <div class="panel-section" id="panelContextOpenWrap" hidden>
+          <button class="btn" type="button" id="panelContextOpen" aria-haspopup="dialog">Client &amp; vendor context</button>
+        </div>
       </aside>
     </div>
   </main>
@@ -188,6 +191,19 @@
       <div class="dialog-body">
         <ul class="receipt-list" id="receiptsList"></ul>
         <p class="field-hint">Session memory only, and never a substitute for the record's own change history.</p>
+      </div>
+    </article>
+  </dialog>
+
+  <dialog id="contextDrawer" class="dialog" aria-labelledby="contextDrawerTitle">
+    <article>
+      <header>
+        <div><p class="eyebrow">Read-only</p><h2 id="contextDrawerTitle">Client &amp; vendor context</h2></div>
+        <button class="btn icon-btn" type="button" id="contextDrawerClose" aria-label="Close">×</button>
+      </header>
+      <div class="dialog-body">
+        <div id="contextDrawerBody"><div class="state-block" data-state="loading"><h3>Reading the record…</h3></div></div>
+        <p class="field-hint">Read-only. Nothing here can be changed from this drawer.</p>
       </div>
     </article>
   </dialog>

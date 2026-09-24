@@ -93,6 +93,7 @@
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
  * @property {() => Promise<void>} [simulatePartnerCall] fixture-only demo of presence + distill
+ * @property {(args:{dataset:'clients'|'vendors', id:string}) => Promise<{record:Object}>} [getPartyRecord] the pinned `/api/v1/business/{dataset}/<id>` single-record read (V5-UX-B04); `id` is that record's own uuid, never a participant's party_id
  * @property {(args:{query?:string, limit?:number, include_closed?:boolean}) => Promise<SessionIdentityResponse>} sessionIdentity
  * @property {(args:{session_id:string, cursor?:string, limit?:number}) => Promise<DispatchHistoryResponse>} dispatchHistory
  * @property {(args:{room?:string}) => Promise<RoomQueueResponse>} roomQueue the assignment projection for one room; the room is a constant in js/model-room-model.js and is never the tab's own name

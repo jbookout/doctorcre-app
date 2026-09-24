@@ -422,3 +422,117 @@ export function recordPanelSections(detail, options = {}) {
     { title: 'Doc work', lines: ['Not in this release.'], state: 'not_in_release' },
   ];
 }
+
+/* --------------------------------------------------------- V5-UX-B04: context */
+
+// deal_participant carries five roles. 'lead' and 'support' are internal team
+// assignment (actor_id, no party_id) and already own the "Situation" line
+// above; these three carry an external party_id and are what the context
+// drawer means by "attached parties/vendors".
+const EXTERNAL_PARTY_ROLES = ['client_contact', 'referring_agent', 'listing_side'];
+const PARTY_ROLE_LABEL = {
+  client_contact: 'Client contact',
+  referring_agent: 'Referring agent',
+  listing_side: 'Listing side',
+};
+
+/** The word for a deal_participant role; the wire value itself when unmapped. */
+export function partyRoleLabel(role) {
+  return PARTY_ROLE_LABEL[role] || role || 'Party';
+}
+
+/**
+ * The attached parties/vendors on a deal — the external `deal_participant`
+ * rows, exactly as `get-deal-room` returned them. Never filled in from a
+ * second read: their contact detail is not addressable here (see
+ * `loadDealContext`), so this stays a name-and-role list.
+ */
+export function attachedParties(participants = []) {
+  return participants.filter((row) => EXTERNAL_PARTY_ROLES.includes(row?.role));
+}
+
+/**
+ * Read-only client/vendor/calendar context for one deal (V5-UX-B04), opened
+ * from the pipeline record panel. `detail` is the same answer `openPanel`
+ * already read from `get-deal-room` — this makes no second call for anything
+ * that read already carries.
+ *
+ * The one further read is the client's own contact record, through the
+ * pinned `/api/v1/business/clients/<id>` surface the Clients page already
+ * uses, keyed on the deal's `account_client_id`. Attached parties/vendors are
+ * NOT looked up the same way: `deal_participant.party_id` and
+ * `client.id`/`vendor.id` are different id spaces (the party table underlies
+ * both, joined through a `party_id` column client/vendor-side that a bare
+ * participant row never carries), so guessing a lookup id for them would risk
+ * showing one party's contact detail under another party's name. That gap is
+ * a real one, not an oversight; it is stated in the rendered section rather
+ * than papered over.
+ *
+ * @param {{getPartyRecord?: (args:{dataset:'clients'|'vendors', id:string}) => Promise<{record:Object}>}} client
+ * @param {Object} detail the answer from `getDeal`
+ * @returns {Promise<{client: {status:'not_linked'|'unavailable'|'ok', reason?:string, record?:Object}, parties: Object[], criticalDates: Object[]}>}
+ */
+export async function loadDealContext(client, detail) {
+  const deal = detail?.deal || {};
+  const parties = attachedParties(detail?.participants || []);
+  const criticalDates = (detail?.critical_dates || []).map((entry) => ({ ...entry }));
+
+  let clientContext = { status: 'not_linked' };
+  if (deal.account_client_id) {
+    if (typeof client?.getPartyRecord !== 'function') {
+      clientContext = { status: 'unavailable', reason: 'read_not_wired' };
+    } else {
+      try {
+        const answer = await client.getPartyRecord({ dataset: 'clients', id: deal.account_client_id });
+        clientContext = answer?.record
+          ? { status: 'ok', record: answer.record }
+          : { status: 'unavailable', reason: 'empty_response' };
+      } catch {
+        clientContext = { status: 'unavailable', reason: 'fetch_failed' };
+      }
+    }
+  }
+  return { client: clientContext, parties, criticalDates };
+}
+
+function clientContextLines(clientContext) {
+  if (clientContext.status === 'not_linked') return ['This deal is not linked to a client record.'];
+  if (clientContext.status === 'unavailable') {
+    return clientContext.reason === 'fetch_failed'
+      ? ['The client record could not be read. Nothing here has been inferred.']
+      : ['Client contact detail is not available from this read.'];
+  }
+  const record = clientContext.record || {};
+  const lines = [record.name || 'Unnamed client'];
+  const contact = [record.title, record.phone, record.cell, record.email].filter(Boolean).join(' · ');
+  if (contact) lines.push(contact);
+  const place = [record.city, record.state].filter(Boolean).join(', ');
+  if (place) lines.push(place);
+  return lines;
+}
+
+/**
+ * The context drawer's sections, in the shape `recordPanelSections` already
+ * renders in — same section object, same honest-when-empty rule.
+ *
+ * @param {Awaited<ReturnType<typeof loadDealContext>>} context
+ * @param {{dateLabel?:(value:string)=>string}} [options]
+ */
+export function contextDrawerSections(context, options = {}) {
+  const date = options.dateLabel || ((value) => String(value ?? ''));
+  const parties = context?.parties || [];
+  const partyLines = parties.length
+    ? parties.map((row) => `${partyRoleLabel(row.role)} · ${row.name || 'Unnamed party'}`)
+    : ['No attached parties or vendors recorded on this deal.'];
+  const dates = context?.criticalDates || [];
+  const dateLines = dates.length
+    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`)
+    : ['None recorded.'];
+
+  return [
+    { title: 'Client', lines: clientContextLines(context?.client || { status: 'not_linked' }),
+      state: (context?.client?.status && context.client.status !== 'ok') ? context.client.status : undefined },
+    { title: 'Attached parties & vendors', lines: partyLines },
+    { title: 'Critical dates', lines: dateLines },
+  ];
+}

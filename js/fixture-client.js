@@ -64,6 +64,11 @@ export async function createFixtureClient(opts = {}) {
     workspace_kind: 'team', account_client_id: null, account_name: null,
     client_ref: d.client_ref || null, client_name: d.client_name || d.name,
   }));
+  // d02 names a client id the business-record fixture below deliberately does
+  // not carry, so the V5-UX-B04 context drawer's fetch-failure state (test
+  // fixture client, not a live network fault) has a fixture deal to exercise.
+  const brokenClientDeal = deals.get('d02');
+  if (brokenClientDeal) brokenClientDeal.account_client_id = 'demo-account-002-unlisted';
   /** @type {Map<string, any[]>} */
   const threads = new Map(
     Object.entries(seed.threads || {}).map(([k, v]) => [k, v.map((x) => ({ ...x }))]),
@@ -89,6 +94,36 @@ export async function createFixtureClient(opts = {}) {
   // the fixture derives one line from the deal's own next date, and anything
   // else on the list was written here through add-critical-date.
   const criticalDates = new Map();
+
+  // V5-UX-B04: attached parties/vendors beyond the standing 'lead' row —
+  // client_contact, referring_agent and listing_side are the deal_participant
+  // roles that carry an external party_id rather than an internal actor. Only
+  // d01 carries any, which is exactly what makes it the "populated" fixture
+  // deal and every other deal the "no parties" one.
+  const extraParticipants = new Map([
+    ['d01', [
+      { role: 'client_contact', name: 'Dr. Dana Ortiz', party_id: 'demo-party-101' },
+      { role: 'referring_agent', name: 'Sam Rivera', party_id: 'demo-party-102' },
+      { role: 'listing_side', name: 'Casey Nguyen · Demo Realty', party_id: 'demo-party-103' },
+    ]],
+  ]);
+
+  // V5-UX-B04: the fixture stand-in for the pinned `/api/v1/business/{clients,
+  // vendors}/<id>` single-record read, keyed by that record's own id — never
+  // by a party_id, matching the live shape (client.id/vendor.id, joined
+  // through party_id, are never the same value as a deal participant's
+  // party_id). d02's account_client_id is deliberately absent from this map;
+  // see the note where it is set.
+  const businessRecords = new Map([
+    [fixtureAccountId, {
+      id: fixtureAccountId, ref: 'DEMO-CLIENT-001', name: 'Demo Dental North', party_kind: 'org',
+      city: 'Demo City', state: 'DM', title: 'Practice Administrator', phone: '205-555-0142', cell: null,
+      email: 'admin@demo-dental-north.example', recorded_status: 'active_client',
+      recorded_status_label: 'Active client', recorded_status_active_pipeline: true, vertical: 'Dental',
+      owner_label: 'Dell', owned_by_viewer: false, record_version: 1,
+      created_at: '2026-01-02T00:00:00Z', updated_at: '2026-01-10T00:00:00Z',
+    }],
+  ]);
 
   /**
    * Synthetic loop records — the task surface's fixture.
@@ -1261,8 +1296,19 @@ export async function createFixtureClient(opts = {}) {
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
-        participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner }],
+        participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
+          ...(extraParticipants.get(dealId) || [])],
         premises: [], negotiation_rounds: [], documents: [] };
+    },
+
+    // V5-UX-B04: fixture stand-in for the pinned `/api/v1/business/{dataset}/<id>`
+    // single-record read. A genuinely unknown id (d02's account_client_id, on
+    // purpose) throws, exactly as a live 404 would, so callers exercise the
+    // real fetch-failure branch rather than a synthetic one.
+    async getPartyRecord({ dataset, id }) {
+      const record = businessRecords.get(id);
+      if (!record) throw new Error(`fixture business record not found: ${dataset}/${id}`);
+      return { viewer: selfActor, dataset, record: { ...record } };
     },
 
     async getJevDealReading() {
