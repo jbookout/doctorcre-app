@@ -232,11 +232,78 @@
       </section>
 
       <section class="card glass" data-section="atlas_index" aria-labelledby="atlasIndexTitle">
-        <div class="card-heading"><div><p class="eyebrow">Hierarchy</p><h2 id="atlasIndexTitle">Layer, class, node</h2></div></div>
+        <div class="card-heading">
+          <div><p class="eyebrow">Hierarchy</p><h2 id="atlasIndexTitle">Layer, class, node</h2></div>
+          <div class="btn-group" id="atlasRendererSwitch" role="group" aria-label="Atlas view">
+            <button class="btn" type="button" data-atlas-view="index" aria-pressed="true">Index</button>
+            <button class="btn" type="button" data-atlas-view="anatomical" aria-pressed="false">Anatomical</button>
+          </div>
+        </div>
+        <p class="small" id="atlasRendererNote"></p>
         <div id="atlasIndex"></div>
         <div class="row-wrap">
           <button class="btn" type="button" id="atlasMore" hidden>Show more</button>
           <span class="as-of" id="atlasPagingLine"></span>
+        </div>
+        <!-- V5-UX-C08b: the anatomical renderer, an added view over the SAME
+             graph the index above reads. js/atlas.js mounts js/atlas-scene.js
+             here with a scoped `ids` map, since the ids above already belong
+             to the index; toggling and selecting stay in sync both ways. -->
+        <div id="atlasSceneWrap" hidden>
+            <p class="atlas-note" id="atlasSceneStableNote"></p>
+            <div class="atlas-toolbar">
+              <div class="btn-group" id="atlasSceneViewSwitch" role="group" aria-label="View">
+                <button class="btn" type="button" data-view="assembled" aria-pressed="true">Assembled</button>
+                <button class="btn" type="button" data-view="exploded" aria-pressed="false">Exploded</button>
+                <button class="btn" type="button" data-view="flat" aria-pressed="false">Flat list</button>
+              </div>
+              <div class="atlas-rotate">
+                <button class="btn icon-btn" type="button" id="atlasSceneRotateLeft" aria-label="Rotate left"><span aria-hidden="true">↺</span></button>
+                <label for="atlasSceneRotate">Rotate</label>
+                <input type="range" id="atlasSceneRotate" min="-60" max="60" step="15" value="-18">
+                <button class="btn icon-btn" type="button" id="atlasSceneRotateRight" aria-label="Rotate right"><span aria-hidden="true">↻</span></button>
+                <output id="atlasSceneRotateValue" for="atlasSceneRotate">-18°</output>
+              </div>
+              <div class="btn-group" id="atlasSceneLayerSwitch" role="group" aria-label="Layer">
+                <button class="btn" type="button" data-layer="all" aria-pressed="true">All</button>
+                <button class="btn" type="button" data-layer="data" aria-pressed="false">Data</button>
+                <button class="btn" type="button" data-layer="execution" aria-pressed="false">Execution</button>
+                <button class="btn" type="button" data-layer="rules" aria-pressed="false">Rules</button>
+                <button class="btn" type="button" data-layer="infra" aria-pressed="false">Infrastructure</button>
+              </div>
+              <button class="btn atlas-retired-toggle" type="button" id="atlasSceneRetired" aria-pressed="false">Include retired</button>
+            </div>
+            <p class="sr-only" id="atlasSceneLayerLive" aria-live="polite"></p>
+            <div class="atlas-layout">
+              <div class="atlas glass" id="atlasSceneAtlas">
+                <nav class="atlas-crumbs" id="atlasSceneCrumbs" aria-label="Where you are in the body"></nav>
+                <svg id="atlasSceneSvg" viewBox="0 0 1040 500" tabindex="0" role="group" aria-label="Anatomical Atlas. Four organs in a fixed layout; depth is evidence, not importance. Rotate with the left and right arrow keys. Every component is also listed beside the scene."></svg>
+                <div class="atlas-controls"><button class="btn" type="button" id="atlasSceneBack" disabled>Return to whole system</button><a class="btn" href="#atlasSceneIndex">Flat list</a></div>
+                <p class="atlas-motion" id="atlasSceneMotionNote"></p>
+              </div>
+              <div class="atlas-side">
+                <ul class="legend" aria-label="Layer legend: shape and colour together">
+                  <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data · Senses · circle</li>
+                  <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution · Spine · square</li>
+                  <li><span class="swatch" data-cat="rules" aria-hidden="true"></span> Rules · Nervous system · diamond</li>
+                  <li><span class="swatch" data-cat="infra" aria-hidden="true"></span> Infrastructure · Muscle and bone · tab</li>
+                </ul>
+                <ul class="legend legend-evidence" id="atlasSceneEvidenceLegend" aria-label="Evidence legend: depth, outline and word"></ul>
+                <ul class="atlas-index" id="atlasSceneIndex" aria-label="Components, flat list"></ul>
+                <div id="atlasSceneComponentDrawer" class="component-drawer" aria-live="polite" hidden>
+                  <div class="panel-head"><div><p class="eyebrow">Component</p><h2 id="atlasSceneComponentTitle" style="font-size:24px"></h2></div></div>
+                  <div id="atlasSceneComponentBody"></div>
+                </div>
+              </div>
+            </div>
+            <section class="atlas-coverage" aria-labelledby="atlasSceneCoverageTitle">
+              <div class="card-heading"><div><p class="eyebrow">What was read</p><h2 id="atlasSceneCoverageTitle" style="font-size:24px">Coverage</h2></div></div>
+              <p class="atlas-explanation" id="atlasSceneSafeExplanation"></p>
+              <ul class="coverage-list" id="atlasSceneCoverageAnswered"></ul>
+              <h3 class="eyebrow">Known gaps in this release</h3>
+              <ul class="coverage-list" id="atlasSceneCoverageGaps"></ul>
+              <ul class="rule-list" id="atlasSceneLimits"></ul>
+            </section>
         </div>
       </section>
 

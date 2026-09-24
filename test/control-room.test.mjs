@@ -243,7 +243,7 @@ test("an incident resolves to the same canonical identity from the tile and from
 test("every prototype panel without a producer is a named scope statement", () => {
   const blocks = notInReleaseBlocks();
   const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_renderer"]) {
+  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_incidents_tours"]) {
     assert.ok(ids.includes(id), `${id} has no scope statement`);
   }
   for (const block of blocks) {
@@ -418,10 +418,10 @@ test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede
 // drift away from what these tests certify.
 import { atlasFixtureResponse } from "../scripts/atlas-fixture.mjs";
 import {
-  ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT,
+  ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_SCENE_NODE_CAP, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT,
   INCOMPLETE_HEADING, KNOWN_GAPS, NO_ENFORCEMENT_SENTENCE, NO_SUCCESSOR_SENTENCE,
   NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
-  atlasDegraded, atlasPhase, atlasRequestPath, classifyAtlasFailure, coverageGroups, coverageOrbFor,
+  atlasDegraded, atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor,
   groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload,
   NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS,
 } from "../js/atlas-model.js";
@@ -429,6 +429,7 @@ import {
 const atlasJs = await read("js/atlas.js");
 const atlasModelJs = await read("js/atlas-model.js");
 const atlasFixtureJs = await read("scripts/atlas-fixture.mjs");
+const sceneJs = await read("js/atlas-scene.js");
 const checkJs = await read("scripts/check-repository.mjs");
 
 /** The fixture route, reached exactly as the browser reaches it. */
@@ -820,13 +821,84 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
 test("C07-12 the atlas scope block moved on to the renderer slices", () => {
   const ids = notInReleaseBlocks().map((block) => block.id);
   assert.ok(!ids.includes("atlas"), "the Atlas tab still declares itself out of this release");
-  assert.ok(ids.includes("atlas_renderer"), "the renderer has no scope statement");
-  const renderer = notInReleaseBlocks().find((block) => block.id === "atlas_renderer");
-  assert.equal(renderer.title, "Atlas renderer: not in this release");
-  assert.equal(renderer.slice, "V5-UX-C08 and V5-UX-C09");
+  assert.ok(!ids.includes("atlas_renderer"), "the renderer still carries its own retired scope statement");
+  assert.ok(ids.includes("atlas_incidents_tours"), "C09's remaining scope has no statement");
+  const renderer = notInReleaseBlocks().find((block) => block.id === "atlas_incidents_tours");
+  assert.equal(renderer.title, "Atlas incidents and tours: not in this release");
+  assert.equal(renderer.slice, "V5-UX-C09");
   assert.match(renderer.slice, /^V5-UX-C[0-9]/, "the block names no owning slice");
-  assert.match(renderer.reason, /the searchable index is on the Atlas tab now/);
+  assert.match(renderer.reason, /the anatomical renderer is live on the Atlas tab now/);
   // The hard-coded panel copy went with the block it sat in.
   assert.doesNotMatch(html, /The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09\./);
   assert.doesNotMatch(html, /Atlas: not in this release/);
+});
+
+// V5-UX-C08b — the anatomical renderer, wired into the live Atlas tab over the
+// same real graph atlas.js already reads, with the accessible index kept as
+// the primary surface and the renderer an added, toggled view.
+test("C08b-1 the renderer is mounted from the real payload, never a demo or fixture graph", () => {
+  assert.match(atlasJs, /import \{ mountAtlasScene \} from "\.\/atlas-scene\.js";/);
+  assert.doesNotMatch(atlasJs, /atlas-demo-graph|ATLAS_DEMO_PAYLOAD/, "the live tab must never import the prototype's fixture graph");
+  assert.match(atlasJs, /mountAtlasScene\(view\.payload, \{/, "the scene is mounted from the same view.payload the index reads");
+  assert.match(atlasJs, /scene\.updatePayload\(view\.payload\)/, "a fresh read replaces what the scene draws, not a re-mount");
+  // The renderer's own module makes no request; the one fetch in atlas.js is
+  // the existing C07 index read, already certified above.
+  assert.doesNotMatch(sceneJs, /fetch\(|XMLHttpRequest|WebSocket|\/mcp/, "the renderer performs no request of its own");
+});
+
+test("C08b-2 the renderer's ids are scoped so they cannot collide with the index this tab already owns", () => {
+  const block = atlasJs.slice(atlasJs.indexOf("const SCENE_IDS = Object.freeze({"), atlasJs.indexOf("});", atlasJs.indexOf("const SCENE_IDS =")));
+  const sceneIdValues = [...block.matchAll(/: "([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(sceneIdValues.length >= 20, "the id map looks incomplete");
+  for (const id of sceneIdValues) {
+    assert.ok(id.startsWith("atlasScene"), `${id} is not scoped under "atlasScene"`);
+    // Every id the renderer looks up must be declared EXACTLY once in the markup.
+    const count = (html.match(new RegExp(`id="${id}"`, "g")) || []).length;
+    assert.equal(count, 1, `${id} is declared ${count} times in control-room.html`);
+  }
+  // The existing index ids are untouched: they still belong to atlas-model's
+  // consumer contract, not to the renderer.
+  for (const existing of ["atlasIndex", "atlasSafeExplanation", "atlasCoverageAnswered", "atlasCoverageGaps", "atlasRetired"]) {
+    assert.ok(!sceneIdValues.includes(existing), `${existing} was reused for the renderer instead of the index`);
+  }
+});
+
+test("C08b-3 selection stays in sync both ways between the index and the renderer", () => {
+  assert.match(atlasJs, /onSelect: \(id\) => selectNode\(id\)/, "a scene-originated selection is routed back through the index's own selectNode");
+  assert.match(atlasJs, /scene\.select\(view\.selected, \{ push: false, speak: false, notify: false \}\)/, "an index selection is pushed into the scene without a loop");
+  assert.match(atlasJs, /scene\.returnToWhole\(\{ notify: false \}\)/, "clearing the index selection clears the scene's too");
+  assert.match(sceneJs, /if \(notify\) onSelect\(id\);/, "the scene's own selection can be silenced for a programmatic sync");
+});
+
+test("C08b-4 an empty or too-large page falls back to the index with a printed reason, and never draws a fake body", () => {
+  assert.match(atlasModelJs, /export const ATLAS_SCENE_NODE_CAP = 400;/);
+  assert.match(atlasModelJs, /export function atlasSceneAvailability\(payload\)/);
+  assert.match(atlasJs, /if \(view\.rendererView === "anatomical" && !usable\) view\.rendererView = "index";/, "the renderer view falls back to the index rather than drawing an unreadable or empty body");
+  assert.match(atlasJs, /if \(isAnatomical\) button\.disabled = !usable;/, "the toggle itself is disabled rather than merely visually discouraged");
+  assert.match(atlasJs, /ATLAS_SCENE_TOO_LARGE_SENTENCE/);
+  assert.match(atlasJs, /ATLAS_SCENE_EMPTY_SENTENCE/);
+});
+
+test("C08b-4b atlasSceneAvailability actually refuses an empty or over-cap page and allows everything between", () => {
+  const real = atlasFixtureResponse({ searchParams: new URLSearchParams() }).body;
+  assert.ok(real.nodes.length > 0 && real.nodes.length <= ATLAS_SCENE_NODE_CAP, "the fixture is a realistic, drawable page");
+  assert.deepEqual(atlasSceneAvailability(real), { available: true, reason: null, count: real.nodes.length });
+  assert.deepEqual(atlasSceneAvailability({ nodes: [] }), { available: false, reason: "empty", count: 0 });
+  assert.deepEqual(atlasSceneAvailability(null), { available: false, reason: "empty", count: 0 });
+  assert.deepEqual(atlasSceneAvailability(undefined), { available: false, reason: "empty", count: 0 });
+  const atCap = { nodes: Array.from({ length: ATLAS_SCENE_NODE_CAP }, (_, i) => ({ id: `n${i}` })) };
+  assert.equal(atlasSceneAvailability(atCap).available, true, "exactly the cap is still drawable");
+  const overCap = { nodes: Array.from({ length: ATLAS_SCENE_NODE_CAP + 1 }, (_, i) => ({ id: `n${i}` })) };
+  const big = atlasSceneAvailability(overCap);
+  assert.equal(big.available, false);
+  assert.equal(big.reason, "too_large");
+  assert.equal(big.count, ATLAS_SCENE_NODE_CAP + 1);
+});
+
+test("C08b-5 the index stays the accessible primary surface, and the renderer is an added, toggled view", () => {
+  assert.match(html, /<div class="btn-group" id="atlasRendererSwitch" role="group" aria-label="Atlas view">/);
+  assert.match(html, /data-atlas-view="index" aria-pressed="true">Index</);
+  assert.match(html, /data-atlas-view="anatomical" aria-pressed="false">Anatomical</);
+  assert.match(html, /<div id="atlasSceneWrap" hidden>/, "the renderer starts hidden; the index is what a first-time reader sees");
+  assert.match(atlasJs, /rendererView: "index",/, "the tab defaults to the index view");
 });

@@ -401,7 +401,10 @@ export function notInReleaseBlocks() {
     { id: "accomplishments", title: "Accomplishments: not in this release", slice: "V5-UX-C01", reason: "no verified-accomplishment producer exists" },
     { id: "detected_and_repaired", title: "Detected and repaired: not in this release", slice: "V5-UX-C01", reason: "no producer records a detection and its repair" },
     { id: "resources", title: "Resources: not in this release", slice: "V5-UX-C02 through V5-UX-C06", reason: "resource metering is read in those slices" },
-    { id: "atlas_renderer", title: "Atlas renderer: not in this release", slice: "V5-UX-C08 and V5-UX-C09", reason: "the anatomical renderer, incidents and tours ship there; the searchable index is on the Atlas tab now" },
+    // V5-UX-C08b wired the anatomical renderer into the live Atlas tab, so it
+    // is no longer a scope statement: only C09's causal traces, incident
+    // overlays and Doc-guided tours remain unbuilt.
+    { id: "atlas_incidents_tours", title: "Atlas incidents and tours: not in this release", slice: "V5-UX-C09", reason: "causal traces, incident overlays and Doc-guided tours ship there; the anatomical renderer is live on the Atlas tab now" },
   ];
 }
 

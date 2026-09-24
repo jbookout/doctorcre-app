@@ -444,3 +444,31 @@ export function atlasPhase({ status, payload }) {
   if (payload.nodes.length === 0) return "empty";
   return atlasDegraded(payload) ? "partial" : "ready";
 }
+
+/* -------------------------------------------------------------- the renderer */
+
+/**
+ * V5-UX-C08b: the anatomical renderer draws the whole page it is handed, with
+ * no server-side cap of its own. A page this large is a picture of a graph
+ * rather than one you can read, so the renderer refuses rather than drawing an
+ * illegible body; the index stays the accessible primary surface regardless.
+ */
+export const ATLAS_SCENE_NODE_CAP = 400;
+
+export const ATLAS_SCENE_TOO_LARGE_SENTENCE =
+  "This page carries too many components to draw as one body and stay readable. Narrow the search or a layer filter, or use the index below.";
+
+export const ATLAS_SCENE_EMPTY_SENTENCE =
+  "No node on this page can be drawn. The index above already says why.";
+
+/**
+ * Pure: no DOM. Whether the renderer can honestly draw the CURRENT page of the
+ * atlas, never a fabricated placeholder body. `payload` is exactly what
+ * `read()` last accepted through `validAtlasPayload`.
+ */
+export function atlasSceneAvailability(payload) {
+  const nodes = Array.isArray(payload?.nodes) ? payload.nodes : [];
+  if (nodes.length === 0) return Object.freeze({ available: false, reason: "empty", count: 0 });
+  if (nodes.length > ATLAS_SCENE_NODE_CAP) return Object.freeze({ available: false, reason: "too_large", count: nodes.length });
+  return Object.freeze({ available: true, reason: null, count: nodes.length });
+}
