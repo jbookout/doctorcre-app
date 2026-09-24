@@ -244,7 +244,7 @@ test("an incident resolves to the same canonical identity from the tile and from
 test("every prototype panel without a producer is a named scope statement", () => {
   const blocks = notInReleaseBlocks();
   const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_incidents_tours"]) {
+  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_causal_failure_graph_and_planned_layer"]) {
     assert.ok(ids.includes(id), `${id} has no scope statement`);
   }
   for (const block of blocks) {
@@ -826,12 +826,12 @@ test("C07-12 the atlas scope block moved on to the renderer slices", () => {
   const ids = notInReleaseBlocks().map((block) => block.id);
   assert.ok(!ids.includes("atlas"), "the Atlas tab still declares itself out of this release");
   assert.ok(!ids.includes("atlas_renderer"), "the renderer still carries its own retired scope statement");
-  assert.ok(ids.includes("atlas_incidents_tours"), "C09's remaining scope has no statement");
-  const renderer = notInReleaseBlocks().find((block) => block.id === "atlas_incidents_tours");
-  assert.equal(renderer.title, "Atlas incidents and tours: not in this release");
+  assert.ok(ids.includes("atlas_causal_failure_graph_and_planned_layer"), "C09's remaining scope has no statement");
+  const renderer = notInReleaseBlocks().find((block) => block.id === "atlas_causal_failure_graph_and_planned_layer");
+  assert.equal(renderer.title, "Atlas causal failure map and planned-architecture layer: not in this release");
   assert.equal(renderer.slice, "V5-UX-C09");
   assert.match(renderer.slice, /^V5-UX-C[0-9]/, "the block names no owning slice");
-  assert.match(renderer.reason, /the anatomical renderer is live on the Atlas tab now/);
+  assert.match(renderer.reason, /incident markers, a recorded incident trace and an optional Doc tour are live/);
   // The hard-coded panel copy went with the block it sat in.
   assert.doesNotMatch(html, /The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09\./);
   assert.doesNotMatch(html, /Atlas: not in this release/);
