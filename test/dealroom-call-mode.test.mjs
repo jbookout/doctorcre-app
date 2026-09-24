@@ -315,6 +315,57 @@ test("an Outlook draft is created only from its own approve button, and never se
   assert.match(calls.toasts.at(-1), /Nothing was sent/);
 });
 
+// --------------------------------------------- 3b. Jev checks (008d682a)
+
+test("an item Jev flagged shows the flag and its plain-English reasons, without hiding the item", async () => {
+  const flaggedReport = {
+    ...REPORT,
+    report: {
+      ...REPORT.report,
+      joe_tasks: [{
+        ...REPORT.report.joe_tasks[0],
+        checks: {
+          deal: { pass: false }, speaker: { pass: true }, details: { pass: true },
+          flagged: true,
+          reasons: ["Right deal: Jev matched a different deal ('d9')."],
+        },
+      }],
+    },
+  };
+  const h = harness({ statuses: [flaggedReport] });
+  h.controller.startPolling("2026.09.23-1500", { weekly: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  const html = h.doc.getElementById("postCallReport").innerHTML;
+  assert.match(html, /post-call-checks-flagged/);
+  assert.match(html, /Flagged for review/);
+  assert.match(html, /Right deal: Jev matched a different deal/);
+  // The item itself is still shown and still actionable, never dropped.
+  assert.match(html, /data-post-call-confirm="cand-joe"/);
+  assert.match(html, /Call the landlord/);
+});
+
+test("an item Jev never reached shows a neutral unavailable note, not a flag", async () => {
+  const unavailableReport = {
+    ...REPORT,
+    report: {
+      ...REPORT.report,
+      dell_tasks: [{ ...REPORT.report.dell_tasks[0], checks: { unavailable: true } }],
+    },
+  };
+  const h = harness({ statuses: [unavailableReport] });
+  h.controller.startPolling("2026.09.23-1500", { weekly: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  const html = h.doc.getElementById("postCallReport").innerHTML;
+  assert.match(html, /post-call-checks-unavailable/);
+  assert.match(html, /Automatic Jev checks did not run for this item\./);
+  assert.doesNotMatch(html, /post-call-checks-flagged/);
+});
+
+test("an item with no checks at all (Jev never ran) renders exactly as it did before", async () => {
+  const { html } = await reviewReady();
+  assert.doesNotMatch(html, /post-call-checks/);
+});
+
 // ------------------------------------- 4. the awaiting_context stall, closed
 
 test("a weekly session still awaiting context gets the index once, then waits", async () => {
