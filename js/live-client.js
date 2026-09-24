@@ -464,14 +464,24 @@ export function createLiveClient(opts = {}) {
     async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
 
     // ------------------------------- Model Room assignments and turns (C12)
-    // TWO MORE READS, passed through untouched, and neither names an actor
-    // either: both verbs derive the acting actor server-side. `roomQueue` is
-    // the projected assignment board and `roomTurns` is the room's own turns,
-    // returned exactly as written. There is no matching write on this surface:
-    // the composer and the Kanban drag are V5-UX-C13, and a read-only tab
-    // cannot fake either.
+    // TWO READS, passed through untouched, and neither names an actor either:
+    // both verbs derive the acting actor server-side. `roomQueue` is the
+    // projected assignment board and `roomTurns` is the room's own turns,
+    // returned exactly as written. Moving an assignment card (the Kanban
+    // drag) has no admitted write at all — see model-room-model.js's
+    // ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE — and acknowledging a dispatch was
+    // tried and removed for the same file's ACK_UNAVAILABLE_SENTENCE reason:
+    // that evidence is first-hand, from the acting agent seat, never from
+    // whoever is browsing this page.
     async roomQueue(args = {}) { return rpc('read-room-queue', args); },
     async roomTurns(args = {}) { return rpc('read-room', args); },
+    // V5-UX-C13b: the Model Room composer's one write. `add-room-turn`
+    // derives origin_channel/origin_actor server-side from this session and
+    // only requires the caller's own personal scope (mcp-server/src/
+    // identity.js personalScopeForActor) — true for Joe's or Dell's own
+    // authenticated browser session — so a human caller here is honest, not
+    // borrowed. It carries an idempotency key, so it goes through `write`.
+    async addRoomTurn(args) { return write('add-room-turn', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
     // -------------------------------------------- Doc conversations page (B07)

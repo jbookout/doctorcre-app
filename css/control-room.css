@@ -221,6 +221,23 @@
 .needs-joe-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .needs-joe-detail h3 { margin: 0 0 8px; font-size: 14px; }
 
+/* V5-UX-C13b: the composer and the Kanban drop target. Same tokens, same
+ * 44px floor, no new colour literal — the unsupported/unavailable states are
+ * dashed, exactly like the "never" freshness state above, because they are
+ * the ordinary answer here and not an error. The composer's own result line
+ * carries state (sending/sent/failed/invalid) the same way. */
+#modelRoomComposerText, #modelRoomComposerSend { min-height: var(--touch); }
+#modelRoomComposerForm .field { display: grid; gap: 6px; margin-top: 10px; min-width: 0; }
+#modelRoomComposerForm label { font-size: 13px; font-weight: 700; }
+#modelRoomComposerText { resize: vertical; }
+.model-room-composer-result { margin: 10px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.model-room-composer-result[data-state="sent"] { border-left-style: solid; color: var(--text); }
+.model-room-composer-result[data-state="failed"] { border-left-color: var(--amber-text); color: var(--amber-text); }
+.assignment-move-target { margin-top: 12px; padding: 14px; border: 2px dashed var(--line-strong); border-radius: var(--radius); text-align: center; color: var(--muted); font-size: 12px; min-height: var(--touch); display: flex; align-items: center; justify-content: center; }
+.model-room-move-result { margin: 8px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.dispatch-ack-unavailable { margin: 8px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--quiet); font-size: 12px; line-height: 1.6; }
+.model-room-answer-unavailable { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); font-size: 12px; line-height: 1.6; }
+
 @media (max-width: 640px) {
   .assignment-rail { grid-template-columns: 1fr; }
   .assignment-head { flex-direction: column; }

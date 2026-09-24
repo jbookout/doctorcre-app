@@ -376,8 +376,8 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract pins both verbs alphabetically at 1.19.0 with 57 operations", () => {
-  assert.equal(contract.version, "1.21.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 57);
+  assert.equal(contract.version, "1.22.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 58);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);

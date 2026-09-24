@@ -1,9 +1,20 @@
-// V5-UX-C12 plus V5-UX-C13 clause 3 — the Model Room tab: DOM wiring only.
+// V5-UX-C12 plus V5-UX-C13 clause 3 plus V5-UX-C13b — the Model Room tab: DOM
+// wiring only.
 //
 // Every decision about a payload is in ./model-room-model.js. This file reads,
-// paints, and does nothing else. It writes nothing: all four verbs on this
-// surface are reads, none carries an idempotency key, and none names an actor,
-// a sponsor or a tenant.
+// paints, and — as of C13b — makes exactly ONE admitted write: `add-room-turn`,
+// the composer below. The other two things C13b's scope names have no
+// admitted write behind them:
+//   * the Kanban move (ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE — no pinned verb
+//     changes a projected assignment's status), and
+//   * acknowledging a dispatch (ACK_UNAVAILABLE_SENTENCE — that evidence is
+//     first-hand, from the acting agent seat, and a click here would put the
+//     wrong name on it; an earlier revision of this file wired it and it was
+//     removed for exactly that reason).
+// Both render as real interaction that always explains, honestly and by
+// name, why nothing was sent — never a fake success and never a disabled
+// control standing in for one that could not exist (S02 clause 3's own rule,
+// extended here).
 //
 // The reads are LAZY, like the Atlas and Sessions tabs: they fire on the first
 // selection of this tab, never on page boot, so the Control Room's four
@@ -14,12 +25,14 @@
 // permission-filtered session read; choosing a row reads history and never
 // treats historical rationale as a fresh instruction.
 import {
-  ACKNOWLEDGEMENT_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
+  ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE, ANSWER_UNAVAILABLE_SENTENCE,
+  ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
   QUEUE_ROOM_SENTENCE, TOPIC_HISTORY_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
-  assignmentBoard, contextPanel, countsLine, dispatchSearchRequest, dispatchView, historyTopics, historyWorkItems,
-  listState, participants, queueFreshness, queueRequest, refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns,
-  refuseSessionIdentity, refuseWorkRequestCard, sessionCards, topicHistory, turnRequest, turnWindow,
-  workItemLedger, workRequestCardRequest,
+  answerRequest, assignmentBoard, assignmentMoveOutcome,
+  composerDraftAfterAttempt, composerRequest, contextPanel, countsLine, dispatchSearchRequest, dispatchView,
+  historyTopics, historyWorkItems, listState, participants, queueFreshness, queueRequest, refuseDispatchHistory,
+  refuseRoomQueue, refuseRoomTurns, refuseSessionIdentity, refuseWorkRequestCard, sessionCards, topicHistory,
+  turnRequest, turnWindow, workItemLedger, workRequestCardRequest,
 } from "./model-room-model.js";
 import { validCurrentWorkRequestsPayload } from "./control-room-model.js";
 import { createFixtureClient } from "./fixture-client.js";
@@ -54,6 +67,14 @@ const view = {
   historyTopicId: "",
   historyWorkItemId: "",
   historyCard: { state: "idle", payload: null, refusal: null },
+  // V5-UX-C13b: the composer's draft, and the one real write on this tab
+  // (`add-room-turn`). The draft is kept, in full, whenever a send fails —
+  // see composerDraftAfterAttempt.
+  composer: { text: "" },
+  composerSend: { state: "idle", message: null },
+  // The last drop's outcome on the assignments board. Always unsupported
+  // (assignmentMoveOutcome), because no pinned verb moves a projected card.
+  moveMessage: null,
 };
 
 const clock = (value) => formatClock(value) || "unknown";
@@ -102,7 +123,11 @@ function renderAssignments() {
     return;
   }
   const board = assignmentBoard(payload);
-  list.innerHTML = board.cards.map((card) => `<article class="card glass assignment-card" data-task="${escapeHtml(card.taskId)}" data-status="${escapeHtml(card.status)}">
+  // V5-UX-C13b: every card is draggable, and every drop is refused the same
+  // honest way (assignmentMoveOutcome) — a real interaction with no pinned
+  // verb behind it, never a fake move and never a disabled card standing in
+  // for one that could not be dragged.
+  list.innerHTML = board.cards.map((card) => `<article class="card glass assignment-card" draggable="true" data-task="${escapeHtml(card.taskId)}" data-status="${escapeHtml(card.status)}">
     <div class="assignment-head">
       <h4>${escapeHtml(card.title)}</h4>
       <span class="chip" data-priority="${escapeHtml(card.priority)}">${escapeHtml(card.priority)}</span>
@@ -127,6 +152,46 @@ function renderAssignments() {
     dropped.hidden = board.droppedCount === 0;
     dropped.textContent = board.droppedText ?? "";
   }
+  for (const article of list.querySelectorAll("article[data-task]")) {
+    article.addEventListener("dragstart", (event) => {
+      event.dataTransfer?.setData("text/plain", article.dataset.task);
+    });
+  }
+  renderMoveTarget(board);
+}
+
+/**
+ * V5-UX-C13b: the drop target below the board. Any card dropped here is
+ * refused the same honest way — no pinned verb changes a projected card's
+ * status — and the result names the card by its task id.
+ */
+function renderMoveTarget(board) {
+  const zone = $("modelRoomMoveTarget");
+  const result = $("modelRoomMoveResult");
+  if (zone && !zone.dataset.wired) {
+    zone.dataset.wired = "true";
+    zone.addEventListener("dragover", (event) => event.preventDefault());
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const taskId = event.dataTransfer?.getData("text/plain") ?? "";
+      const card = board?.cards.find((candidate) => candidate.taskId === taskId) ?? { taskId };
+      const outcome = assignmentMoveOutcome(card);
+      view.moveMessage = outcome;
+      renderMoveResult();
+    });
+  }
+  renderMoveResult();
+}
+
+function renderMoveResult() {
+  const result = $("modelRoomMoveResult");
+  if (!result) return;
+  if (!view.moveMessage) { result.hidden = true; result.textContent = ""; return; }
+  result.hidden = false;
+  result.dataset.taskId = view.moveMessage.taskId ?? "";
+  result.textContent = view.moveMessage.taskId
+    ? `${view.moveMessage.taskId}: ${view.moveMessage.text}`
+    : view.moveMessage.text;
 }
 
 /* ---------------------------------------------------------------- sessions */
@@ -197,11 +262,15 @@ function dispatchHtml() {
   }
   if (!view.dispatch.payload) return stages;
   const drawer = dispatchView(view.dispatch.payload);
+  // V5-UX-C13b: no control offers to acknowledge a dispatch from here. That
+  // evidence is first-hand — the acting agent seat's own receipt — and
+  // whoever is browsing this page is not that seat. See ACK_UNAVAILABLE_SENTENCE.
   const availability = `<p class="dispatch-availability">
     <span data-stage="received" data-state="${escapeHtml(drawer.receivedState)}">received: ${escapeHtml(drawer.receivedState)}</span>
     <span data-stage="acknowledged" data-state="${escapeHtml(drawer.acknowledgedState)}">acknowledged: ${escapeHtml(drawer.acknowledgedState)}</span>
     ${drawer.stageUnavailableReason ? `<span data-state="unavailable">reason: ${escapeHtml(drawer.stageUnavailableReason)}</span>` : ""}
-  </p>`;
+  </p>
+  <p class="dispatch-ack-unavailable">${escapeHtml(ACK_UNAVAILABLE_SENTENCE)}</p>`;
   const empty = drawer.emptySentence ? `<p class="dispatch-empty">${escapeHtml(drawer.emptySentence)}</p>` : "";
   const events = drawer.events.map((event) => `<li class="dispatch-event" data-stage="${escapeHtml(event.stage)}">
     <p class="dispatch-when">${escapeHtml(event.stage)} · ${escapeHtml(clock(event.at))}</p>
@@ -408,12 +477,78 @@ function renderHistory() {
   renderHistoryPanel();
 }
 
+/* -------------------------------------------------------- V5-UX-C13b: composer */
+
+/**
+ * `add-room-turn`, the composer's one write. `composerRequest` validates and
+ * builds the verb's own shape (body, seat: "human", room: TURN_ROOM); a send
+ * that fails validation, or that the record layer refuses, keeps the draft
+ * exactly as typed (composerDraftAfterAttempt) and shows the server's own
+ * refusal verbatim rather than a paraphrase.
+ */
+function renderComposer() {
+  const result = $("modelRoomComposerResult");
+  if (result) {
+    result.hidden = !view.composerSend.message;
+    result.dataset.state = view.composerSend.state;
+    result.textContent = view.composerSend.message ?? "";
+  }
+}
+
+async function submitComposer() {
+  // A second submit while one is already in flight is refused here rather
+  // than re-entered, so a double click cannot post the draft twice.
+  if (view.composerSend.state === "sending") return;
+  const request = composerRequest({ text: view.composer.text });
+  if (!request) {
+    view.composer = composerDraftAfterAttempt(view.composer);
+    view.composerSend = { state: "invalid", message: "Enter a message before sending; the draft is kept." };
+    renderComposer();
+    return;
+  }
+  view.composerSend = { state: "sending", message: "Sending…" };
+  renderComposer();
+  try {
+    const result = await client.addRoomTurn(request);
+    // Sent, not fabricated: the confirmation is the server's own answer
+    // (its sequence number), never an "ok" this file invented.
+    view.composer = { text: "" };
+    const input = $("modelRoomComposerText");
+    if (input) input.value = "";
+    view.composerSend = { state: "sent", message: `Sent — recorded as turn ${result?.seq ?? "unknown"}.` };
+    announce("The Model Room request was sent.");
+    if (client.roomTurns) await take("turns", () => client.roomTurns(turnRequest()), refuseRoomTurns);
+  } catch (error) {
+    // The draft survives every failure, and the message shown is the
+    // record layer's own refusal, verbatim — never a paraphrase of it.
+    view.composer = composerDraftAfterAttempt(view.composer);
+    view.composerSend = {
+      state: "failed",
+      message: `Not sent: ${String(error?.payload?.error || error?.message || "the write did not answer")}.`,
+    };
+  }
+  renderComposer();
+}
+
+/* -------------------------------------------------- V5-UX-C13b: answer unavailable */
+
+function renderAnswer() {
+  const root = $("modelRoomAnswerUnavailable");
+  if (!root) return;
+  // answerRequest() is always null: no pinned verb attaches a response to a
+  // Work Request. Shown only once a work item is chosen, beside its ledger.
+  root.hidden = !view.historyWorkItemId || answerRequest() !== null;
+  root.textContent = view.historyWorkItemId ? ANSWER_UNAVAILABLE_SENTENCE : "";
+}
+
 function render() {
   renderAssignments();
   renderSessions();
   renderContext();
   renderParticipants();
   renderHistory();
+  renderComposer();
+  renderAnswer();
 }
 
 /* --------------------------------------------------------------------- reads */
@@ -552,6 +687,13 @@ export function mountModelRoom({ outage = null } = {}) {
   // other, so the panel below is never asked to render two histories at once.
   $("modelRoomHistoryTopic")?.addEventListener("change", (event) => selectHistoryTopic(event.target.value));
   $("modelRoomHistoryWorkItem")?.addEventListener("change", (event) => selectHistoryWorkItem(event.target.value));
+  // V5-UX-C13b: the composer. Typing is kept in `view.composer`; submitting
+  // calls `add-room-turn` for real (see submitComposer).
+  $("modelRoomComposerText")?.addEventListener("input", (event) => { view.composer.text = event.target.value; });
+  $("modelRoomComposerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitComposer();
+  });
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"

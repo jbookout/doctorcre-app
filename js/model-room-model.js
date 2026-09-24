@@ -628,3 +628,91 @@ export function workRequestCardRequest(humanRef) {
   if (!/^WR-[0-9]{1,12}$/.test(ref)) return null;
   return { work_request: ref };
 }
+
+/* ------------------------------------------ C13b: composer, Kanban move, ack */
+//
+// V5-UX-C13b's included scope is the composer, the interactive Kanban, and
+// answering a Waiting for Joe item. Before drawing any of the three, this file
+// checked contracts/carr-interface.v1.json against list-verbs AND the actual
+// server-side handler each candidate verb runs (carr-system's
+// mcp-server/src/partner-room.js, dispatch-spine.js), because a verb's own
+// description can say more than its input schema does:
+//
+//   * SENDING a targeted room request is `add-room-turn`. Its handler derives
+//     `origin_channel`/`origin_actor` server-side from the calling session
+//     and only requires `personalScopeForActor(actor)` to answer "personal" —
+//     true for Joe's or Dell's own authenticated browser session
+//     (identity.js: `actor.human === true && isKnownPartner(actor.slug)`).
+//     `seat` is caller-supplied but this composer always sends "human", which
+//     is simply true when a human typed it. Nothing about this write
+//     misattributes anything, so it is pinned and wired for real below.
+//   * MOVING an assignment card has no admitted write at all: no pinned verb
+//     changes a `read-room-queue` card's status. Every drop is a real
+//     interaction and every drop is refused, by name, the same way.
+//   * ACKNOWLEDGING a dispatch was tried in an earlier revision of this
+//     slice and REMOVED: `acknowledge-dispatch`'s own description says an ack
+//     is FIRST-HAND — "received when the turn lands in a desk window,
+//     acknowledged when the acting session takes it up" — and the dispatch is
+//     addressed to an agent seat, not to the human browsing this page. A
+//     click here would record Joe as the desk that received or took up an
+//     assignment he did not receive or take up: false evidence, not an
+//     honest write. See ACK_UNAVAILABLE_SENTENCE.
+//
+// ANSWERING a Waiting for Joe item (CR-AC-20) has the same gap as the Kanban
+// move: no pinned verb attaches a response to a Work Request or resolves it
+// from this app, so ANSWER_REQUEST always answers null.
+
+export const ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE = "This move is not supported: no pinned verb changes a "
+  + "projected assignment's status. Source or shipping status can only change at its source, never by dragging "
+  + "this card.";
+
+export const ANSWER_UNAVAILABLE_SENTENCE = "Answering this Waiting for Joe item is not available from this app: "
+  + "no pinned verb attaches a response to a Work Request or resolves one from here. The detail above is "
+  + "everything the record layer will show; resolve the request at its source.";
+
+export const ACK_UNAVAILABLE_SENTENCE = "This page does not offer to acknowledge a dispatch. acknowledge-dispatch "
+  + "records a FIRST-HAND stage — the desk that actually received or took up the assignment — and that desk is an "
+  + "agent seat, not whoever is browsing this page. A click here would put the wrong name on that evidence.";
+
+/**
+ * `add-room-turn`'s request: the room this tab's conversation actually reads
+ * (TURN_ROOM, never the queue's `partner-line`), `seat: "human"` because it
+ * is always literally true here, and no `target` field — the verb has none,
+ * and this file invents no structure the record layer does not carry.
+ * `null` means "do not send it," exactly as every other request-builder in
+ * this file: an empty or over-long body refuses before anything is sent.
+ */
+export const COMPOSER_BODY_MAX = 20000;
+export function composerRequest({ text } = {}) {
+  const body = String(text ?? "").trim();
+  if (body.length === 0 || body.length > COMPOSER_BODY_MAX) return null;
+  return { body, seat: "human", room: TURN_ROOM, kind: "turn" };
+}
+
+/** The one thing a failed composer attempt must do — keep the draft exactly
+ * as typed. A pure function so the view never has to re-derive the rule
+ * under a click handler. */
+export function composerDraftAfterAttempt(draft) {
+  return { text: draft?.text ?? "" };
+}
+
+/** Answering a Waiting for Joe item, always unbuildable: no pinned verb
+ * attaches a response to a Work Request. */
+export function answerRequest() {
+  return null;
+}
+
+/**
+ * Every drop on the assignments board answers the same way, because there is
+ * exactly one true reason: no pinned verb performs the move. The task id
+ * travels on the outcome so a caller can name the card in its own message
+ * without this function's shape ever needing to change.
+ */
+export function assignmentMoveOutcome(card) {
+  return {
+    allowed: false,
+    taskId: card?.taskId ?? null,
+    reason: "no_pinned_status_write",
+    text: ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE,
+  };
+}

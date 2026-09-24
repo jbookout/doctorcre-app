@@ -2021,6 +2021,41 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    // V5-UX-C13b: the Model Room composer's one write, refusing what
+    // `add-room-turn`'s real handler refuses (mcp-server/src/partner-room.js)
+    // and deriving sponsor/origin the same way: NEVER from a caller-supplied
+    // field. `seat` is the one caller-supplied value, exactly as production
+    // allows, and this fixture does not pretend a bad one is accepted.
+    async addRoomTurn({ idempotency_key, body, seat, room, kind = 'turn', msg_id } = {}) {
+      refuseIfOutage('model_room', 'add-room-turn');
+      return withIdem(idempotency_key, () => {
+        const seatSlug = String(seat ?? '').trim().toLowerCase();
+        if (!/^[a-z][a-z0-9_]*$/.test(seatSlug)) refuse('add-room-turn', 'seat_invalid');
+        const roomName = typeof room === 'string' && room.trim() ? room.trim() : 'partner-line';
+        const kindValue = ['turn', 'system', 'receipt'].includes(kind) ? kind : 'turn';
+        const text = typeof body === 'string' ? body : '';
+        if (!text.trim()) refuse('add-room-turn', 'body_required');
+        if (text.length > 20000) refuse('add-room-turn', 'body_too_long', { limit: 20000, got: text.length });
+        const last = ROOM_TURNS[ROOM_TURNS.length - 1];
+        const seq = String(Number(last?.seq ?? 0) + 1);
+        const at = nowIso();
+        const mintedMsgId = msg_id ? String(msg_id) : `fixture-turn-${seq}`;
+        // Only landed in the visible window when it targets the room this tab
+        // actually reads (model-room). A turn posted to another room, like the
+        // real handler, is written but is simply not part of this answer.
+        if (roomName === 'model-room') {
+          ROOM_TURNS.push({
+            seq, room_id: roomName, at, sponsor: selfActor, seat: seatSlug, kind: kindValue,
+            msg_id: mintedMsgId, origin_channel: 'mcp', origin_actor: selfActor, body: text,
+          });
+        }
+        return {
+          ok: true, room: roomName, seq, at, sponsor: selfActor, seat: seatSlug,
+          kind: kindValue, origin_channel: 'mcp', origin_actor: selfActor, msg_id: mintedMsgId,
+        };
+      });
+    },
+
     async notificationPreferences() {
       refuseIfOutage('notifications', 'read-notification-preferences');
       return { ...preferencePayload(), quiet_now: quietNow() };
