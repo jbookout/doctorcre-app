@@ -112,6 +112,8 @@ const PAGES_WITH_BADGE_JS = [
   ["conversations.html", "js/conversations.js"],
   ["business.html", "js/workspace-business.js"],
   ["workspace.html", "js/workspace-command-center.js"],
+  ["calendar.html", "js/calendar.js"],
+  ["ideas.html", "js/ideas.js"],
 ];
 const PAGES_WITHOUT_BADGE_JS = ["design.html", "design-business.html", "design-operations.html"];
 

@@ -254,8 +254,9 @@ test("operations stay reachable, in a secondary More rather than as a business t
  * Operations, under their own heading and above it, so the primary tabs and the
  * five phone shortcuts stay exactly as they are.
  */
-test("the workspace shell's More reaches Tasks, Conversations and Notifications", async () => {
-  const expected = [["/tasks", "Tasks"], ["/conversations", "Conversations"], ["/notifications", "Notifications"]];
+test("the workspace shell's More reaches Calendar, Ideas, Tasks, Conversations and Notifications", async () => {
+  // V5-UX-B04 added Calendar and Ideas at the head of the group.
+  const expected = [["/calendar", "Calendar"], ["/ideas", "Ideas"], ["/tasks", "Tasks"], ["/conversations", "Conversations"], ["/notifications", "Notifications"]];
   for (const file of ["workspace.html", "business.html"]) {
     const html = await readFile(`${ROOT}/${file}`, "utf8");
     const more = html.match(/<details class="nav-more">[\s\S]*?<\/details>/)?.[0] || "";
@@ -265,7 +266,7 @@ test("the workspace shell's More reaches Tasks, Conversations and Notifications"
     assert.deepEqual(links, expected, `${file} Workspace group`);
     assert.ok(more.indexOf(">Workspace<") < more.indexOf(">Operations<"), `${file}: Workspace sits above Operations`);
     const primary = html.match(/<nav class="primary-nav"[\s\S]*?<\/nav>/)?.[0] || "";
-    assert.doesNotMatch(primary, /\/tasks|\/conversations|\/notifications/, `${file} primary nav stays business-only`);
+    assert.doesNotMatch(primary, /\/tasks|\/conversations|\/notifications|\/calendar|\/ideas/, `${file} primary nav stays business-only`);
   }
 });
 

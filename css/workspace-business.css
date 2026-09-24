@@ -119,6 +119,22 @@
 .record-field dt{margin:0;color:var(--quiet);font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .record-field dd{margin:0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .unresolved-flag{display:block;color:var(--orange);font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+/* V5-UX-B04 recent activity. This page loads css/workspace.css rather than the
+   shared system sheet, so the shared motion token names are used with the system
+   sheet's own values as fallbacks, and receipt-in is the same keyframe. Rows
+   enter on a stagger inside a second and answer the pointer; the timeline rail
+   carries a slow travelling dash so the eye follows the history down. */
+.activity-list{position:relative;display:grid;gap:6px;margin:0;padding:0 0 0 16px;list-style:none}
+.activity-list:before{content:"";position:absolute;top:6px;bottom:6px;left:4px;width:2px;border-radius:2px;background:repeating-linear-gradient(to bottom,rgba(242,138,57,.55) 0 6px,transparent 6px 12px);background-size:2px 24px;animation:activity-rail var(--motion-flow,12s) linear infinite}
+.activity-row{position:relative;display:grid;gap:2px;padding:7px 10px;border:1px solid rgba(157,190,220,.13);border-radius:10px;animation:receipt-in var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1)) backwards;animation-delay:var(--stagger,0ms);transition:transform var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1)),border-color var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1))}
+.activity-row:hover{transform:translateX(3px);border-color:rgba(242,138,57,.45)}
+.activity-dot{position:absolute;top:12px;left:-16px;width:10px;height:10px;border:2px solid var(--orange);border-radius:999px;background:var(--bg,#07111f)}
+.activity-row[data-kind="event"] .activity-dot{border-color:var(--cyan,#7dd3fc)}
+.activity-what{font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.activity-when{color:var(--quiet);font-size:10px}
+.activity-note{font-size:11px}
+@keyframes receipt-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes activity-rail{to{background-position-y:24px}}
 
 /* --- footnote ------------------------------------------------------------ */
 .business-footnote{padding:16px 18px;border-radius:16px}
@@ -153,4 +169,6 @@
   .record-row{transition:none}
   .record-row:hover{transform:none}
   .skeleton-line{animation:none!important}
+  .activity-row,.activity-list:before{animation:none!important;transition:none}
+  .activity-row:hover{transform:none}
 }

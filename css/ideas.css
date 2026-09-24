@@ -1,0 +1,54 @@
+/* V5-UX-B04 Ideas — page layer over css/system.css.
+ *
+ * Ideas are tiles on a glass board. Motion (rule 9293d609), on the shared
+ * tokens only: the tiles enter on a stagger inside a second, lift and tilt
+ * toward the pointer (a depth response), press down, and an idea with a due
+ * date carries the same approach pulse as the Calendar. The Events tab is a
+ * still, dashed absent state on purpose: nothing about a missing read should
+ * look alive.
+ *
+ * Reduced motion: the shared floor stops every animation and transition, and
+ * the block at the end removes the lift, tilt and press as well.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+
+.idea-search { min-width: min(320px, 100%); }
+.idea-search input { min-height: var(--touch); }
+
+.idea-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 0 0 var(--gap); padding: 0; list-style: none; perspective: 1000px; }
+.idea-grid:empty { display: none; }
+
+.idea-tile { display: grid; align-content: start; gap: 10px; width: 100%; min-height: 132px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(160deg, var(--glass-hi), var(--glass)); color: var(--text); font: inherit; text-align: left; cursor: pointer; transform-style: preserve-3d; animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); transition: transform var(--motion-move) var(--ease), border-color var(--motion-enter) var(--ease), box-shadow var(--motion-move) var(--ease); }
+.idea-tile:hover { transform: translateY(-3px) rotateX(var(--tilt-x, 3deg)) rotateY(var(--tilt-y, 0deg)); border-color: color-mix(in srgb, var(--orange) 55%, var(--line)); box-shadow: var(--shadow-float); }
+.idea-tile:active { transform: translateY(0) scale(0.98); }
+.idea-tile:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.idea-number { color: var(--orange-text); font: 700 13px/1 var(--display); letter-spacing: 0.06em; }
+.idea-label { margin: 0; font: 600 16px/1.25 var(--body); overflow-wrap: anywhere; }
+.idea-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--muted); font-size: 12px; }
+.idea-meta .cal-pulse { display: inline-block; width: 9px; height: 9px; border-radius: 999px; }
+.idea-meta .cal-pulse[data-pulse="urgent"] { background: var(--red); box-shadow: 0 0 0 2px var(--ground-0), 0 0 0 3.5px var(--red); animation: breathe var(--motion-urgent) ease-in-out infinite; }
+.idea-meta .cal-pulse[data-pulse="attention"] { background: var(--amber); box-shadow: 0 0 0 2px var(--ground-0), 0 0 0 3px var(--amber); animation: breathe var(--motion-attention) ease-in-out infinite; }
+.idea-meta .cal-pulse[data-pulse="calm"] { background: var(--cyan); animation: breathe var(--motion-calm) ease-in-out infinite; }
+.idea-meta .cal-pulse[data-pulse="still"] { background: transparent; border: 1.5px solid var(--quiet); }
+
+/* The detail popup's rows and body. */
+.idea-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 14px; margin: 0 0 14px; }
+.idea-rows dt { color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.idea-rows dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.idea-rows dd.unknown { color: var(--quiet); font-style: italic; }
+.idea-body { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--ground-1) 60%, transparent); font: 14px/1.5 var(--body); white-space: pre-wrap; overflow-wrap: anywhere; animation: receipt-in var(--motion-enter) var(--ease) backwards; }
+
+.event-absent { border-style: dashed; }
+
+@media (max-width: 640px) {
+  .idea-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .idea-rows dd { margin-bottom: 8px; }
+}
+
+/* --------------------------------------------------------- reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .idea-tile:hover, .idea-tile:active { transform: none; }
+}
+:root[data-motion="reduced"] .idea-tile:hover, :root[data-motion="reduced"] .idea-tile:active { transform: none; }

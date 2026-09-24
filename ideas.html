@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Ideas — the parked ideas both partners share, read from the record layer">
+  <title>Ideas · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/ideas.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the ideas</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>ideas</small></span></a>
+    <nav class="primary-nav" aria-label="Primary navigation">
+      <a href="/">Home</a>
+      <a href="/deals">Deals</a>
+      <a href="/clients">Clients</a>
+      <a href="/vendors">Vendors</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/ideas" aria-current="page">Ideas</a>
+      <a href="/tasks">Tasks</a>
+    </nav>
+    <a class="pref-icon nav-notif" href="/notifications" title="Notifications">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.1c0 .86-.34 1.68-.94 2.3L4.6 15h14.8l-1.46-1.6a3.3 3.3 0 0 1-.94-2.3V8a5 5 0 0 0-5-5Z"></path><path d="M9.6 18a2.6 2.6 0 0 0 4.8 0"></path></svg>
+      <span class="sr-only">Notifications</span>
+      <span class="nav-badge" id="navUnreadBadge" hidden></span>
+    </a>
+    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
+      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
+      </button>
+      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
+      </button>
+      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main id="main" class="shell">
+    <section class="card glass" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow"><span class="orb" data-state="still" id="ideaOrb" aria-hidden="true"></span> Parked ideas · one shared record for both partners</p>
+        <h1 id="pageTitle">Ideas</h1>
+      </div>
+      <div class="chip-bar">
+        <span class="status" data-state="unknown" id="ideaStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="ideaStatusLabel">Reading the record…</span></span>
+        <span class="as-of" id="ideaAsOf">Reading the record layer…</span>
+      </div>
+    </section>
+
+    <p class="sr-only" id="ideaLive" aria-live="polite" role="status">Reading the record…</p>
+
+    <div class="tabs" id="ideaTabs" role="tablist" aria-label="Ideas and events">
+      <button class="tab" type="button" role="tab" id="tabIdeas" data-tab-key="ideas" aria-controls="ideasPanel" aria-selected="true">Ideas</button>
+      <button class="tab" type="button" role="tab" id="tabEvents" data-tab-key="events" aria-controls="eventsPanel" aria-selected="false">Events</button>
+    </div>
+
+    <section class="card glass" id="ideasPanel" role="tabpanel" aria-labelledby="tabIdeas">
+      <div class="card-heading">
+        <div><p class="eyebrow">Open ideas</p><h2 id="ideaListTitle">Browse</h2></div>
+        <div class="field idea-search">
+          <label for="ideaSearch">Search ideas</label>
+          <input id="ideaSearch" type="search" autocomplete="off" placeholder="Words, a number, or an owner">
+        </div>
+      </div>
+      <div class="state-block" id="ideaState" data-state="loading"><h3>Reading the parked ideas…</h3></div>
+      <ul class="idea-grid" id="ideaList"></ul>
+      <div class="chip-bar">
+        <button class="btn" type="button" id="ideaRefresh">Check again</button>
+        <p class="small" id="ideaSource">Source pending</p>
+      </div>
+    </section>
+
+    <section class="card glass" id="eventsPanel" role="tabpanel" aria-labelledby="tabEvents" hidden>
+      <div class="card-heading"><div><p class="eyebrow">Events</p><h2>Not available yet</h2></div></div>
+      <div class="state-block event-absent" data-state="empty"><h3 id="eventsAbsent">Events: no record-layer read returns events yet.</h3></div>
+    </section>
+  </main>
+
+  <dialog id="ideaDialog" class="dialog" aria-labelledby="ideaDialogTitle">
+    <article>
+      <header><div><p class="eyebrow" id="ideaDialogEyebrow">Idea</p><h2 id="ideaDialogTitle">Idea</h2></div><button class="btn icon-btn" type="button" id="ideaDialogClose" aria-label="Close">×</button></header>
+      <div class="dialog-body">
+        <div id="ideaDialogBody"><p class="small">Reading this idea…</p></div>
+      </div>
+    </article>
+  </dialog>
+
+  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
+  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
+    <div class="doc-chat-head">
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Ideas</p></div>
+      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
+    </div>
+    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
+    <form class="doc-composer" id="docForm">
+      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
+      <button class="btn btn-primary" type="submit">Send</button>
+      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
+    </form>
+  </aside>
+
+  <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
+  <footer class="shell"><p class="small">DoctorCRE · Ideas · Read only: an idea is parked and closed where it is written.</p></footer>
+  <script type="module" src="/js/ideas.js"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+/* V5-UX-B04 Calendar — page layer over css/system.css.
+ *
+ * No colours, type scale or motion tokens of its own: every duration is a
+ * shared --motion-* token and every hue a shared role token. What this sheet
+ * adds is the calendar's own shape and its motion (rule 9293d609):
+ *
+ *   - the grid slides forward or back between months and weeks, and zooms in
+ *     or out when the view changes month <-> week;
+ *   - each cell enters on a stagger, all of it inside a second;
+ *   - a date's pulse runs faster as it approaches (calm -> attention -> urgent)
+ *     and a distant or settled date is still, with a shape per state so the
+ *     meaning survives with motion off;
+ *   - today's cell glows slowly, so the page looks switched on;
+ *   - every cell, chip and agenda row answers hover and press.
+ *
+ * Reduced motion: the shared floor stops every animation and transition; the
+ * block at the end also removes the hover and press transforms. Nothing here
+ * starts hidden and relies on an animation to reveal it.
+ */
+
+.topbar { flex-wrap: wrap; }
+.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+.btn-group .btn { min-height: var(--touch); }
+
+/* ------------------------------------------------------------------ layout */
+.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: var(--gap); align-items: start; margin-bottom: var(--gap); }
+.cal-board { overflow: hidden; }
+.cal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 14px; }
+.cal-steps { display: flex; gap: 6px; }
+.cal-steps .btn { min-height: var(--touch); min-width: var(--touch); }
+.cal-period { flex: 1 1 180px; margin: 0; font: 600 26px/1.05 var(--display); letter-spacing: 0.01em; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 11px; }
+.cal-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.cal-notices:empty { display: none; }
+.cal-notices { display: grid; gap: 10px; margin-bottom: var(--gap); }
+
+/* -------------------------------------------------------------------- grid */
+.cal-grid { display: grid; gap: 6px; perspective: 900px; }
+.cal-grid:empty { display: none; }
+.cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.cal-weekday { padding: 0 8px 4px; color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+
+.cal-grid[data-enter="forward"] { animation: cal-slide-forward var(--motion-move) var(--ease); }
+.cal-grid[data-enter="back"] { animation: cal-slide-back var(--motion-move) var(--ease); }
+.cal-grid[data-enter="zoom-in"] { animation: cal-zoom-in var(--motion-move) var(--ease); }
+.cal-grid[data-enter="zoom-out"] { animation: cal-zoom-out var(--motion-move) var(--ease); }
+
+.cal-day { position: relative; display: grid; align-content: start; gap: 4px; min-height: 96px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--glass) 70%, transparent); animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease), box-shadow var(--motion-enter) var(--ease); }
+.cal-day:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
+.cal-day:active { transform: translateY(0) scale(0.985); }
+.cal-grid[data-view="week"] .cal-day { min-height: 220px; }
+.cal-day[data-out-month="true"] { opacity: 0.55; }
+.cal-day[aria-selected="true"] { border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange) inset; }
+.cal-day[data-today="true"] { border-color: color-mix(in srgb, var(--orange) 60%, var(--line)); }
+.cal-day[data-today="true"]::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; box-shadow: 0 0 18px color-mix(in srgb, var(--orange) 35%, transparent); animation: breathe var(--motion-calm) ease-in-out infinite; }
+
+.cal-day-open { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 2px 4px; border: 0; border-radius: 8px; background: none; color: var(--text); font: 700 15px/1 var(--display); cursor: pointer; }
+.cal-day-open:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.cal-day-count { color: var(--muted); font: 600 11px/1 var(--body); }
+.cal-day[data-today="true"] .cal-day-num { display: inline-grid; place-items: center; min-width: 26px; height: 26px; border-radius: 999px; background: var(--orange); color: var(--on-accent); }
+
+.cal-chips { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cal-chip { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 3px 7px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 7px; background: var(--glass-hi); color: var(--text); font: 600 11px/1.2 var(--body); text-align: left; cursor: pointer; transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease); }
+.cal-chip:hover { transform: translateX(2px); border-color: var(--line-strong); }
+.cal-chip:active { transform: scale(0.97); }
+.cal-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip-deal { grid-column: 2; overflow: hidden; color: var(--muted); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.cal-grid[data-view="month"] .cal-chip-deal { display: none; }
+.cal-chip[data-band="overdue"] { border-left-color: var(--red); }
+.cal-chip[data-band="today"] { border-left-color: var(--orange); }
+.cal-chip[data-band="soon"] { border-left-color: var(--amber); }
+.cal-chip[data-band="near"] { border-left-color: var(--cyan); }
+.cal-chip[data-band="later"] { border-left-color: var(--line-strong); }
+.cal-chip[data-band="settled"] { border-left-color: var(--line); color: var(--muted); text-decoration: line-through; }
+.cal-more { padding: 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+
+/* ----------------------------------------------------- the approach pulse
+   The shape is the state; the motion only repeats it. */
+.cal-pulse { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 999px; }
+.cal-pulse[data-pulse="urgent"] { background: var(--red); box-shadow: 0 0 0 2px var(--ground-0), 0 0 0 3.5px var(--red); animation: breathe var(--motion-urgent) ease-in-out infinite; }
+.cal-pulse[data-pulse="attention"] { background: var(--amber); box-shadow: 0 0 0 2px var(--ground-0), 0 0 0 3px var(--amber); animation: breathe var(--motion-attention) ease-in-out infinite; }
+.cal-pulse[data-pulse="calm"] { background: var(--cyan); animation: breathe var(--motion-calm) ease-in-out infinite; }
+.cal-pulse[data-pulse="still"] { background: transparent; border: 1.5px solid var(--quiet); }
+
+/* ------------------------------------------------------------- day panel */
+.cal-day-panel { top: 84px; }
+.cal-day-panel h2 { margin: 2px 0 12px; font: 600 22px/1.1 var(--display); }
+.cal-day-entries { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.cal-day-entry { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-s); animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); }
+.cal-day-entry[data-band="overdue"] { border-left-color: var(--red); }
+.cal-day-entry[data-band="today"] { border-left-color: var(--orange); }
+.cal-day-entry[data-band="soon"] { border-left-color: var(--amber); }
+.cal-day-entry[data-band="near"] { border-left-color: var(--cyan); }
+.cal-day-entry[data-focus="true"] { box-shadow: 0 0 0 1px var(--orange) inset; }
+.cal-day-entry h3 { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 15px/1.2 var(--body); }
+.cal-day-entry dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 0; font-size: 12px; }
+.cal-day-entry dt { color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.cal-day-entry dd { margin: 0; overflow-wrap: anywhere; }
+.cal-day-entry dd.unknown { color: var(--quiet); font-style: italic; }
+
+/* ---------------------------------------------------------------- agenda */
+.cal-agenda { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cal-agenda-item { display: grid; grid-template-columns: auto 110px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: var(--touch); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: transparent; color: var(--text); font: 500 13px/1.25 var(--body); text-align: left; cursor: pointer; animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease), background-color var(--motion-enter) var(--ease); }
+.cal-agenda-item:hover { transform: translateX(3px); border-color: var(--line-strong); background: var(--glass-hi); }
+.cal-agenda-item:active { transform: scale(0.99); }
+.cal-agenda-day { color: var(--muted); font-variant-numeric: tabular-nums; }
+.cal-agenda-when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.cal-agenda-item[data-band="overdue"] .cal-agenda-when { color: var(--red-text); }
+.cal-agenda-item[data-band="today"] .cal-agenda-when { color: var(--orange-text); }
+.cal-undated { margin-top: var(--gap); padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: var(--radius); }
+.cal-undated h3 { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 800; }
+.cal-undated ul { margin: 0; padding-left: 18px; font-size: 13px; }
+
+/* ------------------------------------------------------------- keyframes */
+@keyframes cal-slide-forward { from { opacity: 0.2; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes cal-slide-back { from { opacity: 0.2; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes cal-zoom-in { from { opacity: 0.2; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes cal-zoom-out { from { opacity: 0.2; transform: scale(1.05); } to { opacity: 1; transform: none; } }
+
+/* ------------------------------------------------------------ responsive */
+@media (max-width: 1040px) {
+  .cal-layout { grid-template-columns: minmax(0, 1fr); }
+  .cal-day-panel { position: static; }
+}
+@media (max-width: 640px) {
+  .cal-day { min-height: 64px; padding: 4px; }
+  .cal-grid[data-view="month"] .cal-chip-label { display: none; }
+  .cal-grid[data-view="month"] .cal-chip { grid-template-columns: auto; justify-content: center; min-height: 20px; padding: 2px; }
+  .cal-grid[data-view="week"] .cal-week { grid-template-columns: minmax(0, 1fr); }
+  .cal-grid[data-view="week"] .cal-weekday { display: none; }
+  .cal-grid[data-view="week"] .cal-day { min-height: 0; }
+  .cal-agenda-item { grid-template-columns: auto minmax(0, 1fr); }
+  .cal-agenda-day, .cal-agenda-when { grid-column: 2; }
+}
+
+/* --------------------------------------------------------- reduced motion
+   The shared floor already stops every animation and transition. This block
+   also takes away the hover and press movement, so nothing on the page moves
+   under the pointer either; the borders still change, so feedback remains. */
+@media (prefers-reduced-motion: reduce) {
+  .cal-day:hover, .cal-day:active, .cal-chip:hover, .cal-chip:active, .cal-agenda-item:hover, .cal-agenda-item:active { transform: none; }
+}
+:root[data-motion="reduced"] .cal-day:hover, :root[data-motion="reduced"] .cal-day:active, :root[data-motion="reduced"] .cal-chip:hover, :root[data-motion="reduced"] .cal-chip:active, :root[data-motion="reduced"] .cal-agenda-item:hover, :root[data-motion="reduced"] .cal-agenda-item:active { transform: none; }
