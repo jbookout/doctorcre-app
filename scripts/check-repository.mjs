@@ -48,6 +48,7 @@ for (const verb of ["read-room-queue", "read-room"]) assert.ok(contract.mcp_oper
 for (const verb of ["current-work-requests", "work-request-card"]) assert.ok(contract.mcp_operations.includes(verb), `the Model Room topic/work-item history (V5-UX-C13a) needs ${verb} pinned`);
 assert.equal(routes.routes["/conversations"], "conversations.html", "the Doc conversations route must stay in the route contract");
 for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) assert.ok(contract.mcp_operations.includes(verb), `the conversations page needs ${verb} pinned`);
+assert.ok(contract.mcp_operations.includes("read-doc-outcome-cards"), "the Doc outcome cards (V5-UX-B09) need read-doc-outcome-cards pinned");
 for (const verb of ["get-call-context", "resolve-post-call-candidate", "resolve-candidate"]) assert.ok(contract.mcp_operations.includes(verb), `Deal Room Call Mode needs ${verb} pinned`);
 assert.ok(contract.http_surfaces.includes("/api/v1/command-center"), "the command-center path must stay pinned in the CARR interface");
 for (const verb of ["add-critical-date", "add-deal-note", "set-next-step", "presence-lease", "resolve-conflict"]) assert.ok(contract.mcp_operations.includes(verb), `the Deals board needs ${verb} pinned`);

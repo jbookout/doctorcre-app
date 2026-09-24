@@ -413,7 +413,7 @@ test("clause 10: the route, the versions, the producer pin and the five verbs ar
   // The turn verb is authorityOnly and the app holds no authority binding, so
   // pinning it would be a false contract.
   assert.equal(contract.mcp_operations.includes("add-doc-conversation-turn"), false);
-  assert.equal(contract.mcp_operations.length, 59);
+  assert.equal(contract.mcp_operations.length, 60);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   assert.deepEqual([...APP_ROUTE_PATHS], Object.keys(routes.routes), "the model's route list has drifted from the contract");
 });
@@ -514,8 +514,9 @@ test("after a create the list is read again, and so it is after rename, pin, arc
   assert.equal(listRows(await joe.listDocConversations(listArgs({}))).some((row) => row.id === made.conversation_id), false,
     "an archived conversation is still in the default page");
 
-  // The page's own wiring: every settled write re-reads, and load() reads BOTH.
-  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\)\]\)/);
+  // The page's own wiring: every settled write re-reads, and load() reads BOTH
+  // (plus V5-UX-B09's independently-sequenced outcome cards read).
+  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\), takeOutcomeCards\(\)\]\)/);
   assert.match(pageJs, /if \(result\.status === "ok" \|\| result\.status === "conflict"\) \{/);
   assert.match(pageJs, /await load\(\);/);
   // Create opens the new conversation, and open() runs the same load().

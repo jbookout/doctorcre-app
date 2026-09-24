@@ -105,6 +105,41 @@
  * @property {(args:{idempotency_key:string, title:string, visibility?:'private'|'shared'}) => Promise<{ok:true, conversation_id:string}>} createDocConversation
  * @property {(args:{idempotency_key:string, conversation_id:string, base_version:number, title?:string, pinned?:boolean, archived?:boolean}) => Promise<{ok:true, version:number}>} renameDocConversation
  * @property {(args:{idempotency_key:string, conversation_id:string, grantee_slug:string, granted:boolean}) => Promise<{ok:true, already:boolean, granted:boolean}>} shareDocConversation
+ * @property {(args:{cursor?:string, limit?:number}) => Promise<DocOutcomeCardsResponse>} docOutcomeCards actor- and tenant-scoped, page-atomic outcome cards (V5-UX-B09); the producer never launches a native task, and `session_entry.auto_launch` is always `false`
+ *
+ * The projection `read-doc-outcome-cards` returns (schema `doc-outcome-cards.v2`,
+ * mcp-server/src/tools.js `docOutcomeCardsProjection`). Every card carries its
+ * own `routing_state` (queued/active/waiting/failed/unknown/verified) and marks
+ * `next_check`/`result` unavailable rather than fabricating either; opening the
+ * exact session is S02 clause 3 and no adapter is wired here, so
+ * `session_entry` only ever offers a session ref to resume by hand.
+ *
+ * @typedef {Object} DocOutcomeCardsResponse
+ * @property {true} ok
+ * @property {'doc-outcome-cards.v2'} schema_version
+ * @property {string} as_of
+ * @property {string} correlation_version
+ * @property {boolean} more
+ * @property {string|null} next_cursor
+ * @property {DocOutcomeCard[]} cards
+ *
+ * @typedef {Object} DocOutcomeCard
+ * @property {string} card_id
+ * @property {string|null} requested_outcome
+ * @property {'recommendation'|'submission'} intent_kind
+ * @property {string} work_request_ref
+ * @property {string|null} owner
+ * @property {string|null} controlled_phase
+ * @property {{state:'fresh'|'stale', observed_at:string, source_ref:string}} source_freshness
+ * @property {'queued'|'active'|'waiting'|'failed'|'unknown'|'verified'} routing_state
+ * @property {{observed_at:string, routing_source:string}} state_evidence
+ * @property {{value:string|null, unavailable_reason:string|null}} job_id
+ * @property {{value:string|null, unavailable_reason:string|null}} attempt_id
+ * @property {{value:string|null, unavailable_reason:string|null}} canonical_session_id
+ * @property {{value:string|null, unavailable_reason:string|null}} native_task_id
+ * @property {{available:boolean, value:string|null, unavailable_reason:string|null}} next_check
+ * @property {{available:boolean, value:string|null, unavailable_reason:string|null}} result
+ * @property {{available:boolean, target:string|null, capability:string|null, unavailable_reason:string|null, fallback:{kind:string,value:string}|null, auto_launch:false}} session_entry
  *
  * The projection `read-doc-conversation` returns. The identity and the turns are
  * kept apart because a rename moves the identity and must move nothing else, and

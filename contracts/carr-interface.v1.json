@@ -48,6 +48,7 @@
     "presence-lease",
     "read-dispatch-history",
     "read-doc-conversation",
+    "read-doc-outcome-cards",
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",

@@ -504,6 +504,17 @@ export function createLiveClient(opts = {}) {
     async renameDocConversation(args) { return write('rename-doc-conversation', args); },
     async shareDocConversation(args) { return write('share-doc-conversation', args); },
 
+    // -------------------------------------------------- Doc outcome cards (B09)
+    // ONE READ, passed through untouched. It names no actor: the producer
+    // (mcp-server/src/tools.js docOutcomeCardsProjection, wrapping
+    // ops.read_doc_outcome_cards_successor from migration 0546) derives the
+    // acting actor and tenant server-side, and the verb's schema declares only
+    // `cursor`/`limit` under additionalProperties:false. It goes through `rpc`
+    // because it carries no idempotency key, and there is no matching write:
+    // this is a bounded projection that creates no writer, dispatcher, retry,
+    // task or native-session authority, and it never launches anything.
+    async docOutcomeCards(args = {}) { return rpc('read-doc-outcome-cards', args); },
+
     // ------------------------------------------------ global search (B05)
     // Two READS, passed through untouched. NEITHER names an actor, a tenant or
     // a kind: `find` declares one property and `find-and-catch-up` two, both
