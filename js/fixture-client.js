@@ -2376,10 +2376,29 @@ export async function createFixtureClient(opts = {}) {
         idempotency_key: args.idempotency_key });
     },
 
+    // Mirrors the record layer's revert-deal-field verb: the reverted event
+    // IS the base (no separate base_event_id argument), a missing event or a
+    // field outside BASED_FIELDS is `event_not_revertible`, and — the check
+    // that matters for an undo — it refuses `newer_change_exists` unless the
+    // event being reverted is still the LATEST event on that deal+field. A
+    // successful revert is a canonical correction: it pushes a new event
+    // (verb `revert-deal-field`) rather than rewriting history in place, so
+    // it appears on the change feed and advances lastFieldEvent exactly as a
+    // live revert would.
     async revertDealField({ event_id, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const event = events.find((e) => e.id === event_id);
-        if (!event) throw new Error('event not found');
+        if (!event || event.subject_type !== 'deal' || !event.field || !BASED_FIELDS.includes(event.field)) {
+          const error = new Error('fixture revert-deal-field refused: event_not_revertible');
+          error.payload = { error: 'event_not_revertible', hint: 'The server does not undo this kind of change.' };
+          throw error;
+        }
+        const latestId = lastFieldEvent.get(`${event.subject_id}|${event.field}`) || null;
+        if (latestId !== event.id) {
+          const error = new Error('fixture revert-deal-field refused: newer_change_exists');
+          error.payload = { error: 'newer_change_exists', hint: 'Open the deal and review the newer value before changing it.' };
+          throw error;
+        }
         const d = getDealOrThrow(event.subject_id);
         if (event.field === 'operating_state') {
           const prior = event.old_value;
@@ -2389,7 +2408,19 @@ export async function createFixtureClient(opts = {}) {
           d.parked_at = prior.state === 'parked' ? nowIso() : null;
           d.parked_by = prior.state === 'parked' ? selfActor : null;
         } else d[event.field] = event.old_value;
-        return { ok: true, deal_id: d.id, field: event.field, new_value: event.old_value };
+        const applied = pushEvent({
+          actor: selfActor,
+          verb: 'revert-deal-field',
+          subject_id: d.id,
+          field: event.field,
+          old_value: event.new_value,
+          new_value: event.old_value,
+        });
+        return {
+          ok: true, deal_id: d.id, field: event.field, reverted_event_id: event.id,
+          old_value: event.new_value, new_value: event.old_value,
+          event_id: applied.id, event_recorded_at: applied.recorded_at,
+        };
       });
     },
 
