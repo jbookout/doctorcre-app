@@ -72,7 +72,7 @@ function chartHtml({ id, title, eyebrow, rows, note = "", group = null }) {
     return `<tr${row.missing ? ' data-missing="true"' : ""}${selected ? ' data-selected="true"' : ""}>
       <th scope="row">${pick}</th>
       <td class="chart-count">${escapeHtml(String(row.count))}</td>
-      <td class="chart-bar-cell"><span class="chart-bar" aria-hidden="true" style="--share:${share}%"></span></td>
+      <td class="chart-bar-cell"><span class="chart-bar" aria-hidden="true" data-share="${share}"></span></td>
     </tr>`;
   }).join("");
   return `<section class="card glass chart-card" id="${escapeHtml(id)}" aria-labelledby="${escapeHtml(id)}Title">
@@ -196,6 +196,12 @@ function render() {
         accountsHtml(accountRows(view.payload?.accounts)),
         ownerHtml(deals),
       ].join("");
+      // `--share` is set through CSSOM: the Worker's CSP (src/worker.js)
+      // refuses a `style` attribute written into markup, so the bar cell
+      // above only emits `data-share`, and this reads it back.
+      canvas.querySelectorAll(".chart-bar[data-share]").forEach((node) => {
+        node.style.setProperty("--share", `${node.dataset.share}%`);
+      });
     }
   }
 

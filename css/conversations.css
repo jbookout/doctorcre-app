@@ -105,8 +105,9 @@
  * behavior for THIS component without re-deriving it from the global rule.
  */
 
-/* 1. Orchestrated staggered entrance. `--outcome-card-delay` is set inline by
- * js/conversations.js per card index, the same `animation-delay: var(...)`
+/* 1. Orchestrated staggered entrance. `--outcome-card-delay` is set through
+ * CSSOM by js/conversations.js per card index (the Worker's CSP refuses a
+ * `style` attribute written into markup), the same `animation-delay: var(...)`
  * convention css/room.css uses for `--drift-delay`. Nothing here sets a
  * persistent `opacity` outside the keyframe, so removing the animation
  * (reduced motion) leaves the card at its ordinary, fully visible style —

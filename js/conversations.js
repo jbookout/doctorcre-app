@@ -240,7 +240,7 @@ function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextChec
   const sessionRefLine = entry.sessionRef
     ? `<p class="small mono">session ref: ${escapeHtml(entry.sessionRef)}</p>`
     : "";
-  return `<li class="work-item outcome-card" style="--outcome-card-delay: ${delayMs}ms" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
+  return `<li class="work-item outcome-card" data-outcome-card-delay="${delayMs}" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
     <div>
       <h3 class="list-title">${escapeHtml(card.requestedOutcome ?? card.workRequestRef)}</h3>
       <p class="list-meta">
@@ -296,6 +296,12 @@ function renderOutcomeCards() {
     delayMs: index * OUTCOME_CARD_STAGGER_MS,
     changed: changedFields(view.outcomeCards.previousById.get(card.id) ?? null, card),
   })).join("");
+  // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
+  // refuses a `style` attribute written into markup, so the template above
+  // only emits `data-outcome-card-delay`, and this reads it back.
+  list.querySelectorAll(".outcome-card").forEach((node) => {
+    node.style.setProperty("--outcome-card-delay", `${node.dataset.outcomeCardDelay}ms`);
+  });
   view.outcomeCards.previousById = new Map(cards.map((card) => [card.id, card]));
   const empty = outcomeCardsEmptyMessage({ cards: view.outcomeCards.rows });
   block.hidden = !(cards.length === 0 && empty);

@@ -41,6 +41,19 @@ function motionReduced() {
   return media || document.documentElement.getAttribute("data-motion") === "reduced";
 }
 
+/**
+ * A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
+ * refuses a `style` attribute written into markup, so the templates above
+ * only emit `data-stagger-index`, and this post-render pass reads it back
+ * and sets `--stagger` on each node directly.
+ */
+function applyStagger(root, selector) {
+  root?.querySelectorAll(selector).forEach((node) => {
+    const index = Number(node.dataset.staggerIndex);
+    node.style.setProperty("--stagger", `${motionReduced() ? 0 : staggerDelay(index)}ms`);
+  });
+}
+
 function announce(text) {
   const live = $("ideaLive");
   if (live && live.textContent !== text) live.textContent = text;
@@ -69,7 +82,7 @@ function tileHtml(row, index) {
     row.since_text ? `<span>${escapeHtml(row.since_text)}</span>` : "",
     due ? `<span><span class="cal-pulse" data-pulse="${due.pulse}" aria-hidden="true"></span> due ${escapeHtml(formatCalendarDate(row.due_on))} · ${escapeHtml(due.label)}</span>` : "",
   ].join("");
-  return `<li><button class="idea-tile" type="button" data-idea="${escapeHtml(row.number)}" style="--stagger: ${motionReduced() ? 0 : staggerDelay(index)}ms">`
+  return `<li><button class="idea-tile" type="button" data-idea="${escapeHtml(row.number)}" data-stagger-index="${index}">`
     + `<span class="idea-number">#${escapeHtml(row.number)}</span>`
     + `<h3 class="idea-label">${escapeHtml(row.label)}</h3>`
     + `<span class="idea-meta">${meta}</span>`
@@ -102,7 +115,10 @@ function render() {
     block.innerHTML = visible ? `<h3>${escapeHtml(STATE_COPY[phase])}</h3>${signIn}` : "";
   }
   const list = $("ideaList");
-  if (list) list.innerHTML = phase === "ready" ? shown.map(tileHtml).join("") : "";
+  if (list) {
+    list.innerHTML = phase === "ready" ? shown.map(tileHtml).join("") : "";
+    applyStagger(list, ".idea-tile");
+  }
   const asOf = $("ideaAsOf");
   if (asOf && view.status === "ready") asOf.textContent = `${view.rows.length} open idea${view.rows.length === 1 ? "" : "s"} read`;
   const source = $("ideaSource");

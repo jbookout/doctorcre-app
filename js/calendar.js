@@ -51,6 +51,19 @@ function motionReduced() {
   return media || document.documentElement.getAttribute("data-motion") === "reduced";
 }
 
+/**
+ * A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
+ * refuses a `style` attribute written into markup, so the templates above
+ * only emit `data-stagger-index`, and this post-render pass reads it back
+ * and sets `--stagger` on each node directly.
+ */
+function applyStagger(root, selector) {
+  root?.querySelectorAll(selector).forEach((node) => {
+    const index = Number(node.dataset.staggerIndex);
+    node.style.setProperty("--stagger", `${motionReduced() ? 0 : staggerDelay(index)}ms`);
+  });
+}
+
 function announce(text) {
   const live = $("calLive");
   if (live && live.textContent !== text) live.textContent = text;
@@ -86,7 +99,7 @@ function dayHtml(cell, index) {
   const readable = formatCalendarDate(cell.day);
   const count = rows.length ? ` · ${rows.length} critical date${rows.length === 1 ? "" : "s"}` : "";
   const dayNumber = Number(cell.day.slice(8));
-  return `<div class="cal-day" role="gridcell" data-day="${cell.day}" data-today="${isToday}" data-out-month="${!cell.inMonth}" aria-selected="${selected}" style="--stagger: ${motionReduced() ? 0 : staggerDelay(index)}ms">`
+  return `<div class="cal-day" role="gridcell" data-day="${cell.day}" data-today="${isToday}" data-out-month="${!cell.inMonth}" aria-selected="${selected}" data-stagger-index="${index}">`
     + `<button class="cal-day-open" type="button" data-select-day="${cell.day}" tabindex="${selected || (!state.day && isToday) ? 0 : -1}" aria-label="${escapeHtml(`${readable}${isToday ? " · today" : ""}${count}`)}">`
     + `<span class="cal-day-num">${week ? `${WEEKDAYS[index % 7]} ${dayNumber}` : dayNumber}</span>`
     + (rows.length ? `<span class="cal-day-count" aria-hidden="true">${rows.length}</span>` : "")
@@ -110,6 +123,7 @@ function paintGrid() {
   const direction = motionDirection(view.painted, state);
   grid.dataset.view = state.view;
   grid.innerHTML = header + weeks.join("");
+  applyStagger(grid, ".cal-day");
   // Restart the transition on every paint: removing the attribute and reading
   // layout lets the same direction play twice in a row.
   grid.removeAttribute("data-enter");
@@ -173,12 +187,13 @@ function paintDayPanel() {
   }
   body.innerHTML = `<ol class="cal-day-entries">${rows.map((entry, index) => {
     const near = approach(entry, view.today);
-    return `<li class="cal-day-entry" data-band="${near.band}" data-focus="${entry.key === view.focusEntry}" style="--stagger: ${motionReduced() ? 0 : staggerDelay(index)}ms">`
+    return `<li class="cal-day-entry" data-band="${near.band}" data-focus="${entry.key === view.focusEntry}" data-stagger-index="${index}">`
       + `<h3><span class="cal-pulse" data-pulse="${near.pulse}" aria-hidden="true"></span>${escapeHtml(entry.label)}</h3>`
       + `<dl>${detailRow("Deal", entry.deal_name)}${detailRow("When", near.label)}${detailRow("Kind", entry.kind_label)}${detailRow("Source", entry.source)}${detailRow("Status", entry.status)}</dl>`
       + `<a class="small" href="/deals">Open the Deals board</a>`
       + "</li>";
   }).join("")}</ol>`;
+  applyStagger(body, ".cal-day-entry");
 }
 
 function paintAgenda() {
@@ -193,13 +208,14 @@ function paintAgenda() {
       ? '<li class="small">No open critical date is recorded.</li>'
       : rows.map((entry, index) => {
         const near = approach(entry, view.today);
-        return `<li><button class="cal-agenda-item" type="button" data-entry="${escapeHtml(entry.key)}" data-day="${entry.day}" data-band="${near.band}" style="--stagger: ${motionReduced() ? 0 : staggerDelay(index)}ms">`
+        return `<li><button class="cal-agenda-item" type="button" data-entry="${escapeHtml(entry.key)}" data-day="${entry.day}" data-band="${near.band}" data-stagger-index="${index}">`
           + `<span class="cal-pulse" data-pulse="${near.pulse}" aria-hidden="true"></span>`
           + `<span class="cal-agenda-day">${escapeHtml(formatCalendarDate(entry.day))}</span>`
           + `<span><b>${escapeHtml(entry.label)}</b> · ${escapeHtml(entry.deal_name)}</span>`
           + `<span class="cal-agenda-when">${escapeHtml(near.label)}</span>`
           + "</button></li>";
       }).join("");
+    applyStagger(list, ".cal-agenda-item");
   }
   const undated = $("calUndated");
   const undatedList = $("calUndatedList");
