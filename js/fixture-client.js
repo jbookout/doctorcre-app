@@ -727,6 +727,88 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
+  /* --------------------------------------------- Doc outcome cards (B09) */
+  // Four synthetic cards, each exercising a distinct branch of migration
+  // 0546's projection rather than one happy-path shape repeated: one
+  // recommendation with a live, resumable host; one submission actively
+  // routing with no bound session yet; one verified submission whose host is
+  // gone (the "local host loss" checkable_done branch, with the SAME session
+  // ref offered as the fallback); and one failed recommendation with nothing
+  // proved at all. None carries `auto_launch: true` — the server itself
+  // would refuse to answer if one did.
+  const OUTCOME_CARD_ROWS = [
+    {
+      card_id: "card:doc-outcome:1", requested_outcome: "Confirm the LOI redline is ready for Joe's review",
+      intent_kind: "recommendation", work_request_ref: "WR-000140", owner: "joe", controlled_phase: "in_progress",
+      source_freshness: { state: "fresh", observed_at: "2026-09-23T15:00:00+00:00", source_ref: "work-request:WR-000140" },
+      routing_state: "active", state_evidence: { observed_at: "2026-09-23T15:00:00+00:00", routing_source: "canonical_work_request" },
+      job_id: { value: "job:1001", unavailable_reason: null },
+      attempt_id: { value: "job-attempt:1001-1", unavailable_reason: null },
+      canonical_session_id: { value: "66666666-6666-4666-8666-666666666666", unavailable_reason: null },
+      native_task_id: { value: null, unavailable_reason: "no_authoritative_native_task_join" },
+      next_check: { available: true, value: "2026-09-25T17:00:00+00:00", unavailable_reason: null },
+      result: { available: false, value: null, unavailable_reason: "no_accepted_outcome" },
+      session_entry: {
+        available: false, target: null, capability: null,
+        unavailable_reason: "host_available_but_native_task_unbound",
+        fallback: { kind: "copy_session_id", value: "66666666-6666-4666-8666-666666666666" },
+        auto_launch: false,
+      },
+    },
+    {
+      card_id: "card:doc-outcome:2", requested_outcome: "Submit the survey window follow-up",
+      intent_kind: "submission", work_request_ref: "WR-000141", owner: "dell", controlled_phase: "claimed",
+      source_freshness: { state: "fresh", observed_at: "2026-09-23T14:40:00+00:00", source_ref: "work-request:WR-000141" },
+      routing_state: "queued", state_evidence: { observed_at: "2026-09-23T14:40:00+00:00", routing_source: "canonical_work_request" },
+      job_id: { value: "job:1002", unavailable_reason: null },
+      attempt_id: { value: null, unavailable_reason: "no_authoritative_attempt_join" },
+      canonical_session_id: { value: null, unavailable_reason: null },
+      native_task_id: { value: null, unavailable_reason: "no_authoritative_native_task_join" },
+      next_check: { available: false, value: null, unavailable_reason: "no_proved_next_check" },
+      result: { available: false, value: null, unavailable_reason: "no_accepted_outcome" },
+      session_entry: {
+        available: false, target: null, capability: null,
+        unavailable_reason: "session_relation_unavailable", fallback: null, auto_launch: false,
+      },
+    },
+    {
+      card_id: "card:doc-outcome:3", requested_outcome: "Reconcile the migration receipt with the record layer",
+      intent_kind: "submission", work_request_ref: "WR-000142", owner: "joe", controlled_phase: "confirmed_closed",
+      source_freshness: { state: "stale", observed_at: "2026-09-20T09:00:00+00:00", source_ref: "work-request:WR-000142" },
+      routing_state: "verified", state_evidence: { observed_at: "2026-09-20T09:00:00+00:00", routing_source: "canonical_work_request" },
+      job_id: { value: "job:1003", unavailable_reason: null },
+      attempt_id: { value: "job-attempt:1003-2", unavailable_reason: null },
+      canonical_session_id: { value: "77777777-7777-4777-8777-777777777777", unavailable_reason: null },
+      native_task_id: { value: null, unavailable_reason: "no_authoritative_native_task_join" },
+      next_check: { available: false, value: null, unavailable_reason: "no_proved_next_check" },
+      result: { available: true, value: "Receipt reconciled; migration record closed", unavailable_reason: null },
+      // The "local host loss" branch: the recorded host is gone, and the
+      // fallback offers the SAME session ref rather than inventing a new one.
+      session_entry: {
+        available: false, target: null, capability: null,
+        unavailable_reason: "host_unavailable",
+        fallback: { kind: "copy_session_id", value: "77777777-7777-4777-8777-777777777777" },
+        auto_launch: false,
+      },
+    },
+    {
+      card_id: "card:doc-outcome:4", requested_outcome: "Draft the vendor merge proposal",
+      intent_kind: "recommendation", work_request_ref: "WR-000143", owner: null, controlled_phase: "blocked",
+      source_freshness: { state: "stale", observed_at: "2026-09-18T09:00:00+00:00", source_ref: "work-request:WR-000143" },
+      routing_state: "failed", state_evidence: { observed_at: "2026-09-18T09:00:00+00:00", routing_source: "canonical_work_request" },
+      job_id: { value: "job:1004", unavailable_reason: null },
+      attempt_id: { value: "job-attempt:1004-1", unavailable_reason: null },
+      canonical_session_id: { value: null, unavailable_reason: null },
+      native_task_id: { value: null, unavailable_reason: "no_authoritative_native_task_join" },
+      next_check: { available: false, value: null, unavailable_reason: "no_proved_next_check" },
+      result: { available: false, value: null, unavailable_reason: "no_accepted_outcome" },
+      session_entry: {
+        available: false, target: null, capability: null,
+        unavailable_reason: "session_relation_unavailable", fallback: null, auto_launch: false,
+      },
+    },
+  ];
+
   /* ------------------------------------------- Model Room fixtures (C12)
    * The four captured queue events and five captured room turns, in the
    * producer's shape. One card carries `source_seq: null` and one body is a
@@ -2290,6 +2372,39 @@ export async function createFixtureClient(opts = {}) {
         more,
         next_cursor: more ? btoa(JSON.stringify({ after: page[page.length - 1].id })) : null,
         visible_conversation_count: docVisibleCount(selfActor),
+      };
+    },
+
+    // -------------------------------------------------- Doc outcome cards (B09)
+    // ONE READ, refusing exactly as the live verb refuses (503 on a forced
+    // outage). It names no actor: `read-doc-outcome-cards` declares only
+    // `cursor`/`limit` under additionalProperties:false, and the acting actor
+    // and tenant are derived server-side, same as every other read on this
+    // page. The cursor is OPAQUE here too — the id of the row the next page
+    // starts at, base64-encoded — so a caller that tried to read or build one
+    // would be reading a shape it was never given. Every row already carries
+    // `session_entry.auto_launch: false`; nothing here ever flips it.
+    async docOutcomeCards({ cursor = null, limit = null } = {}) {
+      refuseIfOutage('doc_outcome_cards', 'read-doc-outcome-cards');
+      const capped = Math.min(50, Math.max(1, Number.isInteger(limit) ? limit : 25));
+      let offset = 0;
+      if (cursor !== null && cursor !== undefined && cursor !== '') {
+        let decoded = null;
+        try { decoded = JSON.parse(atob(String(cursor))); } catch { decoded = null; }
+        const at = decoded && OUTCOME_CARD_ROWS.findIndex((row) => row.card_id === decoded.after);
+        if (!decoded || at === undefined || at < 0) refuse('read-doc-outcome-cards', 'doc_outcome_cursor_invalid', { cursor });
+        offset = at + 1;
+      }
+      const page = OUTCOME_CARD_ROWS.slice(offset, offset + capped);
+      const more = offset + page.length < OUTCOME_CARD_ROWS.length;
+      return {
+        ok: true,
+        schema_version: 'doc-outcome-cards.v2',
+        as_of: nowIso(),
+        correlation_version: 'sha256:fixture-doc-outcome-cards',
+        more,
+        next_cursor: more ? btoa(JSON.stringify({ after: page[page.length - 1].card_id })) : null,
+        cards: page.map((row) => structuredClone(row)),
       };
     },
 

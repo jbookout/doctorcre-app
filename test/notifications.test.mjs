@@ -371,7 +371,7 @@ test("clause 10: the route, the versions, the producer pin and the two verbs are
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 59);
+  assert.equal(contract.mcp_operations.length, 60);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   // The model's route list is served to a browser with no build step, so it is
   // a COPY of the contract. This is what stops the copy drifting from it.
@@ -749,7 +749,7 @@ test("B12-9 the contracts pin the two new verbs, the producer release and the mi
   assert.equal(contract.version, "1.23.0", "two added operations are an additive, minor bump");
   assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284",
     "the producer is repinned to the release that first serves the preference verbs");
-  assert.equal(contract.mcp_operations.length, 59);
+  assert.equal(contract.mcp_operations.length, 60);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 
   const at = contract.mcp_operations.indexOf("read-notification-preferences");

@@ -43,6 +43,10 @@ import {
   pagingState, pinOperationKey, renameArgs, renameOperationKey, shareArgs,
   shareCandidates, shareOperationKey, turnRows, visibleCountLine,
 } from "./conversations-model.js";
+import {
+  OUTCOME_CARDS_NO_OPEN_SENTENCE, outcomeCards, outcomeCardsEmptyMessage,
+  outcomeCardsPagingState, outcomeCardsRequest, refuseDocOutcomeCards,
+} from "./doc-outcome-cards-model.js";
 import { uuidv4 } from "./uuid.js";
 
 const $ = (id) => document.getElementById(id);
@@ -60,6 +64,11 @@ const view = {
   conversation: { state: "pending" },
   list: { state: "pending", payload: null, rows: [] },
   includeArchived: false,
+  // V5-UX-B09: an independent, actor-scoped read. It holds ITS OWN rows and
+  // its own sequence guard rather than sharing the conversation's, because a
+  // conversation open/close or a list refresh must never discard or race an
+  // in-flight outcome-cards page.
+  outcomeCards: { state: "pending", payload: null, rows: [], sequence: 0 },
 };
 
 let client = null;
@@ -70,6 +79,11 @@ const operations = new Map();
 
 function announce(text) {
   const live = $("conversationLive");
+  if (live && text && live.textContent !== text) live.textContent = text;
+}
+
+function announceOutcomeCards(text) {
+  const live = $("outcomeCardsLive");
   if (live && text && live.textContent !== text) live.textContent = text;
 }
 
@@ -172,11 +186,82 @@ function renderList() {
     : (bare ? LIST_EMPTY : "");
 }
 
+/**
+ * V5-UX-B09 — persistent outcome/owner/phase/next-check/result cards, with
+ * qualified routing state. This is a wholly separate read from the open
+ * conversation: it is actor-scoped, not conversation-scoped, so it renders
+ * regardless of whether a conversation is open.
+ *
+ * `intentKind` (recommendation vs submission) and `result.available`
+ * distinguish recommendation, submission and outcome on the card itself,
+ * exactly as the spec's third included-scope clause asks — none of the three
+ * is inferred; each is the field the producer actually returned.
+ */
+function outcomeCardHtml(card) {
+  const owner = card.owner ?? "unassigned";
+  const phase = card.phase ?? "unrecorded";
+  const nextCheck = card.nextCheck.available ? card.nextCheck.value : card.nextCheck.text;
+  const result = card.result.available ? card.result.value : card.result.text;
+  const entry = card.sessionEntry;
+  const sessionRefLine = entry.sessionRef
+    ? `<p class="small mono">session ref: ${escapeHtml(entry.sessionRef)}</p>`
+    : "";
+  return `<li class="work-item outcome-card" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
+    <div>
+      <h3 class="list-title">${escapeHtml(card.requestedOutcome ?? card.workRequestRef)}</h3>
+      <p class="list-meta">
+        <span class="chip" data-intent="${escapeHtml(card.intentKind)}">${escapeHtml(card.intentLabel)}</span>
+        <span class="chip" data-state="${escapeHtml(card.routingState)}">routing: ${escapeHtml(card.routingStateLabel)}</span>
+        · owner ${escapeHtml(owner)} · phase ${escapeHtml(phase)}
+        · <span class="mono">${escapeHtml(card.workRequestRef)}</span>
+      </p>
+      <p class="small">Next check: ${escapeHtml(String(nextCheck))}</p>
+      <p class="small" data-outcome="${String(card.result.available)}">Result: ${escapeHtml(String(result))}</p>
+      <p class="small caption">${escapeHtml(card.freshness.text)}</p>
+      <p class="small session-host" data-open="false">${escapeHtml(entry.reasonSentence)} ${escapeHtml(entry.scopedSolution)}</p>
+      ${sessionRefLine}
+    </div>
+  </li>`;
+}
+
+function renderOutcomeCards() {
+  const list = $("outcomeCardsList");
+  const block = $("outcomeCardsState");
+  const paging = $("outcomeCardsPagingBlock");
+  if (!list || !block) return;
+  if (view.outcomeCards.state === "loading" && view.outcomeCards.rows.length === 0) {
+    list.innerHTML = "";
+    block.hidden = false;
+    block.dataset.state = "loading";
+    $("outcomeCardsStateTitle").textContent = "Taking the read…";
+    if (paging) paging.hidden = true;
+    return;
+  }
+  if (view.outcomeCards.state === "unavailable") {
+    list.innerHTML = "";
+    block.hidden = false;
+    block.dataset.state = "unavailable";
+    $("outcomeCardsStateTitle").textContent = view.outcomeCards.sentence
+      || "The outcome cards read could not be rendered.";
+    if (paging) paging.hidden = true;
+    return;
+  }
+  const cards = outcomeCards({ cards: view.outcomeCards.rows });
+  list.innerHTML = cards.map(outcomeCardHtml).join("");
+  const empty = outcomeCardsEmptyMessage({ cards: view.outcomeCards.rows });
+  block.hidden = !(cards.length === 0 && empty);
+  block.dataset.state = "empty";
+  $("outcomeCardsStateTitle").textContent = empty || "";
+  const pagingState = outcomeCardsPagingState(view.outcomeCards.payload);
+  if (paging) paging.hidden = !pagingState.more;
+}
+
 function render() {
   renderHero();
   renderTurns();
   renderAccess();
   renderList();
+  renderOutcomeCards();
 }
 
 /* --------------------------------------------------------------------- reading */
@@ -239,9 +324,44 @@ async function takeList({ cursor = null } = {}) {
   render();
 }
 
+/**
+ * V5-UX-B09's read. Its OWN sequence guard, separate from `view.sequence`,
+ * because the outcome cards are actor-scoped rather than tied to whichever
+ * conversation happens to be open — a conversation switch must not discard
+ * an in-flight cards page, and a cards refresh must not race a slower one.
+ *
+ * A `cursor` APPENDS, exactly as `takeList` appends: the producer's order is
+ * one sequence across pages and re-sorting the union would destroy the
+ * `updated_at desc, id desc` ordering paging exists to preserve.
+ */
+async function takeOutcomeCards({ cursor = null } = {}) {
+  const sequence = ++view.outcomeCards.sequence;
+  const held = cursor ? view.outcomeCards.rows : [];
+  view.outcomeCards = { ...view.outcomeCards, state: "loading" };
+  render();
+  try {
+    const payload = await client.docOutcomeCards(outcomeCardsRequest({ cursor }));
+    if (view.outcomeCards.sequence !== sequence) return;
+    const refusal = refuseDocOutcomeCards(payload);
+    if (refusal) {
+      view.outcomeCards = { state: "unavailable", payload: null, rows: held, sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
+    } else {
+      view.outcomeCards = { state: "read", payload, rows: [...held, ...payload.cards], sequence };
+    }
+  } catch (error) {
+    if (view.outcomeCards.sequence !== sequence) return;
+    const failure = classifyReadFailure(error);
+    view.outcomeCards = { state: "unavailable", payload: null, rows: held, sequence, sentence: failure.sentence };
+  }
+  render();
+  announceOutcomeCards(view.outcomeCards.state === "unavailable"
+    ? view.outcomeCards.sentence
+    : `${view.outcomeCards.rows.length} outcome card${view.outcomeCards.rows.length === 1 ? "" : "s"} shown.`);
+}
+
 async function load() {
   view.sequence += 1;
-  await Promise.all([takeConversation(), takeList()]);
+  await Promise.all([takeConversation(), takeList(), takeOutcomeCards()]);
   const state = conversationState(view.conversation, view.route);
   announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
 }
@@ -359,10 +479,20 @@ async function boot() {
   $("docReplyPending").textContent = DOC_REPLY_PENDING;
   $("titleHistoryLine").textContent = TITLE_HISTORY_UNREADABLE;
   $("exposureStatement").textContent = EXPOSURE_STATEMENT;
+  // Permanent, beside the outcome cards heading, matching sessions.js's own
+  // NO_OPEN_SENTENCE pattern: written from the model so deleting the element
+  // cannot leave a page that quietly implies it can open a session.
+  const outcomeCardsNoOpen = $("outcomeCardsNoOpen");
+  if (outcomeCardsNoOpen) outcomeCardsNoOpen.textContent = OUTCOME_CARDS_NO_OPEN_SENTENCE;
   const location = globalThis.location || { hostname: "", search: "" };
   const params = new URLSearchParams(location.search || "");
   view.route = idFromSearch(location.search || "");
   $("retryRead")?.addEventListener("click", () => load());
+  $("outcomeCardsRetry")?.addEventListener("click", () => takeOutcomeCards());
+  $("outcomeCardsShowMore")?.addEventListener("click", () => {
+    const paging = outcomeCardsPagingState(view.outcomeCards.state === "read" ? view.outcomeCards.payload : null);
+    if (paging.more) takeOutcomeCards({ cursor: paging.cursor });
+  });
   $("showMore")?.addEventListener("click", () => {
     const paging = pagingState(payloadOf());
     if (paging.more) takeConversation({ after: paging.after });

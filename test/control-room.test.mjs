@@ -379,7 +379,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 59);
+  assert.equal(contract.mcp_operations.length, 60);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 

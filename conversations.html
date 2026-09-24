@@ -66,6 +66,19 @@
 
     <p class="sr-only" id="conversationLive" aria-live="polite" role="status">Reading this conversation…</p>
 
+    <section class="card glass" data-section="outcome-cards" aria-labelledby="outcomeCardsTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Doc outcome cards</p><h2 id="outcomeCardsTitle">What Doc is tracking for you</h2></div>
+        <button class="btn" type="button" id="outcomeCardsRetry">Read again</button>
+      </div>
+      <p class="caption" id="outcomeCardsNoOpen">unknown</p>
+      <div class="state-block" id="outcomeCardsState" data-state="loading" hidden><h3 id="outcomeCardsStateTitle"></h3></div>
+      <ul class="work-list" id="outcomeCardsList"></ul>
+      <div class="note-act" id="outcomeCardsPagingBlock" hidden><button class="btn" type="button" id="outcomeCardsShowMore">Show more outcome cards</button></div>
+    </section>
+
+    <p class="sr-only" id="outcomeCardsLive" aria-live="polite" role="status">Reading outcome cards…</p>
+
     <section class="card glass" data-section="list" aria-labelledby="listTitle">
       <div class="card-heading">
         <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
