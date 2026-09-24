@@ -81,3 +81,86 @@
   .hero-meta { justify-content: flex-start; }
   .turn-top { flex-direction: column; align-items: flex-start; }
 }
+
+/* --------------------------------------------- V5-UX-B09 outcome cards motion
+ * Rule 9293d609: every CARR surface ships with real motion, never a static
+ * page. This block adds only what css/system.css's shared tokens and
+ * keyframes do not already give a page for free — the same `--motion-*`
+ * custom properties, the same `breathe` and `flow-dash` keyframes used by
+ * the shared `.orb` and Atlas edges, and the same "brighten once, do not
+ * cut" idiom css/room.css uses for `.figure-value.is-changed`
+ * (`figure-flash`). The recommendation → submission → outcome flow line is
+ * deliberately modeled on css/workspace.css's own animated pipeline flow
+ * diagram (`.flow-node`/`.flow-path`/`.flow-particle`), which Joe named the
+ * reference standard.
+ *
+ * Every animation here is opacity/filter/stroke/transform only — nothing
+ * animates width, height, margin or position in a way that shifts layout —
+ * and css/system.css's own `@media (prefers-reduced-motion: reduce)` /
+ * `:root[data-motion="reduced"]` floor already turns off every animation and
+ * transition on the page by selector (`*, *::before, *::after`). The rules
+ * below repeat that floor for this block's own selectors anyway, matching
+ * how css/charts.css's `.chart-bar` and css/room.css's `.figure-value` each
+ * restate it, so a reader — and a test — can find the reduced-motion
+ * behavior for THIS component without re-deriving it from the global rule.
+ */
+
+/* 1. Orchestrated staggered entrance. `--outcome-card-delay` is set inline by
+ * js/conversations.js per card index, the same `animation-delay: var(...)`
+ * convention css/room.css uses for `--drift-delay`. Nothing here sets a
+ * persistent `opacity` outside the keyframe, so removing the animation
+ * (reduced motion) leaves the card at its ordinary, fully visible style —
+ * never stuck invisible. */
+.outcome-card {
+  animation: outcome-card-in var(--motion-enter) var(--ease) both;
+  animation-delay: var(--outcome-card-delay, 0ms);
+  /* 2. Hover and press feedback on the card itself (buttons and chips already
+   * carry their own from css/system.css's `.btn`/`.chip` rules). */
+  transition: transform var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease);
+}
+.outcome-card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
+.outcome-card:active { transform: translateY(-1px) scale(0.99); }
+@keyframes outcome-card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* 3. A changed field brightens once and settles — it transitions, it never
+ * cuts — exactly css/room.css's `figure-flash` idiom for a text figure that
+ * "cannot count up". js/conversations.js adds `.is-changed` only to the
+ * specific field that differed from the previous read. */
+.outcome-field { display: inline; }
+.outcome-field.is-changed { animation: outcome-field-flash 700ms ease-out; border-radius: 4px; }
+@keyframes outcome-field-flash {
+  0% { background: color-mix(in srgb, var(--orange) 35%, transparent); color: var(--orange-text); }
+  100% { background: transparent; color: inherit; }
+}
+
+/* 4. Ambient life: a small dot beside the card title pulses ONLY while
+ * `data-fresh="fresh"` — the server's own `source_freshness.state`, itself
+ * derived from comparing the real `observed_at` to the real `as_of`
+ * (migration 0546). A stale card's dot is dim and static: never faked
+ * activity for a card the record layer itself calls stale. */
+.outcome-live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 2px; border-radius: 50%; background: var(--green); vertical-align: middle; }
+.outcome-live-dot[data-fresh="fresh"] { animation: breathe var(--motion-calm) ease-in-out infinite; }
+.outcome-live-dot[data-fresh="stale"] { background: var(--quiet); opacity: 0.55; }
+
+/* 5. The recommendation → submission → outcome flow line. Only the SEGMENT
+ * leading into a reached stage draws and animates; an unreached stage's dot
+ * stays hollow and its incoming segment stays a static, dim dash — the
+ * line never draws a stage the server did not report. */
+.outcome-flow { display: block; width: 100%; max-width: 220px; height: 20px; margin: 8px 0 2px; overflow: visible; }
+.outcome-flow-node { fill: var(--ground-2); stroke: var(--line-strong); stroke-width: 1.5; }
+.outcome-flow-node[data-reached="true"] { fill: var(--orange); stroke: var(--orange); }
+.outcome-flow-path { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 4 6; }
+.outcome-flow-path[data-active="true"] { stroke: var(--orange); stroke-dasharray: 8 10; animation: flow-dash var(--motion-flow) linear infinite; }
+.outcome-flow-labels { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 0; color: var(--quiet); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.outcome-flow-labels span[data-reached="true"] { color: var(--orange-text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .outcome-card { animation: none; transition: none; }
+  .outcome-field.is-changed { animation: none; }
+  .outcome-live-dot[data-fresh="fresh"] { animation: none; }
+  .outcome-flow-path[data-active="true"] { animation: none; stroke-dasharray: none; }
+}
+:root[data-motion="reduced"] .outcome-card { animation: none; transition: none; }
+:root[data-motion="reduced"] .outcome-field.is-changed { animation: none; }
+:root[data-motion="reduced"] .outcome-live-dot[data-fresh="fresh"] { animation: none; }
+:root[data-motion="reduced"] .outcome-flow-path[data-active="true"] { animation: none; stroke-dasharray: none; }

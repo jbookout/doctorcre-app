@@ -199,6 +199,56 @@ export function outcomeCardsPagingState(payload) {
   return { more: payload?.more === true, cursor: payload?.next_cursor ?? null };
 }
 
+/* ------------------------------------------------------- motion (rule 9293d609) */
+
+/**
+ * The recommendation → submission → outcome distinction, made drawable. Only
+ * the stages the server actually reports are marked reached — this is a
+ * READ of `intentKind`/`result.available`, never a guess or a timer. A card
+ * is always at least a recommendation; `intent_kind === "submission"` means
+ * the producer's own join found a job, and `result.available` means an
+ * accepted outcome is recorded. The line never draws a stage the server did
+ * not report.
+ */
+export function flowStages(card) {
+  const submissionReached = card.intentKind === "submission";
+  const outcomeReached = card.result.available === true;
+  return [
+    { id: "recommendation", label: "Recommendation", reached: true },
+    { id: "submission", label: "Submission", reached: submissionReached },
+    { id: "outcome", label: "Outcome", reached: outcomeReached },
+  ];
+}
+
+/**
+ * Whether the card's live indicator may pulse. Tied to the SAME
+ * `source_freshness.state` the server computed from the real `as_of`
+ * comparison (mcp-server migration 0546: `observed_at >= as_of - 24h`) —
+ * never a client-side clock or a decorative timer. A stale card never
+ * pulses: that would be faking activity the record layer does not report.
+ */
+export function isLive(card) {
+  return card.freshness?.state === "fresh";
+}
+
+/**
+ * Which of a card's displayed fields changed since the previous read, by
+ * comparing the OUTCOME CARD VIEW (not the raw payload) so a field that
+ * merely reformats the same underlying value never flashes as "changed".
+ * `previous` is the prior render's `outcomeCard()` output for the same
+ * `card_id`, or `null` on a card's first render (which is never flashed —
+ * the entrance animation already says "this just appeared").
+ */
+export function changedFields(previous, current) {
+  if (!previous) return { phase: false, nextCheck: false, result: false, routingState: false };
+  return {
+    phase: previous.phase !== current.phase,
+    nextCheck: previous.nextCheck.value !== current.nextCheck.value || previous.nextCheck.available !== current.nextCheck.available,
+    result: previous.result.value !== current.result.value || previous.result.available !== current.result.available,
+    routingState: previous.routingState !== current.routingState,
+  };
+}
+
 /* ---------------------------------------------------- request building */
 
 /** The arguments sent to `read-doc-outcome-cards`. No actor is ever named. */

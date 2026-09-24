@@ -44,8 +44,9 @@ import {
   shareCandidates, shareOperationKey, turnRows, visibleCountLine,
 } from "./conversations-model.js";
 import {
-  OUTCOME_CARDS_NO_OPEN_SENTENCE, outcomeCards, outcomeCardsEmptyMessage,
-  outcomeCardsPagingState, outcomeCardsRequest, refuseDocOutcomeCards,
+  OUTCOME_CARDS_NO_OPEN_SENTENCE, changedFields, flowStages, outcomeCards,
+  outcomeCardsEmptyMessage, outcomeCardsPagingState, outcomeCardsRequest,
+  refuseDocOutcomeCards,
 } from "./doc-outcome-cards-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -68,7 +69,12 @@ const view = {
   // its own sequence guard rather than sharing the conversation's, because a
   // conversation open/close or a list refresh must never discard or race an
   // in-flight outcome-cards page.
-  outcomeCards: { state: "pending", payload: null, rows: [], sequence: 0 },
+  // `previousById` is the last render's `outcomeCard()` view per card_id, kept
+  // across reads (never reset by a fresh page) so a genuine re-read — the
+  // whole reason this section exists — can flash exactly the fields that
+  // changed rather than the whole card. New cards are compared against
+  // nothing and never flash; the entrance animation already says "new".
+  outcomeCards: { state: "pending", payload: null, rows: [], sequence: 0, previousById: new Map() },
 };
 
 let client = null;
@@ -195,9 +201,37 @@ function renderList() {
  * `intentKind` (recommendation vs submission) and `result.available`
  * distinguish recommendation, submission and outcome on the card itself,
  * exactly as the spec's third included-scope clause asks — none of the three
- * is inferred; each is the field the producer actually returned.
+ * is inferred; each is the field the producer actually returned. Rule
+ * 9293d609 (every CARR surface ships with real motion, never a static page)
+ * adds four things beyond the markup: a staggered entrance
+ * (`--outcome-card-delay`, css/room.css's `--drift-delay` convention), a
+ * live pulse on the freshness dot tied to the SERVER's own `as_of`
+ * comparison (`isLive`, never a decorative timer), a flash on any field that
+ * changed since the previous read (`.is-changed`, css/room.css's
+ * `figure-flash` convention — a phrase cannot count up, so it brightens once
+ * instead of cutting), and the recommendation → submission → outcome flow
+ * line, modeled on css/workspace.css's own animated pipeline flow diagram
+ * (`.flow-node`/`.flow-path`, reusing the SAME `flow-dash` keyframe and
+ * `--motion-flow` token from css/system.css).
  */
-function outcomeCardHtml(card) {
+function outcomeFlowSvg(card) {
+  const stages = flowStages(card);
+  const [recommendation, submission, outcome] = stages;
+  const cx = { recommendation: 14, submission: 80, outcome: 146 };
+  const nodes = stages.map((stage) => `<circle class="outcome-flow-node" data-stage="${escapeHtml(stage.id)}" data-reached="${stage.reached}" cx="${cx[stage.id]}" cy="12" r="6"></circle>`).join("");
+  return `<svg class="outcome-flow" viewBox="0 0 160 24" aria-hidden="true" focusable="false">
+    <path class="outcome-flow-path" data-active="${submission.reached}" d="M${cx.recommendation + 6} 12 H${cx.submission - 6}"></path>
+    <path class="outcome-flow-path" data-active="${outcome.reached}" d="M${cx.submission + 6} 12 H${cx.outcome - 6}"></path>
+    ${nodes}
+  </svg>
+  <p class="small outcome-flow-labels">${stages.map((stage) => `<span data-reached="${stage.reached}">${escapeHtml(stage.label)}</span>`).join('<span aria-hidden="true"> → </span>')}</p>`;
+}
+
+function outcomeFieldSpan(className, changed, text) {
+  return `<span class="outcome-field${changed ? " is-changed" : ""}" data-field="${escapeHtml(className)}">${escapeHtml(text)}</span>`;
+}
+
+function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextCheck: false, result: false, routingState: false } } = {}) {
   const owner = card.owner ?? "unassigned";
   const phase = card.phase ?? "unrecorded";
   const nextCheck = card.nextCheck.available ? card.nextCheck.value : card.nextCheck.text;
@@ -206,23 +240,30 @@ function outcomeCardHtml(card) {
   const sessionRefLine = entry.sessionRef
     ? `<p class="small mono">session ref: ${escapeHtml(entry.sessionRef)}</p>`
     : "";
-  return `<li class="work-item outcome-card" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
+  return `<li class="work-item outcome-card" style="--outcome-card-delay: ${delayMs}ms" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
     <div>
       <h3 class="list-title">${escapeHtml(card.requestedOutcome ?? card.workRequestRef)}</h3>
       <p class="list-meta">
+        <span class="outcome-live-dot" data-fresh="${escapeHtml(card.freshness.state)}" aria-hidden="true"></span>
         <span class="chip" data-intent="${escapeHtml(card.intentKind)}">${escapeHtml(card.intentLabel)}</span>
-        <span class="chip" data-state="${escapeHtml(card.routingState)}">routing: ${escapeHtml(card.routingStateLabel)}</span>
-        · owner ${escapeHtml(owner)} · phase ${escapeHtml(phase)}
+        <span class="chip" data-state="${escapeHtml(card.routingState)}">routing: ${outcomeFieldSpan("routingState", changed.routingState, card.routingStateLabel)}</span>
+        · owner ${escapeHtml(owner)} · phase ${outcomeFieldSpan("phase", changed.phase, phase)}
         · <span class="mono">${escapeHtml(card.workRequestRef)}</span>
       </p>
-      <p class="small">Next check: ${escapeHtml(String(nextCheck))}</p>
-      <p class="small" data-outcome="${String(card.result.available)}">Result: ${escapeHtml(String(result))}</p>
+      ${outcomeFlowSvg(card)}
+      <p class="small">Next check: ${outcomeFieldSpan("nextCheck", changed.nextCheck, String(nextCheck))}</p>
+      <p class="small" data-outcome="${String(card.result.available)}">Result: ${outcomeFieldSpan("result", changed.result, String(result))}</p>
       <p class="small caption">${escapeHtml(card.freshness.text)}</p>
       <p class="small session-host" data-open="false">${escapeHtml(entry.reasonSentence)} ${escapeHtml(entry.scopedSolution)}</p>
       ${sessionRefLine}
     </div>
   </li>`;
 }
+
+/** Entrance stagger step, in ms. Six cards land in 5*70 + 270 = 620ms — well
+ *  under the rule's ~1s ceiling — and css/system.css's motion floor removes
+ *  the delay and the animation entirely under reduced motion. */
+const OUTCOME_CARD_STAGGER_MS = 70;
 
 function renderOutcomeCards() {
   const list = $("outcomeCardsList");
@@ -247,7 +288,15 @@ function renderOutcomeCards() {
     return;
   }
   const cards = outcomeCards({ cards: view.outcomeCards.rows });
-  list.innerHTML = cards.map(outcomeCardHtml).join("");
+  // Every card gets its own delay so the entrance is ORCHESTRATED rather
+  // than simultaneous, and every card's change flags come from comparing
+  // THIS read against the previous one — new cards (no prior entry) never
+  // flash, since the entrance animation already says "this just appeared".
+  list.innerHTML = cards.map((card, index) => outcomeCardHtml(card, {
+    delayMs: index * OUTCOME_CARD_STAGGER_MS,
+    changed: changedFields(view.outcomeCards.previousById.get(card.id) ?? null, card),
+  })).join("");
+  view.outcomeCards.previousById = new Map(cards.map((card) => [card.id, card]));
   const empty = outcomeCardsEmptyMessage({ cards: view.outcomeCards.rows });
   block.hidden = !(cards.length === 0 && empty);
   block.dataset.state = "empty";
@@ -344,14 +393,14 @@ async function takeOutcomeCards({ cursor = null } = {}) {
     if (view.outcomeCards.sequence !== sequence) return;
     const refusal = refuseDocOutcomeCards(payload);
     if (refusal) {
-      view.outcomeCards = { state: "unavailable", payload: null, rows: held, sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
+      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
     } else {
-      view.outcomeCards = { state: "read", payload, rows: [...held, ...payload.cards], sequence };
+      view.outcomeCards = { ...view.outcomeCards, state: "read", payload, rows: [...held, ...payload.cards], sequence };
     }
   } catch (error) {
     if (view.outcomeCards.sequence !== sequence) return;
     const failure = classifyReadFailure(error);
-    view.outcomeCards = { state: "unavailable", payload: null, rows: held, sequence, sentence: failure.sentence };
+    view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, sequence, sentence: failure.sentence };
   }
   render();
   announceOutcomeCards(view.outcomeCards.state === "unavailable"
