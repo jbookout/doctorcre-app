@@ -180,20 +180,18 @@
         <p class="model-room-move-result" id="modelRoomMoveResult" hidden></p>
       </section>
 
-      <!-- V5-UX-C13b: the Model Room composer. Typing is real; sending is not
-           — add-room-turn is not one of the operations
-           contracts/carr-interface.v1.json pins for this client, so every
-           submit answers COMPOSER_UNAVAILABLE_SENTENCE and keeps the draft. -->
+      <!-- V5-UX-C13b: the Model Room composer. `add-room-turn` derives seat
+           ("human", always true here) and sponsor/origin server-side from the
+           authenticated session; this form sends only the message body, into
+           the room this tab's own conversation reads (model-room). A failed
+           or refused send keeps the draft and shows the record layer's own
+           refusal verbatim. -->
       <section class="card glass" data-section="model_room_composer" aria-labelledby="modelRoomComposerTitle">
-        <div class="card-heading"><div><p class="eyebrow">Send a targeted request</p><h2 id="modelRoomComposerTitle">Composer</h2></div></div>
+        <div class="card-heading"><div><p class="eyebrow">Send into this room</p><h2 id="modelRoomComposerTitle">Composer</h2></div></div>
         <form id="modelRoomComposerForm">
           <div class="field">
-            <label for="modelRoomComposerTarget">Target</label>
-            <input id="modelRoomComposerTarget" name="target" type="text" maxlength="200" autocomplete="off">
-          </div>
-          <div class="field">
             <label for="modelRoomComposerText">Message</label>
-            <textarea id="modelRoomComposerText" name="text" maxlength="2000" rows="3"></textarea>
+            <textarea id="modelRoomComposerText" name="text" maxlength="20000" rows="3" required></textarea>
           </div>
           <button class="btn" type="submit" id="modelRoomComposerSend">Send</button>
         </form>

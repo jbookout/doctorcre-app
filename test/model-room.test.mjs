@@ -22,10 +22,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  ACKNOWLEDGEMENT_SENTENCE, ACK_STAGES, ANSWER_UNAVAILABLE_SENTENCE, ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE,
-  COMPOSER_UNAVAILABLE_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
-  QUEUE_BOARD, QUEUE_ROOM, TOPIC_HISTORY_SENTENCE, TURN_ROOM, WINDOW_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
-  WORK_STATES, WORK_STATE_LABEL, ackStageAvailable, acknowledgeDispatchRequest, answerRequest, assignmentBoard,
+  ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE, ANSWER_UNAVAILABLE_SENTENCE,
+  ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, COMPOSER_BODY_MAX, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE,
+  NO_OPEN_SENTENCE, QUEUE_BOARD, QUEUE_ROOM, TOPIC_HISTORY_SENTENCE, TURN_ROOM, WINDOW_SENTENCE,
+  WORK_ITEM_HISTORY_SENTENCE, WORK_STATES, WORK_STATE_LABEL, answerRequest, assignmentBoard,
   assignmentMoveOutcome, composerDraftAfterAttempt, composerRequest, contextPanel, dispatchSearchRequest,
   dispatchView, effectiveModelText, historyTopics, historyWorkItems,
   listState, needsJoeCardFields, participants, parentLine, queueFreshness, queueRequest, refuseQueueEvent,
@@ -533,20 +533,28 @@ test("C13a-06 the history view opens no execute path", () => {
 
 /* ----------------------------------------------------- V5-UX-C13b: the composer */
 
-test("C13b-01 the composer never has a request to send, and the sentence says why", () => {
-  assert.equal(composerRequest(), null, "add-room-turn is not admitted; there is nothing to send");
+test("C13b-01 the composer's request is add-room-turn's own shape: model-room, human, and nothing invented", () => {
+  assert.deepEqual(composerRequest({ text: "Please review the demo lease abstract." }), {
+    body: "Please review the demo lease abstract.", seat: "human", room: "model-room", kind: "turn",
+  });
+  assert.equal(composerRequest({ text: "  " }), null, "an empty draft refuses before anything is sent");
+  assert.equal(composerRequest({ text: "" }), null);
+  assert.equal(composerRequest({}), null);
+  assert.equal(composerRequest({ text: "x".repeat(COMPOSER_BODY_MAX + 1) }), null,
+    "over the verb's own ROOM_BODY_MAX (20000) is refused client-side too");
+  assert.equal(composerRequest({ text: "x".repeat(COMPOSER_BODY_MAX) }).body.length, COMPOSER_BODY_MAX);
+  // No target field: add-room-turn's inputSchema has none, and this file
+  // invents no structure the record layer does not carry.
+  assert.equal(Object.hasOwn(composerRequest({ text: "hi" }), "target"), false);
   assert.equal(answerRequest(), null, "no pinned verb answers a Work Request either");
-  assert.match(COMPOSER_UNAVAILABLE_SENTENCE, /add-room-turn/);
-  assert.match(COMPOSER_UNAVAILABLE_SENTENCE, /carr-interface\.v1\.json/);
-  assert.match(COMPOSER_UNAVAILABLE_SENTENCE, /nothing here simulates a send/);
   assert.match(ANSWER_UNAVAILABLE_SENTENCE, /no pinned verb attaches a response/);
 });
 
-test("C13b-02 a failed composer attempt keeps the draft exactly as typed", () => {
-  const draft = { text: "Please review the demo lease abstract.", target: "joe" };
+test("C13b-02 a failed or refused composer attempt keeps the draft exactly as typed", () => {
+  const draft = { text: "Please review the demo lease abstract." };
   assert.deepEqual(composerDraftAfterAttempt(draft), draft);
-  assert.deepEqual(composerDraftAfterAttempt(null), { text: "", target: "" });
-  assert.deepEqual(composerDraftAfterAttempt({}), { text: "", target: "" });
+  assert.deepEqual(composerDraftAfterAttempt(null), { text: "" });
+  assert.deepEqual(composerDraftAfterAttempt({}), { text: "" });
 });
 
 test("C13b-03 every assignment move is refused by name, never silently and never as a fake success", () => {
@@ -561,80 +569,65 @@ test("C13b-03 every assignment move is refused by name, never silently and never
   assert.equal(assignmentMoveOutcome(undefined).allowed, false);
 });
 
-test("C13b-04 acknowledge-dispatch's request is built exactly as the verb declares it", () => {
-  assert.deepEqual(acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "received" }), {
-    dispatch_ref: "d-1", stage: "received",
-  });
-  assert.deepEqual(acknowledgeDispatchRequest({ dispatchRef: " d-2 ", stage: "acknowledged", evidence: " seen " }), {
-    dispatch_ref: "d-2", stage: "acknowledged", evidence: "seen",
-  });
-  assert.equal(acknowledgeDispatchRequest({ dispatchRef: "", stage: "received" }), null, "an empty ref is refused");
-  assert.equal(acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "acted" }), null, "acted is not an ack stage");
-  assert.equal(acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "sent" }), null, "sent is not an ack stage");
-  assert.equal(acknowledgeDispatchRequest({}), null);
-  assert.deepEqual([...ACK_STAGES], ["received", "acknowledged"]);
-  const long = acknowledgeDispatchRequest({ dispatchRef: "d-1", stage: "received", evidence: "x".repeat(600) });
-  assert.equal(long.evidence.length, 500, "evidence is capped exactly as the verb declares (maxLength 500)");
+test("C13b-04 acknowledging a dispatch is not offered, and the sentence says why in first-hand terms", () => {
+  assert.match(ACK_UNAVAILABLE_SENTENCE, /first-hand/i);
+  assert.match(ACK_UNAVAILABLE_SENTENCE, /agent seat, not whoever is browsing/);
+  // Removed for real: no request-builder, no stage vocabulary and no client
+  // method for acknowledge-dispatch remain anywhere in this slice's files.
+  assert.equal(/acknowledgeDispatchRequest|ackStageAvailable|ACK_STAGES/.test(modelSource), false);
+  assert.equal(/acknowledgeDispatchRequest|ackStageAvailable|client\.acknowledgeDispatch/.test(viewCode), false);
 });
 
-test("C13b-05 a stage renders available only when the drawer has not already recorded it", () => {
-  const recordedBoth = dispatchView({
-    ok: true, session_id: "s", parent_session_id: null, permission_filtered: false,
-    total_seen: 0, total_returned: 0, more: false, next_cursor: null,
-    received: "2026-09-20T00:00:00Z", acknowledged: "2026-09-20T00:01:00Z", stage_unavailable_reason: null,
-    events: [],
-  });
-  assert.equal(ackStageAvailable(recordedBoth, "received"), false);
-  assert.equal(ackStageAvailable(recordedBoth, "acknowledged"), false);
-  const recordedNeither = dispatchView({
-    ok: true, session_id: "s", parent_session_id: null, permission_filtered: false,
-    total_seen: 0, total_returned: 0, more: false, next_cursor: null,
-    received: null, acknowledged: null, stage_unavailable_reason: null, events: [],
-  });
-  assert.equal(ackStageAvailable(recordedNeither, "received"), true);
-  assert.equal(ackStageAvailable(recordedNeither, "acknowledged"), true);
-  assert.equal(ackStageAvailable(null, "received"), false, "an unread drawer is not acknowledgeable");
-  assert.equal(ackStageAvailable(recordedNeither, "acted"), false, "acted is not a stage this file can send");
-});
-
-test("C13b-06 the composer, the drop zone and the acknowledgment control are wired in the view, honestly", () => {
+test("C13b-05 the composer and the drop zone are wired in the view, honestly", () => {
   assert.match(htmlMarkup, /id="modelRoomComposerForm"/);
   assert.match(htmlMarkup, /id="modelRoomComposerText"/);
-  assert.match(htmlMarkup, /id="modelRoomComposerTarget"/);
   assert.match(htmlMarkup, /id="modelRoomMoveTarget"/);
   assert.match(htmlMarkup, /id="modelRoomMoveResult"/);
   assert.match(htmlMarkup, /id="modelRoomAnswerUnavailable"/);
-  // The submit path calls composerRequest() (always null) rather than ever
-  // building its own ad hoc "ok: true" — a fake success could not slip in
-  // without touching this exact call.
-  assert.match(viewCode, /composerRequest\(\)/);
+  assert.equal(/id="modelRoomComposerTarget"/.test(htmlMarkup), false, "add-room-turn has no target field to collect");
+  // The submit path calls composerRequest() with the typed draft and, on a
+  // built request, actually reaches the client — a fake success could not
+  // slip in without touching this exact call.
+  assert.match(viewCode, /composerRequest\(\{\s*text: view\.composer\.text\s*\}\)/);
   assert.match(viewCode, /composerDraftAfterAttempt\(/);
   assert.match(viewCode, /assignmentMoveOutcome\(/);
-  assert.match(viewCode, /acknowledgeDispatchRequest\(/);
-  assert.match(viewCode, /client\.acknowledgeDispatch\(/);
-  // The only write this file issues. No other client.<verb> write is added
-  // for the composer or the Kanban move, because neither has an admitted one.
-  assert.equal(/client\.(addRoomTurn|moveAssignment|updateQueueCard|answerWorkRequest)/.test(viewCode), false);
+  assert.match(viewCode, /client\.addRoomTurn\(request\)/);
+  // The one write this file issues. No other client.<verb> write is added
+  // for the Kanban move, because it has no admitted one, and none at all for
+  // acknowledging a dispatch (removed; see C13b-04).
+  assert.equal(/client\.(moveAssignment|updateQueueCard|answerWorkRequest|acknowledgeDispatch)/.test(viewCode), false);
   assert.match(viewSource, /draggable="true"/);
   assert.match(viewSource, /dragstart|dataTransfer/);
 });
 
-test("C13b-07 the two unsupported request-builders and the live client agree on which verb is admitted", async () => {
+test("C13b-06 the composer's failure path shows the record layer's refusal verbatim, never a paraphrase", () => {
+  // The exact error the record layer returns — never a rewritten sentence —
+  // is read straight off the thrown error, the same way every other write on
+  // this app surfaces a server refusal.
+  assert.match(viewCode, /error\?\.payload\?\.error \|\| error\?\.message/);
+  assert.match(viewCode, /Not sent: \$\{/);
+  assert.equal(/Sending a targeted Model Room request is not available/.test(viewCode), false,
+    "the old, permanent unavailability message is gone: a send is genuinely attempted now");
+});
+
+test("C13b-07 the composer write is add-room-turn, pinned as a pure app-side contract addition", async () => {
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.ok(contract.mcp_operations.includes("acknowledge-dispatch"), "the one C13b write must stay pinned");
-  assert.equal(contract.mcp_operations.includes("add-room-turn"), false,
-    "add-room-turn staying unpinned is exactly why composerRequest() is always null");
+  assert.ok(contract.mcp_operations.includes("acknowledge-dispatch"), "still pinned; simply not called from here");
+  assert.ok(contract.mcp_operations.includes("add-room-turn"), "the composer's write must be pinned");
   const liveSource = await read("js/live-client.js");
-  assert.match(liveSource, /acknowledgeDispatch\(args\)\s*\{\s*return rpc\('acknowledge-dispatch', args\)/);
-  assert.equal(/add-room-turn/.test(liveSource), false, "the live client calls no verb this contract does not pin");
+  assert.match(liveSource, /addRoomTurn\(args\)\s*\{\s*return write\('add-room-turn', args\)/);
+  assert.equal(/acknowledgeDispatch/.test(liveSource), false, "the removed write leaves no trace in the live client");
+  const fixtureSource = await read("js/fixture-client.js");
+  assert.match(fixtureSource, /async addRoomTurn\(/);
+  assert.equal(/acknowledgeDispatch/.test(fixtureSource), false);
 });
 
 /* ----------------------------------------------------------- the contract pin */
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
-test("C13-04 the contract pins the v35 producer and its two dispatch writes", () => {
-  assert.equal(contract.version, "1.21.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 57);
+test("C13-04 the contract pins the v35 producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
+  assert.equal(contract.version, "1.22.0", "one added operation (add-room-turn) is an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 58);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -642,6 +635,14 @@ test("C13-04 the contract pins the v35 producer and its two dispatch writes", ()
   for (const verb of ["record-dispatch-link", "acknowledge-dispatch"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
+  // V5-UX-C13b: add-room-turn is the composer's one write. It is pinned
+  // purely as an app-side contract addition — carr-system's dispatch has no
+  // separate allowlist gating which verb names a browser session may call
+  // (verified against mcp-server/src/index.js and dealroom-web.js); a
+  // human's own authenticated session is a valid caller
+  // (mcp-server/src/identity.js personalScopeForActor, and partner-room.js's
+  // add-room-turn handler derives origin_channel/origin_actor server-side).
+  assert.ok(contract.mcp_operations.includes("add-room-turn"), "add-room-turn is not pinned");
   const queue = contract.mcp_operations.indexOf("read-room-queue");
   assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
