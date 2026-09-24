@@ -10,8 +10,8 @@
  *     stylesheet and are not part of the product sheet.
  *  3. A tab that is a LINK to another page: it looks like the tabs beside it
  *     and is marked only by aria-current when the person is already there.
- *  4. The permanent "not in this release" state, which is neither a zero count
- *     nor a failure: it is a scope statement, so it is drawn quiet and dashed.
+ *  4. The "absent" state — a section with no read behind it (Calls). It is
+ *     neither a zero count nor a failure, so it is drawn quiet and dashed.
  */
 
 .topbar { flex-wrap: wrap; }
@@ -51,10 +51,34 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
 .work-meta span { min-width: 0; overflow-wrap: anywhere; }
 .work-item > div { min-width: 0; }
 
-/* Permanent scope, not an outage and not a zero. */
-.state-block[data-state="not_in_release"] { border-style: dashed; border-color: var(--line-strong); }
-.state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
+/* No read exists behind this section: not an outage and not a zero. */
+.state-block[data-state="absent"] { border-style: dashed; border-color: var(--line-strong); }
+.state-block[data-state="absent"] h3 { color: var(--muted); font-size: 18px; }
 .state-block + .state-block { margin-top: 10px; }
+
+/* This week and Waiting on others: an eyebrow orb, a count, and a due chip. */
+.eyebrow .orb { vertical-align: middle; margin-right: 4px; }
+.count-line + .week-rail, .count-line + .work-list { margin-top: 12px; }
+.card > .caption { margin-top: 10px; }
+.due-chip { display: inline-flex; align-items: center; padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.due-chip[data-overdue="true"] { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red-text); }
+.work-item[data-priority="deadline"] .due-chip { border-color: color-mix(in srgb, var(--amber) 55%, transparent); color: var(--amber-text); }
+
+/* The seven-day rail: paint over the list, counting the rows the list shows. */
+.week-rail { display: grid; grid-template-columns: repeat(auto-fit, minmax(38px, 1fr)); gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
+.week-rail:empty { margin: 0; }
+.week-day { display: grid; justify-items: center; gap: 5px; padding: 7px 2px; border: 1px solid var(--line); border-radius: var(--radius-s); color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.week-day[data-count="0"] { opacity: 0.55; }
+.week-day[data-today="true"] { border-color: color-mix(in srgb, var(--orange) 55%, transparent); color: var(--text); }
+.week-day[data-overdue="true"] { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red-text); }
+.week-day-dots { display: flex; gap: 3px; min-height: 6px; }
+.week-day-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); }
+.week-day[data-overdue="true"] .week-day-dots i { background: var(--red); }
+
+/* The ball is in their court: a connector under each wait, carrying movement. */
+.waiting-flow { display: block; width: 100%; height: 8px; margin-top: 8px; }
+.waiting-flow .flow-path { stroke: color-mix(in srgb, var(--violet) 65%, transparent); }
+.work-item[data-priority="overdue"] .waiting-flow .flow-path { stroke: color-mix(in srgb, var(--red) 70%, transparent); }
 
 @media (max-width: 640px) {
   .parsed { grid-template-columns: 1fr; }
@@ -138,3 +162,50 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
   .chart-bar-cell { display: none; }
   .chart-table thead th:last-child { display: none; }
 }
+
+/* V5-UX-B01 Home motion — Joe's standing surface rule 9293d609, built only on
+ * the shared tokens and keyframes in css/system.css (receipt-in, breathe, and
+ * the flow-path connector); this sheet declares no keyframes of its own.
+ *
+ *  1. Entrance. The cards arrive in a stagger that finishes well inside a
+ *     second. The fill is `backwards`, so a card's resting state IS its static
+ *     state: with the animation removed it is simply there.
+ *  2. State changes. A row or a state block that is new enters instead of
+ *     cutting in; the script marks it data-enter only when it changed.
+ *  3. Hover and press. A row lifts under the cursor; an Open link presses.
+ *  4. Ambient life, from the data: today's dots breathe only when something is
+ *     due today, an overdue marker breathes at the urgent pace, each wait's
+ *     connector flows, and the section orbs are chosen by sectionPulse().
+ *
+ * Reduced motion: the shared floor removes every animation and transition, and
+ * the block at the end removes the one thing it cannot — a hover transform that
+ * would otherwise still jump. Nothing here hides content in its resting state.
+ */
+#panelHome > .card { animation: receipt-in var(--motion-enter) var(--ease) backwards; }
+#panelHome > .card:nth-child(2) { animation-delay: 45ms; }
+#panelHome > .card:nth-child(3) { animation-delay: 90ms; }
+#panelHome > .card:nth-child(4) { animation-delay: 135ms; }
+#panelHome > .card:nth-child(5) { animation-delay: 180ms; }
+#panelHome > .card:nth-child(6) { animation-delay: 225ms; }
+#panelHome > .card:nth-child(7) { animation-delay: 270ms; }
+#panelHome > .card:nth-child(8) { animation-delay: 315ms; }
+#panelHome > .card:nth-child(9) { animation-delay: 360ms; }
+
+#panelHome [data-enter="true"] { animation: receipt-in var(--motion-enter) var(--ease) backwards; }
+#panelHome .work-list > [data-enter="true"]:nth-child(2) { animation-delay: 40ms; }
+#panelHome .work-list > [data-enter="true"]:nth-child(3) { animation-delay: 80ms; }
+#panelHome .work-list > [data-enter="true"]:nth-child(4) { animation-delay: 120ms; }
+#panelHome .work-list > [data-enter="true"]:nth-child(n+5) { animation-delay: 160ms; }
+
+#panelHome .home-row { transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease), box-shadow var(--motion-enter) var(--ease); }
+#panelHome .home-row:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
+#panelHome .home-open:hover { border-color: color-mix(in srgb, var(--orange) 55%, transparent); }
+#panelHome .home-open:active { transform: scale(0.97); }
+
+.week-day[data-today="true"]:not([data-count="0"]) .week-day-dots i { animation: breathe var(--motion-calm) ease-in-out infinite; }
+.week-day[data-overdue="true"] .week-day-dots i { animation: breathe var(--motion-urgent) ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  #panelHome .home-row:hover, #panelHome .home-open:active { transform: none; }
+}
+:root[data-motion="reduced"] #panelHome .home-row:hover, :root[data-motion="reduced"] #panelHome .home-open:active { transform: none; }

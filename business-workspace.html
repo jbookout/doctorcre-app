@@ -80,6 +80,29 @@
         <div class="state-block" id="needsActionState" data-state="empty" hidden><h3>Nothing flagged</h3></div>
       </section>
 
+      <section class="card glass" data-section="this_week" aria-labelledby="thisWeekTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow"><span class="orb" data-state="refreshing" id="thisWeekPulse" aria-hidden="true"></span> Dates</p><h2 id="thisWeekTitle">This week</h2></div>
+          <a class="btn home-open" href="/deals">Open Deals</a>
+        </div>
+        <p class="count-line" id="thisWeekValue" data-state="unavailable" hidden>—</p>
+        <ol class="week-rail" id="thisWeekRail" aria-hidden="true"></ol>
+        <ul class="work-list" id="thisWeekList"></ul>
+        <div class="state-block" id="thisWeekState" data-state="loading"><h3>Reading this week…</h3></div>
+        <p class="caption" id="thisWeekCaption"></p>
+      </section>
+
+      <section class="card glass" data-section="waiting_on_others" aria-labelledby="waitingTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow"><span class="orb" data-state="refreshing" id="waitingPulse" aria-hidden="true"></span> Counterparties</p><h2 id="waitingTitle">Waiting on others</h2></div>
+          <a class="btn home-open" href="/tasks">Open Tasks</a>
+        </div>
+        <p class="count-line" id="waitingValue" data-state="unavailable" hidden>—</p>
+        <ul class="work-list" id="waitingList"></ul>
+        <div class="state-block" id="waitingState" data-state="loading"><h3>Reading waiting work…</h3></div>
+        <p class="caption" id="waitingCaption"></p>
+      </section>
+
       <section class="card glass" data-section="pipeline" aria-labelledby="pipelineTitle">
         <div class="card-heading"><div><p class="eyebrow">Deals</p><h2 id="pipelineTitle">Pipeline</h2></div></div>
         <ul class="work-list" id="pipelineList"></ul>
@@ -96,6 +119,11 @@
         <div class="card-heading"><div><p class="eyebrow">Nonhuman work</p><h2 id="docWorkTitle">Doc at work</h2></div></div>
         <p class="count-line" id="docWorkValue">—</p>
         <div class="state-block" id="docWorkState" data-state="offline" hidden><h3>Work in progress could not be verified</h3></div>
+      </section>
+
+      <section class="card glass" data-section="calls" aria-labelledby="callsTitle">
+        <div class="card-heading"><div><p class="eyebrow"><span class="orb" data-state="still" aria-hidden="true"></span> Outreach</p><h2 id="callsTitle">Calls</h2></div></div>
+        <div class="state-block" id="callsState" data-state="absent"><h3>Calls: no record-layer read returns logged calls yet</h3></div>
       </section>
 
       <section class="card glass" data-section="quick_add" aria-labelledby="quickTitle">
@@ -121,13 +149,6 @@
           <span class="chip-label">Drafts on this device · select to review</span>
           <span class="chip-list" id="draftList"></span>
         </div>
-      </section>
-
-      <section class="card glass" data-section="not_in_release" aria-labelledby="notInReleaseTitle">
-        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="notInReleaseTitle">Not in this release</h2></div></div>
-        <div class="state-block" data-state="not_in_release"><h3>This week: not in this release</h3></div>
-        <div class="state-block" data-state="not_in_release"><h3>Calls: not in this release</h3></div>
-        <div class="state-block" data-state="not_in_release"><h3>Waiting on others: not in this release</h3></div>
       </section>
 
       <section class="card glass" data-section="team_review" aria-labelledby="teamReviewTitle">

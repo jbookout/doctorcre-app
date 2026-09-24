@@ -20,6 +20,12 @@
 //
 // Quick add is the Tasks card: the same pure plan from ./task-records-model.js,
 // the same kernel, the same receipt dock. The model is imported, never copied.
+//
+// This week and Waiting on others each take a read of their own — `today-triage`
+// and a server-filtered `loop-board` — alongside the command-centre read, each
+// under its own sequence guard, so a failure in one leaves the others standing.
+// Calls has no read at all: its absence is literal markup, and nothing here
+// writes to it.
 import { createCommandDock } from "./command-dock.js";
 import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
@@ -36,7 +42,10 @@ import {
   acceptsResponse, displayedFreshness, freshnessSignature, homeReadPhase,
   safeDestination, sourceIsFresh, summarizeWorkspaceScope, validWorkspacePayload, viewerWorkspaceLabel,
 } from "./workspace-command-center-model.js";
-import { needLabel, teamReviewRows, unavailableCopy } from "./business-workspace-model.js";
+import {
+  WAITING_ROW_CAP, countFrames, dueWords, needLabel, sectionPulse, sectionReadFailed, teamReviewRows, thisWeekView,
+  unavailableCopy, waitingView, weekRail,
+} from "./business-workspace-model.js";
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 
@@ -55,6 +64,12 @@ const view = {
   // read with a second lifetime, so it gets a second guard: a late board answer
   // must not paint over a newer one, and it must never touch view.sequence.
   records: Object.freeze([]), boardSequence: 0,
+  // V5-UX-B01 — the two section reads. Each keeps its own last verified answer
+  // and its own sequence; `day` is the local day the sections were last drawn
+  // against, so crossing midnight is noticed and both sections are read again.
+  week: { status: "loading", payload: null, readAt: null }, weekSequence: 0,
+  waiting: { status: "loading", payload: null, readAt: null }, waitingSequence: 0,
+  day: null,
 };
 
 let client = null;
@@ -194,6 +209,183 @@ function renderTeamReview(payload, verified) {
   setSection("teamReview", { section: "team_review", rows });
 }
 
+/* ------------------------------------------ This week and Waiting on others */
+
+/** The reader's own calendar day. The week is theirs, not the server's. */
+function localDay(now = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** The page setting and the operating system both stop motion; either is enough. */
+function motionReduced() {
+  return document.documentElement.dataset.motion === "reduced"
+    || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+}
+
+/**
+ * Paint a region only when what it shows has changed. The rows it paints carry
+ * data-enter, so they animate in exactly when they are new — never on a repaint
+ * that changes nothing, which would make the page twitch on every tick.
+ */
+const painted = new WeakMap();
+function paintIfChanged(node, html) {
+  if (!node || painted.get(node) === html) return false;
+  painted.set(node, html);
+  node.innerHTML = html;
+  return true;
+}
+
+/** A state block that animates between states instead of cutting, and only on a change. */
+function setOwnState(id, state, text) {
+  const node = $(id);
+  if (!node) return;
+  const hidden = state === null;
+  const key = hidden ? "" : `${state}|${text}`;
+  if (node.dataset.shown === key) return;
+  node.dataset.shown = key;
+  node.hidden = hidden;
+  if (hidden) { node.innerHTML = ""; return; }
+  node.setAttribute("data-state", state);
+  node.innerHTML = `<h3>${escapeHtml(text)}</h3>`;
+  node.removeAttribute("data-enter");
+  void node.offsetWidth;
+  node.setAttribute("data-enter", "true");
+}
+
+/** A count that climbs to the value it read, or lands on it at once when motion is reduced. */
+const counting = new WeakMap();
+function countTo(node, to, format) {
+  if (!node) return;
+  const previous = Number.parseInt(node.dataset.count ?? "", 10);
+  const start = Number.isInteger(previous) ? previous : 0;
+  node.dataset.count = String(to);
+  const frames = countFrames(start, to, { reduced: motionReduced() });
+  cancelAnimationFrame(counting.get(node));
+  let index = 0;
+  const step = () => {
+    node.textContent = format(frames[index]);
+    index += 1;
+    if (index < frames.length) counting.set(node, requestAnimationFrame(step));
+  };
+  step();
+}
+
+function setValue(id, value, format) {
+  const node = $(id);
+  if (!node) return;
+  node.hidden = value === null;
+  node.setAttribute("data-state", value === null ? "unavailable" : "read");
+  if (value === null) { node.textContent = "—"; delete node.dataset.count; return; }
+  countTo(node, value, format);
+}
+
+function readCaption(read, detail) {
+  const clock = formatClock(read.readAt);
+  return `Read at ${clock || "an unreadable time"} · ${detail}`;
+}
+
+function railHtml(rail) {
+  const dots = (count) => "<i></i>".repeat(Math.min(count, 4));
+  const cells = rail.days.map((day) => `<li class="week-day" data-today="${day.today}" data-count="${day.count}"><span>${escapeHtml(day.label)}</span><span class="week-day-dots">${dots(day.count)}</span></li>`);
+  if (rail.overdue) cells.unshift(`<li class="week-day" data-overdue="true" data-count="${rail.overdue}"><span>Late</span><span class="week-day-dots">${dots(rail.overdue)}</span></li>`);
+  return cells.join("");
+}
+
+function weekRowHtml(row) {
+  const priority = row.overdue ? "overdue" : row.offset <= 1 ? "deadline" : "ordinary";
+  const subject = row.subject ? `${row.subject}${row.ref ? ` · ${row.ref}` : ""}` : row.ref || "";
+  return `<li class="work-item home-row" data-priority="${priority}" data-enter="true">
+    <div><h3>${escapeHtml(row.what)}</h3><div class="work-meta"><span>${escapeHtml(row.kindLabel)}</span>${subject ? `<span>${escapeHtml(subject)}</span>` : ""}<span>${escapeHtml(row.owner ? partnerName(row.owner) : "Team")}</span></div></div>
+    <div class="stack-end"><span class="due-chip" data-overdue="${row.overdue}">${escapeHtml(dueWords(row.offset))}</span></div>
+  </li>`;
+}
+
+function waitingRowHtml(row) {
+  const followUp = row.offset === null ? "" : row.offset < 0 ? `Follow-up ${dueWords(row.offset)}` : `Follow-up ${dueWords(row.offset).toLowerCase()}`;
+  return `<li class="work-item home-row" data-priority="${row.overdue ? "overdue" : "blocked"}" data-enter="true">
+    <div><h3>${escapeHtml(row.title)}</h3><div class="work-meta"><span>Waiting on: ${escapeHtml(row.waitingOn || "a named counterparty")}</span><span>#${escapeHtml(row.number)} · ${escapeHtml(partnerName(row.owner))}</span>${row.since ? `<span>${escapeHtml(row.since)}</span>` : ""}</div>
+      <svg class="waiting-flow" viewBox="0 0 120 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path class="flow-path" d="M2 4 H118"></path></svg></div>
+    <div class="stack-end">${followUp ? `<span class="due-chip" data-overdue="${row.overdue}">${escapeHtml(followUp)}</span>` : ""}</div>
+  </li>`;
+}
+
+/** What a section with no answer in hand shows: still reading, or unverified. */
+function pendingView(read) {
+  return { state: read.status === "loading" ? "loading" : "unavailable", rows: [], overdue: 0, held: 0, capped: false };
+}
+
+function renderThisWeek() {
+  const read = view.week;
+  const week = read.payload ? thisWeekView(view.week.payload, { today: localDay() }) : pendingView(read);
+  $("thisWeekPulse")?.setAttribute("data-state", read.status === "refreshing" ? "refreshing" : sectionPulse(week));
+  if (week.state !== "read") {
+    paintIfChanged($("thisWeekList"), "");
+    paintIfChanged($("thisWeekRail"), "");
+    setValue("thisWeekValue", null);
+    setOwnState("thisWeekState", week.state === "loading" ? "loading" : "offline", week.state === "loading" ? "Reading this week…" : unavailableCopy("this_week"));
+    const caption = $("thisWeekCaption");
+    if (caption) caption.textContent = "";
+    return;
+  }
+  paintIfChanged($("thisWeekRail"), railHtml(weekRail(week.rows, localDay())));
+  paintIfChanged($("thisWeekList"), week.rows.map(weekRowHtml).join(""));
+  setValue("thisWeekValue", week.rows.length, (count) => `${count} due${week.overdue ? ` · ${week.overdue} overdue` : ""}`);
+  setOwnState("thisWeekState", week.rows.length ? null : "empty", "Nothing due this week");
+  const caption = $("thisWeekCaption");
+  if (caption) {
+    caption.textContent = readCaption(read, "critical dates for the next seven days, and follow-ups due today or overdue")
+      + (week.capped ? " · the read stopped at its row limit, so later dates may be missing" : "");
+  }
+}
+
+function renderWaiting() {
+  const read = view.waiting;
+  const waiting = read.payload ? waitingView(read.payload, { today: localDay() }) : pendingView(read);
+  $("waitingPulse")?.setAttribute("data-state", read.status === "refreshing" ? "refreshing" : sectionPulse(waiting));
+  if (waiting.state !== "read") {
+    paintIfChanged($("waitingList"), "");
+    setValue("waitingValue", null);
+    setOwnState("waitingState", waiting.state === "loading" ? "loading" : "offline", waiting.state === "loading" ? "Reading waiting work…" : unavailableCopy("waiting_on_others"));
+    const caption = $("waitingCaption");
+    if (caption) caption.textContent = "";
+    return;
+  }
+  paintIfChanged($("waitingList"), waiting.rows.map(waitingRowHtml).join(""));
+  setValue("waitingValue", waiting.rows.length, (count) => `${count} waiting`);
+  setOwnState("waitingState", waiting.rows.length ? null : "empty", "Nothing waiting on a counterparty");
+  const caption = $("waitingCaption");
+  if (caption) {
+    caption.textContent = readCaption(read, "open work whose blocker is a named counterparty")
+      + (waiting.held ? ` · ${waiting.held} more ${waiting.held === 1 ? "is" : "are"} held jointly or by the system, on Tasks` : "")
+      + (waiting.capped ? " · the read stopped at its row limit, so some may be missing" : "");
+  }
+}
+
+/**
+ * Retry is offered while any read on Home is unverified, and it re-reads all of
+ * them. A section counts as unverified from what its answer projects to, not
+ * from the transport alone: an RPC that succeeded with an unreadable answer
+ * paints "could not be verified", and must offer the way out too.
+ */
+function renderRetry() {
+  const retry = $("retryRead");
+  if (!retry) return;
+  const phase = homeReadPhase({ status: view.status, payload: view.payload });
+  const countsVerified = Boolean(view.payload) && validWorkspacePayload(view.payload) && sourceIsFresh(view.payload.source);
+  const today = localDay();
+  const sectionFailed = sectionReadFailed(view.week, (payload) => thisWeekView(payload, { today }))
+    || sectionReadFailed(view.waiting, (payload) => waitingView(payload, { today }));
+  retry.hidden = phase === "unauthorized" || phase === "loading" || (countsVerified && !sectionFailed);
+}
+
+function renderSections() {
+  view.day = localDay();
+  renderThisWeek();
+  renderWaiting();
+  renderRetry();
+}
+
 function render() {
   const payload = view.payload;
   view.freshnessKey = payload ? freshnessSignature(payload) : null;
@@ -203,8 +395,7 @@ function render() {
 
   const signIn = $("signInAgain");
   if (signIn) { signIn.hidden = !unauthorized; signIn.href = SIGN_IN_HREF; }
-  const retry = $("retryRead");
-  if (retry) retry.hidden = unauthorized || phase === "loading" || verified;
+  renderRetry();
 
   const label = $("viewerLabel");
   if (label) label.textContent = payload ? viewerWorkspaceLabel(payload.viewer) : "Partner workspace";
@@ -293,6 +484,56 @@ function readBoard() {
   return client.getBoard({ workspace: 'all' });
 }
 
+/**
+ * V5-UX-B01 — This week, read from `today-triage`. A refused or failed answer
+ * drops the payload, exactly as the command-centre read does: an older week is
+ * never left on screen as though it were current. A newer read in flight keeps
+ * the last verified answer visible and says it is refreshing.
+ */
+async function loadThisWeek() {
+  const sequence = ++view.weekSequence;
+  view.week = { ...view.week, status: view.week.payload ? "refreshing" : "loading" };
+  renderSections();
+  let next;
+  try {
+    const payload = await client.todayTriage();
+    next = { status: "ready", payload, readAt: new Date().toISOString() };
+  } catch {
+    next = { status: "error", payload: null, readAt: null };
+  }
+  if (!acceptsResponse(view.weekSequence, sequence)) return;
+  view.week = next;
+  renderSections();
+}
+
+/**
+ * V5-UX-B01 — Waiting on others, read from `loop-board` with the counterparty
+ * filter applied by the record layer, so the page receives only the rows it
+ * shows. Only `open_loop` is read: a `team_loop` refuses a blocker, so it can
+ * never be waiting on anyone.
+ */
+async function loadWaiting() {
+  const sequence = ++view.waitingSequence;
+  view.waiting = { ...view.waiting, status: view.waiting.payload ? "refreshing" : "loading" };
+  renderSections();
+  let next;
+  try {
+    const payload = await client.loopBoard({ kind: "open_loop", status: "open", blocker: "counterparty", limit: WAITING_ROW_CAP });
+    next = { status: "ready", payload, readAt: new Date().toISOString() };
+  } catch {
+    next = { status: "error", payload: null, readAt: null };
+  }
+  if (!acceptsResponse(view.waitingSequence, sequence)) return;
+  view.waiting = next;
+  renderSections();
+}
+
+/** Both section reads, started together and never chained to the command centre. */
+function readSections() {
+  loadThisWeek();
+  loadWaiting();
+}
+
 function settle({ status, payload = null, message = null }, sequence) {
   if (!acceptsResponse(view.sequence, sequence)) return;
   view.status = status;
@@ -311,6 +552,12 @@ function settle({ status, payload = null, message = null }, sequence) {
  */
 function watchExpiry() {
   setInterval(() => {
+    // Crossing midnight moves "today", and work that became due overnight is
+    // not in the old answer at all, so both sections are READ again. The old
+    // answer stays up, re-derived against the new day and marked refreshing,
+    // until the new one lands; readSections records the day at once, so the
+    // next tick does not read again. An unchanged day repaints nothing.
+    if (view.day !== localDay()) readSections();
     if (!view.payload || view.status === "loading") return;
     const signature = freshnessSignature(view.payload);
     if (signature === view.freshnessKey) return;
@@ -431,7 +678,7 @@ function mountDock() {
 /* ---------------------------------------------------------------------- wiring */
 
 function wire() {
-  $("retryRead")?.addEventListener("click", () => load());
+  $("retryRead")?.addEventListener("click", () => { load(); readSections(); });
 
   for (const id of ["quickAddInput", "quickAddDate"]) $(id)?.addEventListener("input", renderQuickAdd);
   $("quickAddDate")?.addEventListener("change", renderQuickAdd);
@@ -513,6 +760,7 @@ async function boot() {
   window.addEventListener('online', () => {
     if (!client) return;
     load();
+    readSections();
     loadBoardRecords(readBoard());
   });
   renderQuickAdd();
@@ -547,6 +795,8 @@ async function boot() {
   mountCharts({ client, board: boardRead, onRestore: () => tabs?.select("tabCharts") });
   if (parseChartsAddress(globalThis.location?.search || "").present) tabs?.select("tabCharts");
   const quickAddRead = loadBoardRecords(boardRead);
+  // V5-UX-B01 — This week and Waiting on others read alongside the counts.
+  readSections();
   await load();
   await quickAddRead;
 }
