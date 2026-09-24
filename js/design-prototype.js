@@ -13,6 +13,7 @@ import {
   formatDueStamp, orderWork, parseQuickAdd, weekdayName,
 } from "./visual-system.js";
 import { createCommandState, feedbackStateFor, performCommand } from "./command-feedback.mjs";
+import { escapeText } from "./change-receipts.mjs";
 import { createCommandDock } from "./command-dock.js";
 import { mountDocDock, mountPrefs, wireTabs } from "./shell.js";
 import { ATLAS_DEMO_PAYLOAD } from "./atlas-demo-graph.js";
@@ -508,10 +509,11 @@ function renderQuickAdd() {
   const picked = $("quickAddDate")?.value || null;
   const due = picked || parsed.due;
   $("quickAddParsed").replaceChildren(
-    el("div", { html: `<span>Action</span>${parsed.action || "<i>unknown</i>"}` }),
+    // Typed text reaches this preview on every keystroke, so it is escaped.
+    el("div", { html: `<span>Action</span>${parsed.action ? escapeText(parsed.action) : "<i>unknown</i>"}` }),
     el("div", { html: `<span>Owner</span>${parsed.owner === "joe" ? "Joe" : "Dell"}${parsed.ownerDefaulted ? " <i>(you, by default)</i>" : ""}` }),
-    el("div", { html: `<span>Due</span>${due ? formatDueStamp(due, parsed.dueTime) : "<i>none</i>"}` }),
-    el("div", { html: `<span>Related</span>${parsed.related || "<i>none</i>"}` }),
+    el("div", { html: `<span>Due</span>${due ? escapeText(formatDueStamp(due, parsed.dueTime)) : "<i>none</i>"}` }),
+    el("div", { html: `<span>Related</span>${parsed.related ? escapeText(parsed.related) : "<i>none</i>"}` }),
   );
   $("quickAddQuestion").textContent = parsed.complete
     ? `Ready to save: ${parsed.action} · ${parsed.owner === "joe" ? "Joe" : "Dell"}${due ? ` · ${formatDueStamp(due, parsed.dueTime)}` : ""}${parsed.related ? ` · ${parsed.related}` : ""}`
