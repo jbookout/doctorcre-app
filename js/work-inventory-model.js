@@ -107,7 +107,10 @@ function validRelated(related) {
  * future absolute URL would have to be declared here beside the renderer.
  */
 function validOpen(value) {
-  return value === null || (typeof value === "string" && value.startsWith("/") && !value.startsWith("//"));
+  // Same-app paths only. Browsers read "/\\host" as "//host", so a backslash
+  // in the second position is refused along with a second slash.
+  return value === null || (typeof value === "string" && value.startsWith("/")
+    && !value.startsWith("//") && !value.startsWith("/\\"));
 }
 
 function validItem(item, kinds) {

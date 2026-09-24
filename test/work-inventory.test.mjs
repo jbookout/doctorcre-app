@@ -302,3 +302,12 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   assert.match(serveScript, /"unavailable"/, "the fixture must exercise an unavailable leg");
   assert.match(serveScript, /next_cursor/);
 });
+
+test("an item's open link must stay on this app, including the backslash form browsers read as another host", () => {
+  for (const open of ["//evil.example", "/\\evil.example", "https://evil.example", "javascript:alert(1)"]) {
+    assert.equal(validWorkInventoryPayload(census({ items: [censusItem({ open })] })), false, open);
+  }
+  for (const open of ["/system-work.html", "/incidents?ref=INC-1", null]) {
+    assert.equal(validWorkInventoryPayload(census({ items: [censusItem({ open })] })), true, String(open));
+  }
+});
