@@ -31,7 +31,7 @@ import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
-import { mountDocDock, mountPrefs } from './shell.js';
+import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
   createBoardSync, batchTouchesBoard, SYNC_STATES,
@@ -859,6 +859,7 @@ async function boot() {
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
   state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  mountNotificationBadge(state.client);
   state.mode = state.client.mode;
   state.selfActor = state.client.selfActor || null;
   state.boardSync = createBoardSync({
