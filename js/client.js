@@ -99,6 +99,7 @@
  * @property {(args:{room?:string}) => Promise<RoomQueueResponse>} roomQueue the assignment projection for one room; the room is a constant in js/model-room-model.js and is never the tab's own name
  * @property {(args:{room?:string, after_seq?:number, limit?:number}) => Promise<RoomTurnsResponse>} roomTurns room turns exactly as written; `body` is untrusted prose and is never parsed
  * @property {() => Promise<{ok:boolean, items:Object[]}>} currentWorkRequests the shared Work Request queue; V5-UX-C13a's topic/work-item picker and the "Waiting for Joe" card share this one read
+ * @property {() => Promise<{ok:boolean, pending_rule_approvals:Object[], pending_guidance_import_batches:Object[], pending_retrieval_proposals:Object[], counts:Object}>} governanceQueue every pending governance decision (V5-UX-C14's approvals card); read-only, grants no authority
  * @property {(args:{work_request:string}) => Promise<Object>} workRequestCard one Work Request card, live or withdrawn; V5-UX-C13a reads it for a work item's ledger history and the enriched "Waiting for Joe" fields
  * @property {(args:{conversation_id:string, after_sequence?:number, limit?:number}) => Promise<DocConversation>} readDocConversation
  * @property {(args:{cursor?:string, limit?:number, include_archived?:boolean}) => Promise<DocConversationList>} listDocConversations

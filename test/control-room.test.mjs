@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   NO_CADENCE_REASON, TILES, canonicalHref, coverageLine, dashboardTiles, groupedIncidents,
-  incidentFilters, needsJoeAdvisoryLabel, notInReleaseBlocks, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates,
+  incidentFilters, needsJoeAdvisoryLabel, notInReleaseBlocks, readPhase, sinceChangeLabel, stallCandidates,
   validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload,
   workInProgressLine, STUCK_SILENCE_HOURS,
 } from "../js/control-room-model.js";
@@ -255,36 +255,15 @@ test("every prototype panel without a producer is a named scope statement", () =
   assert.ok(!ids.includes("model_room"), "the live Model Room board is not an out-of-release panel");
 });
 
-// V5-UX-C14 — the Operations section. Neither card may carry a digit: there is
-// no read behind either of them, so any number would be invented.
-test("the two Operations cards name their missing read and render no number", () => {
-  const blocks = operationsBlocks();
-  assert.deepEqual(blocks.map((block) => block.id), ["approvals", "automation"]);
-  const approvals = blocks[0];
-  const automation = blocks[1];
-  assert.equal(approvals.title, "Approvals of production effects");
-  assert.equal(automation.title, "Scheduled automation");
-  for (const verb of ["accept-ready-plan", "accept-workflow", "issue-execution-envelope"]) {
-    assert.ok(approvals.body.includes(verb), `${verb} is not named`);
-  }
-  assert.match(approvals.body, /partner-only and hash-pinned/);
-  assert.match(approvals.body, /no read lists what is pending/);
-  assert.match(approvals.rule, /^Reconcile before retry is already how every command on this app behaves/);
-  assert.match(automation.body, /No read exposes scheduled jobs, last or next runs/);
-  assert.match(automation.body, /no pause, run or stop verb/);
-  assert.equal(automation.rule, null);
-  for (const block of blocks) {
-    assert.match(block.body, /^Not in this release\./);
-    assert.doesNotMatch(`${block.title} ${block.body} ${block.rule || ""}`, /\d/, `${block.id} renders a number`);
-  }
-});
-
+// V5-UX-C14 — the Operations section. Its two cards (approvals from
+// governance-queue, and the honest no-read schedule card) are tested in
+// test/operations.test.mjs; this only pins where the section lives.
 test("the Control Room page mounts the Operations section on the Dashboard tab", () => {
   const dashboard = /<section class="tabpanel" id="panelDashboard"[\s\S]*?<\/section>\s*<section class="tabpanel" id="panelAttention"/.exec(html)?.[0] || "";
   assert.match(dashboard, /<section class="card glass" data-section="operations"/, "Operations is not on the Dashboard tab");
   assert.match(dashboard, /<div id="operationsBlocks"><\/div>/);
   assert.doesNotMatch(html, /role="tab"[^>]*>Operations</, "Operations is a section, not a new tab");
-  assert.match(pageJs, /operationsBlocks\(\)/, "the page does not render the model's blocks");
+  assert.match(pageJs, /renderOperations\(\)/, "the page does not render the Operations cards");
 });
 
 test("a stale answer that overtakes a newer read is dropped", () => {
@@ -369,7 +348,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.12.0");
-  assert.equal(contract.version, "1.23.0");
+  assert.equal(contract.version, "1.24.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -379,7 +358,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 60);
+  assert.equal(contract.mcp_operations.length, 61);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 

@@ -425,6 +425,12 @@ export function createLiveClient(opts = {}) {
       return { ...data, advisory_binding_verified: advisoryBindingVerified };
     },
 
+    // ------------------------------------------------- Operations cards (C14)
+    // One read-only verb, passed through untouched. It takes NO arguments and
+    // refuses any field, so none is sent. It grants no authority: the decisions
+    // it lists are taken with their own partner verbs, none of which is pinned.
+    async governanceQueue() { return rpc('governance-queue', {}); },
+
     // ---------------------------------------------------- incident page (C14)
     // One read and one write, passed through untouched. The write's arguments
     // are exactly what the verb declares (it refuses any other field, and it

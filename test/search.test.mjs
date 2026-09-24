@@ -383,7 +383,7 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract pins both verbs alphabetically at 1.19.0 and no route moves", () => {
   assert.equal(routes.version, "1.12.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/business"], "business-workspace.html");
-  assert.equal(contract.version, "1.23.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.version, "1.24.0", "two added operations are an additive, minor bump");
   assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284", "S02 repinned the producer to the release that first serves the session-identity verbs");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");

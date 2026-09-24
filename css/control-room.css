@@ -54,9 +54,6 @@
 
 /* Permanent scope, not an outage and not a zero. */
 .state-block[data-state="not_in_release"] { border-style: dashed; border-color: var(--line-strong); }
-/* V5-UX-C14: the rule under the Approvals card states behaviour that is
- * already true of every command here, so it reads as a statement, not a note. */
-.state-block[data-operations] .operations-rule { margin: 6px 0 0; font-size: 12px; color: var(--text); }
 .state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
 .state-block + .state-block { margin-top: 10px; }
 
@@ -368,3 +365,44 @@
   .dispatch-search-row { grid-template-columns: 1fr; }
   .history-picker { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------ V5-UX-C14 Operations cards
+ * The approvals card (governance-queue) and the no-read schedule card. All
+ * motion reuses system.css's tokens and keyframes (receipt-in, breathe) and
+ * adds none. The entrance stagger comes from --ops-delay, set through CSSOM
+ * by js/control-room.js because the Worker's CSP refuses style attributes.
+ * The only ambient motion is the orb, whose tempo is the real age of the
+ * oldest waiting decision; a card with no read has a still orb. */
+#operationsBlocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; margin-top: 12px; }
+.ops-card { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--ground-2) 60%, transparent); animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); transition: border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
+.ops-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-float); }
+.ops-card[data-state="unknown"], .ops-card[data-state="no_read"] { border-style: dashed; border-color: var(--line-strong); }
+.ops-card h3 { margin: 0; font-size: 18px; }
+.ops-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.ops-orb { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--quiet); opacity: 0.5; }
+.ops-orb[data-tempo="calm"] { background: var(--status-healthy); opacity: 1; box-shadow: 0 0 12px var(--status-healthy); animation: breathe var(--motion-calm) ease-in-out infinite; }
+.ops-orb[data-tempo="attention"] { background: var(--status-attention); opacity: 1; box-shadow: 0 0 12px var(--status-attention); animation: breathe var(--motion-attention) ease-in-out infinite; }
+.ops-orb[data-tempo="urgent"] { background: var(--status-urgent); opacity: 1; box-shadow: 0 0 14px var(--status-urgent); animation: breathe var(--motion-urgent) ease-in-out infinite; }
+.ops-value.motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
+.ops-value[data-state="no_read"] { color: var(--quiet); font-size: 24px; }
+.ops-oldest { justify-self: start; font-variant-numeric: tabular-nums; }
+.ops-lanes { display: grid; gap: 8px; }
+.ops-lane { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease); }
+.ops-lane:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+.ops-lane:active { transform: scale(0.98); }
+.ops-lane-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.ops-lane h4 { margin: 0; font-size: 13px; }
+.ops-items { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.ops-item { min-width: 0; animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); }
+.ops-item summary { display: flex; align-items: center; min-height: var(--touch); padding: 4px 8px; border-radius: var(--radius-s); cursor: pointer; overflow-wrap: anywhere; transition: background var(--motion-enter) var(--ease), transform var(--motion-enter) var(--ease); }
+.ops-item summary:hover { background: color-mix(in srgb, var(--orange) 10%, transparent); transform: translateX(2px); }
+.ops-item summary:active { transform: scale(0.99); }
+.ops-item[open] .detail-rows { margin-top: 6px; animation: receipt-in var(--motion-enter) var(--ease); }
+.ops-card .operations-rule { margin: 0; font-size: 12px; color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-lane:hover, .ops-lane:active, .ops-item summary:hover, .ops-item summary:active { transform: none; }
+  .ops-card, .ops-lane, .ops-item { opacity: 1; transform: none; }
+}
+:root[data-motion="reduced"] .ops-lane:hover, :root[data-motion="reduced"] .ops-lane:active, :root[data-motion="reduced"] .ops-item summary:hover, :root[data-motion="reduced"] .ops-item summary:active { transform: none; }
+:root[data-motion="reduced"] .ops-card, :root[data-motion="reduced"] .ops-lane, :root[data-motion="reduced"] .ops-item { opacity: 1; transform: none; }
