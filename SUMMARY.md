@@ -46,7 +46,8 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `js/business-workspace.js` | Business workspace DOM wiring over `GET /api/v1/command-center` and the Quick add capture |
 | `control-room.html` | V5-UX-C01 Control Room at `/control-room`: the five operational questions — broken, running, stuck, needs Joe, changed — with a coverage line built only from the reads that answered, plus the grouped incident queue |
 | `js/control-room-model.js` | Pure Control Room rules: exact-key validation of `incident-board`, `current-work-item` and `current-work-requests`, the five tiles (never 0 for an unanswered read), the cadence-free stall facts, the coverage line and the named scope statements |
-| `js/control-room.js` | Control Room DOM wiring over those three reads and `GET /api/v1/work-inventory`, each read settled on its own so one outage makes only its own areas unknown |
+| `js/control-room.js` | Control Room DOM wiring over those three reads, `governance-queue` and `GET /api/v1/work-inventory`, each read settled on its own so one outage makes only its own areas unknown |
+| `js/operations-model.js` | V5-UX-C14 Operations cards: exact-key validation of `governance-queue`, the approvals card (unknown never 0, production-effect approvals named as out of scope), the honest no-read schedule card, and the data-driven motion helpers (stagger, count-up, waiting clock, reduced-motion preference) |
 | `incidents.html` | V5-UX-C14 Incident at `/incidents?ref=INC-…`: one operational incident, its facts kept visibly apart from its hypotheses, and who can clear it |
 | `js/incidents-model.js` | Pure incident rules: the reference test, the detail payload's exact keys, facts and hypotheses as separate rows, the "Who can clear this" line and the one write's arguments |
 | `js/incidents.js` | Incident DOM wiring over `get-incident`, with `link-incident-work-request` sent through the shared command kernel and dock |

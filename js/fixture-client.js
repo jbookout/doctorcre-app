@@ -1749,6 +1749,37 @@ export async function createFixtureClient(opts = {}) {
       return { count: rows.length, loops: rows };
     },
 
+    // V5-UX-B01 — fixture mode only: a `today-triage` answer in the verb's row
+    // shape, built from this client's own records — a deal's next step due
+    // today or earlier, and critical dates due within fourteen days — so Home's
+    // This week and the deal panel can never disagree. It is NOT the record
+    // layer's rule set: this client holds no after-call actions, holds, notes,
+    // statuses or inbox, so it never answers those rows, and no test may treat
+    // it as evidence of what production returns. Dates are minted against the
+    // current clock, since a frozen "today" would make every run look overdue.
+    async todayTriage() {
+      const today = nowIso().slice(0, 10);
+      const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+      const items = [];
+      // v_today_triage does not filter on the deal's own state, so neither does this.
+      for (const deal of deals.values()) {
+        const day = typeof deal.next_date === 'string' ? deal.next_date.slice(0, 10) : null;
+        if (deal.next_step && day && day <= today) {
+          items.push({ item_kind: 'next_action', id: `a-${deal.id}`, subject_type: 'deal', subject_id: deal.id,
+            owner: deal.owner, what: deal.next_step, due_on: day, subject_name: deal.name, subject_ref: null,
+            business_days_overdue: null });
+        }
+        for (const entry of criticalDates.get(deal.id) || []) {
+          if (entry.due_on > horizon) continue;
+          items.push({ item_kind: 'critical_date', id: entry.id, subject_type: 'deal', subject_id: deal.id,
+            owner: null, what: entry.kind, due_on: entry.due_on, subject_name: deal.name, subject_ref: null,
+            business_days_overdue: null });
+        }
+      }
+      items.sort((a, b) => a.due_on.localeCompare(b.due_on));
+      return { items: items.slice(0, 50) };
+    },
+
     async readLoop({ loop_id, number, kind } = {}) {
       const found = findLoop({ loop_id, number, kind });
       if (found === 'need_number_or_id') return { error: 'need_number_or_id' };
@@ -2594,6 +2625,39 @@ export async function createFixtureClient(opts = {}) {
     async currentWorkRequests() {
       refuseIfOutage('needs_joe', 'current-work-requests');
       return { ok: true, items: sharedRequests.map((row) => ({ ...row, source: { ...row.source } })) };
+    },
+
+    // V5-UX-C14: the synthetic twin of `governance-queue`, in the producer's own
+    // lane and field names (ops.read_governance_queue, migration 0345). Every
+    // row is visibly fictional and every id is a made-up uuid; no real rule,
+    // batch or proposal is copied here. The timestamps are relative to the
+    // current clock so the approvals card's ambient waiting clock exercises all
+    // three tempos (under a day, a day or more, past the 48-hour cadence).
+    async governanceQueue() {
+      refuseIfOutage('approvals', 'governance-queue');
+      const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
+      const rules = [
+        { rule_id: 'd0000000-0000-4000-8000-00000000c141', statement: 'Demo rule: a demo surface names its missing read instead of drawing a zero.', human_quote: 'demo partner words about honest zeros', scope: 'demo', taught_at: ago(74), enforcement_class: 'demo_hook', binding_moment: 'before a demo surface ships', admission_reason: 'Demo admission: enforcement checked against the demo fixture', enforcement_status: 'checked', fixture_refs: [], admitted_at: ago(72) },
+      ];
+      const batches = [
+        { batch_id: 'd0000000-0000-4000-8000-00000000c142', manifest_digest: `sha256:${'d'.repeat(64)}`, reason: 'Demo guidance import: three demo leasing notes', staging_key: 'demo-leasing-notes', staged_at: ago(30), entry_count: 3 },
+      ];
+      const proposals = [
+        { proposal_id: 'd0000000-0000-4000-8000-00000000c143', proposal_type: 'phrase', payload: { phrase: 'demo phrase' }, reason: 'Demo retrieval phrase for the demo vendor list', proposer_actor_id: 'joe', version: 1, proposed_at: ago(5) },
+        { proposal_id: 'd0000000-0000-4000-8000-00000000c144', proposal_type: 'concept', payload: {}, reason: null, proposer_actor_id: 'dell', version: 1, proposed_at: ago(2) },
+      ];
+      return {
+        ok: true,
+        pending_rule_approvals: rules,
+        pending_guidance_import_batches: batches,
+        pending_retrieval_proposals: proposals,
+        counts: {
+          pending_rule_approvals: rules.length,
+          pending_guidance_import_batches: batches.length,
+          pending_retrieval_proposals: proposals.length,
+          total: rules.length + batches.length + proposals.length,
+        },
+      };
     },
 
     // ---------------------------------------------------------- command centre

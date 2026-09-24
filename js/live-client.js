@@ -355,6 +355,11 @@ export function createLiveClient(opts = {}) {
     async updateLoop(args) { return write('update-loop', args); },
     async closeLoop(args) { return write('close-loop', args); },
 
+    // ------------------------------------------------------------- triage
+    // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are
+    // sent: which rows are due is the record layer's decision, not the page's.
+    async todayTriage() { return rpc('today-triage', {}); },
+
     // ---------------------------------------------------------- command centre
     // The one aggregate Home read. It is NOT an MCP verb: the app Worker serves
     // it as a cookie-authenticated same-origin GET, and the only query parameter
@@ -424,6 +429,12 @@ export function createLiveClient(opts = {}) {
       }
       return { ...data, advisory_binding_verified: advisoryBindingVerified };
     },
+
+    // ------------------------------------------------- Operations cards (C14)
+    // One read-only verb, passed through untouched. It takes NO arguments and
+    // refuses any field, so none is sent. It grants no authority: the decisions
+    // it lists are taken with their own partner verbs, none of which is pinned.
+    async governanceQueue() { return rpc('governance-queue', {}); },
 
     // ---------------------------------------------------- incident page (C14)
     // One read and one write, passed through untouched. The write's arguments

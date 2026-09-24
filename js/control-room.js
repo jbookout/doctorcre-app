@@ -13,9 +13,12 @@
 // than painted over the newer one.
 import {
   canonicalHref, coverageLine, dashboardTiles, groupedIncidents, incidentFilters, notInReleaseBlocks,
-  needsJoeAdvisoryLabel, operationsBlocks, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
+  needsJoeAdvisoryLabel, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
+import {
+  approvalsCard, countUpFrames, entranceDelay, prefersReducedMotion, scheduleCard, waitingAge,
+} from "./operations-model.js";
 // V5-UX-C13a: the enriched "Waiting for Joe" detail extends the row above
 // rather than replacing it, and reuses the same pure card projection the
 // Model Room tab's work-item history uses — one shape, read once each place.
@@ -49,6 +52,10 @@ const view = {
     work: { state: "pending" },
     needs_joe: { state: "pending" },
     census: { state: "pending" },
+    // V5-UX-C14: governance-queue, settled on its own like the four above. It
+    // is not in READS, so it never joins the coverage line, the page phase or
+    // the /status snapshot; the approvals card states its own clock instead.
+    approvals: { state: "pending" },
   },
   // V5-UX-C13a: the "Waiting for Joe" detail is fetched ONLY when a row's own
   // button is pressed — never for every row on dashboard load, which would
@@ -322,16 +329,128 @@ function renderScopeBlocks() {
     </div>`).join("");
 }
 
-/** V5-UX-C14: the two Operations cards, in the house not-in-release style. */
+/* ------------------------------------------------------ V5-UX-C14 operations */
+
+// The only ambient clock on this section: the real age of the oldest waiting
+// governance decision. It runs only while that timestamp exists and is stopped
+// before every repaint, so two clocks never race.
+let waitingClock = null;
+// What the approvals count last showed, so a new answer climbs from it.
+let shownApprovals = null;
+// The approvals read the section was last painted from. render() runs on
+// every settled read; repainting Operations for another read's answer would
+// replay its entrance each time.
+let paintedApprovals = null;
+
+function stopWaitingClock() {
+  if (waitingClock !== null) clearInterval(waitingClock);
+  waitingClock = null;
+}
+
+function startWaitingClock(at) {
+  const reduced = prefersReducedMotion();
+  const paint = () => {
+    const line = $("opsWaiting");
+    if (!line) { stopWaitingClock(); return; }
+    const age = waitingAge(at, Date.now(), { seconds: !reduced });
+    line.textContent = `Oldest decision ${age.text}`;
+    $("opsOrb")?.setAttribute("data-tempo", age.tempo || "none");
+  };
+  paint();
+  // Reduced motion drops the ticking seconds, so a minute is the finest change.
+  waitingClock = setInterval(paint, reduced ? 60_000 : 1_000);
+}
+
+function countUp(node, from, to) {
+  const frames = countUpFrames(from ?? 0, to, { reduced: prefersReducedMotion() });
+  let index = 0;
+  const step = () => {
+    node.textContent = String(frames[index]);
+    index += 1;
+    if (index < frames.length) requestAnimationFrame(step);
+  };
+  step();
+}
+
+function laneHtml(lane) {
+  const items = lane.items.map((item) => `<li><details class="ops-item" data-key="${escapeHtml(item.key)}">
+      <summary>${escapeHtml(item.title)}</summary>
+      <dl class="detail-rows">${item.detail.map((row) => `<dt>${escapeHtml(row.label)}</dt><dd>${escapeHtml(row.value)}</dd>`).join("")}</dl>
+      <p class="caption">${escapeHtml(item.since ? waitingAge(item.since, Date.now(), { seconds: false }).text : "waiting since an unrecorded time")}</p>
+    </details></li>`).join("");
+  return `<section class="ops-lane" data-lane="${escapeHtml(lane.id)}" aria-label="${escapeHtml(lane.label)}">
+    <div class="ops-lane-head"><h4>${escapeHtml(lane.label)}</h4><span class="chip" data-state="read">${lane.count}</span></div>
+    <p class="caption">Decided with ${escapeHtml(lane.verb)} in the record layer</p>
+    ${items ? `<ul class="ops-items">${items}</ul>` : `<p class="small">Nothing is waiting in this lane.</p>`}
+  </section>`;
+}
+
+function approvalsHtml(card, read) {
+  return `<article class="ops-card" data-ops="approvals" data-state="${escapeHtml(card.state)}">
+    <div class="ops-head">
+      <span class="ops-orb" id="opsOrb" data-tempo="none" aria-hidden="true"></span>
+      <div><p class="eyebrow">governance-queue</p><h3>${escapeHtml(card.title)}</h3></div>
+      <span class="as-of">${escapeHtml(asOf(read))}</span>
+    </div>
+    <p class="ops-value tile-value" id="opsApprovalsValue" data-state="${escapeHtml(card.state)}" aria-hidden="true">${escapeHtml(card.state === "read" ? String(shownApprovals ?? 0) : card.word)}</p>
+    <p class="tile-sentence">${escapeHtml(card.sentence)}</p>
+    ${card.oldest ? `<button class="btn ops-oldest" type="button" data-ops-oldest="${escapeHtml(card.oldest.key)}"><span id="opsWaiting">Oldest decision waiting</span></button>` : ""}
+    ${card.lanes.length ? `<div class="ops-lanes">${card.lanes.map(laneHtml).join("")}</div>` : ""}
+    <p class="small">${escapeHtml(card.authority)}</p>
+    <p class="small">${escapeHtml(card.scope)}</p>
+    <p class="operations-rule">${escapeHtml(card.rule)}</p>
+  </article>`;
+}
+
+function scheduleHtml(card) {
+  return `<article class="ops-card" data-ops="${escapeHtml(card.id)}" data-state="${escapeHtml(card.state)}">
+    <div class="ops-head">
+      <span class="ops-orb" data-tempo="none" aria-hidden="true"></span>
+      <div><p class="eyebrow">No read</p><h3>${escapeHtml(card.title)}</h3></div>
+    </div>
+    <p class="ops-value tile-value" data-state="${escapeHtml(card.state)}">${escapeHtml(card.word)}</p>
+    <p>${escapeHtml(card.body)}</p>
+  </article>`;
+}
+
+/** The oldest-decision control opens that decision and moves focus to it. */
+function openOldest(key) {
+  const item = [...($("operationsBlocks")?.querySelectorAll("details.ops-item") || [])].find((node) => node.dataset.key === key);
+  if (!item) return;
+  item.open = true;
+  item.querySelector("summary")?.focus();
+  announce("The oldest waiting decision is open.");
+}
+
+/**
+ * V5-UX-C14: the approvals card from governance-queue and the honest no-read
+ * schedule card. Painted only when the approvals read itself changes.
+ */
 function renderOperations() {
   const root = $("operationsBlocks");
   if (!root) return;
-  root.innerHTML = operationsBlocks().map((block) => `
-    <div class="state-block" data-state="not_in_release" data-operations="${escapeHtml(block.id)}">
-      <h3>${escapeHtml(block.title)}</h3>
-      <p>${escapeHtml(block.body)}</p>
-      ${block.rule ? `<p class="operations-rule">${escapeHtml(block.rule)}</p>` : ""}
-    </div>`).join("");
+  const read = view.reads.approvals;
+  const signature = `${read?.state}|${read?.observed_at || ""}|${read?.reason || ""}`;
+  if (paintedApprovals === signature) return;
+  paintedApprovals = signature;
+  stopWaitingClock();
+  const card = approvalsCard(readFor("approvals"));
+  root.innerHTML = approvalsHtml(card, read) + scheduleHtml(scheduleCard());
+
+  // A staggered entrance, set through CSSOM: the Worker's CSP refuses a style
+  // attribute written into markup.
+  const entering = root.querySelectorAll(".ops-card, .ops-lane, .ops-item");
+  entering.forEach((node, index) => node.style.setProperty("--ops-delay", `${entranceDelay(index)}ms`));
+
+  const value = $("opsApprovalsValue");
+  if (card.state === "read" && value) {
+    const previous = shownApprovals;
+    countUp(value, previous, card.value);
+    if (previous !== null && previous !== card.value) value.classList.add("motion-pulse");
+    shownApprovals = card.value;
+  }
+  root.querySelector("button[data-ops-oldest]")?.addEventListener("click", (event) => openOldest(event.currentTarget.dataset.opsOldest));
+  if (card.oldest) startWaitingClock(card.oldest.at);
 }
 
 function renderIncidents() {
@@ -474,6 +593,7 @@ async function load() {
     take("work", () => client.currentWorkItem(), "the held-work read refused or could not be reached"),
     take("needs_joe", () => client.currentWorkRequests(), "the shared request read refused or could not be reached"),
     take("census", () => census(), "the census refused or could not be reached"),
+    take("approvals", () => client.governanceQueue(), "the governance queue refused or could not be reached"),
   ]);
   render();
   // V5-UX-C15 (C21): leave a timestamped last-known picture on THIS device so

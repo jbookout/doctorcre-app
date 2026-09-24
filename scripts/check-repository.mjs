@@ -36,6 +36,7 @@ assert.equal(routes.routes["/business"], "business-workspace.html", "the busines
 assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");
 assert.equal(routes.routes["/status"], "status.html", "the independent status route must stay in the route contract");
 for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);
+assert.ok(contract.mcp_operations.includes("governance-queue"), "the Control Room approvals card (V5-UX-C14) needs governance-queue pinned");
 assert.equal(routes.routes["/incidents"], "incidents.html", "the incident route must stay in the route contract");
 for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `the search tab needs ${verb} pinned`);
 assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab needs deal-room-board pinned");

@@ -429,37 +429,5 @@ export function notInReleaseBlocks() {
   ];
 }
 
-/**
- * V5-UX-C14 Operations: the two questions this section is asked and cannot
- * honestly answer yet, each naming the missing READ rather than a missing
- * intention.
- *
- * Neither card carries a number, and that is the point. There is no read that
- * lists pending approvals of production effects — the approval verbs that
- * exist are partner-only and hash-pinned, so hosting them in a browser would
- * be the app claiming a gate CARR does not give it — and no read exposes a
- * schedule, a last run or a next run, so a count here would be invented.
- *
- * The `rule` on the approvals card is a statement about behaviour that is
- * already true of every command on this app, not a promise: the command kernel
- * re-checks an unknown outcome under its own key before anything is sent
- * again, which is what CR-AC-22 and C23 ask for.
- */
-export function operationsBlocks() {
-  return [
-    {
-      id: "approvals",
-      title: "Approvals of production effects",
-      body: "Not in this release. The approval verbs that exist (accept-ready-plan, accept-workflow, issue-execution-envelope) are partner-only and hash-pinned, and no read lists what is pending, so this card will appear when a pending-approvals read exists.",
-      rule: "Reconcile before retry is already how every command on this app behaves: an unknown outcome is re-checked under its own key before anything is sent again.",
-      slice: "V5-UX-C14",
-    },
-    {
-      id: "automation",
-      title: "Scheduled automation",
-      body: "Not in this release. No read exposes scheduled jobs, last or next runs, and there is no pause, run or stop verb; this card will appear when a schedule read exists.",
-      rule: null,
-      slice: "V5-UX-C14",
-    },
-  ];
-}
+// V5-UX-C14's Operations cards (approvals from governance-queue, and the
+// honest no-read schedule card) live in ./operations-model.js.
