@@ -14,16 +14,38 @@
 //     escaper per page, not an Nth copy that can drift from the others.
 //  3. The cursor is opaque: it is handed back exactly as it arrived and is
 //     never parsed, decoded or split.
+//
+// V5-UX-C08b adds a fourth rule: the anatomical renderer (js/atlas-scene.js)
+// is an ADDED VIEW over the exact payload this file already reads through
+// `validAtlasPayload`. It never reads, filters or requests anything of its
+// own; it is mounted and updated from here, with its own element ids so it
+// cannot collide with the index this file already owns.
 import {
-  ATLAS_LAYERS, ATLAS_LIMIT_DEFAULT, ATLAS_STATE_COPY, EXPOSURE_STATEMENT, INCOMPLETE_HEADING,
-  LAYER_LABEL, NO_ENFORCEMENT_SENTENCE, NO_RUN_HEADING, NO_SUCCESSOR_SENTENCE, NO_TEST_EVIDENCE_SENTENCE,
-  PAGE_SCOPE_SENTENCE, RUN_HEADING, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
-  atlasPhase, atlasRequestPath, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex,
+  ATLAS_LAYERS, ATLAS_LIMIT_DEFAULT, ATLAS_SCENE_EMPTY_SENTENCE, ATLAS_SCENE_TOO_LARGE_SENTENCE, ATLAS_STATE_COPY,
+  EXPOSURE_STATEMENT, INCOMPLETE_HEADING, LAYER_LABEL, NO_ENFORCEMENT_SENTENCE, NO_RUN_HEADING, NO_SUCCESSOR_SENTENCE,
+  NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, RUN_HEADING, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
+  atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex,
   mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS } from "./atlas-model.js";
 import { escapeHtml } from "./control-room.js";
 import { formatClock } from "./visual-system.js";
+import { mountAtlasScene } from "./atlas-scene.js";
 
 const $ = (id) => document.getElementById(id);
+
+/**
+ * The renderer's element ids in the LIVE Control Room markup. The index above
+ * already owns the bare ids (atlasIndex, atlasSafeExplanation, atlasRetired,
+ * …), so every id the renderer needs here is its own, scoped under "Scene".
+ */
+const SCENE_IDS = Object.freeze({
+  root: "atlasSceneAtlas", svg: "atlasSceneSvg", crumbs: "atlasSceneCrumbs", evidenceLegend: "atlasSceneEvidenceLegend",
+  index: "atlasSceneIndex", componentDrawer: "atlasSceneComponentDrawer", componentTitle: "atlasSceneComponentTitle",
+  componentBody: "atlasSceneComponentBody", coverageTitle: "atlasSceneCoverageTitle", safeExplanation: "atlasSceneSafeExplanation",
+  coverageAnswered: "atlasSceneCoverageAnswered", coverageGaps: "atlasSceneCoverageGaps", limits: "atlasSceneLimits",
+  stableNote: "atlasSceneStableNote", motionNote: "atlasSceneMotionNote", rotateValue: "atlasSceneRotateValue",
+  rotate: "atlasSceneRotate", back: "atlasSceneBack", viewSwitch: "atlasSceneViewSwitch", layerSwitch: "atlasSceneLayerSwitch",
+  retiredToggle: "atlasSceneRetired", layerLive: "atlasSceneLayerLive", rotateLeft: "atlasSceneRotateLeft", rotateRight: "atlasSceneRotateRight",
+});
 
 /** One place holds what this tab believes; nothing else keeps a copy. */
 const view = {
@@ -35,10 +57,15 @@ const view = {
   payload: null,
   selected: null,
   outage: null,
+  // "index" is the accessible primary surface; "anatomical" is the added,
+  // toggled view. Neither persists past this page's life.
+  rendererView: "index",
 };
 
 let mounted = false;
 let debounce = null;
+let scene = null;
+let scenePayload = null;
 
 const requestOptions = (cursor = null) => ({
   layer: view.layer, q: view.q, includeRetired: view.includeRetired, limit: ATLAS_LIMIT_DEFAULT, cursor,
@@ -315,6 +342,69 @@ function renderState() {
   block.innerHTML = `<h3>${escapeHtml(copy.title)}</h3><p>${escapeHtml(copy.copy)}</p>`;
 }
 
+/**
+ * V5-UX-C08b — the anatomical renderer, an added view toggled over the same
+ * `view.payload` the index above already reads. The index stays the
+ * accessible primary surface: a view the current page cannot honestly draw
+ * (empty, or too large — see ATLAS_SCENE_NODE_CAP in atlas-model.js) falls
+ * back to it, with a printed reason, rather than ever drawing a fake or a
+ * partial body.
+ */
+function renderRenderer() {
+  const switchGroup = $("atlasRendererSwitch");
+  const wrap = $("atlasSceneWrap");
+  const note = $("atlasRendererNote");
+  const indexBlock = $("atlasIndex");
+  const pagingRow = $("atlasMore")?.closest(".row-wrap") || null;
+  if (!switchGroup || !wrap) return;
+
+  const phase = atlasPhase({ status: view.status, payload: view.payload });
+  const dataReady = phase === "ready" || phase === "partial";
+  const availability = atlasSceneAvailability(view.payload);
+  const usable = dataReady && availability.available;
+
+  // A view the current page can no longer support falls back to the index,
+  // silently: no state here is allowed to show a scene it cannot honestly draw.
+  if (view.rendererView === "anatomical" && !usable) view.rendererView = "index";
+
+  for (const button of switchGroup.querySelectorAll("button[data-atlas-view]")) {
+    const isAnatomical = button.dataset.atlasView === "anatomical";
+    button.setAttribute("aria-pressed", String(button.dataset.atlasView === view.rendererView));
+    if (isAnatomical) button.disabled = !usable;
+  }
+  if (note) {
+    note.textContent = !dataReady ? ""
+      : availability.reason === "too_large" ? ATLAS_SCENE_TOO_LARGE_SENTENCE
+      : availability.reason === "empty" ? ATLAS_SCENE_EMPTY_SENTENCE
+      : "";
+  }
+
+  const showScene = view.rendererView === "anatomical" && usable;
+  if (indexBlock) indexBlock.hidden = showScene;
+  if (pagingRow) pagingRow.hidden = showScene;
+  wrap.hidden = !showScene;
+  if (!showScene) return;
+
+  if (!scene) {
+    scene = mountAtlasScene(view.payload, {
+      ids: SCENE_IDS,
+      announce: (message) => { const live = $(SCENE_IDS.layerLive); if (live) live.textContent = message; },
+      onSelect: (id) => selectNode(id),
+    });
+    if (!scene) return; // The svg this needs is not on the page; the index stays primary.
+    scenePayload = view.payload;
+  } else if (view.payload !== scenePayload) {
+    scene.updatePayload(view.payload);
+    scenePayload = view.payload;
+  }
+  // The two selections are the same fact, read from two surfaces: keep the
+  // scene's in step with the index's without echoing a second selection back.
+  if (scene.state.selectedId !== view.selected) {
+    if (view.selected) scene.select(view.selected, { push: false, speak: false, notify: false });
+    else scene.returnToWhole({ notify: false });
+  }
+}
+
 function render() {
   renderState();
   renderVersion();
@@ -323,6 +413,7 @@ function render() {
   renderIndex();
   renderPaging();
   renderSelection();
+  renderRenderer();
 }
 
 /* ------------------------------------------------------------------ selection */
@@ -383,6 +474,12 @@ export function mountAtlas({ outage = null, node = null } = {}) {
     if (paging.more) read(paging.cursor);
   });
   $("atlasRetry")?.addEventListener("click", () => read());
+  $("atlasRendererSwitch")?.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-atlas-view]");
+    if (!button || button.disabled) return;
+    view.rendererView = button.dataset.atlasView === "anatomical" ? "anatomical" : "index";
+    render();
+  });
   if (node) view.selected = node;
   read().then(() => { if (node) selectNode(node, { push: false }); });
 }

@@ -75,8 +75,30 @@ function organGlyph(shape, x, y, size) {
 
 /* ------------------------------------------------------------------ the scene */
 
-export function mountAtlasScene(payload, { announce = () => {} } = {}) {
-  const svg = $("atlasSvg");
+/**
+ * Every element id the scene looks up, so ONE renderer module can be mounted
+ * over two different markups: the /design/operations prototype (these exact
+ * ids) and the live Control Room Atlas tab, which already owns most of these
+ * ids for the C07 index and passes its own map in `ids`. Nothing here is
+ * looked up by a literal string a second time.
+ */
+export const DEFAULT_SCENE_IDS = Object.freeze({
+  root: "atlas", svg: "atlasSvg", crumbs: "atlasCrumbs", evidenceLegend: "atlasEvidenceLegend",
+  index: "atlasIndex", componentDrawer: "componentDrawer", componentTitle: "componentTitle",
+  componentBody: "componentBody", coverageTitle: "atlasCoverageTitle", safeExplanation: "atlasSafeExplanation",
+  coverageAnswered: "atlasCoverageAnswered", coverageGaps: "atlasCoverageGaps", limits: "atlasLimits",
+  stableNote: "atlasStableNote", motionNote: "atlasMotionNote", rotateValue: "atlasRotateValue",
+  rotate: "atlasRotate", back: "atlasBack", viewSwitch: "atlasViewSwitch", layerSwitch: "layerSwitch",
+  retiredToggle: "atlasRetired", layerLive: "layerLive", rotateLeft: "atlasRotateLeft", rotateRight: "atlasRotateRight",
+});
+
+/**
+ * `payload` is reassigned by `updatePayload`, below: every function in this
+ * closure reads the free variable, so a fresh read replaces what is drawn
+ * without a second round of `addEventListener` on the same DOM nodes.
+ */
+export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SCENE_IDS, onSelect = () => {} } = {}) {
+  const svg = $(ids.svg);
   if (!svg || !payload) return null;
 
   const state = {
@@ -170,7 +192,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
   /* -------------------------------------------------------------- the panels */
 
   function renderCrumbs(scene) {
-    const crumbs = $("atlasCrumbs");
+    const crumbs = $(ids.crumbs);
     if (!crumbs) return;
     const trail = breadcrumbsFor(scene, state.selectedId);
     crumbs.replaceChildren(...trail.flatMap((crumb, index) => {
@@ -183,7 +205,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
   }
 
   function renderEvidenceLegend() {
-    const list = $("atlasEvidenceLegend");
+    const list = $(ids.evidenceLegend);
     if (!list) return;
     list.replaceChildren(...Object.entries(EVIDENCE_DEPTH).map(([key, depth]) => el("li", {}, [
       el("span", { class: "evidence-swatch", "data-evidence": key, "aria-hidden": "true" }),
@@ -192,7 +214,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
   }
 
   function renderIndex(scene) {
-    const list = $("atlasIndex");
+    const list = $(ids.index);
     if (!list) return;
     // The producer's order, unsorted and unfiltered except for the retired
     // toggle the reader set themselves.
@@ -209,7 +231,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
   }
 
   function renderSelection() {
-    const drawer = $("componentDrawer");
+    const drawer = $(ids.componentDrawer);
     if (!drawer) return;
     if (!state.selectedId) {
       drawer.hidden = true;
@@ -222,7 +244,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
     }
     const { node, observed } = selection;
     drawer.hidden = false;
-    $("componentTitle").textContent = node.title || node.key;
+    $(ids.componentTitle).textContent = node.title || node.key;
     const rows = [
       ["Identity", node.id],
       ["Kind", `${singularLabel(node.class)} · ${node.key}`],
@@ -263,15 +285,15 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
     } else {
       body.push(el("p", { class: "small", text: "This release reads no run for this component. That is a silence in the sources, not a report of nothing happening." }));
     }
-    $("componentBody").replaceChildren(...body);
+    $(ids.componentBody).replaceChildren(...body);
   }
 
   function renderCoverage() {
     const groups = coverageGroups(payload.coverage);
     const degraded = atlasDegraded(payload);
-    const title = $("atlasCoverageTitle");
+    const title = $(ids.coverageTitle);
     if (title) title.textContent = degraded ? INCOMPLETE_HEADING : "Coverage";
-    const explanation = $("atlasSafeExplanation");
+    const explanation = $(ids.safeExplanation);
     // Printed verbatim. The page never paraphrases the producer's own account of
     // what it could not read.
     if (explanation) explanation.textContent = payload.source.safe_explanation;
@@ -281,9 +303,9 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
       el("span", { text: `${entry.evidence_class} · ${entry.node_count} nodes · ${entry.edge_count} relationships` }),
       el("small", { text: entry.complete ? "complete" : `incomplete: ${entry.missing_reason}` }),
     ]);
-    $("atlasCoverageAnswered")?.replaceChildren(...groups.answered.map(row));
-    $("atlasCoverageGaps")?.replaceChildren(...groups.gaps.map(row));
-    $("atlasLimits")?.replaceChildren(
+    $(ids.coverageAnswered)?.replaceChildren(...groups.answered.map(row));
+    $(ids.coverageGaps)?.replaceChildren(...groups.gaps.map(row));
+    $(ids.limits)?.replaceChildren(
       el("li", { text: NOT_WHOLE_SENTENCE }),
       el("li", { text: NO_SUCCESSOR_SENTENCE }),
       el("li", { text: VERB_RUN_GAP_SENTENCE }),
@@ -292,9 +314,9 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
   }
 
   function renderNotes() {
-    const stable = $("atlasStableNote");
+    const stable = $(ids.stableNote);
     if (stable) stable.textContent = `${STABLE_LAYOUT_SENTENCE} ${ROTATION_HELP_SENTENCE} ${BREAKPOINT_SENTENCE}`;
-    const motion = $("atlasMotionNote");
+    const motion = $(ids.motionNote);
     if (motion) {
       const paused = document.documentElement.dataset.motion === "reduced" ||
         (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -309,7 +331,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
       rotation: state.rotation, exploded: state.view === "exploded", layer: state.layer,
       profile: profileFor(window.innerWidth),
     });
-    const atlas = $("atlas");
+    const atlas = $(ids.root);
     if (atlas) {
       atlas.dataset.view = state.view;
       if (state.layer === "all") atlas.removeAttribute("data-layer"); else atlas.dataset.layer = state.layer;
@@ -322,29 +344,34 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
     renderSelection();
     renderCoverage();
     renderNotes();
-    const rotate = $("atlasRotateValue");
+    const rotate = $(ids.rotateValue);
     if (rotate) rotate.textContent = `${state.rotation}°`;
-    const slider = $("atlasRotate");
+    const slider = $(ids.rotate);
     if (slider && Number(slider.value) !== state.rotation) slider.value = String(state.rotation);
-    $("atlasBack")?.toggleAttribute("disabled", state.selectedId === null && state.trail.length === 0);
+    $(ids.back)?.toggleAttribute("disabled", state.selectedId === null && state.trail.length === 0);
     return scene;
   }
 
   /* ---------------------------------------------------------------- the moves */
 
-  function select(id, { push = true, speak = true } = {}) {
+  // `notify` is false only when the caller IS the external sync (an index
+  // selection made elsewhere on the page): the scene still moves to match, but
+  // it does not echo the selection back and cause a loop.
+  function select(id, { push = true, speak = true, notify = true } = {}) {
     if (push && state.selectedId && state.selectedId !== id) state.trail.push(state.selectedId);
     state.selectedId = id;
     const scene = render();
+    if (notify) onSelect(id);
     if (!speak) return;
     const entry = scene.nodes.find((candidate) => candidate.node.id === id);
     if (entry) announce(`Selected ${nodeSpeech(entry)}.`);
   }
 
-  function returnToWhole() {
+  function returnToWhole({ notify = true } = {}) {
     state.selectedId = null;
     state.trail = [];
     render();
+    if (notify) onSelect(null);
     announce("Returned to the whole system. Nothing moved; the selection was cleared.");
   }
 
@@ -356,7 +383,7 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
 
   function setView(view) {
     state.view = view;
-    $("atlasViewSwitch")?.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.view === view)));
+    $(ids.viewSwitch)?.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.view === view)));
     render();
     announce(view === "flat"
       ? "Flat list. The scene is switched off; every component is in the list."
@@ -365,9 +392,9 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
 
   function setLayer(layer) {
     state.layer = layer;
-    $("layerSwitch")?.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.layer === layer)));
+    $(ids.layerSwitch)?.querySelectorAll("button").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.layer === layer)));
     render();
-    const live = $("layerLive");
+    const live = $(ids.layerLive);
     const label = layer === "all" ? "All layers" : organFor(layer)?.label || layer;
     if (live) live.textContent = `Layer: ${label}. Components keep their positions; the others are dimmed, not removed.`;
   }
@@ -406,35 +433,35 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
   svg.addEventListener("pointercancel", endDrag);
   svg.addEventListener("pointerleave", endDrag);
 
-  $("atlasIndex")?.addEventListener("click", (event) => {
+  $(ids.index)?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-focus]");
     if (!button) return;
     select(button.dataset.focus);
     document.querySelector(`.atlas-node[data-id="${CSS.escape(button.dataset.focus)}"]`)?.focus();
   });
-  $("atlasCrumbs")?.addEventListener("click", (event) => {
+  $(ids.crumbs)?.addEventListener("click", (event) => {
     const crumb = event.target.closest("button[data-crumb]");
     if (!crumb) return;
     if (crumb.dataset.crumb === "whole") returnToWhole();
     else if (crumb.dataset.crumb.startsWith("organ:")) setLayer(crumb.dataset.crumb.slice("organ:".length));
   });
-  $("atlasBack")?.addEventListener("click", () => {
+  $(ids.back)?.addEventListener("click", () => {
     const previous = state.trail.pop();
     if (previous) select(previous, { push: false });
     else returnToWhole();
   });
-  $("atlasViewSwitch")?.addEventListener("click", (event) => {
+  $(ids.viewSwitch)?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (button) setView(button.dataset.view);
   });
-  $("layerSwitch")?.addEventListener("click", (event) => {
+  $(ids.layerSwitch)?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-layer]");
     if (button) setLayer(button.dataset.layer);
   });
-  $("atlasRotate")?.addEventListener("input", (event) => setRotation(event.target.value));
-  $("atlasRotateLeft")?.addEventListener("click", () => setRotation(state.rotation - ROTATION_STEP));
-  $("atlasRotateRight")?.addEventListener("click", () => setRotation(state.rotation + ROTATION_STEP));
-  $("atlasRetired")?.addEventListener("click", (event) => {
+  $(ids.rotate)?.addEventListener("input", (event) => setRotation(event.target.value));
+  $(ids.rotateLeft)?.addEventListener("click", () => setRotation(state.rotation - ROTATION_STEP));
+  $(ids.rotateRight)?.addEventListener("click", () => setRotation(state.rotation + ROTATION_STEP));
+  $(ids.retiredToggle)?.addEventListener("click", (event) => {
     state.includeRetired = !state.includeRetired;
     event.currentTarget.setAttribute("aria-pressed", String(state.includeRetired));
     if (!state.includeRetired && state.selectedId) {
@@ -459,6 +486,21 @@ export function mountAtlasScene(payload, { announce = () => {} } = {}) {
     render();
   });
 
+  /**
+   * A fresh read replaces what is drawn: no listener above is re-attached, and
+   * no requests are made here or ever — the caller already did the read. A
+   * selection that no longer exists on the new page is cleared rather than
+   * left pointing at a stale node.
+   */
+  function updatePayload(nextPayload) {
+    payload = nextPayload;
+    if (state.selectedId && !(payload?.nodes || []).some((node) => node.id === state.selectedId)) {
+      state.selectedId = null;
+      state.trail = [];
+    }
+    return render();
+  }
+
   render();
-  return { render, select, setView, setLayer, setRotation, state };
+  return { render, select, setView, setLayer, setRotation, updatePayload, state };
 }

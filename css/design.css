@@ -46,11 +46,6 @@
 .ops-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr); gap: 16px; margin-bottom: 16px; }
 .ops-grid .card { margin: 0; }
 .ops-grid .incident + .incident { margin-top: 10px; }
-.atlas-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr); gap: 14px; }
-.atlas-side { display: grid; gap: 12px; align-content: start; }
-.atlas-index { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.atlas-index small { margin-left: auto; }
-.component-drawer { padding: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); }
 .session-grid { display: grid; gap: 10px; }
 .composer { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 /* Tiles list their actual items; every row is the button that opens its popup. */
@@ -71,7 +66,7 @@
 @media (max-width: 1280px) { .topbar { flex-wrap: wrap; } .global-controls { margin-left: 0; flex-wrap: wrap; } }
 @media (max-width: 1040px) {
   .home-grid, .five-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .two-up, .ops-grid, .atlas-layout, .pipeline-layout { grid-template-columns: 1fr; }
+  .two-up, .ops-grid, .pipeline-layout { grid-template-columns: 1fr; }
   .hero { display: block; }
   .hero-meta { justify-items: start; margin-top: 16px; }
 }
@@ -81,120 +76,4 @@
   .global-controls { width: 100%; margin-left: 0; flex-wrap: wrap; }
   .global-controls .btn { min-height: 40px; padding: 6px 10px; font-size: 11px; }
   .footer { display: block; padding-bottom: 160px; }
-}
-
-/* ------------------------------------------------- V5-UX-C08 Anatomical Atlas
-   Prototype-only styling for the anatomical renderer. Every colour is a token
-   from css/system.css; every distinction colour makes is also made by a shape,
-   an outline, a depth plane or a word, so the scene survives a colour-blind
-   reader, a mono print and the scene being switched off entirely. Motion is
-   ambient and slow, and the motion preference stops all of it. */
-.atlas-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.55; }
-.atlas-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
-.atlas-rotate { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius); }
-.atlas-rotate label { color: var(--quiet); font: 800 10px var(--body); letter-spacing: 0.12em; text-transform: uppercase; }
-.atlas-rotate input[type="range"] { width: min(140px, 42vw); min-height: var(--touch); accent-color: var(--orange); background: transparent; }
-.atlas-rotate output { min-width: 48px; color: var(--orange-text); font: 700 12px var(--mono); }
-.atlas-toolbar .btn, .atlas-rotate .btn { min-height: var(--touch); }
-#atlasRetired[aria-pressed="true"] { border-color: color-mix(in srgb, var(--orange) 60%, transparent); background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--text); }
-
-.atlas { min-height: 380px; padding: 52px 0 0; }
-.atlas svg[hidden] { display: none; }
-.atlas svg:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
-.atlas-crumbs { position: absolute; top: 12px; left: 14px; right: 150px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.crumb { min-height: 32px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--ground-0) 70%, transparent); color: var(--muted); font: 600 11px var(--body); }
-button.crumb { min-height: var(--touch); }
-button.crumb:hover, button.crumb:focus-visible { border-color: color-mix(in srgb, var(--orange) 55%, transparent); color: var(--text); }
-.crumb[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%, transparent); color: var(--orange-text); }
-.crumb-sep { color: var(--quiet); }
-.atlas-motion { margin: 6px 14px 12px; color: var(--quiet); font-size: 11px; line-height: 1.5; }
-
-/* Organs: the four bands never move. The band is glass over the ground, so the
-   body reads as depth rather than as four boxes. */
-.atlas-organ { fill: color-mix(in srgb, var(--ground-1) 55%, transparent); stroke: var(--line); stroke-width: 1; }
-.atlas-organ[data-cat="data"] { stroke: color-mix(in srgb, var(--cat-data) 40%, transparent); }
-.atlas-organ[data-cat="execution"] { stroke: color-mix(in srgb, var(--cat-execution) 40%, transparent); }
-.atlas-organ[data-cat="rules"] { stroke: color-mix(in srgb, var(--cat-rules) 40%, transparent); }
-.atlas-organ[data-cat="infra"] { stroke: color-mix(in srgb, var(--cat-infra) 40%, transparent); }
-.atlas-organ[data-dimmed="true"] { opacity: 0.4; }
-.atlas-organ-label { fill: var(--quiet); font: 800 10px var(--display); letter-spacing: 0.22em; }
-.atlas-organ-label[data-cat="data"] { fill: var(--cat-data); }
-.atlas-organ-label[data-cat="execution"] { fill: var(--cat-execution); }
-.atlas-organ-label[data-cat="rules"] { fill: var(--cat-rules); }
-.atlas-organ-label[data-cat="infra"] { fill: var(--cat-infra); }
-
-.atlas-node { cursor: pointer; transition: opacity var(--motion-move) var(--ease); }
-.atlas-node[data-dimmed="true"] { opacity: 0.28; }
-.atlas-node[data-retired="true"] { opacity: 0.55; }
-.atlas-plate { fill: color-mix(in srgb, var(--ground-2) 92%, transparent); stroke: var(--line-strong); stroke-width: 1.5; }
-.atlas-node[data-outline="dashed"] .atlas-plate { stroke-dasharray: 5 4; fill: color-mix(in srgb, var(--ground-0) 70%, transparent); }
-.atlas-node[data-evidence="observed"] .atlas-plate { stroke-width: 2; }
-.atlas-node[data-cat="data"] .atlas-plate { stroke: var(--cat-data); }
-.atlas-node[data-cat="execution"] .atlas-plate { stroke: var(--cat-execution); }
-.atlas-node[data-cat="rules"] .atlas-plate { stroke: var(--cat-rules); }
-.atlas-node[data-cat="infra"] .atlas-plate { stroke: var(--cat-infra); }
-.atlas-glyph { fill: none; stroke: var(--text); stroke-width: 1.4; }
-.atlas-node[data-cat="data"] .atlas-glyph { stroke: var(--cat-data); }
-.atlas-node[data-cat="execution"] .atlas-glyph { stroke: var(--cat-execution); }
-.atlas-node[data-cat="rules"] .atlas-glyph { stroke: var(--cat-rules); }
-.atlas-node[data-cat="infra"] .atlas-glyph { stroke: var(--cat-infra); }
-.atlas-plate-label { fill: var(--text); font: 700 10px var(--display); letter-spacing: 0.05em; pointer-events: none; }
-.atlas-plate-sub { fill: var(--muted); font: 500 8px var(--body); pointer-events: none; }
-/* Observed is the only living plane: a filled core, breathing slowly. With
-   motion off it is still a filled core, and the word "observed" is still on the
-   plate, so nothing depends on the movement. */
-.atlas-core { fill: var(--orange); animation: breathe var(--motion-calm) ease-in-out infinite; }
-.atlas-tether { stroke: var(--quiet); stroke-width: 1.4; stroke-dasharray: 2 3; }
-.atlas-strike { stroke: var(--red); stroke-width: 2; }
-.atlas-node:hover .atlas-plate, .atlas-node:focus-visible .atlas-plate { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--orange) 70%, transparent)); }
-.atlas-node:focus-visible { outline: none; }
-.atlas-node:focus-visible .atlas-plate { stroke: var(--focus); stroke-width: 3; }
-.atlas-node[aria-current="true"] .atlas-plate { stroke: var(--orange); stroke-width: 3.5; filter: drop-shadow(0 0 14px var(--orange)); }
-
-.atlas-edge { fill: none; stroke: var(--line-strong); stroke-width: 1.4; }
-.atlas-edge[data-evidence="declared"] { stroke-dasharray: 7 5; opacity: 0.8; }
-.atlas-edge[data-evidence="observed"] { stroke: var(--cat-execution); stroke-dasharray: 6 8; animation: atlas-drift var(--motion-flow) linear infinite; }
-.atlas-edge[data-dimmed="true"] { opacity: 0.2; }
-.atlas-edge[data-related="true"] { stroke: var(--orange); stroke-width: 2.4; opacity: 1; }
-@keyframes atlas-drift { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -140; } }
-
-.legend-evidence li { align-items: flex-start; }
-.evidence-swatch { display: inline-block; width: 14px; height: 10px; border: 1.5px solid var(--line-strong); border-radius: 3px; }
-.evidence-swatch[data-evidence="declared"] { border-style: dashed; background: transparent; }
-.evidence-swatch[data-evidence="installed"] { background: color-mix(in srgb, var(--ground-2) 90%, transparent); }
-.evidence-swatch[data-evidence="observed"] { background: color-mix(in srgb, var(--orange) 45%, transparent); border-color: var(--orange); }
-.atlas-index-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; width: 100%; min-height: var(--touch); text-align: left; }
-.atlas-index-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.atlas-index-row small { grid-column: 2; color: var(--quiet); }
-.atlas-coverage { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
-.atlas-explanation { margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line-strong); border-left: 3px solid var(--amber); border-radius: var(--radius-s); color: var(--text); font-size: 12px; line-height: 1.6; }
-.coverage-list { display: grid; gap: 6px; margin: 0 0 14px; padding: 0; list-style: none; }
-.coverage-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); font-size: 12px; }
-.coverage-row b { overflow-wrap: anywhere; font-family: var(--mono); font-size: 11px; }
-.coverage-row span { color: var(--muted); font-size: 11px; }
-.coverage-row small { grid-column: 2 / -1; color: var(--quiet); font-size: 10px; }
-
-/* 360 px: the scene keeps rotation, depth and selection; the renderer drops to
-   two columns so the labels stay legible, and nothing overflows the viewport. */
-.atlas-layout > * { min-width: 0; }
-.atlas { min-width: 0; }
-.legend { flex-wrap: wrap; }
-@media (max-width: 1040px) {
-  .atlas-crumbs { position: static; margin: 0 0 8px; }
-  .atlas { padding-top: 12px; }
-  .atlas-controls { position: static; margin: 8px 14px 0; }
-}
-@media (max-width: 767px) {
-  .atlas-toolbar { display: grid; gap: 8px; }
-  .atlas-toolbar > * { width: 100%; min-width: 0; }
-  .atlas-toolbar .btn-group { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-  .atlas-toolbar .btn-group .btn { min-width: 0; padding: 6px 4px; font-size: 11px; }
-  .atlas-rotate { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; }
-  .atlas-rotate label { grid-column: 1 / -1; }
-  .atlas-rotate input[type="range"] { width: auto; min-width: 0; }
-  .atlas-rotate output { grid-column: 1 / -1; text-align: right; }
-  .atlas-controls { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
-  .coverage-row { grid-template-columns: auto minmax(0, 1fr); }
-  .coverage-row small { grid-column: 1 / -1; }
-  .card-heading .btn-group { flex-wrap: wrap; }
 }

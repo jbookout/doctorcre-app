@@ -22,7 +22,10 @@ const sceneJs = await read("js/atlas-scene.js");
 const anatomyJs = await read("js/atlas-anatomy.js");
 const prototypeJs = await read("js/design-prototype.js");
 const operationsHtml = await read("design-operations.html");
-const designCss = await read("css/design.css");
+// V5-UX-C08b moved the anatomical renderer's styling from the prototype-only
+// stylesheet into the shared one, so the live Control Room Atlas tab can mount
+// the same scene: this reads the block where it now lives.
+const systemCss = await read("css/system.css");
 
 // The fixture reads query parameters and nothing else; it is handed the
 // parameters directly, so no host is named and nothing is ever contacted.
@@ -156,7 +159,7 @@ test("nothing the scene can do requires a drag, a hover or a pointer", () => {
 });
 
 test("every new control clears the touch floor and the scene works at 360 px", () => {
-  const block = designCss.slice(designCss.indexOf("V5-UX-C08"));
+  const block = systemCss.slice(systemCss.indexOf("V5-UX-C08"));
   for (const selector of ["\\.atlas-toolbar \\.btn, \\.atlas-rotate \\.btn", "button\\.crumb", "\\.atlas-index-row", '\\.atlas-rotate input\\[type="range"\\]']) {
     assert.match(block, new RegExp(`${selector}[^}]*min-height: var\\(--touch\\)`), `${selector} is below the touch floor`);
   }
@@ -167,8 +170,8 @@ test("every new control clears the touch floor and the scene works at 360 px", (
 });
 
 test("motion is ambient, redundant and fully stoppable, and the page says which state it is in", () => {
-  assert.match(designCss, /\.atlas-core \{[^}]*animation: breathe var\(--motion-calm\)/);
-  assert.match(designCss, /animation: atlas-drift var\(--motion-flow\)/);
+  assert.match(systemCss, /\.atlas-core \{[^}]*animation: breathe var\(--motion-calm\)/);
+  assert.match(systemCss, /animation: atlas-drift var\(--motion-flow\)/);
   assert.match(sceneJs, /MOTION_PAUSED_SENTENCE/);
   assert.match(sceneJs, /prefers-reduced-motion: reduce/);
   assert.match(sceneJs, /attributeFilter: \["data-motion"\]/, "the note follows the preference live");
@@ -191,7 +194,7 @@ test("the coverage block is drawn from the payload, and an incomplete atlas is n
   assert.match(sceneJs, /atlasDegraded\(payload\)/);
   assert.match(sceneJs, /INCOMPLETE_HEADING/);
   assert.match(sceneJs, /payload\.source\.safe_explanation/, "the producer's own explanation is printed verbatim");
-  for (const source of [sceneJs, anatomyJs, operationsHtml, designCss]) {
+  for (const source of [sceneJs, anatomyJs, operationsHtml, systemCss]) {
     assert.doesNotMatch(source, /the atlas is complete/i);
   }
   assert.match(anatomyJs, /NOT_WHOLE_SENTENCE/);
