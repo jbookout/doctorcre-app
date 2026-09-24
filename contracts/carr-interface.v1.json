@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "35009e9dedab3a603836c662d0f7f12dfeb1a284"
@@ -71,6 +71,7 @@
     "share-doc-conversation",
     "start-deal-review",
     "supersede-work-request",
+    "today-triage",
     "update-deal",
     "update-loop",
     "work-request-card"

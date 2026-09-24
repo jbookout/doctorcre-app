@@ -1749,6 +1749,36 @@ export async function createFixtureClient(opts = {}) {
       return { count: rows.length, loops: rows };
     },
 
+    // V5-UX-B01 — the synthetic twin of `today-triage`, in the verb's own row
+    // shape and with its own rules: open follow-ups due today or earlier, and
+    // critical dates due within fourteen days, ordered by due date and capped at
+    // fifty. It is BUILT FROM this client's records — a deal's next step and the
+    // critical dates written through addCriticalDate — so Home's This week and
+    // the deal panel can never disagree. Dates are minted against the current
+    // clock, since a frozen "today" would make every run look overdue.
+    async todayTriage() {
+      const today = nowIso().slice(0, 10);
+      const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+      const items = [];
+      // v_today_triage does not filter on the deal's own state, so neither does this.
+      for (const deal of deals.values()) {
+        const day = typeof deal.next_date === 'string' ? deal.next_date.slice(0, 10) : null;
+        if (deal.next_step && day && day <= today) {
+          items.push({ item_kind: 'next_action', id: `a-${deal.id}`, subject_type: 'deal', subject_id: deal.id,
+            owner: deal.owner, what: deal.next_step, due_on: day, subject_name: deal.name, subject_ref: null,
+            business_days_overdue: null });
+        }
+        for (const entry of criticalDates.get(deal.id) || []) {
+          if (entry.due_on > horizon) continue;
+          items.push({ item_kind: 'critical_date', id: entry.id, subject_type: 'deal', subject_id: deal.id,
+            owner: null, what: entry.kind, due_on: entry.due_on, subject_name: deal.name, subject_ref: null,
+            business_days_overdue: null });
+        }
+      }
+      items.sort((a, b) => a.due_on.localeCompare(b.due_on));
+      return { items: items.slice(0, 50) };
+    },
+
     async readLoop({ loop_id, number, kind } = {}) {
       const found = findLoop({ loop_id, number, kind });
       if (found === 'need_number_or_id') return { error: 'need_number_or_id' };
