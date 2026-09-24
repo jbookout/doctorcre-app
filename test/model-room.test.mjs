@@ -23,11 +23,12 @@ import { readFile } from "node:fs/promises";
 
 import {
   ACKNOWLEDGEMENT_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
-  QUEUE_BOARD, QUEUE_ROOM, TURN_ROOM, WINDOW_SENTENCE,
+  QUEUE_BOARD, QUEUE_ROOM, TOPIC_HISTORY_SENTENCE, TURN_ROOM, WINDOW_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
   WORK_STATES, WORK_STATE_LABEL, assignmentBoard, contextPanel, dispatchSearchRequest, dispatchView,
-  effectiveModelText,
-  listState, participants, parentLine, queueFreshness, queueRequest, refuseQueueEvent,
-  refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns, turnRequest, turnWindow,
+  effectiveModelText, historyTopics, historyWorkItems,
+  listState, needsJoeCardFields, participants, parentLine, queueFreshness, queueRequest, refuseQueueEvent,
+  refuseDispatchHistory, refuseRoomQueue, refuseRoomTurns, refuseWorkRequestCard, topicHistory, turnRequest,
+  turnWindow, workItemLedger, workRequestCardRequest,
 } from "../js/model-room-model.js";
 
 const root = new URL("..", import.meta.url);
@@ -441,6 +442,90 @@ test("C12-17 the Observatory is untouched by this slice", async () => {
   // Not modified, not retired, not redirected: nothing in this slice links to it
   // as a replacement, and retiring it is Joe's decision, not this build's.
   assert.equal(/room\.html/.test(viewSource), false, "the Model Room tab does not redirect to the Observatory");
+});
+
+/* ----------------------------------------------- V5-UX-C13a: topic/work-item history */
+
+test("C13a-01 the topic picker reuses the assignments board's own cards, never a second list", () => {
+  const topics = historyTopics(LIVE_QUEUE);
+  assert.deepEqual(topics.map((topic) => topic.id), LIVE_QUEUE.events.map((event) => event.task_id));
+  const one = topicHistory(topics[0].id, LIVE_QUEUE);
+  assert.equal(one.found, true);
+  assert.equal(one.card.taskId, topics[0].id);
+  assert.equal(one.sentence, TOPIC_HISTORY_SENTENCE);
+  assert.match(TOPIC_HISTORY_SENTENCE, /no ticket-level event history/);
+  const missing = topicHistory("t_does_not_exist", LIVE_QUEUE);
+  assert.equal(missing.found, false);
+  assert.equal(missing.card, null);
+});
+
+test("C13a-02 the work-item picker keeps current-work-requests' own order", () => {
+  const payload = { ok: true, items: [
+    { human_ref: "WR-000907", title: "Second", state: "needs_joe", source: {}, next_human_action: null },
+    { human_ref: "WR-000906", title: "First", state: "needs_joe", source: {}, next_human_action: null },
+  ] };
+  assert.deepEqual(historyWorkItems(payload).map((item) => item.id), ["WR-000907", "WR-000906"]);
+  assert.deepEqual(historyWorkItems(null), []);
+  assert.deepEqual(historyWorkItems({ ok: true }), []);
+});
+
+test("C13a-03 the work-request-card request is bounded to the WR- ref shape", () => {
+  assert.deepEqual(workRequestCardRequest("WR-000906"), { work_request: "WR-000906" });
+  assert.equal(workRequestCardRequest("not-a-ref"), null);
+  assert.equal(workRequestCardRequest(""), null);
+  assert.equal(workRequestCardRequest(null), null);
+});
+
+test("C13a-04 the ledger keeps acting-identity and outcome-feedback as two separately server-ordered lists", () => {
+  const card = {
+    ok: true, human_ref: "WR-000906", title: "Demo", state: "needs_joe",
+    acting_identity: [
+      { act: "review-and-triage", hand: "human", authorization_class: null, acted_at: "2026-09-19T14:00:00Z" },
+      { act: "accept-ready-plan", hand: "agent", authorization_class: "sponsored_agent", acted_at: "2026-09-20T09:15:00Z" },
+    ],
+    outcome_feedback_history: [
+      { outcome: "won", accepted_at: "2026-09-18T00:00:00Z" },
+    ],
+  };
+  const ledger = workItemLedger(card);
+  assert.equal(ledger.humanRef, "WR-000906");
+  assert.equal(ledger.actingEvents.length, 2);
+  assert.equal(ledger.feedbackEvents.length, 1);
+  // Two independently-ordered server arrays, never interleaved into one list.
+  assert.equal(Object.hasOwn(ledger, "events"), false, "no merged list is produced");
+  assert.equal(refuseWorkRequestCard(card), null);
+  assert.equal(workItemLedger({ ok: false }), null);
+  assert.match(WORK_ITEM_HISTORY_SENTENCE, /Nothing here is re-sorted, merged or inferred/);
+});
+
+test("C13a-05 the enriched Waiting-for-Joe fields never synthesize an absent one", () => {
+  const full = {
+    ok: true, human_ref: "WR-000906", desired_outcome: "Reconcile the demo vendor names.",
+    incident_evidence: [{ kind: "incident", ref: "INC-1" }],
+  };
+  const fields = needsJoeCardFields(full);
+  assert.equal(fields.originalRequest.present, true);
+  assert.equal(fields.originalRequest.value, "Reconcile the demo vendor names.");
+  assert.equal(fields.recommendedAnswer.present, false);
+  assert.equal(fields.businessImpact.present, false);
+  assert.equal(fields.evidence.present, true);
+  assert.equal(fields.evidence.items.length, 1);
+
+  const sparse = { ok: true, human_ref: "WR-000907" };
+  const sparseFields = needsJoeCardFields(sparse);
+  assert.equal(sparseFields.originalRequest.present, false);
+  assert.equal(sparseFields.evidence.present, false);
+  assert.match(sparseFields.evidence.reason, /carried no incident_evidence field/);
+  assert.equal(needsJoeCardFields(null).available, false);
+});
+
+test("C13a-06 the history view opens no execute path and adds no new write", () => {
+  assert.equal(/take\("historyCard"/.test(viewCode), true, "the work-item card is read, not executed");
+  assert.equal(/composer|compose/i.test(viewCode), false, "no composer lives on this tab");
+  assert.equal(/idempotency_key/.test(viewCode), false, "no write is issued from this file");
+  assert.match(htmlMarkup, /id="modelRoomHistoryTopic"/);
+  assert.match(htmlMarkup, /id="modelRoomHistoryWorkItem"/);
+  assert.equal(/open[\s_-]?session/i.test(viewCode.replace(NO_OPEN_SENTENCE, " ")), false);
 });
 
 /* ----------------------------------------------------------- the contract pin */

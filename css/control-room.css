@@ -205,8 +205,25 @@
  * ever being parsed, and it is never rendered as structure. */
 .room-turn-body { margin-top: 6px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
 
+/* V5-UX-C13a: the topic/work-item history picker and its ledger. Same tokens,
+ * same 44px floor, no new colour literal. */
+#modelRoomHistoryTopic, #modelRoomHistoryWorkItem { min-height: var(--touch); }
+.history-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.history-picker .field { display: grid; gap: 6px; min-width: 0; }
+.history-picker label { font-size: 13px; font-weight: 700; }
+.history-ledger { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.history-ledger-row { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+.history-ledger-row p { margin: 0; overflow-wrap: anywhere; }
+.history-ledger-head { color: var(--quiet); margin-bottom: 4px; }
+
+/* V5-UX-C13a: the enriched "Waiting for Joe" detail, extending the existing
+ * row rather than a second list. */
+.needs-joe-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.needs-joe-detail h3 { margin: 0 0 8px; font-size: 14px; }
+
 @media (max-width: 640px) {
   .assignment-rail { grid-template-columns: 1fr; }
   .assignment-head { flex-direction: column; }
   .dispatch-search-row { grid-template-columns: 1fr; }
+  .history-picker { grid-template-columns: 1fr; }
 }
