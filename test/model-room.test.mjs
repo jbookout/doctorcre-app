@@ -848,3 +848,74 @@ test("C12-20 the Model Room placeholder is gone and the tab wiring is unchanged"
   const added = css.slice(css.indexOf("V5-UX-C12 Model Room tab"));
   assert.equal(/#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/.test(added), false, "no literal colour is introduced");
 });
+
+/* ---------------------------------------------------------------- motion pass */
+// Joe's standing surface rule (9293d609), applied to C13b's composer/Kanban and
+// C13c's answer form. Same grep-the-shipped-CSS pattern as
+// test/queue-panel-model.test.mjs and test/atlas-incidents.test.mjs: system.css's
+// universal `animation: none !important; transition: none !important;` floor is
+// what actually disables all of this under prefers-reduced-motion (proven once,
+// in test/visual-system.test.mjs), so these tests prove the new rules live where
+// that floor reaches, and that nothing here is hidden as part of its animated
+// state — only `hidden`/`disabled`, both plain JS-driven attributes untouched by
+// any animation below, ever control visibility.
+
+const systemCss = await read("css/system.css");
+
+test("the Kanban card has a real lift on drag, and a refused drop shakes the ORIGINAL card back to its origin", () => {
+  assert.match(css, /@keyframes kanban-lift/);
+  assert.match(css, /@keyframes kanban-refused-shake/);
+  assert.match(css, /\.assignment-card\[data-lifted="true"\] \{ animation: kanban-lift var\(--motion-move\)/);
+  assert.match(css, /\.assignment-card\[data-refused="true"\] \{ animation: kanban-refused-shake var\(--motion-move\)/);
+  assert.match(viewSource, /article\.dataset\.lifted = "true"/, "dragstart lifts the dragged card");
+  assert.match(viewSource, /delete article\.dataset\.lifted/, "dragend releases it");
+  // Native HTML5 drag-and-drop drags a browser-owned ghost, never the DOM
+  // node itself, so the card never actually leaves the board: the shake is
+  // real feedback on the SAME card the refusal names, not a fabricated move.
+  assert.match(viewSource, /source\.dataset\.refused = "true"/);
+  assert.doesNotMatch(stripJs(viewSource), /assignmentMoveOutcome\([^)]*\)\.approved|status\s*=\s*["'`]moved/i,
+    "the drop stays honestly refused — this is a presentation pass, not a new write");
+});
+
+test("the composer animates from sending to sent or failed, and only on a real state change", () => {
+  assert.match(css, /\.model-room-composer-result\[data-state="sending"\]/);
+  assert.match(css, /\.model-room-composer-result\.motion-pulse \{ animation: receipt-in var\(--motion-enter\)/);
+  assert.match(viewSource, /const changed = result\.dataset\.state !== view\.composerSend\.state;/);
+  assert.match(viewSource, /if \(changed && !result\.hidden\) \{/);
+  assert.match(viewSource, /void result\.offsetWidth; \/\/ force a reflow/);
+});
+
+test("a newly arrived room turn enters with motion", () => {
+  assert.match(css, /\.room-turn \{[^}]*animation: receipt-in var\(--motion-enter\) var\(--ease\) both; \}/);
+});
+
+test("the answer form's submit enables with motion, the counter animates near the limit, and success animates the ledger's move", () => {
+  assert.match(css, /#modelRoomAnswerCounter\[data-state="near-limit"\] \{ color: var\(--amber-text\); animation: breathe var\(--motion-urgent\)/);
+  assert.match(viewSource, /counter\.dataset\.state = view\.answer\.answerText\.length >= ANSWER_TEXT_MAX \* 0\.9 \? "near-limit" : "normal";/);
+  assert.match(css, /#modelRoomAnswerSubmit:not\(\[disabled\]\)\.motion-pulse \{ animation: receipt-in var\(--motion-enter\)/);
+  assert.match(viewSource, /const wasReady = !submit\.hasAttribute\("disabled"\);/);
+  assert.match(viewSource, /if \(ready && !wasReady\) \{/, "the pop plays only on disabled->enabled, never every keystroke");
+  assert.match(css, /\.model-room-answer-result\.motion-pulse \{ animation: receipt-in var\(--motion-enter\)/);
+  assert.match(css, /\.context-head p\.small\.mono \{ animation: receipt-in var\(--motion-enter\)/);
+});
+
+test("prefers-reduced-motion leaves every C13b/C13c motion addition fully visible with a static fallback", () => {
+  assert.match(systemCss, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\*, \*::before, \*::after \{ animation: none !important; transition: none !important; \}/);
+  for (const selector of [
+    '.assignment-card[data-lifted="true"]',
+    '.assignment-card[data-refused="true"]',
+    '.assignment-move-target[data-hover="true"]',
+    '.model-room-composer-result.motion-pulse',
+    '.room-turn',
+    '#modelRoomAnswerCounter[data-state="near-limit"]',
+    '#modelRoomAnswerSubmit:not([disabled]).motion-pulse',
+    '.model-room-answer-result.motion-pulse',
+    '.model-room-move-result.motion-pulse',
+  ]) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rule = new RegExp(`${escaped} \\{([^}]*)\\}`);
+    const match = css.match(rule);
+    assert.ok(match, `${selector} rule not found`);
+    assert.doesNotMatch(match[1], /display:\s*none|visibility:\s*hidden/, `${selector} must not hide content as part of its animated state`);
+  }
+});

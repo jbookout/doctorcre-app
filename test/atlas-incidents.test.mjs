@@ -289,3 +289,57 @@ test("notInReleaseBlocks narrows the C09 statement to exactly what is still miss
   assert.match(block.reason, /per-component failure\/health map/);
   assert.match(block.reason, /planned-vs-operating overlay/);
 });
+
+/* ---------------------------------------------------------------- motion pass */
+// Joe's standing surface rule (9293d609): every CARR surface ships with real
+// motion, honours prefers-reduced-motion with a static fallback that keeps
+// everything visible and legible, and never lets motion delay reading or
+// clicking. These tests follow the repo's existing reduced-motion pattern
+// (see test/queue-panel-model.test.mjs, test/visual-system.test.mjs): grep
+// the shipped CSS rather than execute it, because the floor these animations
+// rely on is a real, already-tested global rule.
+
+const css = await read("css/control-room.css");
+const systemCss = await read("css/system.css");
+
+test("the open-incident badge pulses for real, and the collapsed-ancestor alert pops on arrival", () => {
+  assert.match(atlasJs, /data-atlas-alert="group"/, "the collapsed-group marker is distinguishable from the per-node chip");
+  assert.match(css, /\.chip\[data-atlas-chip="incident"\] \{ animation: breathe var\(--motion-urgent\)/);
+  assert.match(css, /\.chip\[data-atlas-chip="incident"\]\[data-atlas-alert="group"\] \{[\s\S]{0,120}animation: receipt-in var\(--motion-enter\)/);
+});
+
+test("the recorded-steps trace drawer enters in sequence and its connector draws", () => {
+  assert.match(css, /@keyframes atlas-connector-draw/);
+  assert.match(css, /\.atlas-trace \.work-list::before \{[\s\S]{0,200}animation: atlas-connector-draw var\(--motion-move\)/);
+  assert.match(css, /\.atlas-trace \.work-list li \{ animation: receipt-in var\(--motion-enter\)/);
+  // A real stagger, not every row arriving at once.
+  assert.match(css, /\.atlas-trace \.work-list li:nth-child\(2\) \{ animation-delay: 70ms; \}/);
+  assert.match(css, /\.atlas-trace \.work-list li:nth-child\(3\) \{ animation-delay: 140ms; \}/);
+});
+
+test("the Doc tour's step change animates the focus move, and nothing here touches the camera", () => {
+  assert.match(css, /\.atlas-identity \{ animation: receipt-in var\(--motion-enter\)/);
+  // "No camera hijack": neither the tour's advance/retreat nor selectNode
+  // ever calls scrollIntoView or sets scrollTop/scrollLeft.
+  assert.doesNotMatch(atlasJs, /scrollIntoView|scrollTop\s*=|scrollLeft\s*=/);
+});
+
+test("prefers-reduced-motion leaves every C09 motion addition fully visible with a static fallback", () => {
+  // system.css's universal floor (already covered by test/visual-system.test.mjs)
+  // is what actually disables these — this test just proves the new rules live
+  // inside its reach, and that none of them makes a state depend on `display`.
+  assert.match(systemCss, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\*, \*::before, \*::after \{ animation: none !important; transition: none !important; \}/);
+  for (const selector of [
+    '.chip[data-atlas-chip="incident"]',
+    '.chip[data-atlas-chip="incident"][data-atlas-alert="group"]',
+    '.atlas-trace .work-list::before',
+    '.atlas-trace .work-list li',
+    '.atlas-identity',
+  ]) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rule = new RegExp(`${escaped} \\{([^}]*)\\}`);
+    const match = css.match(rule);
+    assert.ok(match, `${selector} rule not found`);
+    assert.doesNotMatch(match[1], /display:\s*none|visibility:\s*hidden/, `${selector} must not hide content as part of its animated state`);
+  }
+});

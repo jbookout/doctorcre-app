@@ -293,7 +293,13 @@ function renderIndex() {
   // reader has collapsed must still show that something inside it carries an
   // open incident, so the alert marker is printed on every <summary>, not
   // only on the leaf row.
-  const alertMark = (nodes) => (groupHasOpenIncident(nodes, index) ? ` <span class="chip" data-atlas-chip="incident" data-state="urgent">open incident inside</span>` : "");
+  // V5-UX-C09 motion pass: `data-atlas-alert="group"` is the ONLY thing that
+  // distinguishes this collapsed-ancestor marker from the per-node incident
+  // chip below — same fact, same chip, but this one plays a one-shot arrival
+  // pop (css/control-room.css) on top of the ordinary pulse, because a reader
+  // who has this layer collapsed needs the alert to draw the eye the moment
+  // it appears, not just sit there pulsing quietly.
+  const alertMark = (nodes) => (groupHasOpenIncident(nodes, index) ? ` <span class="chip" data-atlas-chip="incident" data-atlas-alert="group" data-state="urgent">open incident inside</span>` : "");
   root.innerHTML = groupIndex(view.payload).map((group) => {
     const groupNodes = group.classes.flatMap((entry) => entry.nodes);
     return `

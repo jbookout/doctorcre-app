@@ -162,9 +162,14 @@ function renderAssignments() {
     dropped.textContent = board.droppedText ?? "";
   }
   for (const article of list.querySelectorAll("article[data-task]")) {
+    // V5-UX-C13b motion pass: `data-lifted` is the ONLY thing dragstart/dragend
+    // touch — no data handling here, only the CSS hook for the real lift (see
+    // css/control-room.css's `.assignment-card[data-lifted="true"]`).
     article.addEventListener("dragstart", (event) => {
       event.dataTransfer?.setData("text/plain", article.dataset.task);
+      article.dataset.lifted = "true";
     });
+    article.addEventListener("dragend", () => { delete article.dataset.lifted; });
   }
   renderMoveTarget(board);
 }
@@ -176,17 +181,29 @@ function renderAssignments() {
  */
 function renderMoveTarget(board) {
   const zone = $("modelRoomMoveTarget");
-  const result = $("modelRoomMoveResult");
   if (zone && !zone.dataset.wired) {
     zone.dataset.wired = "true";
-    zone.addEventListener("dragover", (event) => event.preventDefault());
+    zone.addEventListener("dragover", (event) => { event.preventDefault(); zone.dataset.hover = "true"; });
+    zone.addEventListener("dragleave", () => { delete zone.dataset.hover; });
     zone.addEventListener("drop", (event) => {
       event.preventDefault();
+      delete zone.dataset.hover;
       const taskId = event.dataTransfer?.getData("text/plain") ?? "";
       const card = board?.cards.find((candidate) => candidate.taskId === taskId) ?? { taskId };
       const outcome = assignmentMoveOutcome(card);
       view.moveMessage = outcome;
       renderMoveResult();
+      // V5-UX-C13b: every drop is refused (no pinned verb moves a projected
+      // card — see the module comment), so the card that was dragged is the
+      // one that visibly returns to its origin: a shake on the ORIGINAL
+      // element, which the native drag never actually moved in the first
+      // place. Presentation only — assignmentMoveOutcome above is unchanged.
+      const source = $("modelRoomAssignments")?.querySelector(`article[data-task="${taskId ? CSS.escape(taskId) : "\u0000"}"]`);
+      if (source) {
+        delete source.dataset.refused;
+        void source.offsetWidth; // force a reflow so the animation restarts on a repeat drop
+        source.dataset.refused = "true";
+      }
     });
   }
   renderMoveResult();
@@ -196,11 +213,21 @@ function renderMoveResult() {
   const result = $("modelRoomMoveResult");
   if (!result) return;
   if (!view.moveMessage) { result.hidden = true; result.textContent = ""; return; }
-  result.hidden = false;
-  result.dataset.taskId = view.moveMessage.taskId ?? "";
-  result.textContent = view.moveMessage.taskId
+  const text = view.moveMessage.taskId
     ? `${view.moveMessage.taskId}: ${view.moveMessage.text}`
     : view.moveMessage.text;
+  // Only a genuinely new refusal pops in — an unrelated re-render (a fresh
+  // queue read, say) leaves an already-shown line alone rather than
+  // replaying its entrance for no reason.
+  const changed = result.textContent !== text;
+  result.hidden = false;
+  result.dataset.taskId = view.moveMessage.taskId ?? "";
+  result.textContent = text;
+  if (changed) {
+    result.classList.remove("motion-pulse");
+    void result.offsetWidth;
+    result.classList.add("motion-pulse");
+  }
 }
 
 /* ---------------------------------------------------------------- sessions */
@@ -498,9 +525,18 @@ function renderHistory() {
 function renderComposer() {
   const result = $("modelRoomComposerResult");
   if (result) {
+    // Animate exactly on a state change — idle->invalid, invalid->sending,
+    // sending->sent, sending->failed — never on a re-render that leaves the
+    // send's own state untouched.
+    const changed = result.dataset.state !== view.composerSend.state;
     result.hidden = !view.composerSend.message;
     result.dataset.state = view.composerSend.state;
     result.textContent = view.composerSend.message ?? "";
+    if (changed && !result.hidden) {
+      result.classList.remove("motion-pulse");
+      void result.offsetWidth; // force a reflow so the animation restarts on every state change
+      result.classList.add("motion-pulse");
+    }
   }
 }
 
@@ -575,17 +611,38 @@ function renderAnswer() {
     if (textInput && textInput.value !== view.answer.answerText) textInput.value = view.answer.answerText;
     if (evidenceInput && evidenceInput.value !== view.answer.evidenceRef) evidenceInput.value = view.answer.evidenceRef;
     if (scopeInput && scopeInput.checked !== view.answer.scopeConfirmed) scopeInput.checked = view.answer.scopeConfirmed;
-    if (counter) counter.textContent = `${view.answer.answerText.length} / ${ANSWER_TEXT_MAX}`;
+    if (counter) {
+      counter.textContent = `${view.answer.answerText.length} / ${ANSWER_TEXT_MAX}`;
+      // V5-UX-C13c: the counter animates as it approaches the limit — a real
+      // reflection of how close the actual draft is, not a fixed-time loop.
+      counter.dataset.state = view.answer.answerText.length >= ANSWER_TEXT_MAX * 0.9 ? "near-limit" : "normal";
+    }
     // Submit stays disabled until the checkbox is ticked AND there is answer
     // text — never a fake-disabled control, a real one with a real reason.
     const ready = view.answer.scopeConfirmed && view.answer.answerText.trim().length > 0
       && view.answerSend.state !== "sending";
-    if (submit) submit.toggleAttribute("disabled", !ready);
+    if (submit) {
+      // Animate in only the disabled->enabled transition, never every
+      // keystroke while it is already enabled or already disabled.
+      const wasReady = !submit.hasAttribute("disabled");
+      submit.toggleAttribute("disabled", !ready);
+      if (ready && !wasReady) {
+        submit.classList.remove("motion-pulse");
+        void submit.offsetWidth;
+        submit.classList.add("motion-pulse");
+      }
+    }
   }
   if (result) {
+    const changed = result.dataset.state !== view.answerSend.state;
     result.hidden = !view.answerSend.message;
     result.dataset.state = view.answerSend.state;
     result.textContent = view.answerSend.message ?? "";
+    if (changed && !result.hidden) {
+      result.classList.remove("motion-pulse");
+      void result.offsetWidth;
+      result.classList.add("motion-pulse");
+    }
   }
 }
 

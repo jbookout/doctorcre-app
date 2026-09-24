@@ -99,6 +99,56 @@
   .atlas-version { gap: 8px; }
 }
 
+/* V5-UX-C09 motion pass. Every animation below is one of two shared
+ * keyframes already declared in css/system.css — `breathe` (the same ring the
+ * orb and the atlas core already pulse) and `receipt-in` (the same fade+rise
+ * the toast and the doc-chat panel already enter with) — plus one new,
+ * page-scoped keyframe for the trace connector. Nothing here needs its own
+ * reduced-motion block: system.css's `*, *::before, *::after { animation:
+ * none !important; transition: none !important; }` floor already reaches
+ * every selector on this page, so a forced `prefers-reduced-motion: reduce`
+ * leaves every one of these elements exactly where its ordinary, non-animated
+ * layout puts it — nothing here uses `display: none` or `visibility` as part
+ * of the animated state, so nothing here can vanish when motion is off.
+ */
+@keyframes atlas-connector-draw { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* CR-AC-05's open-incident badge: a real pulse tied to a real open incident,
+ * never decoration on a node with none. */
+.chip[data-atlas-chip="incident"] { animation: breathe var(--motion-urgent) ease-in-out infinite; }
+/* The collapsed-ancestor marker (CR-AC-03) is the SAME chip plus a one-shot
+ * arrival pop, because a reader who has the layer collapsed needs the alert
+ * to draw the eye the instant it appears on screen, not just breathe quietly
+ * beside a summary they already stopped looking at. */
+.chip[data-atlas-chip="incident"][data-atlas-alert="group"] {
+  animation: receipt-in var(--motion-enter) var(--ease), breathe var(--motion-urgent) ease-in-out var(--motion-enter) infinite;
+}
+
+/* The recorded-steps trace drawer: each row is a freshly rendered element on
+ * every open (readTrace never patches in place), so the entrance replays
+ * exactly when the reader asks for it. A short stagger reads as the steps
+ * arriving in their recorded order rather than as a block dropping in at
+ * once, and the connector line draws top-down over the same short beat. */
+.atlas-trace .work-list { position: relative; padding-left: 14px; }
+.atlas-trace .work-list::before {
+  content: ""; position: absolute; left: 4px; top: 2px; bottom: 2px; width: 2px;
+  background: var(--line-strong); transform-origin: top;
+  animation: atlas-connector-draw var(--motion-move) var(--ease) both;
+}
+.atlas-trace .work-list li { animation: receipt-in var(--motion-enter) var(--ease) both; }
+.atlas-trace .work-list li:nth-child(2) { animation-delay: 70ms; }
+.atlas-trace .work-list li:nth-child(3) { animation-delay: 140ms; }
+.atlas-trace .work-list li:nth-child(4) { animation-delay: 210ms; }
+.atlas-trace .work-list li:nth-child(n+5) { animation-delay: 280ms; }
+
+/* The Doc tour's step change and an ordinary click land on the exact same
+ * code path (selectNode -> renderSelection), so the identity block is a new
+ * element on every selection change either way: the animation plays for the
+ * reader's own click and for the tour's advance/retreat alike, with no scroll
+ * and no camera move of any kind — "no camera hijack" stays true because
+ * nothing here moves the viewport, only the content already in place. */
+.atlas-identity { animation: receipt-in var(--motion-enter) var(--ease); }
+
 /* V5-UX-S02 Sessions tab. system.css tokens only: no literal colour, no fixed
  * width, one column at 360px, every control this tab adds at the 44px floor.
  * Session ids, host ids and cwds are unbroken tokens and wrap rather than push
@@ -149,8 +199,21 @@
  *
  * Every state below is carried by COLOUR and by SHAPE (a border weight or a
  * border style) and by its own TEXT, so a still screenshot in one colour still
- * reads correctly, and prefers-reduced-motion has nothing to turn off because
- * nothing on this tab moves. */
+ * reads correctly.
+ *
+ * Motion pass (C13b/C13c): the interactive surfaces below now move — the
+ * Kanban lift/drop, the composer and answer sends, the character counter and
+ * the room-turn arrival — every one of them built on the two shared
+ * keyframes (`breathe`, `receipt-in`) already declared in css/system.css plus
+ * one new page-scoped keyframe each for the drag lift and the refused-drop
+ * shake. None of it needs a reduced-motion block of its own: system.css's
+ * universal `animation: none !important; transition: none !important;` floor
+ * already reaches every selector here, and nothing below is ever hidden by
+ * its animated state (only `hidden`/`disabled`, both toggled by JS, control
+ * visibility) — so with motion off, every one of these elements sits exactly
+ * where its plain, non-animated layout puts it, fully visible and legible. */
+@keyframes kanban-lift { from { transform: scale(1) rotate(0deg); box-shadow: none; } to { transform: scale(1.03) rotate(-1deg); box-shadow: var(--shadow-float); } }
+@keyframes kanban-refused-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 #modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId,
 #modelRoomDispatchSearch .btn, #modelRoomDispatchQuery { min-height: var(--touch); }
 .model-room-freshness { margin: 8px 0 0; font-size: 13px; line-height: 1.6; padding-left: 10px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
@@ -172,6 +235,15 @@
 .assignment-summary { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .assignment-meta { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--quiet); }
 .assignment-card[data-status="blocked"] { border-left: 3px solid var(--amber-text); }
+/* V5-UX-C13b: real lift-and-drop physics. `data-lifted` is set on
+ * dragstart/dragend only (js/model-room.js); the drop itself never moves the
+ * element (native drag-and-drop drags a browser-owned ghost, not this node),
+ * so "drop animates back to its origin" is true by construction — what plays
+ * on a refused drop is a shake on the ORIGINAL card, naming the same card the
+ * refusal sentence below names. */
+.assignment-card[draggable="true"] { cursor: grab; transition: transform var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
+.assignment-card[data-lifted="true"] { animation: kanban-lift var(--motion-move) var(--ease) forwards; cursor: grabbing; }
+.assignment-card[data-refused="true"] { animation: kanban-refused-shake var(--motion-move) var(--ease); }
 
 .session-picks { display: grid; gap: 10px; margin-top: 12px; }
 .dispatch-search { display: grid; gap: 8px; margin-top: 12px; }
@@ -198,7 +270,11 @@
 .participant { border-left: 2px solid var(--line-strong); padding-left: 10px; min-width: 0; }
 .participant p { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 .participant-name { font-weight: 700; font-size: 13px; }
-.room-turn { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+/* V5-UX-C13b: `#modelRoomTurns` is fully rebuilt on every room read
+ * (js/model-room.js's renderParticipants innerHTML's the whole list, never
+ * patches one row in), so every row — including a newly arrived turn — is a
+ * genuinely new element each time, and the entrance below plays for real. */
+.room-turn { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; min-width: 0; animation: receipt-in var(--motion-enter) var(--ease) both; }
 .room-turn p { margin: 0; overflow-wrap: anywhere; }
 .room-turn-head { color: var(--quiet); }
 /* A body is TEXT. It is pre-wrapped so a JSON envelope stays legible without
@@ -231,10 +307,23 @@
 #modelRoomComposerForm label { font-size: 13px; font-weight: 700; }
 #modelRoomComposerText { resize: vertical; }
 .model-room-composer-result { margin: 10px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.model-room-composer-result[data-state="sending"] { animation: breathe var(--motion-urgent) ease-in-out infinite; }
 .model-room-composer-result[data-state="sent"] { border-left-style: solid; color: var(--text); }
 .model-room-composer-result[data-state="failed"] { border-left-color: var(--amber-text); color: var(--amber-text); }
-.assignment-move-target { margin-top: 12px; padding: 14px; border: 2px dashed var(--line-strong); border-radius: var(--radius); text-align: center; color: var(--muted); font-size: 12px; min-height: var(--touch); display: flex; align-items: center; justify-content: center; }
+/* `.motion-pulse` is added, and its animation restarted, exactly when
+ * `data-state` actually changes (js/model-room.js) — sending to sent, or
+ * sending to failed — so the send's own outcome is the thing that visibly
+ * arrives, not a decorative loop. */
+.model-room-composer-result.motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
+.model-room-composer-result[data-state="sending"].motion-pulse { animation: receipt-in var(--motion-enter) var(--ease), breathe var(--motion-urgent) ease-in-out var(--motion-enter) infinite; }
+.assignment-move-target { margin-top: 12px; padding: 14px; border: 2px dashed var(--line-strong); border-radius: var(--radius); text-align: center; color: var(--muted); font-size: 12px; min-height: var(--touch); display: flex; align-items: center; justify-content: center; transition: background var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease); }
+.assignment-move-target[data-hover="true"] { border-color: var(--orange); border-style: solid; background: color-mix(in srgb, var(--orange) 10%, transparent); color: var(--text); }
 .model-room-move-result { margin: 8px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+/* `.motion-pulse` is added, and forced to restart (js/model-room.js reflows
+ * before re-adding it), every time this line's own message actually changes
+ * — never on an unrelated re-render — so a fresh refusal always pops in, the
+ * same way it did the first time. */
+.model-room-move-result.motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
 .dispatch-ack-unavailable { margin: 8px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--quiet); font-size: 12px; line-height: 1.6; }
 .model-room-answer-unavailable { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); font-size: 12px; line-height: 1.6; }
 
@@ -247,11 +336,31 @@
 #modelRoomAnswerForm label { font-size: 13px; font-weight: 700; }
 #modelRoomAnswerForm .field-checkbox label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
 #modelRoomAnswerText { resize: vertical; }
-#modelRoomAnswerCounter { margin: 0; color: var(--muted); }
+#modelRoomAnswerCounter { margin: 0; color: var(--muted); transition: color var(--motion-move) var(--ease); }
+/* V5-UX-C13c: the counter animates as it approaches the 500-char limit —
+ * `data-state="near-limit"` is set at 90% by js/model-room.js on every
+ * keystroke, so this is a real reflection of the draft's own length, not a
+ * fixed-time loop. */
+#modelRoomAnswerCounter[data-state="near-limit"] { color: var(--amber-text); animation: breathe var(--motion-urgent) ease-in-out infinite; }
 #modelRoomAnswerSubmit[disabled] { opacity: 0.55; cursor: not-allowed; }
+#modelRoomAnswerSubmit { transition: opacity var(--motion-move) var(--ease); }
+/* The submit's enabled state animates in the instant the checkbox is ticked
+ * and there is answer text (js/model-room.js toggles `.motion-pulse` only on
+ * the disabled->enabled transition, never on every keystroke). */
+#modelRoomAnswerSubmit:not([disabled]).motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
 .model-room-answer-result { margin: 10px 0 0; padding-left: 10px; border-left: 2px dashed var(--line-strong); color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.model-room-answer-result[data-state="sending"] { animation: breathe var(--motion-urgent) ease-in-out infinite; }
 .model-room-answer-result[data-state="sent"] { border-left-style: solid; color: var(--text); }
 .model-room-answer-result[data-state="failed"] { border-left-color: var(--amber-text); color: var(--amber-text); }
+/* Success animates the card's move from needs_answer to triaged: a
+ * successful send re-reads the work-request card (submitAnswer) and
+ * `renderHistoryPanel` rebuilds the ledger heading from scratch, so the new
+ * `state: triaged` line is a freshly created element the moment it lands —
+ * the same "new element, entrance plays for real" contract room-turn and the
+ * Atlas identity panel already use above. */
+.context-head p.small.mono { animation: receipt-in var(--motion-enter) var(--ease); }
+.model-room-answer-result.motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
+.model-room-answer-result[data-state="sending"].motion-pulse { animation: receipt-in var(--motion-enter) var(--ease), breathe var(--motion-urgent) ease-in-out var(--motion-enter) infinite; }
 
 @media (max-width: 640px) {
   .assignment-rail { grid-template-columns: 1fr; }
