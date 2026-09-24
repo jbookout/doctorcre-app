@@ -482,6 +482,12 @@ export function createLiveClient(opts = {}) {
     // authenticated browser session — so a human caller here is honest, not
     // borrowed. It carries an idempotency key, so it goes through `write`.
     async addRoomTurn(args) { return write('add-room-turn', args); },
+    // V5-UX-C13c: the Waiting-for-Joe answer form's one write. `answer-work-
+    // request-for-joe` (carr PR #1190) carries an idempotency key, so it goes
+    // through `write`, exactly like `addRoomTurn`. HUMAN-ONLY at the server
+    // (actor.human !== true is refused there, with no sponsored-agent route
+    // at all); this client passes no actor field of its own.
+    async answerWorkRequestForJoe(args) { return write('answer-work-request-for-joe', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
     // -------------------------------------------- Doc conversations page (B07)

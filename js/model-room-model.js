@@ -553,6 +553,10 @@ export function workItemLedger(card) {
     humanRef: card.human_ref,
     title: card.title,
     state: card.state,
+    // V5-UX-C13c: `work-request-card`'s own base_version, carried straight
+    // through — never re-derived, never defaulted. See answerBaseVersion.
+    version: Number.isInteger(card.version) ? card.version : null,
+    acceptanceCriteria: Array.isArray(card.acceptance_criteria) ? card.acceptance_criteria : [],
     actingEvents: acting.map((row) => ({
       act: row.act ?? "unknown",
       recordedAs: row.recorded_as ?? null,
@@ -658,17 +662,48 @@ export function workRequestCardRequest(humanRef) {
 //     assignment he did not receive or take up: false evidence, not an
 //     honest write. See ACK_UNAVAILABLE_SENTENCE.
 //
-// ANSWERING a Waiting for Joe item (CR-AC-20) has the same gap as the Kanban
-// move: no pinned verb attaches a response to a Work Request or resolves it
-// from this app, so ANSWER_REQUEST always answers null.
+// ANSWERING a Waiting for Joe item (CR-AC-20) had the same gap as the Kanban
+// move when V5-UX-C13b shipped. V5-UX-C13c closes it: `answer-work-request-
+// for-joe` landed in carr PR #1190 (mcp-server/src/work-request-intake.js),
+// makes the sole needs_joe -> triaged transition, and — like add-room-turn —
+// refuses any caller that is not a direct human actor (`humanOnly: true,
+// authorityOnly: true`, and the handler additionally checks
+// `actor.human !== true` itself, with no sponsored-agent route at all). A
+// human's own authenticated browser session is exactly that caller.
+//
+// ONE REAL GAP REMAINS, discovered while wiring this: `work-request-card`'s
+// own handler (mcp-server/src/work-request-intake.js) refuses outright —
+// `work_request_not_found` — for any row whose state is `needs_joe`; its
+// allowed-state list is `["captured", "triaged", "ready", "declined",
+// "superseded"]` and PR #1190 does not touch it. That is the read this form
+// depends on for `base_version` (see answerBaseVersion). So in real
+// production, reading a needs_joe card for this form will itself refuse
+// today, and the form renders ANSWER_VERSION_UNAVAILABLE_SENTENCE rather than
+// guessing a version. That is a server-side gap in carr-system, not
+// something this app-only slice can fix.
 
 export const ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE = "This move is not supported: no pinned verb changes a "
   + "projected assignment's status. Source or shipping status can only change at its source, never by dragging "
   + "this card.";
 
-export const ANSWER_UNAVAILABLE_SENTENCE = "Answering this Waiting for Joe item is not available from this app: "
-  + "no pinned verb attaches a response to a Work Request or resolves one from here. The detail above is "
-  + "everything the record layer will show; resolve the request at its source.";
+/**
+ * V5-UX-C13c: shown instead of the answer form when `work-request-card`
+ * carries no usable base_version for this item — today, always, because that
+ * read refuses a needs_joe row entirely (see the comment above). Never a
+ * guessed version, never a silent form that would submit base_version: null
+ * and let the server's own refusal stand in for this page's own honesty.
+ */
+export const ANSWER_VERSION_UNAVAILABLE_SENTENCE = "This item cannot be answered from here yet: the record layer's "
+  + "own work-request-card read does not return a usable version for a needs_joe request, and answer-work-request-"
+  + "for-joe requires the exact current version as a compare-and-swap. Guessing one would risk answering a "
+  + "different version than the one shown above. This is a gap in the record layer, not a missing control on this "
+  + "page.";
+
+/** The one sentence a version_conflict answers as, in place of the server's
+ * own error code: the compare-and-swap already told the caller precisely
+ * what happened, and this is that fact in plain language. */
+export const ANSWER_VERSION_CONFLICT_SENTENCE = "This request changed since you opened it; reload to see the "
+  + "current version.";
 
 export const ACK_UNAVAILABLE_SENTENCE = "This page does not offer to acknowledge a dispatch. acknowledge-dispatch "
   + "records a FIRST-HAND stage — the desk that actually received or took up the assignment — and that desk is an "
@@ -696,10 +731,51 @@ export function composerDraftAfterAttempt(draft) {
   return { text: draft?.text ?? "" };
 }
 
-/** Answering a Waiting for Joe item, always unbuildable: no pinned verb
- * attaches a response to a Work Request. */
-export function answerRequest() {
-  return null;
+/**
+ * The base_version this form would submit, straight from `work-request-
+ * card`'s own `version` field (never a default, never re-derived). `null`
+ * means the form cannot be offered — see ANSWER_VERSION_UNAVAILABLE_SENTENCE.
+ */
+export function answerBaseVersion(card) {
+  const version = workItemLedger(card)?.version;
+  return Number.isInteger(version) ? version : null;
+}
+
+export const ANSWER_TEXT_MAX = 500;
+export const ANSWER_EVIDENCE_MAX = 500;
+
+/**
+ * `answer-work-request-for-joe`'s request, validated exactly as carr PR
+ * #1190 declares it (mcp-server/src/work-request-intake.js): human_ref,
+ * base_version, answer_text (1-500), scope_confirmed (must be the literal
+ * true), and an optional evidence_ref (1-500). `null` means "do not send
+ * it," in the same vocabulary as every other request-builder in this file.
+ * No idempotency_key here — the caller mints a fresh one per attempt.
+ */
+export function answerWorkRequestRequest({ humanRef, baseVersion, answerText, scopeConfirmed, evidenceRef } = {}) {
+  const ref = String(humanRef ?? "").trim();
+  if (!/^WR-[0-9]{1,12}$/.test(ref)) return null;
+  if (!Number.isInteger(baseVersion) || baseVersion < 1) return null;
+  const text_ = String(answerText ?? "").trim();
+  if (text_.length === 0 || text_.length > ANSWER_TEXT_MAX) return null;
+  if (scopeConfirmed !== true) return null;
+  const request = { human_ref: ref, base_version: baseVersion, answer_text: text_, scope_confirmed: true };
+  const evidence = String(evidenceRef ?? "").trim();
+  if (evidence.length > 0) {
+    if (evidence.length > ANSWER_EVIDENCE_MAX) return null;
+    request.evidence_ref = evidence;
+  }
+  return request;
+}
+
+/** The one thing a failed or refused answer attempt must do — keep the
+ * draft exactly as typed, the same rule submitComposer already follows. */
+export function answerDraftAfterAttempt(draft) {
+  return {
+    answerText: draft?.answerText ?? "",
+    evidenceRef: draft?.evidenceRef ?? "",
+    scopeConfirmed: draft?.scopeConfirmed === true,
+  };
 }
 
 /**
