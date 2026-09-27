@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { confidenceInfo, errorMessage, freshness, isDncStage, isTerminal, stageChoices } from "../js/leads-app.js";
+import { claimEvidence, confidenceInfo, errorMessage, freshness, isDncStage, isTerminal, stageChoices } from "../js/leads-app.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -74,4 +74,24 @@ test("confidence and terminal helpers preserve production values and lock suppre
     { key: "terminal", text: "Do not contact" });
   assert.equal(freshness({ do_not_contact: true, stage: "new" }).key, "terminal");
   assert.match(errorMessage({ code: "unauthorized" }), /session has ended/i);
+});
+
+test("Claim Card demands typed source links and preserves stated discrepancies", async () => {
+  const html = await read("leads.html");
+  const app = await read("js/leads-app.js");
+  const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
+  assert.match(html, /id="claimCards"[^>]+aria-busy="true"/);
+  assert.match(html, /id="claimError"[^>]+role="alert"/);
+  assert.match(app, /Possible duplicate/);
+  assert.match(app, /Retry same request/);
+  for (const verb of ["claim-card", "promote-pool", "decline-candidate"]) assert.ok(contract.mcp_operations.includes(verb));
+  const values = { name: "https://example.test/n", company: "https://example.test/c", phone: "https://example.test/p", specialty: "https://example.test/s", market: "https://example.test/m", discrepancies: "Phone differs" };
+  const evidence = claimEvidence(values, "2026-09-27T12:00:00Z");
+  assert.deepEqual(Object.keys(evidence.field_evidence), ["name", "company", "phone", "specialty", "market"]);
+  assert.deepEqual(evidence.field_evidence.phone, [2]);
+  assert.deepEqual(evidence.discrepancies, ["Phone differs"]);
+  assert.deepEqual(evidence.sources.map(item => item.observed_at), Array(5).fill("2026-09-27T12:00:00Z"));
+  assert.throws(() => claimEvidence({ ...values, phone: "http://example.test/p" }, "2026-09-27T12:00:00Z"), /HTTPS/);
+  assert.throws(() => claimEvidence({ ...values, phone: "https://user:secret@example.test/p" }, "2026-09-27T12:00:00Z"), /credentials/);
+  assert.throws(() => claimEvidence({ ...values, phone: "" }, "2026-09-27T12:00:00Z"));
 });

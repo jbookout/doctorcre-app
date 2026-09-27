@@ -20,6 +20,12 @@
   </header>
 
   <main>
+    <section class="claim-section glass" aria-labelledby="claimHeading">
+      <div class="claim-heading"><div><p class="eyebrow">Prospect decisions</p><h2 id="claimHeading">Claim Card</h2><p>Five candidates nearest an estimated lease window. You decide who becomes a lead.</p></div><button id="refreshClaims" type="button" class="control-button">Refresh candidates</button></div>
+      <p id="claimSummary" role="status" aria-live="polite">Loading candidates…</p>
+      <p id="claimError" class="board-error" role="alert" hidden></p>
+      <div id="claimCards" aria-busy="true"></div>
+    </section>
     <section class="pipeline glass" aria-labelledby="pipelineHeading">
       <div><p class="eyebrow">Pipeline field</p><h1 id="pipelineHeading">Every lead, in its current stage.</h1><p class="pipeline-copy">Scores estimate potential. They do not hide people from this board.</p></div>
       <div class="pipeline-track" tabindex="0" aria-label="Scrollable lead pipeline visualization">
