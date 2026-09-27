@@ -25,7 +25,7 @@ import {
   CLOSED_SLUG, COLUMNS, DEAL_OUTCOMES, PHASE_DATE_KIND, attachedParties, closedColumnCaption,
   columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections, filterDeals,
   groupByColumn, isDealOutcome, keyboardTarget, loadDealContext, moveIntent, moveSummary,
-  moveTitle, orderColumn, partyRoleLabel, presenceChip, recordPanelSections, typeFilters,
+  moveTitle, orderColumn, partyRoleLabel, presenceChip, recordPanelSections, tapMoveTargets, typeFilters,
 } from "../js/pipeline-model.js";
 import {
   createUndoState, ingestChangeEvents, performUndo, receiptViews,
@@ -116,6 +116,18 @@ test("a move intent names both ends, and a drop on the card's own column is not 
   assert.equal(moveIntent(deal, "due_diligence"), null, "the same column is not a move");
   assert.equal(moveIntent(deal, "not_a_phase"), null);
   assert.equal(moveIntent(null, "closing"), null);
+});
+
+test("tap offers only real phase moves and uses the same intent as drag and keyboard", () => {
+  const deal = { id: "d20", name: "Demo Osteopathic Office", phase: "Diligence" };
+  const targets = tapMoveTargets(deal);
+  assert.equal(targets.length, COLUMNS.length - 1);
+  assert.ok(!targets.some((column) => column.slug === "due_diligence"));
+  for (const target of targets) {
+    const intent = moveIntent(deal, target.slug);
+    assert.equal(intent.value, target.value);
+    assert.equal(intent.to_label, target.label);
+  }
 });
 
 test("the completion plan puts the phase patch first and carries only the follow-ups that were filled in", () => {
@@ -736,13 +748,18 @@ test("js/pipeline-model.js is pure: no DOM, no client, no network", async () => 
 
 /* ------------------------------------------------------------ what the page says */
 
-test("pipeline.html is a drag board with a hidden keyboard path and no Move button", async () => {
+test("pipeline offers drag, keyboard and tap through one reviewed move", async () => {
   const html = await read("pipeline.html");
+  const source = await read("js/pipeline.js");
   assert.match(html, /<div class="kanban" id="kanban"/);
   assert.match(html, /id="dragLive" aria-live="assertive"/, "moves are announced");
-  assert.doesNotMatch(html, /<button[^>]*>\s*Move\s*<\/button>/, "there is no Move button");
   assert.match(html, /press Enter to lift it/, "the keyboard path is stated on the page");
   assert.match(html, /Arrows choose a column, Enter drops, Escape cancels/);
+  assert.match(html, /<dialog id="moveDialog"[^>]*aria-labelledby="moveTitle"/);
+  assert.match(html, /id="moveTargets"[^>]*aria-label="Choose a destination phase"/);
+  assert.match(source, /data-move="\$\{esc\(deal\.id\)\}"/, "every rendered card offers a tap control");
+  assert.match(source, /if \(move\) \{ openMoveChooser\(move\.dataset\.move\); return; \}/);
+  assert.match(source, /beginMove\(dealId, target\.dataset\.moveTarget\)/, "tap joins the shared completion path");
 });
 
 test("pipeline.html asks for dates with a calendar only, and never claims a gate", async () => {

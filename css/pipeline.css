@@ -36,6 +36,9 @@
    lifts it for a move. A button that reads as a heading, and nothing else. */
 .card-open { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .card-open:hover { color: var(--orange-text); }
+.card-move { margin-top: 8px; min-height: var(--touch); }
+.move-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.move-target { min-height: var(--touch); text-align: left; }
 
 /* A partner's open lease on this record's phase. It says who, and nothing about
    what they intend to do. */
