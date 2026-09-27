@@ -1,7 +1,7 @@
 import { uuidv4 } from "./uuid.js";
 
-/** A deliberately small MCP client: this board reads the complete lead universe
- * and can make one bounded change, stage. Authentication remains the host's
+/** A deliberately small MCP client for the lead board and candidate decisions.
+ * Authentication remains the host's
  * same-origin cookie; there is no client-side identity or alternate endpoint. */
 export function createLeadBoardClient(options = {}) {
   const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
@@ -36,13 +36,31 @@ export function createLeadBoardClient(options = {}) {
     const text = envelope?.result?.content?.find((item) => item.type === "text")?.text;
     let payload;
     try { payload = text ? JSON.parse(text) : null; }
-    catch { throw typedError(null, "The Lead Board returned an unreadable response."); }
+    catch {
+      const error = typedError(null, "The Lead Board returned an unreadable response. The result may be unknown.");
+      error.code = "unreadable_response";
+      throw error;
+    }
     if (envelope?.result?.isError || payload?.error || payload?.ok === false) throw typedError(payload);
     return payload;
   }
 
   return {
     getLeadBoard: () => rpc("lead-board"),
+    getClaimCard: () => rpc("claim-card", { limit: 5 }),
+    promoteCandidate(candidate, evidence, idempotencyKey) {
+      return rpc("promote-pool", {
+        pool_id: candidate.pool_id, base_version: candidate.base_version,
+        stage: "outreach_active", research_evidence: evidence,
+        idempotency_key: idempotencyKey,
+      });
+    },
+    declineCandidate(candidate, reason, idempotencyKey) {
+      return rpc("decline-candidate", {
+        pool_id: candidate.pool_id, base_version: candidate.base_version,
+        reason, idempotency_key: idempotencyKey,
+      });
+    },
     moveLeadStage(lead, stage) {
       return rpc("update-lead", {
         lead: lead.registry_ref || lead.id,
