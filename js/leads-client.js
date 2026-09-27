@@ -45,7 +45,12 @@ export function createLeadBoardClient(options = {}) {
       if (mutation) throw unknownOutcome(envelope);
       throw typedError(envelope?.error || envelope, `The Lead Board request failed (${response.status}).`);
     }
-    const text = envelope?.result?.content?.find?.((item) => item.type === "text")?.text;
+    const content = envelope?.result?.content;
+    const validContent = Array.isArray(content) && content.every((item) =>
+      item !== null && typeof item === "object" && typeof item.type === "string" &&
+      (item.type !== "text" || typeof item.text === "string"));
+    if (!validContent) throw mutation ? unknownOutcome(envelope) : typedError(null, "The Lead Board returned malformed content.");
+    const text = content.find((item) => item.type === "text")?.text;
     if (typeof text !== "string") throw mutation ? unknownOutcome(envelope) : typedError(null, "The Lead Board returned an incomplete response.");
     let payload;
     try { payload = JSON.parse(text); }

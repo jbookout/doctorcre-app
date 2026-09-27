@@ -82,12 +82,14 @@ test("uncertain decision result can be retried with the same key and exact paylo
   assert.deepEqual(calls[0], calls[1]);
 });
 
-test("mutation treats broken outer JSON, missing result, and HTTP 503 as unknown outcomes", async () => {
+test("mutation treats malformed or missing MCP envelopes and HTTP 503 as unknown outcomes", async () => {
   const candidate = { pool_id: "synthetic-pool", base_version: 4 };
   for (const response of [
     { ok: true, status: 200, json: async () => { throw new Error("broken JSON"); } },
     jsonResponse({ jsonrpc: "2.0", id: 1 }),
     jsonResponse({ error: "carr_unavailable" }, false, 503),
+    jsonResponse({ result: { content: [null] } }),
+    jsonResponse({ result: { content: { find: 1 } } }),
   ]) {
     const client = createLeadBoardClient({ fetchImpl: async () => response });
     await assert.rejects(client.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });

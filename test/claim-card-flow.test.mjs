@@ -48,6 +48,8 @@ for (const [label, result] of [
   ["broken outer JSON", { ok: true, status: 200, json: async () => { throw new Error("broken JSON"); } }],
   ["missing result", response({ jsonrpc: "2.0", id: 3 })],
   ["HTTP 503", response({ error: "carr_unavailable" }, 503)],
+  ["null nested content", response({ result: { content: [null] } })],
+  ["nonfunction content find", response({ result: { content: { find: 1 } } })],
 ]) {
   test(`app keeps exact pending decline after ${label}`, async () => {
     const writes = [];
