@@ -77,9 +77,29 @@ test("uncertain decision result can be retried with the same key and exact paylo
     return jsonResponse({ result: { content: [{ type: "text", text: '{"ok":true}' }] } });
   } });
   const candidate = { pool_id: "synthetic-pool", base_version: 4 };
-  await assert.rejects(client.declineCandidate(candidate, "Not a fit", "same-key"), { code: "network_error" });
+  await assert.rejects(client.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });
   await client.declineCandidate(candidate, "Not a fit", "same-key");
   assert.deepEqual(calls[0], calls[1]);
+});
+
+test("mutation treats broken outer JSON, missing result, and HTTP 503 as unknown outcomes", async () => {
+  const candidate = { pool_id: "synthetic-pool", base_version: 4 };
+  for (const response of [
+    { ok: true, status: 200, json: async () => { throw new Error("broken JSON"); } },
+    jsonResponse({ jsonrpc: "2.0", id: 1 }),
+    jsonResponse({ error: "carr_unavailable" }, false, 503),
+  ]) {
+    const client = createLeadBoardClient({ fetchImpl: async () => response });
+    await assert.rejects(client.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });
+  }
+});
+
+test("mutation requires explicit success and keeps authoritative business refusal distinct", async () => {
+  const candidate = { pool_id: "synthetic-pool", base_version: 4 };
+  const missingSuccess = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ result: { content: [{ type: "text", text: "{}" }] } }) });
+  await assert.rejects(missingSuccess.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });
+  const refusal = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ result: { isError: true, content: [{ type: "text", text: '{"error":"version_conflict"}' }] } }) });
+  await assert.rejects(refusal.declineCandidate(candidate, "Not a fit", "same-key"), { code: "version_conflict" });
 });
 
 test("synthetic promotion moves one candidate onto the refreshed Lead Board; refusal changes neither", async () => {
