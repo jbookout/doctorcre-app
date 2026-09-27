@@ -1,7 +1,7 @@
 import { createLeadBoardClient } from "./leads-client.js";
 
 const client = createLeadBoardClient();
-const state = { board: null, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
+const state = { board: null, claims: null, pendingClaims: new Map(), claimReadEpoch: 0, activeClaim: null, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const stageKey = (stage) => stage?.slug || stage?.stage || "unassigned";
@@ -108,6 +108,120 @@ function renderBoard() {
   }).join("")}</div>`;
 }
 function notice(message, kind = "") { const node = $("leadBoardNotice"); node.hidden = !message; node.className = `board-notice ${kind}`; node.textContent = message || ""; }
+const researchFields = ["name", "company", "phone", "specialty", "market"];
+export function claimEvidence(values, observedAt) {
+  const sources = [];
+  const field_evidence = {};
+  for (const field of researchFields) {
+    let url;
+    try { url = new URL(String(values[field] || "").trim()); }
+    catch { throw new Error(`The ${field} source needs a valid HTTPS URL.`); }
+    if (url.protocol !== "https:" || url.username || url.password) throw new Error(`The ${field} source must use HTTPS without credentials in the URL.`);
+    field_evidence[field] = [sources.length];
+    sources.push({ url: url.toString(), observed_at: observedAt });
+  }
+  return { sources, field_evidence, discrepancies: values.discrepancies ? [values.discrepancies] : [] };
+}
+function claimCard(candidate) {
+  const id = esc(candidate.pool_id);
+  const name = esc(candidate.display_name || "Unnamed candidate");
+  const place = esc([candidate.city, candidate.state].filter(Boolean).join(", ") || "Location not captured");
+  const duplicate = candidate.dup_tier === "review" ? '<span class="claim-warning">Possible duplicate</span>' : "";
+  return `<article class="claim-card" data-pool-id="${id}"><h3>${name}</h3><p>${place}</p>${duplicate}<div class="claim-actions"><button type="button" data-claim-open="promote" data-pool-id="${id}">Claim as lead</button><button type="button" data-claim-open="decline" data-pool-id="${id}">Decline</button></div></article>`;
+}
+function openClaim(button) {
+  const action = button.dataset.claimOpen;
+  const poolId = button.dataset.poolId;
+  const pending = state.pendingClaims.get(`${action}:${poolId}`);
+  const candidate = pending?.candidate || state.claims?.candidates?.find(item => String(item.pool_id) === poolId);
+  if (!candidate) return;
+  state.activeClaim = { candidate, action, trigger: button };
+  const id = esc(candidate.pool_id);
+  const sourceFields = researchFields.map(field => `<label>${title(field)} source URL <input type="url" name="${field}" placeholder="https://…" required pattern="https://.*" autocomplete="off"></label>`).join("");
+  const duplicate = candidate.dup_tier === "review" ? `<p class="claim-warning">Possible duplicate of ${esc(candidate.dup_ref || "an existing record")}. ${esc(candidate.dup_basis || "Review before claiming.")}</p>` : "";
+  $("claimDialogTitle").textContent = `${action === "promote" ? "Claim" : "Decline"} ${candidate.display_name || "candidate"}`;
+  $("claimDialogContext").innerHTML = `<p>${esc([candidate.city, candidate.state].filter(Boolean).join(", ") || "Location not captured")} · ${esc(candidate.vertical || "Specialty not captured")}</p><p>Lane: ${esc(candidate.lane || "Unspecified")} · Score: ${esc(candidate.score ?? "Unknown")} · Estimated lease event: ${esc(candidate.est_lease_event || "Unknown")}</p><p>${esc(candidate.segment_play || candidate.score_basis || "Review the source before deciding.")}</p>${duplicate}`;
+  $("claimDialogBody").innerHTML = action === "promote"
+    ? `<form data-claim-action="promote" data-pool-id="${id}"><p>Check an HTTPS source for each field. The app records the time you confirm these sources.</p><div class="claim-source-grid">${sourceFields}</div><label>Discrepancies found (leave blank if none) <textarea name="discrepancies" rows="2"></textarea></label><label class="claim-confirm"><input type="checkbox" name="checked" required> I checked these sources and their field links now.</label><button type="submit">Claim as lead</button></form>`
+    : `<form data-claim-action="decline" data-pool-id="${id}"><label>Reason, in your own words <textarea name="reason" required rows="2"></textarea></label><button type="submit">Decline</button></form>`;
+  $("claimDialogError").hidden = true;
+  if (pending) {
+    const form = $("claimDialogBody").querySelector("form");
+    for (const field of form.elements) if (field.type !== "submit") field.disabled = true;
+    form.querySelector('button[type="submit"]').textContent = "Retry same request";
+    $("claimDialogError").textContent = "The earlier result is unknown. Retry this exact request.";
+    $("claimDialogError").hidden = false;
+  }
+  $("claimDialog").showModal();
+  $("claimDialogBody").querySelector("input,textarea,button")?.focus();
+}
+function renderClaims() {
+  const claims = state.claims;
+  $("claimSummary").textContent = claims ? `${claims.claimable} claimable · ${claims.needs_contact_count} need a contact channel · Showing ${claims.candidates?.length || 0} ranked candidates` : "Candidates unavailable";
+  $("claimCards").innerHTML = claims?.candidates?.length ? claims.candidates.map(claimCard).join("") : '<p class="board-state empty">No claimable candidates on this card.</p>';
+}
+async function refreshClaims() {
+  if (state.pendingClaims.size || $("claimDialog").open) {
+    $("claimError").textContent = state.pendingClaims.size ? "A decision has an unknown result. Retry that request before refreshing candidates." : "Close the decision popup before refreshing candidates.";
+    $("claimError").hidden = false;
+    return;
+  }
+  const readEpoch = ++state.claimReadEpoch;
+  $("claimCards").setAttribute("aria-busy", "true");
+  try {
+    const claims = await client.getClaimCard();
+    if (readEpoch !== state.claimReadEpoch || state.pendingClaims.size || $("claimDialog").open) return;
+    state.claims = claims; $("claimError").hidden = true; renderClaims();
+  } catch (error) {
+    if (readEpoch !== state.claimReadEpoch || state.pendingClaims.size) return;
+    $("claimError").textContent = errorMessage(error); $("claimError").hidden = false;
+    if (!state.claims) $("claimSummary").textContent = "Candidates unavailable";
+  } finally { if (readEpoch === state.claimReadEpoch) $("claimCards").setAttribute("aria-busy", "false"); }
+}
+async function submitClaim(form) {
+  const action = form.dataset.claimAction;
+  const pendingId = `${action}:${form.dataset.poolId}`;
+  let pending = state.pendingClaims.get(pendingId);
+  const candidate = pending?.candidate || state.activeClaim?.candidate || state.claims?.candidates?.find(item => String(item.pool_id) === form.dataset.poolId);
+  if (!candidate || String(candidate.pool_id) !== form.dataset.poolId) return;
+  if (!pending && state.pendingClaims.size) {
+    $("claimDialogError").textContent = "Retry the decision with an unknown result before starting another.";
+    $("claimDialogError").hidden = false;
+    return;
+  }
+  if (!pending) {
+    const values = Object.fromEntries(new FormData(form).entries());
+    let payload;
+    try {
+      if (action === "promote") payload = claimEvidence(values, new Date().toISOString());
+      else { payload = String(values.reason || "").trim(); if (!payload) throw new Error("Give a reason in your own words."); }
+    } catch (error) { $("claimDialogError").textContent = error.message; $("claimDialogError").hidden = false; return; }
+    pending = { key: crypto.randomUUID(), payload, candidate };
+    state.pendingClaims.set(pendingId, pending);
+  }
+  ++state.claimReadEpoch; // Any read started before this decision cannot repaint its form or result.
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    if (action === "promote") await client.promoteCandidate(pending.candidate, pending.payload, pending.key);
+    else await client.declineCandidate(pending.candidate, pending.payload, pending.key);
+    state.pendingClaims.delete(pendingId);
+    $("claimError").hidden = true;
+    $("claimDialog").close();
+    await Promise.all([refreshClaims(), refresh()]);
+    $("moveAnnouncement").textContent = action === "promote" ? "Candidate claimed. The Lead Board has refreshed." : "Candidate declined. The Claim Card has refreshed.";
+  } catch (error) {
+    if (error.code !== "unknown_outcome") state.pendingClaims.delete(pendingId);
+    $("claimDialogError").textContent = error.code === "unknown_outcome" ? "The result is unknown. Retry this request with the same key; do not start another decision." : error.code === "version_conflict" ? "This candidate changed elsewhere. No decision was made; refresh candidates before trying again." : errorMessage(error);
+    $("claimDialogError").hidden = false;
+    $("claimError").textContent = $("claimDialogError").textContent;
+    $("claimError").hidden = false;
+    if (error.code === "unknown_outcome") {
+      for (const field of form.elements) if (field !== button) field.disabled = true;
+      button.textContent = "Retry same request";
+    }
+  } finally { button.disabled = false; }
+}
 export function errorMessage(error) {
   if (error.code === "version_conflict") return "This lead changed elsewhere. No stage change was made; the latest board has loaded for review.";
   if (error.code === "not_authenticated" || error.code === "unauthorized") return "Your session has ended. Sign in again, then return to the Lead Board.";
@@ -158,5 +272,11 @@ if (typeof document !== "undefined") {
   $("refreshBoard").addEventListener("click", refresh);
   for (const view of ["board", "list"]) $(view + "View").addEventListener("click", () => { state.view = view; $("boardView").setAttribute("aria-pressed", String(view === "board")); $("listView").setAttribute("aria-pressed", String(view === "list")); renderBoard(); });
   $("leadBoard").addEventListener("click", (event) => { const button = event.target.closest("[data-move-lead]"); if (button) moveLead(button); });
+  $("refreshClaims").addEventListener("click", refreshClaims);
+  $("claimCards").addEventListener("click", (event) => { const button = event.target.closest("[data-claim-open]"); if (button) openClaim(button); });
+  $("claimDialog").addEventListener("submit", (event) => { const form = event.target.closest("form[data-claim-action]"); if (!form) return; event.preventDefault(); submitClaim(form); });
+  $("closeClaimDialog").addEventListener("click", () => $("claimDialog").close());
+  $("claimDialog").addEventListener("close", () => { state.activeClaim?.trigger?.focus?.(); state.activeClaim = null; });
   refresh();
+  refreshClaims();
 }

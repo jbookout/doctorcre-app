@@ -48,3 +48,84 @@ test("moveLeadStage submits exact versioned stage-only update and does not retry
     arguments: { lead: "L-100", base_version: 7, fields: { stage: "contacted" }, idempotency_key: "test-key" },
   });
 });
+
+test("Claim Card reads five ranked candidates and sends explicit versioned decisions", async () => {
+  const calls = [];
+  const client = createLeadBoardClient({ fetchImpl: async (_path, init) => {
+    const params = JSON.parse(init.body).params;
+    calls.push(params);
+    return jsonResponse({ result: { content: [{ type: "text", text: JSON.stringify(params.name === "claim-card" ? { claimable: 2, candidates: [] } : { ok: true }) }] } });
+  } });
+  const card = await client.getClaimCard();
+  assert.equal(card.claimable, 2);
+  const candidate = { pool_id: "synthetic-pool", base_version: 4 };
+  const evidence = { sources: [{ url: "https://example.test/source", observed_at: "2026-09-27T00:00:00Z" }], field_evidence: { name: [0], company: [0], phone: [0], specialty: [0], market: [0] }, discrepancies: [] };
+  await client.promoteCandidate(candidate, evidence, "fixed-claim-key");
+  await client.declineCandidate(candidate, "Outside our territory", "fixed-decline-key");
+  assert.deepEqual(calls, [
+    { name: "claim-card", arguments: { limit: 5 } },
+    { name: "promote-pool", arguments: { pool_id: "synthetic-pool", base_version: 4, stage: "outreach_active", research_evidence: evidence, idempotency_key: "fixed-claim-key" } },
+    { name: "decline-candidate", arguments: { pool_id: "synthetic-pool", base_version: 4, reason: "Outside our territory", idempotency_key: "fixed-decline-key" } },
+  ]);
+});
+
+test("uncertain decision result can be retried with the same key and exact payload", async () => {
+  const calls = [];
+  const client = createLeadBoardClient({ fetchImpl: async (_path, init) => {
+    calls.push(JSON.parse(init.body).params);
+    if (calls.length === 1) throw new Error("connection lost");
+    return jsonResponse({ result: { content: [{ type: "text", text: '{"ok":true}' }] } });
+  } });
+  const candidate = { pool_id: "synthetic-pool", base_version: 4 };
+  await assert.rejects(client.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });
+  await client.declineCandidate(candidate, "Not a fit", "same-key");
+  assert.deepEqual(calls[0], calls[1]);
+});
+
+test("mutation treats malformed or missing MCP envelopes and HTTP 503 as unknown outcomes", async () => {
+  const candidate = { pool_id: "synthetic-pool", base_version: 4 };
+  for (const response of [
+    { ok: true, status: 200, json: async () => { throw new Error("broken JSON"); } },
+    jsonResponse({ jsonrpc: "2.0", id: 1 }),
+    jsonResponse({ error: "carr_unavailable" }, false, 503),
+    jsonResponse({ result: { content: [null] } }),
+    jsonResponse({ result: { content: { find: 1 } } }),
+  ]) {
+    const client = createLeadBoardClient({ fetchImpl: async () => response });
+    await assert.rejects(client.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });
+  }
+});
+
+test("mutation requires explicit success and keeps authoritative business refusal distinct", async () => {
+  const candidate = { pool_id: "synthetic-pool", base_version: 4 };
+  const missingSuccess = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ result: { content: [{ type: "text", text: "{}" }] } }) });
+  await assert.rejects(missingSuccess.declineCandidate(candidate, "Not a fit", "same-key"), { code: "unknown_outcome" });
+  const refusal = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ result: { isError: true, content: [{ type: "text", text: '{"error":"version_conflict"}' }] } }) });
+  await assert.rejects(refusal.declineCandidate(candidate, "Not a fit", "same-key"), { code: "version_conflict" });
+});
+
+test("synthetic promotion moves one candidate onto the refreshed Lead Board; refusal changes neither", async () => {
+  let candidate = { pool_id: "synthetic-pool", base_version: 2 };
+  const leads = [];
+  const seen = new Map();
+  const client = createLeadBoardClient({ fetchImpl: async (_path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === "claim-card") result = { claimable: Number(Boolean(candidate)), needs_contact_count: 0, candidates: candidate ? [candidate] : [] };
+    if (name === "lead-board") result = { generated_at: "2026-09-27T12:00:00Z", stages: [], leads };
+    if (name === "promote-pool") {
+      if (args.base_version !== candidate?.base_version) result = { error: "version_conflict" };
+      else if (seen.has(args.idempotency_key)) result = seen.get(args.idempotency_key);
+      else { candidate = null; leads.push({ registry_ref: "L-SYNTHETIC", stage: args.stage }); result = { ok: true, ref: "L-SYNTHETIC" }; seen.set(args.idempotency_key, result); }
+    }
+    return jsonResponse({ result: { content: [{ type: "text", text: JSON.stringify(result) }] } });
+  } });
+  const before = await client.getClaimCard();
+  await assert.rejects(client.promoteCandidate({ ...candidate, base_version: 1 }, {}, "stale"), { code: "version_conflict" });
+  assert.equal((await client.getClaimCard()).claimable, before.claimable);
+  assert.equal((await client.getLeadBoard()).leads.length, 0);
+  const evidence = { sources: [{ url: "https://example.test/source", observed_at: "2026-09-27T12:00:00Z" }], field_evidence: { name: [0], company: [0], phone: [0], specialty: [0], market: [0] }, discrepancies: [] };
+  await client.promoteCandidate(candidate, evidence, "claim-once");
+  assert.equal((await client.getClaimCard()).claimable, 0);
+  assert.equal((await client.getLeadBoard()).leads[0].registry_ref, "L-SYNTHETIC");
+});

@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.25.0",
+  "version": "1.26.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "35009e9dedab3a603836c662d0f7f12dfeb1a284"
@@ -22,6 +22,7 @@
     "add-room-turn",
     "answer-work-request-for-joe",
     "capture-queue",
+    "claim-card",
     "close-loop",
     "create-doc-conversation",
     "create-national-account",
@@ -29,6 +30,7 @@
     "current-work-item",
     "current-work-requests",
     "deal-room-board",
+    "decline-candidate",
     "decline-work-request",
     "end-deal-review",
     "engineering-passport",
@@ -47,6 +49,7 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "promote-pool",
     "read-dispatch-history",
     "read-doc-conversation",
     "read-doc-outcome-cards",
