@@ -23,3 +23,10 @@ test("the primary nav marks Tours as the active/current page", () => {
     /<a[^>]*class="active"[^>]*aria-current="page"[^>]*>Tours<\/a>|<a[^>]*aria-current="page"[^>]*class="active"[^>]*>Tours<\/a>/,
   );
 });
+
+test("tours/index.html does not link the workspace app's global stylesheet", () => {
+  // css/workspace.css carries global rules (dark body background, etc.) that
+  // are not scoped to .primary-nav and break the tours page's own light
+  // layout. The nav must be styled entirely within tours/app.css instead.
+  assert.doesNotMatch(html, /href="\/css\/workspace\.css"/);
+});
