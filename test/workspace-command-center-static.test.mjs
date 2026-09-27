@@ -445,11 +445,12 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(css, /\.field input,\.field select\{[^}]*min-height:44px/);
   assert.match(css, /\.panel-close\{[^}]*min-height:44px/);
   assert.match(css, /@media\(max-width:767px\)/);
-  // Calls and Tours are visible as unavailable and cannot be started here.
+  // Calls is visible as unavailable and cannot be started here; Tours is a
+  // real, reachable surface and must not be marked inert.
   assert.match(html, /class="inert-entry" aria-disabled="true">Calls</);
-  assert.match(html, /class="inert-entry" aria-disabled="true">Tours</);
+  assert.doesNotMatch(html, /class="inert-entry" aria-disabled="true">Tours</);
   assert.doesNotMatch(html, /href="[^"]*"[^>]*>Calls</);
-  assert.doesNotMatch(html, /href="[^"]*"[^>]*>Tours</);
+  assert.match(html, /href="\/tours"/);
 });
 
 test("mobile Home navigation replaces desktop navigation without occluding content", async () => {
