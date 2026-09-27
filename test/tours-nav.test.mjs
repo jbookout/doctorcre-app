@@ -40,8 +40,17 @@ test("tours/app.css defines the canonical dark-register ink token and gives the 
   assert.match(bodyRule, /var\(--ink-0\)/, "expected the body background to use the dark --ink-0 token");
 });
 
-test("tours/app.css resets the tour PDF's printer-friendly light look via @media print", () => {
-  assert.match(css, /@media\s+print/);
+test("printing the tours page switches the colour tokens to dark-on-white", () => {
+  const print = css.match(/@media\s+print\s*\{[\s\S]*$/)?.[0] || "";
+  assert.ok(print, "expected an @media print block");
+  for (const token of ["--text", "--muted", "--quiet", "--line"]) {
+    assert.match(print, new RegExp(`${token}\\s*:\\s*#`), `print must redefine ${token}`);
+  }
+});
+
+test("buttons keep the page-wide solid focus ring", () => {
+  assert.doesNotMatch(css, /button:focus-visible\s*\{[^}]*rgba\(/, "button focus must not use a translucent ring");
+  assert.doesNotMatch(css, /button:hover\s*,\s*button:focus-visible/, "focus must not share the hover style");
 });
 
 test("#empty-state carries no descriptive sentence under its title", () => {

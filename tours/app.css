@@ -49,7 +49,8 @@ textarea:focus-visible,input:focus-visible{outline:3px solid var(--orange);outli
 .share-link p{margin:8px 0 0;color:var(--green);font-size:.8rem;line-height:1.4}
 .projection-preview{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:rgba(0,0,0,.35);color:var(--text);font:12px/1.5 ui-monospace,monospace;padding:10px;white-space:pre-wrap}
 button{min-height:38px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.03);color:var(--text);font:700 .83rem var(--body);padding:8px 11px;cursor:pointer}
-button:hover,button:focus-visible{border-color:var(--orange);outline:2px solid rgba(242,138,57,.4);outline-offset:2px}
+button:hover{border-color:var(--orange);outline:2px solid rgba(242,138,57,.4);outline-offset:2px}
+button:focus-visible{border-color:var(--orange);outline:3px solid var(--orange);outline-offset:2px}
 .route-actions button:first-child,.share-actions button:first-child,#save-sheet{border-color:var(--orange);background:var(--orange);color:#17100b}
 .route-actions button:first-child:hover,.share-actions button:first-child:hover,#save-sheet:hover{background:#ffa155}
 .download-button{display:inline-flex;min-height:38px;align-items:center;border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:.83rem;font-weight:700;padding:8px 11px;text-decoration:none}
@@ -65,7 +66,7 @@ button:hover,button:focus-visible{border-color:var(--orange);outline:2px solid r
 @media(max-width:560px){.topbar .primary-nav{width:100%}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 @media print{
-  :root{background:#fff;color:#14243a}
+  :root{--text:#14243a;--muted:#3b4d63;--quiet:#4d5f75;--line:#cccccc;--orange:#b85a12;background:#fff;color:#14243a}
   body{background:#fff!important;color:#14243a!important;background-image:none!important}
   .topbar,.library,.skip-link{display:none!important}
   .layout{display:block}
