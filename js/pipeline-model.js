@@ -119,6 +119,11 @@ export function moveIntent(deal, toSlug) {
   });
 }
 
+/** Tap targets use the same move intent as drag and keyboard; never offer a no-op. */
+export function tapMoveTargets(deal) {
+  return COLUMNS.filter((column) => moveIntent(deal, column.slug) !== null);
+}
+
 /** The move, said the way a person reading a receipt would say it. */
 export function moveSummary(intent) {
   if (!intent) return '';
