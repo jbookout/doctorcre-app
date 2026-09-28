@@ -46,9 +46,9 @@ test("Tasks routes invalid and failed reads through the dialog guard before pain
   assert.match(source, /view\.message = "The board answered[\s\S]*?dialogAction = reconcileTaskDialog\(\);\s*render\(\);/);
   assert.match(source, /view\.message = view\.status === "unauthorized"[\s\S]*?dialogAction = reconcileTaskDialog\(\);/);
   assert.match(source, /transition\.action === "conceal" \|\| transition\.action === "discard"\) \{\s*closeDialog\(\)/);
-  assert.match(source, /if \(dialogAction === "conceal"\) \$\("retryRead"\)\?\.focus\(\)/);
+  assert.match(source, /settleTaskReadFocus\(dialogAction\)/);
   assert.match(source, /key: view\.open, viewer: view\.openViewer,/,
     "the modal snapshot must retain the actor who opened it, not the actor on the latest board read");
-  assert.match(source, /async function loadViewer\(\) \{[\s\S]*?invalidateTaskRead\(view, "loading"\);\s*reconcileTaskDialog\(\);/,
+  assert.match(source, /async function loadViewer\(\) \{[\s\S]*?invalidateTaskRead\(view, "loading"\);\s*if \(reconcileTaskDialog\(\) === "conceal"\) retryFocusPending = true;/,
     "identity refresh conceals the old modal before a new actor can be shown");
 });

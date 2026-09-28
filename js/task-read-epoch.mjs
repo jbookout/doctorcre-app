@@ -11,3 +11,7 @@ export function invalidateTaskRead(view, status, message = null) {
 export function isCurrentTaskRead(view, sequence) {
   return sequence === view.sequence;
 }
+
+export function shouldFocusTaskRetry(concealedDialog, status) {
+  return concealedDialog && (status === "error" || status === "unauthorized" || status === "unverified");
+}

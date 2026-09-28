@@ -34,7 +34,7 @@ import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local
 import { mountReadOnResume } from "./read-on-resume.mjs";
 import { taskDialogTransition } from "./task-dialog-refresh.mjs";
 import { draftIdentityPlan } from "./task-draft-identity.mjs";
-import { invalidateTaskRead, isCurrentTaskRead } from "./task-read-epoch.mjs";
+import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "./task-read-epoch.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -67,6 +67,7 @@ let heldDialog = null;
 let unverifiedPreviousActor = null;
 let heldQuickAdd = null;
 let viewerSequence = 0;
+let retryFocusPending = false;
 
 function announce(text) {
   const live = $("taskLive");
@@ -217,6 +218,12 @@ function reconcileTaskDialog() {
   return transition.action;
 }
 
+function settleTaskReadFocus(dialogAction) {
+  const concealed = retryFocusPending || dialogAction === "conceal";
+  if (shouldFocusTaskRetry(concealed, view.status)) $("retryRead")?.focus();
+  if (view.status !== "loading") retryFocusPending = false;
+}
+
 function refuseUnverifiedViewer() {
   // Invalidate every board request started by a previously verified actor.
   invalidateTaskRead(view, "unverified", "Your account could not be verified. No task records are shown. Retry read.");
@@ -237,7 +244,7 @@ function refuseUnverifiedViewer() {
   const dialogAction = reconcileTaskDialog();
   render();
   renderDrafts();
-  if (dialogAction === "conceal") $("retryRead")?.focus();
+  settleTaskReadFocus(dialogAction);
 }
 
 /* --------------------------------------------------------------------- reading */
@@ -260,7 +267,7 @@ async function load() {
         dialogAction = reconcileTaskDialog();
         render();
         renderQuickAdd();
-        if (dialogAction === "conceal") $("retryRead")?.focus();
+        settleTaskReadFocus(dialogAction);
         return;
       }
       for (const row of payload.loops) {
@@ -285,7 +292,7 @@ async function load() {
   render();
   renderDrafts();
   renderQuickAdd();
-  if (dialogAction === "conceal") $("retryRead")?.focus();
+  settleTaskReadFocus(dialogAction);
 }
 
 /** The fresh read every write is built from. Errors arrive in the payload. */
@@ -648,7 +655,7 @@ async function loadViewer() {
   // Conceal rows, modal details, and actor-scoped drafts while the session's
   // current identity is unknown. This also fences off older board responses.
   invalidateTaskRead(view, "loading");
-  reconcileTaskDialog();
+  if (reconcileTaskDialog() === "conceal") retryFocusPending = true;
   render();
   renderDrafts();
   try {
