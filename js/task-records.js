@@ -34,6 +34,7 @@ import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local
 import { mountReadOnResume } from "./read-on-resume.mjs";
 import { taskDialogTransition } from "./task-dialog-refresh.mjs";
 import { draftIdentityPlan } from "./task-draft-identity.mjs";
+import { invalidateTaskRead, isCurrentTaskRead } from "./task-read-epoch.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -65,6 +66,7 @@ const operations = new Map();
 let heldDialog = null;
 let unverifiedPreviousActor = null;
 let heldQuickAdd = null;
+let viewerSequence = 0;
 
 function announce(text) {
   const live = $("taskLive");
@@ -140,11 +142,12 @@ function render() {
   document.querySelectorAll("#scopeSwitch button[data-scope]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.scope === view.scope)));
 
   const viewerLabel = $("viewerLabel");
-  if (viewerLabel) viewerLabel.textContent = view.status === "unverified" ? "Account unverified" : `${partnerName(viewer)}’s workspace`;
+  if (viewerLabel) viewerLabel.textContent = view.status === "unverified" ? "Account unverified"
+    : view.status === "loading" ? "Reading workspace" : `${partnerName(viewer)}’s workspace`;
 
   if ($("quickAddForm")) {
-    if (view.status === "unverified") $("quickAddForm").hidden = true;
-    else if (view.status === "ready") $("quickAddForm").hidden = false;
+    if (view.status !== "ready") $("quickAddForm").hidden = true;
+    else $("quickAddForm").hidden = false;
   }
 
   if (view.status === "loading") setBoardStatus("refreshing", "Reading the record…");
@@ -215,6 +218,8 @@ function reconcileTaskDialog() {
 }
 
 function refuseUnverifiedViewer() {
+  // Invalidate every board request started by a previously verified actor.
+  invalidateTaskRead(view, "unverified", "Your account could not be verified. No task records are shown. Retry read.");
   heldDialog = null;
   if (draftViewer) {
     unverifiedPreviousActor = draftViewer;
@@ -229,9 +234,6 @@ function refuseUnverifiedViewer() {
   if ($("quickAddParsed")) $("quickAddParsed").innerHTML = "";
   if ($("quickAddQuestion")) $("quickAddQuestion").textContent = "";
   draftViewer = null;
-  view.status = "unverified";
-  view.rows = [];
-  view.message = "Your account could not be verified. No task records are shown. Retry read.";
   const dialogAction = reconcileTaskDialog();
   render();
   renderDrafts();
@@ -248,7 +250,7 @@ async function load() {
     const payloads = await Promise.all(TASK_KINDS.map((kind) => client.loopBoard({
       kind, status: "open", limit: 300, summary: false,
     })));
-    if (sequence !== view.sequence) return;
+    if (!isCurrentTaskRead(view, sequence)) return;
     const rows = [];
     for (const payload of payloads) {
       if (!validBoardPayload(payload)) {
@@ -271,7 +273,7 @@ async function load() {
     view.message = null;
     reconcileTaskDialog();
   } catch (error) {
-    if (sequence !== view.sequence) return;
+    if (!isCurrentTaskRead(view, sequence)) return;
     const status = Number(error?.status || 0);
     view.status = status === 401 || status === 403 ? "unauthorized" : "error";
     view.rows = [];
@@ -467,10 +469,10 @@ function renderDrafts() {
   const list = $("draftList");
   if (!bar || !list) return;
   const drafts = localDrafts?.list() || [];
-  bar.hidden = drafts.length === 0 || view.status === 'unauthorized' || view.status === 'unverified';
+  bar.hidden = drafts.length === 0 || view.status !== 'ready';
   bar.querySelector('.chip-label').textContent = draftViewer && localDrafts.isPersisted()
     ? 'Drafts on this device · select to review' : 'Drafts kept on this page only · select to review';
-  if (view.status === 'unauthorized' || view.status === 'unverified') { list.innerHTML = ''; return; }
+  if (view.status !== 'ready') { list.innerHTML = ''; return; }
   list.innerHTML = drafts.map((draft) =>
     `<button class="chip" type="button" data-restore-draft="${escapeHtml(draft.id)}">${escapeHtml(draft.sentence)}${draft.dueDate ? ` · ${escapeHtml(draft.dueDate)}` : ""}</button>`
   ).join("");
@@ -496,8 +498,7 @@ function wire() {
   });
 
   $("retryRead")?.addEventListener("click", async () => {
-    if (!await loadViewer()) { refuseUnverifiedViewer(); return; }
-    await load();
+    await refreshVerified();
   });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
   $("taskDialog")?.addEventListener("close", () => { view.open = null; view.openViewer = null; view.closing = null; });
@@ -643,8 +644,16 @@ function mountDock() {
 }
 
 async function loadViewer() {
+  const identityRead = ++viewerSequence;
+  // Conceal rows, modal details, and actor-scoped drafts while the session's
+  // current identity is unknown. This also fences off older board responses.
+  invalidateTaskRead(view, "loading");
+  reconcileTaskDialog();
+  render();
+  renderDrafts();
   try {
     const board = await client.getBoard({ workspace: 'all' });
+    if (identityRead !== viewerSequence) return null;
     if (!board?.actor) return false;
     const plan = draftIdentityPlan(unverifiedPreviousActor || draftViewer, board.actor);
     if (plan === "reuse" && !unverifiedPreviousActor) return true;
@@ -666,15 +675,25 @@ async function loadViewer() {
     heldQuickAdd = null;
     restoredDraftId = null;
     viewer = board.actor;
+    // The prior actor's board cannot be rendered under the newly verified name.
+    // The next load() owns the only transition back to ready.
     reconcileTaskDialog();
     renderDrafts();
     renderQuickAdd();
     render();
     return true;
   } catch {
+    if (identityRead !== viewerSequence) return null;
     // A disconnected page can keep drafts in memory until identity is verified.
     return false;
   }
+}
+
+async function refreshVerified() {
+  const verified = await loadViewer();
+  if (verified === null) return;
+  if (!verified) { refuseUnverifiedViewer(); return; }
+  await load();
 }
 
 /* ------------------------------------------------------------------------ boot */
@@ -696,20 +715,15 @@ async function boot() {
   }
   window.addEventListener('online', async () => {
     if (!client) return;
-    if (!await loadViewer()) { refuseUnverifiedViewer(); return; }
-    await load();
+    await refreshVerified();
   });
   mountReadOnResume({ document, window, refresh: async () => {
-    if (!await loadViewer()) { refuseUnverifiedViewer(); return; }
-    await load();
+    await refreshVerified();
     renderQuickAdd();
   } });
   renderDrafts();
-  if (!client.selfActor && !await loadViewer()) {
-    refuseUnverifiedViewer();
-    return;
-  }
-  await load();
+  if (!client.selfActor) await refreshVerified();
+  else await load();
 }
 
 boot();
