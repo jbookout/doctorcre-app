@@ -1,7 +1,8 @@
 import { createLeadBoardClient } from "./leads-client.js";
+import { mountReadOnResume } from "./read-on-resume.mjs";
 
 const client = createLeadBoardClient();
-const state = { board: null, claims: null, pendingClaims: new Map(), claimReadEpoch: 0, activeClaim: null, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
+const state = { board: null, claims: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, activeClaim: null, moving: false, resumeDeferred: false, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const stageKey = (stage) => stage?.slug || stage?.stage || "unassigned";
@@ -174,8 +175,9 @@ async function refreshClaims() {
     state.claims = claims; $("claimError").hidden = true; renderClaims();
   } catch (error) {
     if (readEpoch !== state.claimReadEpoch || state.pendingClaims.size) return;
+    state.claims = null;
+    renderClaims();
     $("claimError").textContent = errorMessage(error); $("claimError").hidden = false;
-    if (!state.claims) $("claimSummary").textContent = "Candidates unavailable";
   } finally { if (readEpoch === state.claimReadEpoch) $("claimCards").setAttribute("aria-busy", "false"); }
 }
 async function submitClaim(form) {
@@ -207,6 +209,7 @@ async function submitClaim(form) {
     else await client.declineCandidate(pending.candidate, pending.payload, pending.key);
     state.pendingClaims.delete(pendingId);
     $("claimError").hidden = true;
+    state.resumeDeferred = false; // The confirmed decision refreshes both reads below.
     $("claimDialog").close();
     await Promise.all([refreshClaims(), refresh()]);
     $("moveAnnouncement").textContent = action === "promote" ? "Candidate claimed. The Lead Board has refreshed." : "Candidate declined. The Claim Card has refreshed.";
@@ -233,10 +236,33 @@ function staleNotice() {
   else notice("");
 }
 async function refresh() {
+  const readEpoch = ++state.boardReadEpoch;
   const board = $("leadBoard"); board.setAttribute("aria-busy", "true"); $("leadBoardError").hidden = true;
-  try { state.board = await client.getLeadBoard(); refreshFilters(); pipeline(); renderBoard(); staleNotice(); }
-  catch (error) { $("leadBoardError").textContent = errorMessage(error); $("leadBoardError").hidden = false; board.innerHTML = '<p class="board-state empty">The board is unavailable. Existing lead records were not changed.</p>'; }
-  finally { board.setAttribute("aria-busy", "false"); }
+  try {
+    const next = await client.getLeadBoard();
+    if (readEpoch !== state.boardReadEpoch) return;
+    state.board = next; refreshFilters(); pipeline(); renderBoard(); staleNotice();
+  } catch (error) {
+    if (readEpoch !== state.boardReadEpoch) return;
+    state.board = null;
+    $("leadBoardError").textContent = errorMessage(error); $("leadBoardError").hidden = false;
+    board.innerHTML = '<p class="board-state empty">The board is unavailable. Existing lead records were not changed.</p>';
+  } finally { if (readEpoch === state.boardReadEpoch) board.setAttribute("aria-busy", "false"); }
+}
+async function refreshAfterReturn() {
+  if ($("claimDialog").open || state.pendingClaims.size || state.moving) {
+    state.resumeDeferred = true;
+    return;
+  }
+  state.resumeDeferred = false;
+  // A returned page cannot keep showing records fetched under an older cookie.
+  ++state.boardReadEpoch;
+  ++state.claimReadEpoch;
+  state.board = null;
+  state.claims = null;
+  $("leadBoard").innerHTML = '<p class="board-state empty">Refreshing the Lead Board…</p>';
+  renderClaims();
+  await Promise.all([refresh(), refreshClaims()]);
 }
 async function moveLead(button) {
   const id = button.dataset.moveLead;
@@ -245,6 +271,9 @@ async function moveLead(button) {
   if (!lead || !select || isStageLocked(lead) || isDncStage(select.value) || select.value === lead.stage) return;
   const focused = document.activeElement;
   button.disabled = true;
+  state.moving = true;
+  ++state.boardReadEpoch;
+  $("leadBoard").setAttribute("aria-busy", "false"); // Any older read is now invalid.
   try {
     await client.moveLeadStage(lead, select.value);
     await refresh();
@@ -263,7 +292,11 @@ async function moveLead(button) {
       $("leadBoardError").hidden = false;
       if (focused instanceof HTMLElement) focused.focus();
     }
-  } finally { button.disabled = false; }
+  } finally {
+    button.disabled = false;
+    state.moving = false;
+    if (state.resumeDeferred) refreshAfterReturn();
+  }
 }
 
 if (typeof document !== "undefined") {
@@ -276,7 +309,13 @@ if (typeof document !== "undefined") {
   $("claimCards").addEventListener("click", (event) => { const button = event.target.closest("[data-claim-open]"); if (button) openClaim(button); });
   $("claimDialog").addEventListener("submit", (event) => { const form = event.target.closest("form[data-claim-action]"); if (!form) return; event.preventDefault(); submitClaim(form); });
   $("closeClaimDialog").addEventListener("click", () => $("claimDialog").close());
-  $("claimDialog").addEventListener("close", () => { state.activeClaim?.trigger?.focus?.(); state.activeClaim = null; });
+  $("claimDialog").addEventListener("close", () => {
+    state.activeClaim?.trigger?.focus?.(); state.activeClaim = null;
+    if (state.resumeDeferred && !state.pendingClaims.size) refreshAfterReturn();
+  });
+  if (typeof window !== "undefined" && typeof document.addEventListener === "function") {
+    mountReadOnResume({ document, window, refresh: refreshAfterReturn });
+  }
   refresh();
   refreshClaims();
 }
