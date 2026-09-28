@@ -24,6 +24,13 @@ import {
   parseCalendarState, readCalendar, staggerDelay, stepAnchor, toDay, upcomingEntries, weekStrip,
 } from "../js/calendar-model.js";
 
+test("Calendar rereads on return and clears prior-session dates while checking", async () => {
+  const source = await readFile(new URL("../js/calendar.js", import.meta.url), "utf8");
+  assert.match(source, /mountReadOnResume\(\{[\s\S]*?refresh:\s*\(\)\s*=>\s*load\(\{\s*failClosed:\s*true\s*\}\)/);
+  assert.match(source, /if\s*\(failClosed\)\s*\{[\s\S]*?status:\s*["']loading["']/);
+  assert.match(source, /asOf\.textContent\s*=\s*""/, "a failed return cannot retain an old read count");
+});
+
 const ROOT = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
 
