@@ -13,6 +13,7 @@
 // The markup stays literal in each page. This file wires what is already there
 // and never injects a shell, because the static suites read the HTML.
 import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from "./visual-system.js";
+import { mountReadOnResume } from "./read-on-resume.mjs";
 
 export { mountDocDock } from "./doc-dock.js";
 
@@ -117,13 +118,14 @@ export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_P
  * V5-UX-B12b — the unread-count badge every page's top bar carries next to
  * "Notifications".
  *
- * Loaded ONCE per page load, from `notification-feed`'s own `unread_count`
+ * Loaded on page entry and once for each return to the page, from
+ * `notification-feed`'s own `unread_count`
  * (the count is over every row the recipient holds, never recomputed from a
  * capped list — the same field `js/notifications-model.js`'s `unreadLine`
- * prints). There is no polling loop: a stale badge on a page a person leaves
- * open is a smaller cost than a request this page did not need to keep
- * making. It fails QUIET — a failed or malformed read hides the badge rather
- * than printing a stale or fabricated number, matching `notification-feed`'s
+ * prints). The return read uses the same event boundary as the Notifications
+ * page; no interval polls while the page stays open. It fails QUIET — a failed
+ * or malformed read hides the badge rather than printing a stale or fabricated
+ * number, matching `notification-feed`'s
  * B12a rule that a refusal is never drawn as an empty result.
  *
  * `client.notificationFeed` is the same method every dealroom client
@@ -137,24 +139,32 @@ export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_P
 export async function mountNotificationBadge(client, { elementId = "navUnreadBadge" } = {}) {
   const badge = document.getElementById(elementId);
   if (!badge || !client || typeof client.notificationFeed !== "function") return;
-  try {
-    const feed = await client.notificationFeed({ limit: 1 });
-    const count = feed?.unread_count;
-    if (!Number.isInteger(count) || count <= 0) {
-      badge.hidden = true;
-      badge.textContent = "";
-      badge.removeAttribute("aria-label");
-      return;
-    }
-    badge.hidden = false;
-    badge.textContent = String(count);
-    badge.setAttribute("aria-label", count === 1 ? "1 unread notification" : `${count} unread notifications`);
-  } catch {
-    // Fail quiet: no fake number, no error drawn into the top bar.
+  let readSequence = 0;
+  const hide = () => {
     badge.hidden = true;
     badge.textContent = "";
     badge.removeAttribute("aria-label");
+  };
+  const read = async () => {
+    const sequence = ++readSequence;
+    hide();
+    try {
+      const feed = await client.notificationFeed({ limit: 1 });
+      if (sequence !== readSequence) return;
+      const count = feed?.unread_count;
+      if (!Number.isInteger(count) || count <= 0) return;
+      badge.hidden = false;
+      badge.textContent = String(count);
+      badge.setAttribute("aria-label", count === 1 ? "1 unread notification" : `${count} unread notifications`);
+    } catch {
+      // Fail quiet: no fake number, no error drawn into the top bar.
+      if (sequence === readSequence) hide();
+    }
+  };
+  if (typeof document.addEventListener === "function" && typeof globalThis.window?.addEventListener === "function") {
+    mountReadOnResume({ document, window: globalThis.window, refresh: read });
   }
+  await read();
 }
 
 /**
