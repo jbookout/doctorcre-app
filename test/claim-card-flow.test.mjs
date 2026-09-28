@@ -20,7 +20,8 @@ function surface(fetchImpl) {
   const document = { getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Node(id)); return nodes.get(id); }, activeElement: null };
   const previous = { document: globalThis.document, fetch: globalThis.fetch, FormData: globalThis.FormData };
   globalThis.document = document;
-  globalThis.fetch = fetchImpl;
+  globalThis.fetch = (path, init) => JSON.parse(init.body).params.name === "deal-room-board"
+    ? tool({ actor: "joe" }) : fetchImpl(path, init);
   globalThis.FormData = class { constructor(form) { this.form = form; } *entries() { yield ["reason", this.form.reason]; } };
   return { nodes, node: id => document.getElementById(id), restore() { globalThis.document = previous.document; globalThis.fetch = previous.fetch; globalThis.FormData = previous.FormData; } };
 }

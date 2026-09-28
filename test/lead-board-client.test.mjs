@@ -21,6 +21,18 @@ test("getLeadBoard uses same-origin cookie-authenticated MCP JSON-RPC", async ()
   });
 });
 
+test("getActor reads server-derived identity and refuses a missing actor", async () => {
+  const calls = [];
+  const client = createLeadBoardClient({ fetchImpl: async (_path, init) => {
+    calls.push(JSON.parse(init.body).params);
+    return jsonResponse({ result: { content: [{ type: "text", text: JSON.stringify({ actor: "joe" }) }] } });
+  } });
+  assert.equal(await client.getActor(), "joe");
+  assert.deepEqual(calls, [{ name: "deal-room-board", arguments: { workspace: "team" } }]);
+  const missing = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ result: { content: [{ type: "text", text: "{}" }] } }) });
+  assert.equal(await missing.getActor(), null);
+});
+
 test("typed tool errors preserve code and payload", async () => {
   const client = createLeadBoardClient({ fetchImpl: async () => jsonResponse({
     jsonrpc: "2.0", id: 1, result: { isError: true, content: [{ type: "text", text: JSON.stringify({ error: "not_authenticated", message: "Sign in required." }) }] },

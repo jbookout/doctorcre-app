@@ -70,6 +70,10 @@ export function createLeadBoardClient(options = {}) {
   }
 
   return {
+    async getActor() {
+      const board = await rpc("deal-room-board", { workspace: "team" });
+      return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
+    },
     getLeadBoard: () => rpc("lead-board"),
     getClaimCard: () => rpc("claim-card", { limit: 5 }),
     promoteCandidate(candidate, evidence, idempotencyKey) {
