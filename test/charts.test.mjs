@@ -542,7 +542,7 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
   assert.match(workspaceJs, /const boardRead = readBoard\(\);/);
   assert.match(workspaceJs, /function readBoard\(\) \{\s*return client\.getBoard\(\{ workspace: 'all' \}\);\s*\}/);
   assert.match(workspaceJs, /async function loadBoardRecords\(boardRead\) \{/, "Quick add is handed the read rather than taking one");
-  assert.match(workspaceJs, /const board = await boardRead;/);
+  assert.match(workspaceJs, /board = await boardRead;/);
   assert.match(pageJs, /const pending = sharedBoard \|\| client\.getBoard\(\{ workspace: "all" \}\);\s*\n\s*sharedBoard = null;/);
   // popstate restores the TAB as well as the selection (advisory A6).
   assert.match(pageJs, /if \(address\.present\) selectTab\?\.\(\);/);

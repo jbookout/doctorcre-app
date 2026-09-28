@@ -260,16 +260,16 @@ test("Home's Quick add names come from a board read, and a late board response c
   assert.equal(parsed.related, records[0].name);
   assert.equal(parsed.relatedId, records[0].id);
 
-  // The page issues the board read ALONGSIDE the command-centre read, under a
-  // second sequence of its own, and the two guards never share a counter.
+  // The page issues the board read ALONGSIDE the command-centre read, under an
+  // independent draft-board generation, and the two guards never share a counter.
   // V5-UX-B06 — the read moved up into boot() and is now SHARED with the Charts
   // tab rather than taken twice. It is still the same one board read, still
-  // alongside the command-centre read, still under its own sequence.
+  // alongside the command-centre read, still under its own generation.
   assert.match(pageJs, /const boardRead = readBoard\(\);/, "the names come from the shared deal-room-board read");
   assert.equal((pageJs.match(/client\.getBoard\(/g) || []).length, 1, "the page takes exactly one board read");
-  assert.match(pageJs, /const board = await boardRead;/, "Quick add is handed that one read");
-  assert.match(pageJs, /boardSequence/, "the board read has its own sequence");
-  assert.match(pageJs, /acceptsResponse\(view\.boardSequence, sequence\)/, "a late board answer is discarded");
+  assert.match(pageJs, /board = await boardRead;/, "Quick add is handed that one read");
+  assert.match(pageJs, /draftBoardReadiness\.begin\(\)/, "the board read has its own generation");
+  assert.match(pageJs, /draftBoardReadiness\.current\(sequence\)/, "a late board answer is discarded");
   assert.match(pageJs, /records: view\.records/);
   assert.doesNotMatch(pageJs, /records:\s*\[\]/, "Quick add is given the records the page already holds");
   const loadBody = pageJs.slice(pageJs.indexOf("async function load()"), pageJs.indexOf("async function loadBoardRecords"));
@@ -292,8 +292,9 @@ test("an unread or failed board read leaves Quick add with an empty record list 
 
   // The failure is swallowed on the page: the board's error text never reaches
   // a reader whose command-centre read succeeded.
-  assert.match(pageJs, /catch \{\s*records = Object\.freeze\(\[\]\);/, "a failed board read falls back to an empty list");
-  assert.doesNotMatch(pageJs.slice(pageJs.indexOf("async function loadBoardRecords"), pageJs.indexOf("function settle(")), /setStatus|announce|showToast/, "a failed board read paints no error on the page");
+  assert.match(pageJs, /draftBoardReadiness\.complete\(sequence, board\)/, "the full board is validated before Quick add unlocks");
+  assert.match(pageJs, /view\.boardStatus = "error"/, "failed or malformed board reads remain retryable");
+  assert.match(html, /id="quickAddReadStatus" aria-live="polite" role="status"/, "a screen reader hears board readiness changes");
 });
 
 test("Home's Quick add renders the ambiguity question from its own read", () => {
@@ -501,7 +502,9 @@ test("the page reads the two verbs alongside the command centre, each under its 
   const loadBody = pageJs.slice(pageJs.indexOf("async function load()"), pageJs.indexOf("async function loadBoardRecords"));
   assert.doesNotMatch(loadBody, /todayTriage|loopBoard/, "the section reads are not chained behind the command-centre read");
   assert.match(pageJs, /function readSections\(\)/, "one place starts both section reads");
-  assert.match(pageJs, /\$\("retryRead"\)\?\.addEventListener\("click", \(\) => \{ load\(\); readSections\(\); \}\)/, "Retry re-reads every section, not only the counts");
+  assert.match(pageJs, /\$\("retryRead"\)\?\.addEventListener\("click", \(\) => \{ load\(\); readSections\(\); loadBoardRecords\(readBoard\(\)\); \}\)/, "Retry re-reads the board alongside every section");
+  assert.match(pageJs, /boardFailed = view\.boardStatus === "error"/, "a board-only failure exposes Retry read");
+  assert.match(pageJs, /if \(!draftBoardReadiness\.canFile\(draftViewer, globalThis\.navigator\?\.onLine !== false\)\)/, "new sentences and restored drafts share the filing guard");
   // A failed section read shows that section as unverified and nothing else.
   assert.match(pageJs, /thisWeekView\(view\.week\.payload, \{ today: localDay\(\) \}\)/, "the week is recomputed against today's clock, not the clock of the read");
 });
