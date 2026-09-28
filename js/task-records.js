@@ -32,6 +32,7 @@ import {
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 import { mountReadOnResume } from "./read-on-resume.mjs";
+import { taskDialogTransition } from "./task-dialog-refresh.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -59,6 +60,7 @@ let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
+let heldDialog = null;
 
 function announce(text) {
   const live = $("taskLive");
@@ -173,10 +175,39 @@ function render() {
   announce(`${ordered.length} record(s) shown in the ${view.scope === "mine" ? "Mine" : "Team"} scope.`);
 }
 
+function reconcileTaskDialog() {
+  const dialog = $("taskDialog");
+  const open = dialog?.open && view.open ? {
+    key: view.open, viewer, closing: view.closing, outcome: $("taskOutcome")?.value || "",
+  } : null;
+  const transition = taskDialogTransition({ status: view.status, open, held: heldDialog, rows: view.rows, viewer });
+  heldDialog = transition.held;
+  if (transition.action === "conceal" || transition.action === "discard") {
+    closeDialog();
+    if ($("taskDialogTitle")) $("taskDialogTitle").textContent = "Task";
+    if ($("taskDialogRows")) $("taskDialogRows").innerHTML = "";
+    if ($("taskDue")) $("taskDue").value = "";
+    if ($("taskOutcome")) $("taskOutcome").value = "";
+    if ($("taskCloseForm")) $("taskCloseForm").hidden = true;
+    return transition.action;
+  }
+  if (transition.action === "restore") {
+    view.open = transition.snapshot.key;
+    view.closing = transition.snapshot.closing;
+    if ($("taskOutcome")) $("taskOutcome").value = transition.snapshot.outcome;
+    openTask(view.open, { preserveDraft: true });
+    if ($("taskCloseForm")) $("taskCloseForm").hidden = !transition.snapshot.closing;
+  } else if (transition.action === "refresh") {
+    openTask(transition.snapshot.key, { preserveDraft: true });
+  }
+  return transition.action;
+}
+
 /* --------------------------------------------------------------------- reading */
 
 async function load() {
   const sequence = ++view.sequence;
+  let dialogAction = null;
   if (view.status !== "ready") { view.status = "loading"; render(); }
   try {
     const payloads = await Promise.all(TASK_KINDS.map((kind) => client.loopBoard({
@@ -187,8 +218,12 @@ async function load() {
     for (const payload of payloads) {
       if (!validBoardPayload(payload)) {
         view.status = "error";
+        view.rows = [];
         view.message = "The board answered in a shape this page cannot read, so no part of it is shown as a record.";
+        dialogAction = reconcileTaskDialog();
         render();
+        renderQuickAdd();
+        if (dialogAction === "conceal") $("retryRead")?.focus();
         return;
       }
       for (const row of payload.loops) {
@@ -199,23 +234,21 @@ async function load() {
     view.rows = rows;
     view.status = "ready";
     view.message = null;
-    if (view.open) {
-      if (currentRow()) openTask(view.open, { preserveDraft: true });
-      else {
-        closeDialog();
-        announce("This record is no longer open. The list now shows the current work.");
-      }
-    }
+    reconcileTaskDialog();
   } catch (error) {
     if (sequence !== view.sequence) return;
     const status = Number(error?.status || 0);
     view.status = status === 401 || status === 403 ? "unauthorized" : "error";
+    view.rows = [];
     view.message = view.status === "unauthorized"
       ? "Sign in again to read the shared record. Nothing is shown from a session that has ended."
       : "The shared record could not be read. Nothing here has been inferred.";
+    dialogAction = reconcileTaskDialog();
   }
   render();
   renderDrafts();
+  renderQuickAdd();
+  if (dialogAction === "conceal") $("retryRead")?.focus();
 }
 
 /** The fresh read every write is built from. Errors arrive in the payload. */
@@ -423,7 +456,10 @@ function wire() {
     if (row) handOver(row);
   });
 
-  $("retryRead")?.addEventListener("click", () => load());
+  $("retryRead")?.addEventListener("click", async () => {
+    if (!await loadViewer()) heldDialog = null;
+    await load();
+  });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
   $("taskDialog")?.addEventListener("close", () => { view.open = null; view.closing = null; });
 
@@ -570,8 +606,8 @@ function mountDock() {
 async function loadViewer() {
   try {
     const board = await client.getBoard({ workspace: 'all' });
-    if (!board?.actor) return;
-    if (board.actor === draftViewer) return;
+    if (!board?.actor) return false;
+    if (board.actor === draftViewer) return true;
     const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
     if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
     localDrafts = saved;
@@ -581,8 +617,10 @@ async function loadViewer() {
     renderDrafts();
     renderQuickAdd();
     render();
+    return true;
   } catch {
     // A disconnected page can keep drafts in memory until identity is verified.
+    return false;
   }
 }
 
@@ -605,11 +643,11 @@ async function boot() {
   }
   window.addEventListener('online', async () => {
     if (!client) return;
-    await loadViewer();
+    if (!await loadViewer()) heldDialog = null;
     await load();
   });
   mountReadOnResume({ document, window, refresh: async () => {
-    await loadViewer();
+    if (!await loadViewer()) heldDialog = null;
     await load();
     renderQuickAdd();
   } });
