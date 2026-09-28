@@ -26,6 +26,7 @@
 //      none to report.
 
 import { createCommandDock } from './command-dock.js';
+import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
@@ -145,15 +146,17 @@ function renderBoard() {
   const rows = filterDeals([...state.deals.values()], state.filter);
   const grouped = groupByColumn(rows);
   state.unplaced = grouped.unplaced.length;
-  board.innerHTML = grouped.columns.map((column) => {
-    const cards = orderColumn(column.deals);
-    const chosen = state.lifted && state.target === column.slug;
-    return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
-      aria-label="${esc(column.label)}, ${cards.length} cards">
-      <h3>${esc(column.label)}<small>${cards.length}</small></h3>
-      ${cards.map(cardHtml).join('')}
-    </section>`;
-  }).join('');
+  preserveBoardFocus({ board, document, announce, paint() {
+    board.innerHTML = grouped.columns.map((column) => {
+      const cards = orderColumn(column.deals);
+      const chosen = state.lifted && state.target === column.slug;
+      return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
+        aria-label="${esc(column.label)}, ${cards.length} cards">
+        <h3>${esc(column.label)}<small>${cards.length}</small></h3>
+        ${cards.map(cardHtml).join('')}
+      </section>`;
+    }).join('');
+  } });
   const note = $('boardNote');
   if (note) {
     note.hidden = state.unplaced === 0;
