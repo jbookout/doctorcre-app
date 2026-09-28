@@ -15,6 +15,9 @@ test("a failed board read conceals the task detail and retains typed close text 
   assert.equal(ended.action, "conceal");
   assert.equal(ended.held, null, "a finished session does not retain a private outcome for a future actor");
   assert.equal(taskDialogTransition({ status: "unauthorized", open: null, held: open, rows: [], viewer: "joe" }).held, null);
+  const unverified = taskDialogTransition({ status: "unverified", open, held: null, rows: [], viewer: "joe" });
+  assert.equal(unverified.action, "conceal");
+  assert.equal(unverified.held, null, "failed identity verification never carries a close outcome forward");
 });
 
 test("a valid reread refreshes an open task without clearing its typed close outcome", () => {

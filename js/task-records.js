@@ -33,6 +33,7 @@ import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 import { mountReadOnResume } from "./read-on-resume.mjs";
 import { taskDialogTransition } from "./task-dialog-refresh.mjs";
+import { draftIdentityPlan } from "./task-draft-identity.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -62,6 +63,8 @@ let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
 let heldDialog = null;
+let unverifiedPreviousActor = null;
+let heldQuickAdd = null;
 
 function announce(text) {
   const live = $("taskLive");
@@ -137,10 +140,16 @@ function render() {
   document.querySelectorAll("#scopeSwitch button[data-scope]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.scope === view.scope)));
 
   const viewerLabel = $("viewerLabel");
-  if (viewerLabel) viewerLabel.textContent = `${partnerName(viewer)}’s workspace`;
+  if (viewerLabel) viewerLabel.textContent = view.status === "unverified" ? "Account unverified" : `${partnerName(viewer)}’s workspace`;
+
+  if ($("quickAddForm")) {
+    if (view.status === "unverified") $("quickAddForm").hidden = true;
+    else if (view.status === "ready") $("quickAddForm").hidden = false;
+  }
 
   if (view.status === "loading") setBoardStatus("refreshing", "Reading the record…");
   else if (view.status === "unauthorized") setBoardStatus("unknown", "Session ended");
+  else if (view.status === "unverified") setBoardStatus("unknown", "Account unverified");
   else if (view.status === "error") setBoardStatus("urgent", "Record read unavailable");
   else setBoardStatus("healthy", "Read from the record layer");
 
@@ -203,6 +212,30 @@ function reconcileTaskDialog() {
     openTask(transition.snapshot.key, { preserveDraft: true });
   }
   return transition.action;
+}
+
+function refuseUnverifiedViewer() {
+  heldDialog = null;
+  if (draftViewer) {
+    unverifiedPreviousActor = draftViewer;
+    heldQuickAdd = {
+      actor: draftViewer,
+      sentence: $("quickAddInput")?.value || "",
+      dueDate: $("quickAddDate")?.value || "",
+    };
+  }
+  if ($("quickAddInput")) $("quickAddInput").value = "";
+  if ($("quickAddDate")) $("quickAddDate").value = "";
+  if ($("quickAddParsed")) $("quickAddParsed").innerHTML = "";
+  if ($("quickAddQuestion")) $("quickAddQuestion").textContent = "";
+  draftViewer = null;
+  view.status = "unverified";
+  view.rows = [];
+  view.message = "Your account could not be verified. No task records are shown. Retry read.";
+  const dialogAction = reconcileTaskDialog();
+  render();
+  renderDrafts();
+  if (dialogAction === "conceal") $("retryRead")?.focus();
 }
 
 /* --------------------------------------------------------------------- reading */
@@ -434,10 +467,10 @@ function renderDrafts() {
   const list = $("draftList");
   if (!bar || !list) return;
   const drafts = localDrafts?.list() || [];
-  bar.hidden = drafts.length === 0 || view.status === 'unauthorized';
+  bar.hidden = drafts.length === 0 || view.status === 'unauthorized' || view.status === 'unverified';
   bar.querySelector('.chip-label').textContent = draftViewer && localDrafts.isPersisted()
     ? 'Drafts on this device · select to review' : 'Drafts kept on this page only · select to review';
-  if (view.status === 'unauthorized') { list.innerHTML = ''; return; }
+  if (view.status === 'unauthorized' || view.status === 'unverified') { list.innerHTML = ''; return; }
   list.innerHTML = drafts.map((draft) =>
     `<button class="chip" type="button" data-restore-draft="${escapeHtml(draft.id)}">${escapeHtml(draft.sentence)}${draft.dueDate ? ` · ${escapeHtml(draft.dueDate)}` : ""}</button>`
   ).join("");
@@ -463,7 +496,7 @@ function wire() {
   });
 
   $("retryRead")?.addEventListener("click", async () => {
-    if (!await loadViewer()) heldDialog = null;
+    if (!await loadViewer()) { refuseUnverifiedViewer(); return; }
     await load();
   });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
@@ -613,11 +646,24 @@ async function loadViewer() {
   try {
     const board = await client.getBoard({ workspace: 'all' });
     if (!board?.actor) return false;
-    if (board.actor === draftViewer) return true;
-    const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
-    if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
-    localDrafts = saved;
+    const plan = draftIdentityPlan(unverifiedPreviousActor || draftViewer, board.actor);
+    if (plan === "reuse" && !unverifiedPreviousActor) return true;
+    if (plan === "replace") {
+      if ($("quickAddInput")) $("quickAddInput").value = "";
+      if ($("quickAddDate")) $("quickAddDate").value = "";
+    }
+    if (plan !== "reuse") {
+      const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
+      if (plan === "first") for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
+      localDrafts = saved;
+    }
     draftViewer = board.actor;
+    if (plan === "reuse" && unverifiedPreviousActor && heldQuickAdd?.actor === board.actor) {
+      if ($("quickAddInput")) $("quickAddInput").value = heldQuickAdd.sentence;
+      if ($("quickAddDate")) $("quickAddDate").value = heldQuickAdd.dueDate;
+    }
+    unverifiedPreviousActor = null;
+    heldQuickAdd = null;
     restoredDraftId = null;
     viewer = board.actor;
     reconcileTaskDialog();
@@ -650,17 +696,20 @@ async function boot() {
   }
   window.addEventListener('online', async () => {
     if (!client) return;
-    if (!await loadViewer()) heldDialog = null;
+    if (!await loadViewer()) { refuseUnverifiedViewer(); return; }
     await load();
   });
   mountReadOnResume({ document, window, refresh: async () => {
-    if (!await loadViewer()) heldDialog = null;
+    if (!await loadViewer()) { refuseUnverifiedViewer(); return; }
     await load();
     renderQuickAdd();
   } });
   renderDrafts();
+  if (!client.selfActor && !await loadViewer()) {
+    refuseUnverifiedViewer();
+    return;
+  }
   await load();
-  if (!client.selfActor) await loadViewer();
 }
 
 boot();

@@ -6,8 +6,8 @@ const stillOpen = (snapshot, rows) => Array.isArray(rows) && rows.some((row) =>
 export function taskDialogTransition({ status, open, held, rows, viewer }) {
   if (status !== "ready") {
     return open
-      ? { action: "conceal", snapshot: null, held: status === "unauthorized" ? null : open }
-      : { action: "none", snapshot: null, held: status === "unauthorized" ? null : held || null };
+      ? { action: "conceal", snapshot: null, held: status === "unauthorized" || status === "unverified" ? null : open }
+      : { action: "none", snapshot: null, held: status === "unauthorized" || status === "unverified" ? null : held || null };
   }
   if (open) return stillOpen(open, rows) && open.viewer === viewer
     ? { action: "refresh", snapshot: open, held: null }
