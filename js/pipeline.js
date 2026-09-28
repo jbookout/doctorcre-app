@@ -49,7 +49,7 @@ import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, filterDeals, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, orderColumn, presenceChip,
-  recordPanelSections, typeFilters,
+  recordPanelSections, tapMoveTargets, typeFilters,
 } from './pipeline-model.js';
 import { uuidv4 } from './uuid.js';
 
@@ -135,6 +135,7 @@ function cardHtml(deal) {
     </div>
     <p class="small">${esc(deal.next_step || 'No next step recorded')}</p>
     ${chip ? `<p class="presence-chip">${esc(chip)}</p>` : ''}
+    <button class="btn card-move" type="button" data-move="${esc(deal.id)}" aria-label="Move ${esc(deal.name)} to another phase">Move</button>
   </article>`;
 }
 
@@ -698,8 +699,25 @@ function beginMove(dealId, toSlug) {
   state.lifted = null;
   state.target = null;
   if (!intent) { renderBoard(); return; }
-  announce(`${intent.name} dropped in ${intent.to_label}.`);
+  announce(`Reviewing ${intent.name} for ${intent.to_label}. Nothing has been saved yet.`);
   openCompletion(intent);
+}
+
+function openMoveChooser(dealId) {
+  const deal = state.deals.get(dealId);
+  const dialog = $('moveDialog');
+  if (!deal || !dialog) return;
+  const targets = tapMoveTargets(deal);
+  if (!targets.length) return;
+  dialog.dataset.dealId = dealId;
+  $('moveTitle').textContent = `Move ${deal.name}`;
+  $('moveFrom').textContent = `Currently in ${columnLabel(deal.phase)}. Choose a destination, then review the move before saving.`;
+  $('moveTargets').innerHTML = targets.map((column) =>
+    `<button class="btn move-target" type="button" data-move-target="${esc(column.slug)}">${esc(column.label)}</button>`
+  ).join('');
+  leasePhase(dealId);
+  if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+  $('moveTargets').querySelector('button')?.focus();
 }
 
 function wireBoard() {
@@ -740,15 +758,16 @@ function wireBoard() {
   board.addEventListener('keydown', (event) => {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
+    // Buttons own their Enter/Space action; the card's lift keys apply only to
+    // the card itself, even while a keyboard move is already lifted.
+    if (event.target.closest('button')) return;
     const id = card.dataset.id;
     const deal = state.deals.get(id);
     if (!deal) return;
     const here = columnByValue(deal.phase);
 
     if ((event.key === 'Enter' || event.key === ' ') && state.lifted !== id) {
-      // The card title is its own button and opens the record; the card body is
-      // what lifts, so Enter on the title must not do both.
-      if (event.target.closest('.card-open')) return;
+      // The card body lifts; nested controls already handled their own keys.
       event.preventDefault();
       state.lifted = id;
       state.target = here ? here.slug : COLUMNS[0].slug;
@@ -799,6 +818,8 @@ function wire() {
   });
 
   document.addEventListener('click', (event) => {
+    const move = event.target.closest('button[data-move]');
+    if (move) { openMoveChooser(move.dataset.move); return; }
     const open = event.target.closest('button[data-open]');
     if (open) { openPanel(open.dataset.open, open); return; }
     const retry = event.target.closest('button[data-retry-write]');
@@ -811,6 +832,16 @@ function wire() {
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
+
+  $('moveTargets')?.addEventListener('click', (event) => {
+    const target = event.target.closest('button[data-move-target]');
+    if (!target) return;
+    const dialog = $('moveDialog');
+    const dealId = dialog.dataset.dealId;
+    dialog.close();
+    beginMove(dealId, target.dataset.moveTarget);
+  });
+  $('moveCancel')?.addEventListener('click', () => $('moveDialog')?.close());
 
   $('panelClose')?.addEventListener('click', () => { state.panelPinned = false; closePanel(); });
   $('panelPin')?.addEventListener('click', () => {
