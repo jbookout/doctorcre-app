@@ -1,5 +1,6 @@
 // Quick-add drafts belong to this browser and viewer. They are never requests
 // and are always re-parsed against the current board before a person files one.
+import { validBoardPayload } from './charts-model.js';
 const PREFIX = 'doctorcre:quick-add-drafts:v1:';
 const LIMIT = 30;
 
@@ -77,9 +78,10 @@ export function createDraftBoardReadiness() {
       return ++generation;
     },
     current(token) { return token === generation; },
-    complete(token, actor) {
-      if (token !== generation || typeof actor !== 'string' || !actor.trim()) return false;
-      verifiedActor = actor;
+    complete(token, board) {
+      if (token !== generation || !validBoardPayload(board)
+        || typeof board.actor !== 'string' || !board.actor.trim()) return false;
+      verifiedActor = board.actor;
       return true;
     },
     invalidate() {

@@ -63,7 +63,7 @@ const view = {
   // The Quick add record list and its OWN sequence. The board read is a second
   // read with a second lifetime, so it gets a second guard: a late board answer
   // must not paint over a newer one, and it must never touch view.sequence.
-  records: Object.freeze([]),
+  records: Object.freeze([]), boardStatus: "loading",
   // V5-UX-B01 — the two section reads. Each keeps its own last verified answer
   // and its own sequence; `day` is the local day the sections were last drawn
   // against, so crossing midnight is noticed and both sections are read again.
@@ -377,7 +377,9 @@ function renderRetry() {
   const today = localDay();
   const sectionFailed = sectionReadFailed(view.week, (payload) => thisWeekView(payload, { today }))
     || sectionReadFailed(view.waiting, (payload) => waitingView(payload, { today }));
-  retry.hidden = phase === "unauthorized" || phase === "loading" || (countsVerified && !sectionFailed);
+  const boardFailed = view.boardStatus === "error";
+  retry.hidden = phase === "unauthorized" || (phase === "loading" && !boardFailed)
+    || (countsVerified && !sectionFailed && !boardFailed);
 }
 
 function renderSections() {
@@ -448,8 +450,8 @@ async function load() {
  * `deal-room-board` — already in the pinned interface, so no contract moves.
  * It runs ALONGSIDE the command-centre read, never chained to it: the counts
  * paint whether or not the board answers. A failed or unanswered board read
- * leaves Quick add with an empty list — no guessed names, and no record-layer
- * error text on a page whose own read succeeded.
+ * leaves Quick add unverified with an empty list. Its own inline status and
+ * Retry read affordance explain the refusal without guessing names.
  *
  * V5-UX-B06 — the read is now passed IN rather than taken here, because the
  * Charts tab needs the same answer and the page promises one board read at one
@@ -458,19 +460,23 @@ async function load() {
  */
 async function loadBoardRecords(boardRead) {
   const sequence = draftBoardReadiness.begin();
+  view.boardStatus = "loading";
+  const readStatus = $("quickAddReadStatus");
+  if (readStatus) readStatus.textContent = "Checking the current record list.";
   view.records = Object.freeze([]);
   renderQuickAdd();
-  let records = [];
-  let actor = null;
+  renderRetry();
+  let board = null;
   try {
-    const board = await boardRead;
-    records = quickAddRecords(board?.deals);
-    actor = board?.actor || null;
-  } catch {
-    records = Object.freeze([]);
-  }
+    board = await boardRead;
+  } catch { /* A failed read stays unverified and offers Retry read. */ }
   if (!draftBoardReadiness.current(sequence)) return;
-  if (actor) draftBoardReadiness.complete(sequence, actor);
+  const verified = draftBoardReadiness.complete(sequence, board);
+  view.boardStatus = verified ? "ready" : "error";
+  if (readStatus) readStatus.textContent = verified
+    ? "Current record list verified. Quick add is ready."
+    : "Current record list could not be verified. Use Retry read before filing.";
+  const actor = verified ? board.actor : null;
   if (actor && actor !== draftViewer) {
       const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: actor });
       if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
@@ -480,8 +486,9 @@ async function loadBoardRecords(boardRead) {
       viewer = actor;
       renderDrafts();
   }
-  view.records = records;
+  view.records = verified ? quickAddRecords(board.deals) : Object.freeze([]);
   renderQuickAdd();
+  renderRetry();
 }
 
 function readBoard() {
@@ -605,9 +612,13 @@ function renderQuickAdd() {
   const plan = quickAddPlan(effective, { viewer, sentence });
   const question = $("quickAddQuestion");
   if (question) {
-    question.textContent = plan.args
-      ? `${plan.summary} · files as ${plan.kind === "team_loop" ? "a team record" : "a personal record"}`
-      : `Keep it as a draft, or answer: ${plan.questions.join(" ")}`;
+    question.textContent = view.boardStatus === "error"
+      ? "The current record list could not be verified. Retry read before filing, or keep this as a draft."
+      : view.boardStatus === "loading"
+        ? "Checking the current record list. Keep this as a draft until it is ready."
+        : plan.args
+          ? `${plan.summary} · files as ${plan.kind === "team_loop" ? "a team record" : "a personal record"}`
+          : `Keep it as a draft, or answer: ${plan.questions.join(" ")}`;
   }
   return { plan, sentence, parsed: effective };
 }
@@ -682,7 +693,7 @@ function mountDock() {
 /* ---------------------------------------------------------------------- wiring */
 
 function wire() {
-  $("retryRead")?.addEventListener("click", () => { load(); readSections(); });
+  $("retryRead")?.addEventListener("click", () => { load(); readSections(); loadBoardRecords(readBoard()); });
 
   for (const id of ["quickAddInput", "quickAddDate"]) $(id)?.addEventListener("input", renderQuickAdd);
   $("quickAddDate")?.addEventListener("change", renderQuickAdd);
@@ -697,8 +708,8 @@ function wire() {
       announce("Confirming your account. Keep this as a draft until it is ready.");
       return;
     }
-    if (restoredDraftId && !draftBoardReadiness.canFile(draftViewer, globalThis.navigator?.onLine !== false)) {
-      announce("The record list has not been verified since reconnecting. Keep this draft and try again after it loads.");
+    if (!draftBoardReadiness.canFile(draftViewer, globalThis.navigator?.onLine !== false)) {
+      announce("The current record list has not been verified. Keep this entry as a draft and use Retry read if needed.");
       return;
     }
     const current = renderQuickAdd();
@@ -774,8 +785,10 @@ async function boot() {
   });
   window.addEventListener('offline', () => {
     draftBoardReadiness.invalidate();
+    view.boardStatus = "error";
     view.records = Object.freeze([]);
     renderQuickAdd();
+    renderRetry();
   });
   renderQuickAdd();
   renderDrafts();

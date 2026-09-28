@@ -133,7 +133,7 @@ export function createLiveClient(opts = {}) {
         ...(options.account_client_id ? { account_client_id: options.account_client_id } : {}),
       });
       selfActor = board.actor || selfActor;
-      return { ...board, deals: (board.deals || []).map(dealToUi) };
+      return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals };
     },
 
     async getDeal(dealId) {
