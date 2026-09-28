@@ -3,8 +3,8 @@
 // `mountNotificationBadge` (js/shell.js) is the one function every page's
 // top bar calls after it builds its own dealroom client. Its whole contract:
 //
-//   1. loaded ONCE from `notification-feed`'s own `unread_count`, never
-//      recomputed and never polled;
+//   1. loaded from `notification-feed`'s own `unread_count` on entry and
+//      return, never recomputed and never polled by an interval;
 //   2. hidden when the count is zero, and hidden (not a fake zero, not an
 //      error) when the read fails or the payload is malformed;
 //   3. accessible — the visible badge carries an aria-label naming the count
@@ -93,6 +93,85 @@ test("B12b-shell-7: one call, one read — nothing here polls", () => withBadgeD
   await mountNotificationBadge(client);
   assert.equal(calls, 1);
 }));
+
+test("returning to an open page refreshes its unread badge once, and a failed read clears the old number", async () => {
+  const badge = new StubBadge();
+  const savedDocument = globalThis.document;
+  const savedWindow = globalThis.window;
+  const listeners = new Map();
+  const document = {
+    visibilityState: "visible",
+    getElementById: () => badge,
+    addEventListener: (name, listener) => listeners.set(`doc:${name}`, listener),
+  };
+  globalThis.document = document;
+  globalThis.window = { addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
+  let calls = 0;
+  const client = { notificationFeed: async () => {
+    calls += 1;
+    if (calls === 2) throw new Error("synthetic refusal");
+    return { unread_count: calls === 1 ? 3 : 1 };
+  } };
+  try {
+    await mountNotificationBadge(client);
+    assert.equal(badge.textContent, "3");
+    document.visibilityState = "hidden";
+    listeners.get("doc:visibilitychange")();
+    document.visibilityState = "visible";
+    listeners.get("doc:visibilitychange")();
+    listeners.get("win:pageshow")({ persisted: true });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls, 2, "one return causes one read");
+    assert.equal(badge.hidden, true, "the refused read cannot leave a stale count visible");
+    document.visibilityState = "hidden";
+    listeners.get("doc:visibilitychange")();
+    document.visibilityState = "visible";
+    listeners.get("doc:visibilitychange")();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls, 3);
+    assert.equal(badge.textContent, "1");
+  } finally {
+    globalThis.document = savedDocument;
+    globalThis.window = savedWindow;
+  }
+});
+
+test("an older initial unread response cannot overwrite the returned page's newer count", async () => {
+  const badge = new StubBadge();
+  const savedDocument = globalThis.document;
+  const savedWindow = globalThis.window;
+  const listeners = new Map();
+  const document = {
+    visibilityState: "visible",
+    getElementById: () => badge,
+    addEventListener: (name, listener) => listeners.set(`doc:${name}`, listener),
+  };
+  globalThis.document = document;
+  globalThis.window = { addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
+  let finishFirst;
+  let calls = 0;
+  const client = { notificationFeed: () => {
+    calls += 1;
+    return calls === 1
+      ? new Promise((resolve) => { finishFirst = resolve; })
+      : Promise.resolve({ unread_count: 1 });
+  } };
+  try {
+    const initial = mountNotificationBadge(client);
+    document.visibilityState = "hidden";
+    listeners.get("doc:visibilitychange")();
+    document.visibilityState = "visible";
+    listeners.get("doc:visibilitychange")();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(badge.textContent, "1");
+    finishFirst({ unread_count: 4 });
+    await initial;
+    assert.equal(badge.textContent, "1", "stale first read is ignored");
+  } finally {
+    globalThis.document = savedDocument;
+    globalThis.window = savedWindow;
+  }
+});
 
 /* -------------------------------------------------------------- the markup */
 
