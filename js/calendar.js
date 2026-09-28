@@ -18,6 +18,7 @@ import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatCalendarDate } from "./visual-system.js";
+import { mountReadOnResume } from "./read-on-resume.mjs";
 import {
   addDays, approach, calendarHref, calendarPhase, entriesByDay, localToday, monthGrid, motionDirection,
   parseCalendarState, readCalendar, staggerDelay, stepAnchor, upcomingEntries, weekStrip,
@@ -281,7 +282,7 @@ function render() {
   const asOf = $("calAsOf");
   if (asOf && view.result.status === "ready") {
     asOf.textContent = `${view.result.entries.length} dated · ${view.result.readCount} of ${view.result.dealCount} deals read`;
-  }
+  } else if (asOf) asOf.textContent = "";
   const source = $("calSource");
   if (source) source.textContent = `Source: deal-room-board, then get-deal-room per deal · ${deploymentIdentity(client?.mode).detail}`;
 }
@@ -370,9 +371,10 @@ function wire() {
 
 /* ----------------------------------------------------------------- reading */
 
-async function load() {
+async function load({ failClosed = false } = {}) {
   const sequence = ++view.sequence;
-  if (view.result.status !== "ready") { view.result = { status: "loading" }; render(); }
+  if (failClosed) { view.result = { status: "loading" }; render(); }
+  else if (view.result.status !== "ready") { view.result = { status: "loading" }; render(); }
   else setStatus("refreshing", "Checking again…");
   const result = await readCalendar(client);
   if (sequence !== view.sequence) return;
@@ -397,6 +399,7 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
+  mountReadOnResume({ document, window, refresh: () => load({ failClosed: true }) });
   await load();
 }
 
