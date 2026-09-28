@@ -29,7 +29,7 @@ function surface(fetchImpl, { actor = () => "joe" } = {}) {
   const previous = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, FormData: globalThis.FormData };
   globalThis.document = document; globalThis.window = window;
   globalThis.fetch = (path, init) => JSON.parse(init.body).params.name === "deal-room-board"
-    ? tool({ actor: actor() }) : fetchImpl(path, init);
+    ? Promise.resolve(actor()).then((value) => tool({ actor: value })) : fetchImpl(path, init);
   globalThis.FormData = class { constructor(form) { this.form = form; } *entries() { yield ["reason", this.form.reason]; } };
   return {
     node: (id) => document.getElementById(id),
@@ -287,5 +287,63 @@ test("another actor can decide a fresh candidate while the prior actor's retry s
     assert.equal(writes.length, 2);
     assert.equal(writes[1].pool_id, "pool-New");
     assert.equal(view.node("claimDialog").open, false);
+  } finally { view.restore(); }
+});
+
+test("a return fences a prior actor verification before any decision is sent", async () => {
+  let actor = "joe"; let actorReads = 0; let resolveOldActor;
+  const writes = [];
+  const view = surface(async (_path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    if (name === "lead-board") return tool(board(actor));
+    if (name === "claim-card") return tool(claims(actor));
+    writes.push(args); return tool({ ok: true });
+  }, { actor: () => ++actorReads === 2 ? new Promise((resolve) => { resolveOldActor = resolve; }) : actor });
+  try {
+    await import(`../js/leads-app.js?return=actor-read-race`);
+    await tick();
+    view.node("claimCards").listeners.click({ target: { closest: () => ({ dataset: { claimOpen: "decline", poolId: "pool-joe" }, focus() {} }) } });
+    const button = { disabled: false, textContent: "Decline" };
+    const form = { dataset: { claimAction: "decline", poolId: "pool-joe" }, reason: "Synthetic reason", elements: [button], querySelector() { return button; } };
+    view.node("claimDialogBody").form = form;
+    view.node("claimDialog").listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+    await tick();
+    actor = "dell";
+    view.visibility("hidden"); view.visibility("visible");
+    resolveOldActor("joe");
+    await tick(); await tick();
+    assert.equal(writes.length, 0, "old identity completion cannot send under the new cookie");
+    assert.doesNotMatch(view.node("claimCards").innerHTML, /joe/);
+  } finally { view.restore(); }
+});
+
+test("a prior actor's in-flight result cannot close the new actor's decision", async () => {
+  let actor = "joe"; let resolveOldDecision;
+  const view = surface(async (_path, init) => {
+    const { name } = JSON.parse(init.body).params;
+    if (name === "lead-board") return tool(board(actor));
+    if (name === "claim-card") return tool(claims(actor));
+    return new Promise((resolve) => { resolveOldDecision = resolve; });
+  }, { actor: () => actor });
+  try {
+    await import(`../js/leads-app.js?return=decision-result-race`);
+    await tick();
+    const open = (name) => view.node("claimCards").listeners.click({ target: { closest: () => ({ dataset: { claimOpen: "decline", poolId: `pool-${name}` }, focus() {} }) } });
+    open("joe");
+    const button = { disabled: false, textContent: "Decline" };
+    const form = { dataset: { claimAction: "decline", poolId: "pool-joe" }, reason: "Synthetic reason", elements: [button], querySelector() { return button; } };
+    view.node("claimDialogBody").form = form;
+    view.node("claimDialog").listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+    await tick();
+    actor = "dell";
+    view.visibility("hidden"); view.visibility("visible");
+    await tick(); await tick();
+    open("dell");
+    assert.equal(view.node("claimDialog").open, true);
+    resolveOldDecision(tool({ ok: true }));
+    await tick(); await tick();
+    assert.equal(view.node("claimDialog").open, true, "A's completion cannot close B's popup");
+    assert.match(view.node("claimDialogTitle").textContent, /dell/);
+    assert.doesNotMatch(view.node("moveAnnouncement").textContent, /joe|Candidate declined/);
   } finally { view.restore(); }
 });

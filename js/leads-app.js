@@ -201,9 +201,10 @@ async function submitClaim(form) {
   const action = form.dataset.claimAction;
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
+  const submitResumeEpoch = state.resumeReadEpoch;
   let actor;
   try { actor = await client.getActor(); } catch { actor = null; }
-  if (!actor || (state.actor && actor !== state.actor)) {
+  if (submitResumeEpoch !== state.resumeReadEpoch || state.resumeChecking || !actor || (state.actor && actor !== state.actor)) {
     $("claimDialogError").textContent = "Your account could not be verified for this decision. Sign in and review the Claim Card again.";
     $("claimDialogError").hidden = false;
     button.disabled = false;
@@ -237,6 +238,7 @@ async function submitClaim(form) {
     if (action === "promote") await client.promoteCandidate(pending.candidate, pending.payload, pending.key);
     else await client.declineCandidate(pending.candidate, pending.payload, pending.key);
     state.pendingClaims.delete(decisionId);
+    if (submitResumeEpoch !== state.resumeReadEpoch || state.actor !== actor) return;
     $("claimError").hidden = true;
     state.resumeDeferred = false; // The confirmed decision refreshes both reads below.
     $("claimDialog").close();
@@ -244,6 +246,7 @@ async function submitClaim(form) {
     $("moveAnnouncement").textContent = action === "promote" ? "Candidate claimed. The Lead Board has refreshed." : "Candidate declined. The Claim Card has refreshed.";
   } catch (error) {
     if (error.code !== "unknown_outcome") state.pendingClaims.delete(decisionId);
+    if (submitResumeEpoch !== state.resumeReadEpoch || state.actor !== actor) return;
     $("claimDialogError").textContent = error.code === "unknown_outcome" ? "The result is unknown. Retry this request with the same key; do not start another decision." : error.code === "version_conflict" ? "This candidate changed elsewhere. No decision was made; refresh candidates before trying again." : errorMessage(error);
     $("claimDialogError").hidden = false;
     $("claimError").textContent = $("claimDialogError").textContent;
@@ -280,6 +283,7 @@ async function refresh() {
 }
 async function refreshAfterReturn() {
   const resumeEpoch = ++state.resumeReadEpoch;
+  state.actor = null; // Reverify before another decision can use the current cookie.
   const dialog = $("claimDialog");
   if (dialog.open) {
     state.suspendedClaim = state.activeClaim;
