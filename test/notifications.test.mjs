@@ -503,7 +503,7 @@ test("B12-2 save with CAS: base_version comes from the last READ, and a save mov
   // There is no place a version could be invented: without a read there is none.
   assert.equal(setPreferenceArgs({ device_opt_in: true }, null).ok, false);
   assert.equal(setPreferenceArgs({ device_opt_in: true }, null).message, BASE_VERSION_REFUSAL);
-  assert.match(pageJs, /const built = setPreferenceArgs\(form, model\)/);
+  assert.match(pageJs, /const built = setPreferenceArgs\(form, preferenceSaveView\(model, draftBaseVersion\)\)/);
   assert.match(pageJs, /client\.setNotificationPreference\(request\)/);
 });
 

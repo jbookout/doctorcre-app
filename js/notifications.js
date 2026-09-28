@@ -28,6 +28,7 @@
 import { createCommandDock } from "./command-dock.js";
 import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
+import { preferenceSaveView } from "./notification-preference-draft.mjs";
 import { mountNotificationResume } from "./notification-resume.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -68,6 +69,8 @@ const operations = new Map();
 /** True while a save is in flight, and true while the fields hold an edit. */
 let saving = false;
 let dirty = false;
+/** Version shown when the person first edited; resume reads cannot move it. */
+let draftBaseVersion = null;
 
 function announce(text) {
   const live = $("feedLive");
@@ -221,6 +224,9 @@ async function takePreference() {
     const payload = await client.notificationPreferences();
     if (view.sequence !== sequence) return;
     view.preference = { state: "read", payload, observed_at: new Date().toISOString() };
+    if (dirty && draftBaseVersion !== null && payload.version !== draftBaseVersion) {
+      $("prefMessage").textContent = "Preferences changed while you were editing. Save will check your earlier version before changing anything.";
+    }
   } catch (error) {
     if (view.sequence !== sequence) return;
     view.preference = classifyPreferenceReadFailure(error);
@@ -304,7 +310,7 @@ function acknowledge(id) {
  */
 async function savePreference(form) {
   const model = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
-  const built = setPreferenceArgs(form, model);
+  const built = setPreferenceArgs(form, preferenceSaveView(model, draftBaseVersion));
   const message = $("prefMessage");
   if (!built.ok) {
     message.textContent = built.message;
@@ -339,6 +345,7 @@ async function savePreference(form) {
     // and re-rendered at the FRESH version and the person decides again.
     if (refusal.conflict) {
       dirty = false;
+      draftBaseVersion = null;
       await takePreference();
       // F3: the number the refusal named, SHOWN. It is preferred from the
       // refusal itself when the refusal carried it, and otherwise taken from
@@ -356,6 +363,7 @@ async function savePreference(form) {
   });
   if (result.status === "ok") {
     dirty = false;
+    draftBaseVersion = null;
     await load();
     sentence = sentence || "Saved. This is what the record layer now holds.";
   }
@@ -438,9 +446,13 @@ async function boot() {
     event.preventDefault();
     savePreference(formValues());
   });
-  $("prefForm")?.addEventListener("input", () => { dirty = true; });
+  $("prefForm")?.addEventListener("input", () => {
+    if (!dirty) draftBaseVersion = view.preference.state === "read"
+      ? preferenceView(view.preference.payload)?.version ?? null
+      : null;
+    dirty = true;
+  });
   $("prefClear")?.addEventListener("click", () => {
-    dirty = false;
     savePreference({ clear_quiet_hours: true });
   });
   $("feedList")?.addEventListener("click", (event) => {
