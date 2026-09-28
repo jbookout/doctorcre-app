@@ -31,6 +31,10 @@ import {
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
+import { mountReadOnResume } from "./read-on-resume.mjs";
+import { taskDialogTransition } from "./task-dialog-refresh.mjs";
+import { draftIdentityPlan } from "./task-draft-identity.mjs";
+import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "./task-read-epoch.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -44,6 +48,7 @@ const view = {
   rows: [],
   message: null,
   open: null,
+  openViewer: null,
   closing: null,
   sequence: 0,
 };
@@ -58,6 +63,11 @@ let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
+let heldDialog = null;
+let unverifiedPreviousActor = null;
+let heldQuickAdd = null;
+let viewerSequence = 0;
+let retryFocusPending = false;
 
 function announce(text) {
   const live = $("taskLive");
@@ -133,10 +143,17 @@ function render() {
   document.querySelectorAll("#scopeSwitch button[data-scope]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.scope === view.scope)));
 
   const viewerLabel = $("viewerLabel");
-  if (viewerLabel) viewerLabel.textContent = `${partnerName(viewer)}’s workspace`;
+  if (viewerLabel) viewerLabel.textContent = view.status === "unverified" ? "Account unverified"
+    : view.status === "loading" ? "Reading workspace" : `${partnerName(viewer)}’s workspace`;
+
+  if ($("quickAddForm")) {
+    if (view.status !== "ready") $("quickAddForm").hidden = true;
+    else $("quickAddForm").hidden = false;
+  }
 
   if (view.status === "loading") setBoardStatus("refreshing", "Reading the record…");
   else if (view.status === "unauthorized") setBoardStatus("unknown", "Session ended");
+  else if (view.status === "unverified") setBoardStatus("unknown", "Account unverified");
   else if (view.status === "error") setBoardStatus("urgent", "Record read unavailable");
   else setBoardStatus("healthy", "Read from the record layer");
 
@@ -172,22 +189,85 @@ function render() {
   announce(`${ordered.length} record(s) shown in the ${view.scope === "mine" ? "Mine" : "Team"} scope.`);
 }
 
+function reconcileTaskDialog() {
+  const dialog = $("taskDialog");
+  const open = dialog?.open && view.open ? {
+    key: view.open, viewer: view.openViewer, closing: view.closing, outcome: $("taskOutcome")?.value || "",
+  } : null;
+  const transition = taskDialogTransition({ status: view.status, open, held: heldDialog, rows: view.rows, viewer });
+  heldDialog = transition.held;
+  if (transition.action === "conceal" || transition.action === "discard") {
+    closeDialog();
+    if ($("taskDialogTitle")) $("taskDialogTitle").textContent = "Task";
+    if ($("taskDialogRows")) $("taskDialogRows").innerHTML = "";
+    if ($("taskDue")) $("taskDue").value = "";
+    if ($("taskOutcome")) $("taskOutcome").value = "";
+    if ($("taskCloseForm")) $("taskCloseForm").hidden = true;
+    return transition.action;
+  }
+  if (transition.action === "restore") {
+    view.open = transition.snapshot.key;
+    view.openViewer = transition.snapshot.viewer;
+    view.closing = transition.snapshot.closing;
+    if ($("taskOutcome")) $("taskOutcome").value = transition.snapshot.outcome;
+    openTask(view.open, { preserveDraft: true });
+    if ($("taskCloseForm")) $("taskCloseForm").hidden = !transition.snapshot.closing;
+  } else if (transition.action === "refresh") {
+    openTask(transition.snapshot.key, { preserveDraft: true });
+  }
+  return transition.action;
+}
+
+function settleTaskReadFocus(dialogAction) {
+  const concealed = retryFocusPending || dialogAction === "conceal";
+  if (shouldFocusTaskRetry(concealed, view.status)) $("retryRead")?.focus();
+  if (view.status !== "loading") retryFocusPending = false;
+}
+
+function refuseUnverifiedViewer() {
+  // Invalidate every board request started by a previously verified actor.
+  invalidateTaskRead(view, "unverified", "Your account could not be verified. No task records are shown. Retry read.");
+  heldDialog = null;
+  if (draftViewer) {
+    unverifiedPreviousActor = draftViewer;
+    heldQuickAdd = {
+      actor: draftViewer,
+      sentence: $("quickAddInput")?.value || "",
+      dueDate: $("quickAddDate")?.value || "",
+    };
+  }
+  if ($("quickAddInput")) $("quickAddInput").value = "";
+  if ($("quickAddDate")) $("quickAddDate").value = "";
+  if ($("quickAddParsed")) $("quickAddParsed").innerHTML = "";
+  if ($("quickAddQuestion")) $("quickAddQuestion").textContent = "";
+  draftViewer = null;
+  const dialogAction = reconcileTaskDialog();
+  render();
+  renderDrafts();
+  settleTaskReadFocus(dialogAction);
+}
+
 /* --------------------------------------------------------------------- reading */
 
 async function load() {
   const sequence = ++view.sequence;
+  let dialogAction = null;
   if (view.status !== "ready") { view.status = "loading"; render(); }
   try {
     const payloads = await Promise.all(TASK_KINDS.map((kind) => client.loopBoard({
       kind, status: "open", limit: 300, summary: false,
     })));
-    if (sequence !== view.sequence) return;
+    if (!isCurrentTaskRead(view, sequence)) return;
     const rows = [];
     for (const payload of payloads) {
       if (!validBoardPayload(payload)) {
         view.status = "error";
+        view.rows = [];
         view.message = "The board answered in a shape this page cannot read, so no part of it is shown as a record.";
+        dialogAction = reconcileTaskDialog();
         render();
+        renderQuickAdd();
+        settleTaskReadFocus(dialogAction);
         return;
       }
       for (const row of payload.loops) {
@@ -198,16 +278,21 @@ async function load() {
     view.rows = rows;
     view.status = "ready";
     view.message = null;
+    reconcileTaskDialog();
   } catch (error) {
-    if (sequence !== view.sequence) return;
+    if (!isCurrentTaskRead(view, sequence)) return;
     const status = Number(error?.status || 0);
     view.status = status === 401 || status === 403 ? "unauthorized" : "error";
+    view.rows = [];
     view.message = view.status === "unauthorized"
       ? "Sign in again to read the shared record. Nothing is shown from a session that has ended."
       : "The shared record could not be read. Nothing here has been inferred.";
+    dialogAction = reconcileTaskDialog();
   }
   render();
   renderDrafts();
+  renderQuickAdd();
+  settleTaskReadFocus(dialogAction);
 }
 
 /** The fresh read every write is built from. Errors arrive in the payload. */
@@ -293,9 +378,12 @@ function currentRow() {
   return view.rows.find((row) => `${row.kind}:${row.number}` === view.open) || null;
 }
 
-function openTask(key) {
+function openTask(key, { preserveDraft = false } = {}) {
   view.open = key;
-  view.closing = null;
+  if (!preserveDraft) {
+    view.openViewer = viewer;
+    view.closing = null;
+  }
   const row = currentRow();
   const dialog = $("taskDialog");
   if (!row || !dialog) return;
@@ -317,9 +405,9 @@ function openTask(key) {
     handover.textContent = target ? `Hand over to ${partnerName(target)}` : "Hand over";
   }
   const form = $("taskCloseForm");
-  if (form) form.hidden = true;
+  if (form && !preserveDraft) form.hidden = true;
   const outcome = $("taskOutcome");
-  if (outcome) outcome.value = "";
+  if (outcome && !preserveDraft) outcome.value = "";
   if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
 }
 
@@ -327,6 +415,7 @@ function closeDialog() {
   const dialog = $("taskDialog");
   if (dialog?.open) dialog.close();
   view.open = null;
+  view.openViewer = null;
   view.closing = null;
 }
 
@@ -387,10 +476,10 @@ function renderDrafts() {
   const list = $("draftList");
   if (!bar || !list) return;
   const drafts = localDrafts?.list() || [];
-  bar.hidden = drafts.length === 0 || view.status === 'unauthorized';
+  bar.hidden = drafts.length === 0 || view.status !== 'ready';
   bar.querySelector('.chip-label').textContent = draftViewer && localDrafts.isPersisted()
     ? 'Drafts on this device · select to review' : 'Drafts kept on this page only · select to review';
-  if (view.status === 'unauthorized') { list.innerHTML = ''; return; }
+  if (view.status !== 'ready') { list.innerHTML = ''; return; }
   list.innerHTML = drafts.map((draft) =>
     `<button class="chip" type="button" data-restore-draft="${escapeHtml(draft.id)}">${escapeHtml(draft.sentence)}${draft.dueDate ? ` · ${escapeHtml(draft.dueDate)}` : ""}</button>`
   ).join("");
@@ -415,9 +504,11 @@ function wire() {
     if (row) handOver(row);
   });
 
-  $("retryRead")?.addEventListener("click", () => load());
+  $("retryRead")?.addEventListener("click", async () => {
+    await refreshVerified();
+  });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
-  $("taskDialog")?.addEventListener("close", () => { view.open = null; view.closing = null; });
+  $("taskDialog")?.addEventListener("close", () => { view.open = null; view.openViewer = null; view.closing = null; });
 
   $("taskHandover")?.addEventListener("click", () => {
     const row = currentRow();
@@ -560,22 +651,56 @@ function mountDock() {
 }
 
 async function loadViewer() {
+  const identityRead = ++viewerSequence;
+  // Conceal rows, modal details, and actor-scoped drafts while the session's
+  // current identity is unknown. This also fences off older board responses.
+  invalidateTaskRead(view, "loading");
+  if (reconcileTaskDialog() === "conceal") retryFocusPending = true;
+  render();
+  renderDrafts();
   try {
     const board = await client.getBoard({ workspace: 'all' });
-    if (!board?.actor) return;
-    if (board.actor === draftViewer) return;
-    const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
-    if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
-    localDrafts = saved;
+    if (identityRead !== viewerSequence) return null;
+    if (!board?.actor) return false;
+    const plan = draftIdentityPlan(unverifiedPreviousActor || draftViewer, board.actor);
+    if (plan === "reuse" && !unverifiedPreviousActor) return true;
+    if (plan === "replace") {
+      if ($("quickAddInput")) $("quickAddInput").value = "";
+      if ($("quickAddDate")) $("quickAddDate").value = "";
+    }
+    if (plan !== "reuse") {
+      const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
+      if (plan === "first") for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
+      localDrafts = saved;
+    }
     draftViewer = board.actor;
+    if (plan === "reuse" && unverifiedPreviousActor && heldQuickAdd?.actor === board.actor) {
+      if ($("quickAddInput")) $("quickAddInput").value = heldQuickAdd.sentence;
+      if ($("quickAddDate")) $("quickAddDate").value = heldQuickAdd.dueDate;
+    }
+    unverifiedPreviousActor = null;
+    heldQuickAdd = null;
     restoredDraftId = null;
     viewer = board.actor;
+    // The prior actor's board cannot be rendered under the newly verified name.
+    // The next load() owns the only transition back to ready.
+    reconcileTaskDialog();
     renderDrafts();
     renderQuickAdd();
     render();
+    return true;
   } catch {
+    if (identityRead !== viewerSequence) return null;
     // A disconnected page can keep drafts in memory until identity is verified.
+    return false;
   }
+}
+
+async function refreshVerified() {
+  const verified = await loadViewer();
+  if (verified === null) return;
+  if (!verified) { refuseUnverifiedViewer(); return; }
+  await load();
 }
 
 /* ------------------------------------------------------------------------ boot */
@@ -597,12 +722,15 @@ async function boot() {
   }
   window.addEventListener('online', async () => {
     if (!client) return;
-    await loadViewer();
-    await load();
+    await refreshVerified();
   });
+  mountReadOnResume({ document, window, refresh: async () => {
+    await refreshVerified();
+    renderQuickAdd();
+  } });
   renderDrafts();
-  await load();
-  if (!client.selfActor) await loadViewer();
+  if (!client.selfActor) await refreshVerified();
+  else await load();
 }
 
 boot();
