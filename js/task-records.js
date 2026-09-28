@@ -46,6 +46,7 @@ const view = {
   rows: [],
   message: null,
   open: null,
+  openViewer: null,
   closing: null,
   sequence: 0,
 };
@@ -178,7 +179,7 @@ function render() {
 function reconcileTaskDialog() {
   const dialog = $("taskDialog");
   const open = dialog?.open && view.open ? {
-    key: view.open, viewer, closing: view.closing, outcome: $("taskOutcome")?.value || "",
+    key: view.open, viewer: view.openViewer, closing: view.closing, outcome: $("taskOutcome")?.value || "",
   } : null;
   const transition = taskDialogTransition({ status: view.status, open, held: heldDialog, rows: view.rows, viewer });
   heldDialog = transition.held;
@@ -193,6 +194,7 @@ function reconcileTaskDialog() {
   }
   if (transition.action === "restore") {
     view.open = transition.snapshot.key;
+    view.openViewer = transition.snapshot.viewer;
     view.closing = transition.snapshot.closing;
     if ($("taskOutcome")) $("taskOutcome").value = transition.snapshot.outcome;
     openTask(view.open, { preserveDraft: true });
@@ -336,7 +338,10 @@ function currentRow() {
 
 function openTask(key, { preserveDraft = false } = {}) {
   view.open = key;
-  if (!preserveDraft) view.closing = null;
+  if (!preserveDraft) {
+    view.openViewer = viewer;
+    view.closing = null;
+  }
   const row = currentRow();
   const dialog = $("taskDialog");
   if (!row || !dialog) return;
@@ -368,6 +373,7 @@ function closeDialog() {
   const dialog = $("taskDialog");
   if (dialog?.open) dialog.close();
   view.open = null;
+  view.openViewer = null;
   view.closing = null;
 }
 
@@ -461,7 +467,7 @@ function wire() {
     await load();
   });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
-  $("taskDialog")?.addEventListener("close", () => { view.open = null; view.closing = null; });
+  $("taskDialog")?.addEventListener("close", () => { view.open = null; view.openViewer = null; view.closing = null; });
 
   $("taskHandover")?.addEventListener("click", () => {
     const row = currentRow();
@@ -614,6 +620,7 @@ async function loadViewer() {
     draftViewer = board.actor;
     restoredDraftId = null;
     viewer = board.actor;
+    reconcileTaskDialog();
     renderDrafts();
     renderQuickAdd();
     render();

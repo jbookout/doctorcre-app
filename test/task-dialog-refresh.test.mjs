@@ -22,6 +22,8 @@ test("a valid reread refreshes an open task without clearing its typed close out
   assert.equal(refreshed.action, "refresh");
   assert.deepEqual(refreshed.snapshot, open);
   assert.equal(refreshed.held, null);
+  const changedActor = taskDialogTransition({ status: "ready", open, held: null, rows, viewer: "dell" });
+  assert.equal(changedActor.action, "discard", "a different actor never inherits the prior actor's typed outcome");
 });
 
 test("retry restores a concealed task only for the same actor and still-open row", () => {
@@ -42,4 +44,8 @@ test("Tasks routes invalid and failed reads through the dialog guard before pain
   assert.match(source, /view\.message = view\.status === "unauthorized"[\s\S]*?dialogAction = reconcileTaskDialog\(\);/);
   assert.match(source, /transition\.action === "conceal" \|\| transition\.action === "discard"\) \{\s*closeDialog\(\)/);
   assert.match(source, /if \(dialogAction === "conceal"\) \$\("retryRead"\)\?\.focus\(\)/);
+  assert.match(source, /key: view\.open, viewer: view\.openViewer,/,
+    "the modal snapshot must retain the actor who opened it, not the actor on the latest board read");
+  assert.match(source, /viewer = board\.actor;\s*reconcileTaskDialog\(\);/,
+    "an actor change must conceal the old modal before the next board request");
 });
