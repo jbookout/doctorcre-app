@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const tool = (payload) => ({ ok: true, status: 200, json: async () => ({ result: { content: [{ type: "text", text: JSON.stringify(payload) }] } }) });
 
-function surface(fetchImpl) {
+function surface(fetchImpl, { actor = () => "joe" } = {}) {
   const nodes = new Map();
   const listeners = new Map();
   class Node {
@@ -27,7 +27,9 @@ function surface(fetchImpl) {
   };
   const window = { addEventListener(name, fn) { listeners.set(`window:${name}`, fn); } };
   const previous = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, FormData: globalThis.FormData };
-  globalThis.document = document; globalThis.window = window; globalThis.fetch = fetchImpl;
+  globalThis.document = document; globalThis.window = window;
+  globalThis.fetch = (path, init) => JSON.parse(init.body).params.name === "deal-room-board"
+    ? tool({ actor: actor() }) : fetchImpl(path, init);
   globalThis.FormData = class { constructor(form) { this.form = form; } *entries() { yield ["reason", this.form.reason]; } };
   return {
     node: (id) => document.getElementById(id),
@@ -221,5 +223,69 @@ test("an unresolved decision remains recoverable without exposing an old candida
     assert.equal(writes.length, 2);
     assert.deepEqual(writes[1], writes[0], "recovery uses the original idempotency key and request");
     assert.doesNotMatch(view.node("claimCards").innerHTML, /Retry unresolved decision/);
+  } finally { view.restore(); }
+});
+
+test("another signed-in actor cannot see or replay an unresolved prior decision", async () => {
+  let actor = "joe";
+  let claimReads = 0;
+  const writes = [];
+  const view = surface(async (_path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    if (name === "lead-board") return tool(board("Current"));
+    if (name === "claim-card") return tool(++claimReads === 1 ? claims("Previous") : { claimable: 0, needs_contact_count: 0, candidates: [] });
+    writes.push(args);
+    throw new Error("synthetic lost response");
+  }, { actor: () => actor });
+  try {
+    await import(`../js/leads-app.js?return=actor-switch`);
+    await tick();
+    const trigger = { dataset: { claimOpen: "decline", poolId: "pool-Previous" }, focus() {} };
+    view.node("claimCards").listeners.click({ target: { closest: () => trigger } });
+    const button = { disabled: false, textContent: "Decline", type: "submit", focus() {} };
+    const form = { dataset: { claimAction: "decline", poolId: "pool-Previous" }, reason: "Synthetic reason", elements: [button], querySelector() { return button; } };
+    view.node("claimDialogBody").form = form;
+    view.node("claimDialog").listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+    await tick();
+    assert.equal(writes.length, 1);
+    actor = "dell";
+    view.visibility("hidden"); view.visibility("visible");
+    await tick(); await tick();
+    assert.equal(view.node("claimDialog").open, false);
+    assert.doesNotMatch(view.node("claimCards").innerHTML, /Previous|Retry unresolved decision/);
+    assert.match(view.node("claimError").textContent, /account changed/);
+    assert.equal(writes.length, 1, "return never retries the previous actor's request");
+  } finally { view.restore(); }
+});
+
+test("another actor can decide a fresh candidate while the prior actor's retry stays sealed", async () => {
+  let actor = "joe";
+  const writes = [];
+  const view = surface(async (_path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    if (name === "lead-board") return tool(board("Current"));
+    if (name === "claim-card") return tool(claims(actor === "joe" ? "Old" : "New"));
+    writes.push(args);
+    if (writes.length === 1) throw new Error("synthetic lost response");
+    return tool({ ok: true });
+  }, { actor: () => actor });
+  try {
+    await import(`../js/leads-app.js?return=actor-new-decision`);
+    await tick();
+    const open = (name) => view.node("claimCards").listeners.click({ target: { closest: () => ({ dataset: { claimOpen: "decline", poolId: `pool-${name}` }, focus() {} }) } });
+    const submit = (name) => {
+      const button = { disabled: false, textContent: "Decline", type: "submit", focus() {} };
+      const form = { dataset: { claimAction: "decline", poolId: `pool-${name}` }, reason: "Synthetic reason", elements: [button], querySelector() { return button; } };
+      view.node("claimDialogBody").form = form;
+      view.node("claimDialog").listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+    };
+    open("Old"); submit("Old"); await tick();
+    actor = "dell";
+    view.visibility("hidden"); view.visibility("visible"); await tick(); await tick();
+    assert.doesNotMatch(view.node("claimCards").innerHTML, /Old|Retry unresolved decision/);
+    open("New"); submit("New"); await tick(); await tick();
+    assert.equal(writes.length, 2);
+    assert.equal(writes[1].pool_id, "pool-New");
+    assert.equal(view.node("claimDialog").open, false);
   } finally { view.restore(); }
 });

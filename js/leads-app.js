@@ -2,7 +2,7 @@ import { createLeadBoardClient } from "./leads-client.js";
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
 const client = createLeadBoardClient();
-const state = { board: null, claims: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
+const state = { board: null, claims: null, actor: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, actorReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const stageKey = (stage) => stage?.slug || stage?.stage || "unassigned";
@@ -130,13 +130,15 @@ function claimCard(candidate) {
   const duplicate = candidate.dup_tier === "review" ? '<span class="claim-warning">Possible duplicate</span>' : "";
   return `<article class="claim-card" data-pool-id="${id}"><h3>${name}</h3><p>${place}</p>${duplicate}<div class="claim-actions"><button type="button" data-claim-open="promote" data-pool-id="${id}">Claim as lead</button><button type="button" data-claim-open="decline" data-pool-id="${id}">Decline</button></div></article>`;
 }
+function pendingId(actor, action, poolId) { return `${actor}:${action}:${poolId}`; }
+function hasCurrentPending() { return [...state.pendingClaims.values()].some((pending) => pending.actor === state.actor); }
 function openClaim(button) {
   const action = button.dataset.claimOpen;
   const poolId = button.dataset.poolId;
-  const pending = state.pendingClaims.get(`${action}:${poolId}`);
+  const pending = state.pendingClaims.get(pendingId(state.actor, action, poolId));
   const candidate = pending?.candidate || state.claims?.candidates?.find(item => String(item.pool_id) === poolId);
   if (!candidate) return;
-  state.activeClaim = { candidate, action, trigger: button };
+  state.activeClaim = { candidate, action, trigger: button, actor: state.actor };
   const id = esc(candidate.pool_id);
   const sourceFields = researchFields.map(field => `<label>${title(field)} source URL <input type="url" name="${field}" placeholder="https://…" required pattern="https://.*" autocomplete="off"></label>`).join("");
   const duplicate = candidate.dup_tier === "review" ? `<p class="claim-warning">Possible duplicate of ${esc(candidate.dup_ref || "an existing record")}. ${esc(candidate.dup_basis || "Review before claiming.")}</p>` : "";
@@ -159,26 +161,26 @@ function openClaim(button) {
 function renderClaims() {
   const claims = state.claims;
   $("claimSummary").textContent = claims ? `${claims.claimable} claimable · ${claims.needs_contact_count} need a contact channel · Showing ${claims.candidates?.length || 0} ranked candidates` : "Candidates unavailable";
-  const unresolved = claims && !state.resumeChecking && [...state.pendingClaims.values()].some((pending) =>
+  const unresolved = claims && state.actor && !state.resumeChecking && [...state.pendingClaims.values()].some((pending) =>
+    pending.actor === state.actor &&
     !claims.candidates?.some((candidate) => String(candidate.pool_id) === String(pending.candidate.pool_id)));
   $("claimCards").innerHTML = (claims?.candidates?.length ? claims.candidates.map(claimCard).join("") : '<p class="board-state empty">No claimable candidates on this card.</p>') +
     (unresolved ? '<button type="button" data-retry-pending>Retry unresolved decision</button>' : "");
 }
 function retryPendingDecision(button) {
-  const [entry] = state.pendingClaims.entries();
+  const [entry] = [...state.pendingClaims.entries()].filter(([, pending]) => pending.actor === state.actor);
   if (!entry || !state.claims || state.resumeChecking) return;
-  const [key] = entry;
-  const colon = key.indexOf(":");
+  const [, pending] = entry;
   const form = {
-    dataset: { claimAction: key.slice(0, colon), poolId: key.slice(colon + 1) },
+    dataset: { claimAction: pending.action, poolId: String(pending.candidate.pool_id) },
     querySelector: () => button,
     elements: [button],
   };
   submitClaim(form);
 }
 async function refreshClaims({ allowPending = false } = {}) {
-  if ((state.pendingClaims.size && !allowPending) || $("claimDialog").open) {
-    $("claimError").textContent = state.pendingClaims.size ? "A decision has an unknown result. Retry that request before refreshing candidates." : "Close the decision popup before refreshing candidates.";
+  if ((hasCurrentPending() && !allowPending) || $("claimDialog").open) {
+    $("claimError").textContent = hasCurrentPending() ? "A decision has an unknown result. Retry that request before refreshing candidates." : "Close the decision popup before refreshing candidates.";
     $("claimError").hidden = false;
     return;
   }
@@ -186,10 +188,10 @@ async function refreshClaims({ allowPending = false } = {}) {
   $("claimCards").setAttribute("aria-busy", "true");
   try {
     const claims = await client.getClaimCard();
-    if (readEpoch !== state.claimReadEpoch || (state.pendingClaims.size && !allowPending) || $("claimDialog").open) return;
+    if (readEpoch !== state.claimReadEpoch || (hasCurrentPending() && !allowPending) || $("claimDialog").open) return;
     state.claims = claims; $("claimError").hidden = true; renderClaims();
   } catch (error) {
-    if (readEpoch !== state.claimReadEpoch || (state.pendingClaims.size && !allowPending)) return;
+    if (readEpoch !== state.claimReadEpoch || (hasCurrentPending() && !allowPending)) return;
     state.claims = null;
     renderClaims();
     $("claimError").textContent = errorMessage(error); $("claimError").hidden = false;
@@ -197,13 +199,27 @@ async function refreshClaims({ allowPending = false } = {}) {
 }
 async function submitClaim(form) {
   const action = form.dataset.claimAction;
-  const pendingId = `${action}:${form.dataset.poolId}`;
-  let pending = state.pendingClaims.get(pendingId);
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  let actor;
+  try { actor = await client.getActor(); } catch { actor = null; }
+  if (!actor || (state.actor && actor !== state.actor)) {
+    $("claimDialogError").textContent = "Your account could not be verified for this decision. Sign in and review the Claim Card again.";
+    $("claimDialogError").hidden = false;
+    button.disabled = false;
+    return;
+  }
+  state.actor = actor;
+  const decisionId = pendingId(actor, action, form.dataset.poolId);
+  const held = state.pendingClaims.get(decisionId);
+  ++state.actorReadEpoch; // Fence an older initial identity read.
+  let pending = held;
   const candidate = pending?.candidate || state.activeClaim?.candidate || state.claims?.candidates?.find(item => String(item.pool_id) === form.dataset.poolId);
-  if (!candidate || String(candidate.pool_id) !== form.dataset.poolId) return;
-  if (!pending && state.pendingClaims.size) {
+  if (!candidate || String(candidate.pool_id) !== form.dataset.poolId) { button.disabled = false; return; }
+  if (!pending && [...state.pendingClaims.values()].some((item) => item.actor === actor)) {
     $("claimDialogError").textContent = "Retry the decision with an unknown result before starting another.";
     $("claimDialogError").hidden = false;
+    button.disabled = false;
     return;
   }
   if (!pending) {
@@ -212,24 +228,22 @@ async function submitClaim(form) {
     try {
       if (action === "promote") payload = claimEvidence(values, new Date().toISOString());
       else { payload = String(values.reason || "").trim(); if (!payload) throw new Error("Give a reason in your own words."); }
-    } catch (error) { $("claimDialogError").textContent = error.message; $("claimDialogError").hidden = false; return; }
-    pending = { key: crypto.randomUUID(), payload, candidate };
-    state.pendingClaims.set(pendingId, pending);
+    } catch (error) { $("claimDialogError").textContent = error.message; $("claimDialogError").hidden = false; button.disabled = false; return; }
+    pending = { key: crypto.randomUUID(), payload, candidate, actor, action };
+    state.pendingClaims.set(decisionId, pending);
   }
   ++state.claimReadEpoch; // Any read started before this decision cannot repaint its form or result.
-  const button = form.querySelector('button[type="submit"]');
-  button.disabled = true;
   try {
     if (action === "promote") await client.promoteCandidate(pending.candidate, pending.payload, pending.key);
     else await client.declineCandidate(pending.candidate, pending.payload, pending.key);
-    state.pendingClaims.delete(pendingId);
+    state.pendingClaims.delete(decisionId);
     $("claimError").hidden = true;
     state.resumeDeferred = false; // The confirmed decision refreshes both reads below.
     $("claimDialog").close();
     await Promise.all([refreshClaims(), refresh()]);
     $("moveAnnouncement").textContent = action === "promote" ? "Candidate claimed. The Lead Board has refreshed." : "Candidate declined. The Claim Card has refreshed.";
   } catch (error) {
-    if (error.code !== "unknown_outcome") state.pendingClaims.delete(pendingId);
+    if (error.code !== "unknown_outcome") state.pendingClaims.delete(decisionId);
     $("claimDialogError").textContent = error.code === "unknown_outcome" ? "The result is unknown. Retry this request with the same key; do not start another decision." : error.code === "version_conflict" ? "This candidate changed elsewhere. No decision was made; refresh candidates before trying again." : errorMessage(error);
     $("claimDialogError").hidden = false;
     $("claimError").textContent = $("claimDialogError").textContent;
@@ -291,19 +305,36 @@ async function refreshAfterReturn() {
   $("moveAnnouncement").textContent = "";
   notice("");
   renderClaims();
+  if (state.moving) { state.resumeDeferred = true; return; }
+  const actorRead = ++state.actorReadEpoch;
+  let actor;
+  try { actor = await client.getActor(); } catch { actor = null; }
+  if (resumeEpoch !== state.resumeReadEpoch || actorRead !== state.actorReadEpoch) return;
+  if (!actor) {
+    state.actor = null;
+    state.resumeChecking = false;
+    $("leadBoardError").textContent = "Your account could not be verified. Sign in and refresh the Lead Board.";
+    $("leadBoardError").hidden = false;
+    $("claimError").textContent = "Your account could not be verified. Candidate decisions are unavailable.";
+    $("claimError").hidden = false;
+    return;
+  }
+  state.actor = actor;
   await Promise.all([refresh(), refreshClaims({ allowPending: true })]);
   if (resumeEpoch !== state.resumeReadEpoch) return;
   state.resumeChecking = false;
   renderClaims();
   const suspended = state.suspendedClaim;
-  if (suspended && state.claims?.candidates?.some((candidate) =>
+  if (suspended?.actor === actor && state.claims?.candidates?.some((candidate) =>
     String(candidate.pool_id) === String(suspended.candidate.pool_id) && candidate.base_version === suspended.candidate.base_version)) {
     state.suspendedClaim = null;
     state.activeClaim = suspended;
     dialog.showModal(); // The matching authorized candidate keeps the typed draft intact.
   } else if (suspended && state.claims) {
     state.suspendedClaim = null;
-    $("claimError").textContent = "That candidate changed or left the Claim Card. Review the current card before deciding.";
+    $("claimError").textContent = suspended.actor !== actor
+      ? "Your account changed while this decision was open. Review the current Claim Card before deciding."
+      : "That candidate changed or left the Claim Card. Review the current card before deciding.";
     $("claimError").hidden = false;
   }
 }
@@ -364,6 +395,10 @@ if (typeof document !== "undefined") {
   if (typeof window !== "undefined" && typeof document.addEventListener === "function") {
     mountReadOnResume({ document, window, refresh: refreshAfterReturn });
   }
+  const actorRead = ++state.actorReadEpoch;
+  client.getActor().then((actor) => {
+    if (actorRead === state.actorReadEpoch) state.actor = actor;
+  }).catch(() => { if (actorRead === state.actorReadEpoch) state.actor = null; });
   refresh();
   refreshClaims();
 }
