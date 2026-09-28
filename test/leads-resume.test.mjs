@@ -16,7 +16,7 @@ function surface(fetchImpl) {
     addEventListener(name, fn) { this.listeners[name] = fn; }
     setAttribute(name, value) { this.attributes[name] = value; }
     getAttribute(name) { return this.attributes[name]; }
-    querySelector() { return { focus() {} }; }
+    querySelector(selector) { return selector === "form" ? this.form : { focus() {} }; }
     showModal() { this.open = true; }
     close() { this.open = false; this.listeners.close?.(); }
   }
@@ -26,8 +26,9 @@ function surface(fetchImpl) {
     addEventListener(name, fn) { listeners.set(`document:${name}`, fn); },
   };
   const window = { addEventListener(name, fn) { listeners.set(`window:${name}`, fn); } };
-  const previous = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch };
+  const previous = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, FormData: globalThis.FormData };
   globalThis.document = document; globalThis.window = window; globalThis.fetch = fetchImpl;
+  globalThis.FormData = class { constructor(form) { this.form = form; } *entries() { yield ["reason", this.form.reason]; } };
   return {
     node: (id) => document.getElementById(id),
     visibility(value) { document.visibilityState = value; listeners.get("document:visibilitychange")(); },
@@ -66,7 +67,7 @@ test("returning to Lead Board reads fresh leads and candidates once, preserving 
   } finally { view.restore(); }
 });
 
-test("an open candidate decision defers return reads until the dialog closes", async () => {
+test("an open candidate decision is hidden during recheck and restored only from the fresh card", async () => {
   let reads = 0;
   const view = surface(async (_path, init) => {
     const { name } = JSON.parse(init.body).params;
@@ -76,13 +77,15 @@ test("an open candidate decision defers return reads until the dialog closes", a
   try {
     await import(`../js/leads-app.js?return=dialog`);
     await tick();
-    view.node("claimDialog").open = true;
+    const trigger = { dataset: { claimOpen: "decline", poolId: "pool-One" }, focus() {} };
+    view.node("claimCards").listeners.click({ target: { closest: () => trigger } });
+    const draft = view.node("claimDialogBody").innerHTML;
+    assert.equal(view.node("claimDialog").open, true);
     view.visibility("hidden"); view.visibility("visible");
-    await tick();
-    assert.equal(reads, 2, "the open decision remains stable");
-    view.node("claimDialog").close();
     await tick(); await tick();
-    assert.equal(reads, 4, "the deferred return reads after the decision closes");
+    assert.equal(reads, 4, "the board and candidate card are reread immediately");
+    assert.equal(view.node("claimDialog").open, true, "only the matching fresh candidate restores the draft");
+    assert.equal(view.node("claimDialogBody").innerHTML, draft);
   } finally { view.restore(); }
 });
 
@@ -126,7 +129,97 @@ test("failed return reads clear previous lead and candidate cards", async () => 
     await tick(); await tick();
     assert.doesNotMatch(view.node("leadBoard").innerHTML, /Previous/);
     assert.doesNotMatch(view.node("claimCards").innerHTML, /Previous/);
+    assert.doesNotMatch(view.node("leadCount").textContent, /Previous|1 total/);
+    assert.doesNotMatch(view.node("filterSummary").textContent, /Previous|1 of 1/);
+    assert.doesNotMatch(view.node("ownerFilter").innerHTML, /Previous/);
+    assert.equal(view.node("pipelineNodes").innerHTML, "");
     assert.equal(view.node("leadBoardError").hidden, false);
     assert.equal(view.node("claimError").hidden, false);
+  } finally { view.restore(); }
+});
+
+test("a candidate removed while away cannot reopen its prior decision popup", async () => {
+  let claimReads = 0;
+  const view = surface(async (_path, init) => {
+    const { name } = JSON.parse(init.body).params;
+    if (name === "lead-board") return tool(board("Current"));
+    claimReads++;
+    return tool(claimReads === 1 ? claims("Previous") : { claimable: 0, needs_contact_count: 0, candidates: [] });
+  });
+  try {
+    await import(`../js/leads-app.js?return=changed-candidate`);
+    await tick();
+    const trigger = { dataset: { claimOpen: "decline", poolId: "pool-Previous" }, focus() {} };
+    view.node("claimCards").listeners.click({ target: { closest: () => trigger } });
+    assert.equal(view.node("claimDialog").open, true);
+    view.visibility("hidden"); view.visibility("visible");
+    await tick(); await tick();
+    assert.equal(view.node("claimDialog").open, false);
+    assert.doesNotMatch(view.node("claimCards").innerHTML, /Previous/);
+    assert.match(view.node("claimError").textContent, /changed or left/);
+  } finally { view.restore(); }
+});
+
+test("an unknown decision does not prevent a safe return read or lose its exact retry", async () => {
+  let reads = 0; let writes = 0;
+  const view = surface(async (_path, init) => {
+    const { name } = JSON.parse(init.body).params;
+    if (name === "lead-board") { reads++; return tool(board("One")); }
+    if (name === "claim-card") { reads++; return tool(claims("One")); }
+    writes++;
+    throw new Error("synthetic lost response");
+  });
+  try {
+    await import(`../js/leads-app.js?return=unknown-decision`);
+    await tick();
+    const trigger = { dataset: { claimOpen: "decline", poolId: "pool-One" }, focus() {} };
+    view.node("claimCards").listeners.click({ target: { closest: () => trigger } });
+    const button = { disabled: false, textContent: "Decline", type: "submit", focus() {} };
+    const form = { dataset: { claimAction: "decline", poolId: "pool-One" }, reason: "Synthetic reason", elements: [button], querySelector() { return button; } };
+    view.node("claimDialogBody").form = form;
+    view.node("claimDialog").listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+    await tick();
+    assert.equal(button.textContent, "Retry same request");
+    view.visibility("hidden"); view.visibility("visible");
+    await tick(); await tick();
+    assert.equal(reads, 4, "pending outcome cannot stop authorized read-only refresh");
+    assert.equal(view.node("claimDialog").open, true);
+    assert.equal(button.textContent, "Retry same request");
+    assert.equal(writes, 1, "return never resends the mutation");
+  } finally { view.restore(); }
+});
+
+test("an unresolved decision remains recoverable without exposing an old candidate", async () => {
+  let claimReads = 0;
+  const writes = [];
+  const view = surface(async (_path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    if (name === "lead-board") return tool(board("Current"));
+    if (name === "claim-card") return tool(++claimReads === 1 ? claims("Previous") : { claimable: 0, needs_contact_count: 0, candidates: [] });
+    writes.push(args);
+    if (writes.length === 1) throw new Error("synthetic lost response");
+    return tool({ ok: true });
+  });
+  try {
+    await import(`../js/leads-app.js?return=pending-removed`);
+    await tick();
+    const trigger = { dataset: { claimOpen: "decline", poolId: "pool-Previous" }, focus() {} };
+    view.node("claimCards").listeners.click({ target: { closest: () => trigger } });
+    const button = { disabled: false, textContent: "Decline", type: "submit", focus() {} };
+    const form = { dataset: { claimAction: "decline", poolId: "pool-Previous" }, reason: "Synthetic reason", elements: [button], querySelector() { return button; } };
+    view.node("claimDialogBody").form = form;
+    view.node("claimDialog").listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+    await tick();
+    view.visibility("hidden"); view.visibility("visible");
+    await tick(); await tick();
+    assert.equal(view.node("claimDialog").open, false);
+    assert.doesNotMatch(view.node("claimCards").innerHTML, /Previous/);
+    assert.match(view.node("claimCards").innerHTML, /Retry unresolved decision/);
+    const recovery = { dataset: { retryPending: "" }, disabled: false, textContent: "Retry unresolved decision" };
+    view.node("claimCards").listeners.click({ target: { closest: (selector) => selector === "[data-retry-pending]" ? recovery : null } });
+    await tick(); await tick();
+    assert.equal(writes.length, 2);
+    assert.deepEqual(writes[1], writes[0], "recovery uses the original idempotency key and request");
+    assert.doesNotMatch(view.node("claimCards").innerHTML, /Retry unresolved decision/);
   } finally { view.restore(); }
 });

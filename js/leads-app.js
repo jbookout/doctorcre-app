@@ -2,7 +2,7 @@ import { createLeadBoardClient } from "./leads-client.js";
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
 const client = createLeadBoardClient();
-const state = { board: null, claims: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, activeClaim: null, moving: false, resumeDeferred: false, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
+const state = { board: null, claims: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const stageKey = (stage) => stage?.slug || stage?.stage || "unassigned";
@@ -159,10 +159,25 @@ function openClaim(button) {
 function renderClaims() {
   const claims = state.claims;
   $("claimSummary").textContent = claims ? `${claims.claimable} claimable · ${claims.needs_contact_count} need a contact channel · Showing ${claims.candidates?.length || 0} ranked candidates` : "Candidates unavailable";
-  $("claimCards").innerHTML = claims?.candidates?.length ? claims.candidates.map(claimCard).join("") : '<p class="board-state empty">No claimable candidates on this card.</p>';
+  const unresolved = claims && !state.resumeChecking && [...state.pendingClaims.values()].some((pending) =>
+    !claims.candidates?.some((candidate) => String(candidate.pool_id) === String(pending.candidate.pool_id)));
+  $("claimCards").innerHTML = (claims?.candidates?.length ? claims.candidates.map(claimCard).join("") : '<p class="board-state empty">No claimable candidates on this card.</p>') +
+    (unresolved ? '<button type="button" data-retry-pending>Retry unresolved decision</button>' : "");
 }
-async function refreshClaims() {
-  if (state.pendingClaims.size || $("claimDialog").open) {
+function retryPendingDecision(button) {
+  const [entry] = state.pendingClaims.entries();
+  if (!entry || !state.claims || state.resumeChecking) return;
+  const [key] = entry;
+  const colon = key.indexOf(":");
+  const form = {
+    dataset: { claimAction: key.slice(0, colon), poolId: key.slice(colon + 1) },
+    querySelector: () => button,
+    elements: [button],
+  };
+  submitClaim(form);
+}
+async function refreshClaims({ allowPending = false } = {}) {
+  if ((state.pendingClaims.size && !allowPending) || $("claimDialog").open) {
     $("claimError").textContent = state.pendingClaims.size ? "A decision has an unknown result. Retry that request before refreshing candidates." : "Close the decision popup before refreshing candidates.";
     $("claimError").hidden = false;
     return;
@@ -171,10 +186,10 @@ async function refreshClaims() {
   $("claimCards").setAttribute("aria-busy", "true");
   try {
     const claims = await client.getClaimCard();
-    if (readEpoch !== state.claimReadEpoch || state.pendingClaims.size || $("claimDialog").open) return;
+    if (readEpoch !== state.claimReadEpoch || (state.pendingClaims.size && !allowPending) || $("claimDialog").open) return;
     state.claims = claims; $("claimError").hidden = true; renderClaims();
   } catch (error) {
-    if (readEpoch !== state.claimReadEpoch || state.pendingClaims.size) return;
+    if (readEpoch !== state.claimReadEpoch || (state.pendingClaims.size && !allowPending)) return;
     state.claims = null;
     renderClaims();
     $("claimError").textContent = errorMessage(error); $("claimError").hidden = false;
@@ -250,19 +265,47 @@ async function refresh() {
   } finally { if (readEpoch === state.boardReadEpoch) board.setAttribute("aria-busy", "false"); }
 }
 async function refreshAfterReturn() {
-  if ($("claimDialog").open || state.pendingClaims.size || state.moving) {
-    state.resumeDeferred = true;
-    return;
+  const resumeEpoch = ++state.resumeReadEpoch;
+  const dialog = $("claimDialog");
+  if (dialog.open) {
+    state.suspendedClaim = state.activeClaim;
+    state.suspending = true;
+    dialog.close();
+    state.suspending = false;
   }
   state.resumeDeferred = false;
-  // A returned page cannot keep showing records fetched under an older cookie.
+  state.resumeChecking = true;
+  // A returned page cannot show records, counts, or filter options fetched
+  // under an older cookie. Keep the user's filter choices in state for a fresh read.
   ++state.boardReadEpoch;
   ++state.claimReadEpoch;
   state.board = null;
   state.claims = null;
   $("leadBoard").innerHTML = '<p class="board-state empty">Refreshing the Lead Board…</p>';
+  $("leadCount").textContent = "Refreshing…";
+  $("filterSummary").textContent = "Refreshing…";
+  $("pipelineNodes").innerHTML = "";
+  $("ownerFilter").innerHTML = options([], "", "All owners");
+  $("laneFilter").innerHTML = options([], "", "All lanes");
+  $("stageFilter").innerHTML = options([], "", "All stages");
+  $("moveAnnouncement").textContent = "";
+  notice("");
   renderClaims();
-  await Promise.all([refresh(), refreshClaims()]);
+  await Promise.all([refresh(), refreshClaims({ allowPending: true })]);
+  if (resumeEpoch !== state.resumeReadEpoch) return;
+  state.resumeChecking = false;
+  renderClaims();
+  const suspended = state.suspendedClaim;
+  if (suspended && state.claims?.candidates?.some((candidate) =>
+    String(candidate.pool_id) === String(suspended.candidate.pool_id) && candidate.base_version === suspended.candidate.base_version)) {
+    state.suspendedClaim = null;
+    state.activeClaim = suspended;
+    dialog.showModal(); // The matching authorized candidate keeps the typed draft intact.
+  } else if (suspended && state.claims) {
+    state.suspendedClaim = null;
+    $("claimError").textContent = "That candidate changed or left the Claim Card. Review the current card before deciding.";
+    $("claimError").hidden = false;
+  }
 }
 async function moveLead(button) {
   const id = button.dataset.moveLead;
@@ -306,10 +349,15 @@ if (typeof document !== "undefined") {
   for (const view of ["board", "list"]) $(view + "View").addEventListener("click", () => { state.view = view; $("boardView").setAttribute("aria-pressed", String(view === "board")); $("listView").setAttribute("aria-pressed", String(view === "list")); renderBoard(); });
   $("leadBoard").addEventListener("click", (event) => { const button = event.target.closest("[data-move-lead]"); if (button) moveLead(button); });
   $("refreshClaims").addEventListener("click", refreshClaims);
-  $("claimCards").addEventListener("click", (event) => { const button = event.target.closest("[data-claim-open]"); if (button) openClaim(button); });
+  $("claimCards").addEventListener("click", (event) => {
+    const retry = event.target.closest("[data-retry-pending]");
+    if (retry?.dataset?.retryPending !== undefined) { retryPendingDecision(retry); return; }
+    const button = event.target.closest("[data-claim-open]"); if (button) openClaim(button);
+  });
   $("claimDialog").addEventListener("submit", (event) => { const form = event.target.closest("form[data-claim-action]"); if (!form) return; event.preventDefault(); submitClaim(form); });
   $("closeClaimDialog").addEventListener("click", () => $("claimDialog").close());
   $("claimDialog").addEventListener("close", () => {
+    if (state.suspending) return;
     state.activeClaim?.trigger?.focus?.(); state.activeClaim = null;
     if (state.resumeDeferred && !state.pendingClaims.size) refreshAfterReturn();
   });
