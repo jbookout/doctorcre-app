@@ -105,7 +105,7 @@ export const ACKNOWLEDGE_SCOPE =
  * which is what stops the two drifting apart.
  */
 export const APP_ROUTE_PATHS = Object.freeze([
-  "/", "/control-room", "/workspace", "/deals", "/leads", "/clients", "/vendors",
+  "/", "/control-room", "/progress-board", "/workspace", "/deals", "/leads", "/clients", "/vendors",
   "/calendar", "/ideas", "/system-work.html", "/room.html", "/queue.html", "/tours", "/share", "/design",
   "/design/business", "/design/operations", "/work-inventory", "/tasks", "/pipeline",
   "/business", "/status", "/incidents", "/notifications", "/conversations",

@@ -24,9 +24,11 @@ const UNGATED_PAGES = new Set(["/status"]);
 // same refusal or redirect, same 200 for a signed-in partner.
 const DESIGN_PROTOTYPE_PREFIX = "/design";
 const DESIGN_PROTOTYPE_GATE_PATH = "/control-room";
+const SHARED_PAGE_GATE_PATHS = new Set(["/progress-board"]);
 
 function gateRequestFor(request, pathname) {
-  if (pathname !== DESIGN_PROTOTYPE_PREFIX && !pathname.startsWith(`${DESIGN_PROTOTYPE_PREFIX}/`)) return request;
+  if (!SHARED_PAGE_GATE_PATHS.has(pathname) && pathname !== DESIGN_PROTOTYPE_PREFIX &&
+      !pathname.startsWith(`${DESIGN_PROTOTYPE_PREFIX}/`)) return request;
   const url = new URL(request.url);
   url.pathname = DESIGN_PROTOTYPE_GATE_PATH;
   url.search = "";

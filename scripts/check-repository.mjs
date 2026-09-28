@@ -22,7 +22,7 @@ assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["control-room.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html"]) await read(path);
+for (const path of ["control-room.html", "progress-board.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
@@ -34,6 +34,8 @@ assert.equal(routes.routes["/tasks"], "tasks.html", "the Tasks route must stay i
 assert.equal(routes.routes["/pipeline"], "pipeline.html", "the Deals board route must stay in the route contract");
 assert.equal(routes.routes["/business"], "business-workspace.html", "the business workspace route must stay in the route contract");
 assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");
+assert.equal(routes.routes["/progress-board"], "progress-board.html", "the signed-in progress board route must stay pinned");
+for (const verb of ["read-progress-board", "answer-board-question"]) assert.ok(contract.mcp_operations.includes(verb), `the progress board needs ${verb} pinned`);
 assert.equal(routes.routes["/status"], "status.html", "the independent status route must stay in the route contract");
 for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);
 assert.ok(contract.mcp_operations.includes("governance-queue"), "the Control Room approvals card (V5-UX-C14) needs governance-queue pinned");

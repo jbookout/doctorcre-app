@@ -745,8 +745,8 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the v35 producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.26.0", "one added operation (add-room-turn) is an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 65);
+  assert.equal(contract.version, "1.27.0", "one added operation (add-room-turn) is an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 67);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -767,12 +767,13 @@ test("C13-04 the contract pins the v35 producer, its two dispatch writes, and V5
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // V5-UX-C13c: answer-work-request-for-joe (carr PR #1190) is the answer
   // form's one write, pinned the same way add-room-turn was — an app-side
-  // contract addition, sorted immediately after add-room-turn.
+  // contract addition; the progress-board answer now sorts between the two.
   assert.ok(contract.mcp_operations.includes("answer-work-request-for-joe"), "answer-work-request-for-joe is not pinned");
   const answerAt = contract.mcp_operations.indexOf("answer-work-request-for-joe");
-  assert.equal(contract.mcp_operations[answerAt - 1], "add-room-turn");
+  assert.equal(contract.mcp_operations[answerAt - 1], "answer-board-question");
+  assert.equal(contract.mcp_operations[answerAt - 2], "add-room-turn");
   assert.equal(contract.mcp_operations[answerAt + 1], "capture-queue");
-  assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284");
+  assert.equal(contract.producer.source_commit, "4d356351268f17ac7db459c0df9eee3c84b9d2a3");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for

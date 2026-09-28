@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.26.0",
+  "version": "1.27.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "35009e9dedab3a603836c662d0f7f12dfeb1a284"
+    "source_commit": "4d356351268f17ac7db459c0df9eee3c84b9d2a3"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -20,6 +20,7 @@
     "add-deal-note",
     "add-loop",
     "add-room-turn",
+    "answer-board-question",
     "answer-work-request-for-joe",
     "capture-queue",
     "claim-card",
@@ -56,6 +57,7 @@
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
+    "read-progress-board",
     "read-room",
     "read-room-queue",
     "read-session-identity",

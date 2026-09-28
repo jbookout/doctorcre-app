@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#030914">
+  <title>Progress board · DoctorCRE</title>
+  <link rel="stylesheet" href="/css/progress-board.css">
+  <script type="module" src="/js/progress-board.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead">
+      <a class="brand" href="/control-room" aria-label="DoctorCRE Control Room">✦ <span>DoctorCRE</span></a>
+      <span class="edition">PROGRESS · LIVE RECORD</span>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="board-title">
+        <p class="eyebrow">DELIVERY / PROGRESS BOARD</p>
+        <h1 id="board-title">Progress board</h1>
+        <p id="board-meta" class="board-meta">Loading published board…</p>
+        <p id="board-error" class="error" role="alert" hidden></p>
+      </section>
+      <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
+        <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
+        <p class="caption">Queued → Building → Review → CI → Merged → Live</p>
+        <div id="board-stages" class="stages" aria-live="polite"></div>
+      </section>
+      <section class="panel questions-panel" aria-labelledby="questions-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
+        <p class="caption">An answer is Sent when it is saved. Received and Applied appear after the asker records those steps.</p>
+        <div id="board-questions" class="questions" aria-live="polite"></div>
+      </section>
+    </main>
+    <footer>Board data and answer status come from the signed-in CARR record.</footer>
+  </div>
+</body>
+</html>
