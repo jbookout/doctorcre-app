@@ -47,7 +47,7 @@ import {
   unavailableCopy, waitingView, weekRail,
 } from "./business-workspace-model.js";
 import { uuidv4 } from "./uuid.js";
-import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
+import { browserDraftStorage, createDraftBoardReadiness, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 
 const EXPIRY_TICK_MS = 5_000;
 const SIGN_IN_HREF = "/auth/login?return_to=/business";
@@ -63,7 +63,7 @@ const view = {
   // The Quick add record list and its OWN sequence. The board read is a second
   // read with a second lifetime, so it gets a second guard: a late board answer
   // must not paint over a newer one, and it must never touch view.sequence.
-  records: Object.freeze([]), boardSequence: 0,
+  records: Object.freeze([]),
   // V5-UX-B01 — the two section reads. Each keeps its own last verified answer
   // and its own sequence; `day` is the local day the sections were last drawn
   // against, so crossing midnight is noticed and both sections are read again.
@@ -77,6 +77,7 @@ let viewer = "joe";
 let localDrafts = createLocalDrafts({ storage: null, viewer: 'unverified' });
 let draftViewer = null;
 let restoredDraftId = null;
+const draftBoardReadiness = createDraftBoardReadiness();
 const draftOperations = new Map();
 let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
@@ -456,7 +457,9 @@ async function load() {
  * snapshots of the same board taken milliseconds apart.
  */
 async function loadBoardRecords(boardRead) {
-  const sequence = ++view.boardSequence;
+  const sequence = draftBoardReadiness.begin();
+  view.records = Object.freeze([]);
+  renderQuickAdd();
   let records = [];
   let actor = null;
   try {
@@ -466,7 +469,8 @@ async function loadBoardRecords(boardRead) {
   } catch {
     records = Object.freeze([]);
   }
-  if (!acceptsResponse(view.boardSequence, sequence)) return;
+  if (!draftBoardReadiness.current(sequence)) return;
+  if (actor) draftBoardReadiness.complete(sequence, actor);
   if (actor && actor !== draftViewer) {
       const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: actor });
       if (!draftViewer) for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
@@ -693,6 +697,10 @@ function wire() {
       announce("Confirming your account. Keep this as a draft until it is ready.");
       return;
     }
+    if (restoredDraftId && !draftBoardReadiness.canFile(draftViewer, globalThis.navigator?.onLine !== false)) {
+      announce("The record list has not been verified since reconnecting. Keep this draft and try again after it loads.");
+      return;
+    }
     const current = renderQuickAdd();
     if (!current) return;
     if (!current.plan.args) {
@@ -759,9 +767,15 @@ async function boot() {
   wire();
   window.addEventListener('online', () => {
     if (!client) return;
+    draftBoardReadiness.invalidate();
     load();
     readSections();
     loadBoardRecords(readBoard());
+  });
+  window.addEventListener('offline', () => {
+    draftBoardReadiness.invalidate();
+    view.records = Object.freeze([]);
+    renderQuickAdd();
   });
   renderQuickAdd();
   renderDrafts();

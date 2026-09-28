@@ -67,3 +67,28 @@ export function matchingDraftId(drafts, id, sentence, dueDate) {
   const draft = drafts.find((item) => item.id === id);
   return draft?.sentence === sentence && draft.dueDate === dueDate ? draft.id : null;
 }
+
+export function createDraftBoardReadiness() {
+  let generation = 0;
+  let verifiedActor = null;
+  return {
+    begin() {
+      verifiedActor = null;
+      return ++generation;
+    },
+    current(token) { return token === generation; },
+    complete(token, actor) {
+      if (token !== generation || typeof actor !== 'string' || !actor.trim()) return false;
+      verifiedActor = actor;
+      return true;
+    },
+    invalidate() {
+      verifiedActor = null;
+      generation += 1;
+    },
+    canFile(actor, online) {
+      return online === true && typeof actor === 'string' && actor.length > 0
+        && verifiedActor === actor;
+    },
+  };
+}
