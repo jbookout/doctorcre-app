@@ -29,7 +29,7 @@ import { createCommandDock } from "./command-dock.js";
 import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { preferenceSaveView } from "./notification-preference-draft.mjs";
-import { mountNotificationResume } from "./notification-resume.mjs";
+import { mountReadOnResume } from "./read-on-resume.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -465,7 +465,7 @@ async function boot() {
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
-  mountNotificationResume({ document, window, refresh: load });
+  mountReadOnResume({ document, window, refresh: load });
   await load();
 }
 

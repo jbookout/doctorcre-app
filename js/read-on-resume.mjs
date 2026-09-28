@@ -1,7 +1,7 @@
-// A read-only notification refresh after a page returns to view. A browser can
+// A read-only refresh after a page returns to view. A browser can
 // deliver both visibilitychange and pageshow for one return, so one transition
 // makes one read. A second return during an in-flight read is queued once.
-export function mountNotificationResume({ document, window, refresh }) {
+export function mountReadOnResume({ document, window, refresh }) {
   let hidden = document.visibilityState === "hidden";
   let resumed = false;
   let reading = false;

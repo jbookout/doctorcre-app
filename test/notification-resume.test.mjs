@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { mountNotificationResume } from "../js/notification-resume.mjs";
+import { mountReadOnResume } from "../js/read-on-resume.mjs";
 
 function events(initial = "visible") {
   const listeners = new Map();
@@ -22,7 +22,7 @@ function events(initial = "visible") {
 test("a hidden Notifications page reads the feed once when it becomes visible", async () => {
   const browser = events();
   let reads = 0;
-  mountNotificationResume({ document: browser.doc, window: browser.win, refresh: async () => { reads++; } });
+  mountReadOnResume({ document: browser.doc, window: browser.win, refresh: async () => { reads++; } });
   browser.visibility("hidden");
   browser.visibility("visible");
   await new Promise((resolve) => setImmediate(resolve));
@@ -36,7 +36,7 @@ test("a hidden Notifications page reads the feed once when it becomes visible", 
 test("a back-forward cache restore reads, while ordinary pageshow and hidden pages do not", async () => {
   const browser = events();
   let reads = 0;
-  mountNotificationResume({ document: browser.doc, window: browser.win, refresh: async () => { reads++; } });
+  mountReadOnResume({ document: browser.doc, window: browser.win, refresh: async () => { reads++; } });
   browser.pageshow(false);
   browser.visibility("hidden");
   browser.pageshow(true);
@@ -53,7 +53,7 @@ test("a back-forward cache restore reads, while ordinary pageshow and hidden pag
 test("failed reads can be retried on the next actual resume", async () => {
   const browser = events();
   let reads = 0;
-  mountNotificationResume({ document: browser.doc, window: browser.win, refresh: async () => {
+  mountReadOnResume({ document: browser.doc, window: browser.win, refresh: async () => {
     reads++;
     if (reads === 1) throw new Error("synthetic feed failure");
   } });
@@ -69,7 +69,7 @@ test("failed reads can be retried on the next actual resume", async () => {
 test("each back-forward restore reads again even when the browser skips visibilitychange", async () => {
   const browser = events();
   let reads = 0;
-  mountNotificationResume({ document: browser.doc, window: browser.win, refresh: async () => { reads++; } });
+  mountReadOnResume({ document: browser.doc, window: browser.win, refresh: async () => { reads++; } });
   browser.pagehide();
   browser.pageshow(true);
   await new Promise((resolve) => setImmediate(resolve));
@@ -83,7 +83,7 @@ test("a second return while a read is in flight queues one fresh read", async ()
   const browser = events();
   let complete;
   let reads = 0;
-  mountNotificationResume({ document: browser.doc, window: browser.win, refresh: async () => {
+  mountReadOnResume({ document: browser.doc, window: browser.win, refresh: async () => {
     reads++;
     if (reads === 1) await new Promise((resolve) => { complete = resolve; });
   } });
@@ -100,6 +100,6 @@ test("a second return while a read is in flight queues one fresh read", async ()
 
 test("the shipped Notifications page binds resume to its existing read path", async () => {
   const source = await readFile(new URL("../js/notifications.js", import.meta.url), "utf8");
-  assert.match(source, /mountNotificationResume\(\{[\s\S]*?refresh:\s*load/);
+  assert.match(source, /mountReadOnResume\(\{[\s\S]*?refresh:\s*load/);
   assert.doesNotMatch(source, /setInterval\(/);
 });

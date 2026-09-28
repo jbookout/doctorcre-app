@@ -31,6 +31,7 @@ import {
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
+import { mountReadOnResume } from "./read-on-resume.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -198,6 +199,13 @@ async function load() {
     view.rows = rows;
     view.status = "ready";
     view.message = null;
+    if (view.open) {
+      if (currentRow()) openTask(view.open, { preserveDraft: true });
+      else {
+        closeDialog();
+        announce("This record is no longer open. The list now shows the current work.");
+      }
+    }
   } catch (error) {
     if (sequence !== view.sequence) return;
     const status = Number(error?.status || 0);
@@ -293,9 +301,9 @@ function currentRow() {
   return view.rows.find((row) => `${row.kind}:${row.number}` === view.open) || null;
 }
 
-function openTask(key) {
+function openTask(key, { preserveDraft = false } = {}) {
   view.open = key;
-  view.closing = null;
+  if (!preserveDraft) view.closing = null;
   const row = currentRow();
   const dialog = $("taskDialog");
   if (!row || !dialog) return;
@@ -317,9 +325,9 @@ function openTask(key) {
     handover.textContent = target ? `Hand over to ${partnerName(target)}` : "Hand over";
   }
   const form = $("taskCloseForm");
-  if (form) form.hidden = true;
+  if (form && !preserveDraft) form.hidden = true;
   const outcome = $("taskOutcome");
-  if (outcome) outcome.value = "";
+  if (outcome && !preserveDraft) outcome.value = "";
   if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
 }
 
@@ -600,6 +608,11 @@ async function boot() {
     await loadViewer();
     await load();
   });
+  mountReadOnResume({ document, window, refresh: async () => {
+    await loadViewer();
+    await load();
+    renderQuickAdd();
+  } });
   renderDrafts();
   await load();
   if (!client.selfActor) await loadViewer();
