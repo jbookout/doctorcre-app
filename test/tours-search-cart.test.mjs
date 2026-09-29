@@ -11,7 +11,7 @@ const propertyId = "22222222-2222-4222-8222-222222222222";
 const versionId = "33333333-3333-4333-8333-333333333333";
 const property = { property_id: propertyId, name: "Medical Plaza", address: "100 Clinic Way", county: "Escambia", state: "FL",
   availability: "unknown", source_label: "CARR reviewed property register", rights_status: "unknown", coordinate_precision: "unknown",
-  fact_as_of: "2026-09-01T00:00:00Z" };
+  fact_as_of: "2026-09-01T00:00:00Z", caveat: "Reviewed register entry." };
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 async function settle() { for (let i = 0; i < 8; i += 1) await tick(); }
@@ -57,6 +57,9 @@ test("search results disclose unknowns; saved stable IDs survive reload; refused
   assert.match(result.textContent, /CARR reviewed property register/);
   assert.match(result.textContent, /Rights unknown/);
   assert.match(result.textContent, /Precision unknown/);
+  assert.match(result.textContent, /Latest fact date/);
+  assert.match(result.textContent, /Sep 1, 2026/);
+  assert.match(result.textContent, /Candidate facts need review before a route or client use/);
   result.querySelector("button[data-property-id]").click();
   assert.match(doc.querySelector("#selection-list").textContent, /Medical Plaza/);
   doc.querySelector("#save-selection").click();
