@@ -45,3 +45,8 @@ body.room-body:not(.queue-body) #appShell{position:fixed;top:0;left:0;right:0}
 .deal-page-views a,.deal-page-view-current{display:flex;align-items:center;min-height:38px;padding:7px 14px;border-radius:8px;color:#bdd3e7;text-decoration:none}
 .deal-page-views a:hover{color:#fff;background:rgba(75,123,171,.27)}
 .deal-page-view-current{color:#071525;background:#93b9d9}
+/* QA batch 1: the phone navigation panel scrolls inside itself and uses the dark scrollbar. */
+.app-shell-navigation,.app-shell-more-list{scrollbar-width:thin;scrollbar-color:#3a5878 #0a1a2e}
+.app-shell-navigation::-webkit-scrollbar,.app-shell-more-list::-webkit-scrollbar{width:8px;height:8px;background:#0a1a2e}
+.app-shell-navigation::-webkit-scrollbar-thumb,.app-shell-more-list::-webkit-scrollbar-thumb{border-radius:8px;background:#3a5878}
+@media(max-width:900px){.app-shell-navigation{max-height:calc(100vh - 120px);overflow:auto;overscroll-behavior:contain}.app-shell-menu{max-width:100%}}

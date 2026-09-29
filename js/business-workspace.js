@@ -50,7 +50,7 @@ import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createDraftBoardReadiness, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 
 const EXPIRY_TICK_MS = 5_000;
-const SIGN_IN_HREF = "/auth/login?return_to=/business";
+const SIGN_IN_HREF = "/auth/login?return_to=%2F";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
