@@ -111,7 +111,19 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
     const sourcePath = join(root, ...path.split("/"));
     const info = await stat(sourcePath);
     if (!info.isFile()) throw new Error(`artifact input is not a file: ${path}`);
-    const content = await readFile(sourcePath);
+    let content = await readFile(sourcePath);
+    if (path === "reports/share.js") {
+      const shell = await readFile(join(root, "js/app-shell.js"), "utf8");
+      const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
+      if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
+        throw new Error("report shell bundle needs an explicit export update");
+      }
+      content = Buffer.from(`${shell.replace(/^export (?=(?:const|function) )/gm, "")}\n${content.toString("utf8")}`);
+    }
+    if (path === "reports/share.css") {
+      const shell = await readFile(join(root, "css/app-shell.css"));
+      content = Buffer.concat([content, Buffer.from("\n"), shell]);
+    }
     files.set(path, content);
     const deploymentPath = join(siteDir, ...path.split("/"));
     await mkdir(dirname(deploymentPath), { recursive: true });

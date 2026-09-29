@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -10,10 +13,34 @@ const expected = ["Home", "Leads", "Tours", "Deals", "Clients", "Vendors", "Sear
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {
     const html = readFileSync(new URL(page, root), "utf8");
-    assert.match(html, /<link rel="stylesheet" href="\/css\/app-shell\.css">/, `${page}: shared shell styles`);
-    assert.match(html, /<div id="appShell"><\/div><script type="module" src="\/js\/app-shell\.js"><\/script>/, `${page}: shared shell mount`);
+    if (page === "reports/share.html") {
+      assert.match(html, /<link rel="stylesheet" href="\/share\.css">/, `${page}: report stylesheet`);
+      assert.match(html, /<div id="appShell"><\/div>/, `${page}: shared shell mount`);
+    } else {
+      assert.match(html, /<link rel="stylesheet" href="\/css\/app-shell\.css">/, `${page}: shared shell styles`);
+      assert.match(html, /<div id="appShell"><\/div><script type="module" src="\/js\/app-shell\.js"><\/script>/, `${page}: shared shell mount`);
+    }
     assert.equal((html.match(/id="appShell"/g) || []).length, 1, `${page}: exactly one shell`);
     assert.doesNotMatch(html, /class="(?:primary-nav|mobile-nav|leads-nav|room-nav|workspaces|system-work-session)"/, `${page}: no second global navigation`);
+  }
+});
+
+test("built report uses only report-adapter asset routes and includes the shared shell", async () => {
+  const { buildArtifact } = await import("../scripts/artifact.mjs");
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-report-shell-"));
+  try {
+    await buildArtifact({ root: new URL("../", import.meta.url).pathname, outDir, commit: "a".repeat(40) });
+    const html = await readFile(join(outDir, "site/reports/share.html"), "utf8");
+    const script = await readFile(join(outDir, "site/reports/share.js"), "utf8");
+    const style = await readFile(join(outDir, "site/reports/share.css"), "utf8");
+    const requested = [...html.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]);
+    const routed = new Set(["/share-bootstrap.js", "/share.js", "/share.css", "/vendor/maplibre-gl-6.4.1/maplibre-gl.css"]);
+    assert.deepEqual(requested.filter((path) => !routed.has(path)), [], "every report asset request has an adapter route");
+    assert.match(script, /function appShellMarkup\(/, "report JavaScript carries the shared navigation renderer");
+    assert.match(style, /\.app-shell-header\{/, "report CSS carries the shared shell styles");
+    assert.doesNotMatch(script, /^export /m, "report JavaScript runs without an unrouted module import");
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
   }
 });
 
@@ -44,9 +71,14 @@ test("the task board belongs to Observatory rather than global navigation", () =
   assert.match(room, /src="\/js\/queue\.js"/);
 });
 
-test("public report navigation returns to the app host", async () => {
-  const { appShellMarkup } = await import("../js/app-shell.js");
-  const shell = appShellMarkup("/share", "https://app.doctorcre.com");
-  assert.match(shell, /href="https:\/\/app\.doctorcre\.com\/deals"/);
-  assert.match(shell, /href="https:\/\/app\.doctorcre\.com\/" aria-label="DoctorCRE Home"/);
+test("public report navigation uses its sibling app origin", async () => {
+  const { appOriginForReport, appShellMarkup } = await import("../js/app-shell.js");
+  const domain = ["example", "test"].join(".");
+  const origin = appOriginForReport(`https://reports.${domain}`);
+  const appOrigin = `https://app.${domain}`;
+  assert.equal(origin, appOrigin);
+  assert.equal(appOriginForReport(`https://other.${domain}`), "");
+  const shell = appShellMarkup("/share", origin);
+  assert.ok(shell.includes(`href="${appOrigin}/deals"`));
+  assert.ok(shell.includes(`href="${appOrigin}/" aria-label="DoctorCRE Home"`));
 });

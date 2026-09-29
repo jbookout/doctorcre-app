@@ -30,6 +30,15 @@ export function activeDestination(pathname) {
   return sectionForRoute[pathname] || pathname;
 }
 
+export function appOriginForReport(origin) {
+  try {
+    const url = new URL(origin);
+    if (!url.hostname.startsWith("reports.")) return "";
+    url.hostname = `app.${url.hostname.slice("reports.".length)}`;
+    return url.origin;
+  } catch { return ""; }
+}
+
 function link({ label, href }, current, base) {
   const active = href === current;
   const badge = label === "Notifications" ? '<span class="nav-badge" id="navUnreadBadge" hidden></span>' : "";
@@ -58,8 +67,7 @@ export function appShellMarkup(pathname, base = "") {
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const host = root.getElementById("appShell");
   if (!host) return;
-  const hostName = globalThis.location?.hostname || "";
-  const base = hostName === "reports.doctorcre.com" ? "https://app.doctorcre.com" : "";
+  const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base);
   const menu = host.querySelector(".app-shell-menu");
   const moreButton = host.querySelector(".app-shell-more-toggle");
