@@ -180,21 +180,25 @@ test("S02-10 the live corpus lands on not-recorded and the tab says so", () => {
   assert.equal(lineageSummary([RETRY_ROW, ...DEFAULT_PAGE.sessions]).allUnrecorded, false);
 });
 
-// MUTATION: render a disabled open button in hostState() / js/sessions.js.
-test('S02-11 native_host_supported false renders "cannot be opened here" and NO open control', () => {
+test('S02-11 unsupported hosts keep copy-ID while exact Codex targets offer Open', () => {
   const state = hostState(DEFAULT_PAGE.sessions[0]);
   assert.equal(state.state, "unsupported");
   assert.equal(state.open, false);
   assert.match(state.text, /cannot be opened here/);
   assert.match(state.text, /no supported native host is recorded/);
-  // Every branch, not just this one: nothing in the model can produce an open.
   for (const row of [RETRY_ROW, REPLACEMENT_ROW, RESUME_ROW, MISMATCH_ROW, ...DEFAULT_PAGE.sessions]) {
     assert.equal(hostState(row).open, false, `${row.canonical_session_id} produced an open control`);
   }
-  // And the view renders none, disabled or otherwise. A disabled button would
-  // imply one could be enabled, which is the claim clause 3 has not earned.
-  assert.equal(/disabled/i.test(sessionsJs), false, "the Sessions view renders no disabled control");
-  assert.equal(/data-open=|>Open |Resume<|Take over/i.test(sessionsJs), false, "the Sessions view renders no open control");
+  const id = '11111111-1111-4111-8111-111111111111';
+  assert.equal(hostState({ canonical_session_id: id, native_host_id: id,
+    native_host_supported: true, surface: 'codex' }, { hostAvailable: true }).open, true);
+  const away = hostState({ canonical_session_id: id, native_host_id: id,
+    native_host_supported: true, surface: 'codex', display_name: 'specialist work' },
+    { hostAvailable: false });
+  assert.equal(away.state, 'host_unavailable');
+  assert.equal(away.open, false);
+  assert.match(sessionsJs, /data-open-session/);
+  assert.match(sessionsJs, /data-copy-session/);
 });
 
 // MUTATION: show only `display_name` in the title-mismatch branch.
@@ -220,10 +224,10 @@ test("S02-13 supported host with a null host id renders the mismatch, not an ope
 /* --------------------------------------------------------- honesty and stages */
 
 // MUTATION: delete the sentence from control-room.html / sessions-model.js.
-test("S02-14 the no-open honesty sentence is present on the tab", () => {
-  assert.match(NO_OPEN_SENTENCE, /It cannot open one/);
-  assert.match(NO_OPEN_SENTENCE, /V5-UX-S02's third clause/);
-  assert.match(NO_OPEN_SENTENCE, /no control here launches, resumes or takes over anything/);
+test("S02-14 the bounded-open honesty sentence is present on the tab", () => {
+  assert.match(NO_OPEN_SENTENCE, /verified Codex Desktop thread/);
+  assert.match(NO_OPEN_SENTENCE, /Other hosts keep the session ID/);
+  assert.match(NO_OPEN_SENTENCE, /never sends a message, takes over, or starts a new session/);
   assert.match(html, /id="sessionsNoOpen"/, "the tab carries the element the sentence is written into");
   assert.match(sessionsJs, /sentence\.textContent = NO_OPEN_SENTENCE/, "the page writes it from the model");
 });

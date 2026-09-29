@@ -1,17 +1,15 @@
 // V5-UX-S02 clauses 1-2 — the Sessions tab: DOM wiring only.
 //
 // Every decision about a payload is in ./sessions-model.js. This file reads,
-// paints, and does nothing else. It writes nothing — both verbs on this surface
-// are reads, and neither carries an idempotency key or an actor.
+// paints, and navigates only to a verified Codex native thread. It writes no
+// record and sends no model turn.
 //
 // The read is LAZY, like the Atlas tab: it fires on the first selection of this
 // tab, never on page boot, so the Control Room's four dashboard reads keep their
 // time-to-glance.
 //
-// There is no open control in this file. Search it for one: `open` appears only
-// as `hostState().open`, which is false in every branch, and the drawer's
-// <details> element, which reveals history that was already read. Opening a
-// native session is S02 clause 3 and no adapter for it exists.
+// The native link is a bounded Open/Resume action. Browser return triggers a
+// fresh exact read; it never launches or retries a model session.
 import {
   NO_OPEN_SENTENCE, countsLine, dispatchView, identityRequest, lineageSummary,
   listState, refuseDispatchHistory, refuseSessionIdentity, sessionCards,
@@ -20,6 +18,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
+import { createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -48,6 +47,9 @@ function announce(text) {
 }
 
 const clock = (value) => formatClock(value) || "unknown";
+const hostAvailable = () => /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
+let pendingOpen = null;
+const openLinks = createOpenLinkGuard();
 
 /* -------------------------------------------------------------------- painting */
 
@@ -80,6 +82,7 @@ function chip(label, value, state = "read") {
 }
 
 function cardHtml(card) {
+  const canOpen = card.openTarget.open && openLinks.allows(card.id);
   return `<article class="card glass session-card" data-session="${escapeHtml(card.id)}">
     <div class="session-head">
       <div class="session-identity">
@@ -98,6 +101,15 @@ function cardHtml(card) {
     <p class="session-lineage" data-relation="${escapeHtml(card.lineage.relation)}">${escapeHtml(card.lineage.text)}</p>
     <p class="session-attempts">${escapeHtml(card.attemptsText)}</p>
     <p class="session-host" data-host="${escapeHtml(card.host.state)}">${escapeHtml(card.host.text)}</p>
+    <div class="session-open-route" data-verified="${canOpen}" role="img" aria-label="${canOpen ? 'CARR session identity connects to a verified native task and its Codex Desktop thread' : 'Native task and host connection have not been verified for this session'}">
+      <svg viewBox="0 0 300 34" aria-hidden="true" focusable="false"><path d="M25 17H275"/><circle cx="25" cy="17" r="7"/><circle cx="150" cy="17" r="7"/><circle cx="275" cy="17" r="7"/></svg>
+      <span>Identity</span><span>Native task</span><span>Codex thread</span>
+    </div>
+    <div class="session-open-actions">
+      ${canOpen ? `<a class="btn btn-primary" data-open-session="${escapeHtml(card.id)}" href="${escapeHtml(card.openTarget.href)}">Open session</a>` : ''}
+      <button class="btn btn-quiet" type="button" data-copy-session="${escapeHtml(card.id)}">Copy session ID</button>
+      <span class="small" data-open-status="${escapeHtml(card.id)}"></span>
+    </div>
     ${card.projectAffinity || card.cwd || card.modelId ? `<p class="session-meta small">${[
       card.projectAffinity ? `project ${escapeHtml(card.projectAffinity)}` : null,
       card.cwd ? `cwd ${escapeHtml(card.cwd)}` : null,
@@ -131,9 +143,23 @@ function renderList() {
     if (summary) summary.hidden = true;
     return;
   }
-  const cards = sessionCards(view.payload);
+  const cards = sessionCards(view.payload, { hostAvailable: hostAvailable() });
   const state = listState(view.payload);
   list.innerHTML = cards.map(cardHtml).join("");
+  for (const link of list.querySelectorAll('[data-open-session]')) {
+    link.addEventListener('click', () => {
+      const card = cards.find(item => item.id === link.dataset.openSession);
+      pendingOpen = card ? { id: card.id, target: card.openTarget, link } : null;
+      announce('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
+    });
+  }
+  for (const button of list.querySelectorAll('[data-copy-session]')) {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.copySession;
+      try { await navigator.clipboard.writeText(id); announce('Session ID copied.'); }
+      catch { announce('Copy was unavailable; the session ID is shown above.'); }
+    });
+  }
   empty.hidden = cards.length > 0;
   empty.textContent = state.message ?? "";
   const rows = Array.isArray(view.payload?.sessions) ? view.payload.sessions : [];
@@ -221,6 +247,7 @@ async function read() {
     view.status = "ready";
     view.refusal = refusal;
     view.payload = refusal ? null : payload;
+    openLinks.refresh(!refusal);
   } catch (error) {
     if (sequence !== view.sequence) return;
     view.status = "ready";
@@ -279,6 +306,23 @@ export function mountSessions({ outage = null } = {}) {
     read();
   });
   $("sessionsRetry")?.addEventListener("click", () => read());
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
+    const attempt = pendingOpen;
+    pendingOpen = null;
+    openLinks.retire(attempt.id, attempt.link);
+    renderList();
+    try {
+      const payload = await client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50 });
+      const outcome = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
+        { hostAvailable: hostAvailable() });
+      announce(outcome.state === 'same_target_unconfirmed'
+        ? 'The recorded target is unchanged. Refresh the session list before opening again.'
+        : 'The recorded target could not be confirmed. Refresh the session list before opening.');
+    } catch {
+      announce('The open result is unknown. Refresh the session list before trying again.');
+    }
+  });
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"

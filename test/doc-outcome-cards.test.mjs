@@ -156,22 +156,34 @@ test("outcomeCard shows routing state truthfully for every value the producer ca
 
 /* ----------------------------------------------------- missing capability (S02 clause 3) */
 
-test("sessionEntryView never opens — the adapter is parked, not merely unconfigured", () => {
+test("sessionEntryView refuses unsupported and unbound targets", () => {
   for (const reason of ["session_relation_unavailable", "native_open_unsupported", "host_available_but_native_task_unbound", "host_unavailable", null]) {
     const card = baseCard({ session_entry: { available: false, target: null, capability: null, unavailable_reason: reason, fallback: null, auto_launch: false } });
     const entry = sessionEntryView(card);
     assert.equal(entry.open, false, `reason ${reason} must never open`);
   }
   const available = baseCard({ session_entry: { available: true, target: "some-target", capability: "some-cap", unavailable_reason: null, fallback: null, auto_launch: false } });
-  assert.equal(sessionEntryView(available).open, false, "even an 'available' target does not open in this slice");
+  assert.equal(sessionEntryView(available).open, false, "an unbound available target does not open");
 });
 
-test("sessionEntryView offers the concrete scoped solution the spec asks for", () => {
-  const card = baseCard();
+test('sessionEntryView exposes a bound Codex thread only on the supported host', () => {
+  const native = '11111111-1111-4111-8111-111111111111';
+  const card = baseCard({ canonical_session_id: { value: 'capability-session-1' },
+    native_task_id: { value: native }, session_entry: { available: true,
+      target: native, capability: 'codex_desktop_open_v1', auto_launch: false } });
+  assert.equal(sessionEntryView(card, { hostAvailable: true }).href, `codex://threads/${native}`);
+  const away = sessionEntryView(card, { hostAvailable: false });
+  assert.equal(away.open, false);
+  assert.equal(away.sessionRef, 'capability-session-1');
+  assert.match(away.reasonSentence, /host.*unavailable/i);
+});
+
+test("sessionEntryView offers manual resume when the server records a session ID", () => {
+  const card = baseCard({ canonical_session_id: { value: '11111111-1111-4111-8111-111111111111' } });
   const entry = sessionEntryView(card);
   assert.equal(entry.scopedSolution, NO_ADAPTER_SENTENCE);
   assert.match(entry.scopedSolution, /session ref shown/);
-  assert.match(entry.scopedSolution, /Claude Code/);
+  assert.match(entry.scopedSolution, /recorded host/);
 });
 
 test("checkable_done: local host loss offers a qualified fallback naming the SAME logical job", () => {
@@ -193,16 +205,13 @@ test("sessionEntryView with no fallback at all still refuses to open, and names 
   const entry = sessionEntryView(card);
   assert.equal(entry.open, false);
   assert.equal(entry.sessionRef, null);
+  assert.equal(entry.scopedSolution, null, "a missing ID cannot be offered for manual resume");
 });
 
-test("OUTCOME_CARDS_NO_OPEN_SENTENCE matches sessions-model's NO_OPEN_SENTENCE wording pattern for S02 clause 3", () => {
-  // Same shape of sentence — "this surface cannot open a session, here is why,
-  // here is the scoped alternative" — without literally duplicating it, since
-  // it is a different surface (cards, not the Sessions tab).
-  assert.match(NO_OPEN_SENTENCE, /cannot open one/);
-  assert.match(NO_OPEN_SENTENCE, /no supported host adapter exists/);
-  assert.match(OUTCOME_CARDS_NO_OPEN_SENTENCE, /cannot open a session/);
-  assert.match(OUTCOME_CARDS_NO_OPEN_SENTENCE, /no verified host adapter/);
+test("OUTCOME_CARDS_NO_OPEN_SENTENCE matches Sessions' bounded Codex route", () => {
+  assert.match(NO_OPEN_SENTENCE, /verified Codex Desktop thread/);
+  assert.match(OUTCOME_CARDS_NO_OPEN_SENTENCE, /exact Codex Desktop target/);
+  assert.match(OUTCOME_CARDS_NO_OPEN_SENTENCE, /session-reference fallback/);
 });
 
 /* ----------------------------------------------------------------- list helpers */
@@ -288,12 +297,10 @@ test("conversations.html carries the outcome cards section and its permanent mis
   assert.match(html, /id="outcomeCardsState"/);
 });
 
-test("conversations.js never wires an open/launch control for an outcome card session ref", () => {
-  // The whole point of this slice's exclusion: no control here opens, resumes
-  // or launches a native session. Search for the absence, the way
-  // sessions.js's own header comment does for its tab.
+test("conversations.js opens only a verified target and keeps copy-ID fallback", () => {
   assert.doesNotMatch(pageJs, /data-launch-session/);
-  assert.doesNotMatch(pageJs, /data-open-session/);
+  assert.match(pageJs, /data-open-outcome-session/);
+  assert.match(pageJs, /data-copy-outcome-session/);
   assert.doesNotMatch(pageJs, /\.open\(\s*entry\.sessionRef/);
   assert.match(pageJs, /OUTCOME_CARDS_NO_OPEN_SENTENCE/);
 });

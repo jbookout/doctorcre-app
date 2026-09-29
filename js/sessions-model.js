@@ -25,10 +25,9 @@
 //      tell "no such session" from "no events for this session", so no sentence
 //      here ever claims a session HAS no dispatches.
 //
-// This tab opens nothing. Opening the exact native session is S02's third
-// clause, no supported host adapter exists, and a DISABLED open control would
-// imply one could be enabled — so no branch below produces an open control at
-// all, not even a refused one.
+// The Codex Desktop native-thread route is opt-in and requires an exact
+// canonical/native ID binding. Other hosts retain the copy-ID fallback.
+import { sessionOpenTarget } from './open-session-model.js';
 
 /* ---------------------------------------------------------- producer vocabulary */
 
@@ -49,10 +48,9 @@ export const DEFAULT_LIMIT = 25;
 
 /* ------------------------------------------------------ the honesty sentences */
 
-/** Permanent, beside the tab heading. Nothing here launches, resumes or takes over. */
-export const NO_OPEN_SENTENCE = "This tab finds sessions and shows their lineage. It cannot open one. "
-  + "Opening the exact native session is V5-UX-S02's third clause and no supported host adapter exists yet, "
-  + "so no control here launches, resumes or takes over anything.";
+/** Permanent, beside the tab heading. Open is native navigation only. */
+export const NO_OPEN_SENTENCE = "Open returns to a verified Codex Desktop thread on this Mac. "
+  + "Other hosts keep the session ID for manual resume. Opening never sends a message, takes over, or starts a new session.";
 
 /** In the drawer, whenever `stage_unavailable_reason` is non-null. */
 export const STAGE_UNAVAILABLE_SENTENCE = "A missing stage is not a failed stage. Each dispatch names why its "
@@ -274,10 +272,14 @@ export function lineageSummary(rows) {
 
 /**
  * What the card says about the native host, and — in every branch — that no
- * open control exists. `open` is always false here; there is no argument and
- * no payload that turns it true, because turning it true is clause 3.
+ * host state from the recorded native target and this device's host support.
  */
-export function hostState(row) {
+export function hostState(row, options = {}) {
+  const native = sessionOpenTarget(row, options);
+  if (native.open) return {
+    state: 'codex_desktop', open: true, text: 'Exact Codex Desktop thread recorded for this session.',
+    hostId: row.native_host_id, target: native,
+  };
   if (row?.native_host_supported !== true) {
     return {
       state: "unsupported",
@@ -294,6 +296,15 @@ export function hostState(row) {
         + "say which one, so nothing here can name a window to open.",
       hostId: null,
     };
+  }
+  if (row.surface === 'codex') {
+    return row.canonical_session_id === row.native_host_id
+      ? { state: 'host_unavailable', open: false,
+          text: 'The recorded Codex thread is on a host this browser cannot reach. Copy its session ID to resume there.',
+          hostId: row.native_host_id }
+      : { state: 'native_id_mismatch', open: false,
+          text: 'The canonical session and native Codex task IDs disagree. Opening is unavailable.',
+          hostId: row.native_host_id };
   }
   if (row.display_name !== row.native_host_id) {
     return {
@@ -316,7 +327,7 @@ export function hostState(row) {
 /* ------------------------------------------------------------------- the card */
 
 /** Everything one card renders, carrying only what the read said. */
-export function sessionCard(row) {
+export function sessionCard(row, options = {}) {
   return {
     id: row.canonical_session_id,
     name: row.display_name ?? row.canonical_session_id,
@@ -340,13 +351,14 @@ export function sessionCard(row) {
       ? `${row.attempt_count} attempt${row.attempt_count === 1 ? "" : "s"} recorded, no attempt reference`
       : `${row.attempt_count} attempt${row.attempt_count === 1 ? "" : "s"} recorded, latest ${row.latest_attempt_ref}`,
     lineage: lineage(row),
-    host: hostState(row),
+    host: hostState(row, options),
+    openTarget: sessionOpenTarget(row, options),
   };
 }
 
 /** The producer's order, preserved. Nothing here re-ranks or re-filters. */
-export function sessionCards(payload) {
-  return (Array.isArray(payload?.sessions) ? payload.sessions : []).map(sessionCard);
+export function sessionCards(payload, options = {}) {
+  return (Array.isArray(payload?.sessions) ? payload.sessions : []).map(row => sessionCard(row, options));
 }
 
 /* ----------------------------------------------------------- the history drawer */
