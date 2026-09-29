@@ -5,7 +5,9 @@ import { webcrypto } from "node:crypto";
 import { JSDOM } from "jsdom";
 
 const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
-const script = await readFile(new URL("../tours/app.js", import.meta.url), "utf8");
+// app.js is an ES module that imports tours/tour-format.js; inline those helpers so the classic-script harness can run it.
+const tourFormat = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
+const script = `${tourFormat}\n${(await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/m, "")}`;
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const tourId = "11111111-1111-4111-8111-111111111111";
 const propertyId = "22222222-2222-4222-8222-222222222222";
