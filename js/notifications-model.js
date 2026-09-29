@@ -105,11 +105,18 @@ export const ACKNOWLEDGE_SCOPE =
  * which is what stops the two drifting apart.
  */
 export const APP_ROUTE_PATHS = Object.freeze([
-  "/", "/control-room", "/progress-board", "/workspace", "/deals", "/leads", "/clients", "/vendors",
-  "/calendar", "/ideas", "/system-work.html", "/room.html", "/queue.html", "/tours", "/share", "/design",
-  "/design/business", "/design/operations", "/work-inventory", "/tasks", "/pipeline",
-  "/business", "/status", "/incidents", "/notifications", "/conversations",
+  "/", "/control-room", "/control-room/progress", "/control-room/agents/queue", "/deals", "/leads", "/clients", "/vendors",
+  "/calendar", "/ideas-events", "/work-requests", "/agent-room", "/tours", "/share", "/design-lab",
+  "/all-work", "/tasks", "/search", "/status", "/incidents", "/updates", "/doc-chats",
 ]);
+
+const LEGACY_ROUTE_HOMES = Object.freeze({
+  "/progress-board": "/control-room/progress", "/workspace": "/", "/queue.html": "/control-room/agents/queue",
+  "/pipeline": "/deals?view=board", "/business": "/", "/ideas": "/ideas-events",
+  "/system-work.html": "/work-requests", "/room.html": "/agent-room", "/design": "/design-lab",
+  "/design/business": "/design-lab?reference=business", "/design/operations": "/design-lab?reference=operations",
+  "/work-inventory": "/all-work", "/notifications": "/updates", "/conversations": "/doc-chats",
+});
 
 /** The sentence an unroutable deep link carries. */
 export const NO_PAGE_SENTENCE = "This link points at a record the app has no page for yet.";
@@ -188,11 +195,15 @@ export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   if (!path) return { path: null, href: null, routed: false, sentence: null };
   const routeList = Array.isArray(routes) ? routes : [];
   const docMatch = DOC_CONVERSATION_LINK.exec(path);
-  if (docMatch && CONVERSATION_ID.test(docMatch[1]) && routeList.includes("/conversations")) {
-    return { path, href: `/conversations?id=${docMatch[1]}`, routed: true, sentence: null };
+  if (docMatch && CONVERSATION_ID.test(docMatch[1]) && routeList.includes("/doc-chats")) {
+    return { path, href: `/doc-chats?id=${docMatch[1]}`, routed: true, sentence: null };
   }
-  const routed = routeList.includes(path);
-  return { path, href: routed ? path : null, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
+  const [pathname, query] = path.split("?");
+  const home = LEGACY_ROUTE_HOMES[pathname] || pathname;
+  const homePath = home.split("?")[0];
+  const routed = routeList.includes(homePath);
+  const href = routed ? `${home}${query ? `${home.includes("?") ? "&" : "?"}${query}` : ""}` : null;
+  return { path, href, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
 }
 
 /**

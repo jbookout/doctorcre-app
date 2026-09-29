@@ -18,8 +18,10 @@
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
 .hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.hero > div:first-child { flex: 1 1 320px; min-width: 0; max-width: 100%; }
+.hero .tabs { max-width: 100%; margin: 10px 0 0; }
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.hero-card { display: grid; gap: 12px; }
+.hero-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 
 .caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
 .freshness[data-freshness="partial"], .freshness[data-freshness="offline"] { color: var(--amber-text); }

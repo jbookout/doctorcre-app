@@ -287,14 +287,14 @@ test("B06-8 an older answer that overtakes a newer one renders nothing", () => {
 
 test("B06-9 Back restores the selection from the address, and a filtered total is a subset of the one it came from", () => {
   const address = chartsAddress({ group: "segment", pick: "Dental" });
-  assert.equal(address, "/business?charts=1&group=segment&pick=Dental");
+  assert.equal(address, "/?charts=1&group=segment&pick=Dental&view=charts");
   const restored = parseChartsAddress(address.slice(address.indexOf("?")));
   assert.equal(restored.present, true);
   assert.equal(restored.group, "segment");
   assert.equal(restored.pick, "Dental");
   // Byte-equal: the address a restored selection produces is the one it came from.
   assert.equal(chartsAddress(restored), address);
-  assert.equal(chartsAddress({}), "/business?charts=1");
+  assert.equal(chartsAddress({}), "/?charts=1&view=charts");
   // A dimension this page does not group is dropped rather than carried.
   assert.equal(parseChartsAddress("?charts=1&group=invented&pick=x").group, null);
   assert.equal(parseChartsAddress("?q=Dell").present, false, "the Search tab's address does not open the Charts tab");
@@ -410,10 +410,10 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
 
   // No route is added. `/business` already resolves, and the gate does not
   // inspect a query string, so `?charts=1` needs no admission of its own.
-  assert.equal(routes.routes["/business"], "business-workspace.html");
+  assert.equal(routes.routes["/"], "workspace.html");
   assert.equal(routes.routes["/charts"], undefined, "the Charts tab adds no route");
   assert.equal(Object.keys(routes.routes).some((route) => route.includes("chart")), false);
-  assert.equal(chartsAddress({ group: "segment", pick: "Dental" }).startsWith("/business?"), true);
+  assert.equal(chartsAddress({ group: "segment", pick: "Dental" }).startsWith("/?"), true);
 
   // The tab, its panel and its wiring are all present, and the tab is selected
   // from the address exactly as the Search tab is.

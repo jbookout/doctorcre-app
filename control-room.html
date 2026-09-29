@@ -43,6 +43,13 @@
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="roomOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
           <h1 id="pageTitle">Control Room</h1>
+          <div class="tabs" id="controlRoomTabs" role="tablist" aria-label="Control Room sections">
+            <button class="tab" type="button" role="tab" id="tabDashboard" data-tab-key="overview" aria-controls="panelDashboard" aria-selected="true">Overview</button>
+            <button class="tab" type="button" role="tab" id="tabAttention" data-tab-key="attention" aria-controls="panelAttention" aria-selected="false">Attention</button>
+            <button class="tab" type="button" role="tab" id="tabModelRoom" data-tab-key="agents" aria-controls="panelModelRoom" aria-selected="false">Agents</button>
+            <button class="tab" type="button" role="tab" id="tabAtlas" data-tab-key="system-map" aria-controls="panelAtlas" aria-selected="false">System Map</button>
+            <button class="tab" type="button" role="tab" id="tabSessions" data-tab-key="sessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
+          </div>
         </div>
         <div class="hero-meta">
           <span class="status" data-state="unknown" id="roomStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="roomStatusLabel">Taking the reads…</span></span>
@@ -53,15 +60,6 @@
     </section>
 
     <p class="sr-only" id="roomLive" aria-live="polite" role="status">Taking the reads…</p>
-
-    <div class="tabs" id="controlRoomTabs" role="tablist" aria-label="Control Room sections">
-      <button class="tab" type="button" role="tab" id="tabDashboard" aria-controls="panelDashboard" aria-selected="true">Dashboard</button>
-      <button class="tab" type="button" role="tab" id="tabAttention" aria-controls="panelAttention" aria-selected="false">Attention</button>
-      <button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room</button>
-      <button class="tab" type="button" role="tab" id="tabAtlas" aria-controls="panelAtlas" aria-selected="false">Atlas</button>
-      <button class="tab" type="button" role="tab" id="tabSessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
-      <a class="tab" href="/status">Status</a>
-    </div>
 
     <section class="tabpanel" id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard" tabindex="0">
       <section class="card glass" data-section="coverage" aria-labelledby="coverageTitle">
@@ -128,13 +126,13 @@
         </div>
         <p class="count-line" id="deliveryValue" data-state="unavailable">unknown</p>
         <p class="small" id="deliveryReason">Coverage unknown until the census answers.</p>
-        <div class="row-wrap"><a class="btn" href="/work-inventory">Open the Complete Work Inventory</a></div>
+        <div class="row-wrap"><a class="btn" href="/all-work">Open All Work</a></div>
         <div class="state-block" id="deliveryState" data-state="unknown" hidden><h3>The census could not be verified</h3></div>
       </section>
 
       <section class="card glass" data-section="operations" aria-labelledby="operationsTitle">
         <div class="card-heading"><div><p class="eyebrow">Operations</p><h2 id="operationsTitle">Operations</h2></div></div>
-        <div class="row-wrap"><a class="btn" href="/notifications">Open Notifications</a></div>
+        <div class="row-wrap"><a class="btn" href="/updates">Open Updates</a></div>
         <div id="operationsBlocks"></div>
       </section>
 
@@ -168,6 +166,7 @@
              queue is projected into is NOT the room this tab is named after. -->
         <p class="caption" id="modelRoomQueueRoom"></p>
         <p class="model-room-freshness" id="modelRoomFreshness" data-state="idle">unknown</p>
+        <div class="row-wrap"><a class="btn" href="/control-room/agents/queue">Open task board</a><a class="btn" href="/control-room/progress">Delivery progress</a></div>
         <div class="row-wrap"><button class="btn" type="button" id="modelRoomQueueRetry" hidden>Try the queue read again</button></div>
         <p class="model-room-dropped" id="modelRoomDropped" hidden></p>
         <p class="model-room-empty" id="modelRoomAssignmentsEmpty" hidden></p>

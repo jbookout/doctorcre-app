@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Deals", "Clients", "Vendors", "Search", "Calendar", "Ideas", "Tasks", "Conversations", "Notifications", "System work", "Observatory"];
+const expected = ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Agent Room", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {
@@ -49,10 +49,10 @@ test("the shared navigation has one stable set of destinations, with no Queue li
   assert.deepEqual(navigationItems.map(({ label }) => label), expected);
   for (const route of Object.keys(routes)) {
     const html = appShellMarkup(route);
-    const labels = [...html.matchAll(/data-app-nav-item[^>]*>([^<]+)/g)].map((match) => match[1]);
+    const labels = [...html.matchAll(/data-app-nav-item[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]);
     assert.deepEqual(labels, expected, `${route}: same order and items`);
     assert.doesNotMatch(html, />Queue<\/a>/);
-    assert.equal((html.match(/aria-current="page"/g) || []).length, 1, `${route}: one active destination`);
+    assert.equal((html.match(/aria-current="page"/g) || []).length, 1, `${route}: one active destination or utility`);
   }
 });
 
@@ -60,8 +60,9 @@ test("Deals has one global Deals link and local views are labelled as views", ()
   const html = readFileSync(new URL("index.html", root), "utf8");
   assert.match(html, /<body class="night">\s*<script src="\/js\/theme-boot\.js"><\/script>/);
   assert.doesNotMatch(html, /<nav class="workspaces"/);
-  assert.match(html, /data-workspace="team"[^>]*>All deals<\/button>/);
-  assert.match(html, /data-workspace="national_account"[^>]*>National accounts<\/button>/);
+  assert.match(html, /data-workspace="team"[^>]*>All Deals<\/button>/);
+  assert.match(html, /data-workspace="national_account"[^>]*>National Accounts<\/button>/);
+  assert.match(html, /href="\/deals\?view=board">Board<\/a>/);
 });
 
 test("the task board belongs to Observatory rather than global navigation", () => {
