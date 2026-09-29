@@ -91,6 +91,14 @@ function showTask(task, stage) {
         `PR #${task.pr}${task.pr_head ? ` · ${task.pr_head}` : ""}`) : null;
     detailRow("Pull request", link || `PR #${task.pr}`);
   }
+  for (const pr of Array.isArray(task.pr_links) ? task.pr_links : []) {
+    const repo = String(pr.repo || "");
+    const number = Number(pr.number);
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !Number.isSafeInteger(number) || number <= 0) continue;
+    const link = safeLink(`https://github.com/${repo}/pull/${number}`,
+      `${repo} · PR #${number}${pr.head_sha ? ` · ${pr.head_sha}` : ""}`);
+    if (link) detailRow("Pull request", link);
+  }
   detailRow("Review", task.review_verdict || task.pr_phase || "Not recorded");
   detailRow("CI", task.pr_checks || "Not recorded");
   detailRow("Created", formatTime(task.created_at));
