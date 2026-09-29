@@ -2,7 +2,7 @@
   "use strict";
   const $ = (selector) => document.querySelector(selector);
   const state = { csrf: "", tours: [], tour: null, rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
-    searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, undoSelectionIds: null };
+    searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, undoSelectionIds: null };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -47,14 +47,14 @@
       node.classList.toggle("is-filtered", $("#property-county").value === county);
     }
   }
-  function knownProperty(propertyId) { return state.knownProperties.get(propertyId); }
+  function knownProperty(propertyId) { const item = state.knownProperties.get(propertyId); return item && (text(item.name) || text(item.address)) ? item : null; }
   function renderSelection() {
     const list = $("#selection-list"); list.replaceChildren();
     state.selectedIds.forEach((propertyId) => {
       const row = document.createElement("li"); row.className = "selection-item";
       const known = knownProperty(propertyId);
       const label = document.createElement("span");
-      label.textContent = known ? `${text(known.name, "Unnamed property")} · ${text(known.address, "Address unknown")}` :
+      label.textContent = known ? `${text(known.name, text(known.address, "Unnamed property"))} · ${text(known.address, "Address unknown")}` :
         "Details unavailable — find this property in search before changing it.";
       row.append(label);
       if (known) { const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove";
@@ -66,8 +66,12 @@
     $("#selection-version").textContent = state.cart?.selection_version ? `Saved version ${state.cart.selection_version}` : "No saved version";
     $("#save-selection").disabled = !state.tour || !state.selectionDirty;
     $("#undo-selection").hidden = !state.undoSelectionIds;
-    if (!state.selectionDirty) $("#selection-state").textContent = state.tour ?
-      state.cart?.selection_version ? `${state.selectedIds.length} selected · saved` : "No selection saved for this Tour." : "No Tour selected.";
+    if (!state.selectionDirty) {
+      const unresolved = state.selectedIds.filter(propertyId => !knownProperty(propertyId)).length;
+      $("#selection-state").textContent = state.tour ? state.cart?.selection_version ?
+        `${state.selectedIds.length} selected · saved${unresolved ? `. Details unavailable for ${unresolved}; find in search before changing.` : ""}` :
+        "No selection saved for this Tour." : "No Tour selected.";
+    }
   }
   function toggleProperty(propertyId) {
     if (!state.tour || !id(propertyId)) { $("#selection-state").textContent = "Select a Tour before adding properties."; return; }
@@ -86,7 +90,9 @@
       const header = document.createElement("div"); header.className = "property-result-head";
       const title = document.createElement("strong"); title.textContent = text(item.name, "Unnamed property");
       const action = document.createElement("button"); action.type = "button"; action.dataset.propertyId = item.property_id;
-      action.textContent = state.selectedIds.includes(item.property_id) ? "Remove from selection" : "Add to selection";
+      const identifiable = Boolean(text(item.name) || text(item.address));
+      action.textContent = identifiable ? state.selectedIds.includes(item.property_id) ? "Remove from selection" : "Add to selection" : "Details unavailable";
+      action.disabled = !identifiable;
       action.setAttribute("aria-pressed", String(state.selectedIds.includes(item.property_id)));
       action.addEventListener("click", () => toggleProperty(item.property_id)); header.append(title, action);
       const address = document.createElement("p"); address.className = "property-address"; address.textContent = `${text(item.address, "Address unknown")} · ${text(item.county, "County unknown")}`;
@@ -123,7 +129,7 @@
       const data = await post("/api/tours/properties/search", filters);
       if (seq !== state.searchSeq) return;
       const items = Array.isArray(data.search?.items) ? data.search.items.filter(item => id(item?.property_id)) : [];
-      for (const item of items) state.knownProperties.set(item.property_id, item);
+      for (const item of items) if (text(item.name) || text(item.address)) state.knownProperties.set(item.property_id, item);
       state.searchItems = more ? [...state.searchItems, ...items.filter(item => !state.searchItems.some(old => old.property_id === item.property_id))] : items;
       state.searchCursor = typeof data.search?.cursor === "string" && data.search.has_more ? data.search.cursor : null;
       state.searchCompleted = true;
@@ -139,12 +145,35 @@
       if (cart?.tour_id !== tourId || !Array.isArray(cart.property_ids)) throw new Error("cart_invalid");
       state.cart = cart;
       if (!state.selectionDirty) state.selectedIds = cart.property_ids.filter(id).slice(0, 100);
-      renderSearchResults(); return true;
+      renderSearchResults(); void hydrateSelectedProperties(tourId); return true;
     } catch (error) {
       if (state.tour?.id !== tourId) return;
       if (error.message === "not_found") { state.cart = null; if (!state.selectionDirty) state.selectedIds = []; renderSearchResults(); }
       else $("#selection-state").textContent = "Saved selection could not be loaded. Current selection stays visible.";
       return false;
+    }
+  }
+  async function hydrateSelectedProperties(tourId) {
+    const seq = ++state.hydrationSeq;
+    const missing = new Set(state.selectedIds.filter(propertyId => !knownProperty(propertyId)));
+    if (!missing.size) return;
+    let cursor = null;
+    for (let page = 0; page < 20 && missing.size; page += 1) {
+      const filters = { ...searchFilters(cursor), query: null, counties: [], property_types: [],
+        min_square_feet: null, max_square_feet: null, availability: [], entrance_verified: null,
+        public_projection_ready: null, photos_available: null, sort: "updated_desc", cursor, limit: 100 };
+      let search;
+      try { ({ search } = await post("/api/tours/properties/search", filters)); } catch { return; }
+      if (seq !== state.hydrationSeq || state.tour?.id !== tourId) return;
+      for (const item of Array.isArray(search?.items) ? search.items : []) {
+        if (missing.has(item?.property_id) && id(item.property_id) && (text(item.name) || text(item.address))) {
+          state.knownProperties.set(item.property_id, item); missing.delete(item.property_id);
+        }
+      }
+      renderSelection();
+      const next = search?.has_more && typeof search.cursor === "string" ? search.cursor : null;
+      if (!next || next === cursor) return;
+      cursor = next;
     }
   }
   async function saveSelection() {
@@ -216,7 +245,7 @@
   }
   async function loadLibrary() { status("Loading tours…"); const data = await request("/api/tours/library"); state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready."); }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}\n${Object.keys(facts).sort().join(", ")}`; }).join("\n\n"); preview.hidden = false; }
-  async function loadTour(tourId) { status("Loading tour…"); if (state.tour?.id !== tourId) { state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); renderSelection(); await loadSelectionCart(tourId); await loadProjectionPreview(); status("Tour ready."); }
+  async function loadTour(tourId) { status("Loading tour…"); if (state.tour?.id !== tourId) { ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); renderSelection(); await loadSelectionCart(tourId); await loadProjectionPreview(); status("Tour ready."); }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
   async function saveRoute(reorder = false) { if (!state.tour) return; const stopIds = stops().filter((stop) => stop.stop_state === "active").map((stop) => stop.id).filter(id); const path = reorder ? "/api/tours/route-reorder" : "/api/tours/route-version"; const payload = reorder ? { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() } : { tour_id: state.tour.id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() }; await post(path, payload); await loadTour(state.tour.id); status("Route version saved."); }
   async function saveSheet() { if (!state.tour) return; let content; try { content = JSON.parse($("#cheat-content").value || "{}"); } catch { content = { notes: $("#cheat-content").value }; } await post("/api/tours/cheat-sheet/autosave", { tour_id: state.tour.id, content, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); status("Internal cheat sheet saved."); }

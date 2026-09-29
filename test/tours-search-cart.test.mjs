@@ -6,12 +6,21 @@ import { JSDOM } from "jsdom";
 
 const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
 const script = await readFile(new URL("../tours/app.js", import.meta.url), "utf8");
+const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const tourId = "11111111-1111-4111-8111-111111111111";
 const propertyId = "22222222-2222-4222-8222-222222222222";
 const versionId = "33333333-3333-4333-8333-333333333333";
 const property = { property_id: propertyId, name: "Medical Plaza", address: "100 Clinic Way", county: "Escambia", state: "FL",
   availability: "unknown", source_label: "CARR reviewed property register", rights_status: "unknown", coordinate_precision: "unknown",
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
+
+test("Tour search and cart are bound to the merged CARR producer revision", () => {
+  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
+  for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
+    assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
+  for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
+    assert.ok(contract.http_surfaces.includes(path), `${path} is missing from the interface`);
+});
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 async function settle() { for (let i = 0; i < 8; i += 1) await tick(); }
@@ -137,8 +146,11 @@ test("search results disclose unknowns; saved stable IDs survive reload; refused
   const second = await openApp(store, { refuseSave: true });
   const saved = second.window.document;
   assert.doesNotMatch(saved.querySelector("#selection-list").textContent, /Saved property \d+/);
-  assert.match(saved.querySelector("#selection-list").textContent, /Details unavailable.*find this property/i);
-  assert.equal(saved.querySelector("#selection-list button"), null, "a property with no verified identity cannot be removed by an anonymous row");
+  assert.match(saved.querySelector("#selection-list").textContent, /Medical Plaza/);
+  assert.ok(saved.querySelector("#selection-list button"), "an identified saved property can be removed after reload");
+  const hydration = second.calls.find(call => call.path === "/api/tours/properties/search");
+  assert.deepEqual(JSON.parse(hydration.options.body).counties, []);
+  assert.equal(JSON.parse(hydration.options.body).limit, 100);
   saved.querySelector("#property-search-form").dispatchEvent(new second.window.Event("submit", { bubbles: true, cancelable: true }));
   await settle();
   assert.match(saved.querySelector("#selection-list").textContent, /Medical Plaza/);
@@ -155,6 +167,42 @@ test("search results disclose unknowns; saved stable IDs survive reload; refused
   assert.equal(posts.length, 2);
   assert.equal(JSON.parse(posts[0].options.body).idempotency_key, JSON.parse(posts[1].options.body).idempotency_key);
   second.window.close();
+});
+
+test("saved property details hydrate across search pages without changing visible search", async () => {
+  const other = { ...property, property_id: "44444444-4444-4444-8444-444444444444", name: "Other property" };
+  const app = await openApp({ version: 1, ids: [propertyId] }, { searchResponder: filters =>
+    filters.cursor === null ? { items: [other], count: 1, has_more: true, cursor: "1" } :
+      { items: [property], count: 1, has_more: false }
+  });
+  const doc = app.window.document;
+  assert.match(doc.querySelector("#selection-list").textContent, /Medical Plaza/);
+  assert.doesNotMatch(doc.querySelector("#property-results").textContent, /Other property|Medical Plaza/);
+  const calls = app.calls.filter(call => call.path === "/api/tours/properties/search").map(call => JSON.parse(call.options.body));
+  assert.deepEqual(calls.map(call => call.cursor), [null, "1"]);
+  app.window.close();
+});
+
+test("a saved property absent from reviewed search stays explicitly unresolved and cannot be removed anonymously", async () => {
+  const app = await openApp({ version: 1, ids: [propertyId] }, { searchResponder: () => ({ items: [], count: 0, has_more: false }) });
+  const doc = app.window.document;
+  assert.match(doc.querySelector("#selection-list").textContent, /Details unavailable.*find this property/i);
+  assert.equal(doc.querySelector("#selection-list button"), null);
+  assert.equal(doc.querySelector("#save-selection").disabled, true);
+  app.window.close();
+});
+
+test("a search candidate without name or address cannot be added or removed by an anonymous button", async () => {
+  const app = await openApp({ version: 1, ids: [propertyId] }, { searchResponder: () => ({
+    items: [{ ...property, name: null, address: null }], count: 1, has_more: false,
+  }) });
+  const doc = app.window.document;
+  doc.querySelector("#property-search-form").requestSubmit();
+  await settle();
+  const action = doc.querySelector("#property-results button[data-property-id]");
+  assert.equal(action.disabled, true);
+  assert.equal(doc.querySelector("#selection-list button"), null);
+  app.window.close();
 });
 
 test("editing during a save keeps the newer selection as an unsaved draft", async () => {
