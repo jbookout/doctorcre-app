@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createLiveClient } from "../js/live-client.js";
-import { STAGES, boardView, answerRequest, taskStage, taskHealth, taskPulse } from "../js/progress-board-model.js";
+import { STAGES, boardView, answerRequest, taskStage, taskHealth, taskPulse, taskIdentity, taskSummary,
+  relatedQuestions } from "../js/progress-board-model.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
@@ -80,6 +81,25 @@ test("board view reads current typed questions and keeps status from CARR only",
   assert.equal(view.questions[0].status, null);
   assert.equal(view.questions[1].status, "Received");
   assert.equal(view.questions[1].answer_text, "Keep going");
+});
+
+test("legacy executor cards expose provider, model, effort and one-line summaries", () => {
+  assert.deepEqual(taskIdentity({ executor: "gpt-6-sol high (Codex)" }),
+    { provider: "Codex", model: "gpt-6-sol", effort: "high" });
+  assert.deepEqual(taskIdentity({ executor: "Codex gpt-6-sol high x2" }),
+    { provider: "Codex", model: "gpt-6-sol", effort: "high" });
+  assert.deepEqual(taskIdentity({ executor: "orchestrator" }),
+    { provider: "Anthropic", model: "Claude Opus 5.5", effort: "unknown" });
+  assert.equal(taskSummary({ title: "Build board", summary: "Show model and effort on every card." }),
+    "Show model and effort on every card.");
+  assert.equal(taskSummary({ title: "Coordinate delivery" }), "Coordinate delivery.");
+});
+
+test("task detail selects related board questions by explicit reference", () => {
+  const task = { id: "build", question_ids: ["choice"] };
+  const questions = [{ question_id: "choice", prompt: "Ship this?", answer_text: "Yes", status: "Applied" },
+    { question_id: "other", prompt: "Unrelated", status: null }];
+  assert.deepEqual(relatedQuestions(task, questions), [questions[0]]);
 });
 
 test("answer request uses the question revision and carries no actor or status claim", () => {

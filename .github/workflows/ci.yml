@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - if: ${{ github.event_name == 'pull_request' }}
+        run: node scripts/check-pr-description.mjs
       - run: npm run check
       - run: npm test
       - run: npm run build
