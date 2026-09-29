@@ -3,18 +3,27 @@ import assert from 'node:assert/strict';
 import {
   sessionOpenTarget, outcomeOpenTarget, reconcileOpenAttempt, reconcileOutcomeOpenAttempt,
   createOpenLinkGuard,
+  codexCheckpoints,
 } from '../js/open-session-model.js';
 import { readFileSync } from 'node:fs';
 
 const nativeId = '11111111-1111-4111-8111-111111111111';
+const checkpoints = [{ native_session_id: nativeId, host: 'codex_desktop',
+  availability: 'checkpoint_recorded' }];
 const session = {
   canonical_session_id: nativeId, surface: 'codex', native_host_id: nativeId,
   native_host_supported: true,
 };
 
+test('checkpoint read refuses malformed or unavailable provenance', () => {
+  assert.deepEqual(codexCheckpoints({ ok: true, sessions: checkpoints }), checkpoints);
+  assert.deepEqual(codexCheckpoints({ ok: false, sessions: checkpoints }), []);
+  assert.deepEqual(codexCheckpoints({ ok: true, sessions: [{ ...checkpoints[0], host: 'other' }] }), []);
+});
+
 test('a verified Codex target opens the same native thread twice without a launch request', () => {
-  const first = sessionOpenTarget(session, { hostAvailable: true });
-  const second = sessionOpenTarget(session, { hostAvailable: true });
+  const first = sessionOpenTarget(session, { hostAvailable: true, checkpoints });
+  const second = sessionOpenTarget(session, { hostAvailable: true, checkpoints });
   assert.equal(first.href, `codex://threads/${nativeId}`);
   assert.deepEqual(second, first);
   assert.deepEqual(first.rights, { open: true, message: false, takeover: false });
@@ -27,12 +36,17 @@ test('unsupported, unavailable, and mismatched session targets retain the copy-I
     { ...session, native_host_supported: false },
     { ...session, native_host_id: '22222222-2222-4222-8222-222222222222' },
   ]) {
-    const target = sessionOpenTarget(row, { hostAvailable: true });
+    const target = sessionOpenTarget(row, { hostAvailable: true, checkpoints });
     assert.equal(target.open, false);
     assert.equal(target.href, null);
     assert.equal(target.copyId, nativeId);
   }
-  assert.equal(sessionOpenTarget(session, { hostAvailable: false }).open, false);
+  assert.equal(sessionOpenTarget(session, { hostAvailable: false, checkpoints }).open, false);
+  assert.equal(sessionOpenTarget(session, { hostAvailable: true }).open, false);
+  assert.equal(sessionOpenTarget(session, { hostAvailable: true,
+    checkpoints: [{ ...checkpoints[0], native_session_id: '22222222-2222-4222-8222-222222222222' }] }).open, false);
+  assert.equal(sessionOpenTarget(session, { hostAvailable: true,
+    checkpoints: [{ ...checkpoints[0], host: 'other' }] }).open, false);
 });
 
 test('outcome cards require an authorized canonical-to-native binding before Open appears', () => {
@@ -42,24 +56,25 @@ test('outcome cards require an authorized canonical-to-native binding before Ope
     session_entry: { available: true, capability: 'codex_desktop_open_v1',
       target: nativeId, auto_launch: false },
   };
-  assert.equal(outcomeOpenTarget(card, { hostAvailable: true }).href, `codex://threads/${nativeId}`);
+  assert.equal(outcomeOpenTarget(card, { hostAvailable: true, checkpoints }).href, `codex://threads/${nativeId}`);
+  assert.equal(outcomeOpenTarget(card, { hostAvailable: true }).open, false);
   assert.equal(outcomeOpenTarget({ ...card, session_entry: { ...card.session_entry, target: 'wrong' } },
-    { hostAvailable: true }).open, false);
+    { hostAvailable: true, checkpoints }).open, false);
   assert.equal(outcomeOpenTarget({ ...card, session_entry: { ...card.session_entry, auto_launch: true } },
-    { hostAvailable: true }).open, false);
+    { hostAvailable: true, checkpoints }).open, false);
   assert.equal(outcomeOpenTarget({ ...card, native_task_id: { value: null } },
-    { hostAvailable: true }).open, false);
+    { hostAvailable: true, checkpoints }).open, false);
 });
 
 test('a lost open response is reconciled by a fresh exact read, never by an automatic launch', () => {
-  const target = sessionOpenTarget(session, { hostAvailable: true });
+  const target = sessionOpenTarget(session, { hostAvailable: true, checkpoints });
   const fresh = { ok: true, sessions: [session] };
-  const outcome = reconcileOpenAttempt(target, fresh, { hostAvailable: true });
+  const outcome = reconcileOpenAttempt(target, fresh, { hostAvailable: true, checkpoints });
   assert.equal(outcome.state, 'same_target_unconfirmed');
   assert.equal(outcome.href, target.href);
   assert.equal(outcome.autoRetry, false);
   const changed = reconcileOpenAttempt(target, { ok: true, sessions: [{ ...session,
-    native_host_id: '22222222-2222-4222-8222-222222222222' }] }, { hostAvailable: true });
+    native_host_id: '22222222-2222-4222-8222-222222222222' }] }, { hostAvailable: true, checkpoints });
   assert.equal(changed.state, 'target_changed');
   assert.equal(changed.href, null);
 });
@@ -68,11 +83,11 @@ test('outcome handoff reconciliation keeps the same native target and never retr
   const card = { card_id: 'card:doc-outcome:one', canonical_session_id: { value: 'capability-session-1' },
     native_task_id: { value: nativeId }, session_entry: { available: true,
       capability: 'codex_desktop_open_v1', target: nativeId, auto_launch: false } };
-  const prior = outcomeOpenTarget(card, { hostAvailable: true });
-  const fresh = reconcileOutcomeOpenAttempt(prior, card, { hostAvailable: true });
+  const prior = outcomeOpenTarget(card, { hostAvailable: true, checkpoints });
+  const fresh = reconcileOutcomeOpenAttempt(prior, card, { hostAvailable: true, checkpoints });
   assert.deepEqual(fresh, { state: 'same_target_unconfirmed', href: prior.href, autoRetry: false });
   assert.equal(reconcileOutcomeOpenAttempt(prior, { ...card, native_task_id: { value: null } },
-    { hostAvailable: true }).state, 'target_changed');
+    { hostAvailable: true, checkpoints }).state, 'target_changed');
 });
 
 test('a returning Open attempt retires its anchor and cannot be restored from cached rows', () => {
@@ -101,8 +116,18 @@ test('every Open surface retires the clicked anchor and gates cached re-renders'
     assert.match(source, /openLinks\.allows\(/, `${file} can restore the cached anchor`);
     assert.match(source, /openLinks\.refresh\(/, `${file} never admits a fresh verified target`);
     if (file === 'conversations.js') {
-      assert.match(source, /openLinks\.refresh\(!cursor\)/,
+      assert.match(source, /openLinks\.refresh\(!cursor && checkpointPayload\?\.ok === true\)/,
         'loading a later outcome-card page can revive an older stale link');
     }
+  }
+});
+
+test('each Open surface reads sponsor-scoped checkpoint proof, including on browser return', () => {
+  const live = readFileSync(new URL('../js/live-client.js', import.meta.url), 'utf8');
+  assert.match(live, /codexSessions\(\) \{ return rpc\('list-my-codex-sessions', \{\}\); \}/);
+  for (const file of ['sessions.js', 'model-room.js', 'conversations.js']) {
+    const source = readFileSync(new URL(`../js/${file}`, import.meta.url), 'utf8');
+    assert.ok((source.match(/client\.codexSessions\(/g) || []).length >= 2,
+      `${file} needs fresh checkpoint proof for render and reconciliation`);
   }
 });

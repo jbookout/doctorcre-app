@@ -171,7 +171,12 @@ test('sessionEntryView exposes a bound Codex thread only on the supported host',
   const card = baseCard({ canonical_session_id: { value: 'capability-session-1' },
     native_task_id: { value: native }, session_entry: { available: true,
       target: native, capability: 'codex_desktop_open_v1', auto_launch: false } });
-  assert.equal(sessionEntryView(card, { hostAvailable: true }).href, `codex://threads/${native}`);
+  const checkpoints = [{ native_session_id: native, host: 'codex_desktop',
+    availability: 'checkpoint_recorded' }];
+  assert.equal(sessionEntryView(card, { hostAvailable: true, checkpoints }).href, `codex://threads/${native}`);
+  assert.equal(sessionEntryView(card, { hostAvailable: true }).open, false);
+  assert.equal(sessionEntryView(card, { hostAvailable: true }).sessionRef, 'capability-session-1');
+  assert.match(sessionEntryView(card, { hostAvailable: true }).reasonSentence, /checkpoint/i);
   const away = sessionEntryView(card, { hostAvailable: false });
   assert.equal(away.open, false);
   assert.equal(away.sessionRef, 'capability-session-1');

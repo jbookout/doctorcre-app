@@ -480,6 +480,7 @@ export function createLiveClient(opts = {}) {
     // matching write: nothing on the Sessions tab opens, resumes or takes over
     // a session, because no verb exists that would.
     async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
+    async codexSessions() { return rpc('list-my-codex-sessions', {}); },
     async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
 
     // ------------------------------- Model Room assignments and turns (C12)

@@ -298,6 +298,11 @@ export function hostState(row, options = {}) {
     };
   }
   if (row.surface === 'codex') {
+    if (native.reason === 'native_target_unverified' && row.canonical_session_id === row.native_host_id) {
+      return { state: 'checkpoint_unverified', open: false,
+        text: 'No first-hand native checkpoint confirms this session ID. Copy the ID to resume manually.',
+        hostId: row.native_host_id };
+    }
     return row.canonical_session_id === row.native_host_id
       ? { state: 'host_unavailable', open: false,
           text: 'The recorded Codex thread is on a host this browser cannot reach. Copy its session ID to resume there.',

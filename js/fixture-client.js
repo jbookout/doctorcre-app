@@ -2209,6 +2209,12 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async codexSessions() {
+      refuseIfOutage('sessions', 'list-my-codex-sessions');
+      // Captured session-identity rows are not first-hand native checkpoints.
+      return { ok: true, sessions: [] };
+    },
+
     async dispatchHistory({ session_id, cursor = null, limit = null } = {}) {
       refuseIfOutage('sessions', 'read-dispatch-history');
       void cursor;

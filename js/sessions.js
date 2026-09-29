@@ -18,7 +18,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
-import { createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
+import { codexCheckpoints, createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -36,6 +36,7 @@ const view = {
   query: "",
   includeClosed: false,
   payload: null,
+  checkpoints: [],
   refusal: null,
   /** canonical_session_id -> {state, payload|reason} for the open drawers. */
   history: new Map(),
@@ -143,7 +144,7 @@ function renderList() {
     if (summary) summary.hidden = true;
     return;
   }
-  const cards = sessionCards(view.payload, { hostAvailable: hostAvailable() });
+  const cards = sessionCards(view.payload, { hostAvailable: hostAvailable(), checkpoints: view.checkpoints });
   const state = listState(view.payload);
   list.innerHTML = cards.map(cardHtml).join("");
   for (const link of list.querySelectorAll('[data-open-session]')) {
@@ -239,19 +240,22 @@ async function read() {
   view.history.clear();
   render();
   try {
-    const payload = await client.sessionIdentity(identityRequest({
-      query: view.query, includeClosed: view.includeClosed,
-    }));
+    const [payload, checkpointPayload] = await Promise.all([
+      client.sessionIdentity(identityRequest({ query: view.query, includeClosed: view.includeClosed })),
+      client.codexSessions().catch(() => null),
+    ]);
     if (sequence !== view.sequence) return;
     const refusal = refuseSessionIdentity(payload);
     view.status = "ready";
     view.refusal = refusal;
     view.payload = refusal ? null : payload;
-    openLinks.refresh(!refusal);
+    view.checkpoints = codexCheckpoints(checkpointPayload);
+    openLinks.refresh(!refusal && checkpointPayload?.ok === true);
   } catch (error) {
     if (sequence !== view.sequence) return;
     view.status = "ready";
     view.payload = null;
+    view.checkpoints = [];
     view.refusal = String(error?.payload?.error || error?.message || "the session read did not answer");
   }
   render();
@@ -313,9 +317,12 @@ export function mountSessions({ outage = null } = {}) {
     openLinks.retire(attempt.id, attempt.link);
     renderList();
     try {
-      const payload = await client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50 });
+      const [payload, checkpointPayload] = await Promise.all([
+        client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50 }),
+        client.codexSessions(),
+      ]);
       const outcome = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
-        { hostAvailable: hostAvailable() });
+        { hostAvailable: hostAvailable(), checkpoints: codexCheckpoints(checkpointPayload) });
       announce(outcome.state === 'same_target_unconfirmed'
         ? 'The recorded target is unchanged. Refresh the session list before opening again.'
         : 'The recorded target could not be confirmed. Refresh the session list before opening.');

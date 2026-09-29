@@ -235,7 +235,8 @@ test("C12-09 context offers Open only for a verified Codex thread", () => {
   const native = "01a0ec2b-2cd1-79a2-9756-624387a98685";
   const bound = sessionRow({ canonical_session_id: native, surface: "codex",
     native_host_id: native, native_host_supported: true });
-  assert.equal(contextPanel(bound, identityPayload([bound]), { hostAvailable: true }).openTarget.href,
+  assert.equal(contextPanel(bound, identityPayload([bound]), { hostAvailable: true,
+    checkpoints: [{ native_session_id: native, host: 'codex_desktop', availability: 'checkpoint_recorded' }] }).openTarget.href,
     `codex://threads/${native}`);
   assert.match(viewCode, /data-open-model-room-session/);
   // V5-UX-C13c added ONE real, legitimately-disabled control — the answer

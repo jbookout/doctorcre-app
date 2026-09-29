@@ -191,7 +191,10 @@ test('S02-11 unsupported hosts keep copy-ID while exact Codex targets offer Open
   }
   const id = '11111111-1111-4111-8111-111111111111';
   assert.equal(hostState({ canonical_session_id: id, native_host_id: id,
-    native_host_supported: true, surface: 'codex' }, { hostAvailable: true }).open, true);
+    native_host_supported: true, surface: 'codex' }, { hostAvailable: true,
+      checkpoints: [{ native_session_id: id, host: 'codex_desktop', availability: 'checkpoint_recorded' }] }).open, true);
+  assert.equal(hostState({ canonical_session_id: id, native_host_id: id,
+    native_host_supported: true, surface: 'codex' }, { hostAvailable: true }).state, 'checkpoint_unverified');
   const away = hostState({ canonical_session_id: id, native_host_id: id,
     native_host_supported: true, surface: 'codex', display_name: 'specialist work' },
     { hostAvailable: false });
