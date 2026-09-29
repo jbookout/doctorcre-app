@@ -157,7 +157,11 @@ export function sessionEntryView(card, options = {}) {
   return {
     open: false,
     available: true,
-    reasonSentence: entry.capability === 'codex_desktop_open_v1'
+    reasonSentence: target.reason === 'native_target_unverified'
+      ? 'No first-hand native checkpoint confirms this session ID.'
+      : target.reason === 'producer_binding_invalid' || target.reason === 'native_target_invalid'
+      ? 'The recorded Open details do not verify an exact Codex Desktop target for this session.'
+      : entry.capability === 'codex_desktop_open_v1'
       ? 'The recorded Codex Desktop host is unavailable from this device.'
       : 'A session target is recorded, but its host has no supported open adapter here.',
     scopedSolution: card?.canonical_session_id?.value ? NO_ADAPTER_SENTENCE : null,

@@ -6,6 +6,20 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const rights = Object.freeze({ open: true, message: false, takeover: false });
 
+/** A failed or malformed sponsor-scoped read proves no native targets. */
+export function codexCheckpoints(payload) {
+  if (payload?.ok !== true || !Array.isArray(payload.sessions)) return [];
+  if (!payload.sessions.every(row => UUID.test(row?.native_session_id ?? '')
+      && row.host === 'codex_desktop' && row.availability === 'checkpoint_recorded')) return [];
+  return payload.sessions;
+}
+
+function provenNative(id, checkpoints) {
+  return Array.isArray(checkpoints) && checkpoints.some(row =>
+    row.native_session_id === id && row.host === 'codex_desktop'
+      && row.availability === 'checkpoint_recorded');
+}
+
 /** A used native link is one-shot until a validated list read replaces it. */
 export function createOpenLinkGuard() {
   const retired = new Set();
@@ -26,10 +40,14 @@ export function createOpenLinkGuard() {
   };
 }
 
-function target(canonicalSessionId, nativeTaskId, allowed, hostAvailable, reason) {
+function target(canonicalSessionId, nativeTaskId, bindingValid, checkpoints, hostAvailable) {
   const copyId = typeof canonicalSessionId === 'string' && canonicalSessionId ? canonicalSessionId : null;
-  if (!allowed || !hostAvailable || !UUID.test(nativeTaskId ?? '')) {
-    return { open: false, href: null, copyId, reason: !hostAvailable ? 'host_unavailable' : reason,
+  const reason = !UUID.test(nativeTaskId ?? '') ? 'native_target_invalid'
+    : !bindingValid ? 'producer_binding_invalid'
+    : !provenNative(nativeTaskId, checkpoints) ? 'native_target_unverified'
+    : !hostAvailable ? 'host_unavailable' : null;
+  if (reason) {
+    return { open: false, href: null, copyId, reason,
       rights: { open: false, message: false, takeover: false }, autoLaunch: false };
   }
   return { open: true, href: `codex://threads/${nativeTaskId}`, copyId,
@@ -37,22 +55,22 @@ function target(canonicalSessionId, nativeTaskId, allowed, hostAvailable, reason
 }
 
 /** The session read derives actor visibility on CARR's server. */
-export function sessionOpenTarget(row, { hostAvailable = false } = {}) {
+export function sessionOpenTarget(row, { hostAvailable = false, checkpoints = [] } = {}) {
   const canonical = row?.canonical_session_id;
   const native = row?.native_host_id;
   return target(canonical, native,
     row?.surface === 'codex' && row?.native_host_supported === true && canonical === native,
-    hostAvailable, 'native_target_unverified');
+    checkpoints, hostAvailable);
 }
 
 /** Outcome cards need the producer's explicit canonical-to-native binding. */
-export function outcomeOpenTarget(card, { hostAvailable = false } = {}) {
+export function outcomeOpenTarget(card, { hostAvailable = false, checkpoints = [] } = {}) {
   const canonical = card?.canonical_session_id?.value;
   const native = card?.native_task_id?.value;
   const entry = card?.session_entry;
   return target(canonical, native, Boolean(canonical && entry?.available === true
     && entry.capability === 'codex_desktop_open_v1' && entry.target === native
-    && entry.auto_launch === false), hostAvailable, 'native_target_unverified');
+    && entry.auto_launch === false), checkpoints, hostAvailable);
 }
 
 /** A lost browser handoff stays unknown; this never navigates or retries. */
