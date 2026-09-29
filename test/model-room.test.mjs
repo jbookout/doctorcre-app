@@ -447,6 +447,11 @@ test("the Observatory opens on current activity and retains its workspace naviga
   assert.match(html, /id="currentThread"/);
   assert.match(html, /id="archiveList"/);
   assert.match(html, /id="signalFlow"/);
+  assert.ok(html.indexOf('id="nowDialogue"') > html.indexOf('id="now"'));
+  assert.ok(html.indexOf('id="nowDialogue"') < html.indexOf('class="signal-grid"'),
+    "the first screen introduces the current conversation before system counts");
+  assert.equal(html.includes('id="latestTurns"'), false,
+    "the page does not repeat the latest thread in a second transcript panel");
   for (const route of ["/", "/leads", "/deals", "/system-work.html", "/room.html", "/queue.html"])
     assert.ok(html.includes(`href="${route}"`), `workspace navigation keeps ${route}`);
   assert.equal(/room\.html/.test(viewSource), false, "the Model Room tab does not redirect to the Observatory");

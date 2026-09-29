@@ -42,6 +42,7 @@
         <div><p class="eyebrow">Model Room · live wire</p><h1 id="nowTitle">Now</h1></div>
         <div class="freshness"><span class="live-orb" id="liveOrb" data-state="unknown" aria-hidden="true"></span><span id="freshness">Connecting…</span></div>
       </div>
+      <div class="now-dialogue" id="nowDialogue"><p class="empty">Reading the latest conversation…</p></div>
       <div class="signal-grid" aria-label="Current system state">
         <button class="signal" type="button" data-focus="running"><span class="signal-name">Running</span><strong id="runningCount">—</strong><span id="runningSummary">Checking the room</span></button>
         <button class="signal" type="button" data-focus="attention"><span class="signal-name">Needs attention</span><strong id="attentionCount">—</strong><span id="attentionSummary">Checking the room</span></button>
@@ -68,8 +69,6 @@
       <div class="conversation-main">
         <div class="section-head conversation-heading"><div><p class="eyebrow">Conversation</p><h2 id="conversationTitle">Latest thread</h2></div><button class="text-button" id="refreshButton" type="button">Refresh</button></div>
         <article class="glass thread-card" id="currentThread"><p class="empty">Reading turns…</p></article>
-        <div class="section-head latest-heading"><h2>Latest turns</h2><span id="turnFreshness"></span></div>
-        <div class="glass latest-turns" id="latestTurns"><p class="empty">Reading turns…</p></div>
       </div>
       <aside class="glass archive" aria-labelledby="archiveTitle">
         <div class="section-head"><div><p class="eyebrow">History</p><h2 id="archiveTitle">Thread archive</h2></div><span id="archiveCount"></span></div>

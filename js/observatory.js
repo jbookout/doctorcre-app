@@ -118,17 +118,29 @@ function renderNow() {
     (row) => summary(row.summary || row.detail || row.reason, 'A delivery or control request failed'));
   renderDetail($('finishedList'), now.finished, 'finished', 'No completion receipt in the last 24 hours.',
     (row) => summary(row.summary || row.result || row.outcome, 'Work completed'));
-  const latest = clear($('latestTurns'));
   const recentThreads = groupConversations(state.conversation)
     .filter((thread) => Date.now() - Date.parse(thread.lastAt) <= 24 * 60 * 60_000).slice(0, 3);
-  if (!recentThreads.length) latest.append(node('p', 'empty', 'No spoken turn in the last 24 hours. The room may still have live session check-ins.'));
-  for (const thread of recentThreads) {
-    const group = node('section', 'now-thread');
-    group.append(node('p', 'eyebrow', thread.title));
-    for (const turn of thread.turns.slice(-4)) group.append(turnElement(turn));
-    latest.append(group);
+  const nowDialogue = clear($('nowDialogue'));
+  if (recentThreads[0]) {
+    const thread = recentThreads[0];
+    const heading = node('div', 'now-dialogue-heading');
+    const title = node('div');
+    title.append(node('p', 'eyebrow', `Latest conversation · ${age(thread.lastAt)}`));
+    const link = node('a', 'now-dialogue-link', thread.title);
+    link.href = `/room.html?thread=${encodeURIComponent(thread.key)}`;
+    title.append(link, node('span', 'meta', thread.participants.join(' · ')));
+    heading.append(title);
+    nowDialogue.append(heading);
+    for (const turn of thread.turns.slice(-2)) {
+      const line = node('div', 'now-dialogue-turn');
+      line.append(node('strong', '', labelFor(turn)), node('span', 'now-model', modelFor(turn)),
+        node('span', 'now-quote', summary(turn.body, 'Turn recorded')));
+      nowDialogue.append(line);
+    }
+  } else {
+    nowDialogue.append(node('p', 'eyebrow', 'Conversation watch'),
+      node('p', 'empty', 'No spoken turn in the last 24 hours. Session check-ins may still be current.'));
   }
-  $('turnFreshness').textContent = recentThreads[0] ? age(recentThreads[0].lastAt) : 'None today';
 }
 
 function render() {
