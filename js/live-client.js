@@ -355,6 +355,12 @@ export function createLiveClient(opts = {}) {
     async updateLoop(args) { return write('update-loop', args); },
     async closeLoop(args) { return write('close-loop', args); },
 
+    // Industry events are tenant-scoped by CARR. The version used for an edit
+    // comes from listIndustryEvents; this adapter never guesses a newer one.
+    async listIndustryEvents(args = {}) { return rpc('list-industry-events', args); },
+    async addIndustryEvent(args) { return write('add-industry-event', args); },
+    async updateIndustryEvent(args) { return write('update-industry-event', args); },
+
     // ------------------------------------------------------------- triage
     // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are
     // sent: which rows are due is the record layer's decision, not the page's.
