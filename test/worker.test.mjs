@@ -138,6 +138,19 @@ test("Ideas and Events use the admitted Control Room sign-in gate", async () => 
   assert.equal(signedOut.status, 302);
 });
 
+test("signed-out Ideas Events visits return to the requested path and query", async () => {
+  const response = await handleDoctorcreRequest(request("/ideas?tab=events"), environment({
+    carr: { fetch: async () => new Response(null, {
+      status: 302,
+      headers: { location: `https://${HOST}/auth/login?return_to=%2Fcontrol-room` },
+    }) },
+  }));
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"),
+    `https://${HOST}/auth/login?return_to=%2Fideas%3Ftab%3Devents`);
+});
+
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
   const share = await handleDoctorcreRequest(request("/share?tour=T-1"), environment());
   assert.equal(share.status, 302);
