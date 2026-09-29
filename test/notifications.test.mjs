@@ -364,14 +364,14 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.13.0");
-  assert.equal(contract.version, "1.26.0");
-  assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284");
+  assert.equal(routes.version, "1.14.0");
+  assert.equal(contract.version, "1.27.0");
+  assert.equal(contract.producer.source_commit, "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0");
   assert.equal(routes.routes["/notifications"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 65);
+  assert.equal(contract.mcp_operations.length, 67);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   // The model's route list is served to a browser with no build step, so it is
   // a COPY of the contract. This is what stops the copy drifting from it.
@@ -746,10 +746,10 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 /* ------------------------------------------------------------- behaviour 9 */
 
 test("B12-9 the contracts pin the two new verbs, the producer release and the minor bump, and nothing else moved", async () => {
-  assert.equal(contract.version, "1.26.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284",
-    "the producer is repinned to the release that first serves the preference verbs");
-  assert.equal(contract.mcp_operations.length, 65);
+  assert.equal(contract.version, "1.27.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.producer.source_commit, "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0",
+    "the producer pin includes the merged progress board and preference verbs");
+  assert.equal(contract.mcp_operations.length, 67);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 
   const at = contract.mcp_operations.indexOf("read-notification-preferences");
@@ -760,7 +760,7 @@ test("B12-9 the contracts pin the two new verbs, the producer release and the mi
   assert.equal(contract.mcp_operations[set + 1], "set-work-shape-disposition");
 
   // The route contract does NOT move: this slice adds no page.
-  assert.equal(routes.version, "1.13.0");
+  assert.equal(routes.version, "1.14.0");
   assert.equal(routes.routes["/notifications"], "notifications.html");
 
   // The repository check pins both verbs, and the shared client interface

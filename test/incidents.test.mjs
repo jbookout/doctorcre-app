@@ -199,8 +199,8 @@ test("a read that did not answer is unknown in the app's own words", async () =>
 
 test("the route and the two verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/incidents"], "incidents.html");
-  assert.equal(routes.version, "1.13.0");
-  assert.equal(contract.version, "1.26.0");
+  assert.equal(routes.version, "1.14.0");
+  assert.equal(contract.version, "1.27.0");
   for (const verb of ["get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

@@ -376,8 +376,8 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract pins both verbs alphabetically at 1.19.0 with 57 operations", () => {
-  assert.equal(contract.version, "1.26.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 65);
+  assert.equal(contract.version, "1.27.0", "two added operations are an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 67);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -394,10 +394,10 @@ test("S02-21 the contract pins both verbs alphabetically at 1.19.0 with 57 opera
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });
 
-// MUTATION: leave `3c8f619d` in place as producer.source_commit.
-test("S02-22 producer.source_commit is the v35 dispatch-spine release", () => {
-  assert.equal(contract.producer.source_commit, "35009e9dedab3a603836c662d0f7f12dfeb1a284",
-    "C13 repins the producer to the release that adds the dispatch spine");
+// MUTATION: leave the unmerged progress-board precursor as producer.source_commit.
+test("S02-22 producer.source_commit is the merged progress-board release", () => {
+  assert.equal(contract.producer.source_commit, "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0",
+    "the producer pin includes the merged progress board and dispatch spine");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");
 });

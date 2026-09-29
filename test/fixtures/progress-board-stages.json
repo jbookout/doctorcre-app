@@ -1,0 +1,534 @@
+{
+  "producer_repository": "jbookout/carr-system",
+  "producer_source_commit": "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0",
+  "producer_function": "tools/progress_board.py:task_stage/task_health/pulse_state",
+  "reference_time": "2026-09-28T13:00:00Z",
+  "synthetic": true,
+  "cases": [
+    {
+      "id": "queued_healthy",
+      "task": {
+        "title": "Synthetic queued healthy",
+        "status": "running",
+        "stage": "queued",
+        "updated_at": "2026-09-28T12:00:00Z"
+      },
+      "stage": "queued",
+      "stage_label": "Queued",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#f2f6fc",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "queued_question",
+      "task": {
+        "title": "Synthetic queued question",
+        "status": "running",
+        "stage": "queued",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "question"
+      },
+      "stage": "queued",
+      "stage_label": "Queued",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#f2f6fc",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "queued_blocked",
+      "task": {
+        "title": "Synthetic queued blocked",
+        "status": "running",
+        "stage": "queued",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "blocked"
+      },
+      "stage": "queued",
+      "stage_label": "Queued",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#f2f6fc",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "build_healthy",
+      "task": {
+        "title": "Synthetic build healthy",
+        "status": "running",
+        "stage": "build",
+        "updated_at": "2026-09-28T12:00:00Z"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "build_question",
+      "task": {
+        "title": "Synthetic build question",
+        "status": "running",
+        "stage": "build",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "question"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "build_blocked",
+      "task": {
+        "title": "Synthetic build blocked",
+        "status": "running",
+        "stage": "build",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "blocked"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "review_healthy",
+      "task": {
+        "title": "Synthetic review healthy",
+        "status": "running",
+        "stage": "review",
+        "updated_at": "2026-09-28T12:00:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#bf9cff",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "review_question",
+      "task": {
+        "title": "Synthetic review question",
+        "status": "running",
+        "stage": "review",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "question"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#bf9cff",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "review_blocked",
+      "task": {
+        "title": "Synthetic review blocked",
+        "status": "running",
+        "stage": "review",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "blocked"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#bf9cff",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "ci_healthy",
+      "task": {
+        "title": "Synthetic ci healthy",
+        "status": "running",
+        "stage": "ci",
+        "updated_at": "2026-09-28T12:00:00Z"
+      },
+      "stage": "ci",
+      "stage_label": "CI",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#ff88bd",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "ci_question",
+      "task": {
+        "title": "Synthetic ci question",
+        "status": "running",
+        "stage": "ci",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "question"
+      },
+      "stage": "ci",
+      "stage_label": "CI",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#ff88bd",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "ci_blocked",
+      "task": {
+        "title": "Synthetic ci blocked",
+        "status": "running",
+        "stage": "ci",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "blocked"
+      },
+      "stage": "ci",
+      "stage_label": "CI",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#ff88bd",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "merged_healthy",
+      "task": {
+        "title": "Synthetic merged healthy",
+        "status": "running",
+        "stage": "merged",
+        "updated_at": "2026-09-28T12:00:00Z"
+      },
+      "stage": "merged",
+      "stage_label": "Merged",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#65baff",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "merged_question",
+      "task": {
+        "title": "Synthetic merged question",
+        "status": "running",
+        "stage": "merged",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "question"
+      },
+      "stage": "merged",
+      "stage_label": "Merged",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#65baff",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "merged_blocked",
+      "task": {
+        "title": "Synthetic merged blocked",
+        "status": "running",
+        "stage": "merged",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "health": "blocked"
+      },
+      "stage": "merged",
+      "stage_label": "Merged",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#65baff",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "live_healthy",
+      "task": {
+        "title": "Synthetic live healthy",
+        "status": "running",
+        "stage": "live",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "evidence": "Synthetic proof"
+      },
+      "stage": "live",
+      "stage_label": "Live",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#7dddc0",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "live_question",
+      "task": {
+        "title": "Synthetic live question",
+        "status": "running",
+        "stage": "live",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "evidence": "Synthetic proof",
+        "health": "question"
+      },
+      "stage": "live",
+      "stage_label": "Live",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#7dddc0",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "live_blocked",
+      "task": {
+        "title": "Synthetic live blocked",
+        "status": "running",
+        "stage": "live",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "evidence": "Synthetic proof",
+        "health": "blocked"
+      },
+      "stage": "live",
+      "stage_label": "Live",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#7dddc0",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "queued_still",
+      "task": {
+        "title": "Synthetic queued",
+        "status": "queued"
+      },
+      "stage": "queued",
+      "stage_label": "Queued",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "pulse_period": null,
+      "stage_color": "#f2f6fc",
+      "pulse_color": "#7dddc0"
+    },
+    {
+      "id": "done_still",
+      "task": {
+        "title": "Synthetic done",
+        "status": "done"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "pulse_period": null,
+      "stage_color": "#fb7b32",
+      "pulse_color": "#7dddc0"
+    },
+    {
+      "id": "done_merged",
+      "task": {
+        "title": "Synthetic merged",
+        "status": "done",
+        "pr": 84,
+        "pr_phase": "Merged"
+      },
+      "stage": "merged",
+      "stage_label": "Merged",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "pulse_period": null,
+      "stage_color": "#65baff",
+      "pulse_color": "#7dddc0"
+    },
+    {
+      "id": "review_status",
+      "task": {
+        "title": "Synthetic review",
+        "status": "review"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "question",
+      "pulse": "attention",
+      "pulse_period": "2s",
+      "stage_color": "#bf9cff",
+      "pulse_color": "#fb7b32"
+    },
+    {
+      "id": "failed_status",
+      "task": {
+        "title": "Synthetic failure",
+        "status": "failed"
+      },
+      "stage": "ci",
+      "stage_label": "CI",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#ff88bd",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "running_boundary",
+      "task": {
+        "title": "Synthetic boundary",
+        "status": "running",
+        "updated_at": "2026-09-28T11:00:00Z"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "running_stale",
+      "task": {
+        "title": "Synthetic stale",
+        "status": "running",
+        "updated_at": "2026-09-28T10:59:59Z"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "running_naive_utc",
+      "task": {
+        "title": "Synthetic naive UTC",
+        "status": "running",
+        "updated_at": "2026-09-28T12:00:00"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "running_missing_time",
+      "task": {
+        "title": "Synthetic missing time",
+        "status": "running"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "running_invalid_time",
+      "task": {
+        "title": "Synthetic invalid time",
+        "status": "running",
+        "updated_at": "invalid"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#ff696b"
+    },
+    {
+      "id": "measured_without_evidence",
+      "task": {
+        "title": "Synthetic measured",
+        "status": "measured"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "measured_with_evidence",
+      "task": {
+        "title": "Synthetic measured",
+        "status": "measured",
+        "evidence": "Synthetic proof"
+      },
+      "stage": "live",
+      "stage_label": "Live",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "pulse_period": "3.5s",
+      "stage_color": "#7dddc0",
+      "pulse_color": "#65baff"
+    },
+    {
+      "id": "live_without_evidence",
+      "task": {
+        "title": "Synthetic live",
+        "status": "done",
+        "stage": "live"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "pulse_period": null,
+      "stage_color": "#fb7b32",
+      "pulse_color": "#7dddc0"
+    },
+    {
+      "id": "live_with_evidence",
+      "task": {
+        "title": "Synthetic live",
+        "status": "done",
+        "stage": "live",
+        "evidence": "Synthetic proof"
+      },
+      "stage": "live",
+      "stage_label": "Live",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "pulse_period": null,
+      "stage_color": "#7dddc0",
+      "pulse_color": "#7dddc0"
+    },
+    {
+      "id": "question_overridden_by_stale",
+      "task": {
+        "title": "Synthetic stale question",
+        "status": "running",
+        "health": "question",
+        "updated_at": "2026-09-28T10:59:59Z"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "pulse_period": "1s",
+      "stage_color": "#fb7b32",
+      "pulse_color": "#ff696b"
+    }
+  ]
+}
