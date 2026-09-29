@@ -51,8 +51,9 @@
 
     <p class="sr-only" id="taskLive" aria-live="polite" role="status">Reading the record…</p>
 
-    <section class="card glass" aria-labelledby="quickTitle">
-      <div class="card-heading"><div><p class="eyebrow">Capture</p><h2 id="quickTitle">Quick add</h2></div></div>
+    <section class="card glass tasks-quick-add" aria-labelledby="quickTitle">
+      <details class="quick-add" id="quickAddPanel" open>
+      <summary class="quick-add-summary"><span><span class="eyebrow">Capture</span> <span class="quick-add-title" id="quickTitle">Quick add</span></span><span class="quick-add-toggle" aria-hidden="true"></span></summary>
       <form id="quickAddForm" hidden>
         <div class="field">
           <label for="quickAddInput">Sentence</label>
@@ -70,13 +71,14 @@
         <p class="small" id="quickAddQuestion"></p>
         <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button" id="quickAddDraft">Keep as draft</button></div>
       </form>
+      </details>
       <div class="chip-bar" id="draftBar" hidden>
         <span class="chip-label">Drafts on this device · select to review</span>
         <span class="chip-list" id="draftList"></span>
       </div>
     </section>
 
-    <section class="card glass" aria-labelledby="listTitle">
+    <section class="card glass tasks-open" aria-labelledby="listTitle">
       <div class="card-heading">
         <div><p class="eyebrow">Open work</p><h2 id="listTitle">Records</h2></div>
         <div class="btn-group" id="scopeSwitch" role="group" aria-label="Scope">

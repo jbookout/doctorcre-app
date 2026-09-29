@@ -1,3 +1,5 @@
+import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
+
 (() => {
   "use strict";
   const $ = (selector) => document.querySelector(selector);
@@ -25,12 +27,12 @@
     list.setAttribute("aria-busy", "false");
   }
   function stops() { return Array.isArray(state.tour?.stops) ? state.tour.stops : []; }
-  function renderShareGrants() { const list = $("#share-grants"); list.replaceChildren(); for (const grant of state.shareGrants) { if (!id(grant?.share_grant_id)) continue; const row = document.createElement("li"); const summary = document.createElement("span"); summary.textContent = `${text(grant.status, "unknown")} · projection ${text(grant.projection_id, "unknown")} · expires ${text(grant.expires_at, "unknown")}`; row.append(summary); if (grant.status === "active") { const button = document.createElement("button"); button.type = "button"; button.textContent = "Revoke"; button.dataset.shareGrantId = grant.share_grant_id; row.append(button); } list.append(row); } if (!list.children.length) list.textContent = "No active or rotatable confidential links."; }
+  function renderShareGrants() { const list = $("#share-grants"); list.replaceChildren(); for (const grant of state.shareGrants) { if (!id(grant?.share_grant_id)) continue; const row = document.createElement("li"); const summary = document.createElement("span"); summary.textContent = `${text(grant.status, "unknown")} · projection ${text(grant.projection_id, "unknown")} · expires ${formatTourDate(grant.expires_at) || "unknown"}`; row.append(summary); if (grant.status === "active") { const button = document.createElement("button"); button.type = "button"; button.textContent = "Revoke"; button.dataset.shareGrantId = grant.share_grant_id; row.append(button); } list.append(row); } if (!list.children.length) list.textContent = "No active or rotatable confidential links."; }
   function renderTour() {
     const tour = state.tour; if (!tour) return;
     $("#empty-state").hidden = true; $("#tour-panel").hidden = false;
     $("#tour-name").textContent = text(tour.name, "Untitled tour"); $("#tour-state").textContent = text(tour.status, "Draft");
-    $("#tour-meta").textContent = [tour.client_name, tour.market, tour.updated_at].filter(Boolean).join(" · ");
+    $("#tour-meta").textContent = tourMetaLine(tour);
     $("#route-version").textContent = text(tour.route_version_label, tour.route_version_id ? "Current version" : "No route version");
     $("#save-route").hidden = tour.route_version_state !== "accepted";
     $("#reorder-route").hidden = tour.route_version_state !== "draft";
@@ -40,7 +42,7 @@
     $("#projection-state").textContent = state.projectionId ? "Approved" : tour.projection_status === "draft" ? "Draft · approval required" : "Not generated"; $("#share-state").textContent = activeShareCount ? `${activeShareCount} active` : state.shareStatus === "expired" ? "Expired · rotate" : "Not issued"; renderShareGrants();
     $("#projection-note").textContent = state.projectionId ? "The approved projection is ready for a deliberately scoped, expiring share." : tour.projection_status === "draft" ? "A projection draft exists but cannot be shared until a human authority seals it." : "A projection is required before an external link can be issued.";
     if (!state.cheatDirty || state.cheatDraftTourId !== tour.id) {
-      $("#cheat-content").value = typeof tour.cheat_sheet?.content === "string" ? tour.cheat_sheet.content : JSON.stringify(tour.cheat_sheet?.content || {}, null, 2);
+      $("#cheat-content").value = cheatSheetText(tour.cheat_sheet?.content);
       state.cheatDirty = false; state.cheatDraftTourId = tour.id;
     }
     $("#sheet-state").textContent = state.cheatDirty ? "Unsaved changes" : text(tour.cheat_sheet?.revision_label, "Not saved");
@@ -58,7 +60,7 @@
     if (downloadable) $("#download-pdf").href = `/api/tours/pdf/download?render_job_id=${encodeURIComponent(state.renderJobId)}`;
   }
   async function loadLibrary() { status("Loading tours…"); const data = await request("/api/tours/library"); state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready."); }
-  async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}\n${Object.keys(facts).sort().join(", ")}`; }).join("\n\n"); preview.hidden = false; }
+  async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   async function loadTour(tourId) { status("Loading tour…"); if (state.tour?.id !== tourId) { state.cheatDirty = false; state.cheatDraftTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); await loadProjectionPreview(); status("Tour ready."); }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
   async function saveRoute(reorder = false) { if (!state.tour) return; const stopIds = stops().filter((stop) => stop.stop_state === "active").map((stop) => stop.id).filter(id); const path = reorder ? "/api/tours/route-reorder" : "/api/tours/route-version"; const payload = reorder ? { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() } : { tour_id: state.tour.id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() }; await post(path, payload); await loadTour(state.tour.id); status("Route version saved."); }
