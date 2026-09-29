@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createLiveClient } from "../js/live-client.js";
-import { boardView, answerRequest, taskStage, taskHealth, taskPulse } from "../js/progress-board-model.js";
+import { STAGES, boardView, answerRequest, taskStage, taskHealth, taskPulse } from "../js/progress-board-model.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
@@ -11,18 +11,33 @@ const host = `https://${config.env.staging.name}.workers.dev`;
 
 test("shared producer stage and health fixtures match the published board view", async () => {
   const fixtures = JSON.parse(await readFile(new URL("../test/fixtures/progress-board-stages.json", import.meta.url), "utf8"));
+  const css = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
   assert.equal(fixtures.producer_source_commit, contract.producer.source_commit);
   assert.deepEqual(new Set(fixtures.cases.map(({ producer_health }) => producer_health)),
     new Set(["healthy", "question", "blocked"]), "every producer health class is represented");
+  for (const stage of ["queued", "build", "review", "ci", "merged", "live"])
+    for (const health of ["healthy", "question", "blocked"])
+      assert.ok(fixtures.cases.some(row => row.stage === stage && row.producer_health === health),
+        `${stage}/${health} producer row is missing`);
   const at = new Date(fixtures.reference_time);
   const tasks = Object.fromEntries(fixtures.cases.map(({ id, task }) => [id, task]));
   const view = boardView({ snapshot: { board_id: "synthetic", version: 1, snapshot_json: { tasks } } });
-  for (const { id, task, stage, producer_health, pulse } of fixtures.cases) {
+  for (const { id, task, stage, stage_label, producer_health, pulse, pulse_period, stage_color, pulse_color } of fixtures.cases) {
     assert.equal(taskStage(task), stage, id);
+    assert.equal(STAGES.find(item => item.id === stage)?.label, stage_label, `${id}: stage label`);
     assert.equal(taskHealth(task, at), producer_health, id);
     assert.equal(taskPulse(task, at), pulse, id);
     assert.equal(view.stages.find(item => item.id === stage).tasks.some(item => item.id === id), true, id);
+    assert.match(css, new RegExp(`--stage-${stage}:\\s*${stage_color}`, "i"), `${id}: stage color`);
+    if (stage !== "queued") assert.match(css, new RegExp(`\\.flow-stage\\[data-stage="${stage}"\\] \\{ --stage-accent: var\\(--stage-${stage}\\); \\}`), `${id}: stage color wiring`);
+    else assert.match(css, /\.flow-stage \{ --stage-accent: var\(--stage-queued\); \}/, `${id}: queued stage color wiring`);
+    const variable = { healthy: "blue", attention: "orange", critical: "red", still: "green" }[pulse];
+    assert.match(css, new RegExp(`--${variable}:\\s*${pulse_color}`, "i"), `${id}: pulse color`);
+    assert.match(css, new RegExp(`\\.pipeline-node\\[data-pulse="${pulse}"\\] \\{ --pulse-accent: var\\(--${variable}\\); \\}`), `${id}: pulse color wiring`);
+    assert.match(css, /\.node-pulse \{[^}]*stroke: var\(--pulse-accent\)/, `${id}: pulse color visible`);
+    if (pulse_period) assert.match(css, new RegExp(`\\.pipeline-node\\[data-pulse="${pulse}"\\] \\.node-halo \\{ animation: pulse ${pulse_period.replace(".", "\\.")} ease-in-out infinite;`), `${id}: pulse rate`);
+    else assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\] \.node-halo \{[^}]*animation:/, `${id}: stillness`);
   }
 });
 
@@ -100,12 +115,13 @@ test("page offers choice and free-text controls, with reduced-motion styling", a
   assert.match(html, /id="board-questions"/);
   assert.match(html, /id="board-flow"/);
   assert.match(html, /<dialog id="task-detail"/);
-  assert.match(css, /\.pipeline-node\[data-pulse="blocked"\]/);
-  assert.match(css, /\.pipeline-node\[data-pulse="question"\]/);
+  assert.match(css, /\.pipeline-node\[data-pulse="critical"\]/);
+  assert.match(css, /\.pipeline-node\[data-pulse="attention"\]/);
   assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\][^}]*animation/);
-  assert.match(css, /\.pipeline-node\[data-pulse="blocked"\] \.node-shape \{[^}]*stroke-dasharray:/,
+  assert.match(css, /\.pipeline-node\[data-pulse="critical"\] \.node-shape \{[^}]*stroke-dasharray:/,
     "stuck remains distinct when motion is off");
   assert.match(css, /--stage-build:\s*#fb7b32/);
+  assert.match(css, /\.pipeline-node\[data-pulse="healthy"\] \.node-halo \{ animation: pulse 3\.5s/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/,
     "the reduced-motion fallback stops every pulse");
 });

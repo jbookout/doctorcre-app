@@ -39,9 +39,10 @@ export function taskHealth(task, at = new Date()) {
 
 export function taskPulse(task, at = new Date()) {
   const health = taskHealth(task, at);
-  if (health === "blocked") return "blocked";
-  if (health === "question") return "question";
-  return "still";
+  if (health === "blocked") return "critical";
+  if (health === "question") return "attention";
+  if (task.status === "done" || task.status === "queued") return "still";
+  return "healthy";
 }
 
 export function boardView(read) {

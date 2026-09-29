@@ -89,6 +89,7 @@ function taskNode(task, stage, x, y, width, height, phone) {
     "aria-label": `${task.title || task.id}, ${stage.label}. Open task detail.` });
   node.append(svg("rect", "node-shape", { x, y, width, height, rx: 12 }));
   node.append(svg("circle", "node-halo", { cx: x + 20, cy: y + 23, r: 8 }));
+  node.append(svg("circle", "node-pulse", { cx: x + 20, cy: y + 23, r: 12 }));
   const title = String(task.title || task.id);
   const lines = titleLines(title, phone ? 38 : 18);
   const label = svg("text", "node-label", { x: x + 35, y: y + 26 });
