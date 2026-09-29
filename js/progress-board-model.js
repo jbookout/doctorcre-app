@@ -8,8 +8,25 @@ export const STAGES = [
 ];
 
 const STATUS_STAGE = { queued: "queued", running: "build", review: "review",
-  blocked: "review", failed: "ci", done: "merged", measured: "live" };
+  blocked: "review", failed: "ci", done: "build" };
 const STATUSES = new Set(["Sent", "Received", "Applied"]);
+
+// Mirrors task_stage in carr-system tools/progress_board.py at the pinned producer revision.
+export function taskStage(task) {
+  let requested = task.stage === "measured" ? "live" : task.stage;
+  const evidence = task.evidence;
+  if (requested === "live" && !(typeof evidence === "string" && evidence.trim())) requested = null;
+  if (STAGES.some(stage => stage.id === requested)) return requested;
+  if (task.status === "done") return task.pr != null && task.pr_phase === "Merged" ? "merged" : "build";
+  if (task.status === "measured") return typeof evidence === "string" && evidence.trim() ? "live" : "build";
+  return STATUS_STAGE[task.status ?? "queued"] || "queued";
+}
+
+export function taskPulse(task) {
+  if (task.status === "blocked" || task.status === "failed" || task.health === "blocked") return "blocked";
+  if (task.status === "review" || task.health === "question" || task.question) return "question";
+  return "still";
+}
 
 export function boardView(read) {
   const snapshot = read?.snapshot;
@@ -20,8 +37,7 @@ export function boardView(read) {
   const stages = STAGES.map(stage => ({ ...stage, tasks: [] }));
   for (const [id, task] of tasks) {
     if (!task || typeof task !== "object") continue;
-    const stage = task.stage === "measured" ? "live" :
-      STAGES.some(item => item.id === task.stage) ? task.stage : STATUS_STAGE[task.status] || "queued";
+    const stage = taskStage(task);
     stages.find(item => item.id === stage).tasks.push({ id, ...task });
   }
   return {

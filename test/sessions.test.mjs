@@ -394,10 +394,10 @@ test("S02-21 the contract pins both verbs alphabetically at 1.19.0 with 57 opera
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });
 
-// MUTATION: leave `3c8f619d` in place as producer.source_commit.
-test("S02-22 producer.source_commit is the v35 dispatch-spine release", () => {
-  assert.equal(contract.producer.source_commit, "4d356351268f17ac7db459c0df9eee3c84b9d2a3",
-    "C13 repins the producer to the release that adds the dispatch spine");
+// MUTATION: leave the unmerged progress-board precursor as producer.source_commit.
+test("S02-22 producer.source_commit is the merged progress-board release", () => {
+  assert.equal(contract.producer.source_commit, "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0",
+    "the producer pin includes the merged progress board and dispatch spine");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");
 });

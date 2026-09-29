@@ -1,6 +1,6 @@
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest } from "./progress-board-model.js";
+import { boardView, answerRequest, taskPulse } from "./progress-board-model.js";
 
 const boardId = new URLSearchParams(location.search).get("board");
 const client = createLiveClient();
@@ -9,6 +9,10 @@ const title = document.getElementById("board-title");
 const meta = document.getElementById("board-meta");
 const error = document.getElementById("board-error");
 const stages = document.getElementById("board-stages");
+const flow = document.getElementById("board-flow");
+const taskDialog = document.getElementById("task-detail");
+const taskDetailTitle = document.getElementById("task-detail-title");
+const taskDetailBody = document.getElementById("task-detail-body");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
@@ -32,32 +36,113 @@ function formatTime(value) {
     { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function renderStages(view) {
-  stages.replaceChildren();
-  let count = 0;
-  for (const [index, stage] of view.stages.entries()) {
-    const section = element("section", "stage");
-    section.dataset.stage = stage.id;
-    const head = element("div", "stage-header");
-    head.append(element("span", "stage-index", String(index + 1).padStart(2, "0")),
-      element("span", "stage-title", stage.label),
-      element("span", "stage-count", String(stage.tasks.length).padStart(2, "0")));
-    section.append(head);
-    for (const task of stage.tasks) {
-      count += 1;
-      const card = element("article", "task-card");
-      card.dataset.health = task.status === "blocked" || task.status === "failed" ? "blocked"
-        : task.question || task.status === "review" ? "question" : "healthy";
-      card.append(element("strong", "task-title", task.title || task.id),
-        element("span", "task-meta", [task.executor, task.pr ? `PR ${task.pr}` : null]
-          .filter(Boolean).join(" · ") || task.id));
-      section.append(card);
-    }
-    if (!stage.tasks.length) section.append(element("p", "empty", "No tasks"));
-    stages.append(section);
-  }
-  taskCount.textContent = `${count} TASK${count === 1 ? "" : "S"}`;
+const SVG_NS = "http://www.w3.org/2000/svg";
+const phoneQuery = matchMedia("(max-width: 680px)");
+let currentView = null;
+
+function svg(tag, className, attributes = {}, content) {
+  const node = document.createElementNS(SVG_NS, tag);
+  if (className) node.setAttribute("class", className);
+  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
+  if (content !== undefined) node.textContent = String(content);
+  return node;
 }
+
+function detailRow(label, value) {
+  if (value === undefined || value === null || value === "") return;
+  const row = element("div", "detail-row");
+  row.append(element("dt", "", label), element("dd", "", value));
+  taskDetailBody.append(row);
+}
+
+function showTask(task, stage) {
+  taskDetailTitle.textContent = task.title || task.id;
+  taskDetailBody.replaceChildren();
+  detailRow("Stage", stage.label);
+  detailRow("Status", task.status);
+  detailRow("Task", task.id);
+  detailRow("Executor", task.executor);
+  detailRow("PR", task.pr != null ? `#${task.pr}${task.pr_phase ? ` · ${task.pr_phase}` : ""}` : "No PR");
+  detailRow("Updated", formatTime(task.updated_at));
+  detailRow("Note", task.note);
+  detailRow("Question", task.question);
+  detailRow("Evidence", task.evidence);
+  taskDialog.showModal();
+}
+
+function titleLines(value, width) {
+  const words = String(value).split(/\s+/).filter(Boolean);
+  const lines = [];
+  for (const word of words) {
+    const last = lines.length - 1;
+    if (last >= 0 && `${lines[last]} ${word}`.length <= width) lines[last] += ` ${word}`;
+    else lines.push(word);
+  }
+  if (lines.length > 2) return [lines[0], `${lines[1].slice(0, width - 1)}…`];
+  return lines;
+}
+
+function taskNode(task, stage, x, y, width, height, phone) {
+  const pulse = taskPulse(task);
+  const node = svg("g", "pipeline-node", { "data-task-id": task.id, "data-stage": stage.id,
+    "data-pulse": pulse, role: "button", tabindex: 0,
+    "aria-label": `${task.title || task.id}, ${stage.label}. Open task detail.` });
+  node.append(svg("rect", "node-shape", { x, y, width, height, rx: 12 }));
+  node.append(svg("circle", "node-halo", { cx: x + 20, cy: y + 23, r: 8 }));
+  const title = String(task.title || task.id);
+  const lines = titleLines(title, phone ? 38 : 18);
+  const label = svg("text", "node-label", { x: x + 35, y: y + 26 });
+  for (const [index, line] of lines.entries()) {
+    label.append(svg("tspan", "", { x: x + 35, dy: index ? 14 : 0 }, line));
+  }
+  node.append(label);
+  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 12 },
+    [task.executor || "Unassigned", task.pr != null ? `PR ${task.pr}` : "No PR"].join(" · ")));
+  node.addEventListener("click", () => showTask(task, stage));
+  node.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task, stage); }
+  });
+  return node;
+}
+
+function renderStages(view) {
+  currentView = view;
+  flow.replaceChildren();
+  const phone = phoneQuery.matches;
+  const total = view.stages.reduce((sum, stage) => sum + stage.tasks.length, 0);
+  taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
+  const width = phone ? 360 : 1200;
+  const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
+  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 88) + 21, 0) - 21
+    : Math.max(270, 93 + maxTasks * 89);
+  flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
+  let offset = 0;
+  view.stages.forEach((stage, index) => {
+    const x = phone ? 8 : 8 + index * 199;
+    const y = phone ? offset : 8;
+    const wellWidth = phone ? 344 : 186;
+    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 88) : height - 16;
+    const group = svg("g", "flow-stage", { "data-stage": stage.id });
+    group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
+    group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
+    group.append(svg("text", "stage-label", { x: x + 47, y: y + 28 }, stage.label));
+    group.append(svg("text", "stage-count", { x: x + wellWidth - 14, y: y + 27, "text-anchor": "end" },
+      String(stage.tasks.length).padStart(2, "0")));
+    if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
+    stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
+      y + 44 + taskIndex * (phone ? 88 : 89), wellWidth - 18, phone ? 78 : 79, phone)));
+    flow.append(group);
+    if (index < view.stages.length - 1) {
+      const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`
+        : `M ${x + wellWidth + 2} 47 H ${x + 197}`;
+      flow.append(svg("path", "pipeline-connector", { d, "aria-hidden": "true" }));
+    }
+    if (phone) offset += wellHeight + 21;
+  });
+}
+
+phoneQuery.addEventListener("change", () => { if (currentView) renderStages(currentView); });
 
 function answerForm(q, view) {
   const form = element("form", "answer-form");

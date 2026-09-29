@@ -384,7 +384,7 @@ test("B05-14 the interface contract pins both verbs alphabetically at 1.19.0 and
   assert.equal(routes.version, "1.14.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/business"], "business-workspace.html");
   assert.equal(contract.version, "1.27.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.producer.source_commit, "4d356351268f17ac7db459c0df9eee3c84b9d2a3", "S02 repinned the producer to the release that first serves the session-identity verbs");
+  assert.equal(contract.producer.source_commit, "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0", "the producer pin includes the merged progress board and session-identity verbs");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");

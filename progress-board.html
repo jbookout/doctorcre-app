@@ -23,8 +23,9 @@
       </section>
       <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
         <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
-        <p class="caption">Queued → Building → Review → CI → Merged → Live</p>
-        <div id="board-stages" class="stages" aria-live="polite"></div>
+        <div id="board-stages" class="flow-wrap" aria-live="polite">
+          <svg id="board-flow" class="pipeline-diagram" role="group" aria-label="Tasks positioned along the six delivery stages"></svg>
+        </div>
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
         <div class="panel-heading"><div><p class="eyebrow">02 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
@@ -32,6 +33,12 @@
         <div id="board-questions" class="questions" aria-live="polite"></div>
       </section>
     </main>
+    <dialog id="task-detail" aria-labelledby="task-detail-title">
+      <form method="dialog" class="dialog-close"><button aria-label="Close task detail" title="Close">×</button></form>
+      <p class="eyebrow">DELIVERY / TASK</p>
+      <h2 id="task-detail-title"></h2>
+      <div id="task-detail-body" class="task-detail-body"></div>
+    </dialog>
     <footer>Board data and answer status come from the signed-in CARR record.</footer>
   </div>
 </body>

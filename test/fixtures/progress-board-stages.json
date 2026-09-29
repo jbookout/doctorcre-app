@@ -1,0 +1,23 @@
+{
+  "producer_repository": "jbookout/carr-system",
+  "producer_source_commit": "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0",
+  "producer_function": "tools/progress_board.py:task_stage",
+  "synthetic": true,
+  "cases": [
+    { "id": "queued", "task": { "title": "Demo queued", "status": "queued" }, "stage": "queued", "pulse": "still" },
+    { "id": "running", "task": { "title": "Demo running", "status": "running" }, "stage": "build", "pulse": "still" },
+    { "id": "done_no_pr", "task": { "title": "Demo done without PR", "status": "done" }, "stage": "build", "pulse": "still" },
+    { "id": "done_open_pr", "task": { "title": "Demo done with open PR", "status": "done", "pr": 84, "pr_phase": "Open" }, "stage": "build", "pulse": "still" },
+    { "id": "done_merged_pr", "task": { "title": "Demo merged PR", "status": "done", "pr": 84, "pr_phase": "Merged" }, "stage": "merged", "pulse": "still" },
+    { "id": "review", "task": { "title": "Demo review", "status": "review" }, "stage": "review", "pulse": "question" },
+    { "id": "blocked", "task": { "title": "Demo blocked", "status": "blocked" }, "stage": "review", "pulse": "blocked" },
+    { "id": "failed", "task": { "title": "Demo failed", "status": "failed" }, "stage": "ci", "pulse": "blocked" },
+    { "id": "explicit_ci", "task": { "title": "Demo CI", "status": "running", "stage": "ci" }, "stage": "ci", "pulse": "still" },
+    { "id": "measured_without_evidence", "task": { "title": "Demo measured without evidence", "status": "measured" }, "stage": "build", "pulse": "still" },
+    { "id": "measured_with_evidence", "task": { "title": "Demo measured", "status": "measured", "evidence": "Synthetic verification" }, "stage": "live", "pulse": "still" },
+    { "id": "live_without_evidence", "task": { "title": "Demo live without evidence", "status": "done", "stage": "live" }, "stage": "build", "pulse": "still" },
+    { "id": "live_with_evidence", "task": { "title": "Demo live", "status": "done", "stage": "live", "evidence": "Synthetic verification" }, "stage": "live", "pulse": "still" },
+    { "id": "question_health", "task": { "title": "Demo question", "status": "running", "health": "question" }, "stage": "build", "pulse": "question" },
+    { "id": "blocked_health", "task": { "title": "Demo health blocked", "status": "running", "health": "blocked" }, "stage": "build", "pulse": "blocked" }
+  ]
+}
