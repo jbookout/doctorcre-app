@@ -16,6 +16,7 @@ import {
   pendingFieldWrite, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
 import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
+import { renderAccountCards } from './account-cards.js';
 
 const POLL_MS = 1400;
 /**
@@ -393,10 +394,7 @@ function renderChrome() {
   // description sentence under its title (2026-09-16 review).
   $('#workspaceTitle').textContent = state.query ? 'Search results' : state.workspace === 'team' ? 'Deals'
     : selected?.account_name || 'National Accounts';
-  $('#workspaceSubtitle').textContent = state.query ? 'Searching work records across the territory and every national account.'
-    : state.workspace === 'team' ? ''
-    : selected ? `${actorName(selected.account_owner)} owns the account; each market deal keeps its assigned agent and owner.`
-    : 'One account can hold dozens of market-level transactions without crowding the territory agenda.';
+  $('#workspaceSubtitle').textContent = state.query ? 'Searching work records across the territory and every national account.' : '';
   const addLabel = state.workspace === 'national_account' ? (selected ? 'Add market deal' : 'Add national account') : 'Add work record';
   $('#stickyAddButton').textContent = `+ ${addLabel}`;
   $('#stickyAddButton').setAttribute('aria-label', addLabel);
@@ -411,15 +409,7 @@ function renderChrome() {
 
 function renderAccounts() {
   const grid = $('#accountGrid');
-  grid.innerHTML = state.accounts.length ? state.accounts.map((item) => `
-    <button type="button" class="account-card" data-account="${esc(item.account_client_id)}">
-      <header><div><p class="eyebrow">${esc(item.account_client_ref || 'National account')}</p><h2>${esc(item.account_name)}</h2></div>
-        <span class="account-owner" title="Owned by ${esc(actorName(item.account_owner))}">${item.account_owner === 'dell' ? 'D' : item.account_owner === 'joe' ? 'J' : '?'}</span></header>
-      <div class="account-metrics"><div><b>${Number(item.open_deals || 0)}</b><span>Active work</span></div>
-        <div><b>${Number(item.attention_deals || 0)}</b><span>Attention</span></div>
-        <div><b>${Number(item.stale_deals || 0)}</b><span>Gone quiet</span></div></div>
-      <footer>${Number(item.parked_deals || 0)} parked · Last account review: ${esc(relative(item.last_review_at))} · Open agenda →</footer>
-    </button>`).join('') : '<div class="empty">No national accounts yet. Add the first portfolio when it is won.</div>';
+  grid.innerHTML = renderAccountCards(state.accounts, { esc, relative, actorName });
 }
 
 /**
@@ -1303,7 +1293,7 @@ function wireEvents() {
 }
 
 async function boot() {
-  if (localStorage.getItem('dealroom-theme') === 'night') document.body.classList.add('night');
+  if (localStorage.getItem('dealroom-theme') !== 'light') document.body.classList.add('night');
   if (localStorage.getItem('dealroom-color-assist') === 'on') {
     document.body.classList.add('color-assist');
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');
