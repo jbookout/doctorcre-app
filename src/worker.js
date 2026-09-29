@@ -35,6 +35,18 @@ function gateRequestFor(request, pathname) {
   return new Request(url, request);
 }
 
+function restoreOriginalReturnTo(response, request) {
+  const location = response.headers.get("location");
+  if (response.status < 300 || response.status >= 400 || !location) return response;
+  const originalUrl = new URL(request.url);
+  const redirectUrl = new URL(location, originalUrl);
+  if (redirectUrl.origin !== originalUrl.origin || redirectUrl.pathname !== "/auth/login") return response;
+  redirectUrl.searchParams.set("return_to", originalUrl.pathname + originalUrl.search);
+  const headers = new Headers(response.headers);
+  headers.set("location", redirectUrl.toString());
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -137,8 +149,9 @@ export async function handleDoctorcreRequest(request, env) {
   const routeAsset = APP_ROUTES.get(pathname);
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
-    const gate = await carrResponse(gateRequestFor(request, pathname), env, true);
-    if (gate.status !== 200) return gate;
+    const gateRequest = gateRequestFor(request, pathname);
+    const gate = await carrResponse(gateRequest, env, true);
+    if (gate.status !== 200) return gateRequest === request ? gate : restoreOriginalReturnTo(gate, request);
     return copySessionCookies(gate, await assetResponse(request, env, `/${routeAsset}`));
   }
 
