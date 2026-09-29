@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { createFixtureClient } from '../js/fixture-client.js';
 import {
   suggestionCards, decisionArgs, correctionArgs, shouldShowSuggestion,
-  correctionConflict, suggestionFlow,
+  correctionConflict, suggestionFlow, suggestionReadState, visibleSuggestionConflicts,
+  reconcileSuggestionConflicts,
 } from '../js/doc-suggestions-model.js';
 
 const first = {
@@ -71,6 +72,66 @@ test('version conflict retains the draft and exposes the current record', () => 
   assert.equal(conflict.draft, 'The date should be Monday.');
   assert.equal(conflict.current.version, 4);
   assert.equal(conflict.current.polished, 'Review on Tuesday.');
+  assert.equal(conflict.conversationId, first.source_conversation_id);
+});
+
+test('a failed or in-flight suggestion read clears old actionable rows while keeping typed drafts', () => {
+  const held = { state: 'read', rows: [first], sequence: 4, includeParked: false,
+    drafts: new Map([[first.id, 'Keep this correction']]), conflicts: new Map() };
+  const loading = suggestionReadState(held, { state: 'loading' });
+  assert.equal(loading.state, 'loading');
+  assert.deepEqual(loading.rows, []);
+  assert.equal(loading.drafts.get(first.id), 'Keep this correction');
+  const failed = suggestionReadState(loading, { state: 'unavailable', sentence: 'Read unavailable.' });
+  assert.deepEqual(failed.rows, []);
+  assert.equal(failed.sentence, 'Read unavailable.');
+  assert.equal(suggestionCards({ suggestions: failed.rows }).length, 0);
+});
+
+test('a conflict from another conversation does not hide this route’s empty state', () => {
+  const conflict = correctionConflict('Review on Monday.', first);
+  const conflicts = new Map([[first.id, conflict]]);
+  assert.deepEqual(visibleSuggestionConflicts(conflicts, [], { state: 'ok', id: 'another-conversation' }), []);
+  assert.equal(visibleSuggestionConflicts(conflicts, [], { state: 'ok', id: first.source_conversation_id }).length, 1);
+  assert.deepEqual(visibleSuggestionConflicts(conflicts, [{ id: first.id }], { state: 'missing' }), []);
+});
+
+test('later reads refresh the current side of a conflict without losing the draft', () => {
+  const held = new Map([[first.id, correctionConflict('Review on Monday.', first)]]);
+  const newer = { ...first, version: 5, polished_text: 'Review on Wednesday.' };
+  const refreshed = reconcileSuggestionConflicts(held, [newer]);
+  assert.equal(refreshed.get(first.id).draft, 'Review on Monday.');
+  assert.equal(refreshed.get(first.id).current.version, 5);
+  assert.equal(refreshed.get(first.id).current.polished, 'Review on Wednesday.');
+  assert.equal(held.get(first.id).current.version, 3);
+  assert.equal(reconcileSuggestionConflicts(held, []).get(first.id).source, 'read', 'an omitted row is not invented');
+});
+
+test('a parked conflict remains comparable when the ordinary read omits it', async () => {
+  const seed = await readFile(new URL('../data/board-seed.json', import.meta.url), 'utf8');
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(seed).toString('base64')}` });
+  const before = (await client.listDocSuggestions()).suggestions[0];
+  await client.decideDocSuggestion(decisionArgs(before, 'dismiss', 'c0000000-0000-4000-8000-000000000093'));
+  let current;
+  await assert.rejects(() => client.proposeDocCorrection(correctionArgs(before, 'Review on Monday.', 'c0000000-0000-4000-8000-000000000094')),
+    error => { current = error.payload?.current; return error.payload?.error === 'version_conflict'; });
+  assert.equal((await client.listDocSuggestions()).suggestions.some(row => row.id === before.id), false);
+  const conflict = correctionConflict('Review on Monday.', current);
+  assert.equal(conflict.draft, 'Review on Monday.');
+  assert.equal(conflict.current.version, before.version + 1);
+  assert.equal(conflict.current.polished, before.polished_text);
+  assert.equal((await client.listDocSuggestions({ include_parked: true })).suggestions.some(row => row.id === before.id), true);
+});
+
+test('the page gates suggestion controls on a successful read and keeps conflicts visible outside omitted rows', async () => {
+  const page = await readFile(new URL('../js/conversations.js', import.meta.url), 'utf8');
+  assert.match(page, /suggestionReadState\(view\.suggestions, \{ state: "loading" \}\)/);
+  assert.match(page, /suggestionReadState\(view\.suggestions, \{ state: "unavailable", sentence: failure\.sentence \}\)/);
+  assert.match(page, /state\.state === "read" \? suggestionCards/);
+  assert.match(page, /view\.suggestions\.state !== "read"/);
+  assert.match(page, /error\?\.payload\?\.current/);
+  assert.match(page, /includeParked = true/);
+  assert.match(page, /suggestion-conflict-only/);
 });
 
 test('visual flow names each decision and its outcome', () => {

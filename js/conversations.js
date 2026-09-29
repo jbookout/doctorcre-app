@@ -49,7 +49,7 @@ import {
   refuseDocOutcomeCards,
 } from "./doc-outcome-cards-model.js";
 import { uuidv4 } from "./uuid.js";
-import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow } from "./doc-suggestions-model.js";
+import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow, suggestionReadState, visibleSuggestionConflicts, reconcileSuggestionConflicts } from "./doc-suggestions-model.js";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -326,13 +326,14 @@ function suggestionFlowSvg(card) {
 
 function renderSuggestions() {
   const state = view.suggestions;
-  const cards = suggestionCards({ suggestions: state.rows }, { includeParked: state.includeParked });
+  const cards = state.state === "read" ? suggestionCards({ suggestions: state.rows }, { includeParked: state.includeParked }) : [];
+  const visibleConflicts = visibleSuggestionConflicts(state.conflicts, cards, view.route);
   const block = $("suggestionsState");
   const list = $("suggestionsList");
   if (!block || !list) return;
   $("suggestionsParked").setAttribute("aria-pressed", String(state.includeParked));
   $("suggestionsParked").textContent = state.includeParked ? "Hide snoozed and dismissed" : "Show snoozed and dismissed";
-  block.hidden = state.state === "read" && cards.length > 0;
+  block.hidden = state.state === "read" && (cards.length > 0 || visibleConflicts.length > 0);
   block.dataset.state = state.state === "unavailable" ? "unavailable" : state.state === "read" ? "empty" : "loading";
   $("suggestionsStateTitle").textContent = state.state === "unavailable" ? state.sentence
     : state.state === "read" ? "No suggestions need a decision" : "Reading suggestions…";
@@ -346,8 +347,8 @@ function renderSuggestions() {
     const current = state.conflicts.get(card.id);
     const proposals = card.corrections.filter(item => item.status === "pending");
     const conflictHtml = current ? `<div class="suggestion-conflict" role="alert"><strong>This suggestion changed.</strong>
-      <p>Current record: ${escapeHtml(current.current.polished || current.current.original)}</p>
-      <p>Your correction is still below. Review both before proposing again.</p></div>` : "";
+      <p>${current.source === "read" ? "Current record" : "Record at refusal"}: ${escapeHtml(current.current.polished || current.current.original || "unavailable")}</p>
+      <p>${current.choice ? `Your ${escapeHtml(current.choice)} choice was not saved.` : "Your correction is still below."} Review before trying again.</p></div>` : "";
     return `<li class="work-item suggestion-card" data-suggestion="${escapeHtml(card.id)}" data-disposition="${escapeHtml(card.disposition)}" data-suggestion-index="${index}">
       <div class="suggestion-content">
         <div class="suggestion-heading"><span class="suggestion-beacon" aria-hidden="true"></span><h3>${escapeHtml(card.polished)}</h3></div>
@@ -377,7 +378,13 @@ function renderSuggestions() {
         ${proposals.length ? `<div class="suggestion-proposals"><strong>Correction awaiting review</strong><ul>${proposals.map(item => `<li><p>${escapeHtml(item.proposedText)}</p><span>Proposed ${escapeHtml(formatClock(item.proposedAt) || "time unavailable")} · based on version ${escapeHtml(item.baseVersion)}</span></li>`).join("")}</ul></div>` : ""}
       </div>
     </li>`;
-  }).join("");
+  }).join("") + visibleConflicts.map(([id, conflict]) =>
+    `<li class="work-item suggestion-conflict-only" data-conflict-suggestion="${escapeHtml(id)}" role="alert">
+      <div><strong>This suggestion changed.</strong>
+        <p>${conflict.source === "read" ? "Current record" : "Record at refusal"}: ${escapeHtml(conflict.current.polished || conflict.current.original || "unavailable")}</p>
+        ${conflict.choice ? `<p>Your ${escapeHtml(conflict.choice)} choice was not saved.</p>` : `<p>Your correction: ${escapeHtml(conflict.draft)}</p>`}
+        <p>Read again to review the current version before acting.</p></div>
+    </li>`).join("");
   list.querySelectorAll(".suggestion-card").forEach((node, index) =>
     node.style.setProperty("--suggestion-delay", `${Math.min(index * 75, 600)}ms`));
 }
@@ -488,6 +495,8 @@ async function takeOutcomeCards({ cursor = null } = {}) {
 
 async function takeSuggestions() {
   const sequence = ++view.suggestions.sequence;
+  view.suggestions = suggestionReadState(view.suggestions, { state: "loading" });
+  renderSuggestions();
   try {
     const payload = await client.listDocSuggestions({
       ...(view.route.state === "ok" ? { conversation_id: view.route.id } : {}),
@@ -495,11 +504,12 @@ async function takeSuggestions() {
     });
     if (sequence !== view.suggestions.sequence) return;
     if (!Array.isArray(payload?.suggestions)) throw new Error("Invalid suggestion response");
-    view.suggestions = { ...view.suggestions, state: "read", rows: payload.suggestions, sentence: null };
+    view.suggestions = suggestionReadState(view.suggestions, { state: "read", payload });
+    view.suggestions.conflicts = reconcileSuggestionConflicts(view.suggestions.conflicts, payload.suggestions);
   } catch (error) {
     if (sequence !== view.suggestions.sequence) return;
     const failure = classifyReadFailure(error);
-    view.suggestions = { ...view.suggestions, state: "unavailable", sentence: failure.sentence };
+    view.suggestions = suggestionReadState(view.suggestions, { state: "unavailable", sentence: failure.sentence });
   }
   renderSuggestions();
   const live = $("suggestionsLive");
@@ -598,6 +608,7 @@ function suggestionRow(id) {
 }
 
 async function decideSuggestion(id, choice, card) {
+  if (view.suggestions.state !== "read") return;
   const row = suggestionRow(id);
   const workNumber = view.suggestions.workNumbers.get(id) || "";
   const date = card.querySelector("[data-snooze-date]")?.value || null;
@@ -608,30 +619,55 @@ async function decideSuggestion(id, choice, card) {
     return;
   }
   const summary = `${choice[0].toUpperCase()}${choice.slice(1)} this Doc suggestion`;
+  let refusedCurrent = null;
   const outcome = await dispatch(`doc-suggestion:${id}:decision`, built, summary,
-    request => client.decideDocSuggestion(request));
+    async request => {
+      try { return await client.decideDocSuggestion(request); }
+      catch (error) {
+        if (error?.payload?.error === "version_conflict") {
+          refusedCurrent = error?.payload?.current || null;
+          view.suggestions.includeParked = true;
+        }
+        throw error;
+      }
+    });
   if (outcome.status === "conflict") {
     const current = suggestionRow(id);
-    if (current) view.suggestions.conflicts.set(id, correctionConflict(view.suggestions.drafts.get(id) || "", current));
+    view.suggestions.conflicts.set(id, correctionConflict(view.suggestions.drafts.get(id) || "", current || refusedCurrent,
+      { choice, source: current ? "read" : "refusal", conversationId: row.source_conversation_id || row.conversation_id }));
     renderSuggestions();
+  } else if (outcome.status === "ok") {
+    view.suggestions.conflicts.delete(id);
   }
   if (choice === "discuss" && outcome.status === "ok") $("docFab")?.click();
 }
 
 async function proposeSuggestionCorrection(id) {
+  if (view.suggestions.state !== "read") return;
   const row = suggestionRow(id);
   const draft = view.suggestions.drafts.get(id) || "";
   const built = correctionArgs(row, draft);
   if (!built) { announce("Type a correction before proposing it."); return; }
+  let refusedCurrent = null;
   const outcome = await dispatch(`doc-suggestion:${id}:correction`, built,
-    "Propose a correction to this suggestion", request => client.proposeDocCorrection(request));
+    "Propose a correction to this suggestion", async request => {
+      try { return await client.proposeDocCorrection(request); }
+      catch (error) {
+        if (error?.payload?.error === "version_conflict") {
+          refusedCurrent = error?.payload?.current || null;
+          view.suggestions.includeParked = true;
+        }
+        throw error;
+      }
+    });
   if (outcome.status === "ok") {
     view.suggestions.drafts.delete(id);
     view.suggestions.conflicts.delete(id);
     announce("Correction proposed with its source. The suggestion has not been overwritten.");
   } else if (outcome.status === "conflict") {
     const current = suggestionRow(id);
-    if (current) view.suggestions.conflicts.set(id, correctionConflict(draft, current));
+    view.suggestions.conflicts.set(id, correctionConflict(draft, current || refusedCurrent,
+      { source: current ? "read" : "refusal", conversationId: row.source_conversation_id || row.conversation_id }));
   }
   renderSuggestions();
 }

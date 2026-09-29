@@ -201,6 +201,8 @@
 .suggestion-correction textarea { display: block; width: 100%; min-height: 80px; margin: 6px 0 9px; }
 .suggestion-conflict { border-left: 3px solid var(--amber); padding: 8px 12px; margin: 12px 0; background: color-mix(in srgb, var(--amber) 10%, transparent); }
 .suggestion-conflict p { margin: 5px 0; }
+.suggestion-conflict-only { grid-template-columns: minmax(0, 1fr); border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--ground-2)); }
+.suggestion-conflict-only p { margin: 6px 0 0; overflow-wrap: anywhere; }
 .suggestion-proposals { margin-top: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--orange) 42%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--orange) 7%, var(--ground-2)); }
 .suggestion-proposals strong { color: var(--orange-text); }
 .suggestion-proposals ul { margin: 8px 0 0; padding-left: 18px; }

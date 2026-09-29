@@ -34,6 +34,10 @@ export function suggestionCards(payload, { today, includeParked = false } = {}) 
   }));
 }
 
+export function suggestionReadState(previous, { state, payload = null, sentence = null }) {
+  return { ...previous, state, rows: state === 'read' ? payload.suggestions : [], sentence };
+}
+
 export function decisionArgs(row, choice, idempotency_key, snoozed_until = null, work_ref = null) {
   if (!row?.id || !Number.isInteger(row.version) || !choices.has(choice)
       || (idempotency_key !== undefined && !text(idempotency_key))) return null;
@@ -52,9 +56,26 @@ export function correctionArgs(row, proposed_text, idempotency_key) {
     ...(idempotency_key !== undefined ? { idempotency_key } : {}) };
 }
 
-export function correctionConflict(draft, currentRow) {
-  return { draft, current: { version: currentRow?.version ?? null,
+export function correctionConflict(draft, currentRow, { choice = null, source = 'read', conversationId = null } = {}) {
+  return { draft, choice, source,
+    conversationId: currentRow?.source_conversation_id || currentRow?.conversation_id || conversationId,
+    current: { version: currentRow?.version ?? null,
     polished: text(currentRow?.polished_text), original: text(currentRow?.original_text) } };
+}
+
+export function visibleSuggestionConflicts(conflicts, cards, route) {
+  const shown = new Set(cards.map(card => card.id));
+  return [...conflicts.entries()].filter(([id, conflict]) =>
+    !shown.has(id) && (route.state !== 'ok' || conflict.conversationId === route.id));
+}
+
+export function reconcileSuggestionConflicts(conflicts, rows) {
+  const byId = new Map(rows.map(row => [row.id, row]));
+  return new Map([...conflicts.entries()].map(([id, held]) => {
+    const current = byId.get(id);
+    return [id, current ? correctionConflict(held.draft, current,
+      { choice: held.choice, conversationId: held.conversationId }) : held];
+  }));
 }
 
 export function suggestionFlow() {
