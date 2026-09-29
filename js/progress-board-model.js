@@ -10,6 +10,7 @@ export const STAGES = [
 const STATUS_STAGE = { queued: "queued", running: "build", review: "review",
   blocked: "review", failed: "ci", done: "build" };
 const STATUSES = new Set(["Sent", "Received", "Applied"]);
+const STUCK_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Mirrors task_stage in carr-system tools/progress_board.py at the pinned producer revision.
 export function taskStage(task) {
@@ -22,9 +23,24 @@ export function taskStage(task) {
   return STATUS_STAGE[task.status ?? "queued"] || "queued";
 }
 
-export function taskPulse(task) {
-  if (task.status === "blocked" || task.status === "failed" || task.health === "blocked") return "blocked";
+export function taskHealth(task, at = new Date()) {
+  let stuck = false;
+  if (task.status === "running") {
+    const raw = task.updated_at;
+    // Python's naive ISO timestamps are UTC in the CARR producer.
+    const timestamp = typeof raw === "string" && raw.trim()
+      ? Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`) : NaN;
+    stuck = !Number.isFinite(timestamp) || at.getTime() - timestamp > STUCK_AFTER_MS;
+  }
+  if (task.status === "blocked" || task.status === "failed" || task.health === "blocked" || stuck) return "blocked";
   if (task.status === "review" || task.health === "question" || task.question) return "question";
+  return "healthy";
+}
+
+export function taskPulse(task, at = new Date()) {
+  const health = taskHealth(task, at);
+  if (health === "blocked") return "blocked";
+  if (health === "question") return "question";
   return "still";
 }
 

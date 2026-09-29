@@ -3,21 +3,25 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { createLiveClient } from "../js/live-client.js";
-import { boardView, answerRequest, taskStage, taskPulse } from "../js/progress-board-model.js";
+import { boardView, answerRequest, taskStage, taskHealth, taskPulse } from "../js/progress-board-model.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
 const host = `https://${config.env.staging.name}.workers.dev`;
 
-test("shared producer stage fixtures match the published board view", async () => {
+test("shared producer stage and health fixtures match the published board view", async () => {
   const fixtures = JSON.parse(await readFile(new URL("../test/fixtures/progress-board-stages.json", import.meta.url), "utf8"));
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
   assert.equal(fixtures.producer_source_commit, contract.producer.source_commit);
+  assert.deepEqual(new Set(fixtures.cases.map(({ producer_health }) => producer_health)),
+    new Set(["healthy", "question", "blocked"]), "every producer health class is represented");
+  const at = new Date(fixtures.reference_time);
   const tasks = Object.fromEntries(fixtures.cases.map(({ id, task }) => [id, task]));
   const view = boardView({ snapshot: { board_id: "synthetic", version: 1, snapshot_json: { tasks } } });
-  for (const { id, task, stage, pulse } of fixtures.cases) {
+  for (const { id, task, stage, producer_health, pulse } of fixtures.cases) {
     assert.equal(taskStage(task), stage, id);
-    assert.equal(taskPulse(task), pulse, id);
+    assert.equal(taskHealth(task, at), producer_health, id);
+    assert.equal(taskPulse(task, at), pulse, id);
     assert.equal(view.stages.find(item => item.id === stage).tasks.some(item => item.id === id), true, id);
   }
 });
@@ -99,6 +103,9 @@ test("page offers choice and free-text controls, with reduced-motion styling", a
   assert.match(css, /\.pipeline-node\[data-pulse="blocked"\]/);
   assert.match(css, /\.pipeline-node\[data-pulse="question"\]/);
   assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\][^}]*animation/);
+  assert.match(css, /\.pipeline-node\[data-pulse="blocked"\] \.node-shape \{[^}]*stroke-dasharray:/,
+    "stuck remains distinct when motion is off");
   assert.match(css, /--stage-build:\s*#fb7b32/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/,
+    "the reduced-motion fallback stops every pulse");
 });

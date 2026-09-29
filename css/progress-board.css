@@ -60,10 +60,13 @@ h3 { font-size: 1.08rem; }
 .pipeline-connector { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 5 5;
   animation: flow 4s linear infinite; }
 .pipeline-node { cursor: pointer; outline: none; }
-.node-shape { fill: rgba(10,31,54,.96); stroke: var(--stage-accent); stroke-width: 1.2; transition: fill .2s, stroke-width .2s; }
+.node-shape { fill: rgba(10,31,54,.96); stroke: var(--task-accent,var(--stage-accent)); stroke-width: 1.2; transition: fill .2s, stroke-width .2s; }
 .pipeline-node:hover .node-shape, .pipeline-node:focus-visible .node-shape { fill: #174064; stroke-width: 2.5; }
 .pipeline-node:focus-visible .node-shape { stroke: #fff; }
-.node-halo { fill: var(--stage-accent); opacity: .88; transform-box: fill-box; transform-origin: center; }
+.node-halo { fill: var(--task-accent,var(--stage-accent)); opacity: .88; transform-box: fill-box; transform-origin: center; }
+.pipeline-node[data-pulse="blocked"] { --task-accent: #ff696b; }
+.pipeline-node[data-pulse="blocked"] .node-shape { stroke-dasharray: 5 3; stroke-width: 2; }
+.pipeline-node[data-pulse="question"] { --task-accent: #bf9cff; }
 .pipeline-node[data-pulse="blocked"] .node-halo { animation: pulse 1s ease-in-out infinite; }
 .pipeline-node[data-pulse="question"] .node-halo { animation: pulse 2s ease-in-out infinite; }
 .node-label { fill: var(--ink); font: 700 12px 'DM Sans', sans-serif; }
