@@ -122,6 +122,22 @@ test("design prototypes are gated through the Control Room page path", async () 
   assert.equal(new URL(other.url).pathname, "/leads");
 });
 
+test("Ideas and Events use the admitted Control Room sign-in gate", async () => {
+  let forwarded;
+  const signedIn = await handleDoctorcreRequest(request("/ideas?tab=events", {
+    headers: { cookie: "__Host-dealroom_session=opaque" },
+  }), environment({ carr: { fetch: async (value) => { forwarded = value; return new Response(); } } }));
+  assert.equal(await signedIn.text(), "asset:/ideas.html");
+  assert.equal(new URL(forwarded.url).pathname, "/control-room");
+  assert.equal(new URL(forwarded.url).search, "");
+  assert.equal(forwarded.headers.get("cookie"), "__Host-dealroom_session=opaque");
+
+  const signedOut = await handleDoctorcreRequest(request("/ideas?tab=events"), environment({
+    carr: { fetch: async () => new Response(null, { status: 302, headers: { location: `https://${HOST}/auth/login` } }) },
+  }));
+  assert.equal(signedOut.status, 302);
+});
+
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
   const share = await handleDoctorcreRequest(request("/share?tour=T-1"), environment());
   assert.equal(share.status, 302);
