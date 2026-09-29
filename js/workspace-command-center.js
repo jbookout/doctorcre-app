@@ -144,7 +144,7 @@ function homeCardHtml({ eyebrow, title, copy, action, retry, refreshing, source,
   const badge = refreshing ? '<span class="refresh-badge" id="refreshBadge">Refreshing…</span>' : "";
   const counted = skeleton ? '<div class="skeleton-line"></div><div class="skeleton-line short"></div>'
     : count === null ? "" : `<div class="count-line"><strong>${escapeHtml(count)}</strong><span>${escapeHtml(countLabel)}</span></div>`;
-  const joeLink = needsJoe ? `<a class="action secondary-action" id="needsJoeLink" href="${escapeHtml(needsJoe.destination)}">${escapeHtml(`${needsJoe.count} system ${needsJoe.count === 1 ? "request needs" : "requests need"} Joe`)}</a>` : "";
+  const joeLink = needsJoe ? `<a class="action secondary-action" id="needsJoeLink" href="${escapeHtml(safeDestination(needsJoe.destination))}">${escapeHtml(`${needsJoe.count} system ${needsJoe.count === 1 ? "request needs" : "requests need"} Joe`)}</a>` : "";
   return `<div class="attention-icon" aria-hidden="true"><span></span></div><div class="attention-content"><p class="eyebrow">${escapeHtml(eyebrow)}${badge}</p><h2 id="attentionTitle">${escapeHtml(title)}</h2><p class="attention-copy">${escapeHtml(copy)}</p>${counted}<div class="home-actions"><a id="homePrimaryAction" class="action primary-action" data-primary-action data-state="${escapeHtml(action.state)}" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>${joeLink}${retry ? '<button class="action secondary-action" type="button" id="retryHome">Retry read</button>' : ""}</div>${source ? `<p class="source">${sourceLabel(source)}</p>` : ""}</div>`;
 }
 

@@ -140,8 +140,8 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
 });
 
 test("the page is pinned in the route contract and reads the pinned command-centre path", () => {
-  assert.equal(routes.routes["/business"], "business-workspace.html");
-  assert.equal(routes.routes["/"], "workspace.html", "the old Home keeps serving / until a later slice retires it");
+  assert.equal(routes.redirects["/business"], "/", "the former business page now reaches Home");
+  assert.equal(routes.routes["/"], "workspace.html", "Home serves the canonical route");
   assert.ok(carrInterface.http_surfaces.includes("/api/v1/command-center"));
   assert.match(html, /<script type="module" src="\/js\/business-workspace\.js">/);
   assert.match(pageJs, /client\.commandCenter\(\)/, "the page reads through the client seam, not a second fetch of its own");

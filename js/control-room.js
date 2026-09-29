@@ -778,10 +778,27 @@ async function boot() {
   // Control Room's time-to-glance. A  deep link selects the tab,
   // which is what mounts it.
   document.getElementById("controlRoomTabs")?.addEventListener("click", (event) => {
-    if (event.target.closest("#tabAtlas")) openAtlas();
-    if (event.target.closest("#tabSessions")) openSessions();
-    if (event.target.closest("#tabModelRoom")) openModelRoom();
+    const selected = event.target.closest("[data-tab-key]");
+    if (!selected) return;
+    const next = new URL(globalThis.location.href);
+    next.searchParams.set("tab", selected.dataset.tabKey);
+    globalThis.history.pushState({ controlRoomTab: selected.dataset.tabKey }, "", next);
+    if (selected.id === "tabAtlas") openAtlas();
+    if (selected.id === "tabSessions") openSessions();
+    if (selected.id === "tabModelRoom") openModelRoom();
   }, true);
+  const restoreTab = () => {
+    const requested = new URLSearchParams(globalThis.location.search).get("tab");
+    const key = { atlas: "system-map", "model-room": "agents", dashboard: "overview" }[requested] || requested || "overview";
+    const selected = [...document.querySelectorAll("#controlRoomTabs [data-tab-key]")]
+      .find((tab) => tab.dataset.tabKey === key);
+    if (!selected) return;
+    tabs?.select(selected.id);
+    if (key === "system-map") openAtlas(new URLSearchParams(globalThis.location.search).get("node"));
+    if (key === "sessions") openSessions();
+    if (key === "agents") openModelRoom();
+  };
+  globalThis.window?.addEventListener("popstate", restoreTab);
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
   $("resourceDetailClose")?.addEventListener("click", () => $("resourceDetailDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());
@@ -798,18 +815,7 @@ async function boot() {
   // ?tab=atlas&node=<id> is a query on an already admitted path, so it needs no
   // new route and no gate change. Back restores the previous selection.
   const parameters = new URLSearchParams(location.search || "");
-  if (parameters.get("tab") === "atlas") {
-    tabs?.select("tabAtlas");
-    openAtlas(parameters.get("node"));
-  }
-  if (parameters.get("tab") === "sessions") {
-    tabs?.select("tabSessions");
-    openSessions();
-  }
-  if (parameters.get("tab") === "model-room") {
-    tabs?.select("tabModelRoom");
-    openModelRoom();
-  }
+  if (parameters.has("tab")) restoreTab();
   const label = $("viewerLabel");
   if (label) label.textContent = client.selfActor === "dell" ? "Dell's workspace" : "Joe's workspace";
   await load();

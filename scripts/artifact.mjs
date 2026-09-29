@@ -4,9 +4,9 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
-  "business-workspace.html", "business.html", "calendar.html", "control-room.html", "conversations.html", "design-business.html", "design-operations.html", "design.html",
+  "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "pipeline.html", "progress-board.html", "queue.html", "room.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
+  "pipeline.html", "progress-board.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const SHA = /^[0-9a-f]{64}$/;

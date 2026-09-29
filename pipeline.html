@@ -43,12 +43,14 @@
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="boardOrb" aria-hidden="true"></span> Pipeline</p>
           <h1 id="pageTitle">Deals</h1>
+          <nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals">All Deals</a><a href="/deals?view=national">National Accounts</a></nav>
         </div>
         <div class="hero-meta">
           <span class="status" data-state="unknown" id="boardStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="boardStatusLabel">Reading the record…</span></span>
           <span class="as-of" id="boardAsOf">Reading the record layer…</span>
         </div>
       </div>
+      <div class="deal-page-views" role="group" aria-label="Deal view"><a href="/deals">List</a><span class="deal-page-view-current" aria-current="page">Board</span></div>
       <div class="chip-bar">
         <div class="chip-bar" id="boardChips" aria-label="Deal type filters"></div>
         <button class="btn" type="button" id="receiptsOpen" aria-haspopup="dialog">Recent changes <span id="receiptsCount">0</span></button>

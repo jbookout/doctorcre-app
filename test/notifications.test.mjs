@@ -173,7 +173,7 @@ test("clause 5: an unroutable deep link is text plus a sentence, and a routable 
   assert.equal(routed.routed, true);
   assert.equal(routed.href, "/incidents");
   assert.equal(routed.sentence, null);
-  assert.equal(deepLinkView("/notifications").href, "/notifications");
+  assert.equal(deepLinkView("/notifications").href, "/updates");
   assert.equal(deepLinkView(null).path, null);
   assert.match(pageJs, /data-link="unrouted"/);
   assert.match(pageJs, /data-link="routed"/);
@@ -189,7 +189,7 @@ test("B12b-1: a /doc-conversations/<ref> deep link is an anchor into conversatio
   // The card still shows the record's own path as its text (notifications.js
   // renders `card.link.path`); only the href is translated to a real route.
   assert.equal(view.path, `/doc-conversations/${uuid}`);
-  assert.equal(view.href, `/conversations?id=${uuid}`);
+  assert.equal(view.href, `/doc-chats?id=${uuid}`);
   assert.equal(view.sentence, null);
 });
 
@@ -206,7 +206,7 @@ test("B12b-2: a /doc-conversations/<ref> deep link whose ref is not the conversa
 
 test("B12b-3: a /doc-conversations/<ref> deep link stays unrouted if /conversations is ever missing from the route list", () => {
   const uuid = "22222222-2222-4222-8222-222222222222";
-  const withoutConversations = APP_ROUTE_PATHS.filter((path) => path !== "/conversations");
+  const withoutConversations = APP_ROUTE_PATHS.filter((path) => path !== "/doc-chats");
   const view = deepLinkView(`/doc-conversations/${uuid}`, withoutConversations);
   assert.equal(view.routed, false);
   assert.equal(view.href, null);
@@ -364,10 +364,10 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.14.0");
+  assert.equal(routes.version, "1.15.0");
   assert.equal(contract.version, "1.33.0");
   assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
-  assert.equal(routes.routes["/notifications"], "notifications.html");
+  assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -380,7 +380,7 @@ test("clause 10: the route, the versions, the producer pin and the two verbs are
 /* -------------------------------------------------------------- the shared shell */
 
 test("the page is the shared shell, the activity panel is its own thing, and 44px holds at 360px", async () => {
-  assert.match(html, /<title>Notifications · DoctorCRE<\/title>/);
+  assert.match(html, /<title>Updates · DoctorCRE<\/title>/);
   assert.match(html, /id="appShell"/);
   assert.match(html, /data-theme="dark" data-density="comfortable" data-motion="full"/);
   assert.match(html, /<meta name="theme-color" content="#07111f">/);
@@ -758,8 +758,8 @@ test("B12-9 the current contract still pins both preference verbs and their orde
   assert.equal(contract.mcp_operations[set + 1], "set-work-shape-disposition");
 
   // The route contract does NOT move: this slice adds no page.
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(routes.routes["/notifications"], "notifications.html");
+  assert.equal(routes.version, "1.15.0");
+  assert.equal(routes.routes["/updates"], "notifications.html");
 
   // The repository check pins both verbs, and the shared client interface
   // carries both methods — so a client that implements one of them fails.
