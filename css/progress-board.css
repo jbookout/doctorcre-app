@@ -100,7 +100,9 @@ h3 { font-size: 1.08rem; }
 input[type=radio] { accent-color: var(--orange); }
 textarea { width: 100%; min-height: 88px; resize: vertical; color: var(--ink); background: #07182b; border: 1px solid var(--line); border-radius: 9px; padding: 10px; }
 .answer-form label[for] { display: block; font-size: .75rem; margin-bottom: 8px; }
-.answer-form button { margin-top: 12px; padding: 10px 17px; border: 0; border-radius: 9px; background: var(--orange); color: #08121b; font-weight: 800; cursor: pointer; }
+.answer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+.answer-form button { padding: 10px 17px; border: 0; border-radius: 9px; background: var(--orange); color: #08121b; font-weight: 800; cursor: pointer; }
+.answer-preview { color: var(--ink); font-size: .78rem; overflow-wrap: anywhere; }
 .answer-form button:disabled { opacity: .6; cursor: wait; }
 .answer-form button:hover:not(:disabled) { filter: brightness(1.1); }
 .answer-form input:focus-visible, .answer-form button:focus-visible, textarea:focus-visible, a:focus-visible, .dialog-close button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }

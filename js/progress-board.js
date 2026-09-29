@@ -179,16 +179,40 @@ function answerForm(q, view) {
   if (q.default_answer) form.append(element("p", "question-detail", `If unanswered: ${q.default_answer}`));
   const button = element("button", "", "Send answer");
   button.type = "submit";
-  form.append(button, message);
+  const preview = element("output", "answer-preview");
+  preview.setAttribute("aria-live", "polite");
+  const actions = element("div", "answer-actions");
+  actions.append(button, preview);
+  form.append(actions, message);
+  const selectedAnswer = () => freeText?.value.trim() || choiceInputs.find(input => input.checked)?.value || "";
+  const showAnswer = () => {
+    preview.textContent = `Will send: ${pendingRequests.get(q.question_id)?.answer_text || selectedAnswer() || "—"}`;
+  };
+  const lockAnswer = () => {
+    for (const input of choiceInputs) input.disabled = true;
+    if (freeText) freeText.disabled = true;
+  };
+  for (const input of choiceInputs) input.addEventListener("change", () => {
+    if (freeText) freeText.value = "";
+    showAnswer();
+  });
+  freeText?.addEventListener("input", () => {
+    for (const input of choiceInputs) input.checked = false;
+    showAnswer();
+  });
+  if (pendingRequests.has(q.question_id)) lockAnswer();
+  showAnswer();
   form.addEventListener("submit", async event => {
     event.preventDefault();
-    const value = freeText?.value.trim() || choiceInputs.find(input => input.checked)?.value || "";
     const retained = pendingRequests.get(q.question_id);
+    const value = retained?.answer_text || selectedAnswer();
     const key = retained?.idempotency_key || uuidv4();
     let args;
     try { args = retained || answerRequest(q, view.board_id, value, key); }
     catch (cause) { message.textContent = cause.message; return; }
     pendingRequests.set(q.question_id, args);
+    lockAnswer();
+    showAnswer();
     button.disabled = true;
     message.textContent = "Saving answer…";
     try {
