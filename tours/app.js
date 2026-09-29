@@ -89,7 +89,7 @@
       const size = typeof item.size?.value === "number" ? `${item.size.value.toLocaleString()} ${text(item.size.unit, "SF")}` : "Size unknown";
       facts.textContent = `${text(item.property_type, "Type unknown").replaceAll("_", " ")} · ${size} · ${text(item.availability, "unknown").replaceAll("_", " ")}`;
       const provenance = document.createElement("p"); provenance.className = "property-provenance";
-      provenance.textContent = `${text(item.source_label, "Source unknown")} · Latest fact date ${displayDate(item.fact_as_of)} · Rights ${text(item.rights_status, "unknown")} · Precision ${text(item.coordinate_precision, "unknown").replaceAll("_", " ")}`;
+      provenance.textContent = `${text(item.source_label, "Source unknown")} · Latest fact date ${displayDate(item.fact_as_of)} · Rights ${text(item.rights_status, "unknown")} · Precision ${text(item.coordinate_precision, "unknown").replaceAll("_", " ")} · ${item.entrance_verified === true ? "Entrance verified" : "Entrance status unknown"}`;
       const caution = document.createElement("p"); caution.className = "property-caution";
       caution.textContent = `Candidate facts need review before a route or client use. ${text(item.caveat)}`.trim();
       row.append(header, address, facts, provenance, caution); list.append(row);
