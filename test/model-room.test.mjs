@@ -745,8 +745,8 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.27.0", "one added operation (add-room-turn) is an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 67);
+  assert.equal(contract.version, "1.28.0", "one added operation (add-room-turn) is an additive, minor bump");
+  assert.equal(contract.mcp_operations.length, 68);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);

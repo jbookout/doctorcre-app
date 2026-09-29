@@ -2622,6 +2622,24 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async readResourceDashboard() {
+      refuseIfOutage('resources', 'read-resource-dashboard');
+      return {
+        ok: true, schema: 'doctorcre-resource-dashboard.v1', generated_at: nowIso(),
+        providers: ['neon', 'github', 'cloudflare', 'local_compute', 'model_route'].map((provider) => ({
+          provider,
+          state: ['neon', 'github', 'cloudflare'].includes(provider) ? 'unconfigured' : 'collector_absent',
+          reason: ['neon', 'github', 'cloudflare'].includes(provider)
+            ? 'no collector configured for this provider yet (V5-UX-C03/C04/C05 not built)'
+            : 'no collector observation received yet',
+          account: null, project: null, product: null, period: null, as_of: null,
+          quantity: null, quantity_unit: null, allowance: null, policy: null,
+          estimate: null, charge: null, measured_capacity: null, configured_capacity: null,
+          model_route: null, source: null, observed_at: null,
+        })),
+      };
+    },
+
     async currentWorkRequests() {
       refuseIfOutage('needs_joe', 'current-work-requests');
       return { ok: true, items: sharedRequests.map((row) => ({ ...row, source: { ...row.source } })) };
