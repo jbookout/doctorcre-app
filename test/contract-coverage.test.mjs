@@ -16,6 +16,9 @@ test('every literal browser MCP call is pinned to a producer revision containing
   assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
     'the pinned operations stay unique and sorted');
   assert.equal(contract.producer.source_commit,
-    '2bf99e92c6e1d24f6dba4331cffd189fda6ac318',
-    'the pinned CARR source contains list-my-codex-sessions');
+    'a8eaecf3a7148ea67a14aaa4423f6ba760ba5281',
+    'the pinned CARR source contains the Observatory latest-room contract');
+  assert.equal(contract.version, '1.33.0');
+  assert.ok(contract.mcp_operations.includes('read-room-latest'));
+  assert.ok(contract.http_surfaces.includes('/api/room/latest'));
 });

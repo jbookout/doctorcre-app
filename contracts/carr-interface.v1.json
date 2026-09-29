@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.32.0",
+  "version": "1.33.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "2bf99e92c6e1d24f6dba4331cffd189fda6ac318"
+    "source_commit": "a8eaecf3a7148ea67a14aaa4423f6ba760ba5281"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -67,6 +67,7 @@
     "read-progress-board",
     "read-resource-dashboard",
     "read-room",
+    "read-room-latest",
     "read-room-queue",
     "read-session-identity",
     "record-dispatch-link",
@@ -101,6 +102,7 @@
     "/api/v1/work-inventory",
     "/api/v1/jev-deal-reading",
     "/api/room/*",
+    "/api/room/latest",
     "/api/system-work/*",
     "/api/share/*",
     "/api/tours/*"
