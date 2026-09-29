@@ -74,6 +74,22 @@ function openForm({ eyebrow, title, submit, body, onSubmit }) {
   dialog.showModal();
 }
 
+function reportForm() {
+  openForm({ eyebrow: "Source first", title: "Report a system problem", submit: "Record concern",
+    body: field("Situation", `<textarea name="situation" maxlength="1000" required></textarea>`, "Describe the system concern so current shared doctrine can be matched.") +
+      field("Short name", `<input name="title" maxlength="200" required>`) +
+      field("Desired result", `<textarea name="desired_outcome" maxlength="2000" required></textarea>`) +
+      field("How we’ll know", `<textarea name="criteria" maxlength="2000" required></textarea>`, "One measurable criterion per line; 1–12 lines."),
+    onSubmit: async (data) => {
+      const criteria = String(data.get("criteria")).split("\n").map((value) => value.trim()).filter(Boolean);
+      if (!criteria.length || criteria.length > 12) throw new Error("Enter between 1 and 12 criteria.");
+      const result = await client.report({ situation: data.get("situation"), title: data.get("title"),
+        desired_outcome: data.get("desired_outcome"),
+        acceptance_criteria: criteria.map((text, index) => ({ id: `CRITERION-${index + 1}`, text })) });
+      await refresh(result.human_ref);
+    } });
+}
+
 function triageForm() {
   openForm({ eyebrow: state.card.human_ref, title: "Confirm classification", submit: "Confirm classification",
     body: field("Classification", `<select name="classification" required><option value="operational">Routine operations</option><option value="needs_judgment">Needs partner judgment</option><option value="safety_review">Safety review</option></select>`, "This classifies the concern. It does not assign or execute it."),
@@ -136,6 +152,7 @@ const actionForms = { triage: triageForm, "prepare-plan": planForm, "accept-plan
 async function boot() {
   const session = await client.bootstrap();
   $("#systemWorkActor").textContent = `Signed in as ${session.actor?.display || session.actor?.slug || "partner"}`;
+  $("#reportProblemButton").onclick = reportForm;
   $("#openWorkRequest").onsubmit = async (event) => { event.preventDefault();
     try { await refresh(new FormData(event.currentTarget).get("human_ref")); alert(""); }
     catch (error) { alert(refusal(error)); } };
