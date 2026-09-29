@@ -736,7 +736,7 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.32.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.33.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -762,8 +762,9 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   const answerAt = contract.mcp_operations.indexOf("answer-work-request-for-joe");
   assert.equal(contract.mcp_operations[answerAt - 1], "answer-board-question");
   assert.equal(contract.mcp_operations[answerAt - 2], "add-room-turn");
-  assert.equal(contract.mcp_operations[answerAt + 1], "capture-queue");
-  assert.equal(contract.producer.source_commit, "2bf99e92c6e1d24f6dba4331cffd189fda6ac318");
+  assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
+  assert.equal(contract.mcp_operations[answerAt + 2], "capture-queue");
+  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
@@ -772,8 +773,9 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   // present for the Observatory, so its presence here is not this slice's doing.
   assert.deepEqual(contract.http_surfaces, [
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
-    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
-  ], "http_surfaces does not move");
+    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
+    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/*",
+  ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 
 /* ------------------------------------------- the validators, on real payloads */
