@@ -12,7 +12,8 @@
 // and an answer that arrives after a newer read has started is dropped rather
 // than painted over the newer one.
 import {
-  canonicalHref, coverageLine, dashboardTiles, groupedIncidents, incidentFilters, notInReleaseBlocks,
+  canonicalHref, censusIncompleteSources, coverageLine, dashboardTiles, groupedIncidents, headerPhase, incidentFilters, notInReleaseBlocks,
+  HEADER_WORDS,
   needsJoeAdvisoryLabel, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
@@ -31,6 +32,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountAtlas } from "./atlas.js";
+import { atlasIncompleteSources } from "./atlas-model.js";
 import { mountSessions } from "./sessions.js";
 import { mountModelRoom } from "./model-room.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
@@ -48,6 +50,9 @@ const view = {
   sequence: 0,
   severity: "all",
   outage: null,
+  // The Atlas tab's latest read, handed back by atlas.js so the header can
+  // say when an answered read was short. Idle until the tab is first opened.
+  atlas: { status: "idle", payload: null },
   reads: {
     incidents: { state: "pending" },
     work: { state: "pending" },
@@ -635,22 +640,17 @@ function openIncident(ref) {
 
 function renderStatus() {
   const attempted = Object.fromEntries(Object.entries(view.reads).filter(([, read]) => read.state !== "pending"));
-  const phase = resourceRoomPhase(readPhase({ status: view.status, reads: attempted }), view.reads.resources);
-  const words = {
-    loading: "Taking the reads…",
-    no_access: "Session ended",
-    offline: "No read answered",
-    partial: "Some reads did not answer",
-    ready: "Every read answered",
-  };
-  $("roomStatus")?.setAttribute("data-state", phase === "ready" ? "healthy" : phase === "loading" ? "refreshing" : phase === "partial" ? "attention" : "urgent");
+  const incomplete = [...censusIncompleteSources(view.reads.census), ...atlasIncompleteSources(view.atlas)];
+  const phase = headerPhase(resourceRoomPhase(readPhase({ status: view.status, reads: attempted }), view.reads.resources), incomplete);
+  const words = HEADER_WORDS;
+  $("roomStatus")?.setAttribute("data-state", phase === "ready" ? "healthy" : phase === "loading" ? "refreshing" : phase === "partial" || phase === "incomplete" ? "attention" : "urgent");
   $("roomOrb")?.setAttribute("data-state", phase === "ready" ? "healthy" : phase === "loading" ? "refreshing" : "urgent");
   $("roomStatusLabel").textContent = words[phase];
   const freshness = $("roomFreshness");
   freshness.setAttribute("data-freshness", phase);
   freshness.textContent = phase === "loading"
     ? "Taking the reads…"
-    : `${words[phase]} · ${deploymentIdentity(client?.mode).detail}`;
+    : `${words[phase]}${phase === "incomplete" ? ` (${incomplete.join(", ")} not read in full)` : ""} · ${deploymentIdentity(client?.mode).detail}`;
   const retry = $("retryRead");
   if (retry) retry.hidden = phase === "loading";
   announce(words[phase]);
@@ -746,8 +746,16 @@ function storeSnapshot() {
  * record-layer client, so an incident marked on the atlas resolves to the
  * exact incident this dashboard shows — never a second incident-board read.
  */
+function atlasChanged(atlas) {
+  const before = atlasIncompleteSources(view.atlas).join("\n");
+  view.atlas = atlas;
+  // The atlas repaints on every selection; the header repaints (and
+  // announces) only when what it would say about the atlas changed.
+  if (atlasIncompleteSources(atlas).join("\n") !== before) renderStatus();
+}
+
 function openAtlas(node = null) {
-  mountAtlas({ outage: view.outage, node, getIncidentsRead: () => view.reads.incidents, client });
+  mountAtlas({ outage: view.outage, node, getIncidentsRead: () => view.reads.incidents, client, onChange: atlasChanged });
 }
 
 /**

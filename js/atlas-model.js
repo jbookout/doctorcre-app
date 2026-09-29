@@ -365,6 +365,19 @@ export function atlasDegraded(payload) {
   return rows.some((entry) => entry.complete === false && DEGRADED_REASONS.includes(entry.missing_reason));
 }
 
+/**
+ * The sources an atlas read could not read in full, for the Control Room
+ * header. The four declared gaps are excluded: they are on every read. A read
+ * that failed outright counts as one incomplete source; one not yet taken
+ * claims nothing.
+ */
+export function atlasIncompleteSources({ status, payload } = {}) {
+  if (status === "idle" || status === "loading") return [];
+  if (status !== "ready") return ["the atlas"];
+  const rows = Array.isArray(payload?.coverage) ? payload.coverage : [];
+  return rows.filter((entry) => entry?.complete !== true && !isKnownGap(entry)).map((entry) => entry.source_ref);
+}
+
 /* -------------------------------------------------------- the selection contract */
 
 /**

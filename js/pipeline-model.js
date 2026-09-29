@@ -383,6 +383,44 @@ export function orderColumn(deals) {
   });
 }
 
+// A note or next step can reach this board as a sentence, an object such as
+// {text, at}, or that object's Python repr printed into a string
+// ("{'text': '...', 'at': '...'}"). Cards and the panel show the sentence only.
+const NOTE_KEYS = ['text', 'note', 'body', 'summary', 'content', 'message'];
+const PY_ESCAPES = { n: '\n', t: '\t', '\\': '\\', "'": "'", '"': '"' };
+
+function dictSentence(raw) {
+  try {
+    return noteText(JSON.parse(raw));
+  } catch { /* not JSON; try the Python repr */ }
+  for (const key of NOTE_KEYS) {
+    const match = new RegExp(`['"]${key}['"]\\s*:\\s*(['"])((?:\\\\.|(?!\\1)[^\\\\])*)\\1`).exec(raw);
+    if (match) return match[2].replace(/\\(.)/g, (_, ch) => PY_ESCAPES[ch] ?? ch).trim();
+  }
+  return '';
+}
+
+/**
+ * The sentence a note value carries, or '' when it carries none. A string
+ * shaped like a dict never paints as raw braces.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function noteText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    for (const key of NOTE_KEYS) {
+      const inner = noteText(value[key]);
+      if (inner) return inner;
+    }
+    return '';
+  }
+  const text = String(value).trim();
+  if (/^\{[\s\S]*\}$/.test(text) && (text === '{}' || /^\{\s*['"]/.test(text))) return dictSentence(text);
+  return text;
+}
+
 /**
  * The sections of the record side panel, in the order Joe's review fixed them.
  *
@@ -406,8 +444,9 @@ export function recordPanelSections(detail, options = {}) {
     deal.attention ? 'flagged for attention' : null,
   ].filter(Boolean).join(' · ');
 
-  const nextAction = deal.next_step
-    ? `${deal.next_step}${deal.next_date ? ` · ${date(deal.next_date)}` : ''}`
+  const nextStep = noteText(deal.next_step);
+  const nextAction = nextStep
+    ? `${nextStep}${deal.next_date ? ` · ${date(deal.next_date)}` : ''}`
     : 'No next step recorded.';
 
   const criticalDates = (detail?.critical_dates || [])
@@ -422,7 +461,7 @@ export function recordPanelSections(detail, options = {}) {
     { title: 'Blockers', lines: [deal.attention ? 'Flagged for attention on the record.' : 'None recorded.'] },
     {
       title: 'Latest communication',
-      lines: [latest ? `${label(latest.actor)}: ${latest.text}` : 'Nothing captured on this record.'],
+      lines: [latest ? `${label(latest.actor)}: ${noteText(latest.text)}` : 'Nothing captured on this record.'],
     },
     { title: 'Doc work', lines: ['Not in this release.'], state: 'not_in_release' },
   ];

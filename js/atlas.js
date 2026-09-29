@@ -93,6 +93,9 @@ let recordClient = null;
 // the moment the dashboard's own read lands — the exact "same dashboard
 // records" this binds to (C14) — with no second incident-board request.
 let getIncidentsRead = () => null;
+// Tells control-room.js what the latest atlas read found, so its header badge
+// never says every read answered while this tab reports a short one.
+let onChange = () => {};
 
 const requestOptions = (cursor = null) => ({
   layer: view.layer, q: view.q, includeRetired: view.includeRetired, limit: ATLAS_LIMIT_DEFAULT, cursor,
@@ -585,6 +588,7 @@ function render() {
   renderSelection();
   renderRenderer();
   renderTour();
+  onChange({ status: view.status, payload: view.payload });
 }
 
 /* ------------------------------------------------------------------ selection */
@@ -667,7 +671,7 @@ function exitTour() {
  * Mounted on FIRST selection of the Atlas tab, never on page boot: the Control
  * Room's four existing reads must not wait behind this one.
  */
-export function mountAtlas({ outage = null, node = null, getIncidentsRead: incidentsReader = null, client = null } = {}) {
+export function mountAtlas({ outage = null, node = null, getIncidentsRead: incidentsReader = null, client = null, onChange: changed = null } = {}) {
   if (mounted) return;
   mounted = true;
   view.outage = outage;
@@ -678,6 +682,7 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
   // already have a reason to make.
   if (typeof incidentsReader === "function") getIncidentsRead = incidentsReader;
   recordClient = client;
+  if (typeof changed === "function") onChange = changed;
   const exposure = $("atlasExposure");
   if (exposure) exposure.textContent = EXPOSURE_STATEMENT;
   const howNote = $("atlasHowThisWorksNote");
