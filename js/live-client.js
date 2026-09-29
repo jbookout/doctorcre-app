@@ -442,6 +442,7 @@ export function createLiveClient(opts = {}) {
     // refuses any field, so none is sent. It grants no authority: the decisions
     // it lists are taken with their own partner verbs, none of which is pinned.
     async governanceQueue() { return rpc('governance-queue', {}); },
+    async scheduleBoard() { return rpc('schedule-board', {}); },
 
     // ---------------------------------------------------- incident page (C14)
     // One read and one write, passed through untouched. The write's arguments

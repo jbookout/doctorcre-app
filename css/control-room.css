@@ -419,16 +419,15 @@
 }
 
 /* ------------------------------------------------ V5-UX-C14 Operations cards
- * The approvals card (governance-queue) and the no-read schedule card. All
- * motion reuses system.css's tokens and keyframes (receipt-in, breathe) and
+ * The approvals card and schedule board. All
+ * motion reuses system.css's tokens and keyframes (receipt-in, breathe, flow-dash) and
  * adds none. The entrance stagger comes from --ops-delay, set through CSSOM
  * by js/control-room.js because the Worker's CSP refuses style attributes.
- * The only ambient motion is the orb, whose tempo is the real age of the
- * oldest waiting decision; a card with no read has a still orb. */
+ * Schedule paths move at the shared flow tempo. */
 #operationsBlocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; margin-top: 12px; }
 .ops-card { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--ground-2) 60%, transparent); animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); transition: border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
 .ops-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-float); }
-.ops-card[data-state="unknown"], .ops-card[data-state="no_read"] { border-style: dashed; border-color: var(--line-strong); }
+.ops-card[data-state="unknown"] { border-style: dashed; border-color: var(--line-strong); }
 .ops-card h3 { margin: 0; font-size: 18px; }
 .ops-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
 .ops-orb { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--quiet); opacity: 0.5; }
@@ -436,7 +435,6 @@
 .ops-orb[data-tempo="attention"] { background: var(--status-attention); opacity: 1; box-shadow: 0 0 12px var(--status-attention); animation: breathe var(--motion-attention) ease-in-out infinite; }
 .ops-orb[data-tempo="urgent"] { background: var(--status-urgent); opacity: 1; box-shadow: 0 0 14px var(--status-urgent); animation: breathe var(--motion-urgent) ease-in-out infinite; }
 .ops-value.motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
-.ops-value[data-state="no_read"] { color: var(--quiet); font-size: 24px; }
 .ops-oldest { justify-self: start; font-variant-numeric: tabular-nums; }
 .ops-lanes { display: grid; gap: 8px; }
 .ops-lane { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease); }
@@ -451,10 +449,30 @@
 .ops-item summary:active { transform: scale(0.99); }
 .ops-item[open] .detail-rows { margin-top: 6px; animation: receipt-in var(--motion-enter) var(--ease); }
 .ops-card .operations-rule { margin: 0; font-size: 12px; color: var(--text); }
+.ops-sources { display: flex; flex-wrap: wrap; gap: 6px; }
+.ops-sources .chip { max-width: 100%; white-space: nowrap; overflow-wrap: normal; }
+.ops-schedule-list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.ops-schedule-job { border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--navy) 18%, transparent); }
+.ops-schedule-job summary { justify-content: space-between; gap: 8px; }
+.ops-schedule-job summary strong { font-family: var(--font-display); font-size: 15px; }
+.ops-schedule-job .chip { flex: none; white-space: nowrap; overflow-wrap: normal; }
+.ops-schedule-glance { display: grid; gap: 4px; min-width: 0; }
+.ops-schedule-glance > span { color: var(--quiet); font-size: 12px; line-height: 1.45; }
+.ops-schedule-job .detail-rows, .ops-schedule-job .small { margin-inline: 10px; }
+.ops-timeline { display: block; width: 100%; height: 60px; margin-block: 4px; overflow: visible; }
+.ops-timeline-track { fill: none; stroke: var(--line-strong); stroke-width: 2; stroke-dasharray: 5 5; }
+.ops-timeline-flow { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-dasharray: 8 5; animation: flow-dash var(--motion-flow) linear infinite; }
+.ops-timeline-last { fill: var(--navy); stroke: var(--text); stroke-width: 2; }
+.ops-timeline-due { fill: var(--orange); filter: drop-shadow(0 0 7px var(--orange)); }
+.ops-timeline-now { fill: var(--text); }
+.ops-schedule-job[data-due-overdue="true"] .ops-timeline-due { fill: var(--status-urgent); filter: drop-shadow(0 0 8px var(--status-urgent)); }
+.ops-schedule-job[data-state="paused"] .ops-timeline-flow { stroke: var(--quiet); animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .ops-lane:hover, .ops-lane:active, .ops-item summary:hover, .ops-item summary:active { transform: none; }
   .ops-card, .ops-lane, .ops-item { opacity: 1; transform: none; }
+  .ops-timeline-flow { animation: none; }
 }
 :root[data-motion="reduced"] .ops-lane:hover, :root[data-motion="reduced"] .ops-lane:active, :root[data-motion="reduced"] .ops-item summary:hover, :root[data-motion="reduced"] .ops-item summary:active { transform: none; }
 :root[data-motion="reduced"] .ops-card, :root[data-motion="reduced"] .ops-lane, :root[data-motion="reduced"] .ops-item { opacity: 1; transform: none; }
+:root[data-motion="reduced"] .ops-timeline-flow { animation: none; }
