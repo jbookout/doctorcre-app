@@ -521,6 +521,9 @@ export function createLiveClient(opts = {}) {
     // conversation — the kernel's retained request is what keeps that honest.
     async readDocConversation(args = {}) { return rpc('read-doc-conversation', args); },
     async listDocConversations(args = {}) { return rpc('list-doc-conversations', args); },
+    async listDocSuggestions(args = {}) { return rpc('list-doc-suggestions', args); },
+    async decideDocSuggestion(args) { return write('decide-doc-suggestion', args); },
+    async proposeDocCorrection(args) { return write('propose-doc-correction', args); },
     async createDocConversation(args) { return write('create-doc-conversation', args); },
     async renameDocConversation(args) { return write('rename-doc-conversation', args); },
     async shareDocConversation(args) { return write('share-doc-conversation', args); },

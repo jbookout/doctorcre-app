@@ -12,8 +12,9 @@ const host = `https://${config.env.staging.name}.workers.dev`;
 test("shared producer stage and health fixtures match the published board view", async () => {
   const fixtures = JSON.parse(await readFile(new URL("../test/fixtures/progress-board-stages.json", import.meta.url), "utf8"));
   const css = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
-  const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-  assert.equal(fixtures.producer_source_commit, contract.producer.source_commit);
+  const fixtureGenerator = await readFile(new URL("../scripts/generate-progress-board-parity.py", import.meta.url), "utf8");
+  assert.ok(fixtureGenerator.includes(`PIN = "${fixtures.producer_source_commit}"`),
+    "the historical board fixture stays bound to the producer commit that generated it");
   assert.deepEqual(new Set(fixtures.cases.map(({ producer_health }) => producer_health)),
     new Set(["healthy", "question", "blocked"]), "every producer health class is represented");
   for (const stage of ["queued", "build", "review", "ci", "merged", "live"])

@@ -556,8 +556,8 @@ test("today-triage is pinned in the CARR interface as an additive minor bump", (
   assert.ok(carrInterface.mcp_operations.includes("today-triage"));
   assert.ok(carrInterface.mcp_operations.includes("loop-board"));
   assert.deepEqual([...carrInterface.mcp_operations], [...carrInterface.mcp_operations].sort(), "the list stays alphabetical");
-  assert.equal(carrInterface.version, "1.30.0");
-  assert.equal(carrInterface.mcp_operations.length, 72);
+  assert.equal(carrInterface.version, "1.31.0");
+  assert.equal(carrInterface.mcp_operations.length, 75);
 });
 
 test("Home enters in a stagger under a second, answers hover and press, and draws its ambient life from shared keyframes", () => {

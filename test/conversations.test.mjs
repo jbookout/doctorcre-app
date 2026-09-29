@@ -404,8 +404,8 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
   assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.30.0");
-  assert.equal(contract.producer.source_commit, "016dd6aded165d5117f3dd7ad84b483613f09c90");
+  assert.equal(contract.version, "1.31.0");
+  assert.equal(contract.producer.source_commit, "ad4bc537b3b198f92f52900942dbf01156e65b73");
   assert.equal(routes.routes["/conversations"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -413,7 +413,7 @@ test("clause 10: the route, the versions, the producer pin and the five verbs ar
   // The turn verb is authorityOnly and the app holds no authority binding, so
   // pinning it would be a false contract.
   assert.equal(contract.mcp_operations.includes("add-doc-conversation-turn"), false);
-  assert.equal(contract.mcp_operations.length, 72);
+  assert.equal(contract.mcp_operations.length, 75);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
   assert.deepEqual([...APP_ROUTE_PATHS], Object.keys(routes.routes), "the model's route list has drifted from the contract");
 });
@@ -516,7 +516,7 @@ test("after a create the list is read again, and so it is after rename, pin, arc
 
   // The page's own wiring: every settled write re-reads, and load() reads BOTH
   // (plus V5-UX-B09's independently-sequenced outcome cards read).
-  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\), takeOutcomeCards\(\)\]\)/);
+  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\), takeOutcomeCards\(\), takeSuggestions\(\)\]\)/);
   assert.match(pageJs, /if \(result\.status === "ok" \|\| result\.status === "conflict"\) \{/);
   assert.match(pageJs, /await load\(\);/);
   // Create opens the new conversation, and open() runs the same load().
