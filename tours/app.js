@@ -2,7 +2,7 @@
   "use strict";
   const $ = (selector) => document.querySelector(selector);
   const state = { csrf: "", tours: [], tour: null, rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
-    searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, undoSelectionIds: null };
+    searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -63,7 +63,7 @@
     if (!state.selectedIds.length) list.textContent = "No properties selected.";
     $("#selection-tour").textContent = state.tour ? `For ${text(state.tour.name, "this Tour")}` : "Select a Tour from the library to save a selection.";
     $("#selection-version").textContent = state.cart?.selection_version ? `Saved version ${state.cart.selection_version}` : "No saved version";
-    $("#save-selection").disabled = !state.tour || !state.selectionDirty;
+    $("#save-selection").disabled = !state.tour || !state.selectionDirty || Boolean(state.selectionSave);
     $("#undo-selection").hidden = !state.undoSelectionIds;
     if (!state.selectionDirty) {
       const unresolved = state.selectedIds.filter(propertyId => !knownProperty(propertyId)).length;
@@ -175,15 +175,24 @@
       cursor = next;
     }
   }
-  async function saveSelection() {
-    if (!state.tour || !state.selectionDirty) return;
-    const ids = [...state.selectedIds];
+  // One save at a time: the pending request and its idempotency key are fixed before any await, so a double click reuses them.
+  function saveSelection() {
+    if (state.selectionSave) return state.selectionSave;
+    if (!state.tour || !state.selectionDirty) return Promise.resolve();
     if (!state.pendingSelection) state.pendingSelection = { idempotency_key: uuid(), tour_id: state.tour.id,
       base_selection_version_id: state.cart?.selection_version_id || null, expected_selection_version: state.cart?.selection_version || 0,
-      property_ids: ids, selection_digest: await sha256(JSON.stringify(ids)) };
+      property_ids: [...state.selectedIds], selection_digest: null };
     const expected = state.pendingSelection;
+    $("#save-selection").disabled = true;
+    state.selectionSave = writeSelection(expected).finally(() => {
+      state.selectionSave = null; $("#save-selection").disabled = !state.tour || !state.selectionDirty;
+    });
+    return state.selectionSave;
+  }
+  async function writeSelection(expected) {
     $("#selection-state").textContent = "Saving selection…";
     try {
+      if (!expected.selection_digest) expected.selection_digest = await sha256(JSON.stringify(expected.property_ids));
       await post("/api/tours/selection-cart", expected);
       if (state.tour?.id !== expected.tour_id) return;
       const readBack = await loadSelectionCart(expected.tour_id);
@@ -251,6 +260,9 @@
   async function issueShare(rotate = false) { if (!state.projectionId) throw new Error("projection_required"); const raw = newShareToken(); const tokenDigest = await sha256(raw); const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map((box) => box.value); const expires = new Date($("#share-expiry").value).toISOString(); const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid"); const payload = { projection_id: state.projectionId, token_digest: tokenDigest, permission_scopes: scopes, expires_at: expires, receipt_digest: receipt, idempotency_key: uuid() }; const data = await post(rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue", rotate ? { share_grant_id: state.shareGrantId, ...payload } : payload); state.rawShareToken = raw; state.shareGrantId = text(data.share_grant_id, state.shareGrantId); const url = `https://reports.doctorcre.com/share#token=${raw}`; $("#share-url").value = url; $("#share-link").hidden = false; $("#share-state").textContent = "Active"; status("Confidential link generated. Copy it now."); }
   async function revokeShare(grantId) { if (!id(grantId)) return; const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required"); await post("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link", revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }); state.rawShareToken = ""; $("#share-link").hidden = true; await loadTour(state.tour.id); status("Share link revoked."); }
   async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
+  // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.
+  const writesInFlight = new Set();
+  const exclusive = (record, work) => () => { if (writesInFlight.has(record)) return; writesInFlight.add(record); void action(work).finally(() => writesInFlight.delete(record)); };
   $("#property-search-form").addEventListener("submit", event => { event.preventDefault(); void searchProperties(); });
   const invalidateSearch = () => { ++state.searchSeq; state.searchItems = []; state.searchCursor = null; state.searchKey = null; state.searchCompleted = false; renderSearchResults(); $("#search-state").textContent = "Filters changed. Find properties to see matching candidates."; };
   $("#property-search-form").addEventListener("input", invalidateSearch);
@@ -267,10 +279,10 @@
     node.addEventListener("mouseenter", () => { for (const item of document.querySelectorAll("#property-results .property-result")) item.classList.toggle("county-highlight", item.dataset.county === node.dataset.county); });
     node.addEventListener("mouseleave", () => { for (const item of document.querySelectorAll("#property-results .property-result")) item.classList.remove("county-highlight"); });
   }
-  $("#refresh").addEventListener("click", () => void action(loadLibrary)); $("#save-route").addEventListener("click", () => void action(() => saveRoute(false))); $("#reorder-route").addEventListener("click", () => void action(() => saveRoute(true)));
-  $("#accept-route").addEventListener("click", () => void action(async () => { if (!state.tour?.route_version_id) return; const prior = Number(state.tour.accepted_route_version || 0); await post("/api/tours/route-accept", { route_version_id: state.tour.route_version_id, expected_prior_route_version: prior, acceptance_digest: await sha256(`${state.tour.route_version_id}:${prior}`), idempotency_key: uuid() }); await loadTour(state.tour.id); status("Route version accepted."); }));
+  $("#refresh").addEventListener("click", () => void action(loadLibrary)); $("#save-route").addEventListener("click", exclusive("route", () => saveRoute(false))); $("#reorder-route").addEventListener("click", exclusive("route", () => saveRoute(true)));
+  $("#accept-route").addEventListener("click", exclusive("route", async () => { if (!state.tour?.route_version_id) return; const prior = Number(state.tour.accepted_route_version || 0); await post("/api/tours/route-accept", { route_version_id: state.tour.route_version_id, expected_prior_route_version: prior, acceptance_digest: await sha256(`${state.tour.route_version_id}:${prior}`), idempotency_key: uuid() }); await loadTour(state.tour.id); status("Route version accepted."); }));
   $("#cheat-content").addEventListener("input", () => { state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; $("#sheet-state").textContent = "Unsaved changes"; });
-  $("#save-sheet").addEventListener("click", () => void action(saveSheet)); $("#restore-sheet").addEventListener("click", () => void action(async () => { const revision = state.tour?.cheat_sheet?.restore_revision_id; if (!state.tour || !id(revision)) return; await post("/api/tours/cheat-sheet/restore", { tour_id: state.tour.id, restore_revision_id: revision, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); }));
+  $("#save-sheet").addEventListener("click", exclusive("sheet", saveSheet)); $("#restore-sheet").addEventListener("click", exclusive("sheet", async () => { const revision = state.tour?.cheat_sheet?.restore_revision_id; if (!state.tour || !id(revision)) return; await post("/api/tours/cheat-sheet/restore", { tour_id: state.tour.id, restore_revision_id: revision, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); }));
   $("#generate-projection").addEventListener("click", () => void action(async () => { if (!state.tour?.route_version_id || state.tour.route_version_state !== "accepted") return; await post("/api/tours/projection", { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, as_of: new Date().toISOString(), idempotency_key: uuid() }); await loadTour(state.tour.id); status("Client projection draft created. Human approval is required before sharing."); }));
   $("#seal-projection").addEventListener("click", () => void action(async () => { const receipt = $("#receipt-digest").value.trim(); if (!id(state.projectionDraftId) || !digest(state.candidateDigest) || !digest(receipt)) throw new Error("projection_review_required"); await post("/api/tours/projection/seal", { projection_id: state.projectionDraftId, candidate_digest: state.candidateDigest, receipt_digest: receipt, idempotency_key: uuid() }); await loadTour(state.tour.id); status("Reviewed facts-only projection approved. It can now be shared or rendered."); }));
   $("#share-form").addEventListener("submit", (event) => { event.preventDefault(); void action(() => issueShare(id(state.shareGrantId))); }); $("#rotate-share").addEventListener("click", () => void action(() => issueShare(true)));
