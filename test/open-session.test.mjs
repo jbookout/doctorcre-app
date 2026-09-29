@@ -66,6 +66,28 @@ test('outcome cards require an authorized canonical-to-native binding before Ope
     { hostAvailable: true, checkpoints }).open, false);
 });
 
+test('Open names the failed prerequisite when checkpoint proof and producer binding disagree', () => {
+  const card = {
+    canonical_session_id: { value: 'capability-session-1' },
+    native_task_id: { value: nativeId },
+    session_entry: { available: true, capability: 'codex_desktop_open_v1',
+      target: nativeId, auto_launch: false },
+  };
+  assert.equal(outcomeOpenTarget(card, { hostAvailable: true, checkpoints: [] }).reason,
+    'native_target_unverified');
+  for (const session_entry of [
+    { ...card.session_entry, target: '22222222-2222-4222-8222-222222222222' },
+    { ...card.session_entry, capability: 'unsupported' },
+    { ...card.session_entry, auto_launch: true },
+  ]) {
+    const result = outcomeOpenTarget({ ...card, session_entry }, { hostAvailable: true, checkpoints });
+    assert.equal(result.open, false);
+    assert.equal(result.reason, 'producer_binding_invalid');
+  }
+  assert.equal(outcomeOpenTarget(card, { hostAvailable: false, checkpoints }).reason,
+    'host_unavailable');
+});
+
 test('a lost open response is reconciled by a fresh exact read, never by an automatic launch', () => {
   const target = sessionOpenTarget(session, { hostAvailable: true, checkpoints });
   const fresh = { ok: true, sessions: [session] };

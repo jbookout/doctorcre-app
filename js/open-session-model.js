@@ -40,10 +40,14 @@ export function createOpenLinkGuard() {
   };
 }
 
-function target(canonicalSessionId, nativeTaskId, allowed, hostAvailable, reason) {
+function target(canonicalSessionId, nativeTaskId, bindingValid, checkpoints, hostAvailable) {
   const copyId = typeof canonicalSessionId === 'string' && canonicalSessionId ? canonicalSessionId : null;
-  if (!allowed || !hostAvailable || !UUID.test(nativeTaskId ?? '')) {
-    return { open: false, href: null, copyId, reason: !hostAvailable ? 'host_unavailable' : reason,
+  const reason = !UUID.test(nativeTaskId ?? '') ? 'native_target_invalid'
+    : !bindingValid ? 'producer_binding_invalid'
+    : !provenNative(nativeTaskId, checkpoints) ? 'native_target_unverified'
+    : !hostAvailable ? 'host_unavailable' : null;
+  if (reason) {
+    return { open: false, href: null, copyId, reason,
       rights: { open: false, message: false, takeover: false }, autoLaunch: false };
   }
   return { open: true, href: `codex://threads/${nativeTaskId}`, copyId,
@@ -55,9 +59,8 @@ export function sessionOpenTarget(row, { hostAvailable = false, checkpoints = []
   const canonical = row?.canonical_session_id;
   const native = row?.native_host_id;
   return target(canonical, native,
-    row?.surface === 'codex' && row?.native_host_supported === true && canonical === native
-      && provenNative(native, checkpoints),
-    hostAvailable, 'native_target_unverified');
+    row?.surface === 'codex' && row?.native_host_supported === true && canonical === native,
+    checkpoints, hostAvailable);
 }
 
 /** Outcome cards need the producer's explicit canonical-to-native binding. */
@@ -67,8 +70,7 @@ export function outcomeOpenTarget(card, { hostAvailable = false, checkpoints = [
   const entry = card?.session_entry;
   return target(canonical, native, Boolean(canonical && entry?.available === true
     && entry.capability === 'codex_desktop_open_v1' && entry.target === native
-    && entry.auto_launch === false && provenNative(native, checkpoints)),
-    hostAvailable, 'native_target_unverified');
+    && entry.auto_launch === false), checkpoints, hostAvailable);
 }
 
 /** A lost browser handoff stays unknown; this never navigates or retries. */

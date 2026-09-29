@@ -471,14 +471,14 @@ export function createLiveClient(opts = {}) {
     async notificationPreferences() { return rpc('read-notification-preferences', {}); },
 
     // --------------------------------- session identity and dispatch (S02)
-    // TWO READS, passed through untouched. NEITHER names an actor: both verbs
+    // Three reads, passed through untouched. None names an actor: their schemas
     // declare additionalProperties:false with no actor property at all, and the
     // acting actor is resolved server-side from a transaction-local setting the
     // browser cannot reach. That absence is what makes the permission filtering
     // these reads report unforgeable rather than merely unrequested. They go
     // through `rpc` because they carry no idempotency key, and there is no
-    // matching write: nothing on the Sessions tab opens, resumes or takes over
-    // a session, because no verb exists that would.
+    // matching write. Open is local navigation for a checkpoint-proved native
+    // target; no verb resumes, messages, or takes over a session.
     async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
     async codexSessions() { return rpc('list-my-codex-sessions', {}); },
     async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
