@@ -3,9 +3,8 @@
  * Ideas are tiles on a glass board. Motion (rule 9293d609), on the shared
  * tokens only: the tiles enter on a stagger inside a second, lift and tilt
  * toward the pointer (a depth response), press down, and an idea with a due
- * date carries the same approach pulse as the Calendar. The Events tab is a
- * still, dashed absent state on purpose: nothing about a missing read should
- * look alive.
+ * date carries the same approach pulse as the Calendar. The event timeline
+ * shows date order and cross-highlights the corresponding event card.
  *
  * Reduced motion: the shared floor stops every animation and transition, and
  * the block at the end removes the lift, tilt and press as well.
@@ -40,15 +39,60 @@
 .idea-rows dd.unknown { color: var(--quiet); font-style: italic; }
 .idea-body { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--ground-1) 60%, transparent); font: 14px/1.5 var(--body); white-space: pre-wrap; overflow-wrap: anywhere; animation: receipt-in var(--motion-enter) var(--ease) backwards; }
 
-.event-absent { border-style: dashed; }
+.event-timeline { overflow: hidden; margin: 0 0 var(--gap); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--orange) 13%, transparent), transparent 65%), var(--glass); backdrop-filter: blur(16px); }
+.event-timeline svg { display: block; width: 100%; height: 118px; }
+.event-timeline-track { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 6 9; animation: event-flow var(--motion-flow) linear infinite; }
+.event-timeline-node { cursor: pointer; }
+.event-timeline-node circle { fill: var(--ground-1); stroke: var(--orange); stroke-width: 2; transition: r var(--motion-move) var(--ease), fill var(--motion-move) var(--ease); }
+.event-timeline-node:hover circle, .event-timeline-node:focus-visible circle, .event-timeline-node[data-active="true"] circle { fill: var(--orange); r: 12; }
+.event-timeline-node:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.event-timeline-node text { fill: var(--text); font: 700 14px var(--display); text-anchor: middle; pointer-events: none; }
+.event-timeline-node .event-timeline-date { fill: var(--muted); font: 11px var(--body); }
+.event-timeline-glow { fill: var(--orange); animation: breathe var(--motion-calm) ease-in-out infinite; }
+@keyframes event-flow { to { stroke-dashoffset: -30; } }
+
+.event-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0 0 var(--gap); }
+.event-list:empty { display: none; }
+.event-card { width: 100%; height: 100%; min-height: 150px; display: grid; gap: 8px; align-content: start; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(150deg, var(--glass-hi), var(--glass)); color: var(--text); text-align: left; font: inherit; cursor: pointer; animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); transition: transform var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
+.event-card:hover, .event-card:focus-visible, .event-card[data-active="true"] { transform: translateY(-3px); border-color: var(--orange); box-shadow: var(--shadow-float); }
+.event-card:active { transform: translateY(0) scale(.98); }
+.event-card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.event-date { color: var(--orange-text); font: 700 15px var(--display); letter-spacing: .04em; }
+.event-name { font: 600 17px/1.2 var(--body); }
+.event-meta { color: var(--muted); font-size: 12px; }
+.event-source { color: var(--quiet); font-size: 12px; overflow-wrap: anywhere; }
+.event-card[data-status="cancelled"], .event-card[data-status="skipped"] { opacity: .7; }
+.event-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; max-height: min(72vh, 700px); overflow-y: auto; }
+.event-form .field { min-width: 0; }
+.event-form input, .event-form select, .event-form textarea { width: 100%; min-height: var(--touch); }
+.event-wide { grid-column: 1 / -1; }
+.event-check { align-self: end; display: flex; align-items: center; gap: 10px; min-height: var(--touch); }
+.event-check input { width: auto; min-height: auto; }
+.event-form-message { margin: 0; color: var(--amber); min-height: 1.5em; }
+.event-conflict { padding: 12px; border: 1px solid var(--amber); border-radius: var(--radius-s); background: color-mix(in srgb, var(--amber) 9%, var(--glass)); }
+.event-conflict h3 { margin: 0 0 8px; font: 700 18px var(--display); }
+.event-conflict dl { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 5px 12px; margin: 0 0 12px; font-size: 13px; }
+.event-conflict dt { color: var(--muted); }
+.event-conflict dd { margin: 0; overflow-wrap: anywhere; }
+.event-conflict p { margin: 0 0 12px; }
+.event-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.event-dialog article { width: min(720px, calc(100vw - 24px)); }
 
 @media (max-width: 640px) {
   .idea-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .idea-rows dd { margin-bottom: 8px; }
+  .event-form { grid-template-columns: 1fr; }
+  .event-timeline svg { height: 100px; }
+  .event-actions { justify-content: stretch; }
+  .event-actions .btn { flex: 1; }
 }
 
 /* --------------------------------------------------------- reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .idea-tile:hover, .idea-tile:active { transform: none; }
+  .event-card:hover, .event-card:active { transform: none; }
+  .event-timeline-track, .event-timeline-glow, .event-card { animation: none; }
 }
 :root[data-motion="reduced"] .idea-tile:hover, :root[data-motion="reduced"] .idea-tile:active { transform: none; }
+:root[data-motion="reduced"] .event-card:hover, :root[data-motion="reduced"] .event-card:active { transform: none; }
+:root[data-motion="reduced"] .event-timeline-track, :root[data-motion="reduced"] .event-timeline-glow, :root[data-motion="reduced"] .event-card { animation: none; }

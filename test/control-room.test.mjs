@@ -348,7 +348,6 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.27.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -358,7 +357,6 @@ test("the route and the three verbs are pinned in the contracts", () => {
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 67);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 

@@ -10,8 +10,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  EVENTS_ABSENT, IDEA_BOARD_ARGS, filterIdeas, ideaDetailRows, ideaReadState, ideasHref, ideasPhase,
+  IDEA_BOARD_ARGS, filterIdeas, ideaDetailRows, ideaReadState, ideasHref, ideasPhase,
   normalizeIdea, parseIdeasState, validIdeaBoard,
+  eventReadState, eventPhase, eventWriteRequest, eventWriteOutcome, eventChangedFields,
 } from "../js/ideas-model.js";
 
 const ROOT = new URL("../", import.meta.url);
@@ -106,30 +107,77 @@ test("the address remembers the tab, the search and the open idea", () => {
   assert.deepEqual(parseIdeasState("?tab=nope&idea=%3Cscript%3E"), { tab: "ideas", q: "", idea: null }, "an idea number is digits only");
 });
 
-/* -------------------------------------------------------------- the events gap */
+/* --------------------------------------------------------------- the events */
 
-test("Events is an honest absent state: it names the missing read and sends no request", async () => {
-  assert.match(EVENTS_ABSENT, /no record-layer read returns events/i);
-  const js = await read("js/ideas.js");
-  assert.doesNotMatch(js, /eventBoard|listEvents|read-events|eventsRead/, "no invented events read");
-  const html = await read("ideas.html");
-  assert.match(html, /id="eventsPanel"/);
+test("the event read distinguishes zero records from a failed or malformed read and sorts dates", () => {
+  assert.deepEqual(eventReadState({ ok: true, events: [], count: 0 }), { status: "ready", rows: [] });
+  assert.equal(eventPhase({ status: "ready", rows: [] }), "empty");
+  assert.equal(eventPhase({ status: "error", rows: [] }), "unavailable");
+  assert.equal(eventPhase({ status: "unauthorized", rows: [] }), "unauthorized");
+  assert.equal(eventReadState({ ok: true, count: 0 }).status, "error");
+  assert.equal(eventReadState({ ok: false, events: [], count: 0 }).status, "error");
+  const events = [
+    { id: "later", title: "Later", starts_at: "2026-11-12T15:00:00Z", ends_at: "2026-11-12T19:00:00Z", source: "Association calendar", owner_partner: "dell", version: 2 },
+    { id: "sooner", title: "Sooner", starts_at: "2026-10-02T15:00:00Z", ends_at: "2026-10-02T19:00:00Z", source: "Organizer site", owner_partner: "joe", version: 1 },
+  ];
+  assert.deepEqual(eventReadState({ ok: true, events, count: 2 }).rows.map(row => row.id), ["sooner", "later"]);
+  assert.equal(eventPhase({ status: "ready", rows: events }), "ready");
+});
+
+test("the event form sends sourced, timezone-bearing data and preserves the read version for edits", () => {
+  const fields = { title: " Gulf Coast Forum ", organizer: " Dental Association ", kind: "conference",
+    starts_at: "2026-10-02T09:00", ends_at: "2026-10-02T17:00", location: " Mobile ",
+    is_virtual: false, url: "https://example.org/forum", relevance_note: "Meet practice owners",
+    attendance_intent: "considering", owner_partner: "joe", status: "planned", source: " Organizer calendar " };
+  const add = eventWriteRequest(fields);
+  assert.equal(add.ok, true);
+  assert.equal(add.args.title, "Gulf Coast Forum");
+  assert.equal(add.args.source, "Organizer calendar");
+  assert.match(add.args.starts_at, /Z$/);
+  assert.equal(Date.parse(add.args.ends_at) > Date.parse(add.args.starts_at), true);
+  const edit = eventWriteRequest(fields, { id: "event-1", version: 7 });
+  assert.equal(edit.ok, true);
+  assert.equal(edit.args.event_id, "event-1");
+  assert.equal(edit.args.base_version, 7);
+  assert.equal(eventWriteRequest({ ...fields, ends_at: fields.starts_at }).ok, false);
+  assert.equal(eventWriteRequest({ ...fields, source: " " }).ok, false);
+});
+
+test("refused writes and version conflicts leave the draft available for correction", () => {
+  assert.equal(eventWriteOutcome({ payload: { error: "industry_event_version_conflict" } }), "conflict");
+  assert.equal(eventWriteOutcome({ payload: { error: "industry_event_text_invalid" } }), "refused");
+  assert.equal(eventWriteOutcome({ status: 403 }), "unauthorized");
+  assert.equal(eventWriteOutcome({ status: 502 }), "unknown");
+});
+
+test("a version conflict names the server fields that changed before a draft can be reapplied", () => {
+  const before = { title: "Forum", source: "Organizer", owner_partner: "joe", version: 1 };
+  const latest = { ...before, title: "Forum moved", owner_partner: "dell", version: 2 };
+  assert.deepEqual(eventChangedFields(before, latest), [
+    { field: "title", label: "Event name", value: "Forum moved" },
+    { field: "owner_partner", label: "Owner", value: "dell" },
+  ]);
+  assert.equal(before.title, "Forum", "a conflict does not mutate the partner's original view or draft");
 });
 
 /* ------------------------------------------------------------------ the page */
 
-test("the Ideas page is routed, shipped, read-only and reads only pinned verbs", async () => {
+test("the Ideas page is routed and uses the pinned idea and event verbs", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(routes.routes["/ideas"], "ideas.html");
-  for (const verb of ["loop-board", "read-loop"]) assert.ok(carr.mcp_operations.includes(verb), verb);
+  assert.equal(carr.version, "1.28.0");
+  assert.equal(carr.mcp_operations.length, 70);
+  assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
+  for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
   assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);
   assert.match(await read("scripts/check-repository.mjs"), /"ideas\.html"/);
   assert.match(await read("SUMMARY.md"), /ideas\.html/);
   const js = await read("js/ideas.js");
   assert.match(js, /client\.loopBoard\(IDEA_BOARD_ARGS\)/);
   assert.match(js, /client\.readLoop\(/);
-  assert.doesNotMatch(js, /addLoop|updateLoop|closeLoop|idempotency_key/, "browse only: no write is reachable");
+  assert.doesNotMatch(js, /addLoop|updateLoop|closeLoop/, "the idea list stays read only");
+  assert.match(js, /client\.listIndustryEvents\(/);
   assert.match(js, /mountNotificationBadge\(/);
   assert.match(js, /resolveDealroomBoot/);
   assert.match(js, /history\.(pushState|replaceState)/);
@@ -148,6 +196,24 @@ test("the Ideas page carries the shared shell, tabs, a detail popup and the Even
   assert.match(html, /<dialog id="ideaDialog" class="dialog"/);
   assert.match(html, /id="ideaSearch"[^>]*type="search"/);
   assert.match(html, /<script type="module" src="\/js\/ideas\.js"><\/script>/);
+});
+
+test("Events offers a timeline, sourced cards, and one keyboard-accessible add/edit dialog", async () => {
+  const html = await read("ideas.html");
+  const js = await read("js/ideas.js");
+  assert.match(html, /id="eventTimeline"[^>]*aria-label="Event timeline"/);
+  assert.match(html, /<svg[^>]*id="eventTimelineSvg"/);
+  assert.match(html, /id="eventState"[^>]*aria-live="polite"/);
+  assert.match(html, /id="eventList"/);
+  assert.match(html, /id="eventAdd"/);
+  assert.match(html, /<dialog id="eventDialog"/);
+  for (const name of ["title", "organizer", "kind", "starts_at", "ends_at", "source", "owner_partner"])
+    assert.match(html, new RegExp(`name="${name}"`));
+  assert.match(js, /client\.listIndustryEvents\(/);
+  assert.match(js, /client\.addIndustryEvent\(/);
+  assert.match(js, /client\.updateIndustryEvent\(/);
+  assert.match(js, /eventWriteOutcome\(/);
+  assert.match(html, /id="eventConflict"/);
 });
 
 /* ---------------------------------------------------------------- motion */
@@ -174,4 +240,11 @@ test("reduced motion: forcing the fallback leaves every idea visible and removes
     if (!/idea|event/.test(selector) || /\[hidden\]/.test(selector)) continue;
     assert.doesNotMatch(body, /opacity:\s*0(?![.\d])|visibility:\s*hidden|transform:\s*scale\(0\)/, `${selector.trim()} hides content once motion is gone`);
   }
+});
+
+test("event motion has a reduced-motion fallback and a narrow-screen layout", () => {
+  assert.match(css, /\.event-timeline.*animation:/s);
+  assert.match(css, /@media \(max-width: 640px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.event-/);
+  assert.match(css, /:root\[data-motion="reduced"\] \.event-/);
 });

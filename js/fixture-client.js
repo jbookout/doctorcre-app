@@ -87,6 +87,7 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} idempotency_key -> result */
   const idem = new Map();
+  const industryEvents = new Map(); // Demo-only records added through this fixture client.
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
@@ -1791,6 +1792,31 @@ export async function createFixtureClient(opts = {}) {
       }
       if (!found) return { error: 'not_found' };
       return { loop: structuredClone(found) };
+    },
+
+    async listIndustryEvents() {
+      const rows = [...industryEvents.values()].sort((a, b) =>
+        Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id));
+      return { ok: true, events: structuredClone(rows), count: rows.length };
+    },
+
+    async addIndustryEvent({ idempotency_key, ...fields }) {
+      return withIdem(idempotency_key || uuidv4(), () => {
+        const event = { id: uuidv4(), version: 1, is_virtual: false,
+          attendance_intent: 'considering', status: 'planned', ...fields };
+        industryEvents.set(event.id, event);
+        return { ok: true, event: structuredClone(event) };
+      });
+    },
+
+    async updateIndustryEvent({ idempotency_key, event_id, base_version, ...fields }) {
+      return withIdem(idempotency_key || uuidv4(), () => {
+        const current = industryEvents.get(event_id);
+        if (!current || current.version !== base_version) refuse('update-industry-event', 'industry_event_version_conflict');
+        const event = { ...current, ...fields, version: current.version + 1 };
+        industryEvents.set(event_id, event);
+        return { ok: true, event: structuredClone(event) };
+      });
     },
 
     // The record layer's own answer shape: {count, blocks:[...]} with the
