@@ -1,8 +1,8 @@
 // V5-UX-S02 clauses 1-2 — the Sessions tab, decided without a DOM.
 //
-// Two reads answer this tab: `read-session-identity` and `read-dispatch-history`,
-// both live at producer 0f6cb388. Neither takes an actor argument; the server
-// derives the acting actor, and this file never supplies one.
+// `read-session-identity` and `read-dispatch-history` answer the session and
+// dispatch views. `list-my-codex-sessions` supplies separate first-hand Open
+// proof. None takes an actor argument; the server derives the acting actor.
 //
 // Four facts about those payloads are load-bearing, and every rule below exists
 // because of one of them. They were observed against production on 2026-09-18
@@ -298,13 +298,24 @@ export function hostState(row, options = {}) {
     };
   }
   if (row.surface === 'codex') {
-    return row.canonical_session_id === row.native_host_id
-      ? { state: 'host_unavailable', open: false,
-          text: 'The recorded Codex thread is on a host this browser cannot reach. Copy its session ID to resume there.',
-          hostId: row.native_host_id }
-      : { state: 'native_id_mismatch', open: false,
-          text: 'The canonical session and native Codex task IDs disagree. Opening is unavailable.',
-          hostId: row.native_host_id };
+    if (row.canonical_session_id !== row.native_host_id) {
+      return { state: 'native_id_mismatch', open: false,
+        text: 'The canonical session and native Codex task IDs disagree. Opening is unavailable.',
+        hostId: row.native_host_id };
+    }
+    if (native.reason === 'native_target_invalid' || native.reason === 'producer_binding_invalid') {
+      return { state: 'invalid_target', open: false,
+        text: 'The recorded Codex target cannot be verified for Open. Copy the ID to resume manually.',
+        hostId: row.native_host_id };
+    }
+    if (native.reason === 'native_target_unverified') {
+      return { state: 'checkpoint_unverified', open: false,
+        text: 'No first-hand native checkpoint confirms this session ID. Copy the ID to resume manually.',
+        hostId: row.native_host_id };
+    }
+    return { state: 'host_unavailable', open: false,
+      text: 'The recorded Codex thread is on a host this browser cannot reach. Copy its session ID to resume there.',
+      hostId: row.native_host_id };
   }
   if (row.display_name !== row.native_host_id) {
     return {

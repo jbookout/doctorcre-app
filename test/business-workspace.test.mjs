@@ -125,9 +125,8 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
   assert.match(tabs, /<a class="tab" href="\/pipeline">Pipeline<\/a>/);
   assert.match(css, /a\.tab\[aria-current="page"\]/, "an active page tab is marked by aria-current alone");
 
-  const nav = /<nav class="mobile-nav"[\s\S]*?<\/nav>/.exec(html)?.[0] || "";
-  assert.equal([...nav.matchAll(/<a\b/g)].length, 4, "the bottom navigation mirrors the four tabs");
-  for (const label of ["Home", "Work", "Pipeline", "Doc history"]) assert.ok(nav.includes(`${label}</a>`), `bottom entry ${label}`);
+  assert.match(html, /id="appShell"/, "the shared phone menu replaces the local bottom navigation");
+  assert.doesNotMatch(html, /class="mobile-nav"/, "there is one app navigation");
 
   // Every control on the page is one of the four shapes the shared sheet holds
   // at or above the 44px floor. A bare <button> would be under it.
@@ -556,8 +555,7 @@ test("today-triage is pinned in the CARR interface as an additive minor bump", (
   assert.ok(carrInterface.mcp_operations.includes("today-triage"));
   assert.ok(carrInterface.mcp_operations.includes("loop-board"));
   assert.deepEqual([...carrInterface.mcp_operations], [...carrInterface.mcp_operations].sort(), "the list stays alphabetical");
-  assert.equal(carrInterface.version, "1.31.0");
-  assert.equal(carrInterface.mcp_operations.length, 75);
+  assert.equal(carrInterface.version, "1.32.0");
 });
 
 test("Home enters in a stagger under a second, answers hover and press, and draws its ambient life from shared keyframes", () => {

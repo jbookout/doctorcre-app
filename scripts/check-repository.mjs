@@ -18,6 +18,16 @@ const contract = await json("contracts/carr-interface.v1.json");
 assert.equal(contract.schema, "doctorcre-carr-interface.v1");
 assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
 assert.equal(contract.transport.database_access, "forbidden");
+assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
+  "the versioned MCP operations must be unique and sorted");
+const browserCalls = new Set();
+for (const path of ["js/live-client.js", "js/leads-client.js"]) {
+  for (const match of (await read(path)).matchAll(/\b(?:rpc|write)\s*\(\s*['"]([a-z][a-z-]+)['"]/g)) {
+    browserCalls.add(match[1]);
+  }
+}
+assert.deepEqual([...browserCalls].filter(name => !contract.mcp_operations.includes(name)).sort(), [],
+  "every browser MCP call must be in the pinned CARR interface");
 assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 for (const verb of ["list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(contract.mcp_operations.includes(verb), `the Events tab needs ${verb} pinned`);

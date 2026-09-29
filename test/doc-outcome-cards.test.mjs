@@ -171,11 +171,38 @@ test('sessionEntryView exposes a bound Codex thread only on the supported host',
   const card = baseCard({ canonical_session_id: { value: 'capability-session-1' },
     native_task_id: { value: native }, session_entry: { available: true,
       target: native, capability: 'codex_desktop_open_v1', auto_launch: false } });
-  assert.equal(sessionEntryView(card, { hostAvailable: true }).href, `codex://threads/${native}`);
-  const away = sessionEntryView(card, { hostAvailable: false });
+  const checkpoints = [{ native_session_id: native, host: 'codex_desktop',
+    availability: 'checkpoint_recorded' }];
+  assert.equal(sessionEntryView(card, { hostAvailable: true, checkpoints }).href, `codex://threads/${native}`);
+  assert.equal(sessionEntryView(card, { hostAvailable: true }).open, false);
+  assert.equal(sessionEntryView(card, { hostAvailable: true }).sessionRef, 'capability-session-1');
+  assert.match(sessionEntryView(card, { hostAvailable: true }).reasonSentence, /checkpoint/i);
+  const away = sessionEntryView(card, { hostAvailable: false, checkpoints });
   assert.equal(away.open, false);
   assert.equal(away.sessionRef, 'capability-session-1');
   assert.match(away.reasonSentence, /host.*unavailable/i);
+});
+
+test('outcome copy distinguishes an invalid producer binding from absent checkpoint proof', () => {
+  const native = '11111111-1111-4111-8111-111111111111';
+  const card = baseCard({ canonical_session_id: { value: 'capability-session-1' },
+    native_task_id: { value: native }, session_entry: { available: true,
+      target: native, capability: 'codex_desktop_open_v1', auto_launch: false } });
+  const options = { hostAvailable: true, checkpoints: [{ native_session_id: native,
+    host: 'codex_desktop', availability: 'checkpoint_recorded' }] };
+  for (const entry of [
+    { ...card.session_entry, target: 'another-target' },
+    { ...card.session_entry, capability: 'unsupported' },
+    { ...card.session_entry, auto_launch: true },
+  ]) {
+    const view = sessionEntryView({ ...card, session_entry: entry }, options);
+    assert.equal(view.open, false);
+    assert.equal(view.sessionRef, 'capability-session-1');
+    assert.match(view.reasonSentence, /recorded Open details/i);
+    assert.doesNotMatch(view.reasonSentence, /No first-hand native checkpoint/i);
+  }
+  assert.match(sessionEntryView(card, { hostAvailable: true, checkpoints: [] }).reasonSentence,
+    /No first-hand native checkpoint/i);
 });
 
 test("sessionEntryView offers manual resume when the server records a session ID", () => {
