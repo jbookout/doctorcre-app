@@ -40,8 +40,9 @@
 //      live bodies are STATUS envelopes. The verb returns turns "exactly as
 //      written"; this file never parses one, and the view renders it as text.
 //
-// This tab opens nothing and acknowledges nothing. See NO_OPEN_SENTENCE and
-// NO_ACKNOWLEDGEMENT_SENTENCE below for why each refusal exists.
+// Opening a proven Codex thread is navigation; room turns and acknowledgements
+// retain their separate authority.
+import { sessionOpenTarget } from './open-session-model.js';
 import {
   PROVABLE_STAGES, SURFACES, WORK_STATES, WORK_STATE_LABEL,
   countsLine, dispatchView, lineage, listState,
@@ -86,15 +87,9 @@ export const TURN_LIMIT = 25;
 
 /* ----------------------------------------------------- the honesty sentences */
 
-/**
- * In the context panel, exactly where an "Open session" control would sit.
- * No branch of this slice produces one, not even a disabled one: a disabled
- * control implies one could be enabled, and none could be.
- */
-export const NO_OPEN_SENTENCE = "This page can identify the exact session but cannot open it. "
-  + "Opening a native session is V5-UX-S02's third clause; no supported host adapter exists, every session "
-  + "here answers native_host_supported: false, and a control that appeared here would imply otherwise. "
-  + "Copy the canonical session ID instead.";
+/** The context retains a readable fallback beside any verified native link. */
+export const NO_OPEN_SENTENCE = "Open returns to a verified Codex Desktop thread on this Mac. "
+  + "Other hosts keep the canonical session ID for manual resume. Opening sends no message and takes over no session.";
 
 /** Under Participants: room turns and dispatch acknowledgements are different records. */
 export const ACKNOWLEDGEMENT_SENTENCE = "Room participants come from conversation turns. Dispatch receipt and "
@@ -428,7 +423,7 @@ export function parentLine(row, payload) {
  * parent contact are TWO independent lines and are never merged (clause 2), and
  * the evidence is carried verbatim — never derived from the display name.
  */
-export function contextPanel(row, payload) {
+export function contextPanel(row, payload, options = {}) {
   if (!row) return null;
   return {
     id: row.canonical_session_id,
@@ -451,9 +446,7 @@ export function contextPanel(row, payload) {
     modelId: row.latest_model_id ?? null,
     attemptCount: row.attempt_count,
     attemptRef: row.latest_attempt_ref ?? null,
-    // Always false, in every branch. There is no argument and no payload that
-    // turns it true, because turning it true is V5-UX-S02 clause 3.
-    open: false,
+    openTarget: sessionOpenTarget(row, options),
     noOpenText: NO_OPEN_SENTENCE,
   };
 }

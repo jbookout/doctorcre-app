@@ -222,21 +222,22 @@ test("C12-08 a parent outside the answer is stated, not linked", () => {
 /* ------------------------------------- clause 3: the two things this refuses */
 
 // MUTATION: add a disabled "Open session" button to the context panel.
-test("C12-09 no open control exists in any branch, and the honesty sentence is present", () => {
+test("C12-09 context offers Open only for a verified Codex thread", () => {
   for (const supported of [true, false]) {
     for (const hostId of [null, "host-window-7"]) {
       const row = sessionRow({ native_host_supported: supported, native_host_id: supported ? hostId : null });
       const panel = contextPanel(row, identityPayload([row]));
-      assert.equal(panel.open, false, "no payload turns the open flag true, because turning it true is S02 clause 3");
+      assert.equal(panel.openTarget.open, false, "a host window label is not a verified Codex thread");
       assert.equal(panel.noOpenText, NO_OPEN_SENTENCE);
     }
   }
-  assert.match(NO_OPEN_SENTENCE, /cannot open it/);
-  assert.match(NO_OPEN_SENTENCE, /V5-UX-S02's third clause/);
-  assert.match(NO_OPEN_SENTENCE, /Copy the canonical session ID instead/);
-  // Not even a refused one: a disabled control implies one could be enabled.
-  assert.equal(/open[\s_-]?session/i.test(viewCode.replace(NO_OPEN_SENTENCE, " ")), false,
-    "the shipped code of js/model-room.js contains no open control, disabled or otherwise");
+  assert.match(NO_OPEN_SENTENCE, /verified Codex Desktop thread/);
+  const native = "01a0ec2b-2cd1-79a2-9756-624387a98685";
+  const bound = sessionRow({ canonical_session_id: native, surface: "codex",
+    native_host_id: native, native_host_supported: true });
+  assert.equal(contextPanel(bound, identityPayload([bound]), { hostAvailable: true }).openTarget.href,
+    `codex://threads/${native}`);
+  assert.match(viewCode, /data-open-model-room-session/);
   // V5-UX-C13c added ONE real, legitimately-disabled control — the answer
   // form's own Submit, disabled until the scope checkbox is ticked and there
   // is answer text (a real write behind it, unlike Open session). Strip that
@@ -249,8 +250,7 @@ test("C12-09 no open control exists in any branch, and the honesty sentence is p
   assert.notEqual(withoutAnswerForm, viewCode, "the answer-form block must be found and stripped before this check means anything");
   assert.equal(/disabled/.test(withoutAnswerForm), false,
     "no disabled control outside the answer form's own Submit stands in for one that cannot exist");
-  assert.equal(/open[\s_-]?session/i.test(htmlMarkup), false, "control-room.html carries no open control either");
-  assert.equal(/<button[^>]*>[^<]*[Oo]pen/.test(htmlMarkup), false, "no button on the page begins with Open");
+  assert.equal(/<button[^>]*>[^<]*[Oo]pen/.test(htmlMarkup), false, "native navigation is a link, not a launch button");
 });
 
 // MUTATION: infer dispatch acknowledgement from a participant's room turn.
@@ -544,7 +544,7 @@ test("C13a-06 the history view opens no execute path", () => {
     "exactly the composer's and the answer form's own writes mint a fresh key");
   assert.match(htmlMarkup, /id="modelRoomHistoryTopic"/);
   assert.match(htmlMarkup, /id="modelRoomHistoryWorkItem"/);
-  assert.equal(/open[\s_-]?session/i.test(viewCode.replace(NO_OPEN_SENTENCE, " ")), false);
+  assert.match(viewCode, /data-open-model-room-session/);
 });
 
 /* ----------------------------------------------------- V5-UX-C13b: the composer */

@@ -48,6 +48,7 @@ import {
   outcomeCardsEmptyMessage, outcomeCardsPagingState, outcomeCardsRequest,
   refuseDocOutcomeCards,
 } from "./doc-outcome-cards-model.js";
+import { reconcileOutcomeOpenAttempt } from './open-session-model.js';
 import { uuidv4 } from "./uuid.js";
 import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow, suggestionReadState, suggestionStatus, visibleSuggestionConflicts, reconcileSuggestionConflicts } from "./doc-suggestions-model.js";
 
@@ -81,6 +82,7 @@ const view = {
 };
 
 let client = null;
+let pendingOutcomeOpen = null;
 let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
@@ -257,7 +259,9 @@ function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextChec
       <p class="small">Next check: ${outcomeFieldSpan("nextCheck", changed.nextCheck, String(nextCheck))}</p>
       <p class="small" data-outcome="${String(card.result.available)}">Result: ${outcomeFieldSpan("result", changed.result, String(result))}</p>
       <p class="small caption">${escapeHtml(card.freshness.text)}</p>
-      <p class="small session-host" data-open="false">${escapeHtml(entry.reasonSentence)} ${escapeHtml(entry.scopedSolution)}</p>
+      <p class="small session-host" data-open="${entry.open}">${escapeHtml(entry.reasonSentence)} ${escapeHtml(entry.scopedSolution ?? '')}</p>
+      ${entry.open ? `<a class="btn btn-primary" data-open-outcome-session="${escapeHtml(card.id)}" href="${escapeHtml(entry.href)}">Open session</a>` : ''}
+      ${entry.sessionRef ? `<button class="btn btn-quiet" type="button" data-copy-outcome-session="${escapeHtml(card.id)}">Copy session ID</button>` : ''}
       ${sessionRefLine}
     </div>
   </li>`;
@@ -290,7 +294,7 @@ function renderOutcomeCards() {
     if (paging) paging.hidden = true;
     return;
   }
-  const cards = outcomeCards({ cards: view.outcomeCards.rows });
+  const cards = outcomeCards({ cards: view.outcomeCards.rows }, { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') });
   // Every card gets its own delay so the entrance is ORCHESTRATED rather
   // than simultaneous, and every card's change flags come from comparing
   // THIS read against the previous one — new cards (no prior entry) never
@@ -299,6 +303,20 @@ function renderOutcomeCards() {
     delayMs: index * OUTCOME_CARD_STAGGER_MS,
     changed: changedFields(view.outcomeCards.previousById.get(card.id) ?? null, card),
   })).join("");
+  for (const link of list.querySelectorAll('[data-open-outcome-session]')) {
+    link.addEventListener('click', () => {
+      const card = cards.find(item => item.id === link.dataset.openOutcomeSession);
+      pendingOutcomeOpen = card ? { cardId: card.id, target: card.sessionEntry.target } : null;
+      announceOutcomeCards('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
+    });
+  }
+  for (const button of list.querySelectorAll('[data-copy-outcome-session]')) {
+    button.addEventListener('click', async () => {
+      const card = cards.find(item => item.id === button.dataset.copyOutcomeSession);
+      try { await navigator.clipboard.writeText(card.sessionEntry.sessionRef); announceOutcomeCards('Session ID copied.'); }
+      catch { announceOutcomeCards('Copy was unavailable; the session ID is shown on the card.'); }
+    });
+  }
   // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
   // refuses a `style` attribute written into markup, so the template above
   // only emits `data-outcome-card-delay`, and this reads it back.
@@ -717,6 +735,22 @@ async function boot() {
   view.route = idFromSearch(location.search || "");
   $("retryRead")?.addEventListener("click", () => load());
   $("outcomeCardsRetry")?.addEventListener("click", () => takeOutcomeCards());
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !pendingOutcomeOpen || !client) return;
+    const attempt = pendingOutcomeOpen;
+    pendingOutcomeOpen = null;
+    try {
+      const fresh = await client.docOutcomeCards({ limit: 50 });
+      const card = fresh?.cards?.find(item => item.card_id === attempt.cardId);
+      const result = reconcileOutcomeOpenAttempt(attempt.target, card,
+        { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') });
+      announceOutcomeCards(result.state === 'same_target_unconfirmed'
+        ? 'The recorded target is unchanged. Open again if Codex did not come forward.'
+        : 'The recorded target could not be confirmed. Refresh this card before opening.');
+    } catch {
+      announceOutcomeCards('The open result is unknown. Refresh this card before trying again.');
+    }
+  });
   $("suggestionsRetry")?.addEventListener("click", () => takeSuggestions());
   $("suggestionsParked")?.addEventListener("click", () => {
     view.suggestions.includeParked = !view.suggestions.includeParked;

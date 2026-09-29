@@ -21,9 +21,8 @@
 // dashboard reads keep their time-to-glance. Nothing polls: one read per panel
 // per visit, plus the explicit "Read again" control the other tabs carry.
 //
-// THERE IS NO OPEN OR EXECUTE CONTROL IN THIS FILE. Search only narrows the
-// permission-filtered session read; choosing a row reads history and never
-// treats historical rationale as a fresh instruction.
+// Open navigates only a verified Codex thread. It never sends a room turn or
+// interprets historical rationale as a fresh instruction.
 import {
   ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE,
   ANSWER_EVIDENCE_MAX, ANSWER_TEXT_MAX, ANSWER_VERSION_CONFLICT_SENTENCE, ANSWER_VERSION_UNAVAILABLE_SENTENCE,
@@ -41,6 +40,7 @@ import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
 import { uuidv4 } from "./uuid.js";
+import { reconcileOpenAttempt } from './open-session-model.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -49,6 +49,8 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 
 let mounted = false;
 let client = null;
+let pendingOpen = null;
+const hostAvailable = () => /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 
 const view = {
   outage: null,
@@ -332,7 +334,7 @@ function renderContext() {
   const rows = Array.isArray(payload?.sessions) ? payload.sessions : [];
   let row = null;
   for (const candidate of rows) if (candidate.canonical_session_id === view.selected) row = candidate;
-  const panel = contextPanel(row, payload);
+  const panel = contextPanel(row, payload, { hostAvailable: hostAvailable() });
   if (!panel) {
     root.innerHTML = '<p class="small">Choose a session above to see its work-state evidence, its lineage and '
       + 'its dispatch history.</p>'
@@ -360,12 +362,16 @@ function renderContext() {
       <dt>attempts</dt><dd>${escapeHtml(String(panel.attemptCount))}</dd>
       <dt>latest attempt</dt><dd>${escapeHtml(panel.attemptRef ?? "no attempt reference recorded")}</dd>
     </dl>
-    <!-- Where an "Open session" control would sit. It does not exist, in any
-         branch, and this sentence is why. Copying an id is not opening a host. -->
+    ${panel.openTarget.open ? `<a class="btn btn-primary" data-open-model-room-session="${escapeHtml(panel.id)}" href="${escapeHtml(panel.openTarget.href)}">Open session</a>` : ''}
     <p class="model-room-no-open">${escapeHtml(panel.noOpenText)}</p>
     <button class="btn" type="button" id="modelRoomCopyId" data-copy="${escapeHtml(panel.id)}">Copy the canonical session ID</button>
     <div class="context-dispatch">${dispatchHtml()}</div>`;
   const copy = $("modelRoomCopyId");
+  const open = root.querySelector('[data-open-model-room-session]');
+  open?.addEventListener('click', () => {
+    pendingOpen = panel.openTarget;
+    announce('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
+  });
   if (copy) {
     copy.addEventListener("click", async () => {
       try {
@@ -824,6 +830,20 @@ export function mountModelRoom({ outage = null } = {}) {
   if (mounted) return;
   mounted = true;
   view.outage = outage;
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
+    const attempt = pendingOpen;
+    pendingOpen = null;
+    try {
+      const payload = await client.sessionIdentity({ query: attempt.canonicalSessionId, limit: 50, include_closed: true });
+      const result = reconcileOpenAttempt(attempt, payload, { hostAvailable: hostAvailable() });
+      announce(result.state === 'same_target_unconfirmed'
+        ? 'The recorded target is unchanged. Open again if Codex did not come forward.'
+        : 'The recorded target could not be confirmed. Refresh before opening.');
+    } catch {
+      announce('The open result is unknown. Refresh before trying again.');
+    }
+  });
   // Written from the model so deleting them from the page alone cannot blur
   // room participation into dispatch acknowledgement.
   const room = $("modelRoomQueueRoom");

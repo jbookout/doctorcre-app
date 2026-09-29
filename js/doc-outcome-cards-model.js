@@ -11,13 +11,9 @@
 // all if that is not true — this file's validator checks the same invariant
 // again on the client side rather than trusting the network.
 //
-// This slice explicitly EXCLUDES the shared session adapter for exact open
-// (S02 clause 3): that adapter is parked for a decision from Joe. So every
-// card here renders the honest missing-capability state instead, worded to
-// match js/sessions-model.js's NO_OPEN_SENTENCE: no control here ever opens,
-// resumes or launches a native session. The only offered next step is the
-// session ref, already on the card, for a person to paste into Claude Code
-// themselves.
+// Exact open consumes only a producer-proved Codex Desktop target. A card
+// without that binding keeps its recorded session-reference fallback.
+import { outcomeOpenTarget } from './open-session-model.js';
 
 /* ---------------------------------------------------------- producer vocabulary */
 
@@ -37,17 +33,14 @@ export const INTENT_LABEL = Object.freeze({
 /* ------------------------------------------------------ the honesty sentences */
 
 /**
- * The scoped solution the spec asks for in place of the exact-open adapter,
- * worded to match sessions-model.js's NO_OPEN_SENTENCE. Nothing on this card
- * ever launches, resumes or takes over a session — the session ref shown is
- * the only thing offered, for a person to resume by hand.
+ * Manual fallback for a card with a recorded session reference. It never
+ * launches, messages, or takes over a session.
  */
-export const NO_ADAPTER_SENTENCE = "Opening the exact session isn't available yet: no verified host adapter. "
-  + "Use the session ref shown to resume it in Claude Code.";
+export const NO_ADAPTER_SENTENCE = "Use the session ref shown to resume this session in its recorded host.";
 
 /** Permanent, beside the outcome cards heading. Matches sessions.js's pattern. */
-export const OUTCOME_CARDS_NO_OPEN_SENTENCE = "These cards find and show outcomes. They cannot open a session. "
-  + NO_ADAPTER_SENTENCE;
+export const OUTCOME_CARDS_NO_OPEN_SENTENCE = "A card offers Open only when CARR records an exact Codex Desktop target. "
+  + "Other cards keep their session-reference fallback.";
 
 const SESSION_ENTRY_REASON_SENTENCE = Object.freeze({
   session_relation_unavailable: "No session is linked to this outcome yet.",
@@ -134,38 +127,46 @@ function resultView(card) {
 }
 
 /**
- * What the card says about opening the exact session. `open` is always
- * false — there is no argument and no payload shape that turns it true in
- * this slice, because the shared session adapter (S02 clause 3) is parked.
+ * What the card says about opening the exact session. The server must emit an
+ * explicit canonical/native binding before this view offers Open.
  */
-export function sessionEntryView(card) {
+export function sessionEntryView(card, options = {}) {
   const entry = card.session_entry;
+  const target = outcomeOpenTarget(card, options);
+  if (target.open) return {
+    open: true, available: true, href: target.href, target,
+    reasonSentence: 'Return to this exact Codex Desktop thread.',
+    scopedSolution: null, sessionRef: target.copyId,
+  };
   if (!entry || entry.available !== true) {
     const reason = entry?.unavailable_reason ?? null;
     const fallback = entry?.fallback;
-    const sessionRef = fallback && fallback.kind === "copy_session_id" ? fallback.value : null;
+    const sessionRef = fallback && fallback.kind === "copy_session_id" ? fallback.value
+      : card?.canonical_session_id?.value ?? null;
     return {
       open: false,
       available: false,
       reasonSentence: SESSION_ENTRY_REASON_SENTENCE[reason] ?? "The exact session cannot be opened from here.",
-      scopedSolution: NO_ADAPTER_SENTENCE,
+      scopedSolution: sessionRef ? NO_ADAPTER_SENTENCE : null,
       sessionRef,
     };
   }
   // Even when the producer marks a target/capability as available, this
-  // slice does not consume the shared session adapter (parked). The state
-  // stays honest about what IS recorded while still never opening anything.
+  // host may be unreachable from this browser. The canonical ID remains the
+  // fallback; an unconfirmed native target is never treated as a launch hint.
   return {
     open: false,
     available: true,
-    reasonSentence: "A session target is recorded, but this build has no adapter wired to open it.",
-    scopedSolution: NO_ADAPTER_SENTENCE,
-    sessionRef: isText(entry.target) ? entry.target : null,
+    reasonSentence: entry.capability === 'codex_desktop_open_v1'
+      ? 'The recorded Codex Desktop host is unavailable from this device.'
+      : 'A session target is recorded, but its host has no supported open adapter here.',
+    scopedSolution: card?.canonical_session_id?.value ? NO_ADAPTER_SENTENCE : null,
+    sessionRef: card?.canonical_session_id?.value ?? null,
   };
 }
 
 /** Everything one outcome card renders, carrying only what the read said. */
-export function outcomeCard(card) {
+export function outcomeCard(card, options = {}) {
   return {
     id: card.card_id,
     requestedOutcome: isText(card.requested_outcome) ? card.requested_outcome : null,
@@ -179,13 +180,13 @@ export function outcomeCard(card) {
     freshness: freshnessView(card),
     nextCheck: nextCheckView(card),
     result: resultView(card),
-    sessionEntry: sessionEntryView(card),
+    sessionEntry: sessionEntryView(card, options),
   };
 }
 
 /** The producer's order, preserved. Nothing here re-ranks or re-filters. */
-export function outcomeCards(payload) {
-  return (Array.isArray(payload?.cards) ? payload.cards : []).map(outcomeCard);
+export function outcomeCards(payload, options = {}) {
+  return (Array.isArray(payload?.cards) ? payload.cards : []).map(card => outcomeCard(card, options));
 }
 
 /* ---------------------------------------------------- empty and paging state */
