@@ -16,7 +16,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 async function settle() { for (let i = 0; i < 8; i += 1) await tick(); }
 function response(data, status = 200) { return { ok: status >= 200 && status < 300, status, async json() { return status >= 400 ? { error: status === 404 ? "not_found" : status === 409 ? "conflict" : "tour_unavailable" } : { data, csrf_token: "csrf" }; } }; }
-async function openApp(store, { refuseSave = false, conflictOnce = false, readFailsAfterSave = false, holdSave = null } = {}) {
+async function openApp(store, { refuseSave = false, conflictOnce = false, readFailsAfterSave = false, holdSave = null, searchResponder = null } = {}) {
   const dom = new JSDOM(html, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
   const { window } = dom;
   Object.defineProperty(window, "crypto", { value: webcrypto });
@@ -29,7 +29,7 @@ async function openApp(store, { refuseSave = false, conflictOnce = false, readFa
     if (path.startsWith("/api/tours/selection-cart?") && readFailsAfterSave && store.version) return response(null, 503);
     if (path.startsWith("/api/tours/selection-cart?")) return store.version ? response({ cart: { tour_id: tourId, selection_version_id: versionId,
       selection_version: store.version, property_ids: [...store.ids] } }) : response(null, 404);
-    if (path === "/api/tours/properties/search") return response({ search: { items: [property], count: 1, has_more: false } });
+    if (path === "/api/tours/properties/search") return response({ search: searchResponder ? await searchResponder(JSON.parse(options.body)) : { items: [property], count: 1, has_more: false } });
     if (path === "/api/tours/selection-cart") {
       if (holdSave) await holdSave.promise;
       if (refuseSave) return response(null, 503);
@@ -45,6 +45,68 @@ async function openApp(store, { refuseSave = false, conflictOnce = false, readFa
   await settle();
   return { dom, window, calls };
 }
+
+test("editing filters invalidates the old page cursor and prevents mixed results", async () => {
+  const office = { ...property, name: "Office A" };
+  const clinic = { ...property, property_id: "44444444-4444-4444-8444-444444444444", name: "Clinic B" };
+  const app = await openApp({ version: 0, ids: [] }, { searchResponder: filters => {
+    if (filters.query === "office") return { items: [office], count: 1, has_more: true, cursor: "1" };
+    if (filters.query === "clinic" && filters.cursor === null) return { items: [clinic], count: 1, has_more: false };
+    throw new Error(`mixed search ${JSON.stringify(filters)}`);
+  } });
+  const doc = app.window.document;
+  const query = doc.querySelector("#property-query");
+  query.value = "office";
+  doc.querySelector("#property-search-form").requestSubmit();
+  await settle();
+  assert.match(doc.querySelector("#property-results").textContent, /Office A/);
+  query.value = "clinic";
+  query.dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  assert.equal(doc.querySelector("#more-properties").hidden, true);
+  doc.querySelector("#more-properties").click();
+  doc.querySelector("#property-search-form").requestSubmit();
+  await settle();
+  assert.doesNotMatch(doc.querySelector("#property-results").textContent, /Office A/);
+  assert.match(doc.querySelector("#property-results").textContent, /Clinic B/);
+  const searches = app.calls.filter(call => call.path === "/api/tours/properties/search").map(call => JSON.parse(call.options.body));
+  assert.equal(searches.length, 2);
+  assert.equal(searches[1].cursor, null);
+  app.window.close();
+});
+
+test("a late page for prior filters cannot replace a newer search", async () => {
+  let releaseOld;
+  const oldPage = new Promise(resolve => { releaseOld = resolve; });
+  const app = await openApp({ version: 0, ids: [] }, { searchResponder: filters =>
+    filters.query === "office" ? oldPage : { items: [{ ...property, name: "Clinic B" }], count: 1, has_more: false }
+  });
+  const doc = app.window.document;
+  const query = doc.querySelector("#property-query");
+  query.value = "office";
+  doc.querySelector("#property-search-form").requestSubmit();
+  await settle();
+  query.value = "clinic";
+  query.dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  doc.querySelector("#property-search-form").requestSubmit();
+  await settle();
+  releaseOld({ items: [{ ...property, name: "Office A" }], count: 1, has_more: false });
+  await settle();
+  assert.match(doc.querySelector("#property-results").textContent, /Clinic B/);
+  assert.doesNotMatch(doc.querySelector("#property-results").textContent, /Office A/);
+  app.window.close();
+});
+
+test("unsearched and edited filters do not claim that no property matches", async () => {
+  const app = await openApp({ version: 0, ids: [] });
+  const doc = app.window.document;
+  assert.doesNotMatch(doc.querySelector("#property-results").textContent, /No properties match/);
+  doc.querySelector("#property-search-form").requestSubmit();
+  await settle();
+  doc.querySelector("#property-query").value = "new";
+  doc.querySelector("#property-query").dispatchEvent(new app.window.Event("input", { bubbles: true }));
+  assert.doesNotMatch(doc.querySelector("#property-results").textContent, /No properties match/);
+  app.window.close();
+});
 
 test("search results disclose unknowns; saved stable IDs survive reload; refused save retains retry key", async () => {
   const store = { version: 0, ids: [] };
@@ -74,9 +136,13 @@ test("search results disclose unknowns; saved stable IDs survive reload; refused
 
   const second = await openApp(store, { refuseSave: true });
   const saved = second.window.document;
-  assert.match(saved.querySelector("#selection-list").textContent, /Medical Plaza|Saved property/);
+  assert.doesNotMatch(saved.querySelector("#selection-list").textContent, /Saved property \d+/);
+  assert.match(saved.querySelector("#selection-list").textContent, /Details unavailable.*find this property/i);
+  assert.equal(saved.querySelector("#selection-list button"), null, "a property with no verified identity cannot be removed by an anonymous row");
   saved.querySelector("#property-search-form").dispatchEvent(new second.window.Event("submit", { bubbles: true, cancelable: true }));
   await settle();
+  assert.match(saved.querySelector("#selection-list").textContent, /Medical Plaza/);
+  assert.ok(saved.querySelector("#selection-list button"), "identified search results restore row actions");
   saved.querySelector("#property-results button[data-property-id]").click(); // remove from draft
   saved.querySelector("#save-selection").click();
   await settle();

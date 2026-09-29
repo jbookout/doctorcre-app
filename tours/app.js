@@ -2,7 +2,7 @@
   "use strict";
   const $ = (selector) => document.querySelector(selector);
   const state = { csrf: "", tours: [], tour: null, rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
-    searchItems: [], searchCursor: null, searchSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, undoSelectionIds: null };
+    searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, undoSelectionIds: null };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -47,14 +47,19 @@
       node.classList.toggle("is-filtered", $("#property-county").value === county);
     }
   }
-  function knownProperty(propertyId) { return state.searchItems.find(item => item.property_id === propertyId); }
+  function knownProperty(propertyId) { return state.knownProperties.get(propertyId); }
   function renderSelection() {
     const list = $("#selection-list"); list.replaceChildren();
-    state.selectedIds.forEach((propertyId, index) => {
+    state.selectedIds.forEach((propertyId) => {
       const row = document.createElement("li"); row.className = "selection-item";
-      const label = document.createElement("span"); label.textContent = text(knownProperty(propertyId)?.name, `Saved property ${index + 1}`);
-      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove";
-      remove.addEventListener("click", () => toggleProperty(propertyId)); row.append(label, remove); list.append(row);
+      const known = knownProperty(propertyId);
+      const label = document.createElement("span");
+      label.textContent = known ? `${text(known.name, "Unnamed property")} · ${text(known.address, "Address unknown")}` :
+        "Details unavailable — find this property in search before changing it.";
+      row.append(label);
+      if (known) { const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove";
+        remove.addEventListener("click", () => toggleProperty(propertyId)); row.append(remove); }
+      list.append(row);
     });
     if (!state.selectedIds.length) list.textContent = "No properties selected.";
     $("#selection-tour").textContent = state.tour ? `For ${text(state.tour.name, "this Tour")}` : "Select a Tour from the library to save a selection.";
@@ -94,26 +99,34 @@
       caution.textContent = `Candidate facts need review before a route or client use. ${text(item.caveat)}`.trim();
       row.append(header, address, facts, provenance, caution); list.append(row);
     }
-    if (!list.children.length) list.textContent = "No properties match these filters.";
+    if (!list.children.length) list.textContent = state.searchCompleted ? "No properties match these filters." : "Find properties to see candidates.";
     $("#search-count").textContent = `${state.searchItems.length} loaded`;
     $("#more-properties").hidden = !state.searchCursor;
     updateTerritory(); renderSelection();
   }
   async function searchProperties(more = false) {
-    const filters = searchFilters(more ? state.searchCursor : null);
+    const currentFilters = searchFilters();
+    const key = JSON.stringify(currentFilters);
+    if (more && !state.searchCursor) return;
+    if (more && key !== state.searchKey) more = false;
+    const filters = { ...currentFilters, cursor: more ? state.searchCursor : null };
     if (filters.property_types.length && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(filters.property_types[0])) {
       $("#search-state").textContent = "Use words, numbers, spaces, or hyphens for property type."; return;
     }
     if (filters.min_square_feet !== null && filters.max_square_feet !== null && filters.min_square_feet > filters.max_square_feet) {
       $("#search-state").textContent = "Minimum size must be no greater than maximum size."; return;
     }
-    const seq = ++state.searchSeq; $("#search-state").textContent = "Searching reviewed properties…";
+    const seq = ++state.searchSeq;
+    if (!more) { state.searchItems = []; state.searchCursor = null; state.searchKey = key; state.searchCompleted = false; renderSearchResults(); }
+    $("#search-state").textContent = "Searching reviewed properties…";
     try {
       const data = await post("/api/tours/properties/search", filters);
       if (seq !== state.searchSeq) return;
       const items = Array.isArray(data.search?.items) ? data.search.items.filter(item => id(item?.property_id)) : [];
+      for (const item of items) state.knownProperties.set(item.property_id, item);
       state.searchItems = more ? [...state.searchItems, ...items.filter(item => !state.searchItems.some(old => old.property_id === item.property_id))] : items;
       state.searchCursor = typeof data.search?.cursor === "string" && data.search.has_more ? data.search.cursor : null;
+      state.searchCompleted = true;
       renderSearchResults(); $("#search-state").textContent = `${state.searchItems.length} loaded candidate${state.searchItems.length === 1 ? "" : "s"}. Unknown facts stay visible.`;
     } catch { if (seq === state.searchSeq) $("#search-state").textContent = "Property search is unavailable. Your Tour selection is still here."; }
   }
@@ -211,6 +224,9 @@
   async function revokeShare(grantId) { if (!id(grantId)) return; const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required"); await post("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link", revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }); state.rawShareToken = ""; $("#share-link").hidden = true; await loadTour(state.tour.id); status("Share link revoked."); }
   async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
   $("#property-search-form").addEventListener("submit", event => { event.preventDefault(); void searchProperties(); });
+  const invalidateSearch = () => { ++state.searchSeq; state.searchItems = []; state.searchCursor = null; state.searchKey = null; state.searchCompleted = false; renderSearchResults(); $("#search-state").textContent = "Filters changed. Find properties to see matching candidates."; };
+  $("#property-search-form").addEventListener("input", invalidateSearch);
+  $("#property-search-form").addEventListener("change", invalidateSearch);
   $("#clear-search").addEventListener("click", () => { $("#property-search-form").reset(); void searchProperties(); });
   $("#more-properties").addEventListener("click", () => void searchProperties(true));
   $("#save-selection").addEventListener("click", () => void saveSelection());
