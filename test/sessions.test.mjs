@@ -376,8 +376,8 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Doc suggestions", () => {
-  assert.equal(contract.version, "1.28.0", "Doc suggestions add three operations in a minor bump");
-  assert.equal(contract.mcp_operations.length, 70);
+  assert.equal(contract.version, "1.31.0", "Doc suggestions add three operations in a minor bump");
+  assert.equal(contract.mcp_operations.length, 75);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -396,7 +396,7 @@ test("S02-21 the contract keeps session verbs sorted with Doc suggestions", () =
 
 // MUTATION: leave the unmerged progress-board precursor as producer.source_commit.
 test("S02-22 producer.source_commit is the merged progress-board release", () => {
-  assert.equal(contract.producer.source_commit, "08bdeb893514f1ea03492d6125f3e139fba74646",
+  assert.equal(contract.producer.source_commit, "ad4bc537b3b198f92f52900942dbf01156e65b73",
     "the producer pin includes the merged progress board and dispatch spine");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");

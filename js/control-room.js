@@ -5,7 +5,7 @@
 // file reads, paints, and does nothing else. It writes nothing: there is no
 // write verb on this surface.
 //
-// Four reads are taken INDEPENDENTLY and settled independently, which is the
+// Reads are taken INDEPENDENTLY and settled independently, which is the
 // whole point of the slice: one collector failing makes its own areas unknown
 // and leaves every other area exactly as verified as it was. The freshness of
 // each read is the clock at the moment its answer landed, stated per section,
@@ -17,7 +17,7 @@ import {
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
 import {
-  approvalsCard, countUpFrames, entranceDelay, prefersReducedMotion, scheduleCard, waitingAge,
+  approvalsCard, countUpFrames, entranceDelay, formatScheduleDateTime, prefersReducedMotion, scheduleCard, scheduleTimeline, waitingAge,
 } from "./operations-model.js";
 // V5-UX-C13a: the enriched "Waiting for Joe" detail extends the row above
 // rather than replacing it, and reuses the same pure card projection the
@@ -35,6 +35,7 @@ import { mountSessions } from "./sessions.js";
 import { mountModelRoom } from "./model-room.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
+import { projectResourceDashboard, resourceFacts, resourceRoomPhase } from "./resource-dashboard-model.js";
 
 const $ = (id) => document.getElementById(id);
 export const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -56,6 +57,8 @@ const view = {
     // is not in READS, so it never joins the coverage line, the page phase or
     // the /status snapshot; the approvals card states its own clock instead.
     approvals: { state: "pending" },
+    schedule: { state: "pending" },
+    resources: { state: "pending" },
   },
   // V5-UX-C13a: the "Waiting for Joe" detail is fetched ONLY when a row's own
   // button is pressed — never for every row on dashboard load, which would
@@ -91,6 +94,14 @@ function renderCoverage() {
   if (!strip) return;
   const attempted = Object.fromEntries(Object.entries(view.reads).filter(([, read]) => read.state !== "pending"));
   const chips = coverageLine(attempted);
+  const resource = attempted.resources;
+  if (resource) {
+    const clock = resource.state === "read" && projectResourceDashboard(resource.payload).schema
+      ? formatClock(resource.observed_at) : null;
+    chips.push(clock
+      ? { state: "read", text: `Resources: read at ${clock}` }
+      : { state: "unknown", text: `Resources: unknown (${resource.reason || "the response could not be verified"})` });
+  }
   strip.innerHTML = `<span class="chip-label">Each read states its own clock</span>${chips
     .map((chip) => `<span class="chip" data-state="${escapeHtml(chip.state)}">${escapeHtml(chip.text)}</span>`)
     .join("")}`;
@@ -322,11 +333,88 @@ function renderDelivery() {
 function renderScopeBlocks() {
   const root = $("dashboardScopeBlocks");
   if (!root) return;
-  const dashboardBlocks = new Set(["changed", "accomplishments", "detected_and_repaired", "resources"]);
+  const dashboardBlocks = new Set(["changed", "accomplishments", "detected_and_repaired"]);
   root.innerHTML = notInReleaseBlocks().filter((block) => dashboardBlocks.has(block.id)).map((block) => `
     <div class="state-block" data-state="not_in_release" data-block="${escapeHtml(block.id)}">
       <h3>${escapeHtml(block.title)}</h3><p>${escapeHtml(block.reason)} · ${escapeHtml(block.slice)}</p>
     </div>`).join("");
+}
+
+const RESOURCE_STATE_LABEL = Object.freeze({
+  ok: "Measured", partial: "Partial evidence", stale: "Stale evidence",
+  unconfigured: "Unconfigured", collector_absent: "No collector observation",
+  host_offline: "Host offline", unknown: "Unknown",
+});
+let paintedResourceRead = null;
+
+function resourceTime(value) {
+  if (!value) return "unknown";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date)
+    : value;
+}
+
+function resourceValue(value) {
+  if (typeof value !== "object" || value === null) return escapeHtml(value);
+  return `<dl class="resource-object">${Object.entries(value).map(([key, fact]) =>
+    `<dt>${escapeHtml(key.replaceAll("_", " "))}</dt><dd>${escapeHtml(typeof fact === "object" ? JSON.stringify(fact) : fact)}</dd>`).join("")}</dl>`;
+}
+
+function openResourceDetail(row) {
+  $("resourceDetailTitle").textContent = row.name;
+  const state = $("resourceDetailState");
+  state.dataset.state = row.state;
+  state.textContent = `${RESOURCE_STATE_LABEL[row.state]}${row.reason ? ` · ${row.reason}` : ""}`;
+  const fields = [
+    ["Provider", row.name], ["Account", row.account], ["Project", row.project],
+    ["Product", row.product], ["Period", row.period],
+    ["As of", resourceTime(row.as_of)], ["Observed", resourceTime(row.observed_at)],
+    ["Source", row.source], ["Reason", row.reason],
+    ...resourceFacts(row).map((fact) => [fact.label, fact.value]),
+  ];
+  $("resourceDetailRows").innerHTML = fields.map(([label, value]) =>
+    `<dt>${escapeHtml(label)}</dt><dd>${resourceValue(value ?? "unknown")}</dd>`).join("");
+  $("resourceDetailDialog").showModal();
+}
+
+function renderResources() {
+  const read = view.reads.resources;
+  if (read === paintedResourceRead) return;
+  paintedResourceRead = read;
+  const model = projectResourceDashboard(read?.state === "read" ? read.payload : null);
+  const reason = read?.state === "unknown" ? read.reason : read?.state === "pending" ? "Taking the resource read…" : null;
+  $("resourceAsOf").textContent = model.generated_at ? `Read ${resourceTime(model.generated_at)}` : "Read time unknown";
+  $("resourceSummary").textContent = model.schema
+    ? `${model.evidenceCount} with source evidence · ${model.unconfiguredCount} unconfigured · ${model.collectorAbsentCount} awaiting first observation`
+    : read?.state === "pending" ? "Taking the resource read…" : "Provider coverage unknown";
+  $("resourceReadState").textContent = reason || (model.schema ? "Select a provider for its source, period and separate resource facts." : "The resource response could not be verified.");
+  const visual = $("resourceCoverageVisual");
+  visual.setAttribute("aria-label", `Provider evidence: ${model.providers.map((row) => `${row.name} ${RESOURCE_STATE_LABEL[row.state]}`).join(", ")}`);
+  visual.innerHTML = `<svg viewBox="0 0 740 120" role="presentation" focusable="false" aria-hidden="true">
+    <path class="resource-spine" d="M74 44 H666" />
+    ${model.providers.map((row, index) => {
+      const x = 74 + index * 148;
+      return `<g class="resource-node" data-state="${escapeHtml(row.state)}" transform="translate(${x} 44)">
+        <circle class="resource-halo" r="25"/><circle class="resource-core" r="11"/>
+        <text y="51" text-anchor="middle">${escapeHtml(row.name)}</text>
+        <text class="resource-node-state" y="68" text-anchor="middle">${escapeHtml(RESOURCE_STATE_LABEL[row.state])}</text>
+      </g>`;
+    }).join("")}
+  </svg>`;
+  const list = $("resourceProviders");
+  list.innerHTML = model.providers.map((row) => `<button class="resource-provider" type="button" data-resource="${escapeHtml(row.provider)}" data-state="${escapeHtml(row.state)}" aria-label="${escapeHtml(row.name)}: ${escapeHtml(RESOURCE_STATE_LABEL[row.state])}; show resource detail">
+    <span class="resource-provider-name">${escapeHtml(row.name)}</span>
+    <span class="resource-provider-state">${escapeHtml(RESOURCE_STATE_LABEL[row.state])}</span>
+    <span class="resource-provider-meta">${escapeHtml(row.period || "Period unknown")} · ${escapeHtml(row.source || "Source unknown")}</span>
+  </button>`).join("");
+  for (const button of list.querySelectorAll("button[data-resource]")) {
+    button.addEventListener("click", () => openResourceDetail(model.providers.find((row) => row.provider === button.dataset.resource)));
+    button.addEventListener("pointerenter", () => visual.querySelectorAll(".resource-node")[model.providers.findIndex((row) => row.provider === button.dataset.resource)]?.classList.add("highlight"));
+    button.addEventListener("pointerleave", () => visual.querySelectorAll(".resource-node").forEach((node) => node.classList.remove("highlight")));
+    button.addEventListener("focus", () => visual.querySelectorAll(".resource-node")[model.providers.findIndex((row) => row.provider === button.dataset.resource)]?.classList.add("highlight"));
+    button.addEventListener("blur", () => visual.querySelectorAll(".resource-node").forEach((node) => node.classList.remove("highlight")));
+  }
 }
 
 /* ------------------------------------------------------ V5-UX-C14 operations */
@@ -402,13 +490,44 @@ function approvalsHtml(card, read) {
   </article>`;
 }
 
+function scheduleJobHtml(job, observedAt) {
+  const timeline = scheduleTimeline(job, observedAt);
+  const lastClock = job.last_run ? formatScheduleDateTime(job.last_run.at) || "unknown" : "unknown";
+  const nextClock = job.next_due_at ? formatScheduleDateTime(job.next_due_at) || "unknown" : "unknown";
+  return `<li class="ops-schedule-job" data-state="${escapeHtml(job.state)}" data-due-overdue="${timeline.dueOverdue}">
+    <details class="ops-item">
+      <summary><span class="ops-schedule-glance"><strong>${escapeHtml(job.name)}</strong><span>Last ${escapeHtml(lastClock)} · ${escapeHtml(job.nextLabel)} ${escapeHtml(nextClock)}</span></span><span class="chip" data-state="${escapeHtml(job.state)}">${escapeHtml(job.state)}</span></summary>
+      <svg class="ops-timeline" viewBox="0 0 300 60" role="img" aria-label="${escapeHtml(`Run timeline for ${job.name}: last run, ${job.nextLabel.toLowerCase()}, now`)}">
+        <title>${escapeHtml(`Run timeline for ${job.name}`)}</title>
+        <path class="ops-timeline-track" d="M32 30 H266" />
+        ${timeline.lastX !== null && timeline.dueX !== null ? `<path class="ops-timeline-flow" d="M${timeline.lastX} 30 H${timeline.dueX}" />` : ""}
+        ${timeline.lastX !== null ? `<circle class="ops-timeline-last" cx="${timeline.lastX}" cy="30" r="6" />` : ""}
+        ${timeline.dueX !== null ? `<circle class="ops-timeline-due" cx="${timeline.dueX}" cy="30" r="7" />` : ""}
+        <circle class="ops-timeline-now" cx="${timeline.nowX}" cy="30" r="4" />
+      </svg>
+      <dl class="detail-rows">
+        <dt>Schedule</dt><dd>${escapeHtml(job.schedule)}</dd>
+        <dt>Last run</dt><dd>${escapeHtml(job.last_run ? `${lastClock} · ${job.last_run.state}` : "Unknown — no verified run receipt")}</dd>
+        <dt>Run receipt</dt><dd>${escapeHtml(job.last_run?.receipt_ref || "Unknown")}</dd>
+        <dt>${escapeHtml(job.nextLabel)}</dt><dd>${escapeHtml(job.next_due_at ? nextClock : "Unknown")}</dd>
+        <dt>Freshness</dt><dd>${escapeHtml(job.freshness)}</dd>
+      </dl>
+      <p class="small">Pause unavailable · Run unavailable · Stop unavailable</p>
+    </details>
+  </li>`;
+}
+
 function scheduleHtml(card) {
   return `<article class="ops-card" data-ops="${escapeHtml(card.id)}" data-state="${escapeHtml(card.state)}">
     <div class="ops-head">
-      <span class="ops-orb" data-tempo="none" aria-hidden="true"></span>
-      <div><p class="eyebrow">No read</p><h3>${escapeHtml(card.title)}</h3></div>
+      <span class="ops-orb" data-tempo="${card.state === "attention" ? "urgent" : card.state === "read" ? "calm" : "none"}" aria-hidden="true"></span>
+      <div><p class="eyebrow">schedule-board</p><h3>${escapeHtml(card.title)}</h3></div>
+      <span class="as-of">${escapeHtml(card.observed_at ? `As of ${formatClock(card.observed_at)}` : "unknown")}</span>
     </div>
     <p class="ops-value tile-value" data-state="${escapeHtml(card.state)}">${escapeHtml(card.word)}</p>
+    ${card.sources.length ? `<div class="ops-sources" aria-label="Schedule sources">${card.sources.map((source) =>
+      `<span class="chip" data-state="${escapeHtml(source.state)}">${escapeHtml(source.owner)} · ${escapeHtml(source.state === "read" ? String(source.count) : "unknown")}</span>`).join("")}</div>` : ""}
+    ${card.jobs.length ? `<ul class="ops-schedule-list">${card.jobs.map((job) => scheduleJobHtml(job, card.observed_at)).join("")}</ul>` : ""}
     <p>${escapeHtml(card.body)}</p>
   </article>`;
 }
@@ -423,19 +542,19 @@ function openOldest(key) {
 }
 
 /**
- * V5-UX-C14: the approvals card from governance-queue and the honest no-read
- * schedule card. Painted only when the approvals read itself changes.
+ * Approvals and schedule each settle independently; either answer repaints.
  */
 function renderOperations() {
   const root = $("operationsBlocks");
   if (!root) return;
   const read = view.reads.approvals;
-  const signature = `${read?.state}|${read?.observed_at || ""}|${read?.reason || ""}`;
+  const scheduleRead = view.reads.schedule;
+  const signature = `${read?.state}|${read?.observed_at || ""}|${read?.reason || ""}|${scheduleRead?.state}|${scheduleRead?.observed_at || ""}|${scheduleRead?.reason || ""}`;
   if (paintedApprovals === signature) return;
   paintedApprovals = signature;
   stopWaitingClock();
   const card = approvalsCard(readFor("approvals"));
-  root.innerHTML = approvalsHtml(card, read) + scheduleHtml(scheduleCard());
+  root.innerHTML = approvalsHtml(card, read) + scheduleHtml(scheduleCard(readFor("schedule")));
 
   // A staggered entrance, set through CSSOM: the Worker's CSP refuses a style
   // attribute written into markup.
@@ -516,7 +635,7 @@ function openIncident(ref) {
 
 function renderStatus() {
   const attempted = Object.fromEntries(Object.entries(view.reads).filter(([, read]) => read.state !== "pending"));
-  const phase = readPhase({ status: view.status, reads: attempted });
+  const phase = resourceRoomPhase(readPhase({ status: view.status, reads: attempted }), view.reads.resources);
   const words = {
     loading: "Taking the reads…",
     no_access: "Session ended",
@@ -547,6 +666,7 @@ function render() {
   renderDelivery();
   renderIncidents();
   renderOperations();
+  renderResources();
   renderScopeBlocks();
 }
 
@@ -594,6 +714,8 @@ async function load() {
     take("needs_joe", () => client.currentWorkRequests(), "the shared request read refused or could not be reached"),
     take("census", () => census(), "the census refused or could not be reached"),
     take("approvals", () => client.governanceQueue(), "the governance queue refused or could not be reached"),
+    take("schedule", () => client.scheduleBoard(), "the schedule board refused or could not be reached"),
+    take("resources", () => client.readResourceDashboard(), "the resource read refused or could not be reached"),
   ]);
   render();
   // V5-UX-C15 (C21): leave a timestamped last-known picture on THIS device so
@@ -661,6 +783,7 @@ async function boot() {
     if (event.target.closest("#tabModelRoom")) openModelRoom();
   }, true);
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
+  $("resourceDetailClose")?.addEventListener("click", () => $("resourceDetailDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());
   renderOperations();
   renderScopeBlocks();

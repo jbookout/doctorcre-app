@@ -11,10 +11,8 @@
 //      decide-guidance-import-batch and retrieval proposals awaiting
 //      approve-retrieval-proposals. It does not list approvals of production
 //      effects, and no read does, so none is claimed.
-//   3. Scheduled automation has NO read at all: no CARR verb reads scheduled
-//      jobs, launchd agents or routine state. That card is a named no-read
-//      state with no number and no countdown, because a countdown with no next
-//      run behind it would be the page inventing one.
+//   3. Scheduled automation reads schedule-board/v1. A cadence deadline is
+//      labelled "expected by"; an absent native observation is unknown.
 //   4. Motion is driven by the data that landed and nothing else: the count
 //      climbs to the verified total, and the only ambient clock is the real age
 //      of the oldest waiting decision. Reduced motion lands every value in one
@@ -150,21 +148,82 @@ export function waitingAge(sinceIso, now = Date.now(), { seconds = true } = {}) 
   return { known: true, ms, text: seconds ? `waiting ${d}d ${h}h ${m}m ${s}s` : `waiting ${d}d ${h}h ${m}m`, tempo };
 }
 
-/**
- * Scheduled automation: a named no-read state. No CARR verb reads a schedule,
- * a last run or a next run, so the card carries no number and no countdown.
- * When a schedule read exists, `countdown` is where the next run's time goes.
- */
-export function scheduleCard() {
+const SCHEDULE_OWNERS = ["launchd", "claude-code", "control-plane", "cron"];
+const SCHEDULE_STATES = ["healthy", "missed", "failed", "paused", "running", "unknown"];
+
+/** A schedule timestamp needs its day as well as its local AM/PM clock. */
+export function formatScheduleDateTime(at, options = {}) {
+  if (!isTime(at)) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+    ...options,
+  }).format(new Date(at));
+}
+
+/** Chronological positions for the run, due time and observation marker. */
+export function scheduleTimeline(job, observedAt) {
+  const markers = [{ name: "now", at: Date.parse(observedAt) }];
+  if (isTime(job?.last_run?.at)) markers.push({ name: "last", at: Date.parse(job.last_run.at) });
+  if (isTime(job?.next_due_at)) markers.push({ name: "due", at: Date.parse(job.next_due_at) });
+  markers.sort((a, b) => a.at - b.at || ["last", "due", "now"].indexOf(a.name) - ["last", "due", "now"].indexOf(b.name));
+  const positions = markers.length === 1 ? [150] : markers.length === 2 ? [32, 266] : [32, 150, 266];
+  const x = Object.fromEntries(markers.map((marker, index) => [marker.name, positions[index]]));
   return {
-    id: "automation",
-    title: "Scheduled automation",
-    state: "no_read",
-    word: "no schedule read yet",
-    body: "No schedule read yet. No CARR verb reads scheduled jobs, launchd agents or routine state, so last run, next run and active state are not shown, and disable-legacy-schedule is a partner-only write, not a read. This card will count down to the next run when a schedule read exists.",
-    countdown: null,
-    slice: "V5-UX-C14",
+    lastX: x.last ?? null, dueX: x.due ?? null, nowX: x.now,
+    dueOverdue: x.due !== undefined && Date.parse(job.next_due_at) < Date.parse(observedAt),
   };
+}
+
+/** The pinned schedule-board/v1 read, including source coverage. */
+export function validScheduleBoardPayload(payload) {
+  if (!payload || payload.ok !== true || payload.schema !== "schedule-board/v1"
+      || !isTime(payload.observed_at) || !["read", "attention", "unknown"].includes(payload.overall_state)
+      || !Array.isArray(payload.sources) || !Array.isArray(payload.jobs)) return false;
+  if (payload.sources.length !== SCHEDULE_OWNERS.length) return false;
+  for (const owner of SCHEDULE_OWNERS) {
+    const source = payload.sources.find((row) => row?.owner === owner);
+    const count = payload.jobs.filter((job) => job?.owner === owner).length;
+    if (!source || !["read", "unknown"].includes(source.state)
+        || source.count !== (count || null) || (count === 0 && source.state !== "unknown")) return false;
+  }
+  const keys = new Set();
+  for (const job of payload.jobs) {
+    if (!job || !isText(job.key) || !isText(job.name) || !SCHEDULE_OWNERS.includes(job.owner)
+        || !SCHEDULE_STATES.includes(job.state) || !["fresh", "stale", "unknown"].includes(job.freshness)
+        || !isText(job.schedule) || !orNull(job.next_due_at, isTime)
+        || ![null, "cadence_deadline", "queued_job"].includes(job.next_due_basis)
+        || Boolean(job.next_due_at) !== Boolean(job.next_due_basis)
+        || !job.actions || job.actions.pause !== false || job.actions.run !== false || job.actions.stop !== false
+        || (job.last_run && (!isTime(job.last_run.at) || !isText(job.last_run.receipt_ref)))
+        || keys.has(`${job.owner}:${job.key}`)) return false;
+    keys.add(`${job.owner}:${job.key}`);
+  }
+  return true;
+}
+
+export function scheduleCard(read) {
+  const base = { id: "automation", title: "Scheduled automation" };
+  if (read?.state !== "read" || !validScheduleBoardPayload(read.payload)) {
+    return { ...base, state: "unknown", word: "unknown",
+      body: "The schedule read is unavailable. Last runs and next due times cannot be confirmed.",
+      sources: [], jobs: [], observed_at: null };
+  }
+  const payload = read.payload;
+  const jobs = payload.jobs.map((job) => ({
+    ...job,
+    nextLabel: job.next_due_at
+      ? job.next_due_basis === "cadence_deadline" ? "Expected by" : "Next queued"
+      : job.state === "paused" ? "Unknown while paused" : "Unknown",
+  }));
+  const missed = jobs.filter((job) => job.state === "missed").length;
+  const failed = jobs.filter((job) => job.state === "failed").length;
+  const paused = jobs.filter((job) => job.state === "paused").length;
+  const word = [missed && `${missed} missed`, failed && `${failed} failed`, paused && `${paused} paused`]
+    .filter(Boolean).join(" · ") || (jobs.length ? `${jobs.length} known jobs` : "unknown");
+  return { ...base, state: payload.overall_state, word,
+    body: "Times marked expected by are cadence deadlines, not confirmed scheduler fire times. Pause, run and stop are unavailable until a job has an authorized operation.",
+    sources: payload.sources, jobs, observed_at: payload.observed_at };
 }
 
 /* ------------------------------------------------------------------ motion */

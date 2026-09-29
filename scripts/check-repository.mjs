@@ -20,6 +20,7 @@ assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
 assert.equal(contract.transport.database_access, "forbidden");
 assert.ok(contract.mcp_operations.includes("deal-room-board"));
 assert.ok(contract.mcp_operations.includes("patch-deal-field"));
+for (const verb of ["list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(contract.mcp_operations.includes(verb), `the Events tab needs ${verb} pinned`);
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
 for (const path of ["control-room.html", "progress-board.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html"]) await read(path);

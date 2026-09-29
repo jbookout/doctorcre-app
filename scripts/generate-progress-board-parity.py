@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-PIN = "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0"
+PIN = "016dd6aded165d5117f3dd7ad84b483613f09c90"
 AT = "2026-09-28T13:00:00Z"
 STAGES = ("queued", "build", "review", "ci", "merged", "live")
 HEALTH = ("healthy", "question", "blocked")

@@ -87,6 +87,7 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} idempotency_key -> result */
   const idem = new Map();
+  const industryEvents = new Map(); // Demo-only records added through this fixture client.
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
@@ -1819,6 +1820,31 @@ export async function createFixtureClient(opts = {}) {
       return { loop: structuredClone(found) };
     },
 
+    async listIndustryEvents({ limit = 50 } = {}) {
+      const rows = [...industryEvents.values()].sort((a, b) =>
+        Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id)).slice(0, limit);
+      return { ok: true, events: structuredClone(rows), count: rows.length };
+    },
+
+    async addIndustryEvent({ idempotency_key, ...fields }) {
+      return withIdem(idempotency_key || uuidv4(), () => {
+        const event = { id: uuidv4(), version: 1, is_virtual: false,
+          attendance_intent: 'considering', status: 'planned', ...fields };
+        industryEvents.set(event.id, event);
+        return { ok: true, event: structuredClone(event) };
+      });
+    },
+
+    async updateIndustryEvent({ idempotency_key, event_id, base_version, ...fields }) {
+      return withIdem(idempotency_key || uuidv4(), () => {
+        const current = industryEvents.get(event_id);
+        if (!current || current.version !== base_version) refuse('update-industry-event', 'industry_event_version_conflict');
+        const event = { ...current, ...fields, version: current.version + 1 };
+        industryEvents.set(event_id, event);
+        return { ok: true, event: structuredClone(event) };
+      });
+    },
+
     // The record layer's own answer shape: {count, blocks:[...]} with the
     // version edit-loop-header would need as base_version.
     async loopHeaders() {
@@ -2710,6 +2736,24 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async readResourceDashboard() {
+      refuseIfOutage('resources', 'read-resource-dashboard');
+      return {
+        ok: true, schema: 'doctorcre-resource-dashboard.v1', generated_at: nowIso(),
+        providers: ['neon', 'github', 'cloudflare', 'local_compute', 'model_route'].map((provider) => ({
+          provider,
+          state: ['neon', 'github', 'cloudflare'].includes(provider) ? 'unconfigured' : 'collector_absent',
+          reason: ['neon', 'github', 'cloudflare'].includes(provider)
+            ? 'no collector configured for this provider yet (V5-UX-C03/C04/C05 not built)'
+            : 'no collector observation received yet',
+          account: null, project: null, product: null, period: null, as_of: null,
+          quantity: null, quantity_unit: null, allowance: null, policy: null,
+          estimate: null, charge: null, measured_capacity: null, configured_capacity: null,
+          model_route: null, source: null, observed_at: null,
+        })),
+      };
+    },
+
     async currentWorkRequests() {
       refuseIfOutage('needs_joe', 'current-work-requests');
       return { ok: true, items: sharedRequests.map((row) => ({ ...row, source: { ...row.source } })) };
@@ -2746,6 +2790,36 @@ export async function createFixtureClient(opts = {}) {
           total: rules.length + batches.length + proposals.length,
         },
       };
+    },
+
+    async scheduleBoard() {
+      refuseIfOutage('schedule', 'schedule-board');
+      const now = Date.now();
+      const at = (hours) => new Date(now - hours * 3_600_000).toISOString();
+      const jobs = [
+        {
+          key: 'demo-nightly', name: 'Demo nightly record', owner: 'launchd',
+          state: 'missed', freshness: 'stale', schedule: 'Every 24 hours',
+          last_run: { state: 'succeeded', at: at(54), receipt_ref: 'demo:run-nightly' },
+          next_due_at: at(30), next_due_basis: 'cadence_deadline',
+          actions: { pause: false, run: false, stop: false },
+        },
+        {
+          key: 'demo-paused', name: 'Demo paused review', owner: 'claude-code',
+          state: 'paused', freshness: 'fresh', schedule: 'Every 168 hours',
+          last_run: { state: 'succeeded', at: at(120), receipt_ref: 'demo:run-paused' },
+          next_due_at: null, next_due_basis: null,
+          actions: { pause: false, run: false, stop: false },
+        },
+      ];
+      return { ok: true, schema: 'schedule-board/v1', observed_at: new Date(now).toISOString(),
+        overall_state: 'attention',
+        sources: [
+          { owner: 'launchd', state: 'read', count: 1 },
+          { owner: 'claude-code', state: 'read', count: 1 },
+          { owner: 'control-plane', state: 'unknown', count: null },
+          { owner: 'cron', state: 'unknown', count: null },
+        ], jobs };
     },
 
     // ---------------------------------------------------------- command centre
