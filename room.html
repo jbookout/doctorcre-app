@@ -9,13 +9,16 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/room.css?v=job-passport-spatial-v1">
+  <link rel="stylesheet" href="/css/queue.css">
   <title>Observatory · The Deal Room</title>
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body class="room-body">
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#wireFeed">Skip to the wire</a>
 
   <header class="room-header">
-    <a class="room-wordmark" href="/">Observa<span>tory</span></a>
+    <span class="room-wordmark">Observa<span>tory</span></span>
     <span class="live-badge" aria-hidden="true">Live</span>
     <p class="room-presence" id="roomPresence">
       <span class="dot" id="presenceDot" data-state="dormant"></span>
@@ -26,14 +29,7 @@
       <span class="figure"><span class="figure-label">Bridge</span><span class="figure-value" id="figBridge">—</span></span>
       <span class="figure"><span class="figure-label">Desks</span><span class="figure-value" id="figDesks">—</span></span>
     </div>
-    <nav class="room-nav" aria-label="Workspaces">
-      <a href="/">Home</a>
-      <a href="/leads">Leads</a>
-      <a href="/deals">Deals</a>
-      <a href="/system-work.html">System work</a>
-      <a href="/room.html" aria-current="page">Observatory</a>
-      <a href="/queue.html">Queue</a>
-    </nav>
+    <button type="button" id="openTaskBoard" class="room-task-board-open">Task board</button>
   </header>
 
   <!-- THE ORBITAL STAGE. The shared wire at dead centre, both partners'
@@ -169,6 +165,32 @@
   <div class="room-banner" id="roomBanner" role="status" hidden></div>
   <div class="room-toast" id="roomToast" role="alert" hidden></div>
 
+  <dialog id="taskBoardDialog" class="room-task-board-dialog" aria-labelledby="taskBoardTitle">
+    <section class="room-task-board" aria-labelledby="taskBoardTitle">
+      <header class="room-task-board-heading"><div><p class="eyebrow">Observatory</p><h2 id="taskBoardTitle">Task board</h2></div><div><span class="live-badge" id="queueLive">Connecting</span><button type="button" id="closeTaskBoard" aria-label="Close task board">×</button></div></header>
+      <p id="queueSync" role="status">Reading the task board…</p>
+      <div class="queue-main">
+        <section class="queue-toolbar panel" aria-label="Task board controls">
+          <label>Target <select id="queueTarget"><option value="">All targets</option></select></label>
+          <label>Status <select id="queueStatus"><option value="">All statuses</option></select></label>
+          <span id="queueNotice" role="status"></span>
+        </section>
+        <section class="queue-columns" id="queueColumns" aria-label="Tasks by status"></section>
+        <aside class="queue-drawer panel" id="queueDrawer" aria-live="polite" hidden>
+          <button type="button" id="drawerClose">Close</button><h3 id="drawerTitle"></h3><p id="drawerSummary"></p><dl id="drawerMeta"></dl>
+        </aside>
+        <form class="queue-compose panel" id="queueComposer">
+          <h3>Add read-only work</h3>
+          <label>Target <select id="enqueueTarget"><option value="sol">Sol</option></select></label>
+          <label>Title <input id="enqueueTitle" maxlength="200" required></label>
+          <label>Details <textarea id="enqueueBody" maxlength="8000" rows="2"></textarea></label>
+          <button type="submit">Add task</button>
+        </form>
+      </div>
+    </section>
+  </dialog>
+
   <script type="module" src="js/room.js?v=job-passport-spatial-v1"></script>
+  <script type="module" src="/js/queue.js"></script>
 </body>
 </html>

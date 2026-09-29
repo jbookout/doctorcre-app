@@ -346,7 +346,7 @@ test("the Calendar page carries the shared shell, an accessible grid and an agen
   assert.match(html, /<a class="skip" href="#main">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/calendar\.css">/);
-  assert.match(html, /id="navUnreadBadge" hidden/);
+  assert.match(html, /id="appShell"/);
   assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
   assert.match(html, /id="docReading">Doc is reading: Calendar</);
   assert.match(html, /id="receiptDock"/);

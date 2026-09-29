@@ -1303,7 +1303,7 @@ function wireEvents() {
 }
 
 async function boot() {
-  if (localStorage.getItem('dealroom-theme') === 'night') document.body.classList.add('night');
+  document.body.classList.toggle('night', localStorage.getItem('dealroom-theme') !== 'light');
   if (localStorage.getItem('dealroom-color-assist') === 'on') {
     document.body.classList.add('color-assist');
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');

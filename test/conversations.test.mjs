@@ -572,7 +572,7 @@ test("an empty list says so, and says nothing about this device", async () => {
 
 test("the page is the shared shell, carries no composer in the transcript, and holds 44px at 360px", async () => {
   assert.match(html, /<title>Conversations · DoctorCRE<\/title>/);
-  assert.match(html, /<a href="\/conversations" aria-current="page">Conversations<\/a>/);
+  assert.match(html, /id="appShell"/);
   assert.match(html, /data-theme="dark" data-density="comfortable" data-motion="full"/);
   assert.match(html, /<meta name="theme-color" content="#07111f">/);
   assert.match(html, /viewport-fit=cover/);

@@ -382,7 +382,7 @@ test("clause 10: the route, the versions, the producer pin and the two verbs are
 
 test("the page is the shared shell, the activity panel is its own thing, and 44px holds at 360px", async () => {
   assert.match(html, /<title>Notifications · DoctorCRE<\/title>/);
-  assert.match(html, /<a href="\/notifications" aria-current="page">Notifications<\/a>/);
+  assert.match(html, /id="appShell"/);
   assert.match(html, /data-theme="dark" data-density="comfortable" data-motion="full"/);
   assert.match(html, /<meta name="theme-color" content="#07111f">/);
   assert.match(html, /viewport-fit=cover/);

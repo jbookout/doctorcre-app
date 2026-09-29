@@ -321,7 +321,7 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   assert.match(html, /id="taskLive"[^>]*aria-live="polite"/);
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "commands report in the shared dock");
   assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.match(html, /<a href="\/tasks" aria-current="page">Tasks<\/a>/, "the page is listed in the navigation it belongs to");
+  assert.match(html, /id="appShell"/, "the page mounts the shared navigation");
   for (const id of ["quickAddForm", "quickAddInput", "quickAddDate", "quickAddParsed", "quickAddQuestion", "quickAddDraft", "scopeSwitch", "taskList", "taskDialog", "taskState", "systemOwned"]) {
     assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
   }

@@ -765,7 +765,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(html, /role="tab"[^>]*>Atlas</, "the Atlas tab is gone");
   assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "a second Doc control appeared");
   assert.doesNotMatch(html, /atlas\.css/, "the atlas added its own stylesheet");
-  assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 3, "the atlas added a stylesheet link");
+  assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 4, "only the shared app shell adds a stylesheet");
   // Mobile first at 360px: no fixed pixel width of three digits or more.
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width was added");
   // Every control this slice adds sits at or above the 44px touch floor.
