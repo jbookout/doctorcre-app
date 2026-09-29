@@ -6,6 +6,26 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const rights = Object.freeze({ open: true, message: false, takeover: false });
 
+/** A used native link is one-shot until a validated list read replaces it. */
+export function createOpenLinkGuard() {
+  const retired = new Set();
+  return {
+    allows(id) { return !retired.has(id); },
+    retire(id, link) {
+      if (id) retired.add(id);
+      // Remove both the navigation target and the control. Cached view data
+      // cannot put it back while this id remains retired.
+      link?.removeAttribute('href');
+      link?.remove();
+    },
+    refresh(validated) {
+      if (validated !== true) return false;
+      retired.clear();
+      return true;
+    },
+  };
+}
+
 function target(canonicalSessionId, nativeTaskId, allowed, hostAvailable, reason) {
   const copyId = typeof canonicalSessionId === 'string' && canonicalSessionId ? canonicalSessionId : null;
   if (!allowed || !hostAvailable || !UUID.test(nativeTaskId ?? '')) {

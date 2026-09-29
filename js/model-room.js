@@ -40,7 +40,7 @@ import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
 import { uuidv4 } from "./uuid.js";
-import { reconcileOpenAttempt } from './open-session-model.js';
+import { createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -50,6 +50,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 let mounted = false;
 let client = null;
 let pendingOpen = null;
+const openLinks = createOpenLinkGuard();
 const hostAvailable = () => /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 
 const view = {
@@ -362,14 +363,14 @@ function renderContext() {
       <dt>attempts</dt><dd>${escapeHtml(String(panel.attemptCount))}</dd>
       <dt>latest attempt</dt><dd>${escapeHtml(panel.attemptRef ?? "no attempt reference recorded")}</dd>
     </dl>
-    ${panel.openTarget.open ? `<a class="btn btn-primary" data-open-model-room-session="${escapeHtml(panel.id)}" href="${escapeHtml(panel.openTarget.href)}">Open session</a>` : ''}
+    ${panel.openTarget.open && openLinks.allows(panel.id) ? `<a class="btn btn-primary" data-open-model-room-session="${escapeHtml(panel.id)}" href="${escapeHtml(panel.openTarget.href)}">Open session</a>` : ''}
     <p class="model-room-no-open">${escapeHtml(panel.noOpenText)}</p>
     <button class="btn" type="button" id="modelRoomCopyId" data-copy="${escapeHtml(panel.id)}">Copy the canonical session ID</button>
     <div class="context-dispatch">${dispatchHtml()}</div>`;
   const copy = $("modelRoomCopyId");
   const open = root.querySelector('[data-open-model-room-session]');
   open?.addEventListener('click', () => {
-    pendingOpen = panel.openTarget;
+    pendingOpen = { id: panel.id, target: panel.openTarget, link: open };
     announce('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
   });
   if (copy) {
@@ -716,6 +717,7 @@ async function take(slot, run, refuse) {
     if (sequence !== view.sequence[slot]) return;
     const refusal = refuse(payload);
     view[slot] = { state: "ready", payload: refusal ? null : payload, refusal };
+    if (slot === "sessions") openLinks.refresh(!refusal);
   } catch (error) {
     if (sequence !== view.sequence[slot]) return;
     view[slot] = {
@@ -834,11 +836,14 @@ export function mountModelRoom({ outage = null } = {}) {
     if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
     const attempt = pendingOpen;
     pendingOpen = null;
+    openLinks.retire(attempt.id, attempt.link);
+    renderContext();
     try {
-      const payload = await client.sessionIdentity({ query: attempt.canonicalSessionId, limit: 50, include_closed: true });
-      const result = reconcileOpenAttempt(attempt, payload, { hostAvailable: hostAvailable() });
+      const payload = await client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50, include_closed: true });
+      const result = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
+        { hostAvailable: hostAvailable() });
       announce(result.state === 'same_target_unconfirmed'
-        ? 'The recorded target is unchanged. Open again if Codex did not come forward.'
+        ? 'The recorded target is unchanged. Refresh sessions before opening again.'
         : 'The recorded target could not be confirmed. Refresh before opening.');
     } catch {
       announce('The open result is unknown. Refresh before trying again.');

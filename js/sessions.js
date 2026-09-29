@@ -18,7 +18,7 @@ import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
-import { reconcileOpenAttempt } from './open-session-model.js';
+import { createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -49,6 +49,7 @@ function announce(text) {
 const clock = (value) => formatClock(value) || "unknown";
 const hostAvailable = () => /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
 let pendingOpen = null;
+const openLinks = createOpenLinkGuard();
 
 /* -------------------------------------------------------------------- painting */
 
@@ -81,6 +82,7 @@ function chip(label, value, state = "read") {
 }
 
 function cardHtml(card) {
+  const canOpen = card.openTarget.open && openLinks.allows(card.id);
   return `<article class="card glass session-card" data-session="${escapeHtml(card.id)}">
     <div class="session-head">
       <div class="session-identity">
@@ -99,12 +101,12 @@ function cardHtml(card) {
     <p class="session-lineage" data-relation="${escapeHtml(card.lineage.relation)}">${escapeHtml(card.lineage.text)}</p>
     <p class="session-attempts">${escapeHtml(card.attemptsText)}</p>
     <p class="session-host" data-host="${escapeHtml(card.host.state)}">${escapeHtml(card.host.text)}</p>
-    <div class="session-open-route" data-verified="${card.openTarget.open}" role="img" aria-label="${card.openTarget.open ? 'CARR session identity connects to a verified native task and its Codex Desktop thread' : 'Native task and host connection have not been verified for this session'}">
+    <div class="session-open-route" data-verified="${canOpen}" role="img" aria-label="${canOpen ? 'CARR session identity connects to a verified native task and its Codex Desktop thread' : 'Native task and host connection have not been verified for this session'}">
       <svg viewBox="0 0 300 34" aria-hidden="true" focusable="false"><path d="M25 17H275"/><circle cx="25" cy="17" r="7"/><circle cx="150" cy="17" r="7"/><circle cx="275" cy="17" r="7"/></svg>
       <span>Identity</span><span>Native task</span><span>Codex thread</span>
     </div>
     <div class="session-open-actions">
-      ${card.openTarget.open ? `<a class="btn btn-primary" data-open-session="${escapeHtml(card.id)}" href="${escapeHtml(card.openTarget.href)}">Open session</a>` : ''}
+      ${canOpen ? `<a class="btn btn-primary" data-open-session="${escapeHtml(card.id)}" href="${escapeHtml(card.openTarget.href)}">Open session</a>` : ''}
       <button class="btn btn-quiet" type="button" data-copy-session="${escapeHtml(card.id)}">Copy session ID</button>
       <span class="small" data-open-status="${escapeHtml(card.id)}"></span>
     </div>
@@ -147,7 +149,7 @@ function renderList() {
   for (const link of list.querySelectorAll('[data-open-session]')) {
     link.addEventListener('click', () => {
       const card = cards.find(item => item.id === link.dataset.openSession);
-      pendingOpen = card?.openTarget ?? null;
+      pendingOpen = card ? { id: card.id, target: card.openTarget, link } : null;
       announce('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
@@ -245,6 +247,7 @@ async function read() {
     view.status = "ready";
     view.refusal = refusal;
     view.payload = refusal ? null : payload;
+    openLinks.refresh(!refusal);
   } catch (error) {
     if (sequence !== view.sequence) return;
     view.status = "ready";
@@ -307,12 +310,15 @@ export function mountSessions({ outage = null } = {}) {
     if (document.visibilityState !== 'visible' || !pendingOpen || !client) return;
     const attempt = pendingOpen;
     pendingOpen = null;
+    openLinks.retire(attempt.id, attempt.link);
+    renderList();
     try {
-      const payload = await client.sessionIdentity({ query: attempt.canonicalSessionId, limit: 50 });
-      const outcome = reconcileOpenAttempt(attempt, payload, { hostAvailable: hostAvailable() });
+      const payload = await client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50 });
+      const outcome = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
+        { hostAvailable: hostAvailable() });
       announce(outcome.state === 'same_target_unconfirmed'
-        ? 'The recorded target is unchanged. Open again if Codex did not come forward.'
-        : 'The recorded target changed. Refresh the session list before opening.');
+        ? 'The recorded target is unchanged. Refresh the session list before opening again.'
+        : 'The recorded target could not be confirmed. Refresh the session list before opening.');
     } catch {
       announce('The open result is unknown. Refresh the session list before trying again.');
     }

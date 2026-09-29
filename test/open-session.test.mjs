@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sessionOpenTarget, outcomeOpenTarget, reconcileOpenAttempt, reconcileOutcomeOpenAttempt,
+  createOpenLinkGuard,
 } from '../js/open-session-model.js';
+import { readFileSync } from 'node:fs';
 
 const nativeId = '11111111-1111-4111-8111-111111111111';
 const session = {
@@ -71,4 +73,36 @@ test('outcome handoff reconciliation keeps the same native target and never retr
   assert.deepEqual(fresh, { state: 'same_target_unconfirmed', href: prior.href, autoRetry: false });
   assert.equal(reconcileOutcomeOpenAttempt(prior, { ...card, native_task_id: { value: null } },
     { hostAvailable: true }).state, 'target_changed');
+});
+
+test('a returning Open attempt retires its anchor and cannot be restored from cached rows', () => {
+  const guard = createOpenLinkGuard();
+  const link = {
+    href: `codex://threads/${nativeId}`,
+    removed: false,
+    removeAttribute(name) { if (name === 'href') this.href = null; },
+    remove() { this.removed = true; },
+  };
+  assert.equal(guard.allows(nativeId), true);
+  guard.retire(nativeId, link);
+  assert.equal(link.href, null);
+  assert.equal(link.removed, true);
+  assert.equal(guard.allows(nativeId), false);
+  assert.equal(guard.refresh(false), false, 'an unconfirmed read cannot restore Open');
+  assert.equal(guard.allows(nativeId), false);
+  assert.equal(guard.refresh(true), true, 'a validated fresh read can restore Open');
+  assert.equal(guard.allows(nativeId), true);
+});
+
+test('every Open surface retires the clicked anchor and gates cached re-renders', () => {
+  for (const file of ['sessions.js', 'model-room.js', 'conversations.js']) {
+    const source = readFileSync(new URL(`../js/${file}`, import.meta.url), 'utf8');
+    assert.match(source, /openLinks\.retire\(/, `${file} does not retire its clicked anchor`);
+    assert.match(source, /openLinks\.allows\(/, `${file} can restore the cached anchor`);
+    assert.match(source, /openLinks\.refresh\(/, `${file} never admits a fresh verified target`);
+    if (file === 'conversations.js') {
+      assert.match(source, /openLinks\.refresh\(!cursor\)/,
+        'loading a later outcome-card page can revive an older stale link');
+    }
+  }
 });

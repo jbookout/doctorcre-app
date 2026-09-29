@@ -48,7 +48,7 @@ import {
   outcomeCardsEmptyMessage, outcomeCardsPagingState, outcomeCardsRequest,
   refuseDocOutcomeCards,
 } from "./doc-outcome-cards-model.js";
-import { reconcileOutcomeOpenAttempt } from './open-session-model.js';
+import { createOpenLinkGuard, reconcileOutcomeOpenAttempt } from './open-session-model.js';
 import { uuidv4 } from "./uuid.js";
 import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow, suggestionReadState, suggestionStatus, visibleSuggestionConflicts, reconcileSuggestionConflicts } from "./doc-suggestions-model.js";
 
@@ -83,6 +83,7 @@ const view = {
 
 let client = null;
 let pendingOutcomeOpen = null;
+const openLinks = createOpenLinkGuard();
 let commandState = createCommandState();
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
@@ -260,7 +261,7 @@ function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextChec
       <p class="small" data-outcome="${String(card.result.available)}">Result: ${outcomeFieldSpan("result", changed.result, String(result))}</p>
       <p class="small caption">${escapeHtml(card.freshness.text)}</p>
       <p class="small session-host" data-open="${entry.open}">${escapeHtml(entry.reasonSentence)} ${escapeHtml(entry.scopedSolution ?? '')}</p>
-      ${entry.open ? `<a class="btn btn-primary" data-open-outcome-session="${escapeHtml(card.id)}" href="${escapeHtml(entry.href)}">Open session</a>` : ''}
+      ${entry.open && openLinks.allows(card.id) ? `<a class="btn btn-primary" data-open-outcome-session="${escapeHtml(card.id)}" href="${escapeHtml(entry.href)}">Open session</a>` : ''}
       ${entry.sessionRef ? `<button class="btn btn-quiet" type="button" data-copy-outcome-session="${escapeHtml(card.id)}">Copy session ID</button>` : ''}
       ${sessionRefLine}
     </div>
@@ -306,7 +307,7 @@ function renderOutcomeCards() {
   for (const link of list.querySelectorAll('[data-open-outcome-session]')) {
     link.addEventListener('click', () => {
       const card = cards.find(item => item.id === link.dataset.openOutcomeSession);
-      pendingOutcomeOpen = card ? { cardId: card.id, target: card.sessionEntry.target } : null;
+      pendingOutcomeOpen = card ? { cardId: card.id, target: card.sessionEntry.target, link } : null;
       announceOutcomeCards('Opening the recorded Codex thread. The browser cannot confirm whether the host accepted it.');
     });
   }
@@ -499,6 +500,9 @@ async function takeOutcomeCards({ cursor = null } = {}) {
       view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
     } else {
       view.outcomeCards = { ...view.outcomeCards, state: "read", payload, rows: [...held, ...payload.cards], sequence };
+      // A later page appends to cached earlier pages; only a new first-page
+      // read replaces the rows from which a retired Open link was rendered.
+      openLinks.refresh(!cursor);
     }
   } catch (error) {
     if (view.outcomeCards.sequence !== sequence) return;
@@ -739,13 +743,16 @@ async function boot() {
     if (document.visibilityState !== 'visible' || !pendingOutcomeOpen || !client) return;
     const attempt = pendingOutcomeOpen;
     pendingOutcomeOpen = null;
+    openLinks.retire(attempt.cardId, attempt.link);
+    renderOutcomeCards();
     try {
       const fresh = await client.docOutcomeCards({ limit: 50 });
-      const card = fresh?.cards?.find(item => item.card_id === attempt.cardId);
+      const card = refuseDocOutcomeCards(fresh) ? null
+        : fresh.cards.find(item => item.card_id === attempt.cardId);
       const result = reconcileOutcomeOpenAttempt(attempt.target, card,
         { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') });
       announceOutcomeCards(result.state === 'same_target_unconfirmed'
-        ? 'The recorded target is unchanged. Open again if Codex did not come forward.'
+        ? 'The recorded target is unchanged. Refresh this card before opening again.'
         : 'The recorded target could not be confirmed. Refresh this card before opening.');
     } catch {
       announceOutcomeCards('The open result is unknown. Refresh this card before trying again.');
