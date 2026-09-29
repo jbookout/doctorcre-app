@@ -57,6 +57,58 @@
 .state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
 .state-block + .state-block { margin-top: 10px; }
 
+/* Resource coverage: five independent provider slots on one observation rail.
+ * Filled cores carry evidence; outlined cores have none. Labels stay visible
+ * when every animation is removed. */
+.resource-card { overflow: hidden; }
+.resource-summary { margin: 0 0 12px; color: var(--text); font: 600 20px/1.15 var(--display); }
+.resource-visual { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--orange) 13%, transparent), transparent 72%), color-mix(in srgb, var(--ground-0) 56%, transparent); }
+.resource-visual svg { display: block; width: 100%; height: auto; min-height: 120px; }
+.resource-spine { fill: none; stroke: var(--line-strong); stroke-width: 2; stroke-dasharray: 4 8; }
+.resource-node { color: var(--quiet); transition: color var(--motion-enter) var(--ease); }
+.resource-node text { fill: var(--text); font: 600 15px var(--display); }
+.resource-node .resource-node-state { fill: var(--quiet); font: 500 10px var(--body); }
+.resource-halo { fill: transparent; stroke: var(--line-strong); stroke-width: 1.5; }
+.resource-core { fill: transparent; stroke: var(--quiet); stroke-width: 2.5; }
+.resource-node[data-state="ok"] .resource-core { fill: var(--cyan); stroke: var(--cyan); }
+.resource-node[data-state="partial"] .resource-core,
+.resource-node[data-state="stale"] .resource-core,
+.resource-node[data-state="host_offline"] .resource-core { fill: var(--orange); stroke: var(--orange); }
+.resource-node[data-state="ok"] .resource-halo { stroke: var(--cyan); animation: resource-breathe 3.6s ease-in-out infinite; }
+.resource-node[data-state="partial"] .resource-halo { stroke: var(--orange); animation: resource-breathe 2s ease-in-out infinite; }
+.resource-node[data-state="stale"] .resource-halo,
+.resource-node[data-state="host_offline"] .resource-halo { stroke: var(--orange); animation: resource-breathe 1.2s ease-in-out infinite; }
+.resource-node.highlight .resource-halo { stroke-width: 3; }
+.resource-node.highlight text { fill: var(--orange-text); }
+@keyframes resource-breathe { 50% { opacity: .35; transform: scale(1.12); } }
+.resource-provider-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.resource-provider { display: grid; align-content: start; gap: 3px; min-height: 88px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--glass) 80%, transparent); color: var(--text); text-align: left; cursor: pointer; transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease), background var(--motion-enter) var(--ease); }
+.resource-provider:hover, .resource-provider:focus-visible { transform: translateY(-3px); border-color: var(--orange); background: color-mix(in srgb, var(--orange) 11%, var(--glass)); }
+.resource-provider:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.resource-provider-name { font: 600 17px/1.1 var(--display); }
+.resource-provider-state { color: var(--quiet); font-size: 11px; font-weight: 700; }
+.resource-provider[data-state="ok"] .resource-provider-state { color: var(--cyan); }
+.resource-provider[data-state="partial"] .resource-provider-state,
+.resource-provider[data-state="stale"] .resource-provider-state,
+.resource-provider[data-state="host_offline"] .resource-provider-state { color: var(--orange-text); }
+.resource-provider-meta { color: var(--quiet); font-size: 10px; overflow-wrap: anywhere; }
+.resource-detail-state { margin: 0; font-weight: 700; }
+.resource-detail-state[data-state="stale"], .resource-detail-state[data-state="partial"] { color: var(--orange-text); }
+.resource-object { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 8px; }
+.resource-object dt { text-transform: none; letter-spacing: 0; }
+.resource-object dd { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .resource-provider-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .resource-visual { overflow-x: auto; }
+  .resource-visual svg { min-width: 740px; max-width: none; }
+}
+@media (max-width: 420px) { .resource-provider-list { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .resource-node .resource-halo { animation: none; }
+  .resource-provider, .resource-node { transition: none; }
+  .resource-provider:hover, .resource-provider:focus-visible { transform: none; }
+}
+
 @media (max-width: 980px) {
   .five-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

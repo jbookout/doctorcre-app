@@ -85,6 +85,17 @@
 
       <div class="five-grid" id="questionTiles" aria-label="The five operational questions"></div>
 
+      <section class="card glass resource-card" id="resourceDashboard" data-section="resources" aria-labelledby="resourceTitle">
+        <div class="card-heading">
+          <div><p class="eyebrow">Provider coverage</p><h2 id="resourceTitle">Resources</h2></div>
+          <span class="as-of" id="resourceAsOf">unknown</span>
+        </div>
+        <p class="resource-summary" id="resourceSummary">Taking the resource read…</p>
+        <div id="resourceCoverageVisual" class="resource-visual" role="img" aria-label="Provider evidence by source"></div>
+        <div class="resource-provider-list" id="resourceProviders" aria-label="Resource providers"></div>
+        <p class="caption" id="resourceReadState"></p>
+      </section>
+
       <section class="card glass" data-section="activeWork" id="activeWork" aria-labelledby="activeWorkTitle">
         <div class="card-heading">
           <div><p class="eyebrow">Held now</p><h2 id="activeWorkTitle">Active work</h2></div>
@@ -450,6 +461,16 @@
       <div id="sessionsList"></div>
     </section>
   </main>
+
+  <dialog id="resourceDetailDialog" class="dialog" aria-labelledby="resourceDetailTitle">
+    <article>
+      <header><div><p class="eyebrow">Resource evidence</p><h2 id="resourceDetailTitle">Provider</h2></div><button class="btn icon-btn" type="button" id="resourceDetailClose" aria-label="Close resource detail">×</button></header>
+      <div class="dialog-body">
+        <p class="resource-detail-state" id="resourceDetailState"></p>
+        <dl class="detail-rows" id="resourceDetailRows"></dl>
+      </div>
+    </article>
+  </dialog>
 
   <dialog id="incidentDialog" class="dialog" aria-labelledby="incidentDialogTitle">
     <article>

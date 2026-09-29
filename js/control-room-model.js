@@ -400,7 +400,6 @@ export function notInReleaseBlocks() {
     { id: "changed", title: "Changed: not in this release", slice: "V5-UX-C01", reason: "no release feed exists to read" },
     { id: "accomplishments", title: "Accomplishments: not in this release", slice: "V5-UX-C01", reason: "no verified-accomplishment producer exists" },
     { id: "detected_and_repaired", title: "Detected and repaired: not in this release", slice: "V5-UX-C01", reason: "no producer records a detection and its repair" },
-    { id: "resources", title: "Resources: not in this release", slice: "V5-UX-C02 through V5-UX-C06", reason: "resource metering is read in those slices" },
     // V5-UX-C08b wired the anatomical renderer into the live Atlas tab, and
     // V5-UX-C09 bound incident markers, a recorded/correlated incident trace
     // and an optional Doc tour to it — all from verbs already pinned

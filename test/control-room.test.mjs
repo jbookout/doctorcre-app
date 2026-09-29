@@ -244,7 +244,7 @@ test("an incident resolves to the same canonical identity from the tile and from
 test("every prototype panel without a producer is a named scope statement", () => {
   const blocks = notInReleaseBlocks();
   const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_causal_failure_graph_and_planned_layer"]) {
+  for (const id of ["changed", "accomplishments", "detected_and_repaired", "atlas_causal_failure_graph_and_planned_layer"]) {
     assert.ok(ids.includes(id), `${id} has no scope statement`);
   }
   for (const block of blocks) {
@@ -253,6 +253,7 @@ test("every prototype panel without a producer is a named scope statement", () =
     assert.ok(block.reason.length > 0);
   }
   assert.ok(!ids.includes("model_room"), "the live Model Room board is not an out-of-release panel");
+  assert.ok(!ids.includes("resources"), "the resource read now has its own dashboard card");
 });
 
 // V5-UX-C14 — the Operations section. Its two cards (approvals from

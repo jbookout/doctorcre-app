@@ -410,6 +410,7 @@ export function createLiveClient(opts = {}) {
     // those verbs exist to refuse.
     async incidentBoard(args = {}) { return rpc('incident-board', args); },
     async currentWorkItem() { return rpc('current-work-item', {}); },
+    async readResourceDashboard() { return rpc('read-resource-dashboard', {}); },
     async currentWorkRequests() {
       const res = await fetchImpl('/api/system-work/current', {
         credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store',
