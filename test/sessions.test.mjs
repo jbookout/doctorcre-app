@@ -396,7 +396,7 @@ test("S02-21 the contract keeps session verbs sorted with Doc suggestions", () =
 
 // MUTATION: leave the unmerged progress-board precursor as producer.source_commit.
 test("S02-22 producer.source_commit is the merged progress-board release", () => {
-  assert.equal(contract.producer.source_commit, "efe438b48081c5108a8b751dcebd589874699ff5",
+  assert.equal(contract.producer.source_commit, "08bdeb893514f1ea03492d6125f3e139fba74646",
     "the producer pin includes the merged progress board and dispatch spine");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");
