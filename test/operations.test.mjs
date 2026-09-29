@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import {
   APPROVALS_OUT_OF_SCOPE, ENTRANCE_STEP_MS, ENTRANCE_MAX_STEPS, GOVERNANCE_LANES,
   approvalsCard, countUpFrames, entranceDelay, prefersReducedMotion, scheduleCard,
-  validGovernanceQueuePayload, validScheduleBoardPayload, waitingAge,
+  formatScheduleDateTime, scheduleTimeline, validGovernanceQueuePayload, validScheduleBoardPayload, waitingAge,
 } from "../js/operations-model.js";
 import { STUCK_SILENCE_HOURS } from "../js/control-room-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -186,6 +186,35 @@ test("the approvals card says what it is NOT: production-effect approvals still 
 
 /* ------------------------------------------------------------ the schedule */
 
+test("schedule timestamps retain their calendar date across multi-day runs", () => {
+  assert.equal(formatScheduleDateTime("2026-09-26T07:00:00.000Z", { timeZone: "UTC" }), "Sep 26, 2026, 7:00 AM");
+  assert.equal(formatScheduleDateTime("2026-09-29T19:30:00.000Z", { timeZone: "UTC" }), "Sep 29, 2026, 7:30 PM");
+  assert.equal(formatScheduleDateTime(null), null);
+});
+
+test("schedule timeline orders markers by timestamps, even when a failed job has a future queued due", () => {
+  const observed = "2026-09-28T16:00:00.000Z";
+  const failedWithFutureDue = {
+    state: "failed", last_run: { at: "2026-09-27T07:00:00.000Z" },
+    next_due_at: "2026-09-29T07:00:00.000Z", next_due_basis: "queued_job",
+  };
+  assert.deepEqual(scheduleTimeline(failedWithFutureDue, observed), {
+    lastX: 32, nowX: 150, dueX: 266, dueOverdue: false,
+  });
+  assert.deepEqual(scheduleTimeline({ ...failedWithFutureDue, state: "missed",
+    next_due_at: "2026-09-28T07:00:00.000Z", next_due_basis: "cadence_deadline" }, observed), {
+    lastX: 32, dueX: 150, nowX: 266, dueOverdue: true,
+  });
+  assert.deepEqual(scheduleTimeline({ state: "paused", last_run: null, next_due_at: null }, observed), {
+    lastX: null, dueX: null, nowX: 150, dueOverdue: false,
+  });
+});
+
+test("schedule state chips keep their words intact on a phone", () => {
+  assert.match(css, /\.ops-schedule-job \.chip \{[^}]*white-space: nowrap;[^}]*\}/);
+  assert.match(css, /\.ops-sources \.chip \{[^}]*white-space: nowrap;[^}]*\}/);
+});
+
 const SCHEDULE = {
   ok: true, schema: "schedule-board/v1", observed_at: "2026-09-28T16:00:00.000Z",
   overall_state: "attention",
@@ -312,6 +341,10 @@ test("the page takes governance-queue as its own read, paints both cards and tic
   assert.match(pageJs, /approvalsCard\(/);
   assert.match(pageJs, /scheduleCard\(readFor\("schedule"\)\)/);
   assert.match(pageJs, /<svg class="ops-timeline"/, "job timing is shown as a real inline SVG timeline");
+  assert.match(pageJs, /formatScheduleDateTime\(job\.last_run\.at\)/, "last run uses a full date in the glance and detail");
+  assert.match(pageJs, /formatScheduleDateTime\(job\.next_due_at\)/, "next due uses a full date in the glance and detail");
+  assert.match(pageJs, /scheduleTimeline\(job, observedAt\)/, "the SVG consumes chronological marker positions");
+  assert.match(pageJs, /data-due-overdue="\$\{timeline\.dueOverdue\}"/, "overdue color follows the due timestamp");
   assert.match(pageJs, /prefersReducedMotion\(\)/);
   assert.match(pageJs, /countUpFrames\(/);
   assert.match(pageJs, /entranceDelay\(/);

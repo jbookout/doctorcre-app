@@ -151,6 +151,30 @@ export function waitingAge(sinceIso, now = Date.now(), { seconds = true } = {}) 
 const SCHEDULE_OWNERS = ["launchd", "claude-code", "control-plane", "cron"];
 const SCHEDULE_STATES = ["healthy", "missed", "failed", "paused", "running", "unknown"];
 
+/** A schedule timestamp needs its day as well as its local AM/PM clock. */
+export function formatScheduleDateTime(at, options = {}) {
+  if (!isTime(at)) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+    ...options,
+  }).format(new Date(at));
+}
+
+/** Chronological positions for the run, due time and observation marker. */
+export function scheduleTimeline(job, observedAt) {
+  const markers = [{ name: "now", at: Date.parse(observedAt) }];
+  if (isTime(job?.last_run?.at)) markers.push({ name: "last", at: Date.parse(job.last_run.at) });
+  if (isTime(job?.next_due_at)) markers.push({ name: "due", at: Date.parse(job.next_due_at) });
+  markers.sort((a, b) => a.at - b.at || ["last", "due", "now"].indexOf(a.name) - ["last", "due", "now"].indexOf(b.name));
+  const positions = markers.length === 1 ? [150] : markers.length === 2 ? [32, 266] : [32, 150, 266];
+  const x = Object.fromEntries(markers.map((marker, index) => [marker.name, positions[index]]));
+  return {
+    lastX: x.last ?? null, dueX: x.due ?? null, nowX: x.now,
+    dueOverdue: x.due !== undefined && Date.parse(job.next_due_at) < Date.parse(observedAt),
+  };
+}
+
 /** The pinned schedule-board/v1 read, including source coverage. */
 export function validScheduleBoardPayload(payload) {
   if (!payload || payload.ok !== true || payload.schema !== "schedule-board/v1"

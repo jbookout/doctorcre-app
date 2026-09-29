@@ -17,7 +17,7 @@ import {
   validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
 } from "./control-room-model.js";
 import {
-  approvalsCard, countUpFrames, entranceDelay, prefersReducedMotion, scheduleCard, waitingAge,
+  approvalsCard, countUpFrames, entranceDelay, formatScheduleDateTime, prefersReducedMotion, scheduleCard, scheduleTimeline, waitingAge,
 } from "./operations-model.js";
 // V5-UX-C13a: the enriched "Waiting for Joe" detail extends the row above
 // rather than replacing it, and reuses the same pure card projection the
@@ -403,28 +403,26 @@ function approvalsHtml(card, read) {
   </article>`;
 }
 
-function scheduleJobHtml(job) {
-  const missed = job.state === "missed" || job.state === "failed";
-  const dueX = missed ? 150 : 266;
-  const nowX = missed ? 266 : 150;
-  const lastClock = job.last_run ? formatClock(job.last_run.at) || "unknown" : "unknown";
-  const nextClock = job.next_due_at ? formatClock(job.next_due_at) || "unknown" : "unknown";
-  return `<li class="ops-schedule-job" data-state="${escapeHtml(job.state)}">
+function scheduleJobHtml(job, observedAt) {
+  const timeline = scheduleTimeline(job, observedAt);
+  const lastClock = job.last_run ? formatScheduleDateTime(job.last_run.at) || "unknown" : "unknown";
+  const nextClock = job.next_due_at ? formatScheduleDateTime(job.next_due_at) || "unknown" : "unknown";
+  return `<li class="ops-schedule-job" data-state="${escapeHtml(job.state)}" data-due-overdue="${timeline.dueOverdue}">
     <details class="ops-item">
       <summary><span class="ops-schedule-glance"><strong>${escapeHtml(job.name)}</strong><span>Last ${escapeHtml(lastClock)} · ${escapeHtml(job.nextLabel)} ${escapeHtml(nextClock)}</span></span><span class="chip" data-state="${escapeHtml(job.state)}">${escapeHtml(job.state)}</span></summary>
-      <svg class="ops-timeline" viewBox="0 0 300 60" role="img" aria-label="${escapeHtml(`Run timeline for ${job.name}: last run, expected time, now`)}">
+      <svg class="ops-timeline" viewBox="0 0 300 60" role="img" aria-label="${escapeHtml(`Run timeline for ${job.name}: last run, ${job.nextLabel.toLowerCase()}, now`)}">
         <title>${escapeHtml(`Run timeline for ${job.name}`)}</title>
         <path class="ops-timeline-track" d="M32 30 H266" />
-        ${job.last_run && job.next_due_at ? `<path class="ops-timeline-flow" d="M32 30 H${dueX}" />` : ""}
-        ${job.last_run ? `<circle class="ops-timeline-last" cx="32" cy="30" r="6" />` : ""}
-        ${job.next_due_at ? `<circle class="ops-timeline-due" cx="${dueX}" cy="30" r="7" />` : ""}
-        <circle class="ops-timeline-now" cx="${nowX}" cy="30" r="4" />
+        ${timeline.lastX !== null && timeline.dueX !== null ? `<path class="ops-timeline-flow" d="M${timeline.lastX} 30 H${timeline.dueX}" />` : ""}
+        ${timeline.lastX !== null ? `<circle class="ops-timeline-last" cx="${timeline.lastX}" cy="30" r="6" />` : ""}
+        ${timeline.dueX !== null ? `<circle class="ops-timeline-due" cx="${timeline.dueX}" cy="30" r="7" />` : ""}
+        <circle class="ops-timeline-now" cx="${timeline.nowX}" cy="30" r="4" />
       </svg>
       <dl class="detail-rows">
         <dt>Schedule</dt><dd>${escapeHtml(job.schedule)}</dd>
-        <dt>Last run</dt><dd>${escapeHtml(job.last_run ? `${formatClock(job.last_run.at) || "unknown"} · ${job.last_run.state}` : "Unknown — no verified run receipt")}</dd>
+        <dt>Last run</dt><dd>${escapeHtml(job.last_run ? `${lastClock} · ${job.last_run.state}` : "Unknown — no verified run receipt")}</dd>
         <dt>Run receipt</dt><dd>${escapeHtml(job.last_run?.receipt_ref || "Unknown")}</dd>
-        <dt>${escapeHtml(job.nextLabel)}</dt><dd>${escapeHtml(job.next_due_at ? formatClock(job.next_due_at) || "Unknown" : "Unknown")}</dd>
+        <dt>${escapeHtml(job.nextLabel)}</dt><dd>${escapeHtml(job.next_due_at ? nextClock : "Unknown")}</dd>
         <dt>Freshness</dt><dd>${escapeHtml(job.freshness)}</dd>
       </dl>
       <p class="small">Pause unavailable · Run unavailable · Stop unavailable</p>
@@ -442,7 +440,7 @@ function scheduleHtml(card) {
     <p class="ops-value tile-value" data-state="${escapeHtml(card.state)}">${escapeHtml(card.word)}</p>
     ${card.sources.length ? `<div class="ops-sources" aria-label="Schedule sources">${card.sources.map((source) =>
       `<span class="chip" data-state="${escapeHtml(source.state)}">${escapeHtml(source.owner)} · ${escapeHtml(source.state === "read" ? String(source.count) : "unknown")}</span>`).join("")}</div>` : ""}
-    ${card.jobs.length ? `<ul class="ops-schedule-list">${card.jobs.map(scheduleJobHtml).join("")}</ul>` : ""}
+    ${card.jobs.length ? `<ul class="ops-schedule-list">${card.jobs.map((job) => scheduleJobHtml(job, card.observed_at)).join("")}</ul>` : ""}
     <p>${escapeHtml(card.body)}</p>
   </article>`;
 }
