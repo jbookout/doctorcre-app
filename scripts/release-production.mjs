@@ -10,6 +10,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 
 import { uploadedVersionId } from "./provider-version.mjs";
+import { waitForLiveRelease } from "./live-release.mjs";
 
 const run = (command, args, { capture = false, ...options } = {}) => execFileSync(command, args, {
   cwd: new URL("../", import.meta.url),
@@ -48,3 +49,16 @@ const providerVersionId = uploadedVersionId(uploadOutput);
 run("npx", ["wrangler", "versions", "deploy", `${providerVersionId}@100%`, "--env", "",
   "--message", message, "--yes"]);
 run("npx", ["wrangler", "deployments", "status", "--env", "", "--json"]);
+const live = await waitForLiveRelease({
+  expectedSha: sourceCommit,
+  read: async () => {
+    const response = await fetch("https://app.doctorcre.com/app-release", {
+      headers: { "cache-control": "no-cache" }, signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  },
+  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+});
+process.stdout.write(`Verified live app release ${live.source_commit} `
+  + `version ${live.provider_version_id || "unknown"}\n`);
