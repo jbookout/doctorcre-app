@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const $ = (selector) => document.querySelector(selector);
-  const state = { csrf: "", tours: [], tour: null, rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "" };
+  const state = { csrf: "", tours: [], tour: null, feedback: null, rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "" };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -26,6 +26,29 @@
   }
   function stops() { return Array.isArray(state.tour?.stops) ? state.tour.stops : []; }
   function renderShareGrants() { const list = $("#share-grants"); list.replaceChildren(); for (const grant of state.shareGrants) { if (!id(grant?.share_grant_id)) continue; const row = document.createElement("li"); const summary = document.createElement("span"); summary.textContent = `${text(grant.status, "unknown")} · projection ${text(grant.projection_id, "unknown")} · expires ${text(grant.expires_at, "unknown")}`; row.append(summary); if (grant.status === "active") { const button = document.createElement("button"); button.type = "button"; button.textContent = "Revoke"; button.dataset.shareGrantId = grant.share_grant_id; row.append(button); } list.append(row); } if (!list.children.length) list.textContent = "No active or rotatable confidential links."; }
+  function renderFeedback() {
+    const list = $("#feedback-list"); list.replaceChildren();
+    const items = Array.isArray(state.feedback?.items) ? state.feedback.items : [];
+    for (const item of items) {
+      if (!item.shortlisted && !item.comments?.length) continue;
+      const row = document.createElement("li");
+      const title = document.createElement("strong"); title.textContent = text(item.route_label, "Tour property"); row.append(title);
+      if (item.shortlisted) { const badge = document.createElement("p"); badge.className = "shortlisted"; badge.textContent = "Shortlisted"; row.append(badge); }
+      for (const entry of Array.isArray(item.comments) ? item.comments : []) {
+        const comment = document.createElement("p"); comment.textContent = text(entry.comment); row.append(comment);
+      }
+      list.append(row);
+    }
+    $("#feedback-empty").hidden = list.children.length > 0;
+  }
+  async function loadFeedback() {
+    state.feedback = null;
+    if (id(state.projectionId)) {
+      try { state.feedback = await request(`/api/tours/feedback?projection_id=${encodeURIComponent(state.projectionId)}`); }
+      catch { /* A missing or inaccessible projection stays empty. */ }
+    }
+    renderFeedback();
+  }
   function renderTour() {
     const tour = state.tour; if (!tour) return;
     $("#empty-state").hidden = true; $("#tour-panel").hidden = false;
@@ -36,6 +59,7 @@
     $("#reorder-route").hidden = tour.route_version_state !== "draft";
     $("#accept-route").hidden = tour.route_version_state !== "draft";
     state.projectionId = text(tour.projection_id); state.projectionDraftId = text(tour.projection_draft_id); state.shareGrantId = text(tour.share_grant_id); state.shareStatus = text(tour.share_status, "missing"); state.shareGrants = Array.isArray(tour.share_grants) ? tour.share_grants : [];
+    state.feedback = null; renderFeedback();
     const activeShareCount = state.shareGrants.filter((grant) => grant?.status === "active").length;
     $("#projection-state").textContent = state.projectionId ? "Approved" : tour.projection_status === "draft" ? "Draft · approval required" : "Not generated"; $("#share-state").textContent = activeShareCount ? `${activeShareCount} active` : state.shareStatus === "expired" ? "Expired · rotate" : "Not issued"; renderShareGrants();
     $("#projection-note").textContent = state.projectionId ? "The approved projection is ready for a deliberately scoped, expiring share." : tour.projection_status === "draft" ? "A projection draft exists but cannot be shared until a human authority seals it." : "A projection is required before an external link can be issued.";
@@ -59,11 +83,11 @@
   }
   async function loadLibrary() { status("Loading tours…"); const data = await request("/api/tours/library"); state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready."); }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}\n${Object.keys(facts).sort().join(", ")}`; }).join("\n\n"); preview.hidden = false; }
-  async function loadTour(tourId) { status("Loading tour…"); if (state.tour?.id !== tourId) { state.cheatDirty = false; state.cheatDraftTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); await loadProjectionPreview(); status("Tour ready."); }
+  async function loadTour(tourId) { status("Loading tour…"); if (state.tour?.id !== tourId) { state.cheatDirty = false; state.cheatDraftTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); await Promise.all([loadProjectionPreview(), loadFeedback()]); status("Tour ready."); }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
   async function saveRoute(reorder = false) { if (!state.tour) return; const stopIds = stops().filter((stop) => stop.stop_state === "active").map((stop) => stop.id).filter(id); const path = reorder ? "/api/tours/route-reorder" : "/api/tours/route-version"; const payload = reorder ? { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() } : { tour_id: state.tour.id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() }; await post(path, payload); await loadTour(state.tour.id); status("Route version saved."); }
   async function saveSheet() { if (!state.tour) return; let content; try { content = JSON.parse($("#cheat-content").value || "{}"); } catch { content = { notes: $("#cheat-content").value }; } await post("/api/tours/cheat-sheet/autosave", { tour_id: state.tour.id, content, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); status("Internal cheat sheet saved."); }
-  async function issueShare(rotate = false) { if (!state.projectionId) throw new Error("projection_required"); const raw = newShareToken(); const tokenDigest = await sha256(raw); const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map((box) => box.value); const expires = new Date($("#share-expiry").value).toISOString(); const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid"); const payload = { projection_id: state.projectionId, token_digest: tokenDigest, permission_scopes: scopes, expires_at: expires, receipt_digest: receipt, idempotency_key: uuid() }; const data = await post(rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue", rotate ? { share_grant_id: state.shareGrantId, ...payload } : payload); state.rawShareToken = raw; state.shareGrantId = text(data.share_grant_id, state.shareGrantId); const url = `https://reports.doctorcre.com/share#token=${raw}`; $("#share-url").value = url; $("#share-link").hidden = false; $("#share-state").textContent = "Active"; status("Confidential link generated. Copy it now."); }
+  async function issueShare(rotate = false) { if (!state.projectionId) throw new Error("projection_required"); const raw = newShareToken(); const tokenDigest = await sha256(raw); const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map((box) => box.value); if ((scopes.includes("shortlist") || scopes.includes("comment")) && !scopes.includes("view_packet")) throw new Error("packet_scope_required"); const expires = new Date($("#share-expiry").value).toISOString(); const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid"); const payload = { projection_id: state.projectionId, token_digest: tokenDigest, permission_scopes: scopes, expires_at: expires, receipt_digest: receipt, idempotency_key: uuid() }; const data = await post(rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue", rotate ? { share_grant_id: state.shareGrantId, ...payload } : payload); state.rawShareToken = raw; state.shareGrantId = text(data.share_grant_id, state.shareGrantId); const url = `https://reports.doctorcre.com/share#token=${raw}`; $("#share-url").value = url; $("#share-link").hidden = false; $("#share-state").textContent = "Active"; status("Confidential link generated. Copy it now."); }
   async function revokeShare(grantId) { if (!id(grantId)) return; const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required"); await post("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link", revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }); state.rawShareToken = ""; $("#share-link").hidden = true; await loadTour(state.tour.id); status("Share link revoked."); }
   async function action(work) { try { await work(); } catch { status("That change could not be saved."); } }
   $("#refresh").addEventListener("click", () => void action(loadLibrary)); $("#save-route").addEventListener("click", () => void action(() => saveRoute(false))); $("#reorder-route").addEventListener("click", () => void action(() => saveRoute(true)));
@@ -75,6 +99,7 @@
   $("#share-form").addEventListener("submit", (event) => { event.preventDefault(); void action(() => issueShare(id(state.shareGrantId))); }); $("#rotate-share").addEventListener("click", () => void action(() => issueShare(true)));
   $("#revoke-share").addEventListener("click", () => void action(() => revokeShare(state.shareGrantId)));
   $("#share-grants").addEventListener("click", (event) => { const grantId = event.target?.dataset?.shareGrantId; if (id(grantId)) void action(() => revokeShare(grantId)); });
+  $("#refresh-feedback").addEventListener("click", () => void action(loadFeedback));
   $("#copy-share").addEventListener("click", () => void action(async () => { await navigator.clipboard.writeText($("#share-url").value); status("Confidential link copied."); }));
   $("#render-pdf").addEventListener("click", () => void action(async () => { if (!id(state.projectionId)) throw new Error("projection_required"); const data = await post("/api/tours/pdf/render", { projection_id: state.projectionId, idempotency_key: uuid() }); state.renderJobId = text(data.render_job_id); state.pdfQcRunDigest = text(data.qc_run_digest); await loadTour(state.tour.id); status("PDF rendered and QC checked. Human review is required before download."); }));
   $("#review-pdf").addEventListener("click", () => void action(async () => { if (!id(state.renderJobId) || !digest(state.pdfQcRunDigest)) throw new Error("pdf_review_required"); const reviewedAt = new Date().toISOString(); await post("/api/tours/pdf/review", { render_job_id: state.renderJobId, qc_run_digest: state.pdfQcRunDigest, decision: "accept", reviewed_at: reviewedAt, review_receipt_digest: await sha256(`tour-pdf-human-review:${state.renderJobId}:${state.pdfQcRunDigest}:${reviewedAt}`), reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }); await loadTour(state.tour.id); status("PDF review receipt recorded. Internal download is available."); }));

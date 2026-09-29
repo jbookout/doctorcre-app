@@ -5,10 +5,14 @@
   const summary = document.querySelector("#report-summary");
   const list = document.querySelector("#report-list");
   const openButton = document.querySelector("#open-tour");
+  const feedbackStatus = document.querySelector("#feedback-status");
   let shareToken = typeof globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__ === "function"
     ? globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__() : "";
   let reportProperties = new globalThis.Map();
   let mapInstance = null;
+  let feedback = null;
+  let currentReport = null;
+  const pending = new globalThis.Map();
 
   function setStatus(message) { status.textContent = message; }
 
@@ -37,7 +41,72 @@
     return parts.length ? parts.join(" · ") : fallback;
   }
 
+  function feedbackFor(propertyRef) {
+    return feedback?.items?.find(item => item.property_ref === propertyRef) || null;
+  }
+
+  async function sendFeedback(kind, item, value) {
+    const payload = { projection_ref: feedback.projection_ref, property_ref: item.property_ref,
+      ...(kind === "shortlist" ? { shortlisted: value } : { comment: value }) };
+    const slot = `${kind}:${item.property_ref}`;
+    const serialized = JSON.stringify(payload);
+    const prior = pending.get(slot);
+    payload.idempotency_key = prior?.serialized === serialized ? prior.key : crypto.randomUUID();
+    pending.set(slot, { serialized, key: payload.idempotency_key });
+    feedbackStatus.textContent = kind === "shortlist" ? "Saving your shortlist…" : "Saving your comment…";
+    try {
+      await request(`/api/share/${kind}`, { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      pending.delete(slot);
+      const itemFeedback = feedbackFor(item.property_ref);
+      if (itemFeedback) {
+        if (kind === "shortlist") itemFeedback.shortlisted = value;
+        else { itemFeedback.comments ||= []; itemFeedback.comments.push({ comment: value }); }
+        render(currentReport);
+      }
+      feedbackStatus.textContent = kind === "shortlist" ? "Shortlist saved." : "Comment saved.";
+      return true;
+    } catch {
+      feedbackStatus.textContent = "Your change could not be saved. Try again or reopen this Tour.";
+      return false;
+    }
+  }
+
+  function renderFeedbackControls(row, item) {
+    const scopes = Array.isArray(feedback?.permission_scopes) ? feedback.permission_scopes : [];
+    if (!scopes.includes("shortlist") && !scopes.includes("comment")) return;
+    const panel = document.createElement("div"); panel.className = "feedback-controls";
+    const itemFeedback = feedbackFor(item.property_ref);
+    if (scopes.includes("shortlist")) {
+      const button = document.createElement("button"); button.type = "button";
+      const selected = itemFeedback?.shortlisted === true;
+      button.textContent = selected ? "Remove from shortlist" : "Add to shortlist";
+      button.setAttribute("aria-pressed", String(selected));
+      button.addEventListener("click", () => { button.disabled = true; void sendFeedback("shortlist", item, !selected).then(() => { button.disabled = false; }); });
+      panel.append(button);
+    }
+    if (scopes.includes("comment")) {
+      const label = document.createElement("label"); label.textContent = "Your comment";
+      const input = document.createElement("textarea"); input.maxLength = 1000; input.rows = 3;
+      const button = document.createElement("button"); button.type = "button"; button.textContent = "Save comment";
+      button.addEventListener("click", () => {
+        if (!input.value.trim()) { feedbackStatus.textContent = "Write a comment before saving."; return; }
+        button.disabled = true; void sendFeedback("comment", item, input.value.trim()).then(() => { button.disabled = false; });
+      });
+      label.append(input); panel.append(label, button);
+    }
+    if (itemFeedback?.comments?.length) {
+      const comments = document.createElement("ul"); comments.className = "comment-list";
+      for (const entry of itemFeedback.comments) {
+        const line = document.createElement("li"); line.textContent = entry.comment; comments.append(line);
+      }
+      panel.append(comments);
+    }
+    row.append(panel);
+  }
+
   function render(report) {
+    currentReport = report;
     const items = Array.isArray(report?.stops) ? report.stops :
       (Array.isArray(report?.items) ? report.items : (Array.isArray(report?.properties) ? report.properties : []));
     const properties = items.map((item, index) => ({ item, index }))
@@ -58,6 +127,7 @@
       const detail = document.createElement("p");
       detail.textContent = text(item.summary, text(item.status, propertyAddress(item, "Details available in the packet.")));
       row.append(route, heading, detail);
+      renderFeedbackControls(row, item);
       list.append(row);
     }
     if (!properties.length) list.textContent = "No properties are available in this report.";
@@ -123,9 +193,10 @@
     try {
       // Packet and map are independently scoped. Fetch both, then render in a
       // stable order so a valid map-only or packet-only grant still opens.
-      const [reportResult, mapResult] = await Promise.allSettled([fetchReport(), fetchMap()]);
+      const [reportResult, mapResult, feedbackResult] = await Promise.allSettled([fetchReport(), fetchMap(), request("/api/share/feedback")]);
       const reportLoaded = reportResult.status === "fulfilled";
       const mapLoaded = mapResult.status === "fulfilled";
+      feedback = feedbackResult.status === "fulfilled" ? feedbackResult.value.data : null;
       if (!reportLoaded && !mapLoaded) throw new Error("share_scope_unavailable");
       if (reportLoaded) render(reportResult.value);
       else {
@@ -139,6 +210,7 @@
       setStatus(reportLoaded && mapLoaded ? "Report and map loaded." : reportLoaded ? "Report loaded." : "Map loaded.");
     } catch {
       setStatus("This shared report is unavailable.");
+      summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
       list.setAttribute("aria-busy", "false");
     }
   }
