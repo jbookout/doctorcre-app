@@ -183,12 +183,49 @@ test("saved property details hydrate across search pages without changing visibl
   app.window.close();
 });
 
-test("a saved property absent from reviewed search stays explicitly unresolved and cannot be removed anonymously", async () => {
-  const app = await openApp({ version: 1, ids: [propertyId] }, { searchResponder: () => ({ items: [], count: 0, has_more: false }) });
+test("a saved property absent from reviewed search can be removed and saved by version", async () => {
+  const store = { version: 1, ids: [propertyId] };
+  const app = await openApp(store, { searchResponder: () => ({ items: [], count: 0, has_more: false }) });
   const doc = app.window.document;
-  assert.match(doc.querySelector("#selection-list").textContent, /Details unavailable.*find this property/i);
-  assert.equal(doc.querySelector("#selection-list button"), null);
+  assert.match(doc.querySelector("#selection-list").textContent, /Details unavailable/i);
+  assert.doesNotMatch(doc.querySelector("#selection-list").textContent, new RegExp(propertyId));
+  const remove = doc.querySelector("#selection-list button");
+  assert.equal(remove?.textContent, "Remove");
   assert.equal(doc.querySelector("#save-selection").disabled, true);
+  remove.click();
+  assert.equal(doc.querySelector("#selection-list").textContent, "No properties selected.");
+  assert.equal(doc.querySelector("#save-selection").disabled, false);
+  doc.querySelector("#save-selection").click();
+  await settle();
+  const write = app.calls.find(call => call.path === "/api/tours/selection-cart" && call.options.method === "POST");
+  assert.equal(JSON.parse(write.options.body).expected_selection_version, 1);
+  assert.deepEqual(JSON.parse(write.options.body).property_ids, []);
+  assert.deepEqual(store.ids, []);
+  assert.equal(store.version, 2);
+  assert.equal(doc.querySelector("#save-selection").disabled, true);
+  app.window.close();
+  const reloaded = await openApp(store, { searchResponder: () => ({ items: [], count: 0, has_more: false }) });
+  assert.equal(reloaded.window.document.querySelector("#selection-list").textContent, "No properties selected.");
+  reloaded.window.close();
+});
+
+test("removing an unavailable saved property preserves other saved properties", async () => {
+  const knownId = "44444444-4444-4444-8444-444444444444";
+  const store = { version: 1, ids: [propertyId, knownId] };
+  const app = await openApp(store, { searchResponder: () => ({
+    items: [{ ...property, property_id: knownId, name: "Known clinic" }], count: 1, has_more: false,
+  }) });
+  const doc = app.window.document;
+  const rows = doc.querySelectorAll("#selection-list .selection-item");
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].textContent, /details unavailable/i);
+  assert.match(rows[1].textContent, /Known clinic/);
+  rows[0].querySelector("button").click();
+  doc.querySelector("#save-selection").click();
+  await settle();
+  assert.deepEqual(store.ids, [knownId]);
+  assert.match(doc.querySelector("#selection-list").textContent, /Known clinic/);
+  assert.doesNotMatch(doc.querySelector("#selection-list").textContent, /details unavailable/i);
   app.window.close();
 });
 
@@ -201,7 +238,7 @@ test("a search candidate without name or address cannot be added or removed by a
   await settle();
   const action = doc.querySelector("#property-results button[data-property-id]");
   assert.equal(action.disabled, true);
-  assert.equal(doc.querySelector("#selection-list button"), null);
+  assert.equal(doc.querySelector("#selection-list button")?.textContent, "Remove");
   app.window.close();
 });
 

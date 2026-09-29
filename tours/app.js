@@ -55,10 +55,9 @@
       const known = knownProperty(propertyId);
       const label = document.createElement("span");
       label.textContent = known ? `${text(known.name, text(known.address, "Unnamed property"))} · ${text(known.address, "Address unknown")}` :
-        "Details unavailable — find this property in search before changing it.";
-      row.append(label);
-      if (known) { const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove";
-        remove.addEventListener("click", () => toggleProperty(propertyId)); row.append(remove); }
+        "Saved property · details unavailable";
+      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Remove";
+      remove.addEventListener("click", () => toggleProperty(propertyId)); row.append(label, remove);
       list.append(row);
     });
     if (!state.selectedIds.length) list.textContent = "No properties selected.";
@@ -69,7 +68,7 @@
     if (!state.selectionDirty) {
       const unresolved = state.selectedIds.filter(propertyId => !knownProperty(propertyId)).length;
       $("#selection-state").textContent = state.tour ? state.cart?.selection_version ?
-        `${state.selectedIds.length} selected · saved${unresolved ? `. Details unavailable for ${unresolved}; find in search before changing.` : ""}` :
+        `${state.selectedIds.length} selected · saved${unresolved ? `. Details unavailable for ${unresolved}; remove any that no longer belong.` : ""}` :
         "No selection saved for this Tour." : "No Tour selected.";
     }
   }
