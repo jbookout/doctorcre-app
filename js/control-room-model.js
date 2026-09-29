@@ -381,7 +381,7 @@ export function incidentFilters(incidents) {
 export function canonicalHref(item) {
   const ref = item && typeof item === "object" ? (item.human_ref || item.ref) : item;
   if (typeof ref !== "string") return null;
-  if (WORK_REQUEST_REF.test(ref)) return "/system-work.html";
+  if (WORK_REQUEST_REF.test(ref)) return "/work-requests";
   if (INCIDENT_REF.test(ref)) return `/incidents?ref=${encodeURIComponent(ref)}`;
   return null;
 }

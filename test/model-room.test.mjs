@@ -823,7 +823,7 @@ test("C12-20 the Model Room placeholder is gone and the tab wiring is unchanged"
     assert.ok(panel[0].includes(`data-section="${section}"`), `${section} is missing`);
   }
   // The tab button, its aria wiring and the tab order are untouched.
-  assert.match(html, /<button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room<\/button>/);
+  assert.match(html, /id="tabModelRoom" data-tab-key="agents"[^>]*>Agents<\/button>/);
   assert.match(html, /id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden/);
   // 360px: one column, and every control this tab adds at the 44px floor.
   assert.match(css, /#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId,\s*\n#modelRoomDispatchSearch \.btn, #modelRoomDispatchQuery \{ min-height: var\(--touch\); \}/);

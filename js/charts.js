@@ -132,7 +132,7 @@ function selectionHtml(deals, all) {
     <span class="chip-label">${escapeHtml(label)}</span>
     <span class="chip-list"><span class="chip">${escapeHtml(String(deals.length))} of ${escapeHtml(String(all.length))} records</span>
     <button class="chip" type="button" id="chartsClear">Clear this slice</button>
-    <a class="chip" href="/pipeline">Open in Pipeline</a></span>
+    <a class="chip" href="/deals?view=board">Open in Deals board</a></span>
   </div>`;
 }
 

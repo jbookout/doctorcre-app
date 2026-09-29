@@ -204,8 +204,8 @@ test("each prototype page is labelled synthetic, keyboard operable, reachable fr
     assert.match(html, /id="appShell"/, `${key} uses the common DoctorCRE mark and navigation`);
     assert.doesNotMatch(html, /Demo (Avery|Okafor|Lin|Reyes) (?!\w)/, `${key} names are fictional`);
   }
-  assert.match(pages.index, /href="\/design\/business"/);
-  assert.match(pages.index, /href="\/design\/operations"/);
+  assert.match(pages.index, /src="\/public-shell\/references\/business-desktop\.png"/);
+  assert.match(pages.index, /src="\/public-shell\/references\/operations-desktop\.png"/);
   assert.match(pages.business, /href="\/design"/);
   assert.match(pages.operations, /href="\/design"/);
   assert.doesNotMatch(prototypeJs, /fetch\(|XMLHttpRequest|WebSocket|\/mcp|\/api\//, "the prototype never reaches CARR");

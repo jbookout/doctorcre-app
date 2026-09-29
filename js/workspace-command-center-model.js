@@ -2,7 +2,7 @@ export const DEAL_ROOM_DESTINATION = "/deals";
 export const TEAM_ACTIVE_DESTINATION = "/deals?workspace=team";
 export const TEAM_FLAGGED_DESTINATION = "/deals?workspace=team&filter=flagged";
 export const MY_FLAGGED_DESTINATION = "/deals?workspace=team&filter=flagged&owner=me";
-export const NEEDS_JOE_DESTINATION = "/system-work.html";
+export const NEEDS_JOE_DESTINATION = "/work-requests";
 // Team is the confirmed default; My work is the secondary view of the same read.
 export const SCOPES = ["team", "mine"];
 export const DEFAULT_SCOPE = "team";
@@ -22,6 +22,7 @@ const CARD_SOURCES = new Set(["v_deal_room_board", "ops.work_request"]);
 const ALL_SOURCES = new Set(["command_center", ...CARD_SOURCES]);
 
 export function safeDestination(value) {
+  if (value === "/system-work.html") return NEEDS_JOE_DESTINATION;
   return KNOWN_DESTINATIONS.has(value) ? value : DEAL_ROOM_DESTINATION;
 }
 
@@ -89,7 +90,7 @@ function needsValid(payload) {
   const needs = payload.needs_you_now;
   if (!Array.isArray(needs)) return false;
   if (!needs.every((item) => exactKeys(item, ["kind", "scope", "count", "destination"]) && NEED_SCOPE[item.kind] &&
-    item.scope === NEED_SCOPE[item.kind] && item.destination === NEED_DESTINATION[item.kind] && count(item.count))) return false;
+    item.scope === NEED_SCOPE[item.kind] && (item.destination === NEED_DESTINATION[item.kind] || (item.kind === "needs_joe_work" && item.destination === "/system-work.html")) && count(item.count))) return false;
   for (const kind of Object.keys(NEED_DESTINATION)) {
     if (needs.filter((item) => item.kind === kind).length > 1) return false;
   }

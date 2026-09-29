@@ -76,7 +76,7 @@ function rowHtml({ title, meta, end = "" }) {
 /** The refusal card and the open list behind it. */
 function renderList() {
   const read = view.list;
-  $("refusalSentence").textContent = REF_REFUSAL;
+  $("refusalSentence").textContent = "Select an incident below.";
   $("listAsOf").textContent = asOf(read);
   const root = $("incidentList");
   const payload = read.state === "read" ? read.payload : null;
@@ -179,7 +179,7 @@ async function load() {
   view.list = { state: "pending" };
   render();
   await take("list", () => client.incidentBoard({ state: "open" }));
-  announce(REF_REFUSAL);
+  announce(view.list.state === "read" ? "Open incidents are listed." : "The incident list could not be read.");
 }
 
 /* --------------------------------------------------------------------- writing */
