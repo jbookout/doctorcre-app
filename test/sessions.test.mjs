@@ -391,7 +391,7 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads", () => {
-  assert.equal(contract.version, "1.32.0", "the checkpoint read and lead calls advance the interface");
+  assert.equal(contract.version, "1.33.0", "the checkpoint read and lead calls advance the interface");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -410,7 +410,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "2bf99e92c6e1d24f6dba4331cffd189fda6ac318",
+  assert.equal(contract.producer.source_commit, "a8eaecf3a7148ea67a14aaa4423f6ba760ba5281",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");

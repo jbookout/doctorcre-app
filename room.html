@@ -8,11 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/room.css?v=job-passport-spatial-v1">
+  <link rel="stylesheet" href="css/observatory.css?v=now-threads-v1">
   <title>Observatory · The Deal Room</title>
 </head>
 <body class="room-body">
-  <a class="skip" href="#wireFeed">Skip to the wire</a>
+  <a class="skip" href="#now">Skip to current activity</a>
 
   <header class="room-header">
     <a class="room-wordmark" href="/">Observa<span>tory</span></a>
@@ -36,139 +36,50 @@
     </nav>
   </header>
 
-  <!-- THE ORBITAL STAGE. The shared wire at dead centre, both partners'
-       constellations around it, and every delivery drawn as a comet on the
-       connector it actually travelled. -->
-  <section class="room-stage" id="roomStage" aria-label="Orbital stage">
-    <svg class="stage-svg" id="stageSvg" viewBox="0 0 1200 260" preserveAspectRatio="xMidYMid meet"
-         role="img" aria-labelledby="stageTitle stageDesc">
-      <title id="stageTitle">The shared wire and every seat orbiting it</title>
-      <desc id="stageDesc">Joe's seats orbit the left of the shared wire, Dell's the right. The inner ring carries desks with a live wire; the outer ring carries seats and backend workers seen on the wire without one. The same information is listed as text in the desk column and the health strip.</desc>
-      <defs>
-        <radialGradient id="coreHalo">
-          <stop offset="0%" stop-color="#F08A2D" stop-opacity="0.42"></stop>
-          <stop offset="55%" stop-color="#1B3E74" stop-opacity="0.30"></stop>
-          <stop offset="100%" stop-color="#1B3E74" stop-opacity="0"></stop>
-        </radialGradient>
-        <filter id="arcGlow" x="-120%" y="-120%" width="340%" height="340%">
-          <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
-          <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-        </filter>
-      </defs>
-      <g id="stageGuides"></g>
-      <g id="stageConnectors"></g>
-      <g id="stageCore"></g>
-      <g class="stage-comets" id="stageComets"></g>
-      <g id="stageNodes"></g>
-    </svg>
-    <div class="stage-legend" aria-hidden="true">
-      <span class="legend-item"><span class="legend-ring" id="legendJoe"></span>Joe</span>
-      <span class="legend-item"><span class="legend-ring" id="legendDell"></span>Dell</span>
-      <span class="legend-item"><span class="legend-fill" id="legendFill"></span>fill = seat</span>
-      <span class="legend-item"><span class="legend-square"></span>backend worker</span>
-    </div>
-    <div class="stage-tooltip" id="stageTooltip" role="status" hidden></div>
-  </section>
-
-  <!-- Feature-gated by a valid, controller-built Job Passport projection on
-       the existing wire. This is a view of CARR state, never a second task
-       store and never a rendering model's inference. -->
-  <section class="job-passport panel" id="jobPassport" aria-label="Job Passport" hidden>
-    <div class="job-passport-head">
-      <div><h2 class="panel-title">Job Passport</h2><p id="jobPassportSummary" class="job-passport-summary"></p></div>
-      <span class="job-passport-feature">Wire-derived</span>
-    </div>
-    <div id="jobPassportList" class="job-passport-list"></div>
-  </section>
-
-  <aside class="room-desks panel collapsible" id="roomDesks" aria-label="Desks">
-    <h2 class="panel-title">Desks
-      <button type="button" class="chip chip-plain collapsible-toggle" id="desksToggle" aria-expanded="true">Hide</button>
-    </h2>
-    <div class="collapsible-body" id="deskList">
-      <div class="skeleton"></div><div class="skeleton"></div>
-    </div>
-  </aside>
-
-  <section class="room-wire panel" aria-label="The wire">
-    <div class="wire-filters" id="wireFilters">
-      <span class="sr-only" id="filterHelp">Filters compose: seats, kinds, and text all narrow the feed together.</span>
-      <button type="button" class="chip chip-view" id="viewConversation" aria-pressed="true">Conversation</button>
-      <button type="button" class="chip chip-view" id="viewEverything" aria-pressed="false">Everything</button>
-      <span class="chip chip-plain" id="seatChipsLabel">Seats</span>
-      <span id="seatChips" class="wire-chip-row"></span>
-      <button type="button" class="chip chip-plain chip-kind" id="kindTurns" aria-pressed="true">Turns</button>
-      <button type="button" class="chip chip-plain chip-kind" id="kindSystem" aria-pressed="true">System</button>
-      <button type="button" class="chip chip-plain chip-kind" id="kindReceipts" aria-pressed="true">Receipts</button>
-      <button type="button" class="chip chip-plain chip-kind" id="kindHeartbeats" aria-pressed="false">Heartbeats</button>
-      <label class="sr-only" for="wireSearch">Filter the wire by text</label>
-      <input class="wire-search" id="wireSearch" type="search" placeholder="Filter text…" autocomplete="off">
-    </div>
-    <div class="wire-feed" id="wireFeed" role="log" aria-live="polite" aria-relevant="additions" aria-describedby="filterHelp" tabindex="0">
-      <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
-    </div>
-    <button type="button" class="wire-resume" id="wireResume" hidden>Resume live</button>
-  </section>
-
-  <aside class="room-rail panel collapsible" id="roomRail" aria-label="Assignments">
-    <h2 class="panel-title">Assignments
-      <button type="button" class="chip chip-plain collapsible-toggle" id="railToggle" aria-expanded="true">Hide</button>
-    </h2>
-    <div class="collapsible-body">
-      <div id="assignmentList"><p class="rail-empty">Reading the wire…</p></div>
-      <h3 class="panel-title">Sessions</h3>
-      <div id="sessionList"><p class="rail-empty">Reading the wire…</p></div>
-    </div>
-  </aside>
-
-  <section class="room-health panel" id="roomHealth" aria-label="Wire health">
-    <h2 class="panel-title">Health</h2>
-    <div class="health-grid">
-      <div class="health-cell">
-        <div class="health-cell-head"><span class="dot" id="healthCycleDot" data-state="dormant"></span><span class="health-label">Cycle age</span></div>
-        <div class="health-value" id="healthCycle">—</div>
-        <div class="health-sub">since the bridge last spoke</div>
+  <main class="observatory" id="main">
+    <section class="now-hero glass" id="now" aria-labelledby="nowTitle">
+      <div class="now-heading">
+        <div><p class="eyebrow">Model Room · live wire</p><h1 id="nowTitle">Now</h1></div>
+        <div class="freshness"><span class="live-orb" id="liveOrb" data-state="unknown" aria-hidden="true"></span><span id="freshness">Connecting…</span></div>
       </div>
-      <div class="health-cell">
-        <div class="health-cell-head"><span class="dot" id="healthLagDot" data-state="dormant"></span><span class="health-label">Bridge lag</span></div>
-        <div class="health-value" id="healthLag">—</div>
-        <div class="health-sub">turns the bridge is behind the room</div>
+      <div class="now-dialogue" id="nowDialogue"><p class="empty">Reading the latest conversation…</p></div>
+      <div class="signal-grid" aria-label="Current system state">
+        <button class="signal" type="button" data-focus="running"><span class="signal-name">Running</span><strong id="runningCount">—</strong><span id="runningSummary">Checking the room</span></button>
+        <button class="signal" type="button" data-focus="attention"><span class="signal-name">Needs attention</span><strong id="attentionCount">—</strong><span id="attentionSummary">Checking the room</span></button>
+        <button class="signal" type="button" data-focus="finished"><span class="signal-name">Finished recently</span><strong id="finishedCount">—</strong><span id="finishedSummary">Checking the room</span></button>
       </div>
-      <div class="health-cell">
-        <div class="health-cell-head"><span class="dot" id="healthErrorDot" data-state="dormant"></span><span class="health-label">Errors</span></div>
-        <div class="health-value" id="healthErrors">—</div>
-        <div class="health-sub" id="healthErrorsSub">refusals and failures in the loaded wire</div>
-      </div>
-      <div class="health-cell">
-        <div class="health-cell-head"><span class="dot" id="healthDeskDot" data-state="dormant"></span><span class="health-label">Desks online</span></div>
-        <div class="health-value" id="healthDesks">—</div>
-        <div class="health-sub">reported live this cycle</div>
-      </div>
-      <div class="health-cell is-wide">
-        <div class="health-cell-head"><span class="dot" id="healthAuthDot" data-state="dormant"></span><span class="health-label">Signed in</span></div>
-        <div class="health-value" id="healthAuth">—</div>
-        <div class="health-sub">desks with a valid vendor session</div>
-      </div>
-    </div>
-  </section>
+      <svg class="signal-flow" id="signalFlow" viewBox="0 0 900 136" role="img" aria-labelledby="flowTitle flowDesc">
+        <title id="flowTitle">Model Room work flow</title><desc id="flowDesc">Running work moves through attention and into recent completions. The three nodes show current counts and pulse at a rate that reflects urgency.</desc>
+        <defs><linearGradient id="flowLine"><stop stop-color="#4d83d3"/><stop offset=".5" stop-color="#f39246"/><stop offset="1" stop-color="#5fcbaa"/></linearGradient><filter id="flowGlow"><feGaussianBlur stdDeviation="8"/></filter></defs>
+        <path class="flow-track" d="M150 68 C270 68 280 68 450 68 S650 68 750 68"/>
+        <path class="flow-current" d="M150 68 C270 68 280 68 450 68 S650 68 750 68"/>
+        <g class="flow-node" data-focus="running" transform="translate(150 68)"><circle r="39"/><text class="flow-value" id="flowRunning" y="6">—</text><text class="flow-label" y="64">RUNNING</text></g>
+        <g class="flow-node attention-node" data-focus="attention" transform="translate(450 68)"><circle r="39"/><text class="flow-value" id="flowAttention" y="6">—</text><text class="flow-label" y="64">ATTENTION</text></g>
+        <g class="flow-node finished-node" data-focus="finished" transform="translate(750 68)"><circle r="39"/><text class="flow-value" id="flowFinished" y="6">—</text><text class="flow-label" y="64">FINISHED</text></g>
+      </svg>
+    </section>
 
-  <form class="room-composer" id="roomComposer">
-    <span class="composer-seat" id="composerSeat">Human</span>
-    <label class="sr-only" for="composerInput">Speak into the room</label>
-    <!-- Deliberately no maxlength. The cap is 20,000 characters and the reader
-         is told when they pass it; silently truncating a partner's turn mid-word
-         on paste would be a worse answer than refusing it out loud. -->
-    <textarea class="composer-input" id="composerInput" rows="1" placeholder="Speak into the room as Joe…"
-              autocomplete="off"></textarea>
-    <div class="composer-side">
-      <span class="composer-count" id="composerCount" hidden></span>
-      <button type="submit" class="composer-send" id="composerSend">Send</button>
-    </div>
-  </form>
+    <section class="now-detail" aria-label="Current Model Room activity">
+      <div class="glass detail-panel" id="runningPanel"><div class="section-head"><h2>Who is working</h2><span id="runningFreshness"></span></div><div id="runningList" class="detail-list"><p class="empty">Reading sessions…</p></div></div>
+      <div class="glass detail-panel" id="attentionPanel"><div class="section-head"><h2>Needs attention</h2></div><div id="attentionList" class="detail-list"><p class="empty">Reading signals…</p></div></div>
+      <div class="glass detail-panel" id="finishedPanel"><div class="section-head"><h2>Finished recently</h2></div><div id="finishedList" class="detail-list"><p class="empty">Reading completions…</p></div></div>
+    </section>
 
-  <div class="room-banner" id="roomBanner" role="status" hidden></div>
-  <div class="room-toast" id="roomToast" role="alert" hidden></div>
+    <section class="conversation-layout" aria-label="Model Room conversations">
+      <div class="conversation-main">
+        <div class="section-head conversation-heading"><div><p class="eyebrow">Conversation</p><h2 id="conversationTitle">Latest thread</h2></div><button class="text-button" id="refreshButton" type="button">Refresh</button></div>
+        <article class="glass thread-card" id="currentThread"><p class="empty">Reading turns…</p></article>
+      </div>
+      <aside class="glass archive" aria-labelledby="archiveTitle">
+        <div class="section-head"><div><p class="eyebrow">History</p><h2 id="archiveTitle">Thread archive</h2></div><span id="archiveCount"></span></div>
+        <div id="archiveList"><p class="empty">Reading threads…</p></div>
+        <button class="text-button load-more" type="button" id="loadOlder">Load older threads</button>
+      </aside>
+    </section>
+    <p class="source-note" id="sourceNote">Room turns are shown as recorded. A missing model name is marked unrecorded.</p>
+  </main>
 
-  <script type="module" src="js/room.js?v=job-passport-spatial-v1"></script>
+  <div class="room-toast" id="roomToast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="js/observatory.js?v=now-threads-v1"></script>
 </body>
 </html>

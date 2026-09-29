@@ -441,22 +441,19 @@ test("C12-16 the browser does not sort, filter or re-rank the server's arrays", 
   assert.deepEqual(window_.turns.map((turn) => turn.seq), LIVE_TURNS.turns.map((turn) => String(turn.seq)));
 });
 
-// MUTATION: touch one line of js/room.js.
-test("C12-17 the Observatory is untouched by this slice", async () => {
-  // Pinned by content digest, not by `git show origin/main`: the hosted runner
-  // checks out a single commit with no origin/main ref, so a trunk diff fails
-  // there with "invalid object name" (that is why PR 40's check went red).
-  const { createHash } = await import("node:crypto");
-  const pinned = {
-    "room.html": "354f74c7546dbd583504015674426a7afe964170b027268d2fe459d16b79c2f5",
-    "js/room.js": "711e143b4872169e4039aa85b6763126fcce459d5824748f122b8b236c1d9880",
-  };
-  for (const [path, digest] of Object.entries(pinned)) {
-    const actual = createHash("sha256").update(await read(path)).digest("hex");
-    assert.equal(actual, digest, `${path} is byte-identical to the Observatory that shipped before this slice`);
-  }
-  // Not modified, not retired, not redirected: nothing in this slice links to it
-  // as a replacement, and retiring it is Joe's decision, not this build's.
+test("the Observatory opens on current activity and retains its workspace navigation", async () => {
+  const html = await read("room.html");
+  assert.match(html, /id="now"/);
+  assert.match(html, /id="currentThread"/);
+  assert.match(html, /id="archiveList"/);
+  assert.match(html, /id="signalFlow"/);
+  assert.ok(html.indexOf('id="nowDialogue"') > html.indexOf('id="now"'));
+  assert.ok(html.indexOf('id="nowDialogue"') < html.indexOf('class="signal-grid"'),
+    "the first screen introduces the current conversation before system counts");
+  assert.equal(html.includes('id="latestTurns"'), false,
+    "the page does not repeat the latest thread in a second transcript panel");
+  for (const route of ["/", "/leads", "/deals", "/system-work.html", "/room.html", "/queue.html"])
+    assert.ok(html.includes(`href="${route}"`), `workspace navigation keeps ${route}`);
   assert.equal(/room\.html/.test(viewSource), false, "the Model Room tab does not redirect to the Observatory");
 });
 
@@ -746,9 +743,9 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.32.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.33.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
-  for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
+  for (const verb of ["read-room", "read-room-latest", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   for (const verb of ["record-dispatch-link", "acknowledge-dispatch"]) {
@@ -762,8 +759,10 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   // (mcp-server/src/identity.js personalScopeForActor, and partner-room.js's
   // add-room-turn handler derives origin_channel/origin_actor server-side).
   assert.ok(contract.mcp_operations.includes("add-room-turn"), "add-room-turn is not pinned");
+  const latest = contract.mcp_operations.indexOf("read-room-latest");
   const queue = contract.mcp_operations.indexOf("read-room-queue");
-  assert.equal(contract.mcp_operations[queue - 1], "read-room");
+  assert.equal(contract.mcp_operations[latest - 1], "read-room");
+  assert.equal(contract.mcp_operations[queue - 1], "read-room-latest");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // V5-UX-C13c: answer-work-request-for-joe (carr PR #1190) is the answer
   // form's one write, pinned the same way add-room-turn was — an app-side
@@ -773,16 +772,16 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.equal(contract.mcp_operations[answerAt - 1], "answer-board-question");
   assert.equal(contract.mcp_operations[answerAt - 2], "add-room-turn");
   assert.equal(contract.mcp_operations[answerAt + 1], "capture-queue");
-  assert.equal(contract.producer.source_commit, "2bf99e92c6e1d24f6dba4331cffd189fda6ac318");
+  assert.equal(contract.producer.source_commit, "a8eaecf3a7148ea67a14aaa4423f6ba760ba5281");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
   // any value, and a "main has 53" count fails by construction after merge
   // (that is how PR 40 turned main red on 2026-09-19). `/api/room/*` was already
-  // present for the Observatory, so its presence here is not this slice's doing.
+  // present; `/api/room/latest` pins the Observatory's newest-window read.
   assert.deepEqual(contract.http_surfaces, [
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
-    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
+    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/room/latest", "/api/system-work/*", "/api/share/*", "/api/tours/*",
   ], "http_surfaces does not move");
 });
 
