@@ -35,7 +35,22 @@ export function suggestionCards(payload, { today, includeParked = false } = {}) 
 }
 
 export function suggestionReadState(previous, { state, payload = null, sentence = null }) {
-  return { ...previous, state, rows: state === 'read' ? payload.suggestions : [], sentence };
+  return { ...previous, state, rows: state === 'read' ? payload.suggestions : [],
+    coverage: state === 'read' ? payload.coverage ?? null : null, sentence };
+}
+
+export function suggestionStatus(read, visibleCount) {
+  if (read.state === 'unavailable') return { visible: true, state: 'unavailable', title: read.sentence };
+  if (read.state !== 'read') return { visible: true, state: 'loading', title: 'Reading suggestions…' };
+  const coverage = read.coverage;
+  if (coverage?.state !== 'complete')
+    return { visible: true, state: 'unknown', title: 'Suggestion coverage is unknown' };
+  if (visibleCount > 0) return { visible: false, state: 'read', title: '' };
+  if (coverage.empty_state === 'filtered')
+    return { visible: true, state: 'filtered', title: 'Suggestions are hidden by this view' };
+  if (coverage.empty_state === 'verified_empty')
+    return { visible: true, state: 'empty', title: 'No suggestions need a decision' };
+  return { visible: true, state: 'unknown', title: 'Suggestion coverage is unknown' };
 }
 
 export function decisionArgs(row, choice, idempotency_key, snoozed_until = null, work_ref = null) {

@@ -2460,18 +2460,23 @@ export async function createFixtureClient(opts = {}) {
 
     async listDocSuggestions({ conversation_id = null, include_parked = false } = {}) {
       refuseIfOutage('conversations', 'list-doc-suggestions');
-      if (conversation_id && !docVisibleTo(docConversations.get(conversation_id), selfActor))
+      const conversation = conversation_id ? docConversations.get(conversation_id) : null;
+      if (conversation_id && !docVisibleTo(conversation, selfActor))
         refuse('list-doc-suggestions', 'doc_conversation_not_found');
       const suggestions = [...docSuggestions.values()].filter(row =>
         (!conversation_id || row.conversation_id === conversation_id)
         && docVisibleTo(docConversations.get(row.conversation_id), selfActor)
         && (include_parked || !['snoozed','dismissed'].includes(row.disposition)
           || row.material_version !== (row.disposition === 'snoozed' ? row.snoozed_material_version : row.dismissed_material_version)));
+      const coverage = conversation_id
+        ? { state: 'unknown', latest_sequence: conversation.turns.at(-1)?.sequence ?? -1,
+          scanned_through: null, empty_state: suggestions.length ? 'not_empty' : 'unknown' }
+        : { state: 'unknown', reason_id: 'conversation_scope_required' };
       return { ok: true, suggestions: suggestions.map(row => ({ ...row,
         source_conversation_id: row.conversation_id,
         contributions: row.contributions.map(item => ({ ...item })),
         corrections: [...docCorrections.entries()].filter(([, item]) => item.suggestion_id === row.id)
-          .map(([id, item]) => ({ id, ...item })) })), as_of: new Date().toISOString() };
+          .map(([id, item]) => ({ id, ...item })) })), coverage, as_of: new Date().toISOString() };
     },
     async decideDocSuggestion({ suggestion_id, base_version, choice, snoozed_until = null, work_ref = null, idempotency_key }) {
       refuseIfOutage('conversations', 'decide-doc-suggestion');

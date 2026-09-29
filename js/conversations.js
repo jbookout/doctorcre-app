@@ -49,7 +49,7 @@ import {
   refuseDocOutcomeCards,
 } from "./doc-outcome-cards-model.js";
 import { uuidv4 } from "./uuid.js";
-import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow, suggestionReadState, visibleSuggestionConflicts, reconcileSuggestionConflicts } from "./doc-suggestions-model.js";
+import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow, suggestionReadState, suggestionStatus, visibleSuggestionConflicts, reconcileSuggestionConflicts } from "./doc-suggestions-model.js";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -76,7 +76,7 @@ const view = {
   // changed rather than the whole card. New cards are compared against
   // nothing and never flash; the entrance animation already says "new".
   outcomeCards: { state: "pending", payload: null, rows: [], sequence: 0, previousById: new Map() },
-  suggestions: { state: "pending", rows: [], sequence: 0, includeParked: false, sentence: null,
+  suggestions: { state: "pending", rows: [], coverage: null, sequence: 0, includeParked: false, sentence: null,
     drafts: new Map(), workNumbers: new Map(), conflicts: new Map() },
 };
 
@@ -333,10 +333,10 @@ function renderSuggestions() {
   if (!block || !list) return;
   $("suggestionsParked").setAttribute("aria-pressed", String(state.includeParked));
   $("suggestionsParked").textContent = state.includeParked ? "Hide snoozed and dismissed" : "Show snoozed and dismissed";
-  block.hidden = state.state === "read" && (cards.length > 0 || visibleConflicts.length > 0);
-  block.dataset.state = state.state === "unavailable" ? "unavailable" : state.state === "read" ? "empty" : "loading";
-  $("suggestionsStateTitle").textContent = state.state === "unavailable" ? state.sentence
-    : state.state === "read" ? "No suggestions need a decision" : "Reading suggestions…";
+  const status = suggestionStatus(state, cards.length + visibleConflicts.length);
+  block.hidden = !status.visible;
+  block.dataset.state = status.state;
+  $("suggestionsStateTitle").textContent = status.title;
   const today = new Date();
   today.setDate(today.getDate() + 7);
   const defaultSnooze = today.toISOString().slice(0, 10);
@@ -514,7 +514,8 @@ async function takeSuggestions() {
   renderSuggestions();
   const live = $("suggestionsLive");
   if (live) live.textContent = view.suggestions.state === "read"
-    ? `${view.suggestions.rows.length} suggestions read from the record layer.` : view.suggestions.sentence;
+    ? `${view.suggestions.rows.length} suggestions read from the record layer. ${suggestionStatus(view.suggestions, view.suggestions.rows.length).title}`
+    : view.suggestions.sentence;
 }
 
 async function load() {

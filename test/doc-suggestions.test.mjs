@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createFixtureClient } from '../js/fixture-client.js';
 import {
   suggestionCards, decisionArgs, correctionArgs, shouldShowSuggestion,
-  correctionConflict, suggestionFlow, suggestionReadState, visibleSuggestionConflicts,
+  correctionConflict, suggestionFlow, suggestionReadState, suggestionStatus, visibleSuggestionConflicts,
   reconcileSuggestionConflicts,
 } from '../js/doc-suggestions-model.js';
 
@@ -88,6 +88,32 @@ test('a failed or in-flight suggestion read clears old actionable rows while kee
   assert.equal(suggestionCards({ suggestions: failed.rows }).length, 0);
 });
 
+test('suggestion status uses producer coverage before calling a zero-row read empty', () => {
+  const held = { state: 'pending', rows: [], coverage: null, sentence: null };
+  const read = (coverage, suggestions = []) => suggestionReadState(held, {
+    state: 'read', payload: { suggestions, coverage },
+  });
+  assert.deepEqual(suggestionStatus(read({ state: 'unknown', empty_state: 'unknown' }), 0), {
+    visible: true, state: 'unknown', title: 'Suggestion coverage is unknown',
+  });
+  assert.deepEqual(suggestionStatus(read({ state: 'complete', empty_state: 'filtered' }), 0), {
+    visible: true, state: 'filtered', title: 'Suggestions are hidden by this view',
+  });
+  assert.deepEqual(suggestionStatus(read({ state: 'complete', empty_state: 'verified_empty' }), 0), {
+    visible: true, state: 'empty', title: 'No suggestions need a decision',
+  });
+  assert.equal(suggestionStatus(read({ state: 'unknown', empty_state: 'unknown' }, [first]), 1).visible, true,
+    'visible rows must not imply complete producer coverage');
+  for (const coverage of [null, {}, { state: 'unknown', empty_state: 'verified_empty' },
+    { state: 'complete', empty_state: 'not_empty' }]) {
+    assert.equal(suggestionStatus(read(coverage), 0).state, 'unknown',
+      'missing, contradictory, or locally hidden coverage must not claim verified empty');
+  }
+  assert.equal(suggestionStatus(read({ state: 'complete', empty_state: 'not_empty' }, [first]), 1).visible, false);
+  assert.equal(suggestionReadState(read({ state: 'complete', empty_state: 'verified_empty' }),
+    { state: 'loading' }).coverage, null, 'a later read cannot reuse earlier coverage');
+});
+
 test('a conflict from another conversation does not hide this route’s empty state', () => {
   const conflict = correctionConflict('Review on Monday.', first);
   const conflicts = new Map([[first.id, conflict]]);
@@ -154,4 +180,16 @@ test('fixture keeps distinct obligations and replays the same decision without a
   const after = await client.listDocSuggestions();
   assert.equal(after.suggestions.length, 1);
   assert.equal(after.suggestions[0].id, before.suggestions[1].id);
+});
+
+test('fixture suggestion reads carry server-shaped coverage and never certify an unscanned view', async () => {
+  const seed = await readFile(new URL('../data/board-seed.json', import.meta.url), 'utf8');
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(seed).toString('base64')}` });
+  const global = await client.listDocSuggestions();
+  assert.deepEqual(global.coverage, { state: 'unknown', reason_id: 'conversation_scope_required' });
+  const scoped = await client.listDocSuggestions({ conversation_id: global.suggestions[0].conversation_id });
+  assert.equal(scoped.coverage.state, 'unknown');
+  assert.equal(scoped.coverage.empty_state, 'not_empty');
+  const empty = await client.listDocSuggestions({ conversation_id: '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c02' });
+  assert.equal(empty.coverage.empty_state, 'unknown');
 });
