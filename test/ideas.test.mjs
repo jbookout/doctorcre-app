@@ -102,8 +102,8 @@ test("the address remembers the tab, the search and the open idea", () => {
   assert.deepEqual(parseIdeasState(""), { tab: "ideas", q: "", idea: null });
   const state = parseIdeasState("?tab=events&q=lunch&idea=12");
   assert.deepEqual(state, { tab: "events", q: "lunch", idea: "12" });
-  assert.equal(ideasHref({ tab: "ideas", q: "lunch", idea: "12" }), "/ideas?tab=ideas&q=lunch&idea=12");
-  assert.equal(ideasHref({ tab: "ideas", q: "", idea: null }), "/ideas?tab=ideas");
+  assert.equal(ideasHref({ tab: "ideas", q: "lunch", idea: "12" }), "/ideas-events?tab=ideas&q=lunch&idea=12");
+  assert.equal(ideasHref({ tab: "ideas", q: "", idea: null }), "/ideas-events?tab=ideas");
   assert.deepEqual(parseIdeasState("?tab=nope&idea=%3Cscript%3E"), { tab: "ideas", q: "", idea: null }, "an idea number is digits only");
 });
 
@@ -178,7 +178,7 @@ test("a version conflict names the server fields that changed before a draft can
 test("the Ideas page is routed and uses the pinned idea and event verbs", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(routes.routes["/ideas"], "ideas.html");
+  assert.equal(routes.routes["/ideas-events"], "ideas.html");
   assert.equal(carr.version, "1.32.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);

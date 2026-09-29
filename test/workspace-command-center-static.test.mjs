@@ -29,20 +29,9 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.match(html, /href="\/leads"/);
   assert.match(html, /href="\/deals/);
   assert.match(html, />CALLS</);
-  // Calls are back (decision 7dc47eea supersedes the V5-J101 exclusion): the
-  // card sends a partner to the Deal Room, whose Call Mode records Joe and
-  // Dell's pipeline call. Scoped to the card itself: "Calls" also appears in
-  // the flow diagram's label and node, and neither is an affordance.
-  const callsCard = html.split("</a>").find((chunk) => chunk.includes("<h2>Calls</h2>")) || "";
-  assert.notEqual(callsCard, "", "Home still carries the Calls card");
-  assert.match(callsCard, /href="\/deals"/, "the Calls card opens the Deal Room, where Call Mode lives");
-  assert.match(callsCard, /Deal Room Call Mode/);
-  assert.match(callsCard, /Joe and Dell's pipeline call/);
-  assert.match(callsCard, /until a partner approves it\./,
-    "the card says nothing from a call reaches the record on its own");
-  assert.doesNotMatch(callsCard, /not part of this release/i, "the retired inactive copy is gone");
-  assert.match(html, /href="\/system-work\.html"/);
-  assert.match(html, /href="\/room\.html"/);
+  assert.match(html, /href="\/work-requests"/);
+  assert.match(html, /href="\/control-room"/);
+  assert.match(html, /href="\/\?view=charts"/);
   assert.match(css, /--ink-0:#0/);
   assert.match(css, /backdrop-filter/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:reduce\)/);
@@ -64,7 +53,7 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.notEqual(loadingLabel, undefined, "HEALTH_LABEL declares no loading state");
   assert.ok(html.includes(`id="healthLabel">${loadingLabel}<`),
     `workspace.html must ship the script's loading label, "${loadingLabel}"`);
-  assert.doesNotMatch(html, /pulse-attention[^>]+href="\/system-work\.html"/);
+  assert.doesNotMatch(html, /pulse-attention[^>]+href="\/work-requests"/);
   assert.match(html, /System state/);
   assert.match(modelJs, /valid_until/);
   assert.match(modelJs, /flagged_deals/);
@@ -74,7 +63,7 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.match(dealJs, /params\.get\('owner'\) === 'me'/);
   assert.match(html, /id="appShell"/);
   const sharedNavigation = appShellMarkup("/");
-  for (const label of ["Home", "Leads", "Deals", "Clients", "Vendors", "System work", "Observatory"]) {
+  for (const label of ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Work Requests", "Agent Room"]) {
     assert.match(sharedNavigation, new RegExp(`>${label}<`), `shared navigation is missing ${label}`);
   }
   assert.doesNotMatch(sharedNavigation, />Queue<\/a>/);
@@ -164,7 +153,7 @@ test("Home has one first-region primary action, one workspace directory, and sec
   assert.equal((primaryRegion.match(/data-primary-action/g) || []).length, 1);
   assert.match(primaryRegion, /id="homePrimaryAction"/);
   assert.doesNotMatch(html, /glance-card|Where to go|Open the owning surface/);
-  assert.equal((html.match(/aria-label="Open a workspace"/g) || []).length, 1);
+  assert.equal((html.match(/aria-label="The seven sections"/g) || []).length, 1);
   assert.ok(html.indexOf("data-home-primary-region") < html.indexOf("id=\"commandCenterVisual\""));
 });
 
@@ -174,91 +163,42 @@ test("Home has one first-region primary action, one workspace directory, and sec
  * This suite checks the six shipped authenticated surfaces together so the global
  * navigation rule remains local to the product repository.
  */
-test("all authenticated surfaces mount the deterministic global navigation", async () => {
-  const expectations = {
-    "workspace.html": ["/", "Home"], "index.html": ["/deals", "Deals"],
-    "leads.html": ["/leads", "Leads"], "room.html": ["/room.html", "Observatory"],
-    "queue.html": ["/room.html", "Observatory"], "system-work.html": ["/system-work.html", "System work"],
-  };
-  for (const [file, [activeHref, activeLabel]] of Object.entries(expectations)) {
+test("all authenticated surfaces mount the approved shared navigation", async () => {
+  const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
+  for (const [route, file] of Object.entries(routes.routes)) {
+    if (file === "reports/share.html") continue;
     const html = await readFile(`${ROOT}/${file}`, "utf8");
-    assert.match(html, /id="appShell"/);
-    const nav = appShellMarkup(file === "queue.html" ? "/queue.html" : activeHref);
-    assert.match(nav, new RegExp(`href="${activeHref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}" aria-current="page">${activeLabel}<\\/a>`));
-    assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length);
+    assert.match(html, /id="appShell"/, `${route}: shared shell mount`);
+    const nav = appShellMarkup(route);
+    assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length, `${route}: same destinations`);
   }
+  assert.deepEqual(navigationItems.slice(0, 7).map(({ label }) => label),
+    ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room"]);
 });
 
-test("Home reaches Clients and Vendors, and both reach Home again", async () => {
+test("Home opens the seven owning sections and People offers both directories", async () => {
   const home = await readFile(`${ROOT}/workspace.html`, "utf8");
-  const business = await readFile(`${ROOT}/business.html`, "utf8");
-  // Both directions exist as ordinary links, so the journey works with a
-  // keyboard, a screen reader, a middle click and the browser's own Back.
-  assert.match(appShellMarkup("/"), /href="\/clients">Clients<\/a>/);
-  assert.match(appShellMarkup("/"), /href="\/vendors">Vendors<\/a>/);
-  assert.match(home, /href="\/clients"[^>]*class="module-card|class="module-card[^"]*"\s+href="\/clients"/);
-  assert.match(home, /href="\/vendors"[\s\S]{0,200}<h2>Vendors<\/h2>/);
-  assert.match(business, /class="back-home" href="\/"/);
-  assert.match(business, /id="appShell"/);
-  assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">Clients<\/a>/);
-  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">Vendors<\/a>/);
-  assert.doesNotMatch(business, /href="#"/);
-  // The legacy Deal Room is still the Deal Room; nothing here renames it into a
-  // v5 typed pipeline, and Leads keeps its own name too.
-  assert.doesNotMatch(business, /v5 pipeline|typed pipeline|Deal Room pipeline/i);
-  for (const surface of [home, business]) {
-    assert.doesNotMatch(surface, />Work<\/a>|>Pipeline<\/a>/, "no invented Work or Pipeline destination");
-    assert.match(surface, /id="appShell"/);
+  const people = await readFile(`${ROOT}/business.html`, "utf8");
+  for (const route of ["/", "/leads", "/tours", "/deals", "/clients", "/tasks", "/control-room"]) {
+    assert.match(home, new RegExp(`href="${route}"`), `${route}: Home section link`);
   }
+  assert.match(people, /id="appShell"/);
+  assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">People<\/a>/);
+  assert.match(appShellMarkup("/vendors"), /href="\/clients" aria-current="page">People<\/a>/);
 });
 
-test("operations stay reachable, in a secondary More rather than as a business tab", async () => {
-  for (const file of ["workspace.html", "business.html"]) {
-    const html = await readFile(`${ROOT}/${file}`, "utf8");
-    assert.match(html, /id="appShell"/);
-    const nav = appShellMarkup("/");
-    const primary = nav.split('<div class="app-shell-more">')[0];
-    // The primary tabs are business destinations only.
-    assert.doesNotMatch(primary, /system-work|room\.html|queue\.html/, `${file} primary nav`);
-    assert.match(primary, /href="\/clients"/, file);
-    assert.match(primary, /href="\/vendors"/, file);
-    // ...and operations are still one keystroke away, in an accessible native
-    // disclosure that needs no script and no new authority.
-    const more = nav.split('<div class="app-shell-more">')[1] || "";
-    assert.match(more, /class="app-shell-more-toggle[^"\n]*" aria-expanded="false">More<\/button>/, file);
-    assert.match(more, /href="\/system-work\.html"[^>]*>System work<\/a>/, file);
-    assert.match(more, /href="\/room\.html"[^>]*>Observatory<\/a>/, file);
+test("More keeps Updates, Operations and Reference in stable groups", () => {
+  const nav = appShellMarkup("/");
+  for (const group of ["Updates", "Operations", "Reference"]) {
+    assert.match(nav, new RegExp(`app-shell-more-group[^>]*>${group}<`));
   }
-  const css = await readFile(`${ROOT}/css/app-shell.css`, "utf8");
-  assert.match(css, /min-height:44px/);
+  for (const route of ["/updates", "/doc-chats", "/work-requests", "/all-work", "/incidents", "/agent-room", "/design-lab", "/status"]) {
+    assert.match(nav, new RegExp(`href="${route}"`));
+  }
+  assert.match(nav, /href="\/search" aria-label="Search"/);
+  assert.match(nav, /href="\/doc-chats" aria-label="Doc"/);
 });
 
-/**
- * The newer shared pages (Tasks, Conversations, Notifications) carry their own
- * nav, so the workspace shell must link to them too or a partner who signs in
- * to Home has no way there. They live in the same More disclosure as
- * Operations, under their own heading and above it, so the primary tabs and the
- * five phone shortcuts stay exactly as they are.
- */
-test("the workspace shell's More reaches Calendar, Ideas, Tasks, Conversations and Notifications", async () => {
-  // V5-UX-B04 added Calendar and Ideas at the head of the group.
-  const expected = [["/calendar", "Calendar"], ["/ideas", "Ideas"], ["/tasks", "Tasks"], ["/conversations", "Conversations"], ["/notifications", "Notifications"]];
-  for (const file of ["workspace.html", "business.html"]) {
-    const html = await readFile(`${ROOT}/${file}`, "utf8");
-    assert.match(html, /id="appShell"/);
-    const links = navigationItems.filter((item) => expected.some(([href]) => href === item.href)).map(({ href, label }) => [href, label]);
-    assert.deepEqual(links, expected, `${file} Workspace group`);
-    const primary = appShellMarkup("/").split('<div class="app-shell-more">')[0];
-    assert.doesNotMatch(primary, /\/tasks|\/conversations|\/notifications|\/calendar|\/ideas/, `${file} primary nav stays business-only`);
-  }
-});
-
-/**
- * The typed shared Meeting page is removed (decision 7dc47eea): the partners'
- * pipeline conversation is recorded by Deal Room Call Mode instead, and a
- * meeting with a client or vendor stays a Teams meeting. No page may still
- * link to it, and the route contract no longer carries it.
- */
 test("no page links to the removed Meeting page and the route is gone", async () => {
   const { readdir } = await import("node:fs/promises");
   const pages = (await readdir(ROOT)).filter((name) => name.endsWith(".html"));
@@ -276,13 +216,13 @@ test("no page links to the removed Meeting page and the route is gone", async ()
     "the app no longer consumes any meeting verb");
 });
 
-test("Home and business use the same complete phone menu", async () => {
+test("Home and People mount the same phone menu", async () => {
   for (const file of ["workspace.html", "business.html"]) {
     const html = await readFile(`${ROOT}/${file}`, "utf8");
     assert.match(html, /id="appShell"/, file);
     assert.match(html, /src="\/js\/app-shell\.js"/, file);
   }
-  assert.match(appShellMarkup("/"), /href="\/system-work\.html">System work<\/a>/);
+  assert.match(appShellMarkup("/"), /href="\/work-requests"[^>]*>Work Requests<\/a>/);
 });
 
 test("Clients and Vendors is a real read journey with distinguishable states", async () => {

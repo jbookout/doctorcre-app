@@ -192,5 +192,5 @@ export function ideasHref(state) {
   const params = new URLSearchParams({ tab: state.tab });
   if (state.q) params.set("q", state.q);
   if (state.idea) params.set("idea", state.idea);
-  return `/ideas?${params}`;
+  return `/ideas-events?${params}`;
 }
