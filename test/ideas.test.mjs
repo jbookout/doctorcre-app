@@ -2,9 +2,8 @@
 //
 // Ideas are real records: a loop of kind `idea` (add-loop parks one), read with
 // `loop-board` and, one at a time, `read-loop` — both already pinned for Tasks.
-// Events have NO record-layer read today, so the Events tab is an honest absent
-// state that sends no request. These tests pin both halves, the URL memory,
-// and the motion rule 9293d609 with its reduced-motion fallback.
+// Events use CARR's tenant-scoped industry-event read and versioned writes.
+// These tests pin both halves, the URL memory, and motion's reduced-motion floor.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -13,6 +12,7 @@ import {
   IDEA_BOARD_ARGS, filterIdeas, ideaDetailRows, ideaReadState, ideasHref, ideasPhase,
   normalizeIdea, parseIdeasState, validIdeaBoard,
   eventReadState, eventPhase, eventWriteRequest, eventWriteOutcome, eventChangedFields,
+  EVENT_LIST_LIMIT,
 } from "../js/ideas-model.js";
 
 const ROOT = new URL("../", import.meta.url);
@@ -122,6 +122,19 @@ test("the event read distinguishes zero records from a failed or malformed read 
   ];
   assert.deepEqual(eventReadState({ ok: true, events, count: 2 }).rows.map(row => row.id), ["sooner", "later"]);
   assert.equal(eventPhase({ status: "ready", rows: events }), "ready");
+});
+
+test("a full event page is explicitly partial because CARR provides no next page", () => {
+  assert.equal(EVENT_LIST_LIMIT, 100, "request the producer's maximum before declaring a list complete");
+  const event = (index) => ({ id: `event-${index}`, title: `Event ${index}`,
+    starts_at: "2026-10-02T15:00:00Z", ends_at: "2026-10-02T19:00:00Z",
+    source: "Organizer", owner_partner: "joe", version: 1 });
+  const belowLimit = eventReadState({ ok: true, events: Array.from({ length: 99 }, (_, i) => event(i)), count: 99 });
+  assert.equal(eventPhase(belowLimit), "ready");
+  const atLimit = eventReadState({ ok: true, events: Array.from({ length: 100 }, (_, i) => event(i)), count: 100 });
+  assert.equal(eventPhase(atLimit), "partial");
+  assert.equal(atLimit.rows.length, 100, "a partial answer still shows all returned events");
+  assert.equal(eventPhase(eventReadState({ ok: true, events: [], count: 0 })), "empty");
 });
 
 test("the event form sends sourced, timezone-bearing data and preserves the read version for edits", () => {
@@ -247,4 +260,14 @@ test("event motion has a reduced-motion fallback and a narrow-screen layout", ()
   assert.match(css, /@media \(max-width: 640px\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.event-/);
   assert.match(css, /:root\[data-motion="reduced"\] \.event-/);
+});
+
+test("a phone can reach every timeline node when the SVG exceeds the viewport", async () => {
+  assert.match(css, /\.event-timeline\s*\{[^}]*overflow-x:\s*auto;/,
+    "the rail scrolls horizontally instead of clipping later nodes");
+  assert.doesNotMatch(css, /\.event-timeline\s*\{[^}]*overflow:\s*hidden;/);
+  assert.match(css, /\.event-timeline\s*\{[^}]*overscroll-behavior-inline:/,
+    "touch swipes stay within the timeline");
+  assert.match(await read("js/ideas.js"), /Math\.max\(320, rows\.length \* 126/,
+    "four nodes still get their full width instead of being compressed into 390 px");
 });

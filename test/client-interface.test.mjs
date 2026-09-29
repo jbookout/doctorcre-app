@@ -12,14 +12,14 @@ test("industry events use the authenticated read and versioned writes", async ()
     calls.push({ path, init });
     return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ ok: true, events: [], count: 0 }) }] } }), { status: 200 });
   } });
-  await live.listIndustryEvents();
+  await live.listIndustryEvents({ limit: 100 });
   await live.addIndustryEvent({ title: "Demo forum", source: "Organizer", idempotency_key: "11111111-1111-4111-8111-111111111111" });
   await live.updateIndustryEvent({ event_id: "22222222-2222-4222-8222-222222222222", base_version: 7,
     title: "Demo forum revised", idempotency_key: "33333333-3333-4333-8333-333333333333" });
   assert.deepEqual(calls.map(({ init }) => JSON.parse(init.body).params.name),
     ["list-industry-events", "add-industry-event", "update-industry-event"]);
   assert.deepEqual(calls.map(({ init }) => JSON.parse(init.body).params.arguments), [
-    {}, { title: "Demo forum", source: "Organizer", idempotency_key: "11111111-1111-4111-8111-111111111111" },
+    { limit: 100 }, { title: "Demo forum", source: "Organizer", idempotency_key: "11111111-1111-4111-8111-111111111111" },
     { event_id: "22222222-2222-4222-8222-222222222222", base_version: 7,
       title: "Demo forum revised", idempotency_key: "33333333-3333-4333-8333-333333333333" },
   ]);

@@ -17,6 +17,7 @@ import {
   normalizeIdea, parseIdeasState, validIdeaBoard, eventReadState, eventPhase,
   eventWriteRequest, eventWriteOutcome, eventLocalDateTime,
   eventChangedFields,
+  EVENT_LIST_LIMIT,
 } from "./ideas-model.js";
 
 const $ = (id) => document.getElementById(id);
@@ -138,6 +139,7 @@ const EVENT_COPY = {
   unauthorized: "Your session has ended. Sign in again to read events.",
   unavailable: "Industry events could not be read. Check again when the connection returns.",
   empty: "No industry events are recorded yet.",
+  partial: `Showing the first ${EVENT_LIST_LIMIT} events by date. More may be recorded in CARR.`,
 };
 const KIND_LABEL = { conference: "Conference", association_meeting: "Association meeting", trade_show: "Trade show", networking: "Networking" };
 const STATUS_LABEL = { planned: "Planned", attended: "Attended", skipped: "Skipped", cancelled: "Cancelled" };
@@ -186,15 +188,16 @@ function renderEvents() {
   }
   const list = $("eventList");
   if (list) {
-    list.innerHTML = phase === "ready" ? rows.map(eventCard).join("") : "";
+    list.innerHTML = phase === "ready" || phase === "partial" ? rows.map(eventCard).join("") : "";
     applyStagger(list, ".event-card");
   }
-  drawTimeline(phase === "ready" ? rows : []);
+  drawTimeline(phase === "ready" || phase === "partial" ? rows : []);
   const source = $("eventSource");
-  if (source) source.textContent = status === "ready"
-    ? `${rows.length} event${rows.length === 1 ? "" : "s"} · Source: industry events · ${deploymentIdentity(client?.mode).detail}`
+  if (source) source.textContent = status === "ready" || status === "partial"
+    ? `${status === "partial" ? "First " : ""}${rows.length} event${rows.length === 1 ? "" : "s"} · Source: industry events · ${deploymentIdentity(client?.mode).detail}`
     : `Source: industry events · ${deploymentIdentity(client?.mode).detail}`;
-  if (view.state.tab === "events") announce(phase === "ready" ? `${rows.length} industry events read.` : EVENT_COPY[phase]);
+  if (view.state.tab === "events") announce(phase === "ready" ? `${rows.length} industry events read.`
+    : phase === "partial" ? EVENT_COPY.partial : EVENT_COPY[phase]);
 }
 
 async function loadEvents() {
@@ -202,7 +205,7 @@ async function loadEvents() {
   view.events.status = "loading";
   renderEvents();
   try {
-    const read = eventReadState(await client.listIndustryEvents());
+    const read = eventReadState(await client.listIndustryEvents({ limit: EVENT_LIST_LIMIT }));
     if (sequence !== view.events.sequence) return;
     view.events.status = read.status;
     view.events.rows = read.rows;
@@ -496,7 +499,7 @@ function wire() {
   });
   $("eventDialogClose")?.addEventListener("click", () => closeEvent());
   $("eventCancel")?.addEventListener("click", () => closeEvent({ discard: true }));
-  window.addEventListener("resize", () => drawTimeline(view.events.status === "ready" ? view.events.rows : []));
+  window.addEventListener("resize", () => drawTimeline(["ready", "partial"].includes(view.events.status) ? view.events.rows : []));
   window.addEventListener("online", () => { load(); loadEvents(); });
   window.addEventListener("popstate", () => {
     const next = parseIdeasState(location.search);

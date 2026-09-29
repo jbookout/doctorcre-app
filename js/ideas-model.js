@@ -15,6 +15,7 @@ import { formatCalendarDate } from "./visual-system.js";
 
 export const IDEA_BOARD_ARGS = Object.freeze({ kind: "idea", status: "open", limit: 300, summary: true });
 export const IDEA_TABS = Object.freeze(["ideas", "events"]);
+export const EVENT_LIST_LIMIT = 100; // CARR's list-industry-events maximum; it has no next-page input.
 
 const NOT_RECORDED = "not recorded";
 
@@ -59,7 +60,8 @@ export function ideasPhase({ status, rows = [], shown = [] } = {}) {
 }
 
 export function eventReadState(answer) {
-  if (answer?.ok !== true || !Array.isArray(answer.events) || answer.count !== answer.events.length) {
+  if (answer?.ok !== true || !Array.isArray(answer.events) || answer.count !== answer.events.length
+    || answer.count > EVENT_LIST_LIMIT) {
     return { status: "error", rows: [] };
   }
   const valid = answer.events.every((row) => row && typeof row.id === "string"
@@ -67,13 +69,14 @@ export function eventReadState(answer) {
     && typeof row.owner_partner === "string" && Number.isInteger(row.version)
     && !Number.isNaN(Date.parse(row.starts_at)) && !Number.isNaN(Date.parse(row.ends_at)));
   if (!valid) return { status: "error", rows: [] };
-  return { status: "ready", rows: [...answer.events].sort((a, b) =>
+  return { status: answer.count === EVENT_LIST_LIMIT ? "partial" : "ready", rows: [...answer.events].sort((a, b) =>
     Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id)) };
 }
 
 export function eventPhase({ status, rows = [] } = {}) {
   if (status === "loading") return "loading";
   if (status === "unauthorized") return "unauthorized";
+  if (status === "partial") return "partial";
   if (status !== "ready") return "unavailable";
   return rows.length ? "ready" : "empty";
 }

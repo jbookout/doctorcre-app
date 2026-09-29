@@ -1794,9 +1794,9 @@ export async function createFixtureClient(opts = {}) {
       return { loop: structuredClone(found) };
     },
 
-    async listIndustryEvents() {
+    async listIndustryEvents({ limit = 50 } = {}) {
       const rows = [...industryEvents.values()].sort((a, b) =>
-        Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id));
+        Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id)).slice(0, limit);
       return { ok: true, events: structuredClone(rows), count: rows.length };
     },
 

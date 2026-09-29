@@ -39,7 +39,7 @@
 .idea-rows dd.unknown { color: var(--quiet); font-style: italic; }
 .idea-body { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--ground-1) 60%, transparent); font: 14px/1.5 var(--body); white-space: pre-wrap; overflow-wrap: anywhere; animation: receipt-in var(--motion-enter) var(--ease) backwards; }
 
-.event-timeline { overflow: hidden; margin: 0 0 var(--gap); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--orange) 13%, transparent), transparent 65%), var(--glass); backdrop-filter: blur(16px); }
+.event-timeline { overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; margin: 0 0 var(--gap); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--orange) 13%, transparent), transparent 65%), var(--glass); backdrop-filter: blur(16px); }
 .event-timeline svg { display: block; width: 100%; height: 118px; }
 .event-timeline-track { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 6 9; animation: event-flow var(--motion-flow) linear infinite; }
 .event-timeline-node { cursor: pointer; }
