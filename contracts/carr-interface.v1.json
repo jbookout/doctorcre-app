@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0"
+    "source_commit": "8b2f18eb21a3a916c1d650303c6c129f385cebe0"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -68,6 +68,7 @@
     "resolve-post-call-candidate",
     "revert-deal-field",
     "review-deal",
+    "schedule-board",
     "set-lead",
     "set-market-agent",
     "set-national-account-owner",

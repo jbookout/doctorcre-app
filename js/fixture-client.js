@@ -2660,6 +2660,36 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async scheduleBoard() {
+      refuseIfOutage('schedule', 'schedule-board');
+      const now = Date.now();
+      const at = (hours) => new Date(now - hours * 3_600_000).toISOString();
+      const jobs = [
+        {
+          key: 'demo-nightly', name: 'Demo nightly record', owner: 'launchd',
+          state: 'missed', freshness: 'stale', schedule: 'Every 24 hours',
+          last_run: { state: 'succeeded', at: at(54), receipt_ref: 'demo:run-nightly' },
+          next_due_at: at(30), next_due_basis: 'cadence_deadline',
+          actions: { pause: false, run: false, stop: false },
+        },
+        {
+          key: 'demo-paused', name: 'Demo paused review', owner: 'claude-code',
+          state: 'paused', freshness: 'fresh', schedule: 'Every 168 hours',
+          last_run: { state: 'succeeded', at: at(120), receipt_ref: 'demo:run-paused' },
+          next_due_at: null, next_due_basis: null,
+          actions: { pause: false, run: false, stop: false },
+        },
+      ];
+      return { ok: true, schema: 'schedule-board/v1', observed_at: new Date(now).toISOString(),
+        overall_state: 'attention',
+        sources: [
+          { owner: 'launchd', state: 'read', count: 1 },
+          { owner: 'claude-code', state: 'read', count: 1 },
+          { owner: 'control-plane', state: 'unknown', count: null },
+          { owner: 'cron', state: 'unknown', count: null },
+        ], jobs };
+    },
+
     // ---------------------------------------------------------- command centre
     // The synthetic twin of the aggregate Home read. It is BUILT FROM THE SAME
     // fixture board the rest of this client serves, so the counts a person sees

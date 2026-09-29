@@ -7,8 +7,7 @@
 // `pending_retrieval_proposals` — plus `counts`. A test written against
 // friendlier names would pass here and fail against CARR.
 //
-// The schedule card has NO read behind it: no CARR verb reads scheduled jobs,
-// launchd agents or routine state, so it states that and renders no number.
+// The schedule card reads the versioned CARR schedule board.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -16,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import {
   APPROVALS_OUT_OF_SCOPE, ENTRANCE_STEP_MS, ENTRANCE_MAX_STEPS, GOVERNANCE_LANES,
   approvalsCard, countUpFrames, entranceDelay, prefersReducedMotion, scheduleCard,
-  validGovernanceQueuePayload, waitingAge,
+  validGovernanceQueuePayload, validScheduleBoardPayload, waitingAge,
 } from "../js/operations-model.js";
 import { STUCK_SILENCE_HOURS } from "../js/control-room-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -187,17 +186,55 @@ test("the approvals card says what it is NOT: production-effect approvals still 
 
 /* ------------------------------------------------------------ the schedule */
 
-test("the schedule card is an honest no-read state and renders no number", () => {
-  const card = scheduleCard();
+const SCHEDULE = {
+  ok: true, schema: "schedule-board/v1", observed_at: "2026-09-28T16:00:00.000Z",
+  overall_state: "attention",
+  sources: [
+    { owner: "launchd", state: "read", count: 1 },
+    { owner: "claude-code", state: "read", count: 1 },
+    { owner: "control-plane", state: "unknown", count: null },
+    { owner: "cron", state: "unknown", count: null },
+  ],
+  jobs: [
+    {
+      key: "nightly-record-layer", name: "Nightly record layer", owner: "launchd",
+      state: "missed", freshness: "stale", schedule: "Every 24 hours",
+      last_run: { state: "succeeded", at: "2026-09-26T07:00:00.000Z", receipt_ref: "run:nightly-26" },
+      next_due_at: "2026-09-27T07:00:00.000Z", next_due_basis: "cadence_deadline",
+      actions: { pause: false, run: false, stop: false },
+    },
+    {
+      key: "paused-task", name: "Paused task", owner: "claude-code",
+      state: "paused", freshness: "fresh", schedule: "Every 24 hours",
+      last_run: { state: "succeeded", at: "2026-09-27T07:00:00.000Z", receipt_ref: "run:paused" },
+      next_due_at: null, next_due_basis: null,
+      actions: { pause: false, run: false, stop: false },
+    },
+  ],
+};
+
+test("the schedule card shows a missed run, paused job and missing cron source", () => {
+  assert.equal(validScheduleBoardPayload(SCHEDULE), true);
+  const card = scheduleCard({ state: "read", payload: SCHEDULE });
   assert.equal(card.id, "automation");
   assert.equal(card.title, "Scheduled automation");
-  assert.equal(card.state, "no_read");
-  assert.equal(card.word, "no schedule read yet");
-  assert.match(card.body, /^No schedule read yet\./);
-  assert.match(card.body, /No CARR verb reads scheduled jobs, launchd agents or routine state/);
-  assert.match(card.body, /disable-legacy-schedule is a partner-only write, not a read/);
-  assert.doesNotMatch(`${card.title} ${card.word} ${card.body}`, /\d/, "a schedule card with no read carries no number");
-  assert.equal(card.countdown, null, "no countdown is drawn without a next run to count down to");
+  assert.equal(card.state, "attention");
+  assert.equal(card.jobs[0].state, "missed");
+  assert.equal(card.jobs[0].nextLabel, "Expected by");
+  assert.equal(card.jobs[1].state, "paused");
+  assert.equal(card.jobs[1].nextLabel, "Unknown while paused");
+  assert.equal(card.sources.find((source) => source.owner === "cron").state, "unknown");
+  assert.deepEqual(card.jobs[0].actions, { pause: false, run: false, stop: false });
+});
+
+test("a missing or malformed schedule read remains unknown", () => {
+  assert.equal(scheduleCard({ state: "unknown", reason: "the schedule read failed" }).state, "unknown");
+  assert.equal(scheduleCard({ state: "read", payload: { ...SCHEDULE, jobs: [] } }).state, "unknown");
+  const emptyUnknown = { ...SCHEDULE, overall_state: "unknown", jobs: [],
+    sources: SCHEDULE.sources.map((source) => ({ ...source, state: "unknown", count: null })) };
+  assert.equal(validScheduleBoardPayload(emptyUnknown), true);
+  assert.equal(scheduleCard({ state: "read", payload: emptyUnknown }).word, "unknown");
+  assert.equal(validScheduleBoardPayload({ ...SCHEDULE, jobs: [{ ...SCHEDULE.jobs[0], next_due_at: "tomorrow" }] }), false);
 });
 
 /* ---------------------------------------------------------------- motion */
@@ -271,8 +308,10 @@ test("the motion reuses the shared tokens and keyframes rather than inventing ne
 
 test("the page takes governance-queue as its own read, paints both cards and ticks only with real data", () => {
   assert.match(pageJs, /take\("approvals", \(\) => client\.governanceQueue\(\), "the governance queue refused or could not be reached"\)/);
+  assert.match(pageJs, /take\("schedule", \(\) => client\.scheduleBoard\(\), "the schedule board refused or could not be reached"\)/);
   assert.match(pageJs, /approvalsCard\(/);
-  assert.match(pageJs, /scheduleCard\(\)/);
+  assert.match(pageJs, /scheduleCard\(readFor\("schedule"\)\)/);
+  assert.match(pageJs, /<svg class="ops-timeline"/, "job timing is shown as a real inline SVG timeline");
   assert.match(pageJs, /prefersReducedMotion\(\)/);
   assert.match(pageJs, /countUpFrames\(/);
   assert.match(pageJs, /entranceDelay\(/);
@@ -330,4 +369,16 @@ test("live governance-queue is the pinned verb over /mcp with no arguments", asy
   assert.equal(calls[0].body.params.name, "governance-queue");
   assert.deepEqual(calls[0].body.params.arguments, {}, "the verb refuses any field, so none is sent");
   assert.ok(contract.mcp_operations.includes("governance-queue"), "governance-queue is pinned");
+});
+
+test("live schedule-board is pinned to the versioned read with no caller-selected audience", async () => {
+  const calls = [];
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    calls.push({ path, body: JSON.parse(init.body) });
+    return { ok: true, json: async () => ({ result: { content: [{ text: JSON.stringify(SCHEDULE) }] } }) };
+  } });
+  assert.deepEqual(await client.scheduleBoard(), SCHEDULE);
+  assert.equal(calls[0].body.params.name, "schedule-board");
+  assert.deepEqual(calls[0].body.params.arguments, {});
+  assert.ok(contract.mcp_operations.includes("schedule-board"));
 });
