@@ -4,7 +4,27 @@ import { readFile } from "node:fs/promises";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createLiveClient } from "../js/live-client.js";
 
-const required = ["getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "todayTriage", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "governanceQueue", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation", "docOutcomeCards"];
+const required = ["getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "todayTriage", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "listIndustryEvents", "addIndustryEvent", "updateIndustryEvent", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "governanceQueue", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation", "docOutcomeCards"];
+
+test("industry events use the authenticated read and versioned writes", async () => {
+  const calls = [];
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    calls.push({ path, init });
+    return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ ok: true, events: [], count: 0 }) }] } }), { status: 200 });
+  } });
+  await live.listIndustryEvents({ limit: 100 });
+  await live.addIndustryEvent({ title: "Demo forum", source: "Organizer", idempotency_key: "11111111-1111-4111-8111-111111111111" });
+  await live.updateIndustryEvent({ event_id: "22222222-2222-4222-8222-222222222222", base_version: 7,
+    title: "Demo forum revised", idempotency_key: "33333333-3333-4333-8333-333333333333" });
+  assert.deepEqual(calls.map(({ init }) => JSON.parse(init.body).params.name),
+    ["list-industry-events", "add-industry-event", "update-industry-event"]);
+  assert.deepEqual(calls.map(({ init }) => JSON.parse(init.body).params.arguments), [
+    { limit: 100 }, { title: "Demo forum", source: "Organizer", idempotency_key: "11111111-1111-4111-8111-111111111111" },
+    { event_id: "22222222-2222-4222-8222-222222222222", base_version: 7,
+      title: "Demo forum revised", idempotency_key: "33333333-3333-4333-8333-333333333333" },
+  ]);
+  assert.ok(calls.every(({ path, init }) => path === "/mcp" && init.credentials === "same-origin"));
+});
 
 test("synthetic and live adapters satisfy the same DealRoomClient interface", async () => {
   const fixtureText = await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8");

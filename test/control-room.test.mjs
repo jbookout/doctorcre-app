@@ -244,7 +244,7 @@ test("an incident resolves to the same canonical identity from the tile and from
 test("every prototype panel without a producer is a named scope statement", () => {
   const blocks = notInReleaseBlocks();
   const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "resources", "atlas_causal_failure_graph_and_planned_layer"]) {
+  for (const id of ["changed", "accomplishments", "detected_and_repaired", "atlas_causal_failure_graph_and_planned_layer"]) {
     assert.ok(ids.includes(id), `${id} has no scope statement`);
   }
   for (const block of blocks) {
@@ -253,6 +253,7 @@ test("every prototype panel without a producer is a named scope statement", () =
     assert.ok(block.reason.length > 0);
   }
   assert.ok(!ids.includes("model_room"), "the live Model Room board is not an out-of-release panel");
+  assert.ok(!ids.includes("resources"), "the resource read now has its own dashboard card");
 });
 
 // V5-UX-C14 — the Operations section. Its two cards (approvals from
@@ -348,7 +349,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.28.0");
+  assert.equal(contract.version, "1.30.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -358,7 +359,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
-  assert.equal(contract.mcp_operations.length, 68);
+  assert.equal(contract.mcp_operations.length, 72);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 

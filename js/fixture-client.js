@@ -87,6 +87,7 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} idempotency_key -> result */
   const idem = new Map();
+  const industryEvents = new Map(); // Demo-only records added through this fixture client.
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
@@ -1793,6 +1794,31 @@ export async function createFixtureClient(opts = {}) {
       return { loop: structuredClone(found) };
     },
 
+    async listIndustryEvents({ limit = 50 } = {}) {
+      const rows = [...industryEvents.values()].sort((a, b) =>
+        Date.parse(a.starts_at) - Date.parse(b.starts_at) || a.id.localeCompare(b.id)).slice(0, limit);
+      return { ok: true, events: structuredClone(rows), count: rows.length };
+    },
+
+    async addIndustryEvent({ idempotency_key, ...fields }) {
+      return withIdem(idempotency_key || uuidv4(), () => {
+        const event = { id: uuidv4(), version: 1, is_virtual: false,
+          attendance_intent: 'considering', status: 'planned', ...fields };
+        industryEvents.set(event.id, event);
+        return { ok: true, event: structuredClone(event) };
+      });
+    },
+
+    async updateIndustryEvent({ idempotency_key, event_id, base_version, ...fields }) {
+      return withIdem(idempotency_key || uuidv4(), () => {
+        const current = industryEvents.get(event_id);
+        if (!current || current.version !== base_version) refuse('update-industry-event', 'industry_event_version_conflict');
+        const event = { ...current, ...fields, version: current.version + 1 };
+        industryEvents.set(event_id, event);
+        return { ok: true, event: structuredClone(event) };
+      });
+    },
+
     // The record layer's own answer shape: {count, blocks:[...]} with the
     // version edit-loop-header would need as base_version.
     async loopHeaders() {
@@ -2619,6 +2645,24 @@ export async function createFixtureClient(opts = {}) {
         unchanged_over_48h: heldWork.filter((row) => row.hours_since_last_change >= 48)
           .map((row) => ({ human_ref: row.human_ref, hours_since_last_change: row.hours_since_last_change })),
         say: 'these are held right now; a blocked or needs-Joe row is still current and is never skipped',
+      };
+    },
+
+    async readResourceDashboard() {
+      refuseIfOutage('resources', 'read-resource-dashboard');
+      return {
+        ok: true, schema: 'doctorcre-resource-dashboard.v1', generated_at: nowIso(),
+        providers: ['neon', 'github', 'cloudflare', 'local_compute', 'model_route'].map((provider) => ({
+          provider,
+          state: ['neon', 'github', 'cloudflare'].includes(provider) ? 'unconfigured' : 'collector_absent',
+          reason: ['neon', 'github', 'cloudflare'].includes(provider)
+            ? 'no collector configured for this provider yet (V5-UX-C03/C04/C05 not built)'
+            : 'no collector observation received yet',
+          account: null, project: null, product: null, period: null, as_of: null,
+          quantity: null, quantity_unit: null, allowance: null, policy: null,
+          estimate: null, charge: null, measured_capacity: null, configured_capacity: null,
+          model_route: null, source: null, observed_at: null,
+        })),
       };
     },
 

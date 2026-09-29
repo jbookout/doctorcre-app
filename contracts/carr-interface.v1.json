@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.28.0",
+  "version": "1.30.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "8b2f18eb21a3a916c1d650303c6c129f385cebe0"
+    "source_commit": "016dd6aded165d5117f3dd7ad84b483613f09c90"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -18,6 +18,7 @@
     "acknowledge-notification",
     "add-critical-date",
     "add-deal-note",
+    "add-industry-event",
     "add-loop",
     "add-room-turn",
     "answer-board-question",
@@ -44,6 +45,7 @@
     "incident-board",
     "link-incident-work-request",
     "list-doc-conversations",
+    "list-industry-events",
     "loop-board",
     "loop-headers",
     "new-deal",
@@ -58,6 +60,7 @@
     "read-notification-preferences",
     "read-portfolio",
     "read-progress-board",
+    "read-resource-dashboard",
     "read-room",
     "read-room-queue",
     "read-session-identity",
@@ -80,6 +83,7 @@
     "supersede-work-request",
     "today-triage",
     "update-deal",
+    "update-industry-event",
     "update-loop",
     "work-request-card"
   ],

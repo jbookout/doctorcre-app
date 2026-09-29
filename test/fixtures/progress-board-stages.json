@@ -1,6 +1,6 @@
 {
   "producer_repository": "jbookout/carr-system",
-  "producer_source_commit": "8b2f18eb21a3a916c1d650303c6c129f385cebe0",
+  "producer_source_commit": "016dd6aded165d5117f3dd7ad84b483613f09c90",
   "producer_function": "tools/progress_board.py:task_stage/task_health/pulse_state",
   "reference_time": "2026-09-28T13:00:00Z",
   "synthetic": true,

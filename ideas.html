@@ -84,8 +84,18 @@
     </section>
 
     <section class="card glass" id="eventsPanel" role="tabpanel" aria-labelledby="tabEvents" hidden>
-      <div class="card-heading"><div><p class="eyebrow">Events</p><h2>Not available yet</h2></div></div>
-      <div class="state-block event-absent" data-state="empty"><h3 id="eventsAbsent">Events: no record-layer read returns events yet.</h3></div>
+      <div class="card-heading">
+        <div><p class="eyebrow">Industry events</p><h2>Conferences & connections</h2></div>
+        <button class="btn btn-primary" type="button" id="eventAdd">Add event</button>
+      </div>
+      <div class="event-timeline glass" id="eventTimeline" aria-label="Event timeline">
+        <svg id="eventTimelineSvg" viewBox="0 0 800 118" preserveAspectRatio="none" role="group" aria-label="Events in date order">
+          <path class="event-timeline-track" d="M24 57 H776"/>
+        </svg>
+      </div>
+      <div class="state-block" id="eventState" data-state="loading" aria-live="polite"><h3>Reading industry events…</h3></div>
+      <ul class="event-list" id="eventList"></ul>
+      <div class="chip-bar"><button class="btn" type="button" id="eventRefresh">Check again</button><p class="small" id="eventSource">Source pending</p></div>
     </section>
   </main>
 
@@ -95,6 +105,34 @@
       <div class="dialog-body">
         <div id="ideaDialogBody"><p class="small">Reading this idea…</p></div>
       </div>
+    </article>
+  </dialog>
+
+  <dialog id="eventDialog" class="dialog event-dialog" aria-labelledby="eventDialogTitle">
+    <article>
+      <header><div><p class="eyebrow">Industry event</p><h2 id="eventDialogTitle">Add event</h2></div><button class="btn icon-btn" type="button" id="eventDialogClose" aria-label="Close event form">×</button></header>
+      <form id="eventForm" class="event-form">
+        <div class="field"><label for="eventTitle">Event name</label><input id="eventTitle" name="title" required maxlength="500" autocomplete="off"></div>
+        <div class="field"><label for="eventOrganizer">Organizer</label><input id="eventOrganizer" name="organizer" required maxlength="500"></div>
+        <div class="field"><label for="eventKind">Type</label><select id="eventKind" name="kind" required><option value="conference">Conference</option><option value="association_meeting">Association meeting</option><option value="trade_show">Trade show</option><option value="networking">Networking</option></select></div>
+        <div class="field"><label for="eventOwner">Owner</label><select id="eventOwner" name="owner_partner" required><option value="" disabled selected>Choose owner</option><option value="joe">Joe</option><option value="dell">Dell</option></select></div>
+        <div class="field"><label for="eventStarts">Starts</label><input id="eventStarts" name="starts_at" type="datetime-local" required></div>
+        <div class="field"><label for="eventEnds">Ends</label><input id="eventEnds" name="ends_at" type="datetime-local" required></div>
+        <div class="field"><label for="eventLocation">Location</label><input id="eventLocation" name="location" maxlength="500"></div>
+        <label class="event-check"><input name="is_virtual" type="checkbox"> Virtual event</label>
+        <div class="field"><label for="eventUrl">Website</label><input id="eventUrl" name="url" type="url" inputmode="url" placeholder="https://" ></div>
+        <div class="field"><label for="eventAttendance">Attendance</label><select id="eventAttendance" name="attendance_intent"><option value="considering">Considering</option><option value="plan_to_attend">Plan to attend</option><option value="not_attending">Not attending</option></select></div>
+        <div class="field"><label for="eventStatus">Status</label><select id="eventStatus" name="status"><option value="planned">Planned</option><option value="attended">Attended</option><option value="skipped">Skipped</option><option value="cancelled">Cancelled</option></select></div>
+        <div class="field event-wide"><label for="eventSourceInput">Source</label><input id="eventSourceInput" name="source" required maxlength="2000" placeholder="Organizer page, association calendar, or invitation"></div>
+        <div class="field event-wide"><label for="eventRelevance">Why it matters</label><textarea id="eventRelevance" name="relevance_note" maxlength="2000" rows="2"></textarea></div>
+        <p class="event-form-message event-wide" id="eventFormMessage" aria-live="assertive"></p>
+        <div class="event-conflict event-wide" id="eventConflict" hidden>
+          <h3>Changed in the record</h3>
+          <dl id="eventConflictFields"></dl>
+          <button class="btn" type="button" id="eventUseLatest">Use latest version with my draft</button>
+        </div>
+        <div class="event-actions event-wide"><button class="btn" type="button" id="eventCancel">Cancel</button><button class="btn btn-primary" type="submit" id="eventSave">Save event</button></div>
+      </form>
     </article>
   </dialog>
 
@@ -113,7 +151,7 @@
   </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small">DoctorCRE · Ideas · Read only: an idea is parked and closed where it is written.</p></footer>
+  <footer class="shell"><p class="small">DoctorCRE · Ideas & Events · Industry events are sourced records.</p></footer>
   <script type="module" src="/js/ideas.js"></script>
 </body>
 </html>
