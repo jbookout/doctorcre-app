@@ -30,7 +30,7 @@
   function searchFilters(cursor = null) {
     const size = (selector) => { const raw = $(selector).value.trim(); return raw ? Number(raw) : null; };
     const bool = $("#property-entrance").value;
-    const kind = $("#property-type").value.trim().toLowerCase();
+    const kind = $("#property-type").value.trim().toLowerCase().replace(/\s+/g, "_");
     return { query: $("#property-query").value.trim() || null, counties: $("#property-county").value ? [$("#property-county").value] : [],
       property_types: kind ? [kind] : [], min_square_feet: size("#property-min-size"), max_square_feet: size("#property-max-size"),
       availability: $("#property-availability").value ? [$("#property-availability").value] : [],
@@ -101,6 +101,9 @@
   }
   async function searchProperties(more = false) {
     const filters = searchFilters(more ? state.searchCursor : null);
+    if (filters.property_types.length && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(filters.property_types[0])) {
+      $("#search-state").textContent = "Use words, numbers, spaces, or hyphens for property type."; return;
+    }
     if (filters.min_square_feet !== null && filters.max_square_feet !== null && filters.min_square_feet > filters.max_square_feet) {
       $("#search-state").textContent = "Minimum size must be no greater than maximum size."; return;
     }

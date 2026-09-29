@@ -50,8 +50,11 @@ test("search results disclose unknowns; saved stable IDs survive reload; refused
   const store = { version: 0, ids: [] };
   const first = await openApp(store);
   const doc = first.window.document;
+  doc.querySelector("#property-type").value = "Medical office";
   doc.querySelector("#property-search-form").dispatchEvent(new first.window.Event("submit", { bubbles: true, cancelable: true }));
   await settle();
+  const searchCall = first.calls.find(call => call.path === "/api/tours/properties/search");
+  assert.deepEqual(JSON.parse(searchCall.options.body).property_types, ["medical_office"]);
   const result = doc.querySelector("#property-results");
   assert.match(result.textContent, /Medical Plaza/);
   assert.match(result.textContent, /CARR reviewed property register/);
