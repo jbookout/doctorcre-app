@@ -79,6 +79,17 @@
 
     <p class="sr-only" id="outcomeCardsLive" aria-live="polite" role="status">Reading outcome cards…</p>
 
+    <section class="card glass suggestion-section" data-section="suggestions" aria-labelledby="suggestionsTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">From what was said</p><h2 id="suggestionsTitle">Doc’s suggestions</h2></div>
+        <button class="btn" type="button" id="suggestionsRetry">Read again</button>
+      </div>
+      <button class="btn btn-quiet" type="button" id="suggestionsParked" aria-pressed="false">Show snoozed and dismissed</button>
+      <div class="state-block" id="suggestionsState" data-state="loading"><h3 id="suggestionsStateTitle">Reading suggestions…</h3></div>
+      <ul class="work-list suggestion-list" id="suggestionsList"></ul>
+      <p class="sr-only" id="suggestionsLive" aria-live="polite"></p>
+    </section>
+
     <section class="card glass" data-section="list" aria-labelledby="listTitle">
       <div class="card-heading">
         <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>

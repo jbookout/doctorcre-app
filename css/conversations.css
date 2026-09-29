@@ -165,3 +165,49 @@
 :root[data-motion="reduced"] .outcome-field.is-changed { animation: none; }
 :root[data-motion="reduced"] .outcome-live-dot[data-fresh="fresh"] { animation: none; }
 :root[data-motion="reduced"] .outcome-flow-path[data-active="true"] { animation: none; stroke-dasharray: none; }
+
+/* B08: source → suggestion → choice → canonical work/proposal. The visual
+ * shows the structure; it is not a row of icons masquerading as a diagram. */
+.suggestion-section { position: relative; overflow: hidden; }
+.suggestion-section::before { content: ""; position: absolute; inset: -20% -10% auto auto; width: 45%; height: 220px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--orange) 15%, transparent), transparent 70%); pointer-events: none; }
+.suggestion-list { position: relative; }
+.suggestion-card { animation: suggestion-arrive 650ms var(--ease) both; animation-delay: var(--suggestion-delay, 0ms); transition: transform var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
+.suggestion-card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
+.suggestion-card[data-disposition="dismissed"], .suggestion-card[data-disposition="snoozed"] { opacity: .7; }
+@keyframes suggestion-arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.suggestion-content { min-width: 0; width: 100%; }
+.suggestion-heading { display: flex; align-items: flex-start; gap: 12px; }
+.suggestion-heading h3 { margin: 0; font: 600 clamp(19px, 2vw, 25px)/1.2 var(--display); letter-spacing: .01em; }
+.suggestion-beacon { width: 11px; height: 11px; flex: 0 0 11px; margin-top: 7px; border: 2px solid var(--orange); border-radius: 50%; box-shadow: 0 0 18px color-mix(in srgb, var(--orange) 65%, transparent); animation: breathe 3.6s ease-in-out infinite; }
+.suggestion-card[data-disposition="dismissed"] .suggestion-beacon,
+.suggestion-card[data-disposition="snoozed"] .suggestion-beacon { animation: none; box-shadow: none; }
+.suggestion-uncertainty { color: var(--amber); margin: 8px 0; }
+.suggestion-flow { margin: 16px 0 12px; border-radius: 12px; padding: 10px 16px; border: 1px solid var(--line); background: color-mix(in srgb, var(--navy) 22%, transparent); backdrop-filter: blur(12px); }
+.suggestion-flow svg { display: block; width: 100%; height: 42px; }
+.suggestion-flow-line { fill: none; stroke: var(--orange); stroke-width: 3; stroke-dasharray: 10 12; animation: flow-dash var(--motion-flow) linear infinite; }
+.suggestion-flow-node { fill: var(--ground-2); stroke: var(--orange); stroke-width: 3; transition: fill var(--motion-move) ease, transform var(--motion-move) ease; transform-box: fill-box; transform-origin: center; }
+.suggestion-card:hover .suggestion-flow-node { fill: var(--orange); transform: scale(1.12); }
+.suggestion-flow-labels { display: grid; grid-template-columns: repeat(4,1fr); text-align: center; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--orange-text); }
+.suggestion-original { margin: 8px 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.suggestion-original summary { cursor: pointer; color: var(--orange-text); }
+.suggestion-original ul { padding-left: 18px; }
+.suggestion-original li { margin: 6px 0; }
+.suggestion-original li span { color: var(--muted); }
+.suggestion-decisions { display: flex; flex-wrap: wrap; gap: 8px; }
+.suggestion-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; font-size: 12px; }
+.suggestion-fields label { display: grid; gap: 5px; min-width: 190px; }
+.suggestion-fields input { min-height: 38px; }
+.suggestion-fields a { padding-bottom: 10px; }
+.suggestion-correction textarea { display: block; width: 100%; min-height: 80px; margin: 6px 0 9px; }
+.suggestion-conflict { border-left: 3px solid var(--amber); padding: 8px 12px; margin: 12px 0; background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.suggestion-conflict p { margin: 5px 0; }
+.suggestion-proposals { margin-top: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--orange) 42%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--orange) 7%, var(--ground-2)); }
+.suggestion-proposals strong { color: var(--orange-text); }
+.suggestion-proposals ul { margin: 8px 0 0; padding-left: 18px; }
+.suggestion-proposals li { margin-top: 8px; }
+.suggestion-proposals p { margin: 0 0 3px; }
+.suggestion-proposals span { color: var(--muted); font-size: 12px; }
+@media (max-width: 600px) { .suggestion-flow { padding: 8px; } .suggestion-flow-labels { font-size: 9px; } }
+@media (prefers-reduced-motion: reduce) { .suggestion-card, .suggestion-beacon, .suggestion-flow-line { animation: none; transition: none; } .suggestion-flow-line { stroke-dasharray: none; } }
+:root[data-motion="reduced"] .suggestion-card, :root[data-motion="reduced"] .suggestion-beacon, :root[data-motion="reduced"] .suggestion-flow-line { animation: none; transition: none; }
+:root[data-motion="reduced"] .suggestion-flow-line { stroke-dasharray: none; }

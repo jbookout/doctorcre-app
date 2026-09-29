@@ -1129,6 +1129,31 @@ export async function createFixtureClient(opts = {}) {
       grants: [],
     })],
   ]);
+  const docSuggestions = new Map([
+    ['d0000000-0000-4000-8000-000000000081', {
+      id: 'd0000000-0000-4000-8000-000000000081', conversation_id: DOC_PRIVATE,
+      obligation_key: 'demo:gulf-breeze:survey-window', material_version: 1, version: 1,
+      source_sequence: 1, original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
+      polished_text: 'Confirm the survey window before the LOI moves forward.',
+      uncertainty: 'The effective date has not been recorded.', contributor: 'Doc',
+      source_at: '2026-09-10T13:05:30.000Z', suggested_at: '2026-09-10T13:06:00.000Z',
+      disposition: 'open', dismissed_material_version: null, snoozed_material_version: null,
+      contributions: [{ original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
+        contributor: 'Doc', at: '2026-09-10T13:05:30.000Z' }],
+    }],
+    ['d0000000-0000-4000-8000-000000000082', {
+      id: 'd0000000-0000-4000-8000-000000000082', conversation_id: DOC_PRIVATE,
+      obligation_key: 'demo:gulf-breeze:allowance', material_version: 1, version: 1,
+      source_sequence: 1, original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
+      polished_text: 'Confirm the survey window before the LOI moves forward.',
+      uncertainty: 'The tenant improvement allowance is unresolved.', contributor: 'Doc',
+      source_at: '2026-09-10T13:05:30.000Z', suggested_at: '2026-09-10T13:06:01.000Z',
+      disposition: 'open', dismissed_material_version: null, snoozed_material_version: null,
+      contributions: [{ original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
+        contributor: 'Doc', at: '2026-09-10T13:05:30.000Z' }],
+    }],
+  ]);
+  const docCorrections = new Map();
   /**
    * Written by every rename and read back by nothing, exactly as
    * `ops.doc_conversation_title_revision` is written and projected by no verb.
@@ -1137,6 +1162,7 @@ export async function createFixtureClient(opts = {}) {
   const docTitleRevisions = [];
   /** What each spent key was spent ON; a different payload is `key_reuse`. */
   const docIdemArgs = new Map();
+  const docSuggestionResults = new Map();
 
   const docLiveGrants = (row) => row.grants.filter((grant) => !grant.revoked_at);
   /** 0523:196-201: a revoke recomputes the column from what is LEFT unrevoked. */
@@ -1144,8 +1170,8 @@ export async function createFixtureClient(opts = {}) {
     row.visibility = docLiveGrants(row).length ? 'shared' : 'private';
     return row.visibility;
   };
-  const docVisibleTo = (row, actor) => row.created_by === actor
-    || docLiveGrants(row).some((grant) => grant.grantee_actor === actor);
+  const docVisibleTo = (row, actor) => Boolean(row) && (row.created_by === actor
+    || docLiveGrants(row).some((grant) => grant.grantee_actor === actor));
   const docVisibleCount = (actor) => [...docConversations.values()]
     .filter((row) => docVisibleTo(row, actor)).length;
   /**
@@ -2404,6 +2430,68 @@ export async function createFixtureClient(opts = {}) {
         next_cursor: more ? btoa(JSON.stringify({ after: page[page.length - 1].id })) : null,
         visible_conversation_count: docVisibleCount(selfActor),
       };
+    },
+
+    async listDocSuggestions({ conversation_id = null, include_parked = false } = {}) {
+      refuseIfOutage('conversations', 'list-doc-suggestions');
+      if (conversation_id && !docVisibleTo(docConversations.get(conversation_id), selfActor))
+        refuse('list-doc-suggestions', 'doc_conversation_not_found');
+      const suggestions = [...docSuggestions.values()].filter(row =>
+        (!conversation_id || row.conversation_id === conversation_id)
+        && docVisibleTo(docConversations.get(row.conversation_id), selfActor)
+        && (include_parked || !['snoozed','dismissed'].includes(row.disposition)
+          || row.material_version !== (row.disposition === 'snoozed' ? row.snoozed_material_version : row.dismissed_material_version)));
+      return { ok: true, suggestions: suggestions.map(row => ({ ...row,
+        source_conversation_id: row.conversation_id,
+        contributions: row.contributions.map(item => ({ ...item })),
+        corrections: [...docCorrections.entries()].filter(([, item]) => item.suggestion_id === row.id)
+          .map(([id, item]) => ({ id, ...item })) })), as_of: new Date().toISOString() };
+    },
+    async decideDocSuggestion({ suggestion_id, base_version, choice, snoozed_until = null, work_ref = null, idempotency_key }) {
+      refuseIfOutage('conversations', 'decide-doc-suggestion');
+      const row = docSuggestions.get(suggestion_id);
+      if (!row || !docVisibleTo(docConversations.get(row.conversation_id), selfActor))
+        refuse('decide-doc-suggestion', 'doc_suggestion_not_found');
+      docGuardKey('decide-doc-suggestion', idempotency_key,
+        { suggestion_id, base_version, choice, snoozed_until, work_ref });
+      if (docSuggestionResults.has(idempotency_key))
+        return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
+      if (row.version !== base_version) refuse('decide-doc-suggestion', 'version_conflict', { current: { ...row } });
+      if (!['act','discuss','snooze','dismiss'].includes(choice)) refuse('decide-doc-suggestion', 'choice_invalid');
+      if (choice === 'act') {
+        const found = loops.filter(item => item.number === String(work_ref || '').replace(/^#/, '')
+          && item.status === 'open' && (item.tier === 'shared' || item.personal_to === selfActor));
+        if (found.length !== 1) refuse('decide-doc-suggestion', found.length ? 'work_ref_ambiguous' : 'work_ref_required');
+        row.work_ref = found[0].loop_id;
+      }
+      if (choice === 'snooze' && (!snoozed_until || snoozed_until <= new Date().toISOString().slice(0,10)))
+        refuse('decide-doc-suggestion', 'future_snooze_date_required');
+      row.disposition = choice === 'snooze' ? 'snoozed' : choice === 'dismiss' ? 'dismissed' : choice;
+      if (choice === 'dismiss') row.dismissed_material_version = row.material_version;
+      if (choice === 'snooze') { row.snoozed_material_version = row.material_version; row.snoozed_until = snoozed_until; }
+      row.version += 1;
+      const result = { ok: true, suggestion_id, choice, version: row.version, work_ref: row.work_ref || null };
+      docSuggestionResults.set(idempotency_key, result);
+      return result;
+    },
+    async proposeDocCorrection({ suggestion_id, base_version, proposed_text, source_conversation_id, source_sequence, idempotency_key }) {
+      refuseIfOutage('conversations', 'propose-doc-correction');
+      const row = docSuggestions.get(suggestion_id);
+      if (!row || !docVisibleTo(docConversations.get(row.conversation_id), selfActor))
+        refuse('propose-doc-correction', 'doc_suggestion_not_found');
+      docGuardKey('propose-doc-correction', idempotency_key,
+        { suggestion_id, base_version, proposed_text, source_conversation_id, source_sequence });
+      if (docSuggestionResults.has(idempotency_key))
+        return { ...docSuggestionResults.get(idempotency_key), deduplicated: true };
+      if (row.version !== base_version) refuse('propose-doc-correction', 'version_conflict', { current: { ...row } });
+      if (row.conversation_id !== source_conversation_id || row.source_sequence !== source_sequence)
+        refuse('propose-doc-correction', 'source_scope_mismatch');
+      if (!String(proposed_text || '').trim()) refuse('propose-doc-correction', 'correction_text_invalid');
+      docCorrections.set(idempotency_key, { suggestion_id, base_version, proposed_text,
+        source_conversation_id, source_sequence, proposed_by: selfActor, proposed_at: nowIso(), status: 'pending' });
+      const result = { ok: true, proposal_id: idempotency_key, status: 'pending' };
+      docSuggestionResults.set(idempotency_key, result);
+      return result;
     },
 
     // -------------------------------------------------- Doc outcome cards (B09)

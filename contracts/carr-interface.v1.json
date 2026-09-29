@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "4ac3a68f532210ac4e951d3f8cc26ae4eac1e8d0"
+    "source_commit": "efe438b48081c5108a8b751dcebd589874699ff5"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -31,6 +31,7 @@
     "current-work-item",
     "current-work-requests",
     "deal-room-board",
+    "decide-doc-suggestion",
     "decline-candidate",
     "decline-work-request",
     "end-deal-review",
@@ -44,6 +45,7 @@
     "incident-board",
     "link-incident-work-request",
     "list-doc-conversations",
+    "list-doc-suggestions",
     "loop-board",
     "loop-headers",
     "new-deal",
@@ -51,6 +53,7 @@
     "patch-deal-field",
     "presence-lease",
     "promote-pool",
+    "propose-doc-correction",
     "read-dispatch-history",
     "read-doc-conversation",
     "read-doc-outcome-cards",

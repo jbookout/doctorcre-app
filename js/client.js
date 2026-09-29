@@ -166,6 +166,20 @@
  * @property {string|null} next_cursor
  * @property {number} visible_conversation_count
  *
+ * B08 reads one source-bound suggestion per obligation. A decision is a
+ * compare-and-swap on that suggestion; a correction creates a proposal.
+ * @typedef {Object} DocSuggestion
+ * @property {string} id
+ * @property {string} obligation_key
+ * @property {number} version
+ * @property {number} material_version
+ * @property {string} original_text
+ * @property {string} polished_text
+ * @property {string} contributor
+ * @property {string} source_at
+ * @property {string} source_conversation_id
+ * @property {number} source_sequence
+ *
  * The projection `read-session-identity` returns (V5-UX-S02). `total_returned`
  * is the post-permission-filter total BEFORE `limit`, so it is NOT the length of
  * `sessions` and no consumer may render it as one. `permission_filtered` is what
