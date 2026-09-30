@@ -109,18 +109,22 @@ const payloadOf = () => (view.conversation.state === "read" ? view.conversation.
 
 function renderHero() {
   const payload = payloadOf();
-  $("conversationAsOf").textContent = asOf(view.conversation);
   const header = identityHeader(payload);
   const badge = $("visibilityBadge");
+  // With no thread selected the hero carries only the page title: no
+  // placeholder or unknown-status copy sits above the list.
+  const asOfText = asOf(view.conversation);
+  const heroPieces = [$("conversationId"), $("conversationAsOf"), badge, $("heroFacts"), $("titleHistoryLine")];
+  for (const piece of heroPieces) piece.hidden = !header;
   if (!header) {
     $("pageTitle").textContent = "Conversations";
-    $("conversationId").textContent = view.route.given || "no conversation open";
-    badge.setAttribute("data-visibility", "none");
-    $("visibilityGlyph").textContent = "🔒";
-    $("visibilityWord").textContent = "No conversation is open";
+    $("conversationId").textContent = "";
+    $("conversationAsOf").textContent = "";
+    $("visibilityWord").textContent = "";
     $("heroFacts").innerHTML = "";
     return;
   }
+  $("conversationAsOf").textContent = asOfText;
   $("pageTitle").textContent = header.title;
   $("conversationId").textContent = header.id;
   badge.setAttribute("data-visibility", header.visibility);
