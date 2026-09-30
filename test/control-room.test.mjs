@@ -237,7 +237,7 @@ test("an incident resolves to the same canonical identity from the tile and from
   // V5-UX-C14 gave an operational incident its own page, so the queue links to
   // it. Everything that is neither a work request nor an incident still has none.
   assert.equal(canonicalHref(INCIDENTS.incidents[0]), "/incidents?ref=INC-20260915-01");
-  assert.equal(canonicalHref(WORK.current[0]), "/system-work.html");
+  assert.equal(canonicalHref(WORK.current[0]), "/work-requests");
   assert.equal(canonicalHref({ human_ref: "not a ref" }), null);
 });
 
@@ -348,8 +348,8 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.32.0");
+  assert.equal(routes.version, "1.15.0");
+  assert.equal(contract.version, "1.33.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -365,7 +365,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
 test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede, and 44px targets", () => {
   assert.match(html, /<title>Control Room · DoctorCRE<\/title>/);
   assert.match(html, /<div class="tabs" id="controlRoomTabs" role="tablist"/);
-  for (const label of ["Dashboard", "Attention", "Model Room", "Atlas", "Sessions"]) {
+  for (const label of ["Overview", "Attention", "Agents", "System Map", "Sessions"]) {
     assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
   }
   assert.equal([...html.matchAll(/aria-live="polite" role="status"/g)].length, 1, "one status live region");
@@ -761,10 +761,10 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
 
 test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(html, /<section class="tabpanel" id="panelAtlas"[\s\S]*?id="atlasIndex"/, "the Atlas panel holds no index");
-  assert.match(html, /role="tab"[^>]*>Atlas</, "the Atlas tab is gone");
+  assert.match(html, /role="tab"[^>]*>System Map</, "the System Map tab owns the atlas");
   assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "a second Doc control appeared");
   assert.doesNotMatch(html, /atlas\.css/, "the atlas added its own stylesheet");
-  assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 3, "the atlas added a stylesheet link");
+  assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 4, "only the shared app shell adds a stylesheet");
   // Mobile first at 360px: no fixed pixel width of three digits or more.
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width was added");
   // Every control this slice adds sits at or above the 44px touch floor.
@@ -782,12 +782,12 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(pageJs, /export const escapeHtml/, "the one escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.14.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.15.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
-  assert.match(pageJs, /parameters\.get\("tab"\) === "atlas"/, "the deep link is not read on boot");
+  assert.match(pageJs, /parameters\.has\("tab"\)\) restoreTab\(\)/, "the deep link is read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");
   // The read is lazy: it fires on first selection of the tab, not on boot.
-  assert.match(pageJs, /event\.target\.closest\("#tabAtlas"\)/, "the atlas read is not bound to the tab");
+  assert.match(pageJs, /selected\.id === "tabAtlas"\) openAtlas\(\)/, "the atlas read is bound to the tab");
   assert.doesNotMatch(pageJs, /take\("atlas"/, "the atlas joined the dashboard's boot reads");
   assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path is not pinned");
   assert.match(checkJs, /the atlas path must stay pinned in the CARR interface/, "the repository check does not pin it");

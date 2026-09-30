@@ -363,7 +363,7 @@ function renderSuggestions() {
   today.setDate(today.getDate() + 7);
   const defaultSnooze = today.toISOString().slice(0, 10);
   list.innerHTML = cards.map((card, index) => {
-    const source = card.sourceConversationId ? `/conversations?id=${encodeURIComponent(card.sourceConversationId)}` : null;
+    const source = card.sourceConversationId ? `/doc-chats?id=${encodeURIComponent(card.sourceConversationId)}` : null;
     const draft = state.drafts.get(card.id) || "";
     const workNumber = state.workNumbers.get(card.id) || "";
     const current = state.conflicts.get(card.id);
@@ -560,7 +560,7 @@ function open(id) {
   view.route = route;
   view.conversation = { state: "pending" };
   try {
-    globalThis.history?.pushState?.({ id }, "", `/conversations?id=${id}`);
+    globalThis.history?.pushState?.({ id }, "", `/doc-chats?id=${id}`);
   } catch {
     // A host that refuses history keeps the page; only the address bar lags.
   }

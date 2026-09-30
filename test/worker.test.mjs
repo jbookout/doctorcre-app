@@ -100,19 +100,19 @@ test("the incident page is served on the gated route", async () => {
   assert.equal((await handleDoctorcreRequest(request("/incidents", { method: "POST" }), env)).status, 405);
 });
 
-// V5-UX-S01/C08: the design prototypes are gated, but the CARR gate does not
-// list their paths, so the app asks it about /control-room instead. A signed-out
-// answer still passes straight through; a signed-in one serves the prototype.
-test("design prototypes are gated through the Control Room page path", async () => {
+test("retired design prototypes redirect to gated Design Lab references", async () => {
   const forwarded = [];
   const env = environment({ carr: { fetch: async (value) => { forwarded.push(value); return new Response(); } } });
-  assert.equal(await (await handleDoctorcreRequest(request("/design/operations?tab=atlas", { headers: { cookie: "__Host-dealroom_session=opaque" } }), env)).text(), "asset:/design-operations.html");
-  assert.equal(await (await handleDoctorcreRequest(request("/design"), env)).text(), "asset:/design.html");
-  assert.equal(forwarded.length, 2, "every prototype request consults the CARR gate");
+  const legacy = await handleDoctorcreRequest(request("/design/operations?tab=atlas"), env);
+  assert.equal(legacy.status, 308);
+  assert.equal(new URL(legacy.headers.get("location")).pathname, "/design-lab");
+  assert.equal(new URL(legacy.headers.get("location")).searchParams.get("reference"), "operations");
+  assert.equal(await (await handleDoctorcreRequest(request("/design-lab?reference=operations", { headers: { cookie: "__Host-dealroom_session=opaque" } }), env)).text(), "asset:/design.html");
+  assert.equal(forwarded.length, 1, "the new reference page consults the CARR gate");
   for (const value of forwarded) assert.equal(new URL(value.url).pathname, "/control-room");
   assert.equal(new URL(forwarded[0].url).search, "");
   assert.equal(forwarded[0].headers.get("cookie"), "__Host-dealroom_session=opaque");
-  const signedOut = await handleDoctorcreRequest(request("/design/operations"), environment({
+  const signedOut = await handleDoctorcreRequest(request("/design-lab?reference=operations"), environment({
     carr: { fetch: async () => new Response(null, { status: 302, headers: { location: `https://${HOST}/auth/login` } }) },
   }));
   assert.equal(signedOut.status, 302);
@@ -124,7 +124,7 @@ test("design prototypes are gated through the Control Room page path", async () 
 
 test("Ideas and Events use the admitted Control Room sign-in gate", async () => {
   let forwarded;
-  const signedIn = await handleDoctorcreRequest(request("/ideas?tab=events", {
+  const signedIn = await handleDoctorcreRequest(request("/ideas-events?tab=events", {
     headers: { cookie: "__Host-dealroom_session=opaque" },
   }), environment({ carr: { fetch: async (value) => { forwarded = value; return new Response(); } } }));
   assert.equal(await signedIn.text(), "asset:/ideas.html");
@@ -132,14 +132,14 @@ test("Ideas and Events use the admitted Control Room sign-in gate", async () => 
   assert.equal(new URL(forwarded.url).search, "");
   assert.equal(forwarded.headers.get("cookie"), "__Host-dealroom_session=opaque");
 
-  const signedOut = await handleDoctorcreRequest(request("/ideas?tab=events"), environment({
+  const signedOut = await handleDoctorcreRequest(request("/ideas-events?tab=events"), environment({
     carr: { fetch: async () => new Response(null, { status: 302, headers: { location: `https://${HOST}/auth/login` } }) },
   }));
   assert.equal(signedOut.status, 302);
 });
 
 test("signed-out Ideas Events visits return to the requested path and query", async () => {
-  const response = await handleDoctorcreRequest(request("/ideas?tab=events"), environment({
+  const response = await handleDoctorcreRequest(request("/ideas-events?tab=events"), environment({
     carr: { fetch: async () => new Response(null, {
       status: 302,
       headers: { location: `https://${HOST}/auth/login?return_to=%2Fcontrol-room` },
@@ -148,7 +148,7 @@ test("signed-out Ideas Events visits return to the requested path and query", as
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("location"),
-    `https://${HOST}/auth/login?return_to=%2Fideas%3Ftab%3Devents`);
+    `https://${HOST}/auth/login?return_to=%2Fideas-events%3Ftab%3Devents`);
 });
 
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
@@ -160,7 +160,7 @@ test("share links remain on the isolated reports host and release identity is ex
     service: "doctorcre-app", environment: "staging", source_commit: "1".repeat(40),
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
-    carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.32.0" },
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.14.0" },
+    carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.33.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.15.0" },
   });
 });

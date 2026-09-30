@@ -812,7 +812,7 @@ test("every control on the page clears the 44 px floor through the shared classe
 
 test("the route and the verbs this surface needs are pinned in the contracts", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
-  assert.equal(routes.routes["/pipeline"], "pipeline.html");
+  assert.equal(routes.redirects["/pipeline"], "/deals?view=board");
   assert.equal(routes.routes["/deals"], "index.html", "the existing Deal Room keeps its route");
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   for (const verb of ["patch-deal-field", "add-deal-note", "set-next-step", "add-critical-date", "resolve-conflict", "presence-lease", "revert-deal-field"]) {
@@ -932,7 +932,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.32.0");
+  assert.equal(contract.version, "1.33.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

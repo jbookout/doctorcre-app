@@ -316,3 +316,12 @@ export const operationKeys = Object.freeze({
   due: (row) => `due:${row?.kind}:${row?.number}`,
   quickAdd: (sentence, viewer) => `quickadd:${stableKey(`${String(sentence || "").trim()}|${String(viewer || "")}`)}`,
 });
+
+/**
+ * Whether the Quick add panel starts open. On a phone it starts collapsed so
+ * the open work is the first thing on screen, unless a sentence is already
+ * waiting in it.
+ */
+export function quickAddStartsOpen({ phone = false, hasDraftText = false } = {}) {
+  return !phone || hasDraftText;
+}

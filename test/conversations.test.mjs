@@ -363,7 +363,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
   // in all — and it is what makes Back safe.
   assert.equal([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length, 4);
   assert.match(pageJs, /view\.sequence \+= 1;/);
-  assert.match(pageJs, /globalThis\.history\?\.pushState\?\.\(\{ id \}, "", `\/conversations\?id=\$\{id\}`\)/);
+  assert.match(pageJs, /globalThis\.history\?\.pushState\?\.\(\{ id \}, "", `\/doc-chats\?id=\$\{id\}`\)/);
   assert.match(pageJs, /globalThis\.addEventListener\?\.\("popstate"/);
 
   // The route itself: three answers, and the two failures differ on purpose.
@@ -403,10 +403,10 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.32.0");
-  assert.equal(contract.producer.source_commit, "2bf99e92c6e1d24f6dba4331cffd189fda6ac318");
-  assert.equal(routes.routes["/conversations"], "conversations.html");
+  assert.equal(routes.version, "1.15.0");
+  assert.equal(contract.version, "1.33.0");
+  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
+  assert.equal(routes.routes["/doc-chats"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -570,8 +570,8 @@ test("an empty list says so, and says nothing about this device", async () => {
 /* ---------------------------------------- the shell, the missing composer, 360px */
 
 test("the page is the shared shell, carries no composer in the transcript, and holds 44px at 360px", async () => {
-  assert.match(html, /<title>Conversations · DoctorCRE<\/title>/);
-  assert.match(html, /<a href="\/conversations" aria-current="page">Conversations<\/a>/);
+  assert.match(html, /<title>Doc Chats · DoctorCRE<\/title>/);
+  assert.match(html, /id="appShell"/);
   assert.match(html, /data-theme="dark" data-density="comfortable" data-motion="full"/);
   assert.match(html, /<meta name="theme-color" content="#07111f">/);
   assert.match(html, /viewport-fit=cover/);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#002f6c">
+  <meta name="theme-color" content="#07101d">
   <meta name="description" content="The Deal Room — the shared transaction workspace">
   <title>The Deal Room</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,24 +12,14 @@
   <link rel="stylesheet" href="css/app.css">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
-<body>
+<body class="night">
+  <script src="/js/theme-boot.js"></script>
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to deals</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home">
-      <span>The Deal Room</span><small>doctorcre.com</small>
-    </a>
     <span class="deployment-badge" id="deploymentBadge" data-mode="unknown" role="status" aria-live="polite">Checking environment…</span>
-    <nav class="workspaces" aria-label="Deal workspaces">
-      <a class="workspace" href="/">Home</a>
-      <a class="workspace" href="/leads">Leads</a>
-      <a class="workspace" href="/tours">Tours</a>
-      <a class="workspace on" href="/deals" aria-current="page">Deals</a>
-      <button type="button" class="workspace on" data-workspace="team">Deals</button>
-      <button type="button" class="workspace" data-workspace="national_account">National Accounts</button>
-      <a class="workspace" href="/system-work.html">System work</a>
-      <a class="workspace" href="/room.html">Observatory</a>
-    </nav>
     <div class="top-actions">
       <span class="sync" id="syncStatus" role="status">Checking connection…</span>
       <span class="capture" id="captureStatus" hidden>Capture inactive</span>
@@ -48,6 +38,10 @@
         <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
         <p class="eyebrow" id="workspaceEyebrow">Shared territory pipeline</p>
         <h1 id="workspaceTitle">Deals</h1>
+        <nav class="app-section-tabs deal-section-tabs" aria-label="Deals pages">
+          <button type="button" class="workspace on" data-workspace="team" aria-current="page">All Deals</button>
+          <button type="button" class="workspace" data-workspace="national_account">National Accounts</button>
+        </nav>
         <p class="subhead" id="workspaceSubtitle"></p>
       </div>
       <div class="hero-actions">
@@ -55,6 +49,11 @@
         <button type="button" class="primary" id="agendaButton">Review deals</button>
       </div>
     </section>
+
+    <div class="deal-page-views" role="group" aria-label="Deal view">
+      <span class="deal-page-view-current" aria-current="page">List</span>
+      <a href="/deals?view=board">Board</a>
+    </div>
 
     <section class="account-grid" id="accountGrid" aria-label="National accounts" hidden></section>
 

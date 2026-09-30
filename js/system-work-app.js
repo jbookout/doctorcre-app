@@ -19,7 +19,7 @@ function render() {
   $("#systemWorkStage").innerHTML = state.card ? renderSystemWorkCard(state.card) : renderCurrentWorkRequests(state.current);
   const ref = state.card?.human_ref;
   if (ref) {
-    history.replaceState(null, "", `/system-work.html?work_request=${encodeURIComponent(ref)}`);
+    history.replaceState(null, "", `/work-requests?work_request=${encodeURIComponent(ref)}`);
     $("#workRequestRef").value = ref;
   }
 }

@@ -4,9 +4,9 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
-  "business-workspace.html", "business.html", "calendar.html", "control-room.html", "conversations.html", "design-business.html", "design-operations.html", "design.html",
+  "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "pipeline.html", "progress-board.html", "queue.html", "room.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
+  "pipeline.html", "progress-board.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const SHA = /^[0-9a-f]{64}$/;
@@ -111,7 +111,19 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
     const sourcePath = join(root, ...path.split("/"));
     const info = await stat(sourcePath);
     if (!info.isFile()) throw new Error(`artifact input is not a file: ${path}`);
-    const content = await readFile(sourcePath);
+    let content = await readFile(sourcePath);
+    if (path === "reports/share.js") {
+      const shell = await readFile(join(root, "js/app-shell.js"), "utf8");
+      const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
+      if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
+        throw new Error("report shell bundle needs an explicit export update");
+      }
+      content = Buffer.from(`${shell.replace(/^export (?=(?:const|function) )/gm, "")}\n${content.toString("utf8")}`);
+    }
+    if (path === "reports/share.css") {
+      const shell = await readFile(join(root, "css/app-shell.css"));
+      content = Buffer.concat([content, Buffer.from("\n"), shell]);
+    }
     files.set(path, content);
     const deploymentPath = join(siteDir, ...path.split("/"));
     await mkdir(dirname(deploymentPath), { recursive: true });

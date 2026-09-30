@@ -434,7 +434,7 @@ test("the shipped Deal Room carries Call Mode: button, consent, both call kinds,
   assert.match(html, /Nothing is written to a deal and no email draft is created until Joe or Dell approves that item\./);
   assert.doesNotMatch(html, /id="callsButton"|not part of this release/, "the inert Calls notice is gone");
   assert.match(html, /<tbody id="rows">/, "the sentinel the shell boots on");
-  assert.equal((html.match(/<script/g) || []).length, 1, "CSP is script-src 'self': one module tag");
+  assert.equal((html.match(/<script/g) || []).length, 3, "theme boot, app, and shared shell scripts are self-hosted");
 });
 
 test("the shell wires Call Mode to its own controls and boots only inside its own page", async () => {

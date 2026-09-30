@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 import { renderAccountCards } from '../js/account-cards.js';
 
 const helpers = {
@@ -7,6 +9,25 @@ const helpers = {
   relative: () => 'not captured',
   actorName: (value) => value === 'dell' ? 'Dell' : 'Joe',
 };
+
+test('merged account boot honors saved light and defaults to dark', async () => {
+  const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  const themeInit = app.match(/async function boot\(\) \{([\s\S]*?)  if \(localStorage.getItem\('dealroom-color-assist'\)/)[1];
+  for (const saved of [null, 'night', 'light']) {
+    for (const initialDark of [false, true]) {
+      const classes = new Set(initialDark ? ['night'] : []);
+      vm.runInNewContext(themeInit, {
+        localStorage: { getItem: () => saved },
+        document: { body: { classList: {
+          add: (name) => classes.add(name),
+          toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name),
+        } } },
+      });
+      assert.equal(classes.has('night'), saved !== 'light');
+    }
+  }
+  assert.match(app, /renderAccountCards\(state.accounts/);
+});
 
 test('the portfolio surface renders only accounts supplied by the CARR read', () => {
   const html = renderAccountCards([{
