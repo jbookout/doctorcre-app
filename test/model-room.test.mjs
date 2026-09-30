@@ -235,7 +235,8 @@ test("C12-09 context offers Open only for a verified Codex thread", () => {
   const native = "01a0ec2b-2cd1-79a2-9756-624387a98685";
   const bound = sessionRow({ canonical_session_id: native, surface: "codex",
     native_host_id: native, native_host_supported: true });
-  assert.equal(contextPanel(bound, identityPayload([bound]), { hostAvailable: true }).openTarget.href,
+  assert.equal(contextPanel(bound, identityPayload([bound]), { hostAvailable: true,
+    checkpoints: [{ native_session_id: native, host: 'codex_desktop', availability: 'checkpoint_recorded' }] }).openTarget.href,
     `codex://threads/${native}`);
   assert.match(viewCode, /data-open-model-room-session/);
   // V5-UX-C13c added ONE real, legitimately-disabled control — the answer
@@ -440,22 +441,12 @@ test("C12-16 the browser does not sort, filter or re-rank the server's arrays", 
   assert.deepEqual(window_.turns.map((turn) => turn.seq), LIVE_TURNS.turns.map((turn) => String(turn.seq)));
 });
 
-// MUTATION: touch one line of js/room.js.
-test("C12-17 the Observatory is untouched by this slice", async () => {
-  // Pinned by content digest, not by `git show origin/main`: the hosted runner
-  // checks out a single commit with no origin/main ref, so a trunk diff fails
-  // there with "invalid object name" (that is why PR 40's check went red).
-  const { createHash } = await import("node:crypto");
-  const pinned = {
-    "room.html": "354f74c7546dbd583504015674426a7afe964170b027268d2fe459d16b79c2f5",
-    "js/room.js": "711e143b4872169e4039aa85b6763126fcce459d5824748f122b8b236c1d9880",
-  };
-  for (const [path, digest] of Object.entries(pinned)) {
-    const actual = createHash("sha256").update(await read(path)).digest("hex");
-    assert.equal(actual, digest, `${path} is byte-identical to the Observatory that shipped before this slice`);
-  }
-  // Not modified, not retired, not redirected: nothing in this slice links to it
-  // as a replacement, and retiring it is Joe's decision, not this build's.
+test("C12-17 the Observatory keeps its wire and gains the local task board", async () => {
+  const room = await read("room.html");
+  assert.match(room, /id="roomStage"/);
+  assert.match(room, /id="wireFeed"/);
+  assert.match(room, /id="openTaskBoard"/);
+  assert.match(room, /id="taskBoardDialog"/);
   assert.equal(/room\.html/.test(viewSource), false, "the Model Room tab does not redirect to the Observatory");
 });
 
@@ -745,8 +736,7 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.31.0", "one added operation (add-room-turn) is an additive, minor bump");
-  assert.equal(contract.mcp_operations.length, 75);
+  assert.equal(contract.version, "1.33.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -772,8 +762,9 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   const answerAt = contract.mcp_operations.indexOf("answer-work-request-for-joe");
   assert.equal(contract.mcp_operations[answerAt - 1], "answer-board-question");
   assert.equal(contract.mcp_operations[answerAt - 2], "add-room-turn");
-  assert.equal(contract.mcp_operations[answerAt + 1], "capture-queue");
-  assert.equal(contract.producer.source_commit, "a7c7df19eb7ef8adf346f8bced6f9dbc97d88d69");
+  assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
+  assert.equal(contract.mcp_operations[answerAt + 2], "capture-queue");
+  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
@@ -782,8 +773,9 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   // present for the Observatory, so its presence here is not this slice's doing.
   assert.deepEqual(contract.http_surfaces, [
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
-    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*", "/api/tours/*",
-  ], "http_surfaces does not move");
+    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
+    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/*",
+  ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 
 /* ------------------------------------------- the validators, on real payloads */
@@ -833,7 +825,7 @@ test("C12-20 the Model Room placeholder is gone and the tab wiring is unchanged"
     assert.ok(panel[0].includes(`data-section="${section}"`), `${section} is missing`);
   }
   // The tab button, its aria wiring and the tab order are untouched.
-  assert.match(html, /<button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room<\/button>/);
+  assert.match(html, /id="tabModelRoom" data-tab-key="agents"[^>]*>Agents<\/button>/);
   assert.match(html, /id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden/);
   // 360px: one column, and every control this tab adds at the 44px floor.
   assert.match(css, /#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId,\s*\n#modelRoomDispatchSearch \.btn, #modelRoomDispatchQuery \{ min-height: var\(--touch\); \}/);

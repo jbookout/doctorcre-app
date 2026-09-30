@@ -511,7 +511,7 @@ export function searchAddress({ query = "", kinds = [] } = {}) {
   parameters.set("q", String(query ?? ""));
   const scope = (Array.isArray(kinds) ? kinds : []).filter((entry) => SEARCH_GROUP_IDS.includes(entry));
   if (scope.length > 0) parameters.set("kinds", scope.join(","));
-  return `/business?${parameters.toString()}`;
+  return `/search?${parameters.toString()}`;
 }
 
 /* ---------------------------------------------------------------- saved views */

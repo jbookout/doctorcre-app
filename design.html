@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE shared visual system: tokens, components, states and motion, with interactive prototypes for review">
-  <title>Visual system · DoctorCRE</title>
+  <title>Design Lab · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
@@ -14,22 +14,15 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/design.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body data-prototype="index">
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the system</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>visual system</small></span></a>
-    <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="/design/business">Business</a>
-      <a href="/design/operations">Control Room</a>
-      <a href="/design" aria-current="page">Visual system</a>
-      <a href="/work-inventory">Work Inventory</a>
-    </nav>
-    <a class="pref-icon nav-notif" href="/notifications" title="Notifications">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.1c0 .86-.34 1.68-.94 2.3L4.6 15h14.8l-1.46-1.6a3.3 3.3 0 0 1-.94-2.3V8a5 5 0 0 0-5-5Z"></path><path d="M9.6 18a2.6 2.6 0 0 0 4.8 0"></path></svg>
-      <span class="sr-only">Notifications</span>
-      <span class="nav-badge" id="navUnreadBadge" hidden></span>
-    </a>
+
+
+
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
@@ -46,10 +39,11 @@
 
   <main id="main" class="shell">
     <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. No record is read or changed.</p>
+    <p class="prototype-links">Synthetic reference examples are saved below.</p>
     <div class="hero">
       <div>
         <p class="eyebrow">V5-UX-S01</p>
-        <h1 id="pageTitle">One grammar for every surface</h1>
+        <h1 id="pageTitle">Design Lab</h1>
       </div>
       <div class="hero-meta">
         <span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Contract v1.0.0</span>
@@ -243,11 +237,17 @@
       <section class="card glass" aria-labelledby="reviewTitle">
         <div class="card-heading"><div><p class="eyebrow">Review</p><h2 id="reviewTitle">What Joe looks at</h2></div></div>
         <ol class="rule-list">
-          <li>Open the <a href="/design/business" target="_blank" rel="noopener">business prototype</a> (new tab): the four tabs, an action item popup, a card dragged between columns, Quick add, Handover.</li>
-          <li>Open the <a href="/design/operations" target="_blank" rel="noopener">Control Room prototype</a> (new tab): the dashboard briefings, the Atlas, the Model Room board, Sessions.</li>
+          <li>Business reference: action cards, a four-view strip, a popup, Quick add and Handover.</li>
+          <li>Control Room reference: dashboard, System Map, agent board and Sessions.</li>
           <li>Switch theme, density and motion. Use only the keyboard for one full pass, then only touch on a phone.</li>
           <li>Record what still feels wrong. Palette shades, geometry and motion timing are open until this review closes.</li>
         </ol>
+        <div class="reference-grid" id="referenceExamples">
+          <figure><a href="/public-shell/references/business-desktop.png" target="_blank" rel="noopener"><img src="/public-shell/references/business-desktop.png" alt="Archived synthetic business prototype at desktop width" loading="lazy"></a><figcaption>Business · desktop</figcaption></figure>
+          <figure><a href="/public-shell/references/business-390.png" target="_blank" rel="noopener"><img src="/public-shell/references/business-390.png" alt="Archived synthetic business prototype at 390 pixels" loading="lazy"></a><figcaption>Business · 390px</figcaption></figure>
+          <figure><a href="/public-shell/references/operations-desktop.png" target="_blank" rel="noopener"><img src="/public-shell/references/operations-desktop.png" alt="Archived synthetic Control Room prototype at desktop width" loading="lazy"></a><figcaption>Control Room · desktop</figcaption></figure>
+          <figure><a href="/public-shell/references/operations-390.png" target="_blank" rel="noopener"><img src="/public-shell/references/operations-390.png" alt="Archived synthetic Control Room prototype at 390 pixels" loading="lazy"></a><figcaption>Control Room · 390px</figcaption></figure>
+        </div>
       </section>
     </section>
   </main>

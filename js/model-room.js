@@ -40,7 +40,7 @@ import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
 import { uuidv4 } from "./uuid.js";
-import { createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
+import { codexCheckpoints, createOpenLinkGuard, reconcileOpenAttempt } from './open-session-model.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -60,6 +60,7 @@ const view = {
   status: "idle",
   queue: { state: "idle", payload: null, refusal: null },
   sessions: { state: "idle", payload: null, refusal: null },
+  checkpoints: [],
   turns: { state: "idle", payload: null, refusal: null },
   /** canonical_session_id of the selected card; null until one is chosen. */
   selected: null,
@@ -335,7 +336,7 @@ function renderContext() {
   const rows = Array.isArray(payload?.sessions) ? payload.sessions : [];
   let row = null;
   for (const candidate of rows) if (candidate.canonical_session_id === view.selected) row = candidate;
-  const panel = contextPanel(row, payload, { hostAvailable: hostAvailable() });
+  const panel = contextPanel(row, payload, { hostAvailable: hostAvailable(), checkpoints: view.checkpoints });
   if (!panel) {
     root.innerHTML = '<p class="small">Choose a session above to see its work-state evidence, its lineage and '
       + 'its dispatch history.</p>'
@@ -713,11 +714,16 @@ async function take(slot, run, refuse) {
   view[slot] = { state: "loading", payload: null, refusal: null };
   render();
   try {
-    const payload = await run();
+    const [payload, checkpointPayload] = slot === "sessions"
+      ? await Promise.all([run(), client.codexSessions().catch(() => null)])
+      : [await run(), null];
     if (sequence !== view.sequence[slot]) return;
     const refusal = refuse(payload);
     view[slot] = { state: "ready", payload: refusal ? null : payload, refusal };
-    if (slot === "sessions") openLinks.refresh(!refusal);
+    if (slot === "sessions") {
+      view.checkpoints = codexCheckpoints(checkpointPayload);
+      openLinks.refresh(!refusal && checkpointPayload?.ok === true);
+    }
   } catch (error) {
     if (sequence !== view.sequence[slot]) return;
     view[slot] = {
@@ -725,6 +731,7 @@ async function take(slot, run, refuse) {
       payload: null,
       refusal: String(error?.payload?.error || error?.message || "the read did not answer"),
     };
+    if (slot === "sessions") view.checkpoints = [];
   }
   render();
 }
@@ -839,9 +846,12 @@ export function mountModelRoom({ outage = null } = {}) {
     openLinks.retire(attempt.id, attempt.link);
     renderContext();
     try {
-      const payload = await client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50, include_closed: true });
+      const [payload, checkpointPayload] = await Promise.all([
+        client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50, include_closed: true }),
+        client.codexSessions(),
+      ]);
       const result = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
-        { hostAvailable: hostAvailable() });
+        { hostAvailable: hostAvailable(), checkpoints: codexCheckpoints(checkpointPayload) });
       announce(result.state === 'same_target_unconfirmed'
         ? 'The recorded target is unchanged. Refresh sessions before opening again.'
         : 'The recorded target could not be confirmed. Refresh before opening.');

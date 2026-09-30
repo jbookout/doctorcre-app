@@ -42,7 +42,7 @@ test("the reference comes from the query string, and both failures are named", (
   assert.equal(refFromSearch("?ref=INC-20260915-1").state, "malformed");
   assert.equal(refFromSearch("?ref=inc-20260915-01").state, "malformed");
   assert.equal(REF_REFUSAL, "This page needs an incident reference like INC-20260915-01.");
-  assert.ok(html.includes(REF_REFUSAL), "the page does not carry the refusal sentence");
+  assert.match(html, /id="incidentList"/, "the bare route opens the incident list");
 });
 
 test("a bare page still offers the open list, and the Control Room links into it", async () => {
@@ -103,7 +103,7 @@ test("hypotheses, occurrences and links state what the ledger recorded and nothi
   assert.equal(occurrenceRows([{ observed_at: "2026-09-16T13:11:00.000Z" }])[0].note, "no note recorded");
   const links = linkRows([{ kind: "work_request", ref: "WR-000901" }, { kind: "run", ref: "RUN-demo-0042" }, { ref: "" }]);
   assert.equal(links.length, 2);
-  assert.equal(links[0].href, "/system-work.html");
+  assert.equal(links[0].href, "/work-requests");
   assert.equal(links[0].label, "WR-000901");
   assert.equal(links[1].href, null, "a run has no page in this application");
 });
@@ -199,8 +199,8 @@ test("a read that did not answer is unknown in the app's own words", async () =>
 
 test("the route and the two verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/incidents"], "incidents.html");
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.31.0");
+  assert.equal(routes.version, "1.15.0");
+  assert.equal(contract.version, "1.33.0");
   for (const verb of ["get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

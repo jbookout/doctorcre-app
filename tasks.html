@@ -14,26 +14,15 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/tasks.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the task list</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>tasks</small></span></a>
-    <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="/">Home</a>
-      <a href="/leads">Leads</a>
-      <a href="/tours">Tours</a>
-      <a href="/deals">Deals</a>
-      <a href="/system-work.html">System work</a>
-      <a href="/work-inventory">Inventory</a>
-      <a href="/tasks" aria-current="page">Tasks</a>
-      <a href="/business?q=">Search</a>
-    </nav>
-    <a class="pref-icon nav-notif" href="/notifications" title="Notifications">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.1c0 .86-.34 1.68-.94 2.3L4.6 15h14.8l-1.46-1.6a3.3 3.3 0 0 1-.94-2.3V8a5 5 0 0 0-5-5Z"></path><path d="M9.6 18a2.6 2.6 0 0 0 4.8 0"></path></svg>
-      <span class="sr-only">Notifications</span>
-      <span class="nav-badge" id="navUnreadBadge" hidden></span>
-    </a>
+
+
+
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
@@ -62,8 +51,9 @@
 
     <p class="sr-only" id="taskLive" aria-live="polite" role="status">Reading the record…</p>
 
-    <section class="card glass" aria-labelledby="quickTitle">
-      <div class="card-heading"><div><p class="eyebrow">Capture</p><h2 id="quickTitle">Quick add</h2></div></div>
+    <section class="card glass tasks-quick-add" aria-labelledby="quickTitle">
+      <details class="quick-add" id="quickAddPanel" open>
+      <summary class="quick-add-summary"><span><span class="eyebrow">Capture</span> <span class="quick-add-title" id="quickTitle">Quick add</span></span><span class="quick-add-toggle" aria-hidden="true"></span></summary>
       <form id="quickAddForm" hidden>
         <div class="field">
           <label for="quickAddInput">Sentence</label>
@@ -81,13 +71,14 @@
         <p class="small" id="quickAddQuestion"></p>
         <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button" id="quickAddDraft">Keep as draft</button></div>
       </form>
+      </details>
       <div class="chip-bar" id="draftBar" hidden>
         <span class="chip-label">Drafts on this device · select to review</span>
         <span class="chip-list" id="draftList"></span>
       </div>
     </section>
 
-    <section class="card glass" aria-labelledby="listTitle">
+    <section class="card glass tasks-open" aria-labelledby="listTitle">
       <div class="card-heading">
         <div><p class="eyebrow">Open work</p><h2 id="listTitle">Records</h2></div>
         <div class="btn-group" id="scopeSwitch" role="group" aria-label="Scope">

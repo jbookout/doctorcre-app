@@ -48,7 +48,7 @@ import {
   outcomeCardsEmptyMessage, outcomeCardsPagingState, outcomeCardsRequest,
   refuseDocOutcomeCards,
 } from "./doc-outcome-cards-model.js";
-import { createOpenLinkGuard, reconcileOutcomeOpenAttempt } from './open-session-model.js';
+import { codexCheckpoints, createOpenLinkGuard, reconcileOutcomeOpenAttempt } from './open-session-model.js';
 import { uuidv4 } from "./uuid.js";
 import { suggestionCards, decisionArgs, correctionArgs, correctionConflict, suggestionFlow, suggestionReadState, suggestionStatus, visibleSuggestionConflicts, reconcileSuggestionConflicts } from "./doc-suggestions-model.js";
 
@@ -76,7 +76,7 @@ const view = {
   // whole reason this section exists — can flash exactly the fields that
   // changed rather than the whole card. New cards are compared against
   // nothing and never flash; the entrance animation already says "new".
-  outcomeCards: { state: "pending", payload: null, rows: [], sequence: 0, previousById: new Map() },
+  outcomeCards: { state: "pending", payload: null, rows: [], checkpoints: [], sequence: 0, previousById: new Map() },
   suggestions: { state: "pending", rows: [], coverage: null, sequence: 0, includeParked: false, sentence: null,
     drafts: new Map(), workNumbers: new Map(), conflicts: new Map() },
 };
@@ -295,7 +295,10 @@ function renderOutcomeCards() {
     if (paging) paging.hidden = true;
     return;
   }
-  const cards = outcomeCards({ cards: view.outcomeCards.rows }, { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') });
+  const cards = outcomeCards({ cards: view.outcomeCards.rows }, {
+    hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || ''),
+    checkpoints: view.outcomeCards.checkpoints,
+  });
   // Every card gets its own delay so the entrance is ORCHESTRATED rather
   // than simultaneous, and every card's change flags come from comparing
   // THIS read against the previous one — new cards (no prior entry) never
@@ -360,7 +363,7 @@ function renderSuggestions() {
   today.setDate(today.getDate() + 7);
   const defaultSnooze = today.toISOString().slice(0, 10);
   list.innerHTML = cards.map((card, index) => {
-    const source = card.sourceConversationId ? `/conversations?id=${encodeURIComponent(card.sourceConversationId)}` : null;
+    const source = card.sourceConversationId ? `/doc-chats?id=${encodeURIComponent(card.sourceConversationId)}` : null;
     const draft = state.drafts.get(card.id) || "";
     const workNumber = state.workNumbers.get(card.id) || "";
     const current = state.conflicts.get(card.id);
@@ -493,21 +496,25 @@ async function takeOutcomeCards({ cursor = null } = {}) {
   view.outcomeCards = { ...view.outcomeCards, state: "loading" };
   render();
   try {
-    const payload = await client.docOutcomeCards(outcomeCardsRequest({ cursor }));
+    const [payload, checkpointPayload] = await Promise.all([
+      client.docOutcomeCards(outcomeCardsRequest({ cursor })),
+      client.codexSessions().catch(() => null),
+    ]);
     if (view.outcomeCards.sequence !== sequence) return;
     const refusal = refuseDocOutcomeCards(payload);
     if (refusal) {
-      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
+      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
     } else {
-      view.outcomeCards = { ...view.outcomeCards, state: "read", payload, rows: [...held, ...payload.cards], sequence };
+      view.outcomeCards = { ...view.outcomeCards, state: "read", payload, rows: [...held, ...payload.cards],
+        checkpoints: codexCheckpoints(checkpointPayload), sequence };
       // A later page appends to cached earlier pages; only a new first-page
       // read replaces the rows from which a retired Open link was rendered.
-      openLinks.refresh(!cursor);
+      openLinks.refresh(!cursor && checkpointPayload?.ok === true);
     }
   } catch (error) {
     if (view.outcomeCards.sequence !== sequence) return;
     const failure = classifyReadFailure(error);
-    view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, sequence, sentence: failure.sentence };
+    view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: failure.sentence };
   }
   render();
   announceOutcomeCards(view.outcomeCards.state === "unavailable"
@@ -553,7 +560,7 @@ function open(id) {
   view.route = route;
   view.conversation = { state: "pending" };
   try {
-    globalThis.history?.pushState?.({ id }, "", `/conversations?id=${id}`);
+    globalThis.history?.pushState?.({ id }, "", `/doc-chats?id=${id}`);
   } catch {
     // A host that refuses history keeps the page; only the address bar lags.
   }
@@ -746,11 +753,14 @@ async function boot() {
     openLinks.retire(attempt.cardId, attempt.link);
     renderOutcomeCards();
     try {
-      const fresh = await client.docOutcomeCards({ limit: 50 });
+      const [fresh, checkpointPayload] = await Promise.all([
+        client.docOutcomeCards({ limit: 50 }), client.codexSessions(),
+      ]);
       const card = refuseDocOutcomeCards(fresh) ? null
         : fresh.cards.find(item => item.card_id === attempt.cardId);
       const result = reconcileOutcomeOpenAttempt(attempt.target, card,
-        { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '') });
+        { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || ''),
+          checkpoints: codexCheckpoints(checkpointPayload) });
       announceOutcomeCards(result.state === 'same_target_unconfirmed'
         ? 'The recorded target is unchanged. Refresh this card before opening again.'
         : 'The recorded target could not be confirmed. Refresh this card before opening.');

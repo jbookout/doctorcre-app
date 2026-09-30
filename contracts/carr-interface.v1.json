@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.31.0",
+  "version": "1.33.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "a7c7df19eb7ef8adf346f8bced6f9dbc97d88d69"
+    "source_commit": "c4f1ad45273175c26c074336c0fecbf789718348"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -23,6 +23,7 @@
     "add-room-turn",
     "answer-board-question",
     "answer-work-request-for-joe",
+    "append-tour-selection-cart-version",
     "capture-queue",
     "claim-card",
     "close-loop",
@@ -44,10 +45,12 @@
     "get-incident",
     "governance-queue",
     "incident-board",
+    "lead-board",
     "link-incident-work-request",
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-industry-events",
+    "list-my-codex-sessions",
     "loop-board",
     "loop-headers",
     "new-deal",
@@ -67,6 +70,7 @@
     "read-room",
     "read-room-queue",
     "read-session-identity",
+    "read-tour-selection-cart",
     "record-dispatch-link",
     "rename-doc-conversation",
     "resolve-candidate",
@@ -75,6 +79,7 @@
     "revert-deal-field",
     "review-deal",
     "schedule-board",
+    "search-tour-properties",
     "set-lead",
     "set-market-agent",
     "set-national-account-owner",
@@ -87,6 +92,7 @@
     "today-triage",
     "update-deal",
     "update-industry-event",
+    "update-lead",
     "update-loop",
     "work-request-card"
   ],
@@ -100,6 +106,8 @@
     "/api/room/*",
     "/api/system-work/*",
     "/api/share/*",
+    "/api/tours/properties/search",
+    "/api/tours/selection-cart",
     "/api/tours/*"
   ],
   "invariants": [

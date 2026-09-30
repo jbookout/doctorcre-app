@@ -26,7 +26,7 @@ import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
-  orderTaskRows, partnerName, quickAddPlan, quickAddRecords, scopeRows, taskDetailRows, closeArgs,
+  orderTaskRows, partnerName, quickAddPlan, quickAddRecords, quickAddStartsOpen, scopeRows, taskDetailRows, closeArgs,
   dueDateArgs, validBoardPayload,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
@@ -608,6 +608,7 @@ function wire() {
     const draft = localDrafts?.list().find((item) => item.id === button?.dataset.restoreDraft);
     if (!draft) return;
     restoredDraftId = draft.id;
+    $("quickAddPanel").open = true;
     $("quickAddInput").value = draft.sentence;
     $("quickAddDate").value = draft.dueDate;
     renderQuickAdd();
@@ -710,6 +711,13 @@ async function boot() {
   mountDocDock("Tasks");
   mountDock();
   wire();
+  const quickAddPanel = $("quickAddPanel");
+  if (quickAddPanel) {
+    quickAddPanel.open = quickAddStartsOpen({
+      phone: globalThis.matchMedia?.("(max-width: 640px)").matches === true,
+      hasDraftText: Boolean($("quickAddInput")?.value),
+    });
+  }
   renderQuickAdd();
   renderDrafts();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });

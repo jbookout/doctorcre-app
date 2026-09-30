@@ -49,7 +49,7 @@ import {
 import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, filterDeals, groupByColumn, keyboardTarget,
-  loadDealContext, moveIntent, moveSummary, moveTitle, orderColumn, presenceChip,
+  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, orderColumn, presenceChip,
   recordPanelSections, tapMoveTargets, typeFilters,
 } from './pipeline-model.js';
 import { uuidv4 } from './uuid.js';
@@ -134,7 +134,7 @@ function cardHtml(deal) {
       <span class="owner"><span class="avatar" data-partner="${esc(deal.owner || '')}" aria-hidden="true">${esc(actorName(deal.owner).slice(0, 1))}</span><span>${esc(actorName(deal.owner))}</span></span>
       ${deal.attention ? '<span class="pin" aria-label="Flagged for attention">★</span>' : ''}
     </div>
-    <p class="small">${esc(deal.next_step || 'No next step recorded')}</p>
+    <p class="small">${esc(noteText(deal.next_step) || 'No next step recorded')}</p>
     ${chip ? `<p class="presence-chip">${esc(chip)}</p>` : ''}
     <button class="btn card-move" type="button" data-move="${esc(deal.id)}" aria-label="Move ${esc(deal.name)} to another phase">Move</button>
   </article>`;

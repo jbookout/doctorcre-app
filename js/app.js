@@ -381,7 +381,12 @@ function render() {
 }
 
 function renderChrome() {
-  $$('.workspace').forEach((button) => button.classList.toggle('on', button.dataset.workspace === state.workspace));
+  $$('.workspace').forEach((button) => {
+    const active = button.dataset.workspace === state.workspace;
+    button.classList.toggle('on', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   $$('.filter').forEach((button) => button.classList.toggle('on', button.dataset.filter === state.filter));
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
@@ -1228,7 +1233,12 @@ async function finishAgenda(status = 'completed') {
 function wireEvents() {
   document.addEventListener('click', async (event) => {
     const workspace = event.target.closest('[data-workspace]');
-    if (workspace) { state.workspace = workspace.dataset.workspace; state.accountId = null; state.filter = 'active'; state.deepLinkMine = false; state.query = ''; $('#search').value = ''; render(); return; }
+    if (workspace) {
+      state.workspace = workspace.dataset.workspace;
+      state.accountId = null; state.filter = 'active'; state.deepLinkMine = false; state.query = ''; $('#search').value = '';
+      history.pushState({ dealView: state.workspace }, '', state.workspace === 'team' ? '/deals' : '/deals?view=national');
+      render(); return;
+    }
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
     const retryWrite = event.target.closest('[data-retry-write]');
@@ -1303,7 +1313,7 @@ function wireEvents() {
 }
 
 async function boot() {
-  if (localStorage.getItem('dealroom-theme') === 'night') document.body.classList.add('night');
+  document.body.classList.toggle('night', localStorage.getItem('dealroom-theme') !== 'light');
   if (localStorage.getItem('dealroom-color-assist') === 'on') {
     document.body.classList.add('color-assist');
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');
@@ -1312,6 +1322,12 @@ async function boot() {
   const bootConfig = resolveDealroomBoot(location);
   const params = new URLSearchParams(location.search);
   if (params.get('workspace') === 'team') state.workspace = 'team';
+  if (params.get('view') === 'national') state.workspace = 'national_account';
+  window.addEventListener('popstate', () => {
+    state.workspace = new URLSearchParams(location.search).get('view') === 'national' ? 'national_account' : 'team';
+    state.accountId = null;
+    render();
+  });
   if (params.get('filter') === 'flagged') { state.filter = 'flagged'; state.deepLinkMine = params.get('owner') === 'me'; }
   const identity = deploymentIdentity(bootConfig.mode);
   state.mode = bootConfig.mode;
