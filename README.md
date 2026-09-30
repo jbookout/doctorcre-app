@@ -13,6 +13,8 @@ serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
 ```bash
+npm ci
+npx playwright install chromium
 npm test
 npm run check
 npm run build

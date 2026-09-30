@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { JSDOM } from 'jsdom';
 import { renderAccountCards } from '../js/account-cards.js';
 
 const helpers = {
@@ -87,6 +88,23 @@ test('portfolio motion rate follows urgency without hiding the still-state label
   assert.match(renderAccountCards([{ ...account, attention_deals: 1 }], helpers), /data-pulse="attention"/);
   assert.match(renderAccountCards([{ ...account }], helpers), /data-pulse="healthy"/);
   assert.match(renderAccountCards([{ ...account, open_deals: 0 }], helpers), /data-pulse="dormant"/);
+});
+
+test('an overdue-only account exposes its count in visible text and the accessible diagram', () => {
+  for (const overdue_deals of [0, 1, 3]) {
+    const html = renderAccountCards([{
+      account_client_id: 'demo-due', account_name: 'Demo Due', open_deals: 3,
+      attention_deals: 0, stale_deals: 0, overdue_deals,
+    }], helpers);
+    const document = new JSDOM(html).window.document;
+    const metrics = [...document.querySelectorAll('.account-metrics > div')];
+    const overdue = metrics.find((metric) => metric.querySelector('span').textContent === 'Overdue');
+    assert.ok(overdue, 'Overdue must have a visible metric independent of attention');
+    assert.equal(overdue.querySelector('b').textContent, String(overdue_deals));
+    assert.equal(overdue.closest('[aria-hidden="true"], [hidden]'), null);
+    assert.match(document.querySelector('svg').getAttribute('aria-label'), new RegExp(`${overdue_deals} overdue`));
+    assert.match(metrics.find((metric) => metric.querySelector('span').textContent === 'Attention').textContent, /^0/);
+  }
 });
 
 test('account names and references cannot inject markup into the diagram or card', () => {
