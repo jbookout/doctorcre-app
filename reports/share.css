@@ -73,5 +73,9 @@ button:hover { transform:translateY(-2px); box-shadow:0 8px 22px rgba(245,127,41
 button[aria-pressed="true"] { color:#ffd7b7; background:rgba(245,127,41,.19); }
 button:disabled { opacity:.55; transform:none; }
 .skip-link { color:var(--text); background:#173959; }
+@media (max-width: 560px) {
+  .tour-flow { margin:1.25rem 0; padding:1rem .25rem; }
+  .tour-flow g text:last-child { font-size:32px; letter-spacing:.01em; }
+}
 @keyframes share-flow { to { stroke-dashoffset:-160; } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }

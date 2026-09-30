@@ -66,6 +66,7 @@ button:focus-visible{border-color:var(--orange);outline:3px solid var(--orange);
 .feedback-flow circle{fill:var(--ink-2);stroke:var(--orange);stroke-width:2;animation:feedback-pulse 3.5s ease-in-out infinite}
 .feedback-flow circle:nth-of-type(2){animation-duration:2s}
 .feedback-flow text{fill:var(--muted);font:700 10px var(--display);text-anchor:middle;letter-spacing:.08em}
+@media(max-width:560px){.feedback-flow text{font-size:26px;letter-spacing:.01em}}
 .feedback-card .interaction-list li{display:block}
 .feedback-card .interaction-list p{margin:.35rem 0;color:var(--muted)}
 .feedback-card .shortlisted{color:var(--orange);font-weight:800}

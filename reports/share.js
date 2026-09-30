@@ -58,12 +58,15 @@
       await request(`/api/share/${kind}`, { method: "POST",
         headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       pending.delete(slot);
-      const itemFeedback = feedbackFor(item.property_ref);
-      if (itemFeedback) {
-        if (kind === "shortlist") itemFeedback.shortlisted = value;
-        else { itemFeedback.comments ||= []; itemFeedback.comments.push({ comment: value }); }
-        render(currentReport);
+      let itemFeedback = feedbackFor(item.property_ref);
+      if (!itemFeedback) {
+        itemFeedback = { property_ref: item.property_ref, shortlisted: false, comments: [] };
+        feedback.items ||= [];
+        feedback.items.push(itemFeedback);
       }
+      if (kind === "shortlist") itemFeedback.shortlisted = value;
+      else { itemFeedback.comments ||= []; itemFeedback.comments.push({ comment: value }); }
+      render(currentReport);
       feedbackStatus.textContent = kind === "shortlist" ? "Shortlist saved." : "Comment saved.";
       return true;
     } catch {
