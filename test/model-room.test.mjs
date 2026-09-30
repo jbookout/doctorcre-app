@@ -736,7 +736,7 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.33.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.34.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -764,7 +764,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.equal(contract.mcp_operations[answerAt - 2], "add-room-turn");
   assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
   assert.equal(contract.mcp_operations[answerAt + 2], "capture-queue");
-  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
+  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
@@ -774,7 +774,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.deepEqual(contract.http_surfaces, [
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
     "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
-    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/*",
+    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/property-evidence/v1", "/api/tours/*",
   ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 

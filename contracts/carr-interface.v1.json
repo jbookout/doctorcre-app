@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.33.0",
+  "version": "1.34.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "c4f1ad45273175c26c074336c0fecbf789718348"
+    "source_commit": "0cc6fe2538a81521bf8c25b0df58aa4063ed614b"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -108,6 +108,7 @@
     "/api/share/*",
     "/api/tours/properties/search",
     "/api/tours/selection-cart",
+    "/api/tours/property-evidence/v1",
     "/api/tours/*"
   ],
   "invariants": [
@@ -117,6 +118,7 @@
     "Retries reuse the same idempotency key and reconcile against CARR.",
     "Fixture data is synthetic and cannot become production state.",
     "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
-    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one."
+    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one.",
+    "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
   ]
 }

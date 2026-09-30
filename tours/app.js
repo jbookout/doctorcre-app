@@ -1,3 +1,4 @@
+import { mountPropertyPanel } from "./property-panel.js";
 import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
 
 (() => {
@@ -252,6 +253,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     const downloadable = tour.pdf_status === "available" && id(state.renderJobId);
     $("#download-pdf").hidden = !downloadable;
     if (downloadable) $("#download-pdf").href = `/api/tours/pdf/download?render_job_id=${encodeURIComponent(state.renderJobId)}`;
+    mountPropertyPanel({ tour, request });
   }
   async function loadLibrary() { status("Loading tours…"); const data = await request("/api/tours/library"); state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready."); }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
