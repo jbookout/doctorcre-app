@@ -87,6 +87,7 @@ function reportForm() {
         desired_outcome: data.get("desired_outcome"),
         acceptance_criteria: criteria.map((text, index) => ({ id: `CRITERION-${index + 1}`, text })) });
       await refresh(result.human_ref);
+      client.finishReport();
     } });
 }
 

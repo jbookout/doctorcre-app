@@ -1295,11 +1295,12 @@ function boot() {
 
   function renderWire(freshOnly) {
     const feed = $("wireFeed");
-    const visible = state.turns.filter((turn) => turnPasses(turn, state.filters));
-    const capped = visible.slice(-DOM_TURN_CAP);
+    const visible = (state.historyTurns || state.turns).filter((turn) => turnPasses(turn, state.filters));
+    const capped = state.historyTurns ? visible.slice(0, DOM_TURN_CAP) : visible.slice(-DOM_TURN_CAP);
 
     const items = [];
-    if (state.oldestSeq !== null && state.oldestSeq > 1) items.push({ kind: "earlier" });
+    const oldest = state.historyTurns?.[0] ? seqOf(state.historyTurns[0]) : state.oldestSeq;
+    if (oldest !== null && oldest > 1) items.push({ kind: "earlier" });
     if (!capped.length && !state.pending.size) items.push({ kind: "quiet" });
     for (const turn of capped) items.push({ kind: "turn", turn, pending: false });
     for (const pending of state.pending.values()) items.push({ kind: "turn", turn: pending, pending: true });
@@ -1414,6 +1415,7 @@ function boot() {
   function onFeedScroll() {
     const feed = $("wireFeed");
     const distance = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+    if (state.historyTurns) return;
     const following = distance <= 120;
     if (following !== state.following) {
       state.following = following;
@@ -1961,26 +1963,18 @@ function boot() {
 
   async function poll() {
     try {
-      // Loop #521: the first poll used to fetch from seq 0 (the OLDEST page),
-      // so the health strip derived its cycle-age tile from a stale window and
-      // showed red for minutes after every page load. When the cursor is still
-      // at the initial value, jump straight to the present: read the newest
-      // full page instead of the oldest one. History stays reachable through
-      // Load earlier.
-      const initialFetch = state.cursor === 0;
-      const from = initialFetch
-        ? Math.max(0, (state.latestSeqHint ?? 0) - PAGE_SIZE)
-        : state.cursor;
-      const payload = await fetchTurns(from, PAGE_SIZE);
-      if (Number.isFinite(Number(payload.latest_seq))) {
-        state.latestSeqHint = Number(payload.latest_seq);
-        if (initialFetch) {
-          // First response arrived with the present: drop any turns below the
-          // window we actually wanted so the panel never renders the old span.
-          const cutoff = Math.max(0, Number(payload.latest_seq) - PAGE_SIZE);
-          payload.turns = (payload.turns || []).filter((t) => Number(t.seq) > cutoff);
-        }
-      }
+      // latest_seq is the last returned row, not the room's overall tail.
+      // Drain the server's oldest-first pages before showing a current window.
+      let from = state.cursor;
+      let payload, turns = [];
+      do {
+        payload = await fetchTurns(from, 200);
+        turns = [...turns, ...(payload.turns || [])].slice(-DOM_TURN_CAP);
+        const next = Number(payload.latest_seq);
+        if (payload.more && !(next > from)) throw new Error("Room cursor did not advance.");
+        if (Number.isFinite(next)) from = next;
+      } while (payload.more);
+      payload = { ...payload, turns };
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
       $("composerInput").placeholder = `Speak into the room as ${PARTNER_LABEL[state.viewer] || "a partner"}…`;
@@ -2016,11 +2010,15 @@ function boot() {
   }
 
   async function loadEarlier() {
-    const oldest = state.oldestSeq;
+    const oldest = state.historyTurns?.[0] ? seqOf(state.historyTurns[0]) : state.oldestSeq;
     if (!oldest || oldest <= 1) return;
     const from = Math.max(0, oldest - 1 - PAGE_SIZE);
     const payload = await fetchTurns(from, Math.min(PAGE_SIZE, oldest - 1 - from));
-    absorb(payload, { prepend: true });
+    const rows = new Map([...(state.historyTurns || state.turns), ...(payload.turns || [])].map(turn => [String(turn.msg_id || turn.seq), turn]));
+    state.historyTurns = [...rows.values()].sort((a, b) => seqOf(a) - seqOf(b)).slice(0, DOM_TURN_CAP);
+    state.following = false;
+    $("wireResume").hidden = false;
+    $("wireResume").textContent = "Resume live";
     render();
   }
 
@@ -2068,7 +2066,7 @@ function boot() {
     render();
   });
   $("wireFeed").addEventListener("scroll", onFeedScroll, { passive: true });
-  $("wireResume").addEventListener("click", () => { state.following = true; scrollToBottom(true); });
+  $("wireResume").addEventListener("click", () => { state.historyTurns = null; state.following = true; render(); scrollToBottom(true); });
   $("composerInput").addEventListener("input", updateCounter);
   $("composerInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendComposer(); }

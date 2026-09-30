@@ -575,6 +575,8 @@ function wire() {
       announce(`Nothing was filed. ${current.plan.questions.join(" ")}`);
       return;
     }
+    const submittedInput = $("quickAddInput")?.value || "";
+    const submittedDate = $("quickAddDate")?.value || "";
     const operationKey = operationKeys.quickAdd(current.sentence, viewer);
     const matchedId = matchingDraftId(localDrafts.list(), restoredDraftId, current.sentence, $("quickAddDate")?.value || "");
     if (matchedId) draftOperations.set(operationKey, matchedId);
@@ -585,8 +587,10 @@ function wire() {
     if (result.status === "ok") {
       const input = $("quickAddInput");
       const date = $("quickAddDate");
-      if (input) input.value = "";
-      if (date) date.value = "";
+      if ((input?.value || "") === submittedInput && (date?.value || "") === submittedDate) {
+        if (input) input.value = "";
+        if (date) date.value = "";
+      }
       renderQuickAdd();
       renderDrafts();
     }

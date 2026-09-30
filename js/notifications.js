@@ -237,9 +237,21 @@ async function takePreference() {
 async function takeActivity() {
   const sequence = view.sequence;
   try {
-    const payload = await client.getChanges(null);
-    if (view.sequence !== sequence) return;
-    view.activity = { state: "read", payload, observed_at: new Date().toISOString() };
+    let cursor = view.activity?.payload?.cursor || null;
+    let events = view.activity?.payload?.events || [];
+    const seen = new Set();
+    let payload;
+    do {
+      payload = await client.getChanges(cursor);
+      if (view.sequence !== sequence) return;
+      const rows = Array.isArray(payload.events) ? payload.events : [];
+      events = [...events, ...rows].slice(-12);
+      if (!rows.length) break;
+      if (!payload.cursor || payload.cursor === cursor || seen.has(payload.cursor)) throw new Error("Activity cursor did not advance.");
+      seen.add(payload.cursor);
+      cursor = payload.cursor;
+    } while (true);
+    view.activity = { state: "read", payload: { ...payload, cursor: cursor || payload.cursor, events }, observed_at: new Date().toISOString() };
   } catch {
     if (view.sequence !== sequence) return;
     view.activity = { state: "unknown" };

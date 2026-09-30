@@ -194,12 +194,12 @@ function render() {
  * current query's result stands.
  */
 async function read({ push = true } = {}) {
+  const sequence = ++view.sequence;
   if (!queryIsSendable(view.query)) {
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
     return;
   }
-  const sequence = ++view.sequence;
   view.status = "loading";
   view.submitted = true;
   render();
@@ -253,14 +253,14 @@ function replaceAddress() {
 
 /**
  * Back. The query and the chips are restored from the URL and the page
- * re-renders from the payload already in hand — no read of its own.
+ * reads results for that query rather than reusing another query’s payload.
  */
-function restoreFromAddress({ reread = false } = {}) {
+function restoreFromAddress({ reread = true } = {}) {
   const address = parseSearchAddress(globalThis.location?.search || "");
   view.query = address.query;
   view.kinds = [...address.kinds];
   view.submitted = address.present && queryIsSendable(address.query);
-  if (reread && view.submitted) read({ push: false });
+  if (reread) read({ push: false });
   else render();
   return address;
 }
@@ -278,6 +278,7 @@ function wire() {
   // sequence token like every other read.
   $("searchQuery")?.addEventListener("input", () => {
     view.query = $("searchQuery")?.value ?? "";
+    view.sequence += 1;
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => read({ push: false }), IDLE_REREAD_MS);
   });
@@ -326,7 +327,7 @@ function wire() {
     render();
   });
 
-  globalThis.addEventListener?.("popstate", () => restoreFromAddress({ reread: false }));
+  globalThis.addEventListener?.("popstate", () => restoreFromAddress({ reread: true }));
 }
 
 /**

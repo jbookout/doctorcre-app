@@ -1,3 +1,4 @@
+import { classifyCommandOutcome } from "./command-feedback.mjs";
 // V5-UX-C12 plus V5-UX-C13 clause 3 plus V5-UX-C13b — the Model Room tab: DOM
 // wiring only.
 //
@@ -531,6 +532,8 @@ function renderHistory() {
  * refusal verbatim rather than a paraphrase.
  */
 function renderComposer() {
+  const submit = $("modelRoomComposerForm")?.querySelector('[type="submit"]');
+  if (submit) submit.textContent = view.composerPending ? "Check outcome" : "Send";
   const result = $("modelRoomComposerResult");
   if (result) {
     // Animate exactly on a state change — idle->invalid, invalid->sending,
@@ -552,7 +555,7 @@ async function submitComposer() {
   // A second submit while one is already in flight is refused here rather
   // than re-entered, so a double click cannot post the draft twice.
   if (view.composerSend.state === "sending") return;
-  const request = composerRequest({ text: view.composer.text });
+  const request = view.composerPending || composerRequest({ text: view.composer.text });
   if (!request) {
     view.composer = composerDraftAfterAttempt(view.composer);
     view.composerSend = { state: "invalid", message: "Enter a message before sending; the draft is kept." };
@@ -562,26 +565,29 @@ async function submitComposer() {
   view.composerSend = { state: "sending", message: "Sending…" };
   renderComposer();
   try {
-    // A fresh idempotency key per attempt — minted here, not left to the
-    // client. live-client.js's write() would mint one on its own, but
-    // fixture-client.js requires the caller to supply one; this line is what
-    // makes the composer actually send in fixture/demo mode as well as live.
-    const result = await client.addRoomTurn({ ...request, idempotency_key: uuidv4() });
+    view.composerPending ||= { ...request, idempotency_key: uuidv4() };
+    const result = await client.addRoomTurn(view.composerPending);
+    view.composerPending = null;
     // Sent, not fabricated: the confirmation is the server's own answer
     // (its sequence number), never an "ok" this file invented.
-    view.composer = { text: "" };
-    const input = $("modelRoomComposerText");
-    if (input) input.value = "";
+    if (view.composer.text.trim() === request.body) {
+      view.composer = { text: "" };
+      const input = $("modelRoomComposerText");
+      if (input) input.value = "";
+    }
     view.composerSend = { state: "sent", message: `Sent — recorded as turn ${result?.seq ?? "unknown"}.` };
     announce("The Model Room request was sent.");
     if (client.roomTurns) await take("turns", () => client.roomTurns(turnRequest()), refuseRoomTurns);
   } catch (error) {
-    // The draft survives every failure, and the message shown is the
-    // record layer's own refusal, verbatim — never a paraphrase of it.
+    // A lost response retains the original request for reconciliation.
+    // Explicit refusals preserve the draft and display the refusal.
     view.composer = composerDraftAfterAttempt(view.composer);
+    const outcome = classifyCommandOutcome({ error });
+    if (outcome.status !== "unknown") view.composerPending = null;
     view.composerSend = {
-      state: "failed",
-      message: `Not sent: ${String(error?.payload?.error || error?.message || "the write did not answer")}.`,
+      state: outcome.status === "unknown" ? "unknown" : "failed",
+      message: outcome.status === "unknown" ? "Outcome unknown. Check outcome replays the same message request."
+        : `Not sent: ${String(error?.payload?.error || error?.message || "the write was refused")}.`,
     };
   }
   renderComposer();
@@ -656,6 +662,8 @@ function renderAnswer() {
 
 async function submitAnswer() {
   if (view.answerSend.state === "sending") return;
+  const humanRef = view.historyWorkItemId;
+  const draft = view.answer;
   const baseVersion = currentAnswerBaseVersion();
   const request = answerWorkRequestRequest({
     humanRef: view.historyWorkItemId,
@@ -677,16 +685,18 @@ async function submitAnswer() {
     // the composer's: fixture-client.js requires one, and this is the one
     // real write this form makes.
     const result = await client.answerWorkRequestForJoe({ ...request, idempotency_key: uuidv4() });
+    if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
     view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
     view.answerSend = { state: "sent", message: `Sent — recorded as ${result?.state ?? "triaged"}.` };
-    announce(`The answer for ${view.historyWorkItemId} was sent.`);
+    announce(`The answer for ${humanRef} was sent.`);
     // Re-read the card and the queue, so the ledger and the picker both show
     // the transition rather than a state this file invented.
-    const args = workRequestCardRequest(view.historyWorkItemId);
+    const args = workRequestCardRequest(humanRef);
     if (args) await take("historyCard", () => client.workRequestCard(args), refuseWorkRequestCard);
     await take("workItems", () => client.currentWorkRequests(),
       (payload) => (validCurrentWorkRequestsPayload(payload) ? null : "current_work_requests_unavailable"));
   } catch (error) {
+    if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
     const code = String(error?.payload?.error || error?.message || "the write did not answer");
     view.answer = answerDraftAfterAttempt(view.answer);
     view.answerSend = {

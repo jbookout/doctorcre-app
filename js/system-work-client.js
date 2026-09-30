@@ -5,6 +5,7 @@ export function createSystemWorkClient(options = {}) {
   const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
   const uuid = options.uuid || uuidv4;
   let session = null;
+  let pendingReport = null;
 
   async function decode(response) {
     const body = await response.json().catch(() => ({}));
@@ -63,7 +64,19 @@ export function createSystemWorkClient(options = {}) {
       const envelope = await decode(response);
       return envelope.data ?? envelope;
     },
-    report: (body) => post("/api/system-work/report", withKey(body)),
+    async report(body) {
+      const { idempotency_key, ...intent } = body;
+      const signature = JSON.stringify(intent);
+      if (pendingReport && pendingReport.signature !== signature)
+        throw new Error("Reconcile the previous report before submitting a different concern.");
+      pendingReport ||= { signature, request: withKey(body) };
+      try { return await post("/api/system-work/report", pendingReport.request); }
+      catch (error) {
+        if (error.status >= 400 && error.status < 500) pendingReport = null;
+        throw error;
+      }
+    },
+    finishReport() { pendingReport = null; },
     triage: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/triage`, withKey(body)),
     preparePlan: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/plan`, withKey(body)),
     async acceptPlan(humanRef, body) {

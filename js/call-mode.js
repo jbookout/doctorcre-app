@@ -358,8 +358,10 @@ export function createCallMode(deps) {
   async function refreshPostCall({ quiet = false } = {}) {
     const session = state.postCall.session;
     if (!session) return;
+    const sequence = state.statusSequence = (state.statusSequence || 0) + 1;
     try {
       const payload = await deps.postCallClient.getStatus(session);
+      if (state.postCall.session !== session || state.statusSequence !== sequence) return;
       const rawStatus = (typeof payload.status === 'object' ? payload.status.state : payload.status) || payload.state || 'waiting_for_transcript';
       const status = ({ ready_review: 'review_ready', blocked: 'failed' })[rawStatus] || rawStatus;
       const reason = typeof payload.status === 'object' && rawStatus === 'blocked' ? payload.status.reason : null;
@@ -374,6 +376,7 @@ export function createCallMode(deps) {
         await publishOrRecord(session);
       }
     } catch (error) {
+      if (state.postCall.session !== session || state.statusSequence !== sequence) return;
       state.postCall = { ...state.postCall, error: error.message };
       renderPostCall();
       if (!quiet) toast(error.message);

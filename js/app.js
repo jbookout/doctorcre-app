@@ -82,7 +82,9 @@ const account = () => state.accounts.find((item) => item.account_client_id === s
 
 function daysFromNow(value) {
   if (!value) return null;
-  return Math.round((new Date(`${value}T12:00:00`) - today()) / 864e5);
+  const baseline = today();
+  baseline.setHours(12);
+  return Math.round((new Date(`${value}T12:00:00`) - baseline) / 864e5);
 }
 
 function dateLabel(value) {
@@ -1203,11 +1205,15 @@ function renderAgenda() {
 async function advanceAgenda(disposition) {
   const review = state.review;
   const deal = review?.deals[review.index];
-  if (!review || !deal) return;
-  await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
-  review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
-  review.index += 1;
-  renderAgenda();
+  if (!review || !deal || review.advancing) return;
+  review.advancing = true;
+  try {
+    await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
+    if (state.review !== review) return;
+    review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
+    review.index += 1;
+    renderAgenda();
+  } finally { review.advancing = false; }
 }
 
 async function finishAgenda(status = 'completed') {

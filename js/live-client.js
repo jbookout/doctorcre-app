@@ -116,6 +116,8 @@ export function createLiveClient(opts = {}) {
     phase: PHASE_TO_UI[d.phase] || d.phase,
     type: TYPE_TO_UI[d.type] || d.type,
     next_step: d.next_step || '',
+    market: d.market ?? d.city ?? '',
+    version: d.version ?? d.base_version,
   });
 
   const client = {
@@ -139,15 +141,20 @@ export function createLiveClient(opts = {}) {
     async getDeal(dealId) {
       const page = await rpc('get-deal-room', { deal: dealId });
       const { thread = [], critical_dates = [], events = [], deal_id, ...fields } = page;
-      // Thread: the newest next_step IS the cell's current step; older
-      // next_step rows are the archive the ruling requires ("supersede,
-      // never erase"). Notes pass through.
+      // Canonical action fields win over historical notes. The newest note
+      // is only a fallback for older producers without an action field.
+      // Older next_step rows remain archived; notes pass through.
+      const hasCanonicalStep = Object.hasOwn(fields, "next_step") || Object.hasOwn(fields, "next_action");
+      const canonicalStep = fields.next_step ?? fields.next_action ?? "";
       let currentSeen = false;
       const uiThread = [];
       let currentStep = null;
       for (const n of thread) {
         if (n.kind === 'next_step') {
-          if (!currentSeen) { currentSeen = true; currentStep = n.text; continue; }
+          if (!currentSeen) {
+            currentSeen = true; currentStep = n.text;
+            if (!hasCanonicalStep || n.text === canonicalStep) continue;
+          }
           uiThread.push({ ...n, kind: 'archived_step' });
         } else {
           uiThread.push(n);
@@ -166,7 +173,7 @@ export function createLiveClient(opts = {}) {
         return { ...e, summary };
       });
       return {
-        deal: dealToUi({ id: deal_id, ...fields, next_step: currentStep || fields.next_step || '' }),
+        deal: dealToUi({ id: deal_id, ...fields, next_step: hasCanonicalStep ? canonicalStep : (currentStep ?? '') }),
         thread: uiThread,
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
@@ -335,7 +342,9 @@ export function createLiveClient(opts = {}) {
         reason: 'Created in the Deal Room',
         idempotency_key: args.idempotency_key,
       });
-      await write('set-lead', { deal: res.deal_id, new_lead: selfActor });
+      const fresh = await rpc('get-deal-room', { deal: res.deal_id });
+      if (!Number.isInteger(fresh.base_version)) throw new Error('Created deal version is unavailable; lead was not assigned.');
+      await write('set-lead', { deal: res.deal_id, new_lead: selfActor, base_version: fresh.base_version });
       return { status: 'ok', deal_id: res.deal_id };
     },
 
