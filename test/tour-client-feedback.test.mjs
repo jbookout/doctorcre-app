@@ -12,17 +12,121 @@ const tourHtml = readFileSync(new URL("../tours/index.html", import.meta.url), "
 
 const propertyRef = "property:public:synthetic_property_01";
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
-async function openShare({ items = [], refuseOnce = false } = {}) {
+const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
+const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
+const tourScript = `${tourFormat}\n${tours.replace(/^import [^\n]*\n/m, "")}`;
+function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
+function feedbackResponse(label) {
+  return { ok: true, json: async () => ({ data: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } }) };
+}
+async function openBroker(feedbackRead, { stops = [] } = {}) {
+  const dom = new JSDOM(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
+  Object.defineProperty(dom.window, "crypto", { value: webcrypto });
+  dom.window.TextEncoder = TextEncoder;
+  const counts = [0, 0];
+  dom.window.fetch = async path => {
+    const url = new URL(path, dom.window.location.href);
+    let data;
+    if (url.pathname === "/api/tours/library") data = { tours: tourIds.map((id, i) => ({ id, name: `Demo Tour ${i ? "B" : "A"}` })) };
+    else if (url.pathname === "/api/tours/detail") {
+      const i = tourIds.indexOf(url.searchParams.get("tour_id"));
+      data = { id: tourIds[i], name: `Demo Tour ${i ? "B" : "A"}`, projection_id: projectionIds[i], stops };
+    } else if (url.pathname === "/api/tours/selection-cart") {
+      return { ok: false, json: async () => ({ error: "not_found" }) };
+    } else if (url.pathname === "/api/tours/feedback") {
+      const i = projectionIds.indexOf(url.searchParams.get("projection_id"));
+      return feedbackRead(i, ++counts[i]);
+    } else throw new Error(`Unexpected broker request: ${path}`);
+    return { ok: true, json: async () => ({ data }) };
+  };
+  dom.window.eval(tourScript);
+  await settle();
+  return { dom, doc: dom.window.document };
+}
+
+test("a late feedback Refresh cannot replace the selected Tour's responses", async t => {
+  const held = deferred();
+  const app = await openBroker((i, count) => i === 0 && count === 2 ? held.promise : feedbackResponse(i ? "B response" : "A response"));
+  t.after(() => app.dom.window.close());
+  const buttons = app.doc.querySelectorAll(".tour-button");
+  buttons[0].click(); await settle();
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  buttons[1].click(); await settle();
+  assert.equal(app.doc.querySelector("#tour-name").textContent, "Demo Tour B");
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /B response comment/);
+  held.resolve(feedbackResponse("A late response")); await settle();
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /B response comment/);
+  assert.doesNotMatch(app.doc.querySelector("#feedback-list").textContent, /A late response/);
+});
+
+test("a late earlier Refresh cannot replace newer feedback for the same projection", async t => {
+  const held = deferred();
+  const app = await openBroker((i, count) => count === 2 ? held.promise : feedbackResponse(count === 3 ? "Newest response" : "Initial response"));
+  t.after(() => app.dom.window.close());
+  app.doc.querySelector(".tour-button").click(); await settle();
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  held.resolve(feedbackResponse("Older response")); await settle();
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /Newest response/);
+  assert.doesNotMatch(app.doc.querySelector("#feedback-list").textContent, /Older response/);
+});
+
+test("a failed initial feedback read shows unavailable and Refresh can confirm an empty response", async t => {
+  const app = await openBroker((i, count) => count === 1
+    ? { ok: false, json: async () => ({ error: "unavailable" }) }
+    : { ok: true, json: async () => ({ data: { items: [] } }) });
+  t.after(() => app.dom.window.close());
+  app.doc.querySelector(".tour-button").click(); await settle();
+  assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
+  assert.match(app.doc.querySelector("#client-feedback").textContent, /Client responses are unavailable.*Refresh/);
+  assert.notEqual(app.doc.querySelector("#status").textContent, "Tour ready.");
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  assert.equal(app.doc.querySelector("#feedback-empty").hidden, false);
+  assert.doesNotMatch(app.doc.querySelector("#feedback-state").textContent, /unavailable/);
+});
+
+test("loading and a failed feedback Refresh never claim a successful empty read", async t => {
+  const held = deferred();
+  const app = await openBroker((i, count) => count === 2 ? held.promise : feedbackResponse("Confirmed response"));
+  t.after(() => app.dom.window.close());
+  app.doc.querySelector(".tour-button").click(); await settle();
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  assert.match(app.doc.querySelector("#feedback-state")?.textContent || "", /Loading client responses/);
+  assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
+  assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "true");
+  held.resolve({ ok: false, json: async () => ({ error: "unavailable" }) }); await settle();
+  assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
+  assert.match(app.doc.querySelector("#feedback-state").textContent, /unavailable.*Refresh/);
+  assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
+  assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "false");
+  assert.doesNotMatch(app.doc.querySelector("#status").textContent, /unavailable/);
+});
+
+test("reordering draft stops retains the sealed projection's loaded client responses", async t => {
+  const app = await openBroker(() => feedbackResponse("Confirmed response"), { stops: [
+    { id: tourIds[0], label: "Demo stop A" }, { id: tourIds[1], label: "Demo stop B" },
+  ] });
+  t.after(() => app.dom.window.close());
+  app.doc.querySelector(".tour-button").click(); await settle();
+  [...app.doc.querySelectorAll("#route-stops button")].find(button => button.textContent === "Down").click();
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
+  assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "false");
+});
+async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null } = {}) {
   const dom = new JSDOM(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto });
   const writes = [];
   dom.window.fetch = async (path, options = {}) => {
     let data;
-    if (path === "/api/share/report") data = { items: [{ property_ref: propertyRef, name: "Demo medical office" }] };
+    if (path === "/api/share/report") data = { items: properties };
     else if (path === "/api/share/map") data = { points: [] };
     else if (path === "/api/share/feedback") data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: ["shortlist", "comment"], ...(items === null ? {} : { items }) };
     else if (path === "/api/share/shortlist" || path === "/api/share/comment") {
       writes.push({ path, ...JSON.parse(options.body) });
+      if (holdWrite) await holdWrite(path);
       if (refuseOnce) { refuseOnce = false; return { ok: false, json: async () => ({ error: "unavailable" }) }; }
       data = {};
     } else throw new Error(`Unexpected share request: ${path}`);
@@ -51,6 +155,41 @@ test("an acknowledged first shortlist choice redraws the control and the next cl
   assert.ok(app.writes.every(write => write.property_ref === propertyRef));
 });
 
+test("shortlist saves preserve unsaved comments on every property", async t => {
+  const app = await openShare({ properties: [
+    { property_ref: propertyRef, name: "Demo office A" },
+    { property_ref: "property:public:synthetic_property_02", name: "Demo office B" },
+  ] });
+  t.after(() => app.dom.window.close());
+  const inputs = app.doc.querySelectorAll("textarea");
+  inputs[0].value = "Draft for A"; inputs[1].value = "Draft for B";
+  app.doc.querySelector("button[aria-pressed]").click(); await settle();
+  assert.deepEqual([...app.doc.querySelectorAll("textarea")].map(input => input.value), ["Draft for A", "Draft for B"]);
+  assert.equal(app.doc.querySelector("button[aria-pressed]").getAttribute("aria-pressed"), "true");
+});
+
+test("saving another property's feedback retains in-flight controls and newer comment drafts", async t => {
+  const held = deferred();
+  const app = await openShare({ properties: [
+    { property_ref: propertyRef, name: "Demo office A" },
+    { property_ref: "property:public:synthetic_property_02", name: "Demo office B" },
+  ], holdWrite: path => path === "/api/share/comment" ? held.promise : Promise.resolve() });
+  t.after(() => app.dom.window.close());
+  const rows = () => app.doc.querySelectorAll(".report-item");
+  const commentButton = row => [...row.querySelectorAll("button")].find(button => button.textContent === "Save comment");
+  rows()[0].querySelector("textarea").value = "Submitted A comment";
+  commentButton(rows()[0]).click(); await settle();
+  rows()[0].querySelector("textarea").value = "Newer A draft";
+  rows()[1].querySelector("textarea").value = "Unsaved B draft";
+  rows()[1].querySelector("button[aria-pressed]").click(); await settle();
+  assert.equal(commentButton(rows()[0]).disabled, true);
+  assert.deepEqual([...app.doc.querySelectorAll("textarea")].map(input => input.value), ["Newer A draft", "Unsaved B draft"]);
+  held.resolve(); await settle();
+  assert.equal(commentButton(rows()[0]).disabled, false);
+  assert.match(rows()[0].querySelector(".comment-list").textContent, /Submitted A comment/);
+  assert.deepEqual([...app.doc.querySelectorAll("textarea")].map(input => input.value), ["Newer A draft", "Unsaved B draft"]);
+});
+
 test("a refused shortlist save retains the unselected control and retries the same logical write", async t => {
   const app = await openShare({ refuseOnce: true });
   t.after(() => app.dom.window.close());
@@ -70,11 +209,13 @@ test("a first comment appears even when the feedback response omits property row
   const app = await openShare({ items: null });
   t.after(() => app.dom.window.close());
   const input = app.doc.querySelector("textarea");
-  input.value = "Demo: please check the parking.";
+  const comment = "Demo: please check the parking.";
+  input.value = comment;
   [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Save comment").click();
   await settle();
-  assert.equal(app.doc.querySelector(".comment-list").textContent, input.value);
-  assert.equal(app.writes[0].comment, input.value);
+  assert.equal(app.doc.querySelector(".comment-list").textContent, comment);
+  assert.equal(app.writes[0].comment, comment);
+  assert.equal(app.doc.querySelector("textarea").value, "");
 });
 
 test("both feedback diagrams give phone stage labels a 12px floor after SVG scaling", () => {

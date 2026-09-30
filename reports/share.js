@@ -11,7 +11,6 @@
   let reportProperties = new globalThis.Map();
   let mapInstance = null;
   let feedback = null;
-  let currentReport = null;
   const pending = new globalThis.Map();
 
   function setStatus(message) { status.textContent = message; }
@@ -66,7 +65,6 @@
       }
       if (kind === "shortlist") itemFeedback.shortlisted = value;
       else { itemFeedback.comments ||= []; itemFeedback.comments.push({ comment: value }); }
-      render(currentReport);
       feedbackStatus.textContent = kind === "shortlist" ? "Shortlist saved." : "Comment saved.";
       return true;
     } catch {
@@ -85,7 +83,17 @@
       const selected = itemFeedback?.shortlisted === true;
       button.textContent = selected ? "Remove from shortlist" : "Add to shortlist";
       button.setAttribute("aria-pressed", String(selected));
-      button.addEventListener("click", () => { button.disabled = true; void sendFeedback("shortlist", item, !selected).then(() => { button.disabled = false; }); });
+      button.addEventListener("click", () => {
+        const nextSelected = feedbackFor(item.property_ref)?.shortlisted !== true;
+        button.disabled = true;
+        void sendFeedback("shortlist", item, nextSelected).then(saved => {
+          if (saved) {
+            button.textContent = nextSelected ? "Remove from shortlist" : "Add to shortlist";
+            button.setAttribute("aria-pressed", String(nextSelected));
+          }
+          button.disabled = false;
+        });
+      });
       panel.append(button);
     }
     if (scopes.includes("comment")) {
@@ -94,22 +102,34 @@
       const button = document.createElement("button"); button.type = "button"; button.textContent = "Save comment";
       button.addEventListener("click", () => {
         if (!input.value.trim()) { feedbackStatus.textContent = "Write a comment before saving."; return; }
-        button.disabled = true; void sendFeedback("comment", item, input.value.trim()).then(() => { button.disabled = false; });
+        const draft = input.value;
+        const comment = draft.trim();
+        button.disabled = true;
+        void sendFeedback("comment", item, comment).then(saved => {
+          if (saved) {
+            if (input.value === draft) input.value = "";
+            appendComment(panel, comment);
+          }
+          button.disabled = false;
+        });
       });
       label.append(input); panel.append(label, button);
     }
     if (itemFeedback?.comments?.length) {
-      const comments = document.createElement("ul"); comments.className = "comment-list";
       for (const entry of itemFeedback.comments) {
-        const line = document.createElement("li"); line.textContent = entry.comment; comments.append(line);
+        appendComment(panel, entry.comment);
       }
-      panel.append(comments);
     }
     row.append(panel);
   }
 
+  function appendComment(panel, comment) {
+    let comments = panel.querySelector(".comment-list");
+    if (!comments) { comments = document.createElement("ul"); comments.className = "comment-list"; panel.append(comments); }
+    const line = document.createElement("li"); line.textContent = comment; comments.append(line);
+  }
+
   function render(report) {
-    currentReport = report;
     const items = Array.isArray(report?.stops) ? report.stops :
       (Array.isArray(report?.items) ? report.items : (Array.isArray(report?.properties) ? report.properties : []));
     const properties = items.map((item, index) => ({ item, index }))
