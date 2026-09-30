@@ -27,8 +27,13 @@ test("Tour search and cart are bound to the merged CARR producer revision", () =
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 async function settle() { for (let i = 0; i < 8; i += 1) await tick(); }
+async function waitFor(predicate, message) {
+  const deadline = Date.now() + 5000;
+  while (!predicate() && Date.now() < deadline) await tick();
+  assert.ok(predicate(), message);
+}
 function response(data, status = 200) { return { ok: status >= 200 && status < 300, status, async json() { return status >= 400 ? { error: status === 404 ? "not_found" : status === 409 ? "conflict" : "tour_unavailable" } : { data, csrf_token: "csrf" }; } }; }
-async function openApp(store, { refuseSave = false, conflictOnce = false, readFailsAfterSave = false, holdSave = null, searchResponder = null, detail = null } = {}) {
+async function openApp(store, { refuseSave = false, conflictOnce = false, readFailsAfterSave = false, holdSave = null, searchResponder = null, detail = null, holdReload = null } = {}) {
   const dom = new JSDOM(html, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
   const { window } = dom;
   Object.defineProperty(window, "crypto", { value: webcrypto });
@@ -37,7 +42,10 @@ async function openApp(store, { refuseSave = false, conflictOnce = false, readFa
   window.fetch = async (path, options = {}) => {
     calls.push({ path, options });
     if (path === "/api/tours/library") return response({ tours: [{ id: tourId, name: "Test Tour", status: "draft" }] });
-    if (path.startsWith("/api/tours/detail")) return response({ id: tourId, name: "Test Tour", status: "draft", routes: [], ...detail });
+    if (path.startsWith("/api/tours/detail")) {
+      if (holdReload && calls.some(call => call.options.method === "POST")) await holdReload.promise;
+      return response({ id: tourId, name: "Test Tour", status: "draft", routes: [], ...detail });
+    }
     if (["/api/tours/route-version", "/api/tours/route-reorder", "/api/tours/route-accept", "/api/tours/cheat-sheet/autosave", "/api/tours/cheat-sheet/restore"].includes(path)) {
       if (holdSave) await holdSave.promise;
       return response({});
@@ -357,14 +365,36 @@ test("a Save selection click while a save is in flight reuses it and the button 
 test("two immediate clicks on each versioned route or cheat-sheet write send one idempotency key", async () => {
   const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, stops: [],
     cheat_sheet: { revision_number: 1, restore_revision_id: versionId } };
-  for (const [button, path] of [["#save-route", "/api/tours/route-version"], ["#reorder-route", "/api/tours/route-reorder"],
-    ["#accept-route", "/api/tours/route-accept"], ["#save-sheet", "/api/tours/cheat-sheet/autosave"], ["#restore-sheet", "/api/tours/cheat-sheet/restore"]]) {
-    const app = await openApp({ version: 0, ids: [] }, { detail });
+  for (const [button, path, completed] of [["#save-route", "/api/tours/route-version", "Route version saved."], ["#reorder-route", "/api/tours/route-reorder", "Route version saved."],
+    ["#accept-route", "/api/tours/route-accept", "Route version accepted."], ["#save-sheet", "/api/tours/cheat-sheet/autosave", "Internal cheat sheet saved."], ["#restore-sheet", "/api/tours/cheat-sheet/restore", "Tour ready."]]) {
+    let releaseSave, releaseReload;
+    const holdSave = { promise: new Promise(resolve => { releaseSave = resolve; }) };
+    const holdReload = { promise: new Promise(resolve => { releaseReload = resolve; }) };
+    const app = await openApp({ version: 0, ids: [] }, { detail, holdSave, holdReload });
+    const status = app.window.document.querySelector("#status");
+    status.textContent = "Waiting for versioned write";
+    const writes = () => app.calls.filter(call => call.path === path && call.options.method === "POST");
+    const reloads = () => app.calls.filter(call => call.path.startsWith("/api/tours/detail"));
     const target = app.window.document.querySelector(button);
     target.dispatchEvent(new app.window.MouseEvent("click", { bubbles: true }));
     target.dispatchEvent(new app.window.MouseEvent("click", { bubbles: true }));
     await settle();
-    const keys = new Set(app.calls.filter(call => call.path === path).map(call => JSON.parse(call.options.body).idempotency_key));
+    assert.equal(writes().length, 1, `${button} sent more than one POST while saving`);
+    assert.equal(reloads().length, 1, `${button} reloaded before its POST completed`);
+    assert.equal(status.textContent, "Waiting for versioned write");
+    releaseSave();
+    await waitFor(() => reloads().length === 2, `${button} did not reload after its POST`);
+    target.dispatchEvent(new app.window.MouseEvent("click", { bubbles: true }));
+    await settle();
+    assert.equal(writes().length, 1, `${button} sent another POST while reloading`);
+    assert.equal(status.textContent, "Loading tour…");
+    releaseReload();
+    // A counted POST and started reload do not prove completion. Keep the DOM
+    // open until the handler reports that both responses have been consumed.
+    await waitFor(() => status.textContent === completed, `${button} did not finish its reload`);
+    assert.equal(writes().length, 1, `${button} sent more than one POST`);
+    assert.equal(reloads().length, 2, `${button} did not finish exactly one reload`);
+    const keys = new Set(writes().map(call => JSON.parse(call.options.body).idempotency_key));
     assert.equal(keys.size, 1, `${button} sent ${keys.size} idempotency keys`);
     app.window.close();
   }

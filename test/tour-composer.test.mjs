@@ -508,21 +508,47 @@ test("a reloaded accepted Tour requests route endpoints in the composer before o
   assert.equal(store.calls.find(call => call.path === "/api/tours/route-draft").body.start_point.latitude, 30.6);
   assert.match(next.doc.querySelector("#composer-state").textContent, /Draft saved/); next.dom.window.close();
 });
+async function touchLayout(page) {
+  return page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth,
+    overflowing: [...document.querySelectorAll("body *")].filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, id: el.id, className: el.getAttribute("class"), right: el.getBoundingClientRect().right })).slice(0, 12),
+    rows: [...document.querySelectorAll(".composer-stop")].map(row => ({ width: row.clientWidth, scroll: row.scrollWidth })),
+    targets: [...document.querySelectorAll("button, input, select, textarea, summary, a[href], [role=button]")]
+      .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden")
+      .map(el => {
+        const target = el.matches("input[type=checkbox]") && el.labels?.length ? el.labels[0] : el;
+        const { width, height } = target.getBoundingClientRect();
+        return { tag: el.tagName, id: el.id, field: el.dataset.field, width, height };
+      }) }));
+}
+
 test("phone and iPad composers fit the viewport and reduced motion leaves every state legible", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
     const store = domain(), page = await browser.newPage({ viewport: { width: 390, height: 900 } });
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
-    const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}</style></head>`);
+    const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
+    const shellScript = (await readFile(new URL("../js/app-shell.js", import.meta.url), "utf8")).replace(/^export /gm, "");
+    const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}\n${shellCss}</style></head>`);
     await page.route("https://tour.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
       if (!url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "text/html", body: pageHtml });
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
-    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: script });
+    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: shellScript }); await page.addScriptTag({ content: script });
     await page.locator("#create-tour-panel summary").click();
+    for (const width of [375, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const layout = await touchLayout(page);
+      assert.ok(layout.document <= width, `${width}px creation overflow`);
+      assert.ok(layout.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px creation touch targets: ${JSON.stringify(layout.targets)}`);
+      await page.getByLabel("Navigation menu", { exact: true }).click();
+      const navigation = await touchLayout(page);
+      assert.ok(navigation.document <= width, `${width}px navigation overflow`);
+      assert.ok(navigation.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px open navigation touch targets`);
+      await page.getByLabel("Navigation menu", { exact: true }).click();
+    }
     for (const [selector, value] of [["#create-tour-name", "Synthetic Tour"], ["#create-subject-id", "work:fixture"], ["#create-dataset", "synthetic-v1"]]) await page.locator(selector).fill(value);
     for (const role of ["start", "end"]) {
       await page.locator(`#${role}-latitude`).fill("30.5"); await page.locator(`#${role}-longitude`).fill("-87.2"); await page.locator(`#${role}-source`).fill(`fixture:${role}`);
@@ -532,16 +558,49 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     await page.locator("#property-results button[data-property-id]").first().waitFor();
     for (const button of await page.locator("#property-results button[data-property-id]").all()) await button.click();
     await page.locator("#add-cart-stops").click(); await page.locator(".composer-stop").first().waitFor();
-    for (const width of [320, 390, 768, 1024]) {
+    // Sample the entrance itself: a computed 44px input can have fractional
+    // bounds just below the touch floor while its ancestor is translating.
+    for (const width of [375, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      const layout = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth,
-        overflowing: [...document.querySelectorAll("body *")].filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, id: el.id, className: el.getAttribute("class"), right: el.getBoundingClientRect().right })).slice(0, 12),
-        rows: [...document.querySelectorAll(".composer-stop")].map(row => ({ width: row.clientWidth, scroll: row.scrollWidth })),
-        targets: [...document.querySelectorAll(".composer-toolbar button, .stop-controls button, .stop-fields input, .stop-fields select")].filter(el => !el.disabled).map(el => el.getBoundingClientRect().height) }));
+      const undersized = await page.evaluate(() => {
+        const undersized = [];
+        for (const frame of [0, 1, 17, 137.1, 211, 349, 549, 550]) {
+          for (const animation of document.querySelector("#route-stops").getAnimations({ subtree: true })) {
+            animation.pause(); animation.currentTime = frame;
+          }
+          for (const el of document.querySelectorAll(".stop-fields input, .stop-fields select")) {
+            const height = el.getBoundingClientRect().height;
+            if (height < 44) undersized.push({ frame, field: el.dataset.field, height });
+          }
+        }
+        return undersized;
+      });
+      assert.deepEqual(undersized, [], `${width}px animated touch targets`);
+    }
+    for (const width of [320, 375, 390, 768, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      const layout = await touchLayout(page);
       assert.ok(layout.document <= layout.viewport, `${width}px document overflow: ${JSON.stringify(layout)}`);
       assert.ok(layout.rows.every(row => row.scroll <= row.width), `${width}px stop overflow`);
-      assert.ok(layout.targets.every(height => height >= 44), `${width}px touch targets`);
+      assert.ok(layout.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px touch targets: ${JSON.stringify(layout.targets.filter(target => target.height < 44 || target.width < 44))}`);
     }
+    await page.setViewportSize({ width: 375, height: 900 });
+    for (const label of await page.locator(".share-scopes label").all()) {
+      const box = label.locator("input");
+      const checked = await box.isChecked();
+      await label.click(); assert.equal(await box.isChecked(), !checked, "the full scope label toggles its checkbox");
+    }
+    await page.getByRole("button", { name: "Filter Bay county", exact: true }).click();
+    assert.equal(await page.locator("#property-county").inputValue(), "Bay", "the last county is reachable inside the phone scroller");
+    await page.getByRole("button", { name: "Filter Escambia county", exact: true }).press("Enter");
+    assert.equal(await page.locator("#property-county").inputValue(), "Escambia", "county keyboard activation remains available");
+    await page.locator(".property-fact").first().click();
+    for (const width of [375, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const close = await page.locator(".property-dialog-close").boundingBox();
+      assert.ok(close.width >= 44 && close.height >= 44, `${width}px evidence dialog close touch target`);
+    }
+    await page.getByRole("button", { name: "Close", exact: true }).click();
     await page.emulateMedia({ reducedMotion: "no-preference" });
     assert.ok(await page.locator("#composer-badge").evaluate(el => el.getAnimations({ subtree: true }).length > 0), "live status has motion");
     await page.emulateMedia({ reducedMotion: "reduce" });
