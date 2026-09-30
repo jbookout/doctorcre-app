@@ -19,7 +19,9 @@
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
     "test": "node --test test/*.test.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "privacy:check": "node scripts/privacy/client-data-check.mjs",
+    "fixtures:generate": "node scripts/privacy/generate-synthetic-fixtures.mjs"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

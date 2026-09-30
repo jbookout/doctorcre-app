@@ -1,0 +1,121 @@
+{
+  "schema": "doctorcre-search-fixture.v1",
+  "captured": "synthetic",
+  "verb": "find",
+  "source": "Synthetic examples in the pinned find contract shape.",
+  "why": "Exercise nullable fields, null ref elements and six result groups without live records.",
+  "captures": [
+    {
+      "query": "Pensacola",
+      "payload": {
+        "parties": [
+          {
+            "ref": "C-981",
+            "name": "Example Person 1",
+            "kind": "client",
+            "city": null,
+            "specialty": null,
+            "org_name": null,
+            "merged": false
+          }
+        ],
+        "deals": [
+          {
+            "name": "Example Search Deal 1",
+            "phase": "pending",
+            "owner": null,
+            "client_ref": "C-981"
+          }
+        ],
+        "connections": [],
+        "organizations": [
+          {
+            "name": "Example Organization 1",
+            "live_rows": 1,
+            "refs": [
+              null
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          },
+          {
+            "name": "Example Organization 3",
+            "live_rows": 1,
+            "refs": [
+              "C-981"
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          }
+        ],
+        "lead_client_links": [],
+        "deals_via_link": [],
+        "note": "No retired aliases among these matches — every ref listed is live."
+      }
+    },
+    {
+      "query": "Dell",
+      "payload": {
+        "parties": [
+          {
+            "ref": "C-982",
+            "name": "Example Person 2",
+            "kind": "client",
+            "city": null,
+            "specialty": null,
+            "org_name": null,
+            "merged": false
+          }
+        ],
+        "deals": [
+          {
+            "name": "Example Search Deal 2",
+            "phase": "pending",
+            "owner": null,
+            "client_ref": "C-982"
+          }
+        ],
+        "connections": [],
+        "organizations": [
+          {
+            "name": "Example Organization 2",
+            "live_rows": 1,
+            "refs": [
+              null
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          },
+          {
+            "name": "Example Organization 4",
+            "live_rows": 1,
+            "refs": [
+              "C-982"
+            ],
+            "retired_aliases": 0,
+            "retired_refs": [],
+            "retired_refs_truncated": false,
+            "live_as_role": 0,
+            "role_refs": [],
+            "all_retired": false
+          }
+        ],
+        "lead_client_links": [],
+        "deals_via_link": [],
+        "note": "No retired aliases among these matches — every ref listed is live."
+      }
+    }
+  ]
+}
