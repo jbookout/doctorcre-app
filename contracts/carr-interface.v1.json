@@ -106,8 +106,12 @@
     "/api/room/*",
     "/api/system-work/*",
     "/api/share/*",
+    "/api/share/feedback",
+    "/api/share/shortlist",
+    "/api/share/comment",
     "/api/tours/properties/search",
     "/api/tours/selection-cart",
+    "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
     "/api/tours/*"
   ],
