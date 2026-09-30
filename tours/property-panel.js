@@ -3,7 +3,7 @@ const FIELD_LABELS = Object.freeze([
   ["parcel", "Parcel"], ["site_address", "Site address"], ["building", "Building"],
 ]);
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-let generation = 0;
+const panelStates = new WeakMap();
 
 function escape(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
@@ -11,6 +11,9 @@ function escape(value) {
 function shortDate(value) {
   const date = Date.parse(value);
   return Number.isFinite(date) ? new Date(date).toISOString().slice(0, 10) : "Unknown";
+}
+function localDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 function sourceLink(locator) {
   if (typeof locator !== "string") return "Unknown";
@@ -97,38 +100,51 @@ export function renderPropertyPanel(evidence) {
 export function mountPropertyPanel({ tour, request }) {
   const root = document.getElementById("property-evidence");
   if (!root) return;
-  generation += 1;
+  const state = panelStates.get(root) || { key: null, current: null, loading: false };
+  panelStates.set(root, state);
   const tourStops = Array.isArray(tour?.stops) ? tour.stops : [];
   const properties = [...new Map(tourStops.filter(stop => ID.test(stop?.property_id || ""))
     .map(stop => [stop.property_id, stop])).values()];
   const prior = root.querySelector("#property-evidence-select")?.value;
+  const priorDate = root.querySelector("#property-evidence-date")?.value;
   const selected = properties.find(stop => stop.property_id === prior) || properties[0];
   root.innerHTML = `<div class="property-panel-head"><div><p class="eyebrow">Site intelligence</p><h3>Property evidence</h3></div>
     <label for="property-evidence-select">Property <select id="property-evidence-select">${properties.map(stop =>
       `<option value="${escape(stop.property_id)}">${escape(stop.name || stop.address || stop.property_id)}</option>`).join("")}</select></label>
-    <label for="property-evidence-date">As of <input id="property-evidence-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
+    <label for="property-evidence-date">As of <input id="property-evidence-date" type="date" value="${escape(priorDate || localDate(new Date()))}"></label></div>
     <div id="property-evidence-content" aria-live="polite">${properties.length ? "Loading evidence…" : "No property is selected."}</div>
     <dialog id="property-evidence-dialog" class="property-evidence-dialog"><button type="button" class="property-dialog-close" aria-label="Close">×</button><div class="property-dialog-content"></div></dialog>`;
-  if (!selected) return;
+  if (!selected) { state.key = null; state.current = null; state.loading = false; return; }
   const select = root.querySelector("#property-evidence-select");
   select.value = selected.property_id;
-  let current = null;
+  function renderCurrent() {
+    const content = root.querySelector("#property-evidence-content");
+    if (state.current) content.innerHTML = renderPropertyPanel(state.current);
+    else content.textContent = state.loading ? "Loading evidence…" : "Property evidence is unavailable. Try again.";
+  }
   async function load() {
-    const token = ++generation;
     const propertyId = select.value;
     const selectedDate = root.querySelector("#property-evidence-date").value;
-    if (!selectedDate) return;
-    const asOf = selectedDate === new Date().toISOString().slice(0, 10)
-      ? new Date().toISOString() : new Date(`${selectedDate}T23:59:59.999Z`).toISOString();
-    const content = root.querySelector("#property-evidence-content");
-    content.textContent = "Loading evidence…";
+    if (!selectedDate) { state.key = null; state.current = null; state.loading = false; return; }
+    const key = `${propertyId}:${selectedDate}`;
+    if (state.key === key && (state.current || state.loading)) { renderCurrent(); return; }
+    const token = {};
+    state.token = token;
+    state.key = key;
+    state.current = null;
+    state.loading = true;
+    const now = new Date();
+    const asOf = selectedDate === localDate(now)
+      ? now.toISOString() : new Date(`${selectedDate}T23:59:59.999Z`).toISOString();
+    renderCurrent();
     try {
       const data = await request(`/api/tours/property-evidence/v1?property_id=${encodeURIComponent(propertyId)}&as_of=${encodeURIComponent(asOf)}`);
-      if (token !== generation) return;
-      current = data;
-      content.innerHTML = renderPropertyPanel(data);
+      if (state.token !== token || state.key !== key) return;
+      state.current = data;
+      state.loading = false;
+      renderCurrent();
     } catch {
-      if (token === generation) { current = null; content.textContent = "Property evidence is unavailable. Try again."; }
+      if (state.token === token && state.key === key) { state.current = null; state.loading = false; renderCurrent(); }
     }
   }
   select.addEventListener("change", () => void load());
@@ -136,8 +152,8 @@ export function mountPropertyPanel({ tour, request }) {
   root.onclick = event => {
     if (event.target.closest(".property-dialog-close")) { root.querySelector("dialog").close(); return; }
     const button = event.target.closest("[data-evidence-field]");
-    if (!button || !current) return;
-    const item = propertyPanelView(current).find(fact => fact.field === button.dataset.evidenceField);
+    if (!button || !state.current) return;
+    const item = propertyPanelView(state.current).find(fact => fact.field === button.dataset.evidenceField);
     if (!item) return;
     const dialog = root.querySelector("dialog");
     dialog.querySelector(".property-dialog-content").innerHTML = `<p class="eyebrow">${escape(item.state_label)}</p><h3>${escape(item.label)}</h3><strong>${escape(item.value)}</strong>${propertyFactDetail(item)}`;
