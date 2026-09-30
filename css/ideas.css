@@ -13,8 +13,8 @@
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
-.idea-search { min-width: min(320px, 100%); }
-.idea-search input { min-height: var(--touch); }
+.idea-search { min-width: 0; flex: 1 1 240px; max-width: 100%; }
+.idea-search input { min-height: var(--touch); width: 100%; min-width: 0; box-sizing: border-box; }
 
 .idea-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 0 0 var(--gap); padding: 0; list-style: none; perspective: 1000px; }
 .idea-grid:empty { display: none; }
