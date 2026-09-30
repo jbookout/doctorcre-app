@@ -209,3 +209,17 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
   #panelHome .home-row:hover, #panelHome .home-open:active { transform: none; }
 }
 :root[data-motion="reduced"] #panelHome .home-row:hover, :root[data-motion="reduced"] #panelHome .home-open:active { transform: none; }
+
+/* QA batch 1: on a phone the first candidate and the detailed results share the
+ * first screen. The candidate list scrolls inside its own card, the repeated
+ * matches notice is left to that card, and the ask card is tightened. */
+@media (max-width: 640px) {
+  [data-search="ask"] { padding: 14px; }
+  [data-search="ask"] .card-heading { margin-bottom: 4px; }
+  [data-search="ask"] .field { margin-bottom: 8px; }
+  #searchState[data-state^="disamb"] { display: none; }
+  #searchCandidates { padding: 12px; }
+  #searchCandidates > .work-list { max-height: min(30vh, 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  #searchCandidates > .work-list::-webkit-scrollbar { width: 8px; background: transparent; }
+  #searchCandidates > .work-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--line-strong); }
+}

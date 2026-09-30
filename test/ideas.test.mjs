@@ -270,3 +270,14 @@ test("a phone can reach every timeline node when the SVG exceeds the viewport", 
   assert.match(await read("js/ideas.js"), /Math\.max\(320, rows\.length \* 126/,
     "four nodes still get their full width instead of being compressed into 390 px");
 });
+
+test("Ideas search field shrinks inside its card at phone width", async () => {
+  const sheet = await read("css/ideas.css");
+  const searchRule = sheet.match(/\.idea-search\s*\{[^}]*\}/)?.[0] || "";
+  assert.ok(searchRule.includes("min-width: 0"), "the field must start from a zero floor");
+  assert.ok(searchRule.includes("max-width: 100%"), "the field cannot exceed its card");
+  assert.ok(!searchRule.includes("min(320px"), "a 320px floor overflows a padded phone-width card");
+  const inputRule = sheet.match(/\.idea-search input\s*\{[^}]*\}/)?.[0] || "";
+  assert.ok(inputRule.includes("width: 100%"), "the input fills the field instead of overflowing");
+  assert.ok(inputRule.includes("min-width: 0"), "the input can shrink with the field");
+});

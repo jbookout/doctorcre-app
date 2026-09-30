@@ -41,20 +41,32 @@
     <section class="card glass hero-card" data-section="hero" aria-labelledby="pageTitle">
       <div class="hero">
         <div>
-          <p class="eyebrow"><span class="orb" data-state="still" id="conversationOrb" aria-hidden="true"></span> <span class="mono" id="conversationId">no conversation open</span></p>
+          <p class="eyebrow"><span class="orb" data-state="still" id="conversationOrb" aria-hidden="true"></span> <span class="mono" id="conversationId" hidden></span></p>
           <h1 id="pageTitle">Doc Chats</h1>
         </div>
         <div class="hero-meta">
-          <span class="as-of" id="conversationAsOf">unknown</span>
+          <span class="as-of" id="conversationAsOf" hidden></span>
           <button class="btn" type="button" id="retryRead">Read again</button>
         </div>
       </div>
-      <p class="visibility-badge" id="visibilityBadge" data-visibility="none"><span class="lock-glyph" id="visibilityGlyph" aria-hidden="true">🔒</span> <span id="visibilityWord">No conversation is open</span></p>
-      <ul class="hero-facts" id="heroFacts"></ul>
-      <p class="caption" id="titleHistoryLine">unknown</p>
+      <p class="visibility-badge" id="visibilityBadge" data-visibility="none" hidden><span class="lock-glyph" id="visibilityGlyph" aria-hidden="true">🔒</span> <span id="visibilityWord"></span></p>
+      <ul class="hero-facts" id="heroFacts" hidden></ul>
+      <p class="caption" id="titleHistoryLine" hidden></p>
     </section>
 
     <p class="sr-only" id="conversationLive" aria-live="polite" role="status">Reading this conversation…</p>
+
+    <section class="card glass" data-section="list" aria-labelledby="listTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
+        <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
+      </div>
+      <p class="caption" id="listScope">unknown</p>
+      <p class="headline" id="visibleCountLine">unknown</p>
+      <div class="state-block" id="listState" data-state="loading" hidden><h3 id="listStateTitle"></h3></div>
+      <ul class="work-list" id="conversationList"></ul>
+      <div class="note-act" id="listPagingBlock" hidden><button class="btn" type="button" id="showMoreConversations">Show more conversations</button></div>
+    </section>
 
     <section class="card glass" data-section="outcome-cards" aria-labelledby="outcomeCardsTitle">
       <div class="card-heading">
@@ -78,18 +90,6 @@
       <div class="state-block" id="suggestionsState" data-state="loading"><h3 id="suggestionsStateTitle">Reading suggestions…</h3></div>
       <ul class="work-list suggestion-list" id="suggestionsList"></ul>
       <p class="sr-only" id="suggestionsLive" aria-live="polite"></p>
-    </section>
-
-    <section class="card glass" data-section="list" aria-labelledby="listTitle">
-      <div class="card-heading">
-        <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
-        <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
-      </div>
-      <p class="caption" id="listScope">unknown</p>
-      <p class="headline" id="visibleCountLine">unknown</p>
-      <div class="state-block" id="listState" data-state="loading" hidden><h3 id="listStateTitle"></h3></div>
-      <ul class="work-list" id="conversationList"></ul>
-      <div class="note-act" id="listPagingBlock" hidden><button class="btn" type="button" id="showMoreConversations">Show more conversations</button></div>
     </section>
 
     <section class="card glass" data-section="turns" id="turnsBlock" aria-labelledby="turnsTitle">
