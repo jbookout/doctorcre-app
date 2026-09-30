@@ -74,3 +74,11 @@ body.color-assist .receipt{border-left:3px solid var(--warn)}body.color-assist .
 #receiptsTitle:focus{outline:none}#receiptsTitle:focus-visible{outline:3px solid var(--orange);outline-offset:3px}
 @media(max-width:680px){.receipts-head{flex-direction:column;gap:8px}.receipt-actions .receipt-undo{width:100%}.receipts-jump{padding:7px 11px}}
 .call-mode-note{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.45;text-align:center}
+/* QA batch 1: at phone width the strips scroll inside their own regions, never the page. */
+.shell,.hero>div,.toolbar,.board-sticky,#boardSection{min-width:0;max-width:100%}
+.focus,.filters,.table-frame,.app-section-tabs,.deal-page-views{max-width:100%;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:#3a5878 #0a1a2e}
+.focus::-webkit-scrollbar,.filters::-webkit-scrollbar,.table-frame::-webkit-scrollbar{height:8px;background:#0a1a2e}
+.focus::-webkit-scrollbar-thumb,.filters::-webkit-scrollbar-thumb,.table-frame::-webkit-scrollbar-thumb{border-radius:8px;background:#3a5878}
+.focus::-webkit-scrollbar-corner,.filters::-webkit-scrollbar-corner,.table-frame::-webkit-scrollbar-corner{background:#0a1a2e}
+.filters{min-width:0;flex:0 1 auto}
+@media(max-width:680px){html,body{max-width:100%;overflow-x:clip}.focus-item{max-width:80vw}.app-section-tabs.deal-section-tabs{overflow-x:auto;flex-wrap:nowrap}}
