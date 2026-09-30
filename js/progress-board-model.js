@@ -333,6 +333,22 @@ function rows(value, keep) {
   return Array.isArray(value) ? value.filter(row => isRecord(row) && keep(row)) : [];
 }
 
+// When the producer last checked GitHub, what it could not read, and what it
+// trimmed to fit the snapshot. A card kept from before an outage is marked so
+// it is never read as freshly verified.
+function syncState(data) {
+  const omitted = isRecord(data.omitted) ? data.omitted : {};
+  const trimmed = ["live", "merged", "history"]
+    .map(kind => ({ kind, count: Number.isInteger(omitted[kind]) ? omitted[kind] : 0 }))
+    .filter(row => row.count > 0);
+  const raw = isRecord(data.github_sync) ? data.github_sync : null;
+  const text = value => (typeof value === "string" && value ? value : null);
+  if (!raw) return { state: null, failed: [], checked_at: null, last_verified_at: null, trimmed };
+  const failed = rows(raw.failed, row => typeof row.card === "string" || typeof row.repo === "string");
+  return { state: failed.length ? "failed" : "ok", failed, checked_at: text(raw.checked_at),
+    last_verified_at: text(raw.last_verified_at), trimmed };
+}
+
 export function boardView(read, at = new Date()) {
   const snapshot = isRecord(read?.snapshot) ? read.snapshot : null;
   const data = isRecord(snapshot?.snapshot_json) ? snapshot.snapshot_json : {};
@@ -351,6 +367,13 @@ export function boardView(read, at = new Date()) {
     card.identity = taskIdentity(task);
     card.indicators = cardIndicators(task, at);
     cards.push(card);
+  }
+  const sync = syncState(error ? {} : data);
+  const failedCards = new Set(sync.failed.map(row => row.card).filter(Boolean));
+  const failedRepos = new Set(sync.failed.map(row => row.repo).filter(Boolean));
+  for (const card of cards) {
+    card.sync_failed = failedCards.has(card.id) || failedRepos.has(taskRepo(card));
+    if (card.sync_failed) card.indicators.push("flag-unrefreshed");
   }
   const stages = STAGES.map(stage => ({ ...stage, tasks: cards.filter(card => card.stage === stage.id) }));
   const live = stages.find(stage => stage.id === "live");
@@ -376,6 +399,7 @@ export function boardView(read, at = new Date()) {
     version: snapshot?.version || null,
     title: typeof data.title === "string" ? data.title : "Progress board",
     updated_at: snapshot?.updated_at || null,
+    sync,
     cards,
     stages,
     repos: rows(data.repos, row => typeof row.repo === "string"),

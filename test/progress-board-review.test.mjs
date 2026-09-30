@@ -212,3 +212,38 @@ test("an unconfirmed transport failure keeps the same request for the retry", as
   assert.equal(writes[1].idempotency_key, writes[0].idempotency_key);
   assert.equal(writes[1].base_version, writes[0].base_version);
 });
+
+test("the GitHub refresh state is shown: an outage names the unrefreshed cards and the last verified time", async () => {
+  const task = { title: "Synthetic PR card", status: "review", stage: "review", pr: 42, repo: "jbookout/carr-system",
+    updated_at: "2026-09-30T11:00:00Z" };
+  let sync = { checked_at: "2026-09-30T11:58:00Z", last_verified_at: "2026-09-30T11:00:00Z",
+    failed: [{ card: "a", pr: "carr-system#42", error: "synthetic timeout" }] };
+  const page = mount({ reads: async () => snapshotRead(v2({ tasks: { a: task, b: { ...task, pr: 43 } },
+    github_sync: sync, omitted: { live: 3, merged: 0, history: 0 } })) });
+  await page.board.refresh(true);
+  const line = page.$("#board-sync");
+  assert.equal(line.hidden, false);
+  assert.equal(line.dataset.state, "failed");
+  assert.match(line.textContent, /GitHub refresh failed for 1 card/);
+  assert.match(line.textContent, /last verified/);
+  assert.match(line.textContent, /3 older Live cards not shown/);
+  assert.ok(page.$('[data-card-id="a"] .flag-unrefreshed'), "the unrefreshed card is marked");
+  assert.equal(page.$('[data-card-id="b"] .flag-unrefreshed'), null);
+
+  sync = { checked_at: "2026-09-30T12:00:00Z", last_verified_at: "2026-09-30T12:00:00Z", failed: [] };
+  await page.board.refresh(true);
+  assert.equal(page.$("#board-sync").dataset.state, "ok");
+  assert.match(page.$("#board-sync").textContent, /GitHub checked/);
+  assert.equal(page.$('[data-card-id="a"] .flag-unrefreshed'), null, "recovery clears the mark");
+});
+
+test("an all-repos repository that could not be read marks its cards, and no sync record shows nothing", () => {
+  const card = { title: "Synthetic", status: "review", stage: "review", pr: 1, repo: "jbookout/carr-system" };
+  const view = boardView(snapshotRead(v2({ kind: "all-repos", tasks: { "carr-system-1": card,
+    "doctorcre-app-1": { ...card, repo: "jbookout/doctorcre-app" } },
+    github_sync: { checked_at: "2026-09-30T12:00:00Z", last_verified_at: null,
+      failed: [{ repo: "jbookout/carr-system", error: "malformed row" }] } })));
+  assert.equal(view.sync.state, "failed");
+  assert.deepEqual(view.cards.filter(c => c.sync_failed).map(c => c.id), ["carr-system-1"]);
+  assert.equal(boardView(snapshotRead(v2())).sync.state, null);
+});

@@ -172,6 +172,9 @@ export function mountBoard(deps = {}) {
     if (card.indicators.includes("flag-stale"))
       top.append(el("span", "flag-stale", `stale ${ageText(card.updated_at, currentNow())}`,
         { "data-stale-since": card.updated_at, title: "No update for 6 hours or more" }));
+    if (card.sync_failed)
+      top.append(el("span", "flag-unrefreshed", "not refreshed",
+        { title: "GitHub could not be read for this card; it shows its last verified state" }));
     node.append(top);
 
     const summary = taskSummary(card);
@@ -697,12 +700,36 @@ export function mountBoard(deps = {}) {
     all.toggleAttribute("aria-current", boardId === ALL_REPOS_BOARD);
   }
 
+  function renderSync(view) {
+    const line = byId("board-sync");
+    const { state, failed, checked_at, last_verified_at, trimmed } = view.sync;
+    const parts = [];
+    if (state === "failed") {
+      const cards = failed.filter(row => row.card).length;
+      const repos = failed.filter(row => !row.card && row.repo).length;
+      const what = [cards && `${cards} card${cards === 1 ? "" : "s"}`,
+        repos && `${repos} repositor${repos === 1 ? "y" : "ies"}`].filter(Boolean).join(" and ");
+      parts.push(`GitHub refresh failed for ${what} at ${formatTime(checked_at) || "an unknown time"}; ` +
+        `showing facts last verified ${formatTime(last_verified_at) || "never"}`);
+    } else if (state === "ok") {
+      parts.push(`GitHub checked ${formatTime(checked_at)} · every card verified`);
+    }
+    for (const row of trimmed)
+      parts.push(`${row.count} older ${row.kind === "history" ? "History row" : `${row.kind[0].toUpperCase()}${row.kind.slice(1)} card`}` +
+        `${row.count === 1 ? "" : "s"} not shown`);
+    line.textContent = parts.join(" · ");
+    line.hidden = parts.length === 0;
+    if (state) line.dataset.state = state;
+    else delete line.dataset.state;
+  }
+
   function render(view) {
     currentView = view;
     byId("board-title").textContent = view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "DELIVERY / ALL REPOSITORIES" : "DELIVERY / PROGRESS BOARD";
     doc.title = `${view.title} · DoctorCRE`;
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+    renderSync(view);
     renderHeadline(view);
     renderRepos(view);
     renderFilters(view);
