@@ -29,20 +29,56 @@ test('merged account boot honors saved light and defaults to dark', async () => 
   assert.match(app, /renderAccountCards\(state.accounts/);
 });
 
+const portfolioFixture = {
+  account_client_id: 'demo-care-network', account_client_ref: 'D-907', account_name: 'Demo Care Network',
+  account_owner: 'dell', open_deals: 7, attention_deals: 0,
+  stale_deals: 3, parked_deals: 0, last_review_at: null,
+};
+
+test('portfolio fixtures identify synthetic accounts', () => {
+  assert.match(portfolioFixture.account_name, /^Demo /);
+  assert.match(portfolioFixture.account_client_id, /^demo-/);
+  assert.match(portfolioFixture.account_client_ref, /^D-/);
+});
+
 test('the portfolio surface renders only accounts supplied by the CARR read', () => {
-  const html = renderAccountCards([{
-    account_client_id: 'musicologie', account_client_ref: 'C-161', account_name: 'Musicologie',
-    account_owner: 'dell', open_deals: 15, attention_deals: 0,
-    stale_deals: 15, parked_deals: 0, last_review_at: null,
-  }], helpers);
+  const html = renderAccountCards([portfolioFixture], helpers);
   assert.equal((html.match(/class="account-card"/g) || []).length, 1);
-  assert.match(html, /Musicologie/);
-  assert.doesNotMatch(html, /Operation Dental|Kain Capital/);
+  assert.match(html, /Demo Care Network/);
+  assert.doesNotMatch(html, /Demo Dental Group|Demo Therapy Network/);
   assert.match(html, /<svg[^>]*role="img"/);
   assert.match(html, /<path\b/);
   assert.match(html, /Market deals/);
-  assert.match(html, />15</);
+  assert.match(html, />7</);
   assert.match(html, /data-pulse="attention"/);
+});
+
+test('an account without a sub-client count uses one neutral structure node', () => {
+  for (const open_deals of [0, 1, 7]) {
+    const html = renderAccountCards([{
+      account_client_id: 'demo-unmeasured', account_name: 'Demo Unmeasured', open_deals,
+    }], helpers);
+    assert.equal((html.match(/class="flow-child"/g) || []).length, 1);
+    assert.match(html, /<rect class="flow-child"/);
+    const label = html.match(/<svg[^>]*aria-label="([^"]*)"/)[1];
+    assert.match(label, /through sub-clients/);
+    assert.doesNotMatch(label, /(?:\d+|two) sub-clients/);
+    assert.match(label, new RegExp(`${open_deals} active market deals`));
+  }
+});
+
+test('account captions stay at least 11px and diagram captions do not scale with the SVG', async () => {
+  const css = await readFile(new URL('../css/app.css', import.meta.url), 'utf8');
+  const metricRules = [...css.matchAll(/\.account-metrics span\s*\{([^}]*)\}/g)];
+  const sizes = metricRules.flatMap(([, body]) => [...body.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1])));
+  assert.ok(sizes.length > 0);
+  assert.ok(sizes.every((size) => size >= 11), `metric font sizes: ${sizes}`);
+  const html = renderAccountCards([portfolioFixture], helpers);
+  assert.doesNotMatch(html.match(/<svg[\s\S]*?<\/svg>/)[0], /class="flow-label"/);
+  assert.match(html, /class="account-flow-labels"[^>]*><span>Account<\/span><span>Sub-clients<\/span><span>Market deals<\/span>/);
+  const captionRules = [...css.matchAll(/\.account-flow-labels\s*\{([^}]*)\}/g)];
+  const captionSizes = captionRules.flatMap(([, body]) => [...body.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1])));
+  assert.ok(captionSizes.length > 0 && captionSizes.every((size) => size >= 11));
 });
 
 test('portfolio motion rate follows urgency without hiding the still-state labels', () => {
