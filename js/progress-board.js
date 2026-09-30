@@ -24,14 +24,21 @@ export function mountBoard(deps = {}) {
   const storage = "storage" in deps ? deps.storage : safeStorage(win);
   const now = deps.now || (() => new Date());
   const schedule = deps.setInterval || ((fn, ms) => win.setInterval(fn, ms));
+  const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const boardId = boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
   const pendingRequests = new Map();
+  // Per question: the form's message, whether a write or read is in flight,
+  // and whether the form is obsolete and must be reloaded before any write.
+  const formState = new Map();
   const fingerprints = new Map();
   const filters = { repo: "", stage: "", blockedOnly: false };
   let liveExpanded = readLivePreference(storage);
   let currentView = null;
   let openCardId = null;
+  let lastRead = null;
+  let readSeq = 0;
+  let latestRead = null;
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -285,6 +292,9 @@ export function mountBoard(deps = {}) {
       column.append(body);
       container.append(column);
     });
+    // Cards animate in on the first draw only; later renders (refresh, tick)
+    // flash just the cards whose state changed.
+    requestAnimationFrame(() => { container.dataset.settled = "true"; });
   }
 
   // ── panels ────────────────────────────────────────────────────────────────
@@ -475,6 +485,7 @@ export function mountBoard(deps = {}) {
     detailRow(body, "Created", formatTime(card.created_at));
     detailRow(body, "Updated", `${formatTime(card.updated_at)} · ${ageText(card.updated_at, at)} ago`);
     detailRow(body, "Completed", formatTime(card.completed_at));
+    if (typeof card.question === "string") detailRow(body, "Question", card.question);
     detailRow(body, "Note", card.note);
     detailRow(body, "Evidence", card.evidence);
     for (const url of String(card.evidence || "").match(/https?:\/\/[^\s;,]+/g) || []) {
@@ -500,8 +511,44 @@ export function mountBoard(deps = {}) {
   }
 
   // ── questions ─────────────────────────────────────────────────────────────
-  function answerForm(q, view) {
+  function liveForm(questionId) {
+    return [...byId("board-questions").querySelectorAll(".answer-form")]
+      .find(form => form.dataset.questionId === questionId) || null;
+  }
+
+  function applyFormState(form, state) {
+    const button = form.querySelector("button[type=submit]");
+    form.querySelector(".form-message").textContent = state.message || "";
+    button.disabled = Boolean(state.busy);
+    button.textContent = state.reload ? "Reload question" : "Send answer";
+  }
+
+  // Forms are rebuilt on every render, so state lives here and is applied to
+  // whichever form is on the page now.
+  function setFormState(questionId, patch) {
+    const state = { ...(formState.get(questionId) || {}), ...patch };
+    formState.set(questionId, state);
+    const form = liveForm(questionId);
+    if (form) applyFormState(form, state);
+  }
+
+  // A conflict makes the form obsolete: only a successful read may replace it.
+  async function reloadQuestion(questionId, message) {
+    setFormState(questionId, { busy: true, reload: true, message });
+    let applied = false;
+    try { applied = await refresh(); } catch { applied = false; }
+    if (applied) {
+      formState.delete(questionId);
+      renderQuestions(currentView);
+      return;
+    }
+    setFormState(questionId, { busy: false, reload: true,
+      message: "This question changed elsewhere and its latest version could not be loaded. Reload question to try again." });
+  }
+
+  function answerForm(q, view, draft) {
     const form = el("form", "answer-form");
+    form.dataset.questionId = q.question_id;
     const message = el("p", "form-message");
     const choiceInputs = [];
     let freeText = null;
@@ -530,6 +577,10 @@ export function mountBoard(deps = {}) {
     const actions = el("div", "answer-actions");
     actions.append(button, preview);
     form.append(actions, message);
+    if (draft) {
+      if (freeText && draft.text) freeText.value = draft.text;
+      for (const input of choiceInputs) input.checked = input.value === draft.choice;
+    }
     const selectedAnswer = () => freeText?.value.trim() || choiceInputs.find(input => input.checked)?.value || "";
     const showAnswer = () => {
       preview.textContent = `Will send: ${pendingRequests.get(q.question_id)?.answer_text || selectedAnswer() || "—"}`;
@@ -546,44 +597,77 @@ export function mountBoard(deps = {}) {
       for (const input of choiceInputs) input.checked = false;
       showAnswer();
     });
-    if (pendingRequests.has(q.question_id)) lockAnswer();
+    const state = formState.get(q.question_id);
+    if (pendingRequests.has(q.question_id) || state?.reload) lockAnswer();
     showAnswer();
+    if (state) applyFormState(form, state);
     form.addEventListener("submit", async event => {
       event.preventDefault();
-      const retained = pendingRequests.get(q.question_id);
+      const questionId = q.question_id;
+      const current = formState.get(questionId) || {};
+      if (current.busy) return;
+      if (current.reload) { await reloadQuestion(questionId, "Reloading this question…"); return; }
+      const retained = pendingRequests.get(questionId);
       const value = retained?.answer_text || selectedAnswer();
       const key = retained?.idempotency_key || uuidv4();
       let args;
       try { args = retained || answerRequest(q, view.board_id, value, key); }
-      catch (cause) { message.textContent = cause.message; return; }
-      pendingRequests.set(q.question_id, args);
+      catch (cause) { setFormState(questionId, { message: cause.message }); return; }
+      pendingRequests.set(questionId, args);
       lockAnswer();
       showAnswer();
-      button.disabled = true;
-      message.textContent = "Saving answer…";
+      setFormState(questionId, { busy: true, message: "Saving answer…" });
       try {
         await client.answerBoardQuestion(args);
-        await refresh(true);
-        pendingRequests.delete(q.question_id);
       } catch (cause) {
-        button.disabled = false;
         const conflict = cause.payload?.error === "board_version_conflict" ||
           cause.payload?.error === "board_answer_already_sent";
-        message.textContent = conflict ? "This question changed or was answered elsewhere. Refreshing…"
-          : "Answer status is unconfirmed. Retry will use the same request.";
-        if (conflict) {
-          pendingRequests.delete(q.question_id);
-          await refresh(true).catch(() => {});
+        if (!conflict) {
+          setFormState(questionId, { busy: false, message: "Answer status is unconfirmed. Retry will use the same request." });
+          return;
         }
+        pendingRequests.delete(questionId);
+        await reloadQuestion(questionId, "This question changed or was answered elsewhere. Refreshing…");
+        return;
       }
+      pendingRequests.delete(questionId);
+      formState.delete(questionId);
+      const applied = await refresh().catch(() => false);
+      if (!applied) setFormState(questionId, { busy: true, message: "Answer sent. The board will update on the next refresh." });
     });
     return form;
   }
 
+  // Drafts, choices and focus in open forms survive every re-render.
+  function captureDrafts(box) {
+    const drafts = new Map();
+    for (const form of box.querySelectorAll(".answer-form")) {
+      drafts.set(form.dataset.questionId, {
+        text: form.querySelector("textarea")?.value || "",
+        choice: form.querySelector("input[type=radio]:checked")?.value ?? null,
+      });
+    }
+    const active = doc.activeElement;
+    const focus = active && box.contains(active) && active.id
+      ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+    return { drafts, focus };
+  }
+
+  function restoreFocus(focus) {
+    if (!focus) return;
+    const node = byId(focus.id);
+    if (!node || node.disabled) return;
+    node.focus();
+    try { if (typeof focus.start === "number") node.setSelectionRange(focus.start, focus.end); } catch { /* radios have no selection */ }
+  }
+
   function renderQuestions(view) {
     const box = byId("board-questions");
+    const { drafts, focus } = captureDrafts(box);
     box.replaceChildren();
-    byId("question-count").textContent = `${view.questions.filter(q => !q.status).length} WAITING`;
+    const open = new Set(view.questions.filter(q => !q.status).map(q => q.question_id));
+    for (const id of [...formState.keys()]) if (!open.has(id)) formState.delete(id);
+    byId("question-count").textContent = `${open.size} WAITING`;
     if (!view.questions.length) { box.append(el("p", "empty", "No questions on this board.")); return; }
     for (const q of view.questions) {
       const card = el("article", "question-card");
@@ -597,10 +681,11 @@ export function mountBoard(deps = {}) {
           q.status === "Applied" && q.effect_ref ? `Applied: ${q.effect_ref}` : null].filter(Boolean).join(" · ");
         if (detail) card.append(el("p", "question-detail", detail));
       } else {
-        card.append(answerForm(q, view));
+        card.append(answerForm(q, view, drafts.get(q.question_id)));
       }
       box.append(card);
     }
+    restoreFocus(focus);
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
@@ -636,27 +721,40 @@ export function mountBoard(deps = {}) {
     }
   }
 
-  // Live timers: stage ages and stale flags move without a reload.
+  // Live time: every time-dependent mark (stage ages, stale, stuck, health,
+  // counts, blocked details) is derived again from the last read, so a card
+  // that crosses a threshold changes without waiting for new data.
   function tick() {
-    const at = currentNow();
-    for (const node of doc.querySelectorAll("[data-stage-since]"))
-      node.textContent = `${node.dataset.stage} ${ageText(node.dataset.stageSince, at)}`;
-    for (const node of doc.querySelectorAll("[data-stale-since]"))
-      node.textContent = `stale ${ageText(node.dataset.staleSince, at)}`;
+    if (lastRead) render(boardView(lastRead, currentNow()));
   }
 
-  async function refresh(force = false) {
+  // Reads are ordered: a read that finishes after a newer one started is
+  // discarded, and its caller waits for the newest read instead. Returns true
+  // when a board was drawn. Open question drafts survive (renderQuestions).
+  async function refresh() {
     if (!boardId) {
       setError("Choose a board: Project or All repositories.");
       byId("board-meta").textContent = "No board selected";
-      return;
+      return false;
     }
-    if (!force && byId("board-questions").contains(doc.activeElement)) return;
-    const read = await client.readProgressBoard({ board_id: boardId });
-    const view = boardView(read, currentNow());
-    if (!view.version) { setError("This board has not been published yet."); return; }
-    setError("");
-    render(view);
+    const seq = ++readSeq;
+    const run = (async () => {
+      let read;
+      try { read = await client.readProgressBoard({ board_id: boardId }); }
+      catch (cause) { if (seq !== readSeq) return "superseded"; throw cause; }
+      if (seq !== readSeq) return "superseded";
+      const view = boardView(read, currentNow());
+      if (view.error) { setError(view.error); return false; }
+      if (!view.version) { setError("This board has not been published yet."); return false; }
+      lastRead = read;
+      setError("");
+      render(view);
+      return true;
+    })();
+    latestRead = run;
+    let result = await run;
+    while (result === "superseded") result = await latestRead;
+    return result;
   }
 
   function start() {

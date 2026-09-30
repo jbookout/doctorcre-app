@@ -98,6 +98,7 @@ h3 { font-size: 1.05rem; }
 .board-card[data-pulse="critical"] { --pulse-color: var(--red); }
 .board-card[data-pulse="still"] { --pulse-color: var(--green); }
 .board-card.changed { animation: changed-flash 1.1s ease-out 1; }
+#board-stages[data-settled] .board-card:not(.changed) { animation: none; }
 @keyframes card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes changed-flash { 0% { background: rgba(251,123,50,.34); } 100% { background: rgba(10,31,54,.94); } }
 .card-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 8px; min-width: 0; }
@@ -110,9 +111,11 @@ h3 { font-size: 1.05rem; }
 .flag-stale { flex: 0 0 auto; padding: 1px 6px; border: 1px solid #ffd479; border-radius: 999px; color: #ffd479; font-size: .6rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .card-summary, .card-model, .card-wait, .card-meta { margin: 5px 0 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-summary { color: #b8cddd; font-size: .72rem; }
-.card-meta { display: flex; gap: 5px; color: var(--muted); font-size: .66rem; }
+.card-meta { display: flex; flex-wrap: wrap; gap: 2px 5px; color: var(--muted); font-size: .66rem; white-space: normal; }
 .card-meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-meta .card-pr { flex: 0 1 auto; }
+/* A PR label is an identifier: it wraps rather than clipping its number. */
+.board-card .card-pr, .blocked-card .card-pr, .completed-card .card-pr { overflow: visible; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
 .card-meta .stage-timer { flex: 0 0 auto; }
 .card-meta .dot { flex: 0 0 auto; }
 .card-model { display: block; color: #93adc3; font-size: .64rem; letter-spacing: .01em; }
@@ -198,10 +201,10 @@ textarea { width: 100%; min-height: 88px; resize: vertical; color: var(--ink); b
 .answer-text { margin: 12px 0 0; font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 footer { padding-top: 8px; }
 
-/* legend: one tap away on every screen */
-.legend-toggle { position: fixed; right: 16px; bottom: 16px; z-index: 30; padding: 10px 16px; border: 1px solid var(--orange); border-radius: 999px; background: rgba(8,24,44,.92); color: var(--ink); font-weight: 800; letter-spacing: .08em; cursor: pointer; box-shadow: 0 12px 30px rgba(0,0,0,.45); backdrop-filter: blur(12px); }
+/* legend: one tap away on every screen, bottom-left so it never sits under the shell's Doc button (bottom-right) */
+.legend-toggle { position: fixed; left: 16px; bottom: 16px; z-index: 30; padding: 10px 16px; border: 1px solid var(--orange); border-radius: 999px; background: rgba(8,24,44,.92); color: var(--ink); font-weight: 800; letter-spacing: .08em; cursor: pointer; box-shadow: 0 12px 30px rgba(0,0,0,.45); backdrop-filter: blur(12px); }
 .legend-toggle[aria-expanded="true"] { background: var(--orange); color: #08121b; }
-.legend { position: fixed; right: 16px; bottom: 68px; z-index: 30; width: min(440px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow: auto; margin: 0; animation: legend-in .22s ease-out; }
+.legend { position: fixed; left: 16px; bottom: 84px; z-index: 30; width: min(440px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow: auto; margin: 0; animation: legend-in .22s ease-out; }
 @keyframes legend-in { from { opacity: 0; transform: translateY(8px); } }
 .legend-body { display: grid; gap: 12px; }
 .legend-group h3 { margin: 0 0 6px; color: var(--muted); font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; }

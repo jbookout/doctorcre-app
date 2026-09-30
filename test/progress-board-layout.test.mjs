@@ -27,7 +27,8 @@ function findChrome() {
 
 const MEASURE = `
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-for (let i = 0; i < 200 && !document.querySelector("#board-stages .board-card"); i += 1) await wait(25);
+for (let i = 0; i < 200 && !(document.querySelector("#board-stages .board-card") && document.querySelector(".app-shell-doc")); i += 1)
+  await wait(25);
 document.querySelector("#live-toggle")?.click();
 await wait(50);
 const problems = [];
@@ -47,6 +48,19 @@ for (const model of document.querySelectorAll(".card-model")) {
   const style = getComputedStyle(model);
   if (style.textOverflow !== "ellipsis" || style.whiteSpace !== "nowrap") problems.push("model line is not a one-line ellipsis");
   if (!model.title) problems.push("model line has no title");
+}
+// PR identifiers are never clipped: the repository name and the number stay readable.
+for (const label of document.querySelectorAll(".board-card .card-pr, .blocked-card .card-pr, .completed-card .card-pr")) {
+  const owner = label.closest("[data-card-id]")?.dataset.cardId || "card";
+  if (label.scrollWidth > label.clientWidth + 1)
+    problems.push(owner + ": PR label clipped (" + label.clientWidth + " < " + label.scrollWidth + ")");
+}
+// Every fixed control is the thing a tap at its centre reaches, with the app shell mounted.
+for (const control of document.querySelectorAll("#legend-toggle, .app-shell-doc:not([hidden])")) {
+  const rect = control.getBoundingClientRect();
+  const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  const target = hit?.closest("a, button");
+  if (target !== control) problems.push((control.id || control.className) + ": a centre tap reaches " + (target?.id || target?.className || hit?.tagName));
 }
 const page = document.documentElement;
 if (page.scrollWidth > innerWidth + 1) problems.push("page scrolls sideways: " + page.scrollWidth + " > " + innerWidth);

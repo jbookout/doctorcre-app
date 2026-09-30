@@ -222,7 +222,7 @@ test("stage timer reads stage_entered_at, updates live, and the pop-up shows his
   assert.equal(timer.classList.contains("badge-question"), false);
   setNow("2026-09-29T12:10:00Z");
   board.tick();
-  assert.equal(timer.textContent, "build 2h 24m", "moves without a reload");
+  assert.equal($('[data-card-id="build-card"] .stage-timer').textContent, "build 2h 24m", "moves without a reload");
   $('[data-card-id="build-card"]').click();
   const history = $("#task-detail .stage-history");
   assert.ok(history);

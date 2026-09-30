@@ -313,16 +313,35 @@ function ledgerFromTasks(cards) {
   }).filter(row => row.pool !== "unassigned" || row.count);
 }
 
+const SUPPORTED_SCHEMAS = new Set(["carr-progress-board.v1", SNAPSHOT_SCHEMA]);
+const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+// The snapshot boundary. The publishing API only checks object shape and size,
+// so the page checks the contract itself: an unsupported or incompatible
+// snapshot is an error the viewer sees, and one malformed optional row is
+// dropped without discarding the valid rows around it.
+function snapshotError(snapshot, data) {
+  if (!snapshot) return null;
+  if (!isRecord(snapshot.snapshot_json)) return "The published snapshot is not an object, so it cannot be shown.";
+  if (data.schema !== undefined && !SUPPORTED_SCHEMAS.has(data.schema))
+    return `Snapshot schema ${String(data.schema).slice(0, 60)} is not supported by this page.`;
+  if (!isRecord(data.tasks)) return "The published snapshot has no tasks map, so it cannot be shown.";
+  return null;
+}
+
+function rows(value, keep) {
+  return Array.isArray(value) ? value.filter(row => isRecord(row) && keep(row)) : [];
+}
+
 export function boardView(read, at = new Date()) {
-  const snapshot = read?.snapshot;
-  const data = snapshot?.snapshot_json && typeof snapshot.snapshot_json === "object"
-    ? snapshot.snapshot_json : {};
+  const snapshot = isRecord(read?.snapshot) ? read.snapshot : null;
+  const data = isRecord(snapshot?.snapshot_json) ? snapshot.snapshot_json : {};
+  const error = snapshotError(snapshot, data);
   const kind = data.kind === ALL_REPOS_BOARD || snapshot?.board_id === ALL_REPOS_BOARD ? ALL_REPOS_BOARD : "project";
-  const entries = data.tasks && typeof data.tasks === "object" && !Array.isArray(data.tasks)
-    ? Object.entries(data.tasks) : [];
+  const entries = !error && isRecord(data.tasks) ? Object.entries(data.tasks) : [];
   const cards = [];
   for (const [id, task] of entries) {
-    if (!task || typeof task !== "object") continue;
+    if (!isRecord(task)) continue;
     const card = { id, ...task };
     card.stage = taskStage(task);
     card.health = taskHealth(task, at);
@@ -336,27 +355,35 @@ export function boardView(read, at = new Date()) {
   const stages = STAGES.map(stage => ({ ...stage, tasks: cards.filter(card => card.stage === stage.id) }));
   const live = stages.find(stage => stage.id === "live");
   live.tasks = sortLive(live.tasks, kind);
-  const ledger = Array.isArray(data.ledger) && data.ledger.length ? data.ledger.map(row => ({
+  const ledgerRows = rows(data.ledger, row => typeof row.pool === "string");
+  const ledger = ledgerRows.length ? ledgerRows.map(row => ({
     ...row, glyph: EXECUTORS.find(item => item.pool === row.pool)?.glyph ?? "?",
-    models: Array.isArray(row.models) ? row.models : [] })) : ledgerFromTasks(cards);
+    models: rows(row.models, () => true) })) : ledgerFromTasks(cards);
+  const questions = rows(read?.questions, q => typeof q.question_id === "string").map(q => ({
+    ...q, choices: Array.isArray(q.choices) ? q.choices.filter(choice => typeof choice === "string") : [],
+    status: STATUSES.has(q.status) ? q.status : null,
+  }));
+  // The producer also publishes answered questions as decisions; the typed
+  // question is the authority, so the same question is never shown twice.
+  const answered = new Set(questions.filter(q => q.status).map(q => q.question_id));
+  const decisions = rows(data.decisions, row => typeof row.question === "string")
+    .filter(row => !answered.has(row.id ?? row.question_id));
   return {
     board_id: snapshot?.board_id || data.project || null,
     kind,
+    error,
     schema: data.schema || "carr-progress-board.v1",
     version: snapshot?.version || null,
     title: typeof data.title === "string" ? data.title : "Progress board",
     updated_at: snapshot?.updated_at || null,
     cards,
     stages,
-    repos: Array.isArray(data.repos) ? data.repos.filter(row => row && typeof row.repo === "string") : [],
-    deliverables: Array.isArray(data.deliverables) ? data.deliverables : [],
-    notes: Array.isArray(data.notes) ? data.notes : [],
-    decisions: Array.isArray(data.decisions) ? data.decisions : [],
+    repos: rows(data.repos, row => typeof row.repo === "string"),
+    deliverables: rows(data.deliverables, () => true),
+    notes: rows(data.notes, row => typeof row.text === "string"),
+    decisions,
     ledger,
-    questions: Array.isArray(read?.questions) ? read.questions.map(q => ({
-      ...q, choices: Array.isArray(q.choices) ? q.choices : [],
-      status: STATUSES.has(q.status) ? q.status : null,
-    })) : [],
+    questions,
   };
 }
 
