@@ -1,9 +1,10 @@
+import { mountPropertyPanel } from "./property-panel.js";
 import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
 
 (() => {
   "use strict";
   const $ = (selector) => document.querySelector(selector);
-  const state = { csrf: "", tours: [], tour: null, rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
+  const state = { csrf: "", tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
@@ -222,8 +223,52 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   }
   function stops() { return Array.isArray(state.tour?.stops) ? state.tour.stops : []; }
   function renderShareGrants() { const list = $("#share-grants"); list.replaceChildren(); for (const grant of state.shareGrants) { if (!id(grant?.share_grant_id)) continue; const row = document.createElement("li"); const summary = document.createElement("span"); summary.textContent = `${text(grant.status, "unknown")} · projection ${text(grant.projection_id, "unknown")} · expires ${formatTourDate(grant.expires_at) || "unknown"}`; row.append(summary); if (grant.status === "active") { const button = document.createElement("button"); button.type = "button"; button.textContent = "Revoke"; button.dataset.shareGrantId = grant.share_grant_id; row.append(button); } list.append(row); } if (!list.children.length) list.textContent = "No active or rotatable confidential links."; }
+  function renderFeedback() {
+    const list = $("#feedback-list"); list.replaceChildren();
+    const items = Array.isArray(state.feedback?.items) ? state.feedback.items : [];
+    for (const item of items) {
+      if (!item.shortlisted && !item.comments?.length) continue;
+      const row = document.createElement("li");
+      const title = document.createElement("strong"); title.textContent = text(item.route_label, "Tour property"); row.append(title);
+      if (item.shortlisted) { const badge = document.createElement("p"); badge.className = "shortlisted"; badge.textContent = "Shortlisted"; row.append(badge); }
+      for (const entry of Array.isArray(item.comments) ? item.comments : []) {
+        const comment = document.createElement("p"); comment.textContent = text(entry.comment); row.append(comment);
+      }
+      list.append(row);
+    }
+    $("#feedback-empty").hidden = state.feedbackStatus !== "ready" || list.children.length > 0;
+    list.setAttribute("aria-busy", String(state.feedbackStatus === "loading"));
+    $("#feedback-state").textContent = state.feedbackStatus === "loading" ? "Loading client responses…" :
+      state.feedbackStatus === "unavailable" ? "Client responses are unavailable. Select Refresh to try again." :
+      state.feedbackStatus === "missing" ? "Approve a Tour projection to read client responses." : "";
+    $("#refresh-feedback").disabled = !id(state.projectionId);
+  }
+  async function loadFeedback() {
+    const projectionId = state.projectionId;
+    const seq = ++state.feedbackSeq;
+    state.feedback = null;
+    state.feedbackStatus = id(projectionId) ? "loading" : "missing";
+    renderFeedback();
+    if (id(projectionId)) {
+      try {
+        const feedback = await request(`/api/tours/feedback?projection_id=${encodeURIComponent(projectionId)}`);
+        if (seq !== state.feedbackSeq || projectionId !== state.projectionId) return;
+        state.feedback = feedback;
+        state.feedbackStatus = "ready";
+        status("Client responses loaded.");
+      }
+      catch {
+        if (seq !== state.feedbackSeq || projectionId !== state.projectionId) return;
+        state.feedbackStatus = "unavailable";
+        status("Client responses are unavailable.");
+      }
+    }
+    if (seq !== state.feedbackSeq || projectionId !== state.projectionId) return;
+    renderFeedback();
+  }
   function renderTour() {
     const tour = state.tour; if (!tour) return;
+    const priorProjectionId = state.projectionId;
     $("#empty-state").hidden = true; $("#tour-panel").hidden = false;
     $("#tour-name").textContent = text(tour.name, "Untitled tour"); $("#tour-state").textContent = text(tour.status, "Draft");
     $("#tour-meta").textContent = tourMetaLine(tour);
@@ -232,6 +277,11 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     $("#reorder-route").hidden = tour.route_version_state !== "draft";
     $("#accept-route").hidden = tour.route_version_state !== "draft";
     state.projectionId = text(tour.projection_id); state.projectionDraftId = text(tour.projection_draft_id); state.shareGrantId = text(tour.share_grant_id); state.shareStatus = text(tour.share_status, "missing"); state.shareGrants = Array.isArray(tour.share_grants) ? tour.share_grants : [];
+    if (priorProjectionId !== state.projectionId) {
+      ++state.feedbackSeq; state.feedback = null;
+      state.feedbackStatus = id(state.projectionId) ? "loading" : "missing";
+    }
+    renderFeedback();
     const activeShareCount = state.shareGrants.filter((grant) => grant?.status === "active").length;
     $("#projection-state").textContent = state.projectionId ? "Approved" : tour.projection_status === "draft" ? "Draft · approval required" : "Not generated"; $("#share-state").textContent = activeShareCount ? `${activeShareCount} active` : state.shareStatus === "expired" ? "Expired · rotate" : "Not issued"; renderShareGrants();
     $("#projection-note").textContent = state.projectionId ? "The approved projection is ready for a deliberately scoped, expiring share." : tour.projection_status === "draft" ? "A projection draft exists but cannot be shared until a human authority seals it." : "A projection is required before an external link can be issued.";
@@ -252,14 +302,15 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     const downloadable = tour.pdf_status === "available" && id(state.renderJobId);
     $("#download-pdf").hidden = !downloadable;
     if (downloadable) $("#download-pdf").href = `/api/tours/pdf/download?render_job_id=${encodeURIComponent(state.renderJobId)}`;
+    mountPropertyPanel({ tour, request });
   }
   async function loadLibrary() { status("Loading tours…"); const data = await request("/api/tours/library"); state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready."); }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
-  async function loadTour(tourId) { status("Loading tour…"); if (state.tour?.id !== tourId) { ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); renderSelection(); await loadSelectionCart(tourId); await loadProjectionPreview(); status("Tour ready."); }
+  async function loadTour(tourId) { ++state.feedbackSeq; status("Loading tour…"); if (state.tour?.id !== tourId) { ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; } state.tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`); renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]); if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready."); }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
   async function saveRoute(reorder = false) { if (!state.tour) return; const stopIds = stops().filter((stop) => stop.stop_state === "active").map((stop) => stop.id).filter(id); const path = reorder ? "/api/tours/route-reorder" : "/api/tours/route-version"; const payload = reorder ? { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() } : { tour_id: state.tour.id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() }; await post(path, payload); await loadTour(state.tour.id); status("Route version saved."); }
   async function saveSheet() { if (!state.tour) return; let content; try { content = JSON.parse($("#cheat-content").value || "{}"); } catch { content = { notes: $("#cheat-content").value }; } await post("/api/tours/cheat-sheet/autosave", { tour_id: state.tour.id, content, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); status("Internal cheat sheet saved."); }
-  async function issueShare(rotate = false) { if (!state.projectionId) throw new Error("projection_required"); const raw = newShareToken(); const tokenDigest = await sha256(raw); const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map((box) => box.value); const expires = new Date($("#share-expiry").value).toISOString(); const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid"); const payload = { projection_id: state.projectionId, token_digest: tokenDigest, permission_scopes: scopes, expires_at: expires, receipt_digest: receipt, idempotency_key: uuid() }; const data = await post(rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue", rotate ? { share_grant_id: state.shareGrantId, ...payload } : payload); state.rawShareToken = raw; state.shareGrantId = text(data.share_grant_id, state.shareGrantId); const url = `https://reports.doctorcre.com/share#token=${raw}`; $("#share-url").value = url; $("#share-link").hidden = false; $("#share-state").textContent = "Active"; status("Confidential link generated. Copy it now."); }
+  async function issueShare(rotate = false) { if (!state.projectionId) throw new Error("projection_required"); const raw = newShareToken(); const tokenDigest = await sha256(raw); const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map((box) => box.value); if ((scopes.includes("shortlist") || scopes.includes("comment")) && !scopes.includes("view_packet")) throw new Error("packet_scope_required"); const expires = new Date($("#share-expiry").value).toISOString(); const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid"); const payload = { projection_id: state.projectionId, token_digest: tokenDigest, permission_scopes: scopes, expires_at: expires, receipt_digest: receipt, idempotency_key: uuid() }; const data = await post(rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue", rotate ? { share_grant_id: state.shareGrantId, ...payload } : payload); state.rawShareToken = raw; state.shareGrantId = text(data.share_grant_id, state.shareGrantId); const url = `https://reports.doctorcre.com/share#token=${raw}`; $("#share-url").value = url; $("#share-link").hidden = false; $("#share-state").textContent = "Active"; status("Confidential link generated. Copy it now."); }
   async function revokeShare(grantId) { if (!id(grantId)) return; const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required"); await post("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link", revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }); state.rawShareToken = ""; $("#share-link").hidden = true; await loadTour(state.tour.id); status("Share link revoked."); }
   async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
   // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.
@@ -290,6 +341,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   $("#share-form").addEventListener("submit", (event) => { event.preventDefault(); void action(() => issueShare(id(state.shareGrantId))); }); $("#rotate-share").addEventListener("click", () => void action(() => issueShare(true)));
   $("#revoke-share").addEventListener("click", () => void action(() => revokeShare(state.shareGrantId)));
   $("#share-grants").addEventListener("click", (event) => { const grantId = event.target?.dataset?.shareGrantId; if (id(grantId)) void action(() => revokeShare(grantId)); });
+  $("#refresh-feedback").addEventListener("click", () => void action(loadFeedback));
   $("#copy-share").addEventListener("click", () => void action(async () => { await navigator.clipboard.writeText($("#share-url").value); status("Confidential link copied."); }));
   $("#render-pdf").addEventListener("click", () => void action(async () => { if (!id(state.projectionId)) throw new Error("projection_required"); const data = await post("/api/tours/pdf/render", { projection_id: state.projectionId, idempotency_key: uuid() }); state.renderJobId = text(data.render_job_id); state.pdfQcRunDigest = text(data.qc_run_digest); await loadTour(state.tour.id); status("PDF rendered and QC checked. Human review is required before download."); }));
   $("#review-pdf").addEventListener("click", () => void action(async () => { if (!id(state.renderJobId) || !digest(state.pdfQcRunDigest)) throw new Error("pdf_review_required"); const reviewedAt = new Date().toISOString(); await post("/api/tours/pdf/review", { render_job_id: state.renderJobId, qc_run_digest: state.pdfQcRunDigest, decision: "accept", reviewed_at: reviewedAt, review_receipt_digest: await sha256(`tour-pdf-human-review:${state.renderJobId}:${state.pdfQcRunDigest}:${reviewedAt}`), reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }); await loadTour(state.tour.id); status("PDF review receipt recorded. Internal download is available."); }));

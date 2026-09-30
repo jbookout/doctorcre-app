@@ -179,7 +179,7 @@ test("the Ideas page is routed and uses the pinned idea and event verbs", async 
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(routes.routes["/ideas-events"], "ideas.html");
-  assert.equal(carr.version, "1.33.0");
+  assert.equal(carr.version, "1.34.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
   assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);
@@ -269,4 +269,15 @@ test("a phone can reach every timeline node when the SVG exceeds the viewport", 
     "touch swipes stay within the timeline");
   assert.match(await read("js/ideas.js"), /Math\.max\(320, rows\.length \* 126/,
     "four nodes still get their full width instead of being compressed into 390 px");
+});
+
+test("Ideas search field shrinks inside its card at phone width", async () => {
+  const sheet = await read("css/ideas.css");
+  const searchRule = sheet.match(/\.idea-search\s*\{[^}]*\}/)?.[0] || "";
+  assert.ok(searchRule.includes("min-width: 0"), "the field must start from a zero floor");
+  assert.ok(searchRule.includes("max-width: 100%"), "the field cannot exceed its card");
+  assert.ok(!searchRule.includes("min(320px"), "a 320px floor overflows a padded phone-width card");
+  const inputRule = sheet.match(/\.idea-search input\s*\{[^}]*\}/)?.[0] || "";
+  assert.ok(inputRule.includes("width: 100%"), "the input fills the field instead of overflowing");
+  assert.ok(inputRule.includes("min-width: 0"), "the input can shrink with the field");
 });
