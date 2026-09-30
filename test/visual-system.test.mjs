@@ -201,12 +201,11 @@ test("each prototype page is labelled synthetic, keyboard operable, reachable fr
     assert.doesNotMatch(html, /data-pref="theme"[^>]*>\s*<button[^>]*>Dark/, `${key} must not print theme words`);
     assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/, `${key} uses the shared system`);
     assert.match(html, /id="receiptDock"/, `${key} command feedback dock`);
-    assert.match(html, /<span class="brand-mark" aria-hidden="true">D<\/span>/, `${key} uses the D monogram`);
-    assert.doesNotMatch(html, /<span class="brand-mark">C<\/span>/, `${key} must not use the C mark`);
+    assert.match(html, /id="appShell"/, `${key} uses the common DoctorCRE mark and navigation`);
     assert.doesNotMatch(html, /Demo (Avery|Okafor|Lin|Reyes) (?!\w)/, `${key} names are fictional`);
   }
-  assert.match(pages.index, /href="\/design\/business"/);
-  assert.match(pages.index, /href="\/design\/operations"/);
+  assert.match(pages.index, /src="\/public-shell\/references\/business-desktop\.png"/);
+  assert.match(pages.index, /src="\/public-shell\/references\/operations-desktop\.png"/);
   assert.match(pages.business, /href="\/design"/);
   assert.match(pages.operations, /href="\/design"/);
   assert.doesNotMatch(prototypeJs, /fetch\(|XMLHttpRequest|WebSocket|\/mcp|\/api\//, "the prototype never reaches CARR");

@@ -322,7 +322,7 @@ test("the Calendar is a routed, shipped surface that reads only pinned verbs", a
   const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.14.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.15.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
   assert.match(artifact, /"calendar\.html"/);
   assert.match(check, /"calendar\.html"/);
@@ -346,7 +346,7 @@ test("the Calendar page carries the shared shell, an accessible grid and an agen
   assert.match(html, /<a class="skip" href="#main">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/calendar\.css">/);
-  assert.match(html, /id="navUnreadBadge" hidden/);
+  assert.match(html, /id="appShell"/);
   assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
   assert.match(html, /id="docReading">Doc is reading: Calendar</);
   assert.match(html, /id="receiptDock"/);

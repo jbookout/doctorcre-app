@@ -14,40 +14,17 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/workspace.css">
   <link rel="stylesheet" href="/css/workspace-business.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <!-- data-panel-background marks everything the record panel COVERS when the
        phone layout takes it full screen. The script makes exactly these regions
        inert while it is a dialog, so keyboard and screen-reader focus cannot
        walk underneath it; on a desktop the panel sits beside them and none of
        this applies. -->
   <a class="skip" href="#main" data-panel-background>Skip to records</a>
-  <header class="topbar" data-panel-background>
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark">C</span><span>DoctorCRE <small>workspace</small></span></a>
-    <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="/">Home</a>
-      <a href="/leads">Leads</a>
-      <a href="/tours">Tours</a>
-      <a href="/deals">Deals</a>
-      <a id="navClients" href="/clients">Clients</a>
-      <a id="navVendors" href="/vendors">Vendors</a>
-      <a href="/business?q=">Search</a>
-    </nav>
-    <details class="nav-more">
-      <summary aria-label="More, including operations">More</summary>
-      <div class="nav-more-panel">
-        <p class="nav-more-heading">Workspace</p>
-        <a href="/calendar">Calendar</a>
-        <a href="/ideas">Ideas</a>
-        <a href="/tasks">Tasks</a>
-        <a href="/conversations">Conversations</a>
-        <a href="/notifications">Notifications</a><span class="nav-badge" id="navUnreadBadge" hidden></span>
-        <p class="nav-more-heading">Operations</p>
-        <a href="/system-work.html">System work</a>
-        <a href="/room.html">Observatory</a>
-      </div>
-    </details>
-  </header>
+
 
   <main id="main" class="shell business-shell">
     <section class="hero business-hero" aria-labelledby="pageTitle" data-panel-background>
@@ -151,13 +128,7 @@
   </main>
 
   <footer class="footer" data-panel-background><span>DoctorCRE · Clients and Vendors</span><span>Every list says where it came from and when.</span></footer>
-  <nav class="mobile-nav" aria-label="Workspace shortcuts" data-panel-background>
-    <a href="/" aria-label="Home"><span aria-hidden="true">⌂</span>Home</a>
-    <a href="/leads" aria-label="Leads"><span aria-hidden="true">⌁</span>Leads</a>
-    <a href="/deals" aria-label="Deals"><span aria-hidden="true">◈</span>Deals</a>
-    <a href="/clients" aria-label="Clients"><span aria-hidden="true">◍</span>Clients</a>
-    <a href="/vendors" aria-label="Vendors"><span aria-hidden="true">◇</span>Vendors</a>
-  </nav>
+
   <script type="module" src="/js/workspace-business.js"></script>
 </body>
 </html>

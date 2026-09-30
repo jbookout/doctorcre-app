@@ -823,7 +823,7 @@ function boot() {
     const response = await fetch(`/api/room/turns?after_seq=${afterSeq}&limit=${limit}`, {
       headers: { accept: "application/json" }, credentials: "same-origin",
     });
-    if (response.status === 401) { window.location.href = "/auth/login?return_to=/room.html"; throw new Error("sign_in_required"); }
+    if (response.status === 401) { window.location.href = "/auth/login?return_to=/agent-room"; throw new Error("sign_in_required"); }
     if (!response.ok) throw new Error(`turns_${response.status}`);
     return response.json();
   }

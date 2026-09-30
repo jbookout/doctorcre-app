@@ -330,7 +330,8 @@ export function chartsAddress({ group = null, pick = null } = {}) {
     parameters.set("group", group);
     parameters.set("pick", pick);
   }
-  return `/business?${parameters.toString()}`;
+  parameters.set("view", "charts");
+  return `/?${parameters.toString()}`;
 }
 
 /* ------------------------------------------------------------------ the states */

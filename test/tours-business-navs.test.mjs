@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { appShellMarkup } from "../js/app-shell.js";
 
 // The second, smaller business nav set (Deals/Clients/Vendors, no Leads) was
 // missed by the earlier /leads-keyed Tours sweep (PR 68). These five pages
@@ -26,9 +27,8 @@ const PAGES = [
 for (const page of PAGES) {
   test(`${page} nav links Tours`, () => {
     const html = readFileSync(new URL(`../${page}`, import.meta.url), "utf8");
-    const navs = html.match(/<nav\b[\s\S]*?<\/nav>/g) || [];
-    assert.ok(navs.length > 0, `${page} has a nav`);
-    assert.ok(navs.some((nav) => /<a\b[^>]*href="\/tours"[^>]*>Tours<\/a>/.test(nav)), `${page} nav includes the Tours link`);
+    assert.match(html, /id="appShell"/, `${page} mounts the common navigation`);
+    assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">Tours<\/a>/);
   });
 }
 

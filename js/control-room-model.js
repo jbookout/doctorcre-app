@@ -190,6 +190,35 @@ export function readPhase({ status, reads }) {
   return answered === attempted ? "ready" : "partial";
 }
 
+/** The header badge's words, one per phase. */
+export const HEADER_WORDS = Object.freeze({
+  loading: "Taking the reads…",
+  no_access: "Session ended",
+  offline: "No read answered",
+  partial: "Some reads did not answer",
+  incomplete: "Some reads came back incomplete",
+  ready: "Every read answered",
+});
+
+/**
+ * A read can answer and still say it is short. "ready" is claimed only when
+ * no answered read names a source it could not read in full.
+ *
+ * @param {string} phase the page phase from readPhase/resourceRoomPhase
+ * @param {string[]} incomplete source names that answered incompletely
+ */
+export function headerPhase(phase, incomplete = []) {
+  return phase === "ready" && incomplete.length > 0 ? "incomplete" : phase;
+}
+
+/** The census legs that answered short, from a census read that did answer. */
+export function censusIncompleteSources(read) {
+  if (read?.state !== "read" || read.payload?.census_complete !== false) return [];
+  const legs = Array.isArray(read.payload.coverage) ? read.payload.coverage : [];
+  const short = legs.filter((leg) => leg?.state !== "complete").map((leg) => leg.source_ref || leg.kind).filter(Boolean);
+  return short.length ? short : ["the work census"];
+}
+
 /* -------------------------------------------------------------------- tiles */
 
 const unanswered = (id, reason, open) => ({
@@ -381,7 +410,7 @@ export function incidentFilters(incidents) {
 export function canonicalHref(item) {
   const ref = item && typeof item === "object" ? (item.human_ref || item.ref) : item;
   if (typeof ref !== "string") return null;
-  if (WORK_REQUEST_REF.test(ref)) return "/system-work.html";
+  if (WORK_REQUEST_REF.test(ref)) return "/work-requests";
   if (INCIDENT_REF.test(ref)) return `/incidents?ref=${encodeURIComponent(ref)}`;
   return null;
 }

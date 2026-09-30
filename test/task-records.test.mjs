@@ -303,8 +303,8 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
 
   // Route and contract, both bumped for an additive change.
   assert.equal(routes.routes["/tasks"], "tasks.html");
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(carr.version, "1.31.0");
+  assert.equal(routes.version, "1.15.0");
+  assert.equal(carr.version, "1.33.0");
   for (const verb of ["add-loop", "close-loop", "loop-board", "loop-headers", "read-loop", "update-loop"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }
@@ -321,7 +321,7 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   assert.match(html, /id="taskLive"[^>]*aria-live="polite"/);
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "commands report in the shared dock");
   assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.match(html, /<a href="\/tasks" aria-current="page">Tasks<\/a>/, "the page is listed in the navigation it belongs to");
+  assert.match(html, /id="appShell"/, "the page mounts the shared navigation");
   for (const id of ["quickAddForm", "quickAddInput", "quickAddDate", "quickAddParsed", "quickAddQuestion", "quickAddDraft", "scopeSwitch", "taskList", "taskDialog", "taskState", "systemOwned"]) {
     assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
   }

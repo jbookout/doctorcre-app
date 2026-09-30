@@ -101,7 +101,7 @@ test("B05-2 a null element inside refs renders no ref chip, no link, and never t
 test("B05-3 Back restores the query and the chips from the address, byte for byte, and re-renders without a read", () => {
   const before = { query: "alpha", kinds: ["deals"] };
   const address = searchAddress(before);
-  assert.equal(address, "/business?q=alpha&kinds=deals");
+  assert.equal(address, "/search?q=alpha&kinds=deals");
   const restored = parseSearchAddress(address.slice(address.indexOf("?")));
   assert.equal(restored.query, before.query);
   assert.deepEqual([...restored.kinds], before.kinds);
@@ -380,11 +380,11 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 
 /* ----------------------------------------------------------------------- B05-14 */
 
-test("B05-14 the interface contract pins both verbs alphabetically at 1.19.0 and no route moves", () => {
-  assert.equal(routes.version, "1.14.0", "no new route: the Search tab lives on /business");
-  assert.equal(routes.routes["/business"], "business-workspace.html");
-  assert.equal(contract.version, "1.31.0", "two added operations are an additive, minor bump");
-  assert.equal(contract.producer.source_commit, "ad4bc537b3b198f92f52900942dbf01156e65b73", "the producer pin includes the merged progress board and session-identity verbs");
+test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
+  assert.equal(routes.version, "1.15.0", "no new route: the Search tab lives on /business");
+  assert.equal(routes.routes["/search"], "search.html");
+  assert.equal(contract.version, "1.33.0", "the current contract retains Search operations");
+  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");

@@ -14,22 +14,15 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/design.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body data-prototype="operations">
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the dashboard</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>Control Room <small>prototype</small></span></a>
-    <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="/design/business">Business</a>
-      <a href="/design/operations" aria-current="page">Control Room</a>
-      <a href="/design">Visual system</a>
-      <a href="/work-inventory">Work Inventory</a>
-    </nav>
-    <a class="pref-icon nav-notif" href="/notifications" title="Notifications">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.1c0 .86-.34 1.68-.94 2.3L4.6 15h14.8l-1.46-1.6a3.3 3.3 0 0 1-.94-2.3V8a5 5 0 0 0-5-5Z"></path><path d="M9.6 18a2.6 2.6 0 0 0 4.8 0"></path></svg>
-      <span class="sr-only">Notifications</span>
-      <span class="nav-badge" id="navUnreadBadge" hidden></span>
-    </a>
+
+
+
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
@@ -46,6 +39,7 @@
 
   <main id="main" class="shell">
     <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. Production is not read or changed.</p>
+    <p class="prototype-links"><a href="/design">All prototypes</a></p>
     <div class="simulator glass">
       <label for="outcomeSimulator">Next command outcome</label>
       <select id="outcomeSimulator">
@@ -283,13 +277,7 @@
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="footer"><span>DoctorCRE · Control Room prototype</span><span>Synthetic examples. Production was not read or changed.</span></footer>
-  <nav class="mobile-nav" aria-label="Control Room shortcuts">
-    <a href="#panelDashboard" data-tab="tabDashboard" aria-current="page"><span aria-hidden="true">◉</span>Dash</a>
-    <a href="#panelAtlas" data-tab="tabAtlas"><span aria-hidden="true">⌘</span>Atlas</a>
-    <a href="#panelModelRoom" data-tab="tabModelRoom"><span aria-hidden="true">◈</span>Models</a>
-    <a href="#panelSessions" data-tab="tabSessions"><span aria-hidden="true">!</span>Sessions</a>
-    <a href="/design/business"><span aria-hidden="true">⌂</span>Business</a>
-  </nav>
+
   <script type="module" src="/js/design-prototype.js"></script>
 </body>
 </html>

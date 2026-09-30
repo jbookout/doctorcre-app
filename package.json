@@ -22,6 +22,7 @@
     "serve": "node scripts/serve.mjs"
   },
   "devDependencies": {
+    "jsdom": "^26.1.0",
     "wrangler": "4.131.2"
   }
 }
