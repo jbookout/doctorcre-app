@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import test from "node:test";
@@ -117,11 +118,16 @@ for (const width of [390, 1280]) {
   for (const board of ["carr-v5", "all-repos"]) {
     test(`no card content overflows its card at ${width}px on ${board}`, { skip: chrome ? false : "no Chrome or Chromium found; set CHROME_BIN" }, async () => {
       const server = await serve();
+      // A fresh profile per run: a shared default profile being created or
+      // held by another Chrome can stall a headless launch until the timeout.
+      const profile = await mkdtemp(join(tmpdir(), "board-layout-"));
       try {
         const { port } = server.address();
         // Async on purpose: a synchronous spawn would block this process's own server.
         const run = await new Promise(resolve => execFile(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-          "--no-first-run", "--no-proxy-server", "--window-size=1400,2500", "--virtual-time-budget=10000",
+          "--no-first-run", "--no-default-browser-check", "--no-proxy-server", "--window-size=1400,2500",
+          `--user-data-dir=${profile}`, "--disable-background-networking", "--disable-component-update",
+          "--disable-dev-shm-usage", "--virtual-time-budget=10000",
           "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
           "--dump-dom", `http://127.0.0.1:${port}/__frame?width=${width}&board=${board}`],
         { encoding: "utf8", timeout: 60000, maxBuffer: 32 * 1024 * 1024 },
@@ -134,6 +140,7 @@ for (const width of [390, 1280]) {
         assert.deepEqual(result.problems, []);
       } finally {
         server.close();
+        await rm(profile, { recursive: true, force: true });
       }
     });
   }
