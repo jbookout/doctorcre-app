@@ -111,7 +111,7 @@ export function mountPropertyPanel({ tour, request }) {
   root.innerHTML = `<div class="property-panel-head"><div><p class="eyebrow">Site intelligence</p><h3>Property evidence</h3></div>
     <label for="property-evidence-select">Property <select id="property-evidence-select">${properties.map(stop =>
       `<option value="${escape(stop.property_id)}">${escape(stop.name || stop.address || stop.property_id)}</option>`).join("")}</select></label>
-    <label for="property-evidence-date">As of <input id="property-evidence-date" type="date" value="${escape(priorDate || localDate(new Date()))}"></label></div>
+    <label for="property-evidence-date">As of <input id="property-evidence-date" type="date" value="${escape(priorDate ?? localDate(new Date()))}"></label></div>
     <div id="property-evidence-content" aria-live="polite">${properties.length ? "Loading evidence…" : "No property is selected."}</div>
     <dialog id="property-evidence-dialog" class="property-evidence-dialog"><button type="button" class="property-dialog-close" aria-label="Close">×</button><div class="property-dialog-content"></div></dialog>`;
   if (!selected) { state.key = null; state.current = null; state.loading = false; return; }
@@ -125,7 +125,14 @@ export function mountPropertyPanel({ tour, request }) {
   async function load() {
     const propertyId = select.value;
     const selectedDate = root.querySelector("#property-evidence-date").value;
-    if (!selectedDate) { state.key = null; state.current = null; state.loading = false; return; }
+    if (!selectedDate) {
+      state.token = null;
+      state.key = null;
+      state.current = null;
+      state.loading = false;
+      root.querySelector("#property-evidence-content").textContent = "Choose an as-of date to view property evidence.";
+      return;
+    }
     const key = `${propertyId}:${selectedDate}`;
     if (state.key === key && (state.current || state.loading)) { renderCurrent(); return; }
     const token = {};

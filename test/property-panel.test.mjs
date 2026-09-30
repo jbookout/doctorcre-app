@@ -37,6 +37,48 @@ function openPanel(t, request) {
       input.dispatchEvent(new dom.window.Event("change")); } };
 }
 
+test("clearing the date removes reviewed facts through a property switch and remount until a date is supplied", async t => {
+  const calls = [];
+  const panel = openPanel(t, async path => {
+    const url = new URL(path, "https://app.example.invalid");
+    calls.push(url);
+    return url.searchParams.get("property_id") === otherProperty
+      ? { ...evidence, property_id: otherProperty, facts: { county: reviewed("Walton") } } : evidence;
+  });
+  panel.mount(); await settle();
+  assert.match(panel.root.textContent, /Escambia/);
+  panel.change("#property-evidence-date", ""); await settle();
+  function dateRequired() {
+    assert.equal(panel.root.querySelector("#property-evidence-date").value, "");
+    assert.match(panel.root.querySelector("#property-evidence-content").textContent, /Choose an as-of date/);
+    assert.equal(panel.root.querySelectorAll(".property-fact, .property-layer-node").length, 0);
+    assert.doesNotMatch(panel.root.textContent, /Escambia|Reviewed/);
+    assert.equal(calls.length, 1);
+  }
+  dateRequired();
+  panel.change("#property-evidence-select", otherProperty); await settle();
+  dateRequired();
+  panel.mount(); await settle();
+  dateRequired();
+  assert.equal(panel.root.querySelector("#property-evidence-select").value, otherProperty);
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  assert.equal(calls.length, 2);
+  assert.equal(calls.at(-1).searchParams.get("property_id"), otherProperty);
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T23:59:59.999Z");
+  assert.match(panel.root.textContent, /Walton/);
+  assert.doesNotMatch(panel.root.textContent, /Escambia/);
+});
+
+test("clearing the date rejects a pending evidence result", async t => {
+  let resolve;
+  const panel = openPanel(t, () => new Promise(done => { resolve = done; }));
+  panel.mount();
+  panel.change("#property-evidence-date", "");
+  resolve(evidence); await settle();
+  assert.match(panel.root.querySelector("#property-evidence-content").textContent, /Choose an as-of date/);
+  assert.equal(panel.root.querySelectorAll(".property-fact").length, 0);
+});
+
 test("reorder and save remounts preserve the selected property, historical date and loaded evidence without refetching", async t => {
   const calls = [];
   const panel = openPanel(t, async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
