@@ -12,6 +12,11 @@
   let mapInstance = null;
   let feedback = null;
   const pending = new globalThis.Map();
+  let contentStatus = "";
+  const retryFeedbackButton = document.createElement("button");
+  retryFeedbackButton.type = "button"; retryFeedbackButton.textContent = "Retry feedback";
+  retryFeedbackButton.hidden = true;
+  feedbackStatus.after(retryFeedbackButton);
 
   function setStatus(message) { status.textContent = message; }
 
@@ -59,7 +64,7 @@
       pending.delete(slot);
       let itemFeedback = feedbackFor(item.property_ref);
       if (!itemFeedback) {
-        itemFeedback = { property_ref: item.property_ref, shortlisted: false, comments: [] };
+        itemFeedback = { property_ref: item.property_ref, comments: [] };
         feedback.items ||= [];
         feedback.items.push(itemFeedback);
       }
@@ -79,22 +84,25 @@
     const panel = document.createElement("div"); panel.className = "feedback-controls";
     const itemFeedback = feedbackFor(item.property_ref);
     if (scopes.includes("shortlist")) {
-      const button = document.createElement("button"); button.type = "button";
-      const selected = itemFeedback?.shortlisted === true;
-      button.textContent = selected ? "Remove from shortlist" : "Add to shortlist";
-      button.setAttribute("aria-pressed", String(selected));
-      button.addEventListener("click", () => {
-        const nextSelected = feedbackFor(item.property_ref)?.shortlisted !== true;
-        button.disabled = true;
-        void sendFeedback("shortlist", item, nextSelected).then(saved => {
-          if (saved) {
-            button.textContent = nextSelected ? "Remove from shortlist" : "Add to shortlist";
-            button.setAttribute("aria-pressed", String(nextSelected));
-          }
-          button.disabled = false;
+      const choice = document.createElement("p"); choice.className = "shortlist-state";
+      choice.setAttribute("role", "status");
+      choice.textContent = "Previous shortlist choices are not shown.";
+      const actions = document.createElement("div"); actions.setAttribute("role", "group");
+      actions.className = "actions";
+      actions.setAttribute("aria-label", "Shortlist");
+      const buttons = [true, false].map(selected => {
+        const button = document.createElement("button"); button.type = "button";
+        button.textContent = selected ? "Add to shortlist" : "Remove from shortlist";
+        button.addEventListener("click", () => {
+          for (const control of buttons) control.disabled = true;
+          void sendFeedback("shortlist", item, selected).then(saved => {
+            if (saved) choice.textContent = selected ? "Added to shortlist." : "Removed from shortlist.";
+            for (const control of buttons) control.disabled = false;
+          });
         });
+        return button;
       });
-      panel.append(button);
+      actions.append(...buttons); panel.append(choice, actions);
     }
     if (scopes.includes("comment")) {
       const label = document.createElement("label"); label.textContent = "Your comment";
@@ -142,6 +150,7 @@
     for (const { item, index } of properties) {
       const row = document.createElement("li");
       row.className = "report-item";
+      row.dataset.propertyRef = item.property_ref;
       const route = document.createElement("p");
       route.className = "route-label";
       route.textContent = text(item.route_label, `Stop ${routeOrder(item, index)}`);
@@ -212,14 +221,45 @@
     return payload.data || {};
   }
 
+  async function fetchFeedback() {
+    const payload = await request("/api/share/feedback");
+    if (!payload?.data || !Array.isArray(payload.data.permission_scopes)) throw new Error("feedback_unavailable");
+    return payload.data;
+  }
+
+  function showFeedbackUnavailable() {
+    feedbackStatus.textContent = "Feedback is unavailable. Retry to load shortlist and comment controls.";
+    retryFeedbackButton.hidden = false;
+    setStatus(`${contentStatus} Feedback unavailable.`);
+  }
+
+  async function retryFeedback() {
+    retryFeedbackButton.disabled = true;
+    feedbackStatus.textContent = "Loading feedback…";
+    try {
+      feedback = await fetchFeedback();
+      for (const row of list.querySelectorAll(".report-item")) {
+        const item = reportProperties.get(row.dataset.propertyRef);
+        if (item && !row.querySelector(".feedback-controls")) renderFeedbackControls(row, item);
+      }
+      feedbackStatus.textContent = "";
+      retryFeedbackButton.hidden = true;
+      setStatus(contentStatus);
+    } catch {
+      showFeedbackUnavailable();
+    } finally {
+      retryFeedbackButton.disabled = false;
+    }
+  }
+
   async function loadTour() {
     try {
       // Packet and map are independently scoped. Fetch both, then render in a
       // stable order so a valid map-only or packet-only grant still opens.
-      const [reportResult, mapResult, feedbackResult] = await Promise.allSettled([fetchReport(), fetchMap(), request("/api/share/feedback")]);
+      const [reportResult, mapResult, feedbackResult] = await Promise.allSettled([fetchReport(), fetchMap(), fetchFeedback()]);
       const reportLoaded = reportResult.status === "fulfilled";
       const mapLoaded = mapResult.status === "fulfilled";
-      feedback = feedbackResult.status === "fulfilled" ? feedbackResult.value.data : null;
+      feedback = feedbackResult.status === "fulfilled" ? feedbackResult.value : null;
       if (!reportLoaded && !mapLoaded) throw new Error("share_scope_unavailable");
       if (reportLoaded) render(reportResult.value);
       else {
@@ -230,7 +270,9 @@
       }
       if (mapLoaded) await renderMap(mapResult.value);
       else document.querySelector("#map-section").hidden = true;
-      setStatus(reportLoaded && mapLoaded ? "Report and map loaded." : reportLoaded ? "Report loaded." : "Map loaded.");
+      contentStatus = reportLoaded && mapLoaded ? "Report and map loaded." : reportLoaded ? "Report loaded." : "Map loaded.";
+      if (feedbackResult.status === "rejected") showFeedbackUnavailable();
+      else setStatus(contentStatus);
     } catch {
       setStatus("This shared report is unavailable.");
       summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
@@ -268,5 +310,6 @@
   }
 
   openButton.addEventListener("click", () => { void openTour(); });
+  retryFeedbackButton.addEventListener("click", () => { void retryFeedback(); });
   bootstrap();
 })();

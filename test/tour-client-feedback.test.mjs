@@ -12,10 +12,12 @@ const tourHtml = readFileSync(new URL("../tours/index.html", import.meta.url), "
 
 const propertyRef = "property:public:synthetic_property_01";
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+const shortlistAction = (doc, label = "Add to shortlist") => [...doc.querySelectorAll("button")].find(button => button.textContent === label);
 const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
 const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
 const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const tourScript = `${tourFormat}\n${tours.replace(/^import [^\n]*\n/m, "")}`;
+const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
+const tourScript = `const mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } }) };
@@ -115,15 +117,23 @@ test("reordering draft stops retains the sealed projection's loaded client respo
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
   assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "false");
 });
-async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null } = {}) {
+async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"] } = {}) {
   const dom = new JSDOM(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto });
   const writes = [];
+  const reads = [];
   dom.window.fetch = async (path, options = {}) => {
+    if (!options.method) reads.push(path);
     let data;
     if (path === "/api/share/report") data = { items: properties };
     else if (path === "/api/share/map") data = { points: [] };
-    else if (path === "/api/share/feedback") data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: ["shortlist", "comment"], ...(items === null ? {} : { items }) };
+    else if (path === "/api/share/feedback") {
+      if (feedbackRead) {
+        const response = await feedbackRead();
+        if (response) return response;
+      }
+      data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: permissionScopes, ...(items === null ? {} : { items }) };
+    }
     else if (path === "/api/share/shortlist" || path === "/api/share/comment") {
       writes.push({ path, ...JSON.parse(options.body) });
       if (holdWrite) await holdWrite(path);
@@ -134,23 +144,41 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
   };
   dom.window.eval(share);
   await settle();
-  return { dom, doc: dom.window.document, writes };
+  return { dom, doc: dom.window.document, writes, reads };
 }
 
-test("an acknowledged first shortlist choice redraws the control and the next click removes it", async t => {
+test("reopening a private saved shortlist offers deliberate add and remove without inventing a prior choice", async t => {
+  // projectTourClientFeedback at pinned CARR 0cc6fe2538a81521bf8c25b0df58aa4063ed614b
+  // returns only property_ref in each item, even when shortlisted is saved true.
+  const responseItems = [{ property_ref: propertyRef }];
+  const first = await openShare({ items: responseItems });
+  t.after(() => first.dom.window.close());
+  shortlistAction(first.doc).click(); await settle();
+  assert.equal(first.writes[0].shortlisted, true);
+
+  const reopened = await openShare({ items: responseItems });
+  t.after(() => reopened.dom.window.close());
+  assert.match(reopened.doc.querySelector(".shortlist-state")?.textContent || "", /Previous shortlist choices are not shown/);
+  assert.equal(reopened.doc.querySelectorAll("button[aria-pressed]").length, 0);
+  assert.ok(shortlistAction(reopened.doc));
+  assert.ok(shortlistAction(reopened.doc, "Remove from shortlist"));
+  shortlistAction(reopened.doc, "Remove from shortlist").click(); await settle();
+  assert.deepEqual([...first.writes, ...reopened.writes].map(write => write.shortlisted), [true, false]);
+  assert.equal(reopened.doc.querySelector(".shortlist-state").textContent, "Removed from shortlist.");
+});
+
+test("acknowledged explicit shortlist choices update only this visit's choice", async t => {
   const app = await openShare();
   t.after(() => app.dom.window.close());
-  const button = () => app.doc.querySelector("button[aria-pressed]");
-  assert.equal(button().getAttribute("aria-pressed"), "false");
-  button().click();
+  const choice = () => app.doc.querySelector(".shortlist-state").textContent;
+  assert.equal(choice(), "Previous shortlist choices are not shown.");
+  shortlistAction(app.doc).click();
   await settle();
   assert.equal(app.doc.querySelector("#feedback-status").textContent, "Shortlist saved.");
-  assert.equal(button().textContent, "Remove from shortlist");
-  assert.equal(button().getAttribute("aria-pressed"), "true");
-  button().click();
+  assert.equal(choice(), "Added to shortlist.");
+  shortlistAction(app.doc, "Remove from shortlist").click();
   await settle();
-  assert.equal(button().textContent, "Add to shortlist");
-  assert.equal(button().getAttribute("aria-pressed"), "false");
+  assert.equal(choice(), "Removed from shortlist.");
   assert.deepEqual(app.writes.map(write => write.shortlisted), [true, false]);
   assert.ok(app.writes.every(write => write.property_ref === propertyRef));
 });
@@ -163,9 +191,9 @@ test("shortlist saves preserve unsaved comments on every property", async t => {
   t.after(() => app.dom.window.close());
   const inputs = app.doc.querySelectorAll("textarea");
   inputs[0].value = "Draft for A"; inputs[1].value = "Draft for B";
-  app.doc.querySelector("button[aria-pressed]").click(); await settle();
+  shortlistAction(app.doc).click(); await settle();
   assert.deepEqual([...app.doc.querySelectorAll("textarea")].map(input => input.value), ["Draft for A", "Draft for B"]);
-  assert.equal(app.doc.querySelector("button[aria-pressed]").getAttribute("aria-pressed"), "true");
+  assert.equal(app.doc.querySelector(".shortlist-state").textContent, "Added to shortlist.");
 });
 
 test("saving another property's feedback retains in-flight controls and newer comment drafts", async t => {
@@ -181,7 +209,7 @@ test("saving another property's feedback retains in-flight controls and newer co
   commentButton(rows()[0]).click(); await settle();
   rows()[0].querySelector("textarea").value = "Newer A draft";
   rows()[1].querySelector("textarea").value = "Unsaved B draft";
-  rows()[1].querySelector("button[aria-pressed]").click(); await settle();
+  shortlistAction(rows()[1]).click(); await settle();
   assert.equal(commentButton(rows()[0]).disabled, true);
   assert.deepEqual([...app.doc.querySelectorAll("textarea")].map(input => input.value), ["Newer A draft", "Unsaved B draft"]);
   held.resolve(); await settle();
@@ -190,19 +218,63 @@ test("saving another property's feedback retains in-flight controls and newer co
   assert.deepEqual([...app.doc.querySelectorAll("textarea")].map(input => input.value), ["Newer A draft", "Unsaved B draft"]);
 });
 
-test("a refused shortlist save retains the unselected control and retries the same logical write", async t => {
+test("a refused shortlist save retains the unknown choice and retries the same logical write", async t => {
   const app = await openShare({ refuseOnce: true });
   t.after(() => app.dom.window.close());
-  const button = () => app.doc.querySelector("button[aria-pressed]");
+  const button = () => shortlistAction(app.doc);
   button().click();
   await settle();
-  assert.equal(button().getAttribute("aria-pressed"), "false");
+  assert.equal(app.doc.querySelector(".shortlist-state").textContent, "Previous shortlist choices are not shown.");
   assert.equal(button().disabled, false);
   assert.match(app.doc.querySelector("#feedback-status").textContent, /could not be saved/);
   button().click();
   await settle();
-  assert.equal(button().getAttribute("aria-pressed"), "true");
+  assert.equal(app.doc.querySelector(".shortlist-state").textContent, "Added to shortlist.");
   assert.equal(app.writes[0].idempotency_key, app.writes[1].idempotency_key);
+});
+
+test("a partial feedback outage is visible and retry restores scoped controls without reloading the report", async t => {
+  let attempts = 0;
+  const held = deferred();
+  const app = await openShare({ feedbackRead: () => ++attempts === 1
+    ? { ok: false, json: async () => ({ error: "unavailable" }) }
+    : attempts === 2 ? held.promise : null });
+  t.after(() => app.dom.window.close());
+  const row = app.doc.querySelector(".report-item");
+  assert.match(row.textContent, /Demo medical office/);
+  assert.match(app.doc.querySelector("#status").textContent, /Feedback unavailable/);
+  assert.match(app.doc.querySelector("#feedback-status").textContent, /unavailable/);
+  const retry = [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Retry feedback");
+  assert.ok(retry && !retry.hidden && !retry.disabled);
+  retry.click(); await settle();
+  assert.equal(retry.disabled, true);
+  assert.match(app.doc.querySelector("#feedback-status").textContent, /Loading feedback/);
+  retry.click(); await settle();
+  assert.equal(attempts, 2);
+  held.resolve({ ok: false, json: async () => ({ error: "unavailable" }) }); await settle();
+  assert.match(app.doc.querySelector("#feedback-status").textContent, /unavailable/);
+  assert.equal(retry.disabled, false);
+  retry.click(); await settle();
+  assert.equal(retry.hidden, true);
+  assert.equal(app.doc.querySelector(".report-item"), row);
+  assert.equal(app.doc.querySelectorAll(".feedback-controls").length, 1);
+  assert.ok(shortlistAction(app.doc, "Remove from shortlist"));
+  assert.ok(row.querySelector("textarea"));
+  assert.equal(app.doc.querySelector("#status").textContent, "Report and map loaded.");
+  assert.doesNotMatch(app.doc.querySelector("#feedback-status").textContent, /unavailable/);
+  assert.equal(app.reads.filter(path => path === "/api/share/report").length, 1);
+  assert.equal(app.reads.filter(path => path === "/api/share/map").length, 1);
+  shortlistAction(app.doc).click(); await settle();
+  assert.equal(app.writes[0].shortlisted, true);
+});
+
+test("a successful grant without feedback scopes stays read-only without an outage or retry", async t => {
+  const app = await openShare({ permissionScopes: [] });
+  t.after(() => app.dom.window.close());
+  assert.equal(app.doc.querySelectorAll(".feedback-controls").length, 0);
+  assert.equal(app.doc.querySelector("#status").textContent, "Report and map loaded.");
+  assert.equal(app.doc.querySelector("#feedback-status").textContent, "");
+  assert.equal([...app.doc.querySelectorAll("button")].filter(button => button.textContent === "Retry feedback" && !button.hidden).length, 0);
 });
 
 test("a first comment appears even when the feedback response omits property rows", async t => {
