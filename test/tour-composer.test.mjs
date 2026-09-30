@@ -77,7 +77,11 @@ function domain() {
       if ((prior?.route_version || 0) !== body.expected_prior_route_version) return response(null, 409);
       assert.ok(r.stops.some(s => s.stop_state === "active"));
       assert.ok(r.stops.every(s => transitions.some(x => x.new_route_stop_id === s.id && x.new_route_version_id === r.id)));
-      if (prior) assert.ok(prior.stops.every(s => transitions.some(x => x.old_route_stop_id === s.id && x.new_route_version_id === r.id)));
+      if (prior) {
+        assert.ok(prior.stops.every(s => transitions.some(x => x.old_route_stop_id === s.id && x.new_route_version_id === r.id)));
+        assert.ok(prior.stops.filter(s => s.locked_appointment).every(old => r.stops.some(s => s.property_id === old.property_id && s.stop_state === "active" &&
+          ["locked_appointment", "appointment_start", "appointment_end", "dwell_minutes", "buffer_minutes"].every(field => s[field] === old[field]))));
+      }
       r.accepted = true; result = { route_version_acceptance_id: uuid() };
     } else throw new Error(`Unexpected path: ${path}`);
     replay.set(body.idempotency_key, { body: JSON.stringify(body), result });
@@ -94,6 +98,16 @@ async function open(store, storage = {}) {
   return { dom, doc: dom.window.document };
 }
 function fill(doc, selector, value) { const node = doc.querySelector(selector); assert.ok(node, selector); node.value = value; node.dispatchEvent(new doc.defaultView.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })); }
+function deferDetail(store) {
+  const fetch = store.fetch; let release;
+  store.fetch = async (path, options) => {
+    if (!path.startsWith("/api/tours/detail")) return fetch(path, options);
+    store.fetch = fetch;
+    const result = await fetch(path, options);
+    await new Promise(resolve => { release = resolve; }); return result;
+  };
+  return () => release();
+}
 async function create(doc, type = "work") {
   fill(doc, "#create-tour-name", "Synthetic Tour"); fill(doc, "#create-subject-type", type); fill(doc, "#create-subject-id", `${type}:fixture`);
   fill(doc, "#create-dataset", "synthetic-v1");
@@ -151,6 +165,210 @@ async function saveAndAccept(doc) {
   doc.querySelector("#save-composer").click(); await settle();
   doc.querySelector("#route-reviewed").click(); doc.querySelector("#accept-route").click(); await settle();
 }
+test("review 1: a changed same-Tour read invalidates review and displays the target route", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
+  doc.querySelector("#save-composer").click(); await settle(); doc.querySelector("#route-reviewed").click();
+  const tour = [...store.tours.values()][0];
+  tour.routes.unshift({ ...structuredClone(tour.routes[0]), id: uuid(), route_version: 2 });
+  tour.routes[0].stops[0].route_label = "Changed elsewhere";
+  doc.querySelector(".tour-button").click(); await settle();
+  assert.equal(doc.querySelector("#route-reviewed").checked, false);
+  assert.equal(doc.querySelector('[data-field="route_label"]').value, "Changed elsewhere");
+  doc.querySelector("#accept-route").click(); await settle();
+  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-accept").length, 0);
+  dom.window.close();
+});
+test("review 4: Reload serializes edits and writes until its captured read settles", async () => {
+  const store = domain(), fetch = store.fetch;
+  const proxy = { fetch: (...args) => store.fetch(...args) };
+  const { dom, doc } = await open(proxy); await create(doc); await addCart(doc); await saveAndAccept(doc);
+  const release = deferDetail(store); doc.querySelector("#reload-composer").click(); await settle();
+  assert.equal(doc.querySelector('[data-field="route_label"]').disabled, true);
+  assert.equal(doc.querySelector("#save-composer").disabled, true);
+  const writes = store.calls.filter(c => c.body).length;
+  doc.querySelector("#save-composer").click(); await settle();
+  assert.equal(store.calls.filter(c => c.body).length, writes);
+  release(); await settle(); assert.equal(doc.querySelector('[data-field="route_label"]').disabled, false);
+  store.fetch = fetch; dom.window.close();
+});
+test("review 5: Tour navigation locks the outgoing composer against intervening edits", async () => {
+  const store = domain(), { dom, doc } = await open({ fetch: (...args) => store.fetch(...args) });
+  await create(doc); await addCart(doc); await saveAndAccept(doc); await create(doc);
+  const tours = [...store.tours.values()]; doc.querySelector(".tour-button").click(); await settle();
+  const release = deferDetail(store); doc.querySelectorAll(".tour-button")[1].click(); await settle();
+  assert.equal(doc.querySelector('[data-field="route_label"]').disabled, true);
+  fill(doc, '[data-field="route_label"]', "Intervening edit");
+  release(); await settle(); assert.equal(doc.querySelector("#tour-name").textContent, tours[1].name);
+  doc.querySelector(".tour-button").click(); await settle();
+  assert.equal(doc.querySelector('[data-field="route_label"]').value, "Stop 1"); dom.window.close();
+});
+for (const kind of ["create", "composer"]) test(`review 2: ${kind} intent cannot retry under a changed authenticated session`, async () => {
+  const store = domain(); let changed = false;
+  const { dom, doc } = await open({ fetch: async (...args) => {
+    const result = await store.fetch(...args);
+    if (!changed) return result;
+    return { ...result, json: async () => ({ ...await result.json(), csrf_token: "second-session" }) };
+  } });
+  if (kind === "create") { store.fail("/api/tours/create", "lost"); await create(doc); }
+  else { await create(doc); await addCart(doc); store.fail("/api/tours/route-stop", "lost"); doc.querySelector("#save-composer").click(); await settle(); }
+  const posts = store.calls.filter(c => c.body).length; changed = true;
+  doc.querySelector(kind === "create" ? "#reconcile-create" : "#reconcile-composer").click(); await settle();
+  if (kind === "create") assert.equal(doc.querySelector("#create-tour").textContent.includes("Retry"), false);
+  else assert.equal(doc.querySelector("#retry-composer").hidden, true);
+  assert.equal(store.calls.filter(c => c.body).length, posts);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), null);
+  dom.window.close();
+});
+test("review 3: boot surfaces a pending composer before another Tour can erase its journal", async () => {
+  const store = domain(), first = await open(store); await create(first.doc); await create(first.doc);
+  first.doc.querySelector(".tour-button").click(); await settle(); await addCart(first.doc);
+  store.fail("/api/tours/route-stop", "lost"); first.doc.querySelector("#save-composer").click(); await settle();
+  const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
+  const next = await open(store, { "doctorcre-tour-pending-v1": retained });
+  assert.equal(next.doc.querySelector("#reconcile-composer").hidden, false);
+  next.doc.querySelectorAll(".tour-button")[1].click(); await settle(); await create(next.doc);
+  assert.equal(next.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), retained);
+  assert.equal(store.tours.size, 2); next.dom.window.close();
+});
+test("review 3: a failed boot library cannot expose writes that replace a retained composer", async () => {
+  const store = domain(), first = await open(store); await create(first.doc); await addCart(first.doc);
+  store.fail("/api/tours/route-stop", "lost"); first.doc.querySelector("#save-composer").click(); await settle();
+  const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
+  const next = await open({ fetch: (path, options) => path === "/api/tours/library" ? response({}) : store.fetch(path, options) }, { "doctorcre-tour-pending-v1": retained });
+  assert.equal(next.doc.querySelector("#create-tour").disabled, true);
+  await create(next.doc);
+  assert.equal(store.tours.size, 1);
+  assert.equal(next.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), retained); next.dom.window.close();
+});
+test("review 6: Reload after a refused transition preserves and resumes partial assembly", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
+  store.fail("/api/tours/route-stop-transition", "refused"); doc.querySelector("#save-composer").click(); await settle();
+  const retained = dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1");
+  const tour = [...store.tours.values()][0]; assert.equal(tour.routes[0].stops.length, 1);
+  doc.querySelector("#reload-composer").click(); await settle();
+  assert.equal(doc.querySelector("#retry-composer").hidden, false);
+  assert.equal(doc.querySelector("#accept-route").disabled, true);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), retained);
+  doc.querySelector("#retry-composer").click(); await settle();
+  assert.equal(tour.routes[0].stops.length, 2);
+  const transitions = store.calls.filter(c => c.path === "/api/tours/route-stop-transition");
+  assert.deepEqual(transitions[0].body, transitions[1].body);
+  doc.querySelector("#route-reviewed").click(); doc.querySelector("#accept-route").click(); await settle();
+  assert.equal(tour.routes[0].accepted, true); dom.window.close();
+});
+for (const artifact of ["library", "truncated detail", "wrong Tour", "partial route"]) test(`review 7: ${artifact} is a failed reconciliation artifact`, async () => {
+  const store = domain(); let malformed = false;
+  const { dom, doc } = await open({ fetch: async (path, options) => {
+    if (malformed && (artifact === "library" ? path === "/api/tours/library" : path.startsWith("/api/tours/detail"))) {
+      if (artifact === "truncated detail") return { ok: true, status: 200, json: async () => { throw new SyntaxError("truncated"); } };
+      if (artifact === "library") return response({});
+      const data = (await (await store.fetch(path, options)).json()).data;
+      if (artifact === "wrong Tour") data.id = uuid(); else delete data.routes[0].stops;
+      return response(data);
+    }
+    return store.fetch(path, options);
+  } });
+  if (artifact === "library") { store.fail("/api/tours/create", "lost"); await create(doc); }
+  else { await create(doc); await addCart(doc); store.fail("/api/tours/route-stop", "lost"); doc.querySelector("#save-composer").click(); await settle(); }
+  const retained = dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), posts = store.calls.filter(c => c.body).length;
+  malformed = true; doc.querySelector(artifact === "library" ? "#reconcile-create" : "#reconcile-composer").click(); await settle();
+  assert.equal(artifact === "library" ? doc.querySelector("#create-tour").disabled : doc.querySelector("#retry-composer").hidden, true);
+  assert.equal(store.calls.filter(c => c.body).length, posts);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), retained); dom.window.close();
+});
+test("review 7: projected display fields may differ from raw route history", async () => {
+  const store = domain(), { dom, doc } = await open({ fetch: async (path, options) => {
+    const result = await store.fetch(path, options);
+    if (!path.startsWith("/api/tours/detail")) return result;
+    const data = (await result.json()).data;
+    data.stops = data.stops.map(stop => ({ ...stop, label: `${stop.route_label} · Synthetic display` }));
+    return response(data);
+  } });
+  await create(doc); await addCart(doc); doc.querySelector("#save-composer").click(); await settle();
+  assert.match(doc.querySelector("#composer-state").textContent, /Draft saved/); dom.window.close();
+});
+for (const inactive of ["held", "excluded"]) test(`review 8: an initial ${inactive} fixed appointment is rejected before assembly`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
+  const row = `#route-stops [data-property-id="${propB}"]`;
+  fill(doc, `${row} [data-field="appointment_start"]`, "2026-10-05T09:00");
+  fill(doc, `${row} [data-field="appointment_end"]`, "2026-10-05T09:45");
+  doc.querySelector(`${row} [data-field="locked_appointment"]`).click(); fill(doc, `${row} [data-field="stop_state"]`, inactive);
+  doc.querySelector("#save-composer").click(); await settle();
+  assert.match(doc.querySelector("#composer-state").textContent, /fixed appointment.*active/i);
+  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-stop").length, 0);
+  fill(doc, `${row} [data-field="stop_state"]`, "active"); await saveAndAccept(doc);
+  fill(doc, `#route-stops [data-property-id="${propA}"] [data-field="route_label"]`, "Changed active stop"); await saveAndAccept(doc);
+  assert.equal([...store.tours.values()][0].routes[0].route_version, 2);
+  assert.equal([...store.tours.values()][0].routes[0].accepted, true); dom.window.close();
+});
+for (const lost of ["acceptance", "readback"]) test(`review 9: ${lost} confirms the accepted target after a newer draft opens`, async () => {
+  const store = domain(); let advance = false;
+  const { dom, doc } = await open({ fetch: async (path, options) => {
+    if (advance && path.startsWith("/api/tours/detail")) {
+      advance = false; const tour = [...store.tours.values()][0];
+      tour.routes.unshift({ id: uuid(), route_version: 2, accepted: false, stops: [] });
+    }
+    return store.fetch(path, options);
+  } });
+  await create(doc); await addCart(doc); doc.querySelector("#save-composer").click(); await settle(); doc.querySelector("#route-reviewed").click();
+  if (lost === "acceptance") store.fail("/api/tours/route-accept", "lost"); else advance = true;
+  doc.querySelector("#accept-route").click(); await settle();
+  if (lost === "acceptance") { advance = true; doc.querySelector("#reconcile-composer").click(); await settle(); }
+  assert.match(doc.querySelector("#composer-state").textContent, /(?:Reconciled.*accepted|Route accepted)/);
+  assert.equal(doc.querySelector("#reconcile-composer").hidden, true);
+  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-accept").length, 1);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), null); dom.window.close();
+});
+test("review 10: endpoint-only edits appear in review, support undo, and save a new version", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc); await saveAndAccept(doc);
+  fill(doc, "#edit-start-latitude", "30.7");
+  assert.equal(doc.querySelector("#save-composer").disabled, false);
+  assert.match(doc.querySelector("#route-changes").textContent, /Start endpoint changed/);
+  doc.querySelector("#undo-route").click(); assert.equal(doc.querySelector("#edit-start-latitude").value, "30.5");
+  fill(doc, "#edit-start-latitude", "30.7"); doc.querySelector("#save-composer").click(); await settle();
+  assert.equal(store.calls.find(c => c.path === "/api/tours/route-draft").body.start_point.latitude, 30.7);
+  assert.match(doc.querySelector("#route-changes").textContent, /Start endpoint changed/);
+  doc.querySelector("#route-reviewed").click(); doc.querySelector("#accept-route").click(); await settle();
+  assert.equal([...store.tours.values()][0].routes[0].accepted, true); dom.window.close();
+});
+test("review 10: endpoint review survives reload of an unresolved version save", async () => {
+  const store = domain(), first = await open(store); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
+  fill(first.doc, "#edit-start-latitude", "30.7"); store.fail("/api/tours/route-stop", "lost");
+  first.doc.querySelector("#save-composer").click(); await settle();
+  const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
+  const next = await open(store, { "doctorcre-tour-pending-v1": retained });
+  assert.equal(next.doc.querySelector("#edit-start-latitude").value, "30.7");
+  assert.match(next.doc.querySelector("#route-changes").textContent, /Start endpoint changed/);
+  next.doc.querySelector("#reconcile-composer").click(); await settle(); next.doc.querySelector("#retry-composer").click(); await settle();
+  assert.match(next.doc.querySelector("#composer-state").textContent, /Draft saved/);
+  assert.equal(next.doc.querySelector("#edit-start-latitude").value, "30.7"); next.dom.window.close();
+});
+for (const hung of ["creation", "stop", "reconciliation"]) test(`review 11: a non-settling ${hung} request times out without resending`, async () => {
+  const store = domain(); let hang = false, hungCalls = 0;
+  const pathToHang = hung === "creation" ? "/api/tours/create" : hung === "stop" ? "/api/tours/route-stop" : "/api/tours/detail";
+  const { dom, doc } = await open({ fetch: async (path, options) => {
+    if (hang && path.startsWith(pathToHang)) { hungCalls++; return new Promise(() => {}); }
+    return store.fetch(path, options);
+  } });
+  if (hung !== "creation") { await create(doc); await addCart(doc); }
+  // Accelerate only the production request deadline; preserve normal scheduling.
+  const originalTimer = dom.window.setTimeout.bind(dom.window);
+  dom.window.setTimeout = (fn, ms, ...args) => originalTimer(fn, ms === 15000 ? 1 : ms, ...args);
+  if (hung === "creation") { hang = true; await create(doc); }
+  else {
+    if (hung === "reconciliation") store.fail("/api/tours/route-stop", "lost"); else hang = true;
+    doc.querySelector("#save-composer").click(); await settle();
+    if (hung === "reconciliation") { hang = true; doc.querySelector("#reconcile-composer").click(); await settle(); }
+  }
+  assert.equal(hungCalls, 1);
+  const reconcile = doc.querySelector(hung === "creation" ? "#reconcile-create" : "#reconcile-composer");
+  assert.equal(reconcile.hidden, false);
+  assert.equal(hung === "creation" ? doc.querySelector("#create-tour").disabled : doc.querySelector("#retry-composer").hidden, true);
+  assert.ok(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"));
+  hang = false; reconcile.click(); await settle();
+  assert.equal(hung === "creation" ? doc.querySelector("#create-tour").disabled : doc.querySelector("#retry-composer").hidden, false);
+  assert.equal(hungCalls, 1); dom.window.close();
+});
 test("editing an accepted route records held stops and every changed order, then reloads the saved draft", async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc); await saveAndAccept(doc);
   const prior = [...store.tours.values()][0].routes[0];
