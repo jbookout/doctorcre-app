@@ -518,8 +518,10 @@ export function createCallMode(deps) {
         const ok = await publishOrRecord(state.callMode.session || null);
         if (!ok) toast(`Recording started, but the weekly deal context needs attention: ${state.postCall.error}`);
         try {
-          if (deps.startAgenda) await deps.startAgenda();
-          toast('Weekly deal call is recording. The agenda is open.');
+          if (deps.startAgenda) {
+            await deps.startAgenda();
+            toast('Weekly deal call is recording. The agenda is open.');
+          } else toast('Weekly deal call is recording.');
         } catch (error) {
           console.error('Could not start the weekly agenda', error);
           toast('Weekly deal call is recording. The agenda could not open.');

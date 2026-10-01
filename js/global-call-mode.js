@@ -15,7 +15,7 @@ export async function mountGlobalCallMode(root = document) {
     agendaDeals: () => deals, scope: () => ({ workspace_kind: "all" }),
     dealName: (id) => deals.find(deal => deal.id === id)?.name,
     toast: (message) => { const node = root.getElementById("callModePermission"); node.hidden = false; node.textContent = message; },
-    startAgenda: () => {}, onConfirmed: () => {} });
+    onConfirmed: () => {} });
   host.addEventListener("click", (event) => call.handleClick(event.target));
   root.getElementById("callModeStop").onclick = () => call.stop();
   root.getElementById("postCallRefresh").onclick = () => call.refreshPostCall();
