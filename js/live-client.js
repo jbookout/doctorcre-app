@@ -6,6 +6,7 @@
  * staging; one may be passed directly for isolated client tests.
  */
 import { uuidv4 } from './uuid.js';
+import { readinessRequest, threadRequest } from './correspondence-model.js';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -134,6 +135,8 @@ export function createLiveClient(opts = {}) {
   const client = {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
+    async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
+    async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
 
     // Each deal carries `field_base` — the latest committed event id and time for
     // every editable cell, read in the same statement as the values it belongs

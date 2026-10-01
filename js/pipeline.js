@@ -30,6 +30,7 @@ import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
+import { mountEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
 import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
@@ -623,7 +624,11 @@ async function resolveConflictChoice() {
 
 /* ------------------------------------------------------------- record panel */
 
+let disposeEvidence = null;
+let panelReadSequence = 0;
 async function openPanel(dealId, trigger) {
+  const sequence = ++panelReadSequence;
+  disposeEvidence?.();
   const panel = $('recordPanel');
   if (!panel) return;
   state.panelDeal = dealId;
@@ -638,17 +643,20 @@ async function openPanel(dealId, trigger) {
   try {
     detail = await state.client.getDeal(dealId);
   } catch {
+    if (sequence !== panelReadSequence || state.panelDeal !== dealId) return;
     $('panelBody').innerHTML = '<div class="state-block" data-state="offline"><h3>This record could not be read. Nothing here has been inferred.</h3></div>';
     return;
   }
   // The panel may have moved on while the read was open; a late answer never
   // paints over a record the person has since opened.
   if (state.panelDeal !== dealId) return;
+  if (sequence !== panelReadSequence) return;
   state.panelDetail = detail;
   $('panelTitle').textContent = detail.deal?.name || 'Record';
   $('panelBody').innerHTML = recordPanelSections(detail, { actorLabel: actorName, dateLabel: dateWords })
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('');
+      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('') + '<div id="panelEvidence"></div>';
+  disposeEvidence = mountEvidence($('panelEvidence'), { client: state.client, detail });
   // V5-UX-B04: the context drawer reuses this same read, so it opens only
   // once there is a detail to open it on.
   setContextOpenVisible(true);
@@ -658,6 +666,9 @@ function closePanel() {
   const panel = $('recordPanel');
   if (!panel || panel.hidden) return;
   if (state.panelPinned) return;
+  ++panelReadSequence;
+  disposeEvidence?.();
+  disposeEvidence = null;
   panel.hidden = true;
   const returnTo = state.panelReturnTo;
   state.panelDeal = null;
