@@ -23,6 +23,7 @@ const freshness = document.getElementById("board-freshness");
 const live = document.getElementById("board-live");
 let directorySignature = "";
 let viewSignature = "";
+let refreshGeneration = 0;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -313,34 +314,38 @@ function renderQuestions(view) {
 
 async function refresh(force = false) {
   if (!force && questions.contains(document.activeElement)) return;
-  const [listed, loaded] = await Promise.allSettled([
-    client.listProgressBoards(), client.readProgressBoard({ board_id: boardId }),
-  ]);
-  try {
-    if (listed.status === "rejected") throw listed.reason;
-    renderDirectory(listed.value);
-  } catch {
+  const generation = ++refreshGeneration;
+  client.listProgressBoards().then(read => {
+    if (generation === refreshGeneration) renderDirectory(read);
+  }).catch(() => {
+    if (generation !== refreshGeneration) return;
     directoryError.textContent = "Published boards could not be listed. Refresh to try again.";
     directoryError.hidden = false;
-  }
-  if (loaded.status === "rejected") throw loaded.reason;
-  const read = loaded.value;
-  const view = boardView(read);
-  if (!view.version) { setError("This board has not been published yet."); meta.textContent = "No published snapshot"; return; }
-  setError("");
-  title.textContent = view.title;
-  document.title = `${view.title} · DoctorCRE`;
-  meta.textContent = `Published ${formatTime(view.updated_at)} · Version ${view.version}`;
-  const age = freshnessBadge(view.updated_at);
-  freshness.textContent = age.textContent;
-  freshness.setAttribute("data-freshness", boardFreshness(view.updated_at).state);
-  const signature = JSON.stringify(view);
-  if (signature === viewSignature) { renderStages(view); return; }
-  live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
-  viewSignature = signature;
-  renderStages(view);
-  renderQuestions(view);
+  });
+  const loaded = client.readProgressBoard({ board_id: boardId }).then(read => {
+    if (generation !== refreshGeneration) return;
+    const view = boardView(read);
+    if (!view.version) { setError("This board has not been published yet."); meta.textContent = "No published snapshot"; return; }
+    setError("");
+    title.textContent = view.title;
+    document.title = `${view.title} · DoctorCRE`;
+    meta.textContent = `Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+    const age = freshnessBadge(view.updated_at);
+    freshness.textContent = age.textContent;
+    freshness.setAttribute("data-freshness", boardFreshness(view.updated_at).state);
+    const signature = JSON.stringify(view);
+    if (signature === viewSignature) { renderStages(view); return; }
+    live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
+    viewSignature = signature;
+    renderStages(view);
+    renderQuestions(view);
+  }).catch(cause => {
+    if (generation !== refreshGeneration) return;
+    setError(viewSignature ? "The board could not be refreshed." : "The board could not be loaded. Refresh to try again.");
+    if (force) throw cause;
+  });
+  await loaded;
 }
 
-refresh().catch(() => setError("The board could not be loaded. Refresh to try again."));
-setInterval(() => refresh().catch(() => setError("The board could not be refreshed.")), 15000);
+refresh();
+setInterval(() => refresh(), 15000);

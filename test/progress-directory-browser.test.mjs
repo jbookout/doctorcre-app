@@ -10,7 +10,7 @@ const boards = [
   { board_id: "carr-v5", title: "System progress", project: "carr-v5", updated_at: "2026-10-01T14:30:00Z", task_counts: { running: 1 } },
 ];
 
-async function open(t, { width = 390, path = "/control-room/progress", directoryFails = false } = {}) {
+async function open(t, { width = 390, path = "/control-room/progress", directoryFails = false, onRpc } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
   page.setDefaultTimeout(5000);
@@ -22,6 +22,7 @@ async function open(t, { width = 390, path = "/control-room/progress", directory
     if (url.origin !== "http://localhost") return route.abort();
     if (url.pathname === "/mcp") {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params);
+      if (onRpc && await onRpc(route, rpc.params)) return;
       const listing = rpc.params.name === "list-progress-boards";
       const id = rpc.params.arguments.board_id;
       const board = boards.find(board => board.board_id === id);
@@ -108,4 +109,141 @@ test("normal motion flows; reduced motion stops animation while preserving stale
   await page.locator(".pipeline-node").click();
   assert.equal(await page.locator("#task-detail").isVisible(), true);
   assert.match(await page.locator("#task-detail-title").textContent(), /Synthetic build/);
+});
+
+function holdRequests(t, name) {
+  const pending = [];
+  t.after(async () => { for (const request of pending) request.release(); });
+  return {
+    pending,
+    onRpc: async (route, rpc) => {
+      if (rpc.name !== name) return false;
+      await new Promise(resolve => pending.push({ route, release: resolve }));
+      await route.abort().catch(() => {});
+      return true;
+    },
+  };
+}
+
+test("ready project boards render while discovery stays pending on both deep links", async t => {
+  for (const path of ["/control-room/progress", "/progress-board"]) await t.test(path, async t => {
+    const held = holdRequests(t, "list-progress-boards");
+    const { page } = await open(t, { path: `${path}?board=demo-project`, onRpc: held.onRpc });
+    await page.waitForFunction(() => document.querySelector("#board-title").textContent === "Demo project");
+    assert.ok(held.pending.length);
+    assert.equal(await page.locator("#board-error").isVisible(), false);
+    await page.clock.runFor(10001);
+    await page.waitForFunction(() => !document.querySelector("#directory-error").hidden);
+    assert.equal(await page.locator("#board-title").textContent(), "Demo project");
+  });
+});
+
+test("ready directory renders while the selected board stays pending, then reports its deadline", async t => {
+  const held = holdRequests(t, "read-progress-board");
+  const { page } = await open(t, { onRpc: held.onRpc });
+  await page.waitForFunction(() => document.querySelectorAll(".board-link").length === 2);
+  assert.ok(held.pending.length);
+  await page.clock.runFor(10001);
+  await page.waitForFunction(() => !document.querySelector("#board-error").hidden);
+  assert.equal(await page.locator(".board-link").count(), 2);
+});
+
+function snapshot(version = 1, status = null) {
+  return { ok: true, snapshot: { board_id: "carr-v5", version, updated_at: "2026-10-01T14:30:00Z",
+    snapshot_json: { title: `System version ${version}`, tasks: {} } },
+    questions: [{ question_id: "decision", revision: 1, prompt: "Choose next step", choices: [],
+      allow_free_text: true, status, answer_text: status ? "Ship it" : null }] };
+}
+function listing(title) {
+  return { ok: true, schema: "progress-board-directory.v1", boards: [{ ...boards[1], title }] };
+}
+function controlledReads(t) {
+  const requests = { "read-progress-board": [], "list-progress-boards": [] };
+  const onRpc = async (route, rpc) => {
+    if (rpc.name === "answer-board-question") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: {
+        content: [{ text: JSON.stringify({ ok: true }) }],
+      } }) });
+      return true;
+    }
+    if (!requests[rpc.name]) return false;
+    const response = await new Promise(resolve => requests[rpc.name].push({ route, resolve }));
+    if (!response) { await route.abort().catch(() => {}); return true; }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: {
+      ...(response.failed ? { isError: true } : {}), content: [{ text: JSON.stringify(response.payload) }],
+    } }) }).catch(() => {});
+    return true;
+  };
+  t.after(() => { for (const queue of Object.values(requests)) for (const request of queue) request.resolve(null); });
+  return {
+    onRpc,
+    async request(name, index) {
+      for (let attempts = 0; !requests[name][index] && attempts < 500; attempts++)
+        await new Promise(resolve => setTimeout(resolve, 2));
+      assert.ok(requests[name][index], `${name} request ${index} started`);
+      return requests[name][index];
+    },
+    async reply(page, name, index, payload, failed = false) {
+      const request = await this.request(name, index);
+      const received = page.waitForResponse(response => response.request() === request.route.request());
+      request.resolve({ payload, failed });
+      const response = await received;
+      await response.finished();
+      await page.clock.runFor(1);
+    },
+  };
+}
+
+for (const failed of [false, true]) test(`answer refresh supersedes an older poll's ${failed ? "failures" : "successes"}`, async t => {
+  const reads = controlledReads(t);
+  const { page, errors } = await open(t, { onRpc: reads.onRpc });
+  await reads.reply(page, "list-progress-boards", 0, listing("Initial directory"));
+  await reads.reply(page, "read-progress-board", 0, snapshot());
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 1");
+  await page.clock.runFor(15000);
+  await reads.request("read-progress-board", 1);
+  await page.locator(".answer-form textarea").fill("Ship it");
+  await page.locator('.answer-form button[type="submit"]').click();
+  await reads.reply(page, "read-progress-board", 2, snapshot(2, "Sent"));
+  await reads.reply(page, "list-progress-boards", 2, listing("New directory"));
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
+  const old = failed ? { error: "old request failed" } : snapshot();
+  await reads.reply(page, "read-progress-board", 1, old, failed);
+  await reads.reply(page, "list-progress-boards", 1, failed ? old : listing("Old directory"), failed);
+  assert.equal(await page.locator("#board-title").textContent(), "System version 2");
+  assert.equal(await page.locator(".board-link h3").textContent(), "New directory");
+  assert.equal(await page.locator(".question-card .status").textContent(), "Sent");
+  assert.equal(await page.locator(".answer-form").count(), 0);
+  assert.equal(await page.locator("#board-error").isVisible(), false);
+  assert.equal(await page.locator("#directory-error").isVisible(), false);
+  assert.deepEqual(errors, []);
+});
+
+test("an unchanged polled question retains its draft while focused questions defer polling", async t => {
+  const reads = controlledReads(t);
+  const { page, calls } = await open(t, { onRpc: reads.onRpc });
+  await reads.reply(page, "list-progress-boards", 0, listing("Initial directory"));
+  await reads.reply(page, "read-progress-board", 0, snapshot());
+  await page.locator(".answer-form textarea").fill("Unsent draft");
+  await page.clock.runFor(15000);
+  assert.equal(calls.filter(call => call.name === "read-progress-board").length, 1);
+  await page.locator("#board-title").click();
+  await page.clock.runFor(15000);
+  await reads.reply(page, "read-progress-board", 1, snapshot(2));
+  await reads.reply(page, "list-progress-boards", 1, listing("New directory"));
+  assert.equal(await page.locator(".answer-form textarea").inputValue(), "Unsent draft");
+  assert.equal(await page.locator(".answer-preview").textContent(), "Will send: Unsent draft");
+});
+
+test("all visible header controls are clickable around the navigation breakpoint", async t => {
+  for (const width of [900, 901, 910, 920, 1000, 1100, 1101, 1440]) await t.test(String(width), async t => {
+    const { page } = await open(t, { width, path: "/control-room" });
+    const controls = page.locator('.app-shell-header a:visible, .app-shell-header button:visible, .app-shell-menu > summary:visible');
+    for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    if (width <= 900) await page.locator(".app-shell-menu > summary").click();
+    else await page.locator(".app-shell-more-toggle").click();
+    assert.equal(await page.locator(".app-shell-more-list").isVisible(), true);
+    for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
+  });
 });

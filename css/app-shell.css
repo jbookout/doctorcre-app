@@ -48,6 +48,7 @@ body.room-body:not(.queue-body) #appShell{position:fixed;top:0;left:0;right:0}
 /* QA batch 1: the phone navigation panel scrolls inside itself and uses the dark scrollbar. */
 .app-shell-navigation,.app-shell-more-list{scrollbar-width:thin;scrollbar-color:#3a5878 #0a1a2e}
 .app-shell-progress-shortcut{display:none}
+@media(min-width:901px) and (max-width:1100px){.app-shell-header{gap:12px}.app-shell-navigation a{padding-inline:8px}}
 @media(max-width:900px){.app-shell-progress-shortcut{display:grid;place-items:center;order:1;flex:none;width:44px;height:44px;border:1px solid rgba(246,145,54,.44);border-radius:10px;color:#f69136;background:rgba(246,145,54,.09);transition:background .2s}.app-shell-progress-shortcut:hover{background:rgba(246,145,54,.2)}.app-shell-progress-shortcut svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round}}
 @media(prefers-reduced-motion:reduce){.app-shell-progress-shortcut{transition:none}}
 @media(max-width:360px){.app-shell-header{gap:4px}.app-shell-menu-label{display:none}.app-shell-menu>summary{justify-content:center;min-width:44px;padding-inline:8px}.app-shell-brand{min-width:0;font-size:15px}.app-shell-brand svg{width:26px;height:26px}}

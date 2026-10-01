@@ -33,11 +33,12 @@ export function createLiveClient(opts = {}) {
   let rpcId = 0;
   const dealCreations = new Map();
 
-  async function rpc(verb, args = {}) {
+  async function rpc(verb, args = {}, signal) {
     const res = await fetchImpl('/mcp', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
+      ...(signal ? { signal } : {}),
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: ++rpcId,
@@ -73,6 +74,21 @@ export function createLiveClient(opts = {}) {
       throw err;
     }
     return payload;
+  }
+
+  // Progress reads must settle before the next 15-second poll. Bound the whole
+  // response (including its body), and cancel the underlying fetch on expiry.
+  async function progressRead(verb, args) {
+    const controller = new AbortController();
+    let timer;
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`live ${verb} timed out`));
+        controller.abort();
+      }, 10000);
+    });
+    try { return await Promise.race([rpc(verb, args, controller.signal), deadline]); }
+    finally { clearTimeout(timer); }
   }
 
   async function write(verb, args) {
@@ -568,8 +584,8 @@ export function createLiveClient(opts = {}) {
     // (actor.human !== true is refused there, with no sponsored-agent route
     // at all); this client passes no actor field of its own.
     async answerWorkRequestForJoe(args) { return write('answer-work-request-for-joe', args); },
-    async listProgressBoards() { return rpc('list-progress-boards', {}); },
-    async readProgressBoard(args) { return rpc('read-progress-board', args); },
+    async listProgressBoards() { return progressRead('list-progress-boards', {}); },
+    async readProgressBoard(args) { return progressRead('read-progress-board', args); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
