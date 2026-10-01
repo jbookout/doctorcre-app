@@ -19,11 +19,13 @@ const originalPaths = [
 const newHomes = {
   "/progress-board": "/control-room/progress",
   "/workspace": "/",
-  "/queue.html": "/control-room/agents/queue",
+  "/queue.html": "/control-room/progress/work?view=tasks",
+  "/control-room/agents/queue": "/control-room/progress/work?view=tasks",
   "/pipeline": "/deals?view=board",
   "/business": "/",
   "/system-work.html": "/work-requests",
-  "/room.html": "/agent-room",
+  "/room.html": "/control-room/progress/work?view=wire",
+  "/agent-room": "/control-room/progress/work?view=wire",
   "/design": "/design-lab",
   "/design/business": "/design-lab?reference=business",
   "/design/operations": "/design-lab?reference=operations",
@@ -80,7 +82,7 @@ test("the shell has seven top sections and grouped secondary destinations", () =
   for (const group of ["Updates", "Operations", "Reference"]) {
     assert.match(shell, new RegExp(`app-shell-more-group[^>]*>${group}`));
   }
-  for (const name of ["Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Agent Room", "Design Lab", "Status"]) {
+  for (const name of ["Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"]) {
     assert.match(shell, new RegExp(`aria-label="${name}" href="[^"]+">${name}`));
   }
 });

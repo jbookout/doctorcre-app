@@ -1,9 +1,12 @@
 import { mountSystemWorkBoard } from './system-work-board.js';
+import { workDetailUrl } from './progress-work-model.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
 import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
 const boardId = new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
+document.getElementById('board-activity').href = workDetailUrl({board:boardId});
+document.getElementById('board-parent-name').textContent = boardId === 'carr-v5' ? 'System board' : 'Project board';
 const client = createLiveClient();
 const pendingRequests = new Map();
 let questionCards = new Map();
@@ -13,9 +16,6 @@ const error = document.getElementById("board-error");
 const retry = document.getElementById("board-retry");
 const signIn = document.getElementById("board-sign-in");
 const flow = document.getElementById("board-flow");
-const taskDialog = document.getElementById("task-detail");
-const taskDetailTitle = document.getElementById("task-detail-title");
-const taskDetailBody = document.getElementById("task-detail-body");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
@@ -30,7 +30,6 @@ const badgeTimes = new Map();
 let ageTimer;
 let taskNodes = new Map();
 let renderedStages = "";
-let detailTaskId = null;
 let systemWork = null;
 
 function element(tag, className, content) {
@@ -122,27 +121,9 @@ function svg(tag, className, attributes = {}, content) {
   return node;
 }
 
-function detailRow(label, value) {
-  if (value === undefined || value === null || value === "") return;
-  const row = element("div", "detail-row");
-  row.append(element("dt", "", label), element("dd", "", value));
-  taskDetailBody.append(row);
-}
-
 function showTask(task, stage) {
-  detailTaskId = task.id;
-  taskDetailTitle.textContent = task.title || task.id;
-  taskDetailBody.replaceChildren();
-  detailRow("Stage", stage.label);
-  detailRow("Status", task.status);
-  detailRow("Task", task.id);
-  detailRow("Executor", task.executor);
-  detailRow("PR", task.pr != null ? `#${task.pr}${task.pr_phase ? ` · ${task.pr_phase}` : ""}` : "No PR");
-  detailRow("Updated", formatTime(task.updated_at));
-  detailRow("Note", task.note);
-  detailRow("Question", task.question);
-  detailRow("Evidence", task.evidence);
-  taskDialog.showModal();
+  location.href = workDetailUrl({ board: boardId, task: task.id,
+    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) });
 }
 
 function titleLines(value, width) {
@@ -240,11 +221,6 @@ function renderStages(view) {
   for (const id of taskNodes.keys()) if (!ids.has(id)) taskNodes.delete(id);
   if (focusedId) (taskNodes.get(focusedId)?.node || title).focus();
 }
-
-taskDialog.addEventListener("close", () => {
-  if (detailTaskId) (taskNodes.get(detailTaskId)?.node || title).focus();
-  detailTaskId = null;
-});
 
 phoneQuery.addEventListener("change", () => { if (currentView) renderStages(currentView); });
 
@@ -388,10 +364,6 @@ function clearBoard(state) {
   taskNodes.clear();
   questionCards.clear();
   pendingRequests.clear();
-  detailTaskId = null;
-  if (taskDialog.open) taskDialog.close();
-  taskDetailTitle.textContent = "";
-  taskDetailBody.replaceChildren();
   flow.replaceChildren();
   questions.replaceChildren();
   taskCount.textContent = "—";

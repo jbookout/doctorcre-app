@@ -322,7 +322,7 @@ test("the Calendar is a routed, shipped surface that reads only pinned verbs", a
   const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.15.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.16.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
   assert.match(artifact, /"calendar\.html"/);
   assert.match(check, /"calendar\.html"/);

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Progress", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Agent Room", "Design Lab", "Status"];
+const expected = ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Progress", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {
@@ -65,10 +65,10 @@ test("Deals has one global Deals link and local views are labelled as views", ()
   assert.match(html, /href="\/deals\?view=board">Board<\/a>/);
 });
 
-test("the task board belongs to Observatory rather than global navigation", () => {
-  const room = readFileSync(new URL("room.html", root), "utf8");
-  assert.match(room, /<button[^>]*id="openTaskBoard"[^>]*>Task board<\/button>/);
-  assert.match(room, /<dialog id="taskBoardDialog"[\s\S]*?<h2 id="taskBoardTitle">Task board<\/h2>/);
+test("the task board belongs to Progress work detail", () => {
+  const room = readFileSync(new URL("progress-work.html", root), "utf8");
+  assert.match(room, /id="workTasks"/);
+  assert.match(room, /id="queueColumns"/);
   assert.match(room, /src="\/js\/queue\.js"/);
 });
 

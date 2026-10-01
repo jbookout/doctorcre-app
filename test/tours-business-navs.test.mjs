@@ -12,7 +12,7 @@ const PAGES = [
   "business.html",
   "index.html",
   "leads.html",
-  "queue.html",
+  "progress-work.html",
   "system-work.html",
   "tasks.html",
   "work-inventory.html",

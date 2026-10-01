@@ -53,6 +53,10 @@ function sha256(text) {
   return [h0,h1,h2,h3,h4,h5,h6,h7].map((n)=>n.toString(16).padStart(8,"0")).join("");
 }
 function canonicalDigest(value) { return `sha256:${sha256(canonicalize(value))}`; }
+export function passportProjectionDigest(value) {
+  const projection = structuredClone(value); delete projection.projection_digest;
+  return canonicalDigest(projection);
+}
 function semanticEqual(a, b) { return canonicalize(a) === canonicalize(b); }
 
 // Browser-side mirror for the additive sections. It accepts only redacted
@@ -353,7 +357,7 @@ function validQAFacts(value, receipts) { if (!list(value)) return false; const k
 function validDisposition(value, states) { return exactKeys(value, ["state", "evidence_refs", "note"]) && states.has(value.state) && validEvidence(value.evidence_refs, ["complete", "passed", "released", "resolved", "proposed"].includes(value.state)) && string(value.note); }
 function validLearning(value) { return exactKeys(value, ["state", "route", "evidence_refs", "note"]) && ["unresolved", "proposed", "rejected", "nothing_durable"].includes(value.state) && (value.route === null || ["regression_test", "gate_or_validator", "decision_record", "skill_or_workflow", "memory_or_rule_candidate", "incident_finding", "speculative_finding", "nothing_durable"].includes(value.route)) && (value.state === "unresolved" ? value.route === null : value.route !== null) && validEvidence(value.evidence_refs, ["proposed", "rejected"].includes(value.state)) && string(value.note); }
 function derivedOperator(slices, receipts, qa) { const evidence = new Map(receipts.flatMap((receipt) => receipt.evidence_refs.map((item) => [item.ref, item]))); return { what_changed: slices.filter((slice) => slice.state === "verified_complete").map((slice) => slice.slice_ref), why: "derived from accepted plan and typed receipts", evidence_refs: [...evidence.keys()].sort().map((key) => evidence.get(key)), deviations: [...new Set(receipts.flatMap((receipt) => receipt.deviations.map((deviation) => deviation.deviation_ref)))].sort(), remaining_risk: slices.filter((slice) => slice.state !== "verified_complete").map((slice) => slice.slice_ref), manual_qa_items: slices.filter((slice) => slice.manual_qa_required && !qa.has(slice.slice_ref)).map((slice) => slice.slice_ref) }; }
-function validEngineeringPassport(value) {
+export function validEngineeringPassport(value) {
   if (!exactKeys(value, ["schema_version", "work_request", "accepted_plan_revision", "plan_digest", "slice_plan", "execution_envelopes", "slices", "receipts", "reviewer_facts", "qa_facts", "operator_receipt", "closure", "closure_state", "stale_conflict", "projection_digest"]) || value.schema_version !== "engineering-passport.v1" || !validBinding(value.work_request) || !validPlanRef(value.accepted_plan_revision) || !DIGEST.test(value.plan_digest) || !validEngineeringPlan(value.slice_plan) || value.slice_plan.plan_digest !== value.plan_digest || !semanticEqual(value.slice_plan.work_request, value.work_request) || !semanticEqual(value.slice_plan.accepted_plan_revision, value.accepted_plan_revision) || !["blocked", "complete"].includes(value.closure_state) || !exactKeys(value.stale_conflict, ["state", "reason"]) || !["none", "stale", "conflict", "uncertain"].includes(value.stale_conflict.state) || (value.stale_conflict.state === "none" ? value.stale_conflict.reason !== null : !string(value.stale_conflict.reason))) return false;
   if (!list(value.execution_envelopes)) return false;
   const envelopeDigests = new Set();

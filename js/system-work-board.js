@@ -1,4 +1,5 @@
 import {uuidv4} from './uuid.js';
+import {workDetailUrl} from './progress-work-model.js';
 import {validSystemWork,groupSystemWork,systemPipeline,triageWork} from './system-work-board-model.js';
 const node=(tag,text,className)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(className)e.className=className;return e;};
 export function mountSystemWorkBoard({client,onPipeline}){
@@ -31,7 +32,8 @@ export function mountSystemWorkBoard({client,onPipeline}){
    const section=node('section','','work-source');section.append(node('h3',group.source));
    const grid=node('div','','work-card-grid');
    for(const item of group.items){const article=node('article','','work-card');article.dataset.workId=item.id;
-    article.append(node('h4',item.title||item.id),node('p',`${item.kind.replaceAll('_',' ')} · ${item.state} · ${item.age} days old${item.owner?` · ${item.owner}`:''}`,'work-card-meta'));
+    const heading=node('h4'),detail=node('a',item.title||item.id);detail.href=workDetailUrl({board:'carr-v5',task:`${item.kind}:${item.id}`,workRequest:item.human_ref});heading.append(detail);
+    article.append(heading,node('p',`${item.kind.replaceAll('_',' ')} · ${item.state} · ${item.age} days old${item.owner?` · ${item.owner}`:''}`,'work-card-meta'));
     if(item.suggested_triage)article.append(node('p',`${item.suggested_triage.label}: ${item.suggested_triage.action}`,'work-suggestion'));
     const actions=node('div','','work-actions');for(const action of item.available_triage_actions||[]){const b=node('button',action.action);b.type='button';b.addEventListener('click',()=>openAction(item,action));actions.append(b);}
     const link=node('a','Open source');link.href=item.link||'/system-work.html';actions.append(link);article.append(actions);grid.append(article);

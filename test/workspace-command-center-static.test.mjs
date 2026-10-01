@@ -22,7 +22,7 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   const js = await readFile(`${ROOT}/js/workspace-command-center.js`, "utf8");
   const modelJs = await readFile(`${ROOT}/js/workspace-command-center-model.js`, "utf8");
   const dealJs = await readFile(`${ROOT}/js/app.js`, "utf8");
-  const surfaceFiles = ["workspace.html", "index.html", "leads.html", "room.html", "queue.html", "system-work.html", "business.html"];
+  const surfaceFiles = ["workspace.html", "index.html", "leads.html", "progress-work.html", "system-work.html", "business.html"];
   const surfaces = Object.fromEntries(await Promise.all(surfaceFiles.map(async (file) => [file, await readFile(`${ROOT}/${file}`, "utf8")])));
   assert.match(html, /id="commandCenterVisual"/);
   assert.match(html, /aria-live="polite"/);
@@ -63,7 +63,7 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.match(dealJs, /params\.get\('owner'\) === 'me'/);
   assert.match(html, /id="appShell"/);
   const sharedNavigation = appShellMarkup("/");
-  for (const label of ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Work Requests", "Agent Room"]) {
+  for (const label of ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Work Requests", "Project activity"]) {
     assert.match(sharedNavigation, new RegExp(`>${label}<`), `shared navigation is missing ${label}`);
   }
   assert.doesNotMatch(sharedNavigation, />Queue<\/a>/);
@@ -192,7 +192,7 @@ test("More keeps Updates, Operations and Reference in stable groups", () => {
   for (const group of ["Updates", "Operations", "Reference"]) {
     assert.match(nav, new RegExp(`app-shell-more-group[^>]*>${group}<`));
   }
-  for (const route of ["/updates", "/doc-chats", "/work-requests", "/all-work", "/incidents", "/agent-room", "/design-lab", "/status"]) {
+  for (const route of ["/updates", "/doc-chats", "/work-requests", "/all-work", "/incidents", "/control-room/progress/work", "/design-lab", "/status"]) {
     assert.match(nav, new RegExp(`href="${route}"`));
   }
   assert.match(nav, /href="\/search" aria-label="Search"/);

@@ -115,7 +115,7 @@ test("page offers choice and free-text controls, with reduced-motion styling", a
   assert.match(html, /id="board-stages"/);
   assert.match(html, /id="board-questions"/);
   assert.match(html, /id="board-flow"/);
-  assert.match(html, /<dialog id="task-detail"/);
+  assert.match(html, /id="board-activity"/);
   assert.match(css, /\.pipeline-node\[data-pulse="critical"\]/);
   assert.match(css, /\.pipeline-node\[data-pulse="attention"\]/);
   assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\][^}]*animation/);
