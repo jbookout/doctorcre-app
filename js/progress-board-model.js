@@ -66,6 +66,34 @@ export function legendEntries() {
   return groups;
 }
 
+export const SYSTEM_BOARD_ID = "carr-v5";
+const PUBLICATION_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export function nextFreshnessChange(updatedAt, now = Date.now()) {
+  const timestamp = parseTime(updatedAt);
+  if (!Number.isFinite(timestamp)) return null;
+  return now < timestamp ? timestamp - now + 60000 : 60000 - (now - timestamp) % 60000;
+}
+
+export function boardFreshness(updatedAt, at = new Date()) {
+  const timestamp = parseTime(updatedAt);
+  if (!Number.isFinite(timestamp)) return { state: "unknown", label: "Update time unavailable" };
+  const age = Math.max(0, at.getTime() - timestamp);
+  const minutes = Math.floor(age / 60000);
+  const elapsed = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago`
+    : minutes < 1440 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`
+      : `${Math.floor(minutes / 1440)}d ${Math.floor(minutes % 1440 / 60)}h ago`;
+  return { state: age >= PUBLICATION_STALE_AFTER_MS ? "stale" : "fresh", label: `Updated ${elapsed}` };
+}
+
+export function boardDirectory(read) {
+  if (read?.schema !== "progress-board-directory.v1" || !Array.isArray(read.boards))
+    throw new Error("Published board directory is unavailable.");
+  return read.boards.filter(board => board && typeof board.board_id === "string")
+    .slice().sort((a, b) => a.board_id === SYSTEM_BOARD_ID ? -1
+      : b.board_id === SYSTEM_BOARD_ID ? 1 : String(a.title).localeCompare(String(b.title)));
+}
+
 const STATUS_STAGE = { queued: "queued", running: "build", review: "review",
   blocked: "review", failed: "ci", done: "build" };
 const STATUSES = new Set(["Sent", "Received", "Applied"]);
@@ -100,7 +128,8 @@ export function taskStage(task) {
   if (STAGES.some(stage => stage.id === requested)) return requested;
   if (task.status === "done") return task.pr != null && task.pr_phase === "Merged" ? "merged" : "build";
   if (task.status === "measured") return typeof evidence === "string" && evidence.trim() ? "live" : "build";
-  return STATUS_STAGE[task.status ?? "queued"] || "queued";
+  return typeof task.status === "string" && Object.hasOwn(STATUS_STAGE, task.status)
+    ? STATUS_STAGE[task.status] : "queued";
 }
 
 function isStuck(task, at) {
@@ -358,7 +387,7 @@ export function boardView(read, at = new Date()) {
   const cards = [];
   for (const [id, task] of entries) {
     if (!isRecord(task)) continue;
-    const card = { id, ...task };
+    const card = { ...task, id };
     card.stage = taskStage(task);
     card.health = taskHealth(task, at);
     card.pulse = taskPulse(task, at);
@@ -433,9 +462,11 @@ export function answerRequest(question, boardId, value, idempotencyKey) {
     base_version: question.revision, answer_text: answer, idempotency_key: idempotencyKey };
 }
 
+// No board parameter opens the system board, as the Progress nav does.
 export function boardFromSearch(search) {
   const value = new URLSearchParams(search).get("board");
-  return value && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(value) ? value : null;
+  if (value === null || value === "") return SYSTEM_BOARD_ID;
+  return /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(value) ? value : null;
 }
 
 // Only http(s) links are ever made clickable from board data.

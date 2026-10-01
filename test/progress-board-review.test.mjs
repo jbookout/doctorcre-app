@@ -39,7 +39,7 @@ function mount({ now = "2026-09-30T12:00:00Z", reads, answer } = {}) {
     answerBoardQuestion: args => answer(args),
   };
   const board = mountBoard({ window, document: window.document, client, storage: null, search: "?board=carr-v5",
-    now: () => clock, setInterval: () => 0 });
+    now: () => clock, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
   const doc = window.document;
   return { board, window, doc, setNow: value => { clock = new Date(value); },
     $: selector => doc.querySelector(selector), $$: selector => [...doc.querySelectorAll(selector)] };

@@ -19,7 +19,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b");
+  assert.equal(contract.producer.source_commit, "97e916b7f907f268365ba7ba96635e36c0c65e03");
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
@@ -364,7 +364,7 @@ test("a Save selection click while a save is in flight reuses it and the button 
 });
 
 test("two immediate clicks on each versioned route or cheat-sheet write send one idempotency key", async () => {
-  const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, stops: [],
+  const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, route_acceptance_digest: `sha256:${"a".repeat(64)}`, stops: [],
     cheat_sheet: { revision_number: 1, restore_revision_id: versionId } };
   for (const [button, path, completed] of [["#save-route", "/api/tours/route-version", "Route version saved."], ["#reorder-route", "/api/tours/route-reorder", "Route version saved."],
     ["#accept-route", "/api/tours/route-accept", "Route version accepted."], ["#save-sheet", "/api/tours/cheat-sheet/autosave", "Internal cheat sheet saved."], ["#restore-sheet", "/api/tours/cheat-sheet/restore", "Tour ready."]]) {

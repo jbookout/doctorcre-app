@@ -4,14 +4,14 @@
 // nothing else: no write verb, no command dock, no Doc mount. Doc needs CARR,
 // and this page has to work when CARR does not.
 //
-// Five reads, all independent, none chained, each stamping its own clock: the
-// app's own /app-release and the four Control Room reads, plus the last-known
-// snapshot read from this device. A failure in one makes only its own chip
-// unknown, and no failure ever produces a zero.
+// Reads settle independently: app release, Control Room coverage, and the
+// selected assurance scope. Device snapshots contain coverage clocks only.
+// Assurance evidence is never stored or reused as a last-known health label.
 import {
   APP_READ_ID, INTEGRATION_GAPS, PROVIDER_LINKS, REFUSAL_SENTENCE,
   readSnapshot, snapshotFromReads, statusChips, statusHeadline, writeSnapshot,
 } from "./status-model.js";
+import { assuranceHealthRequest, assuranceHealthState, loadAssuranceHealth } from "./assurance-health-model.js";
 import { READS, READ_LABEL } from "./control-room-model.js";
 import { WORK_INVENTORY_ENDPOINT } from "./work-inventory-model.js";
 import { acceptsResponse } from "./workspace-command-center-model.js";
@@ -32,6 +32,11 @@ const view = {
   release: { state: "pending" },
   reads: { incidents: { state: "pending" }, work: { state: "pending" }, needs_joe: { state: "pending" }, census: { state: "pending" } },
   snapshot: null,
+  assuranceScope: null,
+  assurance: null,
+  assuranceSequence: 0,
+  assurancePending: false,
+  assuranceError: null,
 };
 
 let client = null;
@@ -103,10 +108,7 @@ function renderStatic() {
   $("providerLinks").innerHTML = PROVIDER_LINKS
     .map((link) => `<li><a class="btn" href="${escapeHtml(link.href)}" target="_blank" rel="noopener">${escapeHtml(link.label)}</a></li>`)
     .join("");
-  $("integrationGaps").innerHTML = INTEGRATION_GAPS.map((gap) => `
-    <div class="state-block" data-state="not_in_release" data-gap="${escapeHtml(gap.id)}">
-      <h3>${escapeHtml(gap.title)}</h3><p><span class="gap-word">${escapeHtml(gap.word)}</span> · ${escapeHtml(gap.reason)}</p>
-    </div>`).join("");
+
 }
 
 function render() {
@@ -114,6 +116,64 @@ function render() {
   renderChips(model);
   renderLastKnown(model);
   renderIdentity();
+  renderAssurance();
+}
+
+const LAYER_LABEL = {
+  artifact_assessment: "Artifact assessment", execution_assessment: "Execution assessment",
+  controller_assessment: "Controller assessment", candidate_outcome_oracle: "Candidate outcome oracle",
+  activation_readback: "Activation readback", actual_business_outcome: "Business outcome",
+};
+let lastAssuranceHtml = null;
+function renderAssurance() {
+  const model = assuranceHealthState(view.assurance, view.assuranceScope);
+  if (view.assuranceError) model.reason = view.assuranceError;
+  else if (view.assurancePending) model.reason = "Taking the scoped assurance read…";
+  const html = INTEGRATION_GAPS.map(gap => {
+    const covered = gap.id === "v5-a01";
+    const state = covered ? model.state : "unknown";
+    const orb = covered && model.green ? "healthy" : state === "failed" ? "urgent" : state === "degraded" ? "attention" : "still";
+    const scope = covered && model.scope ? `<p class="assurance-context">${escapeHtml(model.scope.workflow_key)} · v${model.scope.workflow_version}${model.scope.work_request_id ? ` · ${escapeHtml(model.scope.work_request_id)}` : ""} · this scope only</p>` : "";
+    const layers = covered && model.evidence.length ? `<ul class="assurance-evidence">${model.evidence.map(row =>
+      `<li data-layer="${row.layer}"><span>${LAYER_LABEL[row.layer]}</span><span>${escapeHtml(row.state)} · ${escapeHtml(row.age)}${row.expired ? " · expired" : ""}</span></li>`).join("")}</ul>` : "";
+    return `<div class="state-block" data-state="${state}" data-gap="${gap.id}">
+      <h3><span class="orb" data-state="${orb}" aria-hidden="true"></span> ${escapeHtml(gap.title)}</h3>
+      ${scope}<p><span class="gap-word">${state}</span> · ${escapeHtml(covered ? model.reason : gap.reason)}</p>${layers}
+    </div>`;
+  }).join("");
+  if (html !== lastAssuranceHtml) { $("integrationGaps").innerHTML = html; lastAssuranceHtml = html; }
+  const subject = model.scope ? ` for ${model.scope.workflow_key} v${model.scope.workflow_version}${model.scope.work_request_id ? `, ${model.scope.work_request_id}` : ""}` : "";
+  const announcement = `Assurance health${subject}: ${model.state}.${model.state === "unknown" ? ` ${model.reason}` : ""}`;
+  // The persistent live region changes only with the scoped result, never its ticking ages.
+  if ($("assuranceLive").textContent !== announcement) $("assuranceLive").textContent = announcement;
+}
+function scopeFromInputs() {
+  const scope = { workflow_key: $("assuranceWorkflow").value, workflow_version: Number($("assuranceVersion").value) };
+  const workRequest = $("assuranceWorkRequest").value;
+  if (workRequest) scope.work_request_id = workRequest;
+  return assuranceHealthRequest({ scope }).scope;
+}
+async function takeAssurance() {
+  const sequence = ++view.assuranceSequence;
+  const scope = view.assuranceScope;
+  view.assurance = null;
+  view.assurancePending = Boolean(scope);
+  renderAssurance();
+  const answer = await loadAssuranceHealth(client, scope);
+  if (sequence !== view.assuranceSequence) return;
+  view.assurance = answer; view.assurancePending = false;
+  renderAssurance();
+}
+function readSelectedScope() {
+  view.assuranceError = null;
+  try { view.assuranceScope = scopeFromInputs(); }
+  catch {
+    view.assuranceSequence += 1; view.assuranceScope = null; view.assurance = null;
+    view.assurancePending = false;
+    view.assuranceError = "Enter a workflow, a positive whole version, and an optional WR-number work request.";
+    renderAssurance(); return;
+  }
+  return takeAssurance();
 }
 
 /* --------------------------------------------------------------------- reading */
@@ -162,6 +222,7 @@ async function load() {
     take("work", () => client.currentWorkItem()),
     take("needs_joe", () => client.currentWorkRequests()),
     take("census", () => census()),
+    takeAssurance(),
   ]);
   render();
   writeSnapshot(storage(), snapshotFromReads({ [APP_READ_ID]: view.release, ...view.reads }, Date.now()));
@@ -172,7 +233,7 @@ async function load() {
 /** `?outage=all` refuses everything at once; the named values refuse one read. */
 function allDownClient() {
   const refuse = () => { throw new Error("fixture outage: every read is unreachable"); };
-  return { incidentBoard: refuse, currentWorkItem: refuse, currentWorkRequests: refuse };
+  return { readAssuranceHealth: refuse, incidentBoard: refuse, currentWorkItem: refuse, currentWorkRequests: refuse };
 }
 
 async function boot() {
@@ -187,6 +248,22 @@ async function boot() {
   if (resolved.mode === "live") client = createLiveClient();
   else if (view.outage === "all") client = allDownClient();
   else client = await createFixtureClient({ ...resolved.options, ...(view.outage ? { outage: view.outage } : {}) });
+  const params = new URLSearchParams(location.search || "");
+  for (const [key, id] of [["workflow_key", "assuranceWorkflow"], ["workflow_version", "assuranceVersion"], ["work_request_id", "assuranceWorkRequest"]]) {
+    $(id).value = params.get(key) || "";
+    $(id).addEventListener("input", () => {
+      view.assuranceSequence += 1; view.assuranceScope = null; view.assurance = null;
+      view.assurancePending = false; view.assuranceError = null; renderAssurance();
+    });
+  }
+  $("readAssurance").addEventListener("click", readSelectedScope);
+  if (params.has("workflow_key") || params.has("workflow_version") || params.has("work_request_id")) {
+    try { view.assuranceScope = scopeFromInputs(); }
+    catch { view.assuranceError = "The supplied workflow scope is invalid."; }
+  }
+  // Evidence ages and expiry are reevaluated while the page stays open and on return.
+  setInterval(renderAssurance, 1000);
+  document.addEventListener("visibilitychange", renderAssurance);
   await load();
 }
 

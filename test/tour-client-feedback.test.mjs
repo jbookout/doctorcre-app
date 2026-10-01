@@ -21,7 +21,7 @@ const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.
 const tourScript = `${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
-  return { ok: true, json: async () => ({ data: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } }) };
+  return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
 }
 async function openBroker(feedbackRead, { stops = [] } = {}) {
   const dom = new JSDOM(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
@@ -78,7 +78,7 @@ test("a late earlier Refresh cannot replace newer feedback for the same projecti
 test("a failed initial feedback read shows unavailable and Refresh can confirm an empty response", async t => {
   const app = await openBroker((i, count) => count === 1
     ? { ok: false, json: async () => ({ error: "unavailable" }) }
-    : { ok: true, json: async () => ({ data: { items: [] } }) });
+    : { ok: true, json: async () => ({ data: { feedback: { items: [] } } }) });
   t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
@@ -118,7 +118,7 @@ test("reordering draft stops retains the sealed projection's loaded client respo
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
   assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "false");
 });
-async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"] } = {}) {
+async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
   const dom = new JSDOM(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto });
   const writes = [];
@@ -130,7 +130,7 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
     else if (path === "/api/share/map") data = { points: [] };
     else if (path === "/api/share/feedback") {
       if (feedbackRead) {
-        const response = await feedbackRead();
+        const response = await feedbackRead(options);
         if (response) return response;
       }
       data = { projection_ref: "projection:public:synthetic_projection", permission_scopes: permissionScopes, ...(items === null ? {} : { items }) };
@@ -143,6 +143,10 @@ async function openShare({ items = [], refuseOnce = false, properties = [{ prope
     } else throw new Error(`Unexpected share request: ${path}`);
     return { ok: true, json: async () => ({ data: structuredClone(data) }) };
   };
+  if (fastTimeout) {
+    const timeout = dom.window.setTimeout.bind(dom.window);
+    dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay);
+  }
   dom.window.eval(share);
   await settle();
   return { dom, doc: dom.window.document, writes, reads };
@@ -338,4 +342,39 @@ test("broker feedback is confined to the authenticated Tours view", () => {
   assert.match(css, /color-scheme: dark/);
   assert.match(css, /backdrop-filter: blur/);
   assert.match(css, /prefers-reduced-motion/);
+});
+
+
+test("Dot Tour: broker Refresh renders CARR data.feedback comments and shortlist", async t => {
+  const app = await openBroker(() => ({ ok: true, json: async () => ({ data: { feedback: {
+    items: [{ route_label: "A", shortlisted: true, comments: [{ comment: "Synthetic reviewed response" }] }],
+  } } }) }));
+  t.after(() => app.dom.window.close());
+  app.doc.querySelector(".tour-button").click(); await settle();
+  app.doc.querySelector("#refresh-feedback").click(); await settle();
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /Synthetic reviewed response/);
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /Shortlisted/);
+  assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
+});
+
+
+for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stalled} times out without hiding the report and can retry`, async t => {
+  const signals = []; let hang = true;
+  const app = await openShare({ fastTimeout: true, feedbackRead: options => {
+    signals.push(options.signal);
+    if (!hang) return null;
+    return stalled === "fetch" ? new Promise(() => {}) : { ok: true, json: () => new Promise(() => {}) };
+  } });
+  t.after(() => app.dom.window.close());
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(app.doc.querySelectorAll(".report-item").length, 1);
+  assert.match(app.doc.querySelector("#status").textContent, /Report and map loaded.*Feedback unavailable/);
+  assert.equal(signals[0]?.aborted, true);
+  const retry = [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Retry feedback");
+  assert.equal(retry.hidden, false);
+  retry.click(); await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(retry.disabled, false); assert.equal(signals[1]?.aborted, true);
+  hang = false; retry.click(); await settle();
+  assert.equal(retry.hidden, true); assert.ok(shortlistAction(app.doc));
+  assert.equal(app.doc.querySelectorAll(".report-item").length, 1);
 });

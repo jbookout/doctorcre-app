@@ -400,7 +400,7 @@ test("Dot 27: automatic board refresh preserves an unchanged questions answer dr
   const {mountBoard}=await import("../js/progress-board.js");
   const dom=new JSDOM(source("progress-board.html"));
   const payload={snapshot:{board_id:"demo-board",version:1,snapshot_json:{title:"Demo board",tasks:{}}},questions:[{question_id:"demo-question",revision:1,prompt:"Demo question",choices:[],allow_free_text:true,status:null}]};
-  const board=mountBoard({window:dom.window,document:dom.window.document,client:{readProgressBoard:async()=>payload},storage:null,search:"?board=demo-board",setInterval:()=>0});
+  const board=mountBoard({window:dom.window,document:dom.window.document,client:{readProgressBoard:async()=>payload},storage:null,search:"?board=demo-board",setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{}});
   board.start();await tick();const input=dom.window.document.querySelector("textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await board.refresh();
   assert.equal(dom.window.document.querySelector("textarea").value,"Unsaved answer");dom.window.close();
 });

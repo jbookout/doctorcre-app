@@ -8,6 +8,7 @@ export const navigationItems = Object.freeze([
   { label: "People", href: "/clients" },
   { label: "Work", href: "/tasks" },
   { label: "Control Room", href: "/control-room" },
+  { label: "Progress", href: "/control-room/progress" },
   { label: "Updates", href: "/updates", group: "Updates" },
   { label: "Doc Chats", href: "/doc-chats", group: "Updates" },
   { label: "Work Requests", href: "/work-requests", group: "Operations" },
@@ -21,8 +22,8 @@ export const navigationItems = Object.freeze([
 const sectionForRoute = {
   "/vendors": "/clients", "/calendar": "/tasks", "/ideas-events": "/tasks",
   "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
-  "/business": "/", "/progress-board": "/control-room", "/queue.html": "/control-room",
-  "/control-room/progress": "/control-room", "/control-room/agents/queue": "/control-room",
+  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room",
+  "/control-room/agents/queue": "/control-room",
   "/ideas": "/tasks", "/system-work.html": "/work-requests", "/room.html": "/agent-room",
   "/work-inventory": "/all-work", "/design": "/design-lab",
   "/design/business": "/design-lab", "/design/operations": "/design-lab",
@@ -50,10 +51,10 @@ function link({ label, href }, current, base) {
 
 export function appShellMarkup(pathname, base = "") {
   const current = activeDestination(pathname);
-  const primary = navigationItems.slice(0, 7).map((item) => link(item, current, base)).join("");
+  const primary = navigationItems.filter(item => !item.group).map((item) => link(item, current, base)).join("");
   const more = ["Updates", "Operations", "Reference"].map((group) =>
     `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
-  const moreActive = navigationItems.slice(7).some((item) => item.href === current);
+  const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
   return `<header class="app-shell-header">
     <a class="app-shell-brand" href="${base}/" aria-label="DoctorCRE Home">
       <svg viewBox="0 0 42 42" role="img" aria-label="Work flows from leads through deals to delivery">
@@ -64,6 +65,7 @@ export function appShellMarkup(pathname, base = "") {
     <details class="app-shell-menu"><summary aria-label="Navigation menu"><span class="app-shell-menu-label">Menu</span><span class="app-shell-menu-icon" aria-hidden="true"></span></summary>
       <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false">More</button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
     </details>
+    <a class="app-shell-progress-shortcut" href="${base}/control-room/progress" aria-label="Progress" title="Progress"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V12M12 18V7M20 18V3"/></svg></a>
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <span class="app-shell-live" aria-hidden="true"></span>
   </header><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;

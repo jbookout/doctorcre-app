@@ -35,7 +35,7 @@ async function mount(read, { now = REF, storage = memoryStorage(), search = "?bo
     answerBoardQuestion: async args => { writes.push(args); return { ok: true }; },
   };
   const board = mountBoard({ window, document: window.document, client, storage, search,
-    now: () => clock, setInterval: () => 0 });
+    now: () => clock, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
   await board.refresh(true);
   const doc = window.document;
   return { board, window, doc, writes, storage, setNow: value => { clock = new Date(value); },
@@ -93,6 +93,7 @@ test("/progress-board?board=all-repos keeps its board through the redirect and i
   assert.equal(location.searchParams.get("board"), "all-repos");
   assert.equal(boardFromSearch("?board=all-repos"), "all-repos");
   assert.equal(boardFromSearch("?board=<script>"), null);
+  assert.equal(boardFromSearch(""), "carr-v5", "no parameter opens the system board, as the Progress nav does");
 });
 
 test("the static page is gone: the app page renders every section from a full fixture", async () => {
@@ -386,4 +387,14 @@ test("page keeps motion real and respects reduced motion; phone stacks one colum
   assert.match(CSS, /@media \(max-width: 680px\) \{[^@]*\.columns, \.lower-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(PAGE, /id="legend-toggle"/);
   assert.match(PAGE, /<dialog id="task-detail"/);
+});
+
+
+test("prototype-like and malformed task statuses cannot break the board", () => {
+  const tasks = { a: { status: "__proto__" }, b: { status: "constructor" },
+    c: { status: "toString" }, d: { status: "unknown" }, e: { status: [] },
+    f: {}, invalid: [], missing: null, identity: { id: "overridden", status: "queued" } };
+  const view = boardView({ snapshot: { board_id: "synthetic", version: 1, snapshot_json: { tasks } } });
+  assert.deepEqual(view.stages[0].tasks.map(task => task.id), ["a", "b", "c", "d", "e", "f", "identity"]);
+  for (const task of view.stages[0].tasks) assert.equal(taskStage(task), "queued");
 });

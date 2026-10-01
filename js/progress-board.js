@@ -5,6 +5,7 @@ import {
   answerRequest, taskSummary, modelLine, relatedQuestions, stageEnteredAt, stageDurations, ageText,
   executorGlyph, executorPool, prLabel, prUrl, taskRepo, liveView, readLivePreference,
   writeLivePreference, filterCards, groupByRepo, boardFromSearch, safeHref, sortLive,
+  SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange,
 } from "./progress-board-model.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -24,6 +25,8 @@ export function mountBoard(deps = {}) {
   const storage = "storage" in deps ? deps.storage : safeStorage(win);
   const now = deps.now || (() => new Date());
   const schedule = deps.setInterval || ((fn, ms) => win.setInterval(fn, ms));
+  const setTimer = deps.setTimeout || ((fn, ms) => win.setTimeout(fn, ms));
+  const clearTimer = deps.clearTimeout || (id => win.clearTimeout(id));
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const boardId = boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
@@ -39,6 +42,15 @@ export function mountBoard(deps = {}) {
   let lastRead = null;
   let readSeq = 0;
   let latestRead = null;
+  // Cards and unchanged question cards keep their nodes across renders, so
+  // focus, drafts and the dialog's return target survive every poll.
+  const cardNodes = new Map();
+  let questionCards = new Map();
+  let returnFocus = null;
+  let viewSignature = "";
+  let directorySignature = "";
+  const badgeTimes = new Map();
+  let ageTimer = null;
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -68,7 +80,82 @@ export function mountBoard(deps = {}) {
     if (!value) return "";
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat(undefined,
-      { dateStyle: "medium", timeStyle: "short" }).format(date);
+      { dateStyle: "medium", timeStyle: "short", hour12: true }).format(date);
+  }
+
+  // ── publication freshness ─────────────────────────────────────────────────
+  function updateBadge(badge, updatedAt) {
+    const age = boardFreshness(updatedAt, currentNow());
+    const label = `${age.label}${age.state === "stale" ? " · Stale · 24h+" : ""}`;
+    if (badge.textContent !== label) badge.textContent = label;
+    badge.setAttribute("data-freshness", age.state);
+  }
+
+  // This clock only patches badge text. It never reads the network or rebuilds
+  // controls, and wakes at publication-relative minute boundaries (including 24h).
+  function refreshAges() {
+    clearTimer(ageTimer);
+    let delay = Infinity;
+    const at = currentNow().getTime();
+    for (const [badge, updatedAt] of badgeTimes) {
+      if (badge.isConnected === false) { badgeTimes.delete(badge); continue; }
+      updateBadge(badge, updatedAt);
+      const next = nextFreshnessChange(updatedAt, at);
+      if (next !== null) delay = Math.min(delay, next);
+    }
+    if (Number.isFinite(delay)) ageTimer = setTimer(refreshAges, Math.min(delay, 60000));
+  }
+
+  function freshnessBadge(updatedAt) {
+    const badge = el("span", "freshness-badge");
+    badgeTimes.set(badge, updatedAt);
+    updateBadge(badge, updatedAt);
+    return badge;
+  }
+
+  function announce(message) {
+    byId("board-live").textContent = message;
+  }
+
+  // ── published board directory ─────────────────────────────────────────────
+  function renderDirectory(read) {
+    const boards = boardDirectory(read);
+    const directory = byId("board-directory");
+    byId("directory-error").hidden = true;
+    const signature = JSON.stringify(boards);
+    if (signature === directorySignature || directory.contains(doc.activeElement)) return;
+    const changed = Boolean(directorySignature);
+    directorySignature = signature;
+    directory.replaceChildren();
+    for (const board of boards) {
+      const item = el("a", "board-link", undefined,
+        { href: `/control-room/progress?board=${encodeURIComponent(board.board_id)}`, "data-board-id": board.board_id });
+      if (board.board_id === boardId) item.setAttribute("aria-current", "page");
+      item.append(el("span", "eyebrow", board.board_id === SYSTEM_BOARD_ID ? "System-wide" : "Project"),
+        el("h3", "", board.title || board.project || board.board_id));
+      const published = el("time", "board-published", formatTime(board.updated_at) || "Publication time unavailable");
+      if (board.updated_at) published.dateTime = board.updated_at;
+      const counts = Object.entries(board.task_counts || {}).map(([status, count]) => `${count} ${status}`).join(" · ");
+      item.append(published, freshnessBadge(board.updated_at), el("span", "board-counts", counts || "0 tasks"));
+      directory.append(item);
+    }
+    if (!boards.length) directory.append(el("p", "empty", "No published boards."));
+    refreshAges();
+    if (changed) announce("Published boards updated.");
+  }
+
+  function clearDirectory() {
+    directorySignature = "";
+    byId("board-directory").replaceChildren();
+  }
+
+  function loadDirectory(seq) {
+    if (typeof client.listProgressBoards !== "function") return;
+    client.listProgressBoards().then(read => {
+      if (seq === readSeq) renderDirectory(read);
+    }).catch(cause => {
+      if (seq === readSeq) readFailure(cause, "directory");
+    });
   }
 
   function setError(message) {
@@ -200,6 +287,18 @@ export function mountBoard(deps = {}) {
     return node;
   }
 
+  // The first node drawn for a card is kept and updated in place.
+  function placeCard(card, index) {
+    const fresh = cardNode(card, index);
+    const kept = cardNodes.get(card.id);
+    if (!kept) { cardNodes.set(card.id, fresh); return fresh; }
+    if (fresh.classList.contains("changed")) { kept.classList.remove("changed"); void kept.offsetWidth; }
+    for (const attribute of [...kept.attributes]) if (!fresh.hasAttribute(attribute.name)) kept.removeAttribute(attribute.name);
+    for (const attribute of fresh.attributes) kept.setAttribute(attribute.name, attribute.value);
+    kept.replaceChildren(...fresh.childNodes);
+    return kept;
+  }
+
   function currentNow() {
     return now();
   }
@@ -243,12 +342,12 @@ export function mountBoard(deps = {}) {
   function appendCards(container, cards, grouped) {
     let index = 0;
     if (!grouped) {
-      for (const card of cards) container.append(cardNode(card, index++));
+      for (const card of cards) container.append(placeCard(card, index++));
       return;
     }
     for (const group of groupByRepo(cards)) {
       container.append(el("h4", "repo-group", group.repo.split("/")[1], { title: group.repo }));
-      for (const card of group.cards) container.append(cardNode(card, index++));
+      for (const card of group.cards) container.append(placeCard(card, index++));
     }
   }
 
@@ -262,6 +361,7 @@ export function mountBoard(deps = {}) {
   function renderStages(view) {
     if (!view) return;
     const container = byId("board-stages");
+    const focusedId = [...cardNodes].find(([, node]) => node === doc.activeElement)?.[0];
     container.replaceChildren();
     const visible = filterCards(view.cards, filters);
     const grouped = view.kind === ALL_REPOS_BOARD;
@@ -295,6 +395,11 @@ export function mountBoard(deps = {}) {
       column.append(body);
       container.append(column);
     });
+    for (const id of [...cardNodes.keys()]) if (!view.cards.some(card => card.id === id)) cardNodes.delete(id);
+    if (focusedId) {
+      const node = cardNodes.get(focusedId);
+      (node?.isConnected ? node : byId("board-title")).focus();
+    }
     // Cards animate in on the first draw only; later renders (refresh, tick)
     // flash just the cards whose state changed.
     requestAnimationFrame(() => { container.dataset.settled = "true"; });
@@ -446,6 +551,7 @@ export function mountBoard(deps = {}) {
     const card = currentView?.cards.find(item => item.id === cardId);
     if (!card) return;
     openCardId = cardId;
+    returnFocus = doc.activeElement;
     fillDetail(card);
     const dialog = byId("task-detail");
     if (!dialog.open) {
@@ -539,9 +645,10 @@ export function mountBoard(deps = {}) {
   async function reloadQuestion(questionId, message) {
     setFormState(questionId, { busy: true, reload: true, message });
     let applied = false;
-    try { applied = await refresh(); } catch { applied = false; }
+    try { applied = await refresh(true); } catch { applied = false; }
     if (applied) {
       formState.delete(questionId);
+      questionCards.delete(questionId);
       renderQuestions(currentView);
       return;
     }
@@ -635,7 +742,7 @@ export function mountBoard(deps = {}) {
       }
       pendingRequests.delete(questionId);
       formState.delete(questionId);
-      const applied = await refresh().catch(() => false);
+      const applied = await refresh(true).catch(() => false);
       if (!applied) setFormState(questionId, { busy: true, message: "Answer sent. The board will update on the next refresh." });
     });
     return form;
@@ -667,12 +774,21 @@ export function mountBoard(deps = {}) {
   function renderQuestions(view) {
     const box = byId("board-questions");
     const { drafts, focus } = captureDrafts(box);
-    box.replaceChildren();
+    const prior = questionCards;
+    questionCards = new Map();
     const open = new Set(view.questions.filter(q => !q.status).map(q => q.question_id));
     for (const id of [...formState.keys()]) if (!open.has(id)) formState.delete(id);
     byId("question-count").textContent = `${open.size} WAITING`;
-    if (!view.questions.length) { box.append(el("p", "empty", "No questions on this board.")); return; }
+    if (!view.questions.length) { box.replaceChildren(el("p", "empty", "No questions on this board.")); return; }
+    const next = [];
     for (const q of view.questions) {
+      const signature = JSON.stringify(q);
+      const kept = prior.get(q.question_id);
+      if (kept?.signature === signature) {
+        questionCards.set(q.question_id, kept);
+        next.push(kept.card);
+        continue;
+      }
       const card = el("article", "question-card");
       if (q.status) card.dataset.status = q.status;
       const top = el("div", "question-top");
@@ -686,8 +802,14 @@ export function mountBoard(deps = {}) {
       } else {
         card.append(answerForm(q, view, drafts.get(q.question_id)));
       }
-      box.append(card);
+      questionCards.set(q.question_id, { signature, card });
+      next.push(card);
     }
+    // Unchanged cards stay connected, so a focused control is never detached.
+    next.forEach((card, index) => {
+      if (box.children[index] !== card) box.insertBefore(card, box.children[index] || null);
+    });
+    for (const child of [...box.children]) if (!next.includes(child)) child.remove();
     restoreFocus(focus);
   }
 
@@ -755,27 +877,118 @@ export function mountBoard(deps = {}) {
     if (lastRead) render(boardView(lastRead, currentNow()));
   }
 
+  const BOARD_PANELS = ["board-stages", "board-rail", "board-questions", "board-blocked", "board-ledger",
+    "board-deliverables", "board-decisions", "board-notes", "board-completed", "board-headline", "board-repos"];
+  const BOARD_COUNTS = ["task-count", "question-count", "blocked-count", "deliverable-count",
+    "decision-count", "completed-count", "repo-count"];
+
+  // A confirmed unpublished or denied read removes the protected board.
+  function clearBoard(state) {
+    currentView = null;
+    lastRead = null;
+    viewSignature = "";
+    openCardId = null;
+    returnFocus = null;
+    cardNodes.clear();
+    questionCards = new Map();
+    fingerprints.clear();
+    formState.clear();
+    pendingRequests.clear();
+    const dialog = byId("task-detail");
+    if (dialog.open) dialog.close();
+    byId("task-detail-title").textContent = "";
+    byId("task-detail-body").replaceChildren();
+    for (const id of BOARD_PANELS) byId(id).replaceChildren();
+    for (const id of BOARD_COUNTS) byId(id).textContent = "—";
+    byId("repos-panel").hidden = true;
+    byId("board-sync").hidden = true;
+    byId("board-title").textContent = "Progress";
+    doc.title = "Progress · DoctorCRE";
+    const meta = byId("board-meta");
+    meta.textContent = state === "unpublished" ? "No published snapshot" : "Board access unavailable";
+    meta.setAttribute("data-read-state", state);
+    const freshness = byId("board-freshness");
+    badgeTimes.delete(freshness);
+    freshness.textContent = "";
+    freshness.removeAttribute("data-freshness");
+  }
+
+  function readFailure(cause, target) {
+    const status = cause?.status;
+    const state = status === 401 ? "signed-out" : status === 403 ? "unauthorized"
+      : cause?.code === "progress_read_timeout" ? "timeout"
+        : win.navigator?.onLine === false ? "offline" : "unavailable";
+    let message;
+    if (status === 401 || status === 403) {
+      message = status === 401 ? "Your session ended. Sign in to read this board." : "You do not have access to this board.";
+      if (status === 401) { ++readSeq; clearBoard(state); clearDirectory(); }
+      else if (target === "board") clearBoard(state);
+      else clearDirectory();
+    } else {
+      const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "The read failed.";
+      const retained = target === "board" ? Boolean(currentView) : Boolean(directorySignature);
+      message = `${label} ${retained ? "Showing last-known publication." : "Publication unavailable."} Retry to read again.`;
+    }
+    if (target === "directory") {
+      const error = byId("directory-error");
+      error.textContent = message;
+      error.hidden = false;
+      error.setAttribute("data-read-state", state);
+    } else {
+      setError(message);
+      const meta = byId("board-meta");
+      meta.setAttribute("data-read-state", state);
+      if (currentView) meta.textContent = `Last-known publication ${formatTime(currentView.updated_at)} · Version ${currentView.version}`;
+    }
+    if (status === 401) byId("board-sign-in").hidden = false;
+    byId("board-retry").hidden = false;
+    refreshAges();
+  }
+
   // Reads are ordered: a read that finishes after a newer one started is
   // discarded, and its caller waits for the newest read instead. Returns true
-  // when a board was drawn. Open question drafts survive (renderQuestions).
-  async function refresh() {
+  // when a board was drawn. A poll waits while an answer form has focus; an
+  // answer, a reload or Retry reads at once (force). The directory is read
+  // alongside and never holds up the board.
+  async function refresh(force = false) {
+    if (!force && byId("board-questions").contains(doc.activeElement)) return false;
     if (!boardId) {
       setError("Choose a board: Project or All repositories.");
       byId("board-meta").textContent = "No board selected";
       return false;
     }
     const seq = ++readSeq;
+    loadDirectory(seq);
     const run = (async () => {
       let read;
       try { read = await client.readProgressBoard({ board_id: boardId }); }
-      catch (cause) { if (seq !== readSeq) return "superseded"; throw cause; }
+      catch (cause) {
+        if (seq !== readSeq) return "superseded";
+        readFailure(cause, "board");
+        if (force) throw cause;
+        return false;
+      }
       if (seq !== readSeq) return "superseded";
       const view = boardView(read, currentNow());
       if (view.error) { setError(view.error); return false; }
-      if (!view.version) { setError("This board has not been published yet."); return false; }
+      if (!view.version) {
+        clearBoard("unpublished");
+        setError("This board has not been published yet.");
+        byId("board-retry").hidden = false;
+        return false;
+      }
       lastRead = read;
       setError("");
+      byId("board-sign-in").hidden = true;
+      byId("board-meta").setAttribute("data-read-state", "published");
+      const signature = JSON.stringify(read);
+      if (signature !== viewSignature) {
+        announce(viewSignature ? `${view.title} updated.` : `${view.title} loaded.`);
+        viewSignature = signature;
+      }
       render(view);
+      badgeTimes.set(byId("board-freshness"), view.updated_at);
+      refreshAges();
       return true;
     })();
     latestRead = run;
@@ -785,12 +998,21 @@ export function mountBoard(deps = {}) {
   }
 
   function start() {
-    refresh().catch(() => setError("The board could not be loaded. Refresh to try again."));
+    refresh().catch(() => setError("The board could not be loaded. Retry to read again."));
     schedule(() => refresh().catch(() => setError("The board could not be refreshed.")), REFRESH_MS);
     schedule(tick, TICK_MS);
   }
 
-  byId("task-detail").addEventListener("close", () => { openCardId = null; });
+  // Closing the pop-up returns focus to what opened it, or to the card.
+  byId("task-detail").addEventListener("close", () => {
+    if (!openCardId && !returnFocus) return;
+    const target = returnFocus?.isConnected ? returnFocus : cardNodes.get(openCardId);
+    openCardId = null;
+    returnFocus = null;
+    (target?.isConnected ? target : byId("board-title")).focus();
+  });
+  byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
+  doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
   wireLegend();
   wireFilters();
