@@ -98,7 +98,7 @@ test("B05-2 a null element inside refs renders no ref chip, no link, and never t
 
 /* ------------------------------------------------------------------------ B05-3 */
 
-test("B05-3 Back restores the query and the chips from the address, byte for byte, and re-renders without a read", () => {
+test("B05-3 Back restores the query and the chips from the address, byte for byte, and reads the restored results", () => {
   const before = { query: "alpha", kinds: ["deals"] };
   const address = searchAddress(before);
   assert.equal(address, "/search?q=alpha&kinds=deals");
@@ -113,9 +113,9 @@ test("B05-3 Back restores the query and the chips from the address, byte for byt
   // A kind the page does not group is dropped rather than carried as a filter.
   assert.deepEqual([...parseSearchAddress("?q=a&kinds=deals,invented").kinds], ["deals"]);
 
-  assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\{ reread: false \}\)\)/, "popstate restores without a read of its own");
+  assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\{ reread: true \}\)\)/, "popstate reads results for the restored query");
   const restoreBody = pageJs.slice(pageJs.indexOf("function restoreFromAddress("), pageJs.indexOf("function wire()"));
-  assert.match(restoreBody, /if \(reread && view\.submitted\) read\(\{ push: false \}\);\s*\n\s*else render\(\);/, "a restore without reread paints from the payload in hand");
+  assert.match(restoreBody, /if \(reread\) read\(\{ push: false \}\);\s*\n\s*else render\(\);/, "a restored query reads without pushing another address");
 });
 
 /* ------------------------------------------------------------------------ B05-4 */
@@ -383,7 +383,7 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.15.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.version, "1.34.0", "the current contract retains Search operations");
+  assert.equal(contract.version, "1.35.0", "the current contract retains Search operations");
   assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");

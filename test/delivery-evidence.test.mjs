@@ -90,26 +90,26 @@ test("a null count_total renders unknown, never 0 and never a percentage", () =>
   assert.equal(renderCount(0, known), "0 of 12 (0%)");
 });
 
-test("the three CR-AC examples each render a non-operational token, never complete", () => {
+test("source closure examples cannot prove downstream delivery", () => {
   // built-unmerged: every slice verified, closure still unresolved.
   const built = deliveryStages(passport());
   assert.equal(stageOf(built, "source_verified").state, "complete");
   assert.equal(stageOf(built, "merged").state, "unknown");
   assert.notEqual(stageOf(built, "merged").state, "complete");
 
-  // merged-unactivated: the work facet is complete, release is not.
+  // A completed work facet proves source closure, not a merge.
   const merged = deliveryStages(passport({ closure: { work: facet("complete", "demo-merge") } }));
-  assert.equal(stageOf(merged, "merged").state, "complete");
-  assert.equal(stageOf(merged, "merged").evidence_ref, "demo-merge");
+  assert.equal(stageOf(merged, "merged").state, "unknown");
+  assert.equal(stageOf(merged, "merged").evidence_ref, null);
   assert.equal(stageOf(merged, "activated").state, "unknown");
   assert.notEqual(stageOf(merged, "activated").state, "complete");
 
-  // active-unproven: closure complete and released, consumer proof still open.
+  // Source closure release also cannot prove product activation.
   const active = deliveryStages(passport({
     closure_state: "complete",
     closure: { work: facet("complete", "demo-merge"), release: facet("complete", "demo-release") },
   }));
-  assert.equal(stageOf(active, "activated").state, "complete");
+  assert.equal(stageOf(active, "activated").state, "unknown");
   assert.equal(stageOf(active, "consumer_proven").state, "unknown");
   assert.notEqual(stageOf(active, "consumer_proven").state, "complete");
 
@@ -248,9 +248,9 @@ test("the fixture carries the three delivery examples plus a stale plan, and ref
     return deliveryStages(held, portfolio);
   };
   assert.equal(stageOf(await stages("WR-000901"), "merged").state, "unknown");
-  assert.equal(stageOf(await stages("WR-000902"), "merged").state, "complete");
+  assert.equal(stageOf(await stages("WR-000902"), "merged").state, "unknown");
   assert.equal(stageOf(await stages("WR-000902"), "activated").state, "unknown");
-  assert.equal(stageOf(await stages("WR-000903"), "activated").state, "complete");
+  assert.equal(stageOf(await stages("WR-000903"), "activated").state, "unknown");
   assert.equal(stageOf(await stages("WR-000903"), "consumer_proven").state, "unknown");
   assert.ok((await stages("WR-000905", "PF-DEMO-1")).every((cell) => cell.state === "unknown"), "a stale plan proves nothing");
   assert.equal(stageOf(await stages("WR-000901", "PF-DEMO-1"), "approved").state, "complete");
@@ -277,7 +277,7 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // reads the census, at the route the census already owns.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
   assert.equal(routes.version, "1.15.0", "the Control Room route moved this additive contract on");
-  assert.equal(carr.version, "1.34.0", "the current interface retains the delivery evidence verbs");
+  assert.equal(carr.version, "1.35.0", "the current interface retains the delivery evidence verbs");
   for (const verb of ["engineering-passport", "read-portfolio", "work-request-card", "decline-work-request", "supersede-work-request", "set-work-shape-disposition"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }

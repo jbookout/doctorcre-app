@@ -26,7 +26,7 @@ const UNGATED_PAGES = new Set(["/status"]);
 const GATE_PATHS = new Map([
   ["/control-room/progress", "/control-room"], ["/control-room/agents/queue", "/control-room"],
   ["/ideas-events", "/control-room"], ["/design-lab", "/control-room"],
-  ["/search", "/business"], ["/work-requests", "/system-work.html"],
+  ["/calendar", "/business"], ["/search", "/business"], ["/work-requests", "/system-work.html"],
   ["/agent-room", "/room.html"], ["/all-work", "/work-inventory"],
   ["/updates", "/notifications"], ["/doc-chats", "/conversations"],
 ]);

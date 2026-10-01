@@ -32,6 +32,7 @@ import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge } from "./shell.js";
 import { activityCopy, activityRequest, activityState } from "./record-activity-model.js";
+import { loadEvidence, renderEvidence } from "./correspondence.js";
 
 const EXPIRY_TICK_MS = 5_000;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -88,6 +89,7 @@ const view = Object.assign(createBusinessState(), { freshnessKey: null, returnFo
 // js/record-activity-model.js). Its own sequence, so a slow answer for a record
 // that has since been closed or replaced never paints.
 view.activity = { id: null, sequence: 0, result: null };
+view.evidence = { id: null, sequence: 0, result: null };
 let searchTimer = null;
 let dealroomClientPromise = null;
 
@@ -546,6 +548,9 @@ function renderRecordPanel() {
     dom.panelBody.querySelectorAll(".activity-row").forEach((node) => {
       node.style.setProperty("--stagger", `${node.dataset.staggerMs}ms`);
     });
+    const evidence = document.createElement('div');
+    evidence.innerHTML = renderEvidence(view.evidence.id === payload.record.id ? view.evidence.result || { threads: { state: 'loading' } } : {});
+    dom.panelBody.append(evidence);
   }
 }
 
@@ -660,6 +665,9 @@ function settleList({ status, payload = null, code = null }, sequence) {
 }
 
 async function loadRecord(id, { focusOnOpen = false } = {}) {
+  const evidenceSequence = ++view.evidence.sequence;
+  view.evidence.id = id;
+  view.evidence.result = null;
   const sequence = ++view.record.sequence;
   view.record.id = id;
   view.record.status = "loading";
@@ -690,6 +698,18 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     const payload = await response.json().catch(() => null);
     if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
     settle("ready", null, payload);
+    // The party record read supplies no deal activity/native thread index. This
+    // section reads installation readiness and states unavailable explicitly.
+    // Repainting recent activity must not restart this read or lose its state.
+    dealroomClient().then(client => loadEvidence(client)).then(result => {
+      if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
+      view.evidence.result = result;
+      renderRecordPanel();
+    }).catch(() => {
+      if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
+      view.evidence.result = {};
+      renderRecordPanel();
+    });
     if (acceptsResponse(view.record.sequence, sequence) && view.recordId === id) loadActivity(id, payload.record);
   } catch {
     settle("error", "DEPENDENCY_UNAVAILABLE");

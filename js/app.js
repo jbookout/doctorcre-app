@@ -17,6 +17,7 @@ import {
 } from './field-write-reconciliation.mjs';
 import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
+import { mountEvidence } from './correspondence.js';
 
 const POLL_MS = 1400;
 /**
@@ -82,7 +83,9 @@ const account = () => state.accounts.find((item) => item.account_client_id === s
 
 function daysFromNow(value) {
   if (!value) return null;
-  return Math.round((new Date(`${value}T12:00:00`) - today()) / 864e5);
+  const baseline = today();
+  baseline.setHours(12);
+  return Math.round((new Date(`${value}T12:00:00`) - baseline) / 864e5);
 }
 
 function dateLabel(value) {
@@ -1032,7 +1035,9 @@ function marketAgentForm(dealId) {
 }
 
 function addTeamDealForm() {
-  openForm({ title:'Add work record', submit:'Create work record', body:`
+  const pending = state.pendingDealCreation?.request;
+  openForm({ title:'Add work record', submit:pending ? 'Check creation outcome' : 'Create work record', body:pending ? `
+    <div class="field"><b>${esc(pending.name)}</b><p>Client: ${esc(pending.client)}</p><p>${esc(pending.deal_type || 'other')} · ${esc(pending.phase || 'On Deck')} · ${esc(pending.market || '')} · ${esc(pending.segment || '')}</p><small>Check creation outcome continues this retained work record.</small></div>` : `
     <div class="field"><label for="clientRef">Existing client</label><input id="clientRef" name="client" required placeholder="C-127 or exact client name"><small>A work record always belongs to a client. This prevents free-floating or duplicate records.</small></div>
     <div class="field"><label for="dealName">Record name</label><input id="dealName" name="name" required></div>
     <div class="field-row"><div class="field"><label for="dealType">Type</label><select id="dealType" name="deal_type"><option value="startup">Startup</option><option value="relocation">Relocation</option><option value="additional_office">Additional office</option><option value="renewal">Renewal</option><option value="expansion">Expansion</option><option value="purchase">Purchase</option><option value="other">Other</option></select></div>
@@ -1040,8 +1045,17 @@ function addTeamDealForm() {
     <div class="field-row"><div class="field"><label for="dealMarket">Market</label><input id="dealMarket" name="market"></div><div class="field"><label for="dealSegment">Healthcare vertical</label><input id="dealSegment" name="segment" placeholder="Dental, Vet, DPC…"></div></div>`,
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
-      await state.client.createDeal({ ...args, lane:'territory', idempotency_key:uuidv4() });
+      const signature = JSON.stringify(args);
+      if (!pending && state.pendingDealCreation && state.pendingDealCreation.signature !== signature) throw new Error('Reopen Add work record to check the retained creation before changing its fields.');
+      state.pendingDealCreation ||= { signature, request: { ...args, lane:'territory', idempotency_key:uuidv4() } };
+      const operation = state.pendingDealCreation;
+      try { await state.client.createDeal(operation.request); }
+      catch (error) {
+        if (error.creationRefused && state.pendingDealCreation === operation) state.pendingDealCreation = null;
+        throw error;
+      }
       await loadHome(); showToast('Work record created in Deals');
+      state.pendingDealCreation = null;
     } });
 }
 
@@ -1107,8 +1121,13 @@ function detailRows(items, renderer, empty='Nothing captured yet.') {
   return items?.length ? items.map(renderer).join('') : `<div class="detail-row">${esc(empty)}</div>`;
 }
 
+let disposeDealEvidence = null;
+let dealDetailSequence = 0;
 async function openDeal(dealId) {
+  const sequence = ++dealDetailSequence;
+  disposeDealEvidence?.();
   const detail = await state.client.getDeal(dealId);
+  if (sequence !== dealDetailSequence) return;
   const deal = detail.deal;
   const parked = deal.operating_state === 'parked';
   const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
@@ -1129,6 +1148,9 @@ async function openDeal(dealId) {
       <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
     </div>`;
   $('#dealDetail').innerHTML = html;
+  const evidenceRoot = document.createElement('div');
+  $('#dealDetail .deal-content').append(evidenceRoot);
+  disposeDealEvidence = mountEvidence(evidenceRoot, { client: state.client, detail });
   $('#dealDialog').showModal();
 }
 
@@ -1203,11 +1225,15 @@ function renderAgenda() {
 async function advanceAgenda(disposition) {
   const review = state.review;
   const deal = review?.deals[review.index];
-  if (!review || !deal) return;
-  await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
-  review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
-  review.index += 1;
-  renderAgenda();
+  if (!review || !deal || review.advancing) return;
+  review.advancing = true;
+  try {
+    await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
+    if (state.review !== review) return;
+    review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
+    review.index += 1;
+    renderAgenda();
+  } finally { review.advancing = false; }
 }
 
 async function finishAgenda(status = 'completed') {
@@ -1221,6 +1247,11 @@ async function finishAgenda(status = 'completed') {
 }
 
 function wireEvents() {
+  $('#dealDialog').addEventListener('close', () => {
+    ++dealDetailSequence;
+    disposeDealEvidence?.();
+    disposeDealEvidence = null;
+  });
   document.addEventListener('click', async (event) => {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {
