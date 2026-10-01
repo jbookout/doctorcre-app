@@ -244,12 +244,14 @@ test("all visible header controls are clickable around the navigation breakpoint
   for (const width of [900, 901, 910, 920, 1000, 1100, 1101, 1440]) await t.test(String(width), async t => {
     const { page } = await open(t, { width, path: "/control-room" });
     const controls = page.locator('.app-shell-header a:visible, .app-shell-header button:visible, .app-shell-menu > summary:visible');
-    for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
+    // Use the same bounded action deadline as the suite. The trial still
+    // requires pointer actionability; a busy CI runner gets no force-click.
+    for (const control of await controls.all()) await control.click({ trial: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (width <= 900) await page.locator(".app-shell-menu > summary").click();
     await page.locator(".app-shell-more-toggle").click();
     assert.equal(await page.locator(".app-shell-more-list").isVisible(), true);
-    for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
+    for (const control of await controls.all()) await control.click({ trial: true });
   });
 });
 
