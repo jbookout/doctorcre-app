@@ -767,3 +767,15 @@ for (const missing of [undefined, "invalid"]) test(`Dot Tour: missing or invalid
   doc.querySelector("#accept-route").click(); await settle();
   assert.equal(store.calls.filter(call => call.path === "/api/tours/route-accept").length, 0);
 });
+
+
+test("Dot Tour: the composer contract binds review to an exact CARR digest producer", async () => {
+  const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
+  assert.equal(contract.version, "1.1.0");
+  assert.equal(contract.reviewed_route.schema, "doctorcre-tour-reviewed-route-digest.v1");
+  assert.equal(contract.reviewed_route.response_digest, "routes[0].acceptance_digest");
+  assert.equal(contract.reviewed_route.acceptance_field, "acceptance_digest");
+  assert.equal(contract.reviewed_route.changed_draft_status, 409);
+  assert.equal(contract.reviewed_route.producer.source_commit, "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33");
+  assert.equal(contract.reviewed_route.producer.migration, "migrations/0759_tour_reviewed_route_digest.sql");
+});
