@@ -38,7 +38,9 @@ test("exact pinned composer POST feeds its legal fixed appointment into the acce
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned composer boundary",
 }, async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
-  const source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:mcp-server/src/tour-internal-web.js`], { encoding: "utf8" });
+  const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  const timestampModule = `data:text/javascript;base64,${Buffer.from(committed("mcp-server/src/tour-route-timestamp.js")).toString("base64")}`;
+  const source = committed("mcp-server/src/tour-internal-web.js").replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
   const { createTourInternalWebHandler } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
   const routeId = "22222222-2222-4222-8222-222222222222", stopId = "33333333-3333-4333-8333-333333333333";
   const input = { idempotency_key: stopId, route_version_id: routeId, property_id: "44444444-4444-4444-8444-444444444444", route_sequence: 1, route_label: "A", stop_state: "active", appointment_start: "2026-09-30T12:00:00Z", appointment_end: "2026-09-30T12:00:00Z", locked_appointment: true, dwell_minutes: 30, buffer_minutes: 10, access_coordinate_status: "unknown", assertion_set_digest: `sha256:${"0".repeat(64)}` };
