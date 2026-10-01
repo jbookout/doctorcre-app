@@ -175,7 +175,17 @@ export function assuranceHealthRequest(args) {
 
 export const ASSURANCE_LAYERS = Object.freeze(Object.keys(ASSURANCE_CONTRACT.layer_details));
 const text = v => typeof v === 'string' && v.length > 0;
-const instant = v => typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v) && Number.isFinite(Date.parse(v));
+function instant(v) {
+  if (typeof v !== 'string') return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(v);
+  if (!match) return false;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const offsetHour = Number(match[7] ?? 0); const offsetMinute = Number(match[8] ?? 0);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1] &&
+    hour < 24 && minute < 60 && second < 60 && offsetHour < 24 && offsetMinute < 60 && Number.isFinite(Date.parse(v));
+}
 const digest = v => typeof v === 'string' && /^sha256:[a-f0-9]{64}$/.test(v);
 const list = (v, allowed) => Array.isArray(v) && v.every(item => allowed.includes(item)) && new Set(v).size === v.length;
 const refs = v => Array.isArray(v) && v.every(text);
@@ -198,7 +208,8 @@ function validProjection(answer, scope) {
   } else if (truth?.available === true) {
     if (!exact(truth, c.workflow_truth.available_keys) || !c.workflow_truth.states.includes(truth.state) ||
         typeof truth.enabled !== 'boolean' || !list(truth.admissible_modes, ['shadow', 'canary', 'live']) ||
-        (answer.state === 'disabled' && truth.state !== 'declared_disabled')) return false;
+        (['unknown', 'conflict', 'undeclared'].includes(truth.state) && answer.state !== 'unknown') ||
+        (answer.state === 'disabled') !== (truth.state === 'declared_disabled')) return false;
   } else return false;
   if (truth.source !== 'V5-F09 workflow census' || !exact(answer.evidence, ASSURANCE_LAYERS)) return false;
   const identities = new Set(); const digests = new Set();
@@ -229,7 +240,10 @@ function validProjection(answer, scope) {
       ASSURANCE_LAYERS.some(layer => answer.evidence[layer].state !== 'passing' && !answer.recovery.required_evidence.includes(layer))) return false;
   if (answer.green || answer.capability_stage === 'act') {
     if (identities.size !== ASSURANCE_LAYERS.length || truth.available !== true || !truth.enabled ||
-        !truth.admissible_modes.includes('live') || answer.capability_stage !== 'act') return false;
+        !truth.admissible_modes.includes('live') || answer.state !== 'healthy' || answer.capability_stage !== 'act' ||
+        answer.capability_stage_attributable_to_findings !== 'act' || answer.impact.withdrawn_stages.length ||
+        answer.recovery.required_evidence.length ||
+        ['failing_layers', 'indeterminate_layers', 'missing_layers', 'unbindable_layers'].some(key => answer[key].length)) return false;
   }
   return true;
 }

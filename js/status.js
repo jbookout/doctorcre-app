@@ -142,6 +142,10 @@ function renderAssurance() {
     </div>`;
   }).join("");
   if (html !== lastAssuranceHtml) { $("integrationGaps").innerHTML = html; lastAssuranceHtml = html; }
+  const subject = model.scope ? ` for ${model.scope.workflow_key} v${model.scope.workflow_version}${model.scope.work_request_id ? `, ${model.scope.work_request_id}` : ""}` : "";
+  const announcement = `Assurance health${subject}: ${model.state}.${model.state === "unknown" ? ` ${model.reason}` : ""}`;
+  // The persistent live region changes only with the scoped result, never its ticking ages.
+  if ($("assuranceLive").textContent !== announcement) $("assuranceLive").textContent = announcement;
 }
 function scopeFromInputs() {
   const scope = { workflow_key: $("assuranceWorkflow").value, workflow_version: Number($("assuranceVersion").value) };

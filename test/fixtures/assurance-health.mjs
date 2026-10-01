@@ -20,17 +20,22 @@ export function projection(state = 'unknown') {
     expires_at: '2026-10-01T15:10:00.000Z', incident_refs: [], recovery_refs: [], ...detail,
   }]));
   if (state === 'degraded') { evidence.actual_business_outcome.state = 'failed'; evidence.actual_business_outcome.status = 'fail'; }
+  if (state === 'failed') { evidence.artifact_assessment.state = 'failed'; evidence.artifact_assessment.status = 'fail'; }
+  if (state === 'not-yet-operational') {
+    for (const layer of ['activation_readback', 'actual_business_outcome']) evidence[layer] = { layer, state: 'missing', present: false, scope: { ...scope } };
+  }
+  const nonpassing = Object.keys(evidence).filter(layer => evidence[layer].state !== 'passing');
   return {
     schema_version: 'assurance-health.v1', scope: { ...scope }, state, green: healthy,
     state_reason: state === 'unknown' ? 'authoritative workflow truth (V5-F09) is unreadable; nothing is claimed about this scope' : 'Demo scoped evidence disposition',
-    capability_stage: healthy ? 'act' : state === 'degraded' ? 'draft' : 'unavailable',
-    capability_stage_attributable_to_findings: healthy ? 'act' : state === 'degraded' ? 'draft' : 'unavailable',
+    capability_stage: healthy ? 'act' : state === 'degraded' || state === 'not-yet-operational' ? 'draft' : 'unavailable',
+    capability_stage_attributable_to_findings: healthy ? 'act' : state === 'degraded' || state === 'not-yet-operational' ? 'draft' : 'unavailable',
     workflow_truth: state === 'unknown' ? { available: false, source: 'V5-F09 workflow census', reason: 'workflow truth is not readable by this store; no stage above unavailable and no green state can be claimed' }
-      : { available: true, source: 'V5-F09 workflow census', state: 'operational', enabled: true, admissible_modes: ['shadow', 'canary', 'live'] },
+      : { available: true, source: 'V5-F09 workflow census', state: state === 'disabled' ? 'declared_disabled' : 'operational', enabled: state !== 'disabled', admissible_modes: state === 'disabled' ? [] : ['shadow', 'canary', 'live'] },
     owner: { kind: 'record_layer', ref: 'ops.assurance_health_evidence' }, evidence,
-    failing_layers: state === 'degraded' ? ['actual_business_outcome'] : [], indeterminate_layers: [], missing_layers: [], unbindable_layers: [], reasons: [],
-    impact: { scope_limited_to: { ...scope }, withdrawn_stages: healthy ? [] : state === 'degraded' ? ['act'] : ['act', 'draft', 'read'] },
-    recovery: { required_evidence: state === 'degraded' ? ['actual_business_outcome'] : [] },
+    failing_layers: state === 'degraded' ? ['actual_business_outcome'] : state === 'failed' ? ['artifact_assessment'] : [], indeterminate_layers: [], missing_layers: state === 'not-yet-operational' ? nonpassing : [], unbindable_layers: [], reasons: [],
+    impact: { scope_limited_to: { ...scope }, withdrawn_stages: healthy ? [] : state === 'degraded' || state === 'not-yet-operational' ? ['act'] : ['act', 'draft', 'read'] },
+    recovery: { required_evidence: nonpassing },
   };
 }
 export function missingProjection() {
