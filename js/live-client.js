@@ -481,7 +481,7 @@ export function createLiveClient(opts = {}) {
     // than "unknown".
     async engineeringPassport(args = {}) { return rpc('engineering-passport', args); },
     async readPortfolio(args = {}) { return rpc('read-portfolio', args); },
-    async workRequestCard(args = {}) { return rpc('work-request-card', args); },
+    async workRequestCard(args = {}, { signal } = {}) { return rpc('work-request-card', args, signal); },
     async declineWorkRequest(args) { return write('decline-work-request', args); },
     async supersedeWorkRequest(args) { return write('supersede-work-request', args); },
     async setWorkShapeDisposition(args) { return write('set-work-shape-disposition', args); },
@@ -563,7 +563,7 @@ export function createLiveClient(opts = {}) {
     // matching write. Open is local navigation for a checkpoint-proved native
     // target; no verb resumes, messages, or takes over a session.
     async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
-    async codexSessions() { return rpc('list-my-codex-sessions', {}); },
+    async codexSessions(_args = {}, { signal } = {}) { return rpc('list-my-codex-sessions', {}, signal); },
     async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
 
     // ------------------------------- Model Room assignments and turns (C12)
@@ -613,9 +613,9 @@ export function createLiveClient(opts = {}) {
     // idempotency key; the three writes go through `write` because they do. Note
     // that create's key BECOMES the conversation id, so a second key is a second
     // conversation — the kernel's retained request is what keeps that honest.
-    async readDocConversation(args = {}) { return rpc('read-doc-conversation', args); },
-    async listDocConversations(args = {}) { return rpc('list-doc-conversations', args); },
-    async listDocSuggestions(args = {}) { return rpc('list-doc-suggestions', args); },
+    async readDocConversation(args = {}, { signal } = {}) { return rpc('read-doc-conversation', args, signal); },
+    async listDocConversations(args = {}, { signal } = {}) { return rpc('list-doc-conversations', args, signal); },
+    async listDocSuggestions(args = {}, { signal } = {}) { return rpc('list-doc-suggestions', args, signal); },
     async decideDocSuggestion(args) { return write('decide-doc-suggestion', args); },
     async proposeDocCorrection(args) { return write('propose-doc-correction', args); },
     async createDocConversation(args) { return write('create-doc-conversation', args); },
@@ -631,7 +631,7 @@ export function createLiveClient(opts = {}) {
     // because it carries no idempotency key, and there is no matching write:
     // this is a bounded projection that creates no writer, dispatcher, retry,
     // task or native-session authority, and it never launches anything.
-    async docOutcomeCards(args = {}) { return rpc('read-doc-outcome-cards', args); },
+    async docOutcomeCards(args = {}, { signal } = {}) { return rpc('read-doc-outcome-cards', args, signal); },
 
     // ------------------------------------------------ global search (B05)
     // Two READS, passed through untouched. NEITHER names an actor, a tenant or

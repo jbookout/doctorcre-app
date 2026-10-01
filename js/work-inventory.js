@@ -1,4 +1,4 @@
-import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C10 — Complete Work Inventory, DOM wiring.
 //
 // Every decision about the payload lives in ./work-inventory-model.js. This file
@@ -410,10 +410,14 @@ function openEvidence(ref) {
 }
 
 /** The fresh read every write is built from, and the one the row's state shows. */
-async function readCard(ref) {
+async function readCard(ref, { signal } = {}) {
   if (!client) return null;
   try {
-    const answer = await client.workRequestCard({ work_request: ref });
+    const args = { work_request: ref };
+    const answer = signal
+      ? await readWithDeadline(current => client.workRequestCard(args, { signal: current }), { signal })
+      : await client.workRequestCard(args);
+    if (signal?.aborted) return null;
     if (!validWorkRequestCard(answer)) {
       announce(`${ref}: the card answered in a shape this page does not read.`);
       return null;
@@ -422,6 +426,7 @@ async function readCard(ref) {
     render();
     return answer;
   } catch (error) {
+    if (signal?.aborted) return null;
     announce(`${ref}: ${refusalMessage(error?.payload?.error || "unreadable", { ref })}`);
     return null;
   }
@@ -536,7 +541,7 @@ function closeDisposition() {
 
 const accepts = (sequence) => sequence === view.sequence;
 
-async function read({ cursor = null, append = false, background = false } = {}) {
+async function read({ cursor = null, append = false, background = false, signal } = {}) {
   const sequence = ++view.sequence;
   if (!append) {
     view.status = "loading";
@@ -549,9 +554,16 @@ async function read({ cursor = null, append = false, background = false } = {}) 
     loadMore.setAttribute("aria-busy", "true");
     loadMore.textContent = "Loading…";
   }
+  const cancel = () => {
+    if (!accepts(sequence)) return;
+    settle({ status: "error", message: "Work refresh timed out." }, sequence, append);
+    view.sequence += 1;
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
   try {
+    if (signal?.aborted) { cancel(); return; }
     const path = inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT, cursor });
-    const response = await fetchRead(path, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(path, { headers: { accept: "application/json" }, cache: "no-store", signal });
     if (!accepts(sequence)) return;
     if (response.status === 401 || response.status === 403) return settle({ status: "unauthorized" }, sequence, append);
     if (!response.ok) {
@@ -571,7 +583,7 @@ async function read({ cursor = null, append = false, background = false } = {}) 
     }
     if (background) {
       for (let page = 1; page < view.loadedPages && payload.next_cursor; page++) {
-        const next = await fetchRead(inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT, cursor: payload.next_cursor }), { headers: { accept: "application/json" }, cache: "no-store" });
+        const next = await fetchRead(inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT, cursor: payload.next_cursor }), { headers: { accept: "application/json" }, cache: "no-store", signal });
         if (!accepts(sequence)) return;
         if (!next.ok) throw new Error("Work page unavailable");
         const incoming = await next.json();
@@ -584,7 +596,7 @@ async function read({ cursor = null, append = false, background = false } = {}) 
   } catch {
     if (!accepts(sequence)) return;
     settle({ status: "error", message: "The browser could not reach the census read. Nothing here has been inferred." }, sequence, append);
-  }
+  } finally { signal?.removeEventListener("abort", cancel); }
 }
 
 function settle({ status, payload = null, message = null }, sequence, append) {
@@ -680,7 +692,7 @@ async function boot() {
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
   await read();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await read({ background: true }); if (decision.ref) await readCard(decision.ref); } });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => { await read({ background: true, signal }); if (!signal.aborted && decision.ref) await readCard(decision.ref, { signal }); } });
 }
 
 boot();

@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
 //
 // Every decision about a payload, a state or a sentence lives in
@@ -83,12 +83,21 @@ const view = {
 };
 
 let client = null;
+// A cancelled traversal must settle even if its adapter ignores abort. Live
+// reads also forward the signal to the transport, outside the verb arguments.
+const readClient = (method, args, signal) => signal
+  ? readWithDeadline(current => client[method](args, { signal: current }), { signal })
+  : client[method](args);
 const loadedPages = { conversation: 1, list: 1, outcomes: 1 };
 let backgroundReads = 0;
 function suggestionEditorActive() {
-  return $("suggestionsList")?.contains(document.activeElement)
-    || view.suggestions.snoozeDates.size > 0
-    || [...view.suggestions.drafts.values(), ...view.suggestions.workNumbers.values(), ...view.suggestions.snoozeDates.values()].some(Boolean);
+  const list = $("suggestionsList");
+  return list?.contains(document.activeElement)
+    || [...(list?.querySelectorAll("[data-suggestion]") || [])].some(card => {
+      const id = card.dataset.suggestion;
+      return Boolean(view.suggestions.drafts.get(id) || view.suggestions.workNumbers.get(id))
+        || view.suggestions.snoozeDates.has(id);
+    });
 }
 let pendingOutcomeOpen = null;
 const openLinks = createOpenLinkGuard();
@@ -440,7 +449,7 @@ function render() {
  * CODE, and a read that lands after a newer one was issued is discarded — the
  * page paints the latest picture it asked for, never the last one that arrived.
  */
-async function takeConversation({ after = null, background = false } = {}) {
+async function takeConversation({ after = null, background = false, signal } = {}) {
   if (view.route.state !== "ok") {
     view.conversation = view.route.state === "malformed" ? { state: "malformed" } : { state: "pending" };
     render();
@@ -453,12 +462,12 @@ async function takeConversation({ after = null, background = false } = {}) {
   try {
     const args = { conversation_id: view.route.id, limit: LIMIT };
     if (Number.isInteger(after)) args.after_sequence = after;
-    let payload = await client.readDocConversation(args);
-    if (view.sequence !== sequence) return;
+    let payload = await readClient("readDocConversation", args, signal);
+    if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
       for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
-        const incoming = await client.readDocConversation({ ...args, after_sequence: pagingState(payload).after });
-        if (view.sequence !== sequence) return;
+        const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
+        if (view.sequence !== sequence || signal?.aborted) return;
         payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
       }
     } else loadedPages.conversation = Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
@@ -483,18 +492,18 @@ async function takeConversation({ after = null, background = false } = {}) {
  * destroy the ordering paging exists to preserve. No cursor means a fresh
  * first page, which is what every write settles into.
  */
-async function takeList({ cursor = null, background = false } = {}) {
+async function takeList({ cursor = null, background = false, signal } = {}) {
   const sequence = view.sequence;
   const held = cursor ? view.list.rows : [];
   try {
-    let payload = await client.listDocConversations(
-      listArgs({ cursor, includeArchived: view.includeArchived }),
+    let payload = await readClient("listDocConversations",
+      listArgs({ cursor, includeArchived: view.includeArchived }), signal,
     );
-    if (view.sequence !== sequence) return;
+    if (view.sequence !== sequence || signal?.aborted) return;
     if (background) {
       for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
-        const incoming = await client.listDocConversations(listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }));
-        if (view.sequence !== sequence) return;
+        const incoming = await readClient("listDocConversations", listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }), signal);
+        if (view.sequence !== sequence || signal?.aborted) return;
         payload = { ...incoming, conversations: [...payload.conversations, ...incoming.conversations] };
       }
     } else loadedPages.list = cursor ? loadedPages.list + 1 : 1;
@@ -517,21 +526,21 @@ async function takeList({ cursor = null, background = false } = {}) {
  * one sequence across pages and re-sorting the union would destroy the
  * `updated_at desc, id desc` ordering paging exists to preserve.
  */
-async function takeOutcomeCards({ cursor = null, background = false } = {}) {
+async function takeOutcomeCards({ cursor = null, background = false, signal } = {}) {
   const sequence = ++view.outcomeCards.sequence;
   const held = cursor ? view.outcomeCards.rows : [];
   view.outcomeCards = { ...view.outcomeCards, state: "loading" };
   render();
   try {
     let [payload, checkpointPayload] = await Promise.all([
-      client.docOutcomeCards(outcomeCardsRequest({ cursor })),
-      client.codexSessions().catch(() => null),
+      readClient("docOutcomeCards", outcomeCardsRequest({ cursor }), signal),
+      readClient("codexSessions", {}, signal).catch(() => null),
     ]);
-    if (view.outcomeCards.sequence !== sequence) return;
+    if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
     if (background && !refuseDocOutcomeCards(payload)) {
       for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
-        const incoming = await client.docOutcomeCards(outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }));
-        if (view.outcomeCards.sequence !== sequence) return;
+        const incoming = await readClient("docOutcomeCards", outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }), signal);
+        if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
         if (refuseDocOutcomeCards(incoming)) throw new Error("Outcome page unavailable");
         payload = { ...incoming, cards: [...payload.cards, ...incoming.cards] };
       }
@@ -557,18 +566,18 @@ async function takeOutcomeCards({ cursor = null, background = false } = {}) {
     : `${view.outcomeCards.rows.length} outcome card${view.outcomeCards.rows.length === 1 ? "" : "s"} shown.`);
 }
 
-async function takeSuggestions({ background = false } = {}) {
+async function takeSuggestions({ background = false, signal } = {}) {
   const sequence = ++view.suggestions.sequence;
   if (!background) {
     view.suggestions = suggestionReadState(view.suggestions, { state: "loading" });
     renderSuggestions();
   }
   try {
-    const payload = await client.listDocSuggestions({
+    const payload = await readClient("listDocSuggestions", {
       ...(view.route.state === "ok" ? { conversation_id: view.route.id } : {}),
       include_parked: view.suggestions.includeParked,
-    });
-    if (sequence !== view.suggestions.sequence) return;
+    }, signal);
+    if (sequence !== view.suggestions.sequence || signal?.aborted) return;
     if (background && suggestionEditorActive()) return;
     if (!Array.isArray(payload?.suggestions)) throw new Error("Invalid suggestion response");
     view.suggestions = suggestionReadState(view.suggestions, { state: "read", payload });
@@ -586,12 +595,13 @@ async function takeSuggestions({ background = false } = {}) {
     : view.suggestions.sentence;
 }
 
-async function load({ background = false } = {}) {
+async function load({ background = false, signal } = {}) {
   if (background && suggestionEditorActive()) return;
   if (background) backgroundReads++;
   try {
     view.sequence += 1;
-    await Promise.all([takeConversation({ background }), takeList({ background }), takeOutcomeCards({ background }), takeSuggestions({ background })]);
+    await Promise.all([takeConversation({ background, signal }), takeList({ background, signal }), takeOutcomeCards({ background, signal }), takeSuggestions({ background, signal })]);
+    if (signal?.aborted) return;
     const state = conversationState(view.conversation, view.route);
     announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
   } finally { if (background) backgroundReads--; }
@@ -711,6 +721,7 @@ async function decideSuggestion(id, choice, card) {
     renderSuggestions();
   } else if (outcome.status === "ok") {
     view.suggestions.conflicts.delete(id);
+    view.suggestions.drafts.delete(id);
     view.suggestions.workNumbers.delete(id);
     view.suggestions.snoozeDates.delete(id);
   }
@@ -891,7 +902,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
-  mountAutoRefresh({ document, window: globalThis.window, shouldRefresh: () => !suggestionEditorActive(), refresh: () => load({ background: true }) });
+  mountAutoRefresh({ document, window: globalThis.window, shouldRefresh: () => !suggestionEditorActive(), refresh: ({ signal }) => load({ background: true, signal }) });
 }
 
 boot();

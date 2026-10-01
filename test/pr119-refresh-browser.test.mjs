@@ -25,6 +25,141 @@ async function open(t,{smallChats=false,clientHooks=''}={}){
  return {page,errors};
 }
 const online=page=>page.evaluate(()=>window.dispatchEvent(new Event('online')));
+test('PR119 finding 8: loaded Doc Chats traversal expires as a whole and can recover',async t=>{
+ const hooks=`const read=c.listDocConversations;
+ window.chatResponses=[];window.chatReadCount=0;
+ c.listDocConversations=async args=>{
+  window.chatReadCount++;
+  const p=await read({...args,cursor:null,limit:1});
+  const n=Number(args.cursor||0);
+  p.conversations=[{...p.conversations[0],id:'00000000-0000-4000-8000-00000000000'+n,title:'Synthetic chat '+n}];
+  p.more=n<3;p.next_cursor=n<3?String(n+1):null;p.visible_conversation_count=4;
+  if(window.holdChats)await new Promise(resolve=>window.chatResponses.push(resolve));
+  return p;
+ };`;
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats');
+ for(let count=2;count<=4;count++){
+  await page.locator('#showMoreConversations').click();
+  await page.waitForFunction(n=>document.querySelectorAll('#conversationList [data-conversation]').length===n,count);
+ }
+ await page.evaluate(async()=>{window.chatView=(await import('/js/conversations.js')).view;window.holdChats=true;});
+ await online(page);
+ for(let n=0;n<3;n++){
+  await page.waitForFunction(()=>window.chatResponses.length===1);
+  await page.clock.fastForward(9000);await page.evaluate(()=>window.chatResponses.shift()());
+ }
+ await page.waitForFunction(()=>window.chatResponses.length===1);
+ await page.clock.fastForward(9000);await page.evaluate(()=>window.chatResponses.shift()());
+ await page.evaluate(()=>window.holdChats=false);
+ // Give any uncancelled final response a chance to apply before checking.
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+ assert.equal(await page.evaluate(()=>window.chatView.list.state),'unavailable');
+ assert.equal(await page.locator('#conversationList [data-conversation]').count(),0);
+ await online(page);await page.waitForFunction(()=>window.chatView.list.state==='read' && window.chatView.list.rows.length===4);
+ assert.equal(await page.locator('#conversationList [data-conversation]').count(),4);assert.deepEqual(errors,[]);
+});
+test('PR119 finding 8: loaded All Work traversal expires as a whole and can recover',async t=>{
+ const first=await (await fetch(origin+'/api/v1/work-inventory')).json();
+ const second=await (await fetch(origin+'/api/v1/work-inventory?cursor=demo-cursor-page-2')).json();
+ const rows=[...first.items,...second.items];
+ const answer=url=>{
+  const n=Number(new URL(url).searchParams.get('cursor')||0),items=rows.slice(n*4,(n+1)*4);
+  return {...first,items,next_cursor:n<3?String(n+1):null,coverage:first.coverage.map(row=>({...row,count_returned:items.filter(item=>item.kind===row.kind).length}))};
+ };
+ const {page,errors}=await open(t);let pending,hold=false;
+ await page.route('**/api/v1/work-inventory**',route=>hold?(pending=route):route.fulfill({json:answer(route.request().url())}));
+ await page.goto(origin+'/all-work');
+ for(let count=8;count<=14;count+=4){
+  await page.locator('#loadMore').click();
+  await page.waitForFunction(n=>document.querySelector('#itemsCount')?.textContent.startsWith(String(Math.min(n,14))),count);
+ }
+ // The fourth page contains the final two fixture rows.
+ if(!await page.locator('#itemsCount').textContent().then(s=>s.startsWith('14'))){
+  await page.locator('#loadMore').click();await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent.startsWith('14'));
+ }
+ const release=async()=>{const route=pending;pending=null;await route.fulfill({json:answer(route.request().url())}).catch(()=>{});};
+ hold=true;await online(page);
+ for(let n=0;n<3;n++){
+  for(let wait=0;!pending && wait<100;wait++)await page.waitForTimeout(10);
+  assert.ok(pending);await page.clock.fastForward(9000);await release();
+ }
+ for(let wait=0;!pending && wait<100;wait++)await page.waitForTimeout(10);
+ assert.ok(pending);await page.clock.fastForward(9000);await release();
+ await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent!=='Reading…');
+ assert.equal(await page.locator('#itemsCount').textContent(),'Unavailable');
+ hold=false;await online(page);await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent.startsWith('14'));
+ assert.deepEqual(errors,[]);
+});
+for(const trigger of ['online','timer','resume'])test('PR119 dismissed-draft regression: '+trigger+' still refreshes after dismissing an edited suggestion',async t=>{
+ const hooks=`window.chatReads={list:0,suggestions:0};for(const [name,key] of [['listDocConversations','list'],['listDocSuggestions','suggestions']]){const read=c[name];c[name]=async args=>{window.chatReads[key]++;return read(args);};}`;
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats');
+ const card=page.locator('.suggestion-card').first();await card.waitFor();
+ const id=await card.getAttribute('data-suggestion');
+ await card.locator('[data-correction]').fill('Synthetic correction to a dismissed suggestion');
+ await card.locator('[data-work-number]').fill('123');
+ await card.locator('[data-snooze-date]').fill('2026-12-01');
+ await card.locator('[data-choice="dismiss"]').click();
+ await page.locator(`[data-suggestion="${id}"]`).waitFor({state:'detached'});
+ await page.locator('h1').evaluate(e=>{e.tabIndex=-1;e.focus();});
+ const before=await page.evaluate(()=>({...window.chatReads}));
+ if(trigger==='timer')await page.clock.fastForward(120_000);
+ else if(trigger==='resume')await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ else await online(page);
+ // Client calls start synchronously when a read is eligible. Count that
+ // public read boundary so an indefinitely skipped callback fails directly.
+ const after=await page.evaluate(()=>({...window.chatReads}));
+ assert.ok(after.list>before.list,'conversation list refreshes after the editor disappears');
+ assert.ok(after.suggestions>before.suggestions,'suggestions refresh after the editor disappears');
+ assert.equal(await page.locator(`[data-suggestion="${id}"]`).count(),0);assert.deepEqual(errors,[]);
+});
+test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects their late result',async t=>{
+ const {page,errors}=await open(t);
+ await page.goto(origin+'/control-room?tab=system-map');
+ await page.evaluate(async()=>{window.atlasView=(await import('/js/atlas.js')).view;});
+ await page.waitForFunction(()=>window.atlasView.status==='ready');
+ for(let pages=2;pages<=4;pages++){
+  await page.locator('#atlasMore').click();
+  await page.waitForFunction(n=>window.atlasView.payload?.nodes.length===n,pages*2);
+ }
+ const selected=await page.evaluate(async()=> (await import('/js/atlas.js')).view.payload.nodes[7].id);
+ await page.locator(`[data-atlas-select="${selected}"]`).first().click();
+ let pending;
+ await page.route('**/api/v1/atlas-graph**',route=>{pending=route;});
+ await page.evaluate(()=>{
+  const fetch=window.fetch;
+  window.atlasAborts=0;
+  window.fetch=(url,init)=>{
+   if(String(url).includes('/api/v1/atlas-graph'))init.signal.addEventListener('abort',()=>window.atlasAborts++);
+   return fetch(url,init);
+  };
+ });
+ const release=async()=>{
+  const route=pending;pending=null;
+  const url=new URL(route.request().url());url.searchParams.set('limit','2');
+  const response=atlasFixtureResponse(url,'GET');
+  await route.fulfill({status:response.status,json:response.body}).catch(()=>{});
+ };
+ await online(page);
+ for(let n=0;n<3;n++){
+  await assert.doesNotReject(async()=>{for(let wait=0;!pending && wait<100;wait++)await page.waitForTimeout(10);assert.ok(pending);});
+  await page.clock.fastForward(9000);await release();
+ }
+ for(let wait=0;!pending && wait<100;wait++)await page.waitForTimeout(10);
+ assert.ok(pending);
+ await page.clock.fastForward(9000);await release();
+ await page.waitForFunction(()=>window.atlasView.status!=='loading');
+ assert.equal(await page.evaluate(async()=> (await import('/js/atlas.js')).view.status),'offline');
+ assert.ok(await page.evaluate(()=>window.atlasAborts)>0,'aggregate cancellation reaches the page transport');
+ await page.unroute('**/api/v1/atlas-graph**');
+ await page.route('**/api/v1/atlas-graph**',route=>{
+  const url=new URL(route.request().url());url.searchParams.set('limit','2');const response=atlasFixtureResponse(url,'GET');
+  return route.fulfill({status:response.status,json:response.body});
+ });
+ await online(page);
+ await page.waitForFunction(()=>window.atlasView.status==='ready' && window.atlasView.payload?.nodes.length===8);
+ const recovered=await page.evaluate(async()=>{const v=(await import('/js/atlas.js')).view;return {count:v.payload.nodes.length,selected:v.selected,present:v.payload.nodes.some(n=>n.id===v.selected)};});
+ assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
+});
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
  const {page,errors}=await open(t);let held=null,count=0;
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json',import.meta.url))).toString('base64')}`});

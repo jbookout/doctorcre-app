@@ -361,7 +361,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
   // UX09 "stale response ignored": the guard is a sequence compared BEFORE the
   // answer is stored, on BOTH reads and on both of each read's outcomes — four
   // in all — and it is what makes Back safe.
-  assert.ok([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length >= 4);
+  assert.ok([...pageJs.matchAll(/if \(view\.sequence !== sequence(?: \|\| signal\?\.aborted)?\) return;/g)].length >= 4);
   assert.match(pageJs, /view\.sequence \+= 1;/);
   assert.match(pageJs, /globalThis\.history\?\.pushState\?\.\(\{ id \}, "", `\/doc-chats\?id=\$\{id\}`\)/);
   assert.match(pageJs, /globalThis\.addEventListener\?\.\("popstate"/);
@@ -515,7 +515,7 @@ test("after a create the list is read again, and so it is after rename, pin, arc
 
   // The page's own wiring: every settled write re-reads, and load() reads BOTH
   // (plus V5-UX-B09's independently-sequenced outcome cards read).
-  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\{ background \}\), takeList\(\{ background \}\), takeOutcomeCards\(\{ background \}\), takeSuggestions\(\{ background \}\)\]\)/);
+  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\{ background, signal \}\), takeList\(\{ background, signal \}\), takeOutcomeCards\(\{ background, signal \}\), takeSuggestions\(\{ background, signal \}\)\]\)/);
   assert.match(pageJs, /if \(result\.status === "ok" \|\| result\.status === "conflict"\) \{/);
   assert.match(pageJs, /await load\(\);/);
   // Create opens the new conversation, and open() runs the same load().
@@ -539,7 +539,7 @@ test("the list request carries exactly cursor, limit and include_archived — an
   const liveJs = await read("js/live-client.js");
   assert.equal(/actor/.test(JSON.stringify(listArgs({ cursor: "c", includeArchived: true }))), false);
   assert.equal(/listArgs\([^)]*actor/.test(modelJs + pageJs), false, "an actor reaches the list request");
-  assert.match(liveJs, /async listDocConversations\(args = \{\}\) \{ return rpc\('list-doc-conversations', args\); \}/);
+  assert.match(liveJs, /async listDocConversations\(args = \{\}, \{ signal \} = \{\}\) \{ return rpc\('list-doc-conversations', args, signal\); \}/);
   assert.equal(/list-doc-conversations'[^)]*actor/.test(liveJs), false);
   // And the live answer is the same for both partners' own lists: each sees its
   // own, because neither one asked.

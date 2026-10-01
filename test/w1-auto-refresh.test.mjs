@@ -59,6 +59,16 @@ test('update timestamps use a human clock and missing clocks never look current'
   assert.equal(updatedLabel(null), 'Updating…');
   assert.equal(updatedLabel('invalid'), 'Updating…');
 });
+for(const method of ['readDocConversation','listDocConversations','listDocSuggestions','docOutcomeCards','codexSessions','workRequestCard'])test('PR119 finding 8: aggregate cancellation reaches '+method+' transport',async()=>{
+ let transportSignal;
+ const client=createLiveClient({readTimeoutMs:10,fetchImpl:async(_path,init)=>{transportSignal=init.signal;return new Promise(()=>{});}});
+ const controller=new AbortController();
+ const pending=client[method]({}, {signal:controller.signal});
+ const rejected=assert.rejects(pending,/timed out|cancelled/i);
+ controller.abort();
+ assert.equal(transportSignal.aborted,true,'caller abort reaches the underlying MCP request');
+ await rejected;
+});
 test('every data surface mounts background refresh or the existing board coordinator', async () => {
   for (const name of ['workspace-command-center','workspace-business','leads-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','business-workspace','charts','search','status']) {
     assert.match(await readFile(new URL(`../js/${name}.js`, import.meta.url), 'utf8'), /mountAutoRefresh\(/, name);

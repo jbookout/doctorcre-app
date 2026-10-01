@@ -105,7 +105,7 @@ const requestOptions = (cursor = null) => ({
 
 /* -------------------------------------------------------------------- reading */
 
-async function read(cursor = null, { background = false } = {}) {
+async function read(cursor = null, { background = false, signal } = {}) {
   view.sequence += 1;
   const sequence = view.sequence;
   view.status = "loading";
@@ -117,8 +117,19 @@ async function read(cursor = null, { background = false } = {}) {
   // The fixture's outage switch travels as a fixture-only key. The printed
   // request line above is the PRODUCTION request and never carries it.
   const url = view.outage ? `${path}${path.includes("?") ? "&" : "?"}outage=${encodeURIComponent(view.outage)}` : path;
+  const cancel = () => {
+    if (sequence !== view.sequence) return;
+    // Expiry invalidates the entire page traversal, including a transport
+    // that ignores abort. Recovery gets a new sequence and owns its paint.
+    view.sequence += 1;
+    view.status = "offline";
+    view.payload = null;
+    render();
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
   try {
-    const response = await fetchRead(url, { headers: { accept: "application/json" }, cache: "no-store" });
+    if (signal?.aborted) { cancel(); return; }
+    const response = await fetchRead(url, { headers: { accept: "application/json" }, cache: "no-store", signal });
     if (sequence !== view.sequence) return;
     if (!response.ok) {
       view.status = classifyAtlasFailure(response.status);
@@ -137,7 +148,7 @@ async function read(cursor = null, { background = false } = {}) {
     }
     if (background) {
       for (let page = 1; page < view.loadedPages && incoming.next_cursor; page++) {
-        const next = await fetchRead(atlasRequestPath(requestOptions(incoming.next_cursor)), { headers: { accept: "application/json" }, cache: "no-store" });
+        const next = await fetchRead(atlasRequestPath(requestOptions(incoming.next_cursor)), { headers: { accept: "application/json" }, cache: "no-store", signal });
         if (sequence !== view.sequence) return;
         if (!next.ok) throw new Error("Atlas page unavailable");
         const payload = await next.json();
@@ -154,7 +165,7 @@ async function read(cursor = null, { background = false } = {}) {
     view.status = "offline";
     view.payload = null;
     render();
-  }
+  } finally { signal?.removeEventListener("abort", cancel); }
 }
 
 /**
@@ -735,7 +746,7 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
   $("atlasTourPrev")?.addEventListener("click", () => retreatTour());
   $("atlasTourExit")?.addEventListener("click", () => exitTour());
   if (node) view.selected = node;
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => read(null, { background: true }) });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: ({ signal }) => read(null, { background: true, signal }) });
   read().then(() => { if (node) selectNode(node, { push: false }); });
 }
 
