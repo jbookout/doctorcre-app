@@ -75,18 +75,23 @@ function openForm({ eyebrow, title, submit, body, onSubmit }) {
 }
 
 function reportForm() {
-  openForm({ eyebrow: "Source first", title: "Report a system problem", submit: "Record concern",
-    body: field("Situation", `<textarea name="situation" maxlength="1000" required></textarea>`, "Describe the system concern so current shared doctrine can be matched.") +
-      field("Short name", `<input name="title" maxlength="200" required>`) +
-      field("Desired result", `<textarea name="desired_outcome" maxlength="2000" required></textarea>`) +
-      field("How we’ll know", `<textarea name="criteria" maxlength="2000" required></textarea>`, "One measurable criterion per line; 1–12 lines."),
+  const pending = client.pendingReport;
+  const locked = pending ? " readonly" : "";
+  openForm({ eyebrow: "Source first", title: "Report a system problem", submit: pending ? "Check report outcome" : "Record concern",
+    body: field("Situation", `<textarea name="situation" maxlength="1000" required${locked}>${esc(pending?.situation || "")}</textarea>`, "Describe the system concern so current shared doctrine can be matched.") +
+      field("Short name", `<input name="title" maxlength="200" required${locked} value="${esc(pending?.title || "")}">`) +
+      field("Desired result", `<textarea name="desired_outcome" maxlength="2000" required${locked}>${esc(pending?.desired_outcome || "")}</textarea>`) +
+      field("How we’ll know", `<textarea name="criteria" maxlength="2000" required${locked}>${esc(pending?.acceptance_criteria.map(item => item.text).join("\n") || "")}</textarea>`, pending ? "Check report outcome replays this retained concern." : "One measurable criterion per line; 1–12 lines."),
     onSubmit: async (data) => {
+      const retained = client.pendingReport;
       const criteria = String(data.get("criteria")).split("\n").map((value) => value.trim()).filter(Boolean);
-      if (!criteria.length || criteria.length > 12) throw new Error("Enter between 1 and 12 criteria.");
-      const result = await client.report({ situation: data.get("situation"), title: data.get("title"),
+      if (!retained && (!criteria.length || criteria.length > 12)) throw new Error("Enter between 1 and 12 criteria.");
+      const result = await client.report(retained || { situation: data.get("situation"), title: data.get("title"),
         desired_outcome: data.get("desired_outcome"),
         acceptance_criteria: criteria.map((text, index) => ({ id: `CRITERION-${index + 1}`, text })) });
+      if (typeof result?.human_ref !== "string" || !/^WR-\d+$/.test(result.human_ref)) throw new Error("Report outcome unknown. Reopen Report to check the retained concern.");
       await refresh(result.human_ref);
+      client.finishReport();
     } });
 }
 

@@ -97,7 +97,7 @@ export function statusChips({ release, reads }) {
 export function statusHeadline({ release, reads, snapshot = null } = {}) {
   const clean = sanitizeReads(reads);
   const attempted = READS.filter((id) => clean[id]);
-  const silent = attempted.filter((id) => clean[id].state !== "read");
+  const silent = READS.filter((id) => clean[id]?.state !== "read");
 
   if (answered(release)) {
     if (silent.length === 0) {

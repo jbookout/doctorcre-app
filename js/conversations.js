@@ -582,7 +582,7 @@ async function dispatch(operationKey, args, summary, send) {
     newKey: uuidv4,
     call: (request) => send(request),
   });
-  operations.set(operationKey, { args, summary, send });
+  if (result.started) operations.set(operationKey, { args: result.request || args, summary, send });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
     retry: result.retry, undo: false, request: result.request,

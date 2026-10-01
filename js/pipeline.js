@@ -332,6 +332,7 @@ const FOLLOW_UP_SENDERS = {
   'add-deal-note': (request) => state.client.addDealNote(request),
   'set-next-step': (request) => state.client.setNextStep(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
+  'update-deal': (request) => state.client.updateDeal(request),
 };
 
 /**
@@ -347,6 +348,7 @@ const FOLLOW_UP_SENDERS = {
  * receipt rather than pretending the move failed.
  */
 async function runOutcomeWrite(operationKey, step, intent) {
+  operations.set(operationKey, { kind: 'outcome-read', step, intent, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
 
   let version = null;
@@ -358,7 +360,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   }
   if (!Number.isInteger(version)) {
     dock.record(operationKey, {
-      summary: step.summary, status: 'failed', undo: false,
+      summary: step.summary, status: 'failed', retry: true, undo: false,
       reason: `${intent.name} moved, but the record could not be re-read for its version, so the outcome was not written. Nothing was guessed.`,
     });
     return null;
@@ -417,7 +419,10 @@ async function runMove(intent, form) {
 
   const [phaseStep, ...followUps] = plan.steps;
   const cell = cellKey(intent.deal, 'phase');
-  operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value, summary: moveSummary(intent) });
+  if (!pendingFieldWrite(state.fieldWrites, cell)) {
+    operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
+      summary: moveSummary(intent), intent: { ...intent }, followUps, followUpToken: uuidv4(), followUpsStarted: false });
+  }
   dock.record(cell, { summary: moveSummary(intent), status: 'sending', undo: false });
   renderBoard();
 
@@ -461,13 +466,19 @@ async function runMove(intent, form) {
   }
   announce(`${intent.name} moved to ${intent.to_label}.`);
 
-  const token = uuidv4();
-  for (const step of followUps) {
-    const operationKey = `${step.verb}:${intent.deal}:${token}`;
-    if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, intent);
+  if (!result.superseded) await resumeMoveFollowUps(cell);
+  return { ok: true, errors: [] };
+}
+
+async function resumeMoveFollowUps(cell) {
+  const move = operations.get(cell);
+  if (!move?.followUps || move.followUpsStarted) return;
+  move.followUpsStarted = true;
+  for (const step of move.followUps) {
+    const operationKey = `${step.verb}:${move.intent.deal}:${move.followUpToken}`;
+    if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, move.intent);
     else await runFollowUp(operationKey, step);
   }
-  return { ok: true, errors: [] };
 }
 
 async function retryFieldWrite(cell) {
@@ -482,7 +493,10 @@ async function retryFieldWrite(cell) {
     status: result.status, reason: fieldWriteMessage(result, subject) || null,
     retry: result.retry, undo: false, request: result.request,
   });
-  if (result.status === 'ok' && !result.superseded) confirmLocalWrite(deal, { phase: value });
+  if (result.status === 'ok' && !result.superseded) {
+    confirmLocalWrite(deal, { phase: value });
+    await resumeMoveFollowUps(cell);
+  }
   renderBoard();
   const message = fieldWriteMessage(result, subject);
   if (message) showToast(message);
@@ -913,11 +927,13 @@ function mountDock() {
     onDispatch: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
+      else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
+      else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.args && entry?.send) {
         runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
       }
