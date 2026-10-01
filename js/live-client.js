@@ -20,6 +20,7 @@ export function createLiveClient(opts = {}) {
   const fetchImpl = opts.fetchImpl || ((path, init) => fetch(`${baseUrl}${path}`, init));
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   let rpcId = 0;
+  const dealCreations = new Map();
 
   async function rpc(verb, args = {}) {
     const res = await fetchImpl('/mcp', {
@@ -331,7 +332,8 @@ export function createLiveClient(opts = {}) {
     },
 
     async createDeal(args) {
-      const res = await write('new-deal', {
+      const key = args.idempotency_key || uuidv4();
+      const request = {
         client: args.client,
         name: args.name,
         deal_type: args.deal_type || 'other',
@@ -340,12 +342,31 @@ export function createLiveClient(opts = {}) {
         city: args.market || undefined,
         lane: args.lane || 'territory',
         reason: 'Created in the Deal Room',
-        idempotency_key: args.idempotency_key,
-      });
-      const fresh = await rpc('get-deal-room', { deal: res.deal_id });
-      if (!Number.isInteger(fresh.base_version)) throw new Error('Created deal version is unavailable; lead was not assigned.');
-      await write('set-lead', { deal: res.deal_id, new_lead: selfActor, base_version: fresh.base_version });
-      return { status: 'ok', deal_id: res.deal_id };
+        idempotency_key: key,
+      };
+      let operation = dealCreations.get(key);
+      if (operation && JSON.stringify(operation.request) !== JSON.stringify(request)) throw new Error('Reconcile the original deal creation before changing its fields.');
+      if (!operation) {
+        operation = { request, actor: selfActor };
+        dealCreations.set(key, operation);
+      }
+      if (operation.result) return operation.result;
+      if (operation.inFlight) return operation.inFlight;
+      operation.inFlight = (async () => {
+        const res = operation.receipt || await write('new-deal', operation.request);
+        if (typeof res?.deal_id !== 'string' || !res.deal_id.trim()) throw new Error('Created deal receipt is unavailable. Reconcile the same request.');
+        operation.receipt = res;
+        if (!operation.lead) {
+          const fresh = await rpc('get-deal-room', { deal: res.deal_id });
+          if (!Number.isInteger(fresh?.base_version)) throw new Error('Created deal version is unavailable; lead was not assigned.');
+          operation.lead = { deal: res.deal_id, new_lead: operation.actor, base_version: fresh.base_version, idempotency_key: uuidv4() };
+        }
+        const lead = await write('set-lead', operation.lead);
+        if (lead?.ok !== true) throw new Error('Lead receipt is unavailable. Reconcile the same request.');
+        operation.result = { status: 'ok', deal_id: res.deal_id };
+        return operation.result;
+      })();
+      try { return await operation.inFlight; } finally { operation.inFlight = null; }
     },
 
     // ---------------------------------------------------------------- loops

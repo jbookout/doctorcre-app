@@ -48,6 +48,7 @@ export function createSystemWorkClient(options = {}) {
 
   return {
     get session() { return session; },
+    get pendingReport() { return pendingReport ? JSON.parse(JSON.stringify(pendingReport.request)) : null; },
     bootstrap,
     async current() {
       const response = await fetchImpl("/api/system-work/current", {
@@ -72,7 +73,7 @@ export function createSystemWorkClient(options = {}) {
       pendingReport ||= { signature, request: withKey(body) };
       try { return await post("/api/system-work/report", pendingReport.request); }
       catch (error) {
-        if (error.status >= 400 && error.status < 500) pendingReport = null;
+        if (error.status >= 400 && error.status < 500 && error.status !== 408 && typeof error.payload?.error === "string" && error.payload.error) pendingReport = null;
         throw error;
       }
     },

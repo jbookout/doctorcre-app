@@ -348,6 +348,7 @@ const FOLLOW_UP_SENDERS = {
  * receipt rather than pretending the move failed.
  */
 async function runOutcomeWrite(operationKey, step, intent) {
+  operations.set(operationKey, { kind: 'outcome-read', step, intent, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
 
   let version = null;
@@ -359,7 +360,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   }
   if (!Number.isInteger(version)) {
     dock.record(operationKey, {
-      summary: step.summary, status: 'failed', undo: false,
+      summary: step.summary, status: 'failed', retry: true, undo: false,
       reason: `${intent.name} moved, but the record could not be re-read for its version, so the outcome was not written. Nothing was guessed.`,
     });
     return null;
@@ -926,11 +927,13 @@ function mountDock() {
     onDispatch: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
+      else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
+      else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.args && entry?.send) {
         runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
       }

@@ -1034,7 +1034,9 @@ function marketAgentForm(dealId) {
 }
 
 function addTeamDealForm() {
-  openForm({ title:'Add work record', submit:'Create work record', body:`
+  const pending = state.pendingDealCreation?.request;
+  openForm({ title:'Add work record', submit:pending ? 'Check creation outcome' : 'Create work record', body:pending ? `
+    <div class="field"><b>${esc(pending.name)}</b><p>Client: ${esc(pending.client)}</p><p>${esc(pending.deal_type || 'other')} · ${esc(pending.phase || 'On Deck')} · ${esc(pending.market || '')} · ${esc(pending.segment || '')}</p><small>Check creation outcome continues this retained work record.</small></div>` : `
     <div class="field"><label for="clientRef">Existing client</label><input id="clientRef" name="client" required placeholder="C-127 or exact client name"><small>A work record always belongs to a client. This prevents free-floating or duplicate records.</small></div>
     <div class="field"><label for="dealName">Record name</label><input id="dealName" name="name" required></div>
     <div class="field-row"><div class="field"><label for="dealType">Type</label><select id="dealType" name="deal_type"><option value="startup">Startup</option><option value="relocation">Relocation</option><option value="additional_office">Additional office</option><option value="renewal">Renewal</option><option value="expansion">Expansion</option><option value="purchase">Purchase</option><option value="other">Other</option></select></div>
@@ -1042,8 +1044,12 @@ function addTeamDealForm() {
     <div class="field-row"><div class="field"><label for="dealMarket">Market</label><input id="dealMarket" name="market"></div><div class="field"><label for="dealSegment">Healthcare vertical</label><input id="dealSegment" name="segment" placeholder="Dental, Vet, DPC…"></div></div>`,
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
-      await state.client.createDeal({ ...args, lane:'territory', idempotency_key:uuidv4() });
+      const signature = JSON.stringify(args);
+      if (!pending && state.pendingDealCreation && state.pendingDealCreation.signature !== signature) throw new Error('Reopen Add work record to check the retained creation before changing its fields.');
+      state.pendingDealCreation ||= { signature, request: { ...args, lane:'territory', idempotency_key:uuidv4() } };
+      await state.client.createDeal(state.pendingDealCreation.request);
       await loadHome(); showToast('Work record created in Deals');
+      state.pendingDealCreation = null;
     } });
 }
 

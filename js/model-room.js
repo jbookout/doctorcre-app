@@ -567,6 +567,8 @@ async function submitComposer() {
   try {
     view.composerPending ||= { ...request, idempotency_key: uuidv4() };
     const result = await client.addRoomTurn(view.composerPending);
+    const acknowledged = typeof result?.seq === "string" ? /^[1-9]\d*$/.test(result.seq) : Number.isSafeInteger(result?.seq) && result.seq > 0;
+    if (!acknowledged || result.ok === false) throw new Error("Room acknowledgment unavailable.");
     view.composerPending = null;
     // Sent, not fabricated: the confirmation is the server's own answer
     // (its sequence number), never an "ok" this file invented.
@@ -664,6 +666,7 @@ async function submitAnswer() {
   if (view.answerSend.state === "sending") return;
   const humanRef = view.historyWorkItemId;
   const draft = view.answer;
+  const submitted = { ...draft };
   const baseVersion = currentAnswerBaseVersion();
   const request = answerWorkRequestRequest({
     humanRef: view.historyWorkItemId,
@@ -686,7 +689,9 @@ async function submitAnswer() {
     // real write this form makes.
     const result = await client.answerWorkRequestForJoe({ ...request, idempotency_key: uuidv4() });
     if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
-    view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
+    if (Object.keys(submitted).every(key => view.answer[key] === submitted[key])) {
+      view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
+    }
     view.answerSend = { state: "sent", message: `Sent — recorded as ${result?.state ?? "triaged"}.` };
     announce(`The answer for ${humanRef} was sent.`);
     // Re-read the card and the queue, so the ledger and the picker both show

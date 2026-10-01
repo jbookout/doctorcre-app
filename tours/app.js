@@ -619,6 +619,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
   async function loadTour(tourId) {
+    if (state.pendingShare && state.pendingShare.tourId !== tourId) { status("Check link outcome before switching Tours."); return; }
+    if (state.shareBusy) return;
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
     if (navigationBusy || composer?.busy) return;
     if (composer?.tourId !== tourId && (composer?.dirty || composer?.plan || composer?.busy)) { status("Save or reconcile the current route before switching Tours."); return; }
@@ -652,7 +654,49 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     await loadTour(tourId);
     status(state.cheatDirty ? "Internal cheat sheet saved. Newer changes remain unsaved." : "Internal cheat sheet saved.");
   }
-  async function issueShare(rotate = false) { if (!state.projectionId) throw new Error("projection_required"); const tourId = state.tour?.id, projectionId = state.projectionId, shareGrantId = state.shareGrantId; const raw = newShareToken(); const tokenDigest = await sha256(raw); const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map((box) => box.value); if ((scopes.includes("shortlist") || scopes.includes("comment")) && !scopes.includes("view_packet")) throw new Error("packet_scope_required"); const expires = new Date($("#share-expiry").value).toISOString(); const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid"); if (state.tour?.id !== tourId || state.projectionId !== projectionId) return; const payload = { projection_id: projectionId, token_digest: tokenDigest, permission_scopes: scopes, expires_at: expires, receipt_digest: receipt, idempotency_key: uuid() }; const data = await post(rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue", rotate ? { share_grant_id: shareGrantId, ...payload } : payload); if (state.tour?.id !== tourId || state.projectionId !== projectionId) return; state.rawShareToken = raw; state.shareGrantId = text(data.share_grant_id, state.shareGrantId); const url = `https://reports.doctorcre.com/share#token=${raw}`; $("#share-url").value = url; $("#share-link").hidden = false; $("#share-state").textContent = "Active"; status("Confidential link generated. Copy it now."); }
+  async function issueShare(rotate = false) {
+    if (state.shareBusy) return;
+    if (!state.projectionId) throw new Error("projection_required");
+    const tourId = state.tour?.id, projectionId = state.projectionId;
+    if (state.pendingShare && (state.pendingShare.tourId !== tourId || state.pendingShare.projectionId !== projectionId)) throw new Error("Reconcile the retained confidential link before switching projections.");
+    state.shareBusy = true;
+    try {
+      if (!state.pendingShare) {
+        const scopes = [...document.querySelectorAll('input[name="scope"]:checked')].map(box => box.value);
+        if ((scopes.includes("shortlist") || scopes.includes("comment")) && !scopes.includes("view_packet")) throw new Error("packet_scope_required");
+        const expires = new Date($("#share-expiry").value).toISOString();
+        const receipt = $("#receipt-digest").value.trim();
+        if (!digest(receipt) || !scopes.length || !Number.isFinite(Date.parse(expires))) throw new Error("share_details_invalid");
+        if (rotate && !id(state.shareGrantId)) throw new Error("share_grant_required");
+        const raw = newShareToken(), tokenDigest = await sha256(raw);
+        if (state.tour?.id !== tourId || state.projectionId !== projectionId) return;
+        const payload = { projection_id: projectionId, token_digest: tokenDigest, permission_scopes: scopes,
+          expires_at: expires, receipt_digest: receipt, idempotency_key: uuid(),
+          ...(rotate ? { share_grant_id: state.shareGrantId } : {}) };
+        state.pendingShare = { tourId, projectionId, raw, payload, path: rotate ? "/api/tours/share/rotate" : "/api/tours/share/issue" };
+      }
+      const pending = state.pendingShare;
+      const data = await post(pending.path, pending.payload);
+      if (state.tour?.id !== tourId || state.projectionId !== projectionId) return;
+      if (!id(data?.share_grant_id) || data.ok === false) throw new Error("share_receipt_unavailable");
+      state.rawShareToken = pending.raw;
+      state.shareGrantId = data.share_grant_id;
+      state.pendingShare = null;
+      $("#share-url").value = `https://reports.doctorcre.com/share#token=${pending.raw}`;
+      $("#share-link").hidden = false;
+      $("#share-state").textContent = "Active";
+      $("#rotate-share").textContent = "Rotate current";
+      status("Confidential link generated. Copy it now.");
+    } catch (error) {
+      if (state.pendingShare && state.tour?.id === tourId && state.projectionId === projectionId) {
+        $("#share-link").hidden = true;
+        $("#share-state").textContent = "Outcome unknown";
+        $("#rotate-share").textContent = "Check link outcome";
+        status("Link outcome unknown. Check link outcome replays the retained request.");
+      }
+      throw error;
+    } finally { state.shareBusy = false; }
+  }
   async function revokeShare(grantId) { if (!id(grantId)) return; const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required"); await post("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link", revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }); state.rawShareToken = ""; $("#share-link").hidden = true; await loadTour(state.tour.id); status("Share link revoked."); }
   async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
   // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.

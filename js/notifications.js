@@ -244,7 +244,9 @@ async function takeActivity() {
     do {
       payload = await client.getChanges(cursor);
       if (view.sequence !== sequence) return;
-      const rows = Array.isArray(payload.events) ? payload.events : [];
+      if (!Array.isArray(payload?.events) || typeof payload.cursor !== "string" || payload.ok === false) throw new Error("Activity page unavailable.");
+      const rows = payload.events;
+      if (rows.some(row => !row || typeof row !== "object" || Array.isArray(row))) throw new Error("Activity event unavailable.");
       events = [...events, ...rows].slice(-12);
       if (!rows.length) break;
       if (!payload.cursor || payload.cursor === cursor || seen.has(payload.cursor)) throw new Error("Activity cursor did not advance.");

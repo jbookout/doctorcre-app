@@ -28,6 +28,23 @@ function handlers(path, start, end, globals = {}, expose = []) {
 const rpc = payload => new Response(JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}}));
 const elements = () => { const rows = new Map(); return key => { if(!rows.has(key)) rows.set(key, {value:"",textContent:"",hidden:false,disabled:false,listeners:{},addEventListener(type,listener){this.listeners[type]=listener;},setAttribute:noop}); return rows.get(key); }; };
 
+for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping slow status reads apply ${terminal}`, async () => {
+  const reply=deferred(); let reads=0, stops=0;
+  const state={postCall:{session:"A",status:"waiting_for_transcript"}};
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const first=h.refreshPostCall(),second=h.refreshPostCall();
+  reply.resolve({status:terminal});await Promise.all([first,second]);
+  assert.equal(state.postCall.status,terminal);assert.equal(reads,1);assert.equal(stops,1);
+});
+
+for (const fails of [false,true]) test(`PR111 #2: late context ${fails ? "failure" : "success"} leaves the newer call alone`, async () => {
+  const read=deferred();const state={postCall:{session:"A",weekly:true},pollTimer:"B-timer"};let stops=0,publishes=0;
+  const h=handlers("js/call-mode.js","  async function publishWeeklyCallContext(","  // ----------------------------------------------------------- report poll",{state,readCallContextIndex:()=>read.promise,deps:{client:()=>({}),agendaDeals:()=>[],scope:()=>({}),postCallClient:{publishCallContext:async()=>{publishes++;}}},now:()=>0,renderPostCall:noop,stopPolling:()=>stops++},["publishOrRecord"]);
+  const pending=h.publishOrRecord("A");state.postCall={session:"B",status:"waiting_for_transcript"};
+  if(fails)read.reject(new Error("old failure"));else read.resolve([]);await pending;
+  assert.equal(state.postCall.session,"B");assert.equal(state.postCall.status,"waiting_for_transcript");assert.equal(stops,0);assert.equal(publishes,0);
+});
+
 test("Dot 4: blocked storage does not abort preference mounting", () => {
   const old = Object.getOwnPropertyDescriptor(globalThis, "localStorage"); const doc = globalThis.document;
   Object.defineProperty(globalThis,"localStorage",{configurable:true,get(){throw new DOMException("blocked","SecurityError");}});
@@ -84,6 +101,41 @@ test("Dot 22: creating a deal assigns its lead with a fresh version", async () =
   assert.equal(calls.at(-1).name,"set-lead");
 });
 
+test("PR111 #4: deal recovery retains creation receipt and exact lead request", async () => {
+  const calls=[];let failRead=true,failLead=true,version=2;
+  const client=createLiveClient({selfActor:"joe",fetchImpl:async(_path,init)=>{
+    const req=JSON.parse(init.body).params;calls.push(req);
+    if(req.name==="new-deal")return rpc({deal_id:"demo"});
+    if(req.name==="get-deal-room") {if(failRead){failRead=false;throw new Error("read lost");}return rpc({base_version:version});}
+    if(failLead){failLead=false;throw new Error("lead committed, receipt lost");}return rpc({ok:true});
+  }});
+  const args={client:"C-demo",name:"Demo",idempotency_key:"key-one"};
+  await assert.rejects(client.createDeal(args));await assert.rejects(client.createDeal(args));version=9;await client.createDeal(args);
+  assert.equal(calls.filter(c=>c.name==="new-deal").length,1);
+  const lead=calls.filter(c=>c.name==="set-lead");assert.equal(lead.length,2);assert.deepEqual(lead[0].arguments,lead[1].arguments);assert.equal(lead[1].arguments.base_version,2);
+});
+
+test("PR111 #4: unchanged creation form retry keeps its outer key", async () => {
+  let form;const calls=[];
+  const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{openForm:value=>{form=value;},phaseOptions:()=>"",state:{client:{createDeal:async args=>{calls.push(args);if(calls.length===1)throw new Error("lost");}}},uuidv4:(()=>{let n=0;return()=>`key-${++n}`;})(),loadHome:async()=>{},showToast:noop},["addTeamDealForm"]);
+  h.addTeamDealForm();const data=new Map([["client","C-demo"],["name","Demo"]]);await assert.rejects(form.onSubmit(data));await form.onSubmit(data);
+  assert.equal(calls[0].idempotency_key,calls[1].idempotency_key);
+});
+
+test("PR111 #4: malformed creation receipt replays creation with the same key",async()=>{
+  const calls=[];let creates=0;
+  const client=createLiveClient({selfActor:"joe",fetchImpl:async(_path,init)=>{const req=JSON.parse(init.body).params;calls.push(req);return rpc(req.name==="new-deal" ? (++creates===1 ? {} : {deal_id:"demo"}) : req.name==="get-deal-room" ? {base_version:2} : {ok:true});}});
+  const args={client:"C-demo",name:"Demo",idempotency_key:"same-key"};await assert.rejects(client.createDeal(args));await client.createDeal(args);
+  assert.equal(creates,2);assert.equal(calls[0].arguments.idempotency_key,calls[1].arguments.idempotency_key);
+});
+
+test("PR111 #4: reopened creation form recovers the retained intent",async()=>{
+  let form;const calls=[];const state={client:{createDeal:async args=>{calls.push(args);if(calls.length===1)throw new Error("lost");}}};
+  const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{state,openForm:value=>{form=value;},phaseOptions:()=>"",uuidv4:()=>"key",esc:value=>String(value??""),loadHome:async()=>{},showToast:noop,$:elements()},["addTeamDealForm"]);
+  h.addTeamDealForm();await assert.rejects(form.onSubmit(new Map([["client","C-demo"],["name","Demo record"]])));
+  h.addTeamDealForm();assert.equal(form.submit,"Check creation outcome");assert.match(form.body,/Demo record/);await form.onSubmit(new Map());assert.deepEqual(calls[1],calls[0]);
+});
+
 test("Dot 25: a task due today is not overdue at 8 AM Central", () => {
   const result=classifyPriority({due:"2026-09-30"},"2026-09-30T08:00:00-05:00");
   assert.equal(result.priority,"deadline"); assert.equal(result.reason,"due in 0 days");
@@ -121,6 +173,28 @@ test("Dot 5: report retry after a lost response keeps one idempotency key", asyn
   await client.bootstrap(); const report={situation:"Demo problem",title:"Demo",desired_outcome:"Demo resolution",acceptance_criteria:[]};
   await assert.rejects(client.report(report));await client.report({...report});
   assert.equal(requests[0].idempotency_key,requests[1].idempotency_key);
+});
+
+test("PR111 #6: proxy 408 after commit preserves the report key", async () => {
+  const requests=[];let keys=0;
+  const client=createSystemWorkClient({uuid:()=>`key-${++keys}`,fetchImpl:async(path,init)=>{
+    if(path.endsWith("session"))return new Response(JSON.stringify({csrf_token:"synthetic"}));
+    requests.push(JSON.parse(init.body));return requests.length===1 ? new Response("",{status:408}) : new Response(JSON.stringify({data:{human_ref:"WR-1"}}));
+  }});
+  await client.bootstrap();const report={situation:"Demo",title:"Demo",desired_outcome:"Demo",acceptance_criteria:[]};
+  await assert.rejects(client.report(report));await client.report(report);assert.equal(requests[0].idempotency_key,requests[1].idempotency_key);
+});
+
+test("PR111 #7: cancel/reopen offers the retained report for same-request recovery", async () => {
+  const requests=[];let options;
+  const client=createSystemWorkClient({uuid:()=>"report-key",fetchImpl:async(path,init)=>{
+    if(path.endsWith("session"))return new Response(JSON.stringify({csrf_token:"synthetic"}));
+    requests.push(JSON.parse(init.body));if(requests.length===1)throw new Error("lost response");return new Response(JSON.stringify({data:{human_ref:"WR-1"}}));
+  }});
+  await client.bootstrap();const h=handlers("js/system-work-app.js","function reportForm()","function triageForm()",{client,openForm:value=>{options=value;},field:(_label,body)=>body,esc:value=>String(value).replaceAll('"','&quot;'),refresh:async()=>{}},["reportForm"]);
+  h.reportForm();const data=new Map([["situation","Demo concern"],["title","Demo title"],["desired_outcome","Demo result"],["criteria","One measure"]]);await assert.rejects(options.onSubmit(data));
+  h.reportForm();assert.equal(options.submit,"Check report outcome");assert.match(options.body,/Demo concern/);assert.match(options.body,/Demo title/);
+  await options.onSubmit(new Map());assert.deepEqual(requests[1],requests[0]);assert.equal(client.pendingReport,null);
 });
 
 test("Dot 10: an answered app release with pending CARR reads cannot claim success", () => {
@@ -184,12 +258,33 @@ test("Dot 17: retrying an unanswered room message replays its key", async () => 
   assert.equal(calls.length,2);assert.equal(calls[0].idempotency_key,calls[1].idempotency_key);
 });
 
+for(const receipt of [null,{}, {seq:"nine"}, {seq:0}]) test(`PR111 #11: composer retains its request after invalid acknowledgment ${JSON.stringify(receipt)}`,async()=>{
+  const {composerRequest,composerDraftAfterAttempt}=await import("../js/model-room-model.js");const calls=[];const view={composer:{text:"Demo message"},composerSend:{state:"idle"}};let keys=0;
+  const h=handlers("js/model-room.js","async function submitComposer(","/* ------------------------------------------------- V5-UX-C13c",{view,composerRequest,composerDraftAfterAttempt,classifyCommandOutcome,client:{addRoomTurn:async args=>{calls.push(args);return calls.length===1 ? receipt : {seq:9};}},uuidv4:()=>`key-${++keys}`,renderComposer:noop,$:elements(),announce:noop},["submitComposer"]);
+  await h.submitComposer();assert.equal(view.composerSend.state,"unknown");assert.equal(view.composer.text,"Demo message");assert.ok(view.composerPending);
+  await h.submitComposer();assert.deepEqual(calls[0],calls[1]);assert.equal(view.composerSend.state,"sent");assert.equal(view.composer.text,"");
+});
+
+test("PR111 #11: composer accepts the producer's decimal-string sequence receipt",async()=>{
+  const {composerRequest,composerDraftAfterAttempt}=await import("../js/model-room-model.js");const view={composer:{text:"Demo message"},composerSend:{state:"idle"}};
+  const h=handlers("js/model-room.js","async function submitComposer(","/* ------------------------------------------------- V5-UX-C13c",{view,composerRequest,composerDraftAfterAttempt,classifyCommandOutcome,client:{addRoomTurn:async()=>({ok:true,seq:"9"})},uuidv4:()=>"key",renderComposer:noop,$:elements(),announce:noop},["submitComposer"]);
+  await h.submitComposer();assert.equal(view.composerSend.state,"sent");assert.equal(view.composer.text,"");
+});
+
 test("Dot 18: a late answer cannot clear another Work Requests draft", async () => {
   const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();const announcements=[];
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:test",scopeConfirmed:true},answerSend:{state:"idle"}};
   const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise,workRequestCard:async()=>({}),currentWorkRequests:async()=>({})},uuidv4:()=>"key",renderAnswer:noop,announce:message=>announcements.push(message),take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
   const sending=h.submitAnswer();view.historyWorkItemId="WR-2";view.answer={answerText:"Second draft",evidenceRef:"",scopeConfirmed:false};view.answerSend={state:"idle"};pending.resolve({state:"triaged"});await sending;
   assert.equal(view.answer.answerText,"Second draft");assert.ok(!announcements.some(text=>text.includes("WR-2")));
+});
+
+test("PR111 #3: successful answer preserves newer edits in the same draft", async () => {
+  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();
+  const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:first",scopeConfirmed:true},answerSend:{state:"idle"}};
+  const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise},uuidv4:()=>"key",renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
+  const sending=h.submitAnswer();view.answer.answerText="New answer";view.answer.evidenceRef="safe:new";pending.resolve({state:"triaged"});await sending;
+  assert.equal(view.answer.answerText,"New answer");assert.equal(view.answer.evidenceRef,"safe:new");assert.equal(view.answerSend.state,"sent");
 });
 
 function roomHarness(total=6000) {
@@ -206,6 +301,27 @@ test("Dot 19: first room poll catches up immediately to the current window", asy
 test("Dot 20: Load earlier moves the visible history beyond the display cap", async () => {
   const {h,wire,state,displayed}=roomHarness(600);state.cursor=600;state.turns=Array.from({length:300},(_,i)=>({seq:301+i,msg_id:`turn-${301+i}`}));state.oldestSeq=301;state.byMsgId=new Map(state.turns.map(t=>[t.msg_id,t]));
   await h.loadEarlier();wire.renderWire(false);assert.ok(displayed()[0]<301);assert.equal(displayed().length,300);
+});
+
+test("PR111 #8: earlier history traverses sparse global room sequences", async () => {
+  const {h,state}=roomHarness();state.turns=[{seq:1000,msg_id:"last"}];state.oldestSeq=1000;
+  h.fetchTurns=async(from,limit)=>{const turns=[{seq:1,msg_id:"first"},{seq:1000,msg_id:"last"}].filter(t=>t.seq>from).slice(0,limit);return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};};
+  await h.loadEarlier();assert.equal(state.historyTurns[0].seq,1);assert.equal(state.historyTurns.at(-1).seq,1000);
+});
+
+for(const start of [1,301]) test(`PR111 #9: history stays contiguous with buffered turns beginning at ${start}`,async()=>{
+  const {h,wire,state,displayed}=roomHarness(900);state.cursor=start+599;state.turns=Array.from({length:600},(_,i)=>({seq:start+i,msg_id:`turn-${start+i}`}));state.oldestSeq=start;
+  wire.renderWire(false);assert.equal(displayed()[0],start+300);
+  await h.loadEarlier();wire.renderWire(false);
+  assert.deepEqual(Array.from(displayed()),Array.from({length:300},(_,i)=>start+240+i));
+});
+
+for(const fails of [false,true]) test(`PR111 #10: delayed history ${fails ? "failure" : "success"} respects Resume live`,async()=>{
+  const {h,state}=roomHarness();const reply=deferred();state.historyTurns=[{seq:241,msg_id:"old"}];state.following=false;state.turns=[{seq:600,msg_id:"live"}];h.fetchTurns=()=>reply.promise;
+  const resume=handlers("js/room.js",'  $("wireResume").addEventListener', '  $("composerInput").addEventListener',{state,$:h.$,render:noop,scrollToBottom:noop},[]);
+  const pending=h.loadEarlier();h.$("wireResume").listeners.click();
+  if(fails)reply.reject(new Error("old history failure"));else reply.resolve({turns:[{seq:181,msg_id:"earlier"}],latest_seq:181,more:false});
+  await pending;assert.equal(state.historyTurns,null);assert.equal(state.following,true);
 });
 
 test("Dot 26: replaying a conflicted version cannot restore verified completion", async () => {
@@ -269,6 +385,17 @@ test("Closing outcome recovery after Dot 21 replays update-deal through the dock
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
 });
 
+test("PR111 #5: outcome read failure remains retryable from the receipt dock", async () => {
+  const writes=[],receipts=[],operations=new Map();let reads=0;let dockOptions;
+  const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","/**\n * The whole Move",globals,["runOutcomeWrite","runFollowUp"]);
+  const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}};
+  await h.runOutcomeWrite("close",step,{deal:"demo",name:"Demo"});
+  assert.equal(receipts.at(-1).retry,true);assert.ok(operations.has("close"));assert.equal(writes.length,0);
+  const mount=handlers("js/pipeline.js","function mountDock()","/* ------------------------------------------------------------------------ boot",{...globals,runOutcomeWrite:h.runOutcomeWrite,runFollowUp:h.runFollowUp},["mountDock"]);mount.mountDock();
+  await dockOptions.onDispatch("close");await tick();assert.equal(writes.length,1);assert.equal(writes[0].base_version,7);assert.equal(writes[0].outcome,"won");
+});
+
 
 test("Dot 2 follow-through: a late confidential link cannot reappear under another Tour", async () => {
   const $=elements();$("#share-expiry").value="2026-10-02";$("#receipt-digest").value="sha256:"+"a".repeat(64);
@@ -277,6 +404,43 @@ test("Dot 2 follow-through: a late confidential link cannot reappear under anoth
   const issuing=h.issueShare();await tick();state.tour={id:"B"};state.projectionId="projection-B";$("#share-link").hidden=true;
   pending.resolve({share_grant_id:"grant-A"});await issuing;
   assert.equal($("#share-link").hidden,true);assert.equal($("#share-url").value,"");assert.equal(state.rawShareToken,"");
+});
+
+const grantId="00000000-0000-4000-8000-000000000002";
+function shareHarness(receipt,rotate=false) {
+  const $=elements();$("#share-expiry").value="2026-10-02";$("#receipt-digest").value="sha256:"+"a".repeat(64);$("#share-link").hidden=true;
+  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:rotate ? grantId : "",rawShareToken:""};const calls=[];
+  const h=handlers("tours/app.js","  async function issueShare(","  async function revokeShare(",{state,$,document:{querySelectorAll:()=>[{value:"view_packet"}]},newShareToken:()=>"synthetic-token",sha256:async()=>"digest",digest:()=>true,id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>"key",post:async(path,args)=>{calls.push({path,args});return typeof receipt==="function" ? receipt(calls.length) : receipt;},text:(value,fallback)=>value||fallback,status:noop},["issueShare"]);
+  return {h,state,$,calls};
+}
+for(const receipt of [{},null,{share_grant_id:9},{share_grant_id:"invalid"}]) for(const rotate of [false,true]) test(`PR111 #12: ${rotate?"rotation":"issue"} requires valid grant receipt ${JSON.stringify(receipt)}`,async()=>{
+  const {h,state,$}=shareHarness(receipt,rotate);await assert.rejects(h.issueShare(rotate));
+  assert.equal($("#share-link").hidden,true);assert.equal($("#share-url").value,"");assert.equal(state.rawShareToken,"");assert.notEqual($("#share-state").textContent,"Active");
+});
+
+for(const rotate of [false,true]) test(`PR111 #13: lost ${rotate?"rotation":"issue"} receipt replays its retained token and request`,async()=>{
+  const successor="00000000-0000-4000-8000-000000000003";
+  const {h,state,$,calls}=shareHarness(n=>{if(n===1)throw new Error("committed; reply lost");return {ok:true,share_grant_id:successor};},rotate);let tokens=0,keys=0;
+  h.newShareToken=()=>`token-${++tokens}`;h.uuid=()=>`key-${++keys}`;h.sha256=async raw=>`digest-${raw}`;
+  await assert.rejects(h.issueShare(rotate));assert.ok(state.pendingShare);assert.match($("#share-state").textContent,/unknown/i);
+  $("#share-expiry").value="2026-11-10";
+  await h.issueShare(!rotate);assert.equal(calls.length,2);assert.deepEqual(calls[1],calls[0]);assert.equal(tokens,1);assert.equal(keys,1);assert.equal(state.rawShareToken,"token-1");assert.equal(state.shareGrantId,successor);assert.equal(state.pendingShare,null);
+});
+
+test("PR111 #13: retained share recovery stays reachable on its original Tour",async()=>{
+  const {h,state,replies}=tourHarness();state.pendingShare={tourId:"A",projectionId:"projection-A"};replies.set("B",Promise.resolve({id:"B"}));
+  await h.loadTour("B");assert.equal(state.tour.id,"A");assert.equal(state.pendingShare.tourId,"A");
+});
+
+for(const badAt of [0,1,2]) test(`PR111 #14: malformed activity page ${badAt+1} stays unknown`,async()=>{
+  const view={sequence:1};let n=0;
+  const h=handlers("js/notifications.js","async function takeActivity(","async function load(",{view,render:noop,client:{getChanges:async()=>{const i=n++;return i===badAt ? {} : {cursor:`cursor-${i}`,events:[{seq:i+1}]};}}},["takeActivity"]);
+  await h.takeActivity();assert.equal(view.activity.state,"unknown");assert.equal(view.activity.observed_at,undefined);
+});
+for(const badAt of [0,1,2]) test(`PR111 #14: malformed room page ${badAt+1} never announces recovery`,async()=>{
+  const {h,state}=roomHarness();state.backoffMs=8000;let n=0;const banners=[];h.banner=message=>banners.push(message);
+  h.fetchTurns=async from=>{const i=n++;return i===badAt ? {} : {turns:[{seq:from+1,msg_id:`t-${i}`}],latest_seq:from+1,more:true};};
+  await h.poll();assert.ok(state.backoffMs>=8000);assert.equal(state.cursor,0);assert.equal(state.turns.length,0);assert.ok(!banners.some(message=>message.includes("Wire back")));
 });
 
 
