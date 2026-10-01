@@ -75,7 +75,13 @@
     </section>
 
     <section class="card glass" data-section="integration_gaps" aria-labelledby="gapsTitle">
-      <div class="card-heading"><div><p class="eyebrow">No producer</p><h2 id="gapsTitle">Integration gaps</h2></div></div>
+      <div class="card-heading"><div><p class="eyebrow">Scoped evidence</p><h2 id="gapsTitle">Assurance health</h2></div></div>
+      <div id="assuranceScope" class="assurance-scope" role="group" aria-label="Assurance scope">
+        <label>Workflow<input id="assuranceWorkflow" type="text" maxlength="255" autocomplete="off" spellcheck="false"></label>
+        <label>Version<input id="assuranceVersion" type="number" min="1" step="1" inputmode="numeric"></label>
+        <label>Work request (optional)<input id="assuranceWorkRequest" type="text" maxlength="15" autocomplete="off" spellcheck="false"></label>
+        <button class="btn" id="readAssurance" type="button">Read scope</button>
+      </div>
       <div id="integrationGaps"></div>
     </section>
   </main>

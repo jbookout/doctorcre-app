@@ -156,7 +156,8 @@ test("the integration gaps are the literal word unknown with a named reason", ()
   assert.equal(INTEGRATION_GAPS.length, 3);
   for (const gap of INTEGRATION_GAPS) {
     assert.equal(gap.word, "unknown");
-    assert.equal(gap.reason, "no producer yet");
+    assert.ok(gap.reason.length > 0);
+    assert.notEqual(gap.reason, "no producer yet");
   }
   assert.deepEqual(INTEGRATION_GAPS.map((gap) => gap.title), [
     "Truthful health and scoped degradation (V5-A01)",

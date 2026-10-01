@@ -4,6 +4,7 @@
  */
 import { uuidv4 } from './uuid.js';
 import { PHASES } from './client.js';
+import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import {
   MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
@@ -1503,6 +1504,21 @@ export async function createFixtureClient(opts = {}) {
         premises: [], negotiation_rounds: [], documents: [] };
     },
 
+    async readAssuranceHealth(args) {
+      const { scope } = assuranceHealthRequest(args);
+      refuseIfOutage('assurance', 'read-assurance-health');
+      const evidence = Object.fromEntries(ASSURANCE_LAYERS.map(layer => [layer, {
+        layer, state: layer === 'actual_business_outcome' && !scope.work_request_id ? 'unbindable' : 'missing', present: false, scope: { ...scope },
+      }]));
+      return { schema_version: 'assurance-health.v1', scope, state: 'unknown', green: false,
+        state_reason: 'Demo fixture: authoritative workflow truth is unavailable.', capability_stage: 'unavailable',
+        capability_stage_attributable_to_findings: 'unavailable',
+        workflow_truth: { available: false, source: 'V5-F09 workflow census', reason: 'Demo workflow truth is unavailable.' },
+        owner: { kind: 'record_layer', ref: 'ops.assurance_health_evidence' }, evidence,
+        failing_layers: [], indeterminate_layers: [], missing_layers: ASSURANCE_LAYERS.filter(layer => evidence[layer].state === 'missing'),
+        unbindable_layers: ASSURANCE_LAYERS.filter(layer => evidence[layer].state === 'unbindable'), reasons: [],
+        impact: { scope_limited_to: { ...scope }, withdrawn_stages: ['act', 'draft', 'read'] }, recovery: { required_evidence: [...ASSURANCE_LAYERS] } };
+    },
     async correspondenceReadiness(args = {}) {
       readinessRequest(args);
       // Synthetic installation fixture; counts never stand in for deal evidence.
