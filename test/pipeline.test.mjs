@@ -726,7 +726,7 @@ test("js/pipeline.js sends the phase first, through the field-write kernel, and 
   assert.match(source, /performCommand\(\{/, "each follow-up is its own command");
   const runMove = source.slice(source.indexOf("async function runMove"), source.indexOf("async function retryFieldWrite"));
   assert.match(runMove, /const \[phaseStep, \.\.\.followUps\] = plan\.steps;/);
-  assert.ok(runMove.indexOf("sendPhaseWrite") < runMove.indexOf("for (const step of followUps)"),
+  assert.ok(runMove.indexOf("sendPhaseWrite") < runMove.indexOf("await resumeMoveFollowUps(cell)"),
     "the phase patch is sent before any follow-up");
   assert.match(runMove, /if \(result\.status === 'conflict'\)/);
   assert.match(runMove, /if \(result\.status !== 'ok'\) \{/);

@@ -100,7 +100,10 @@ export function applyPreferences(preferences) {
  * @returns {{current: () => object}}
  */
 export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_PREFERENCE_KEYS, storage } = {}) {
-  const store = storage === undefined ? (globalThis.localStorage || null) : storage;
+  let store = storage ?? null;
+  if (storage === undefined) {
+    try { store = globalThis.localStorage || null; } catch { /* storage access may be blocked */ }
+  }
   const system = systemPreferences();
   let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...migratePreferences(store, { storageKey, legacyKeys }) }, system);
   applyPreferences(current);

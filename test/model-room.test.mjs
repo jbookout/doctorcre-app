@@ -528,7 +528,7 @@ test("C13a-05 the enriched Waiting-for-Joe fields never synthesize an absent one
 test("C13a-06 the history view opens no execute path", () => {
   assert.equal(/take\("historyCard"/.test(viewCode), true, "the work-item card is read, not executed");
   // V5-UX-C13c: both real writes on this tab (add-room-turn and
-  // answer-work-request-for-joe) mint a fresh idempotency key per attempt via
+  // answer-work-request-for-joe) mint a fresh idempotency key per intent via
   // uuidv4() — so idempotency_key now appears, twice, and this file still
   // opens no execute path for anything else.
   assert.equal((viewCode.match(/idempotency_key: uuidv4\(\)/g) ?? []).length, 2,
@@ -596,9 +596,9 @@ test("C13b-05 the composer and the drop zone are wired in the view, honestly", (
   assert.match(viewCode, /composerRequest\(\{\s*text: view\.composer\.text\s*\}\)/);
   assert.match(viewCode, /composerDraftAfterAttempt\(/);
   assert.match(viewCode, /assignmentMoveOutcome\(/);
-  // V5-UX-C13c: a fresh idempotency key is minted per attempt, so the call is
-  // no longer the bare request object.
-  assert.match(viewCode, /client\.addRoomTurn\(\{\s*\.\.\.request,\s*idempotency_key: uuidv4\(\)\s*\}\)/);
+  // One key is minted per intent and retained while the outcome is unknown.
+  assert.match(viewCode, /view\.composerPending \|\|= \{ \.\.\.request, idempotency_key: uuidv4\(\) \}/);
+  assert.match(viewCode, /client\.addRoomTurn\(view\.composerPending\)/);
   // The two writes this file issues. No other client.<verb> write is added
   // for the Kanban move, because it has no admitted one, and none at all for
   // acknowledging a dispatch (removed; see C13b-04).

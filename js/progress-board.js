@@ -5,6 +5,7 @@ import { boardView, answerRequest, taskPulse } from "./progress-board-model.js";
 const boardId = new URLSearchParams(location.search).get("board");
 const client = createLiveClient();
 const pendingRequests = new Map();
+let questionCards = new Map();
 const title = document.getElementById("board-title");
 const meta = document.getElementById("board-meta");
 const error = document.getElementById("board-error");
@@ -235,6 +236,8 @@ function answerForm(q, view) {
 }
 
 function renderQuestions(view) {
+  const priorCards = questionCards;
+  questionCards = new Map();
   questions.replaceChildren();
   questionCount.textContent = `${view.questions.filter(q => !q.status).length} WAITING`;
   if (!view.questions.length) {
@@ -242,6 +245,13 @@ function renderQuestions(view) {
     return;
   }
   for (const q of view.questions) {
+    const signature = JSON.stringify([view.board_id, q]);
+    const retained = priorCards.get(q.question_id);
+    if (retained?.signature === signature) {
+      questionCards.set(q.question_id, retained);
+      questions.append(retained.card);
+      continue;
+    }
     const card = element("article", "question-card");
     if (q.status) card.dataset.status = q.status;
     const top = element("div", "question-top");
@@ -256,6 +266,7 @@ function renderQuestions(view) {
     } else {
       card.append(answerForm(q, view));
     }
+    questionCards.set(q.question_id, { signature, card });
     questions.append(card);
   }
 }

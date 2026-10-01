@@ -122,12 +122,6 @@ export function validWorkRequestCard(payload) {
   return true;
 }
 
-/** A typed evidence ref renders as its `ref`; nothing else is invented. */
-function evidenceRefOf(facet, fallback) {
-  const first = (facet?.evidence_refs || []).find((entry) => isObject(entry) && nonEmptyString(entry.ref));
-  return first ? first.ref : fallback;
-}
-
 const cell = (stage, state, evidence_ref, reason) => ({ stage, state, evidence_ref, reason });
 const unknownRow = (reason) => STAGES.map((stage) => cell(stage, "unknown", null, reason));
 
@@ -142,9 +136,6 @@ const unknownRow = (reason) => STAGES.map((stage) => cell(stage, "unknown", null
 export function deliveryStages(passport, portfolio = null) {
   if (!validPassportPayload(passport)) return unknownRow(NO_PASSPORT_REASON);
   if (passport.stale_conflict.state === "stale") return unknownRow(STALE_REASON);
-
-  const closure = passport.closure;
-  const facetComplete = (name) => closure[name].state === "complete";
 
   const revision = passport.accepted_plan_revision;
   const planned = isObject(revision) && nonEmptyString(revision.id)
@@ -169,23 +160,15 @@ export function deliveryStages(passport, portfolio = null) {
       ? cell("source_verified", "not reached", null, `slice ${unfinished.slice_ref} is ${unfinished.state}`)
       : cell("source_verified", "unknown", null, "the passport carries no slice this page can read");
 
-  // Merged, Released, Activated and Consumer proven read one closure facet each.
-  // A facet that is not `complete` is left UNKNOWN rather than called not
-  // reached: the facets are derived together from one `complete` flag, so an
-  // unresolved facet says "closure is not finished", not "this dimension in
-  // particular was not reached".
-  const facetCell = (stage, name, evidenceFallback) => (facetComplete(name)
-    ? cell(stage, "complete", evidenceRefOf(closure[name], evidenceFallback), null)
-    : cell(stage, "unknown", null, closure[name].note || `closure.${name} is ${closure[name].state}`));
-
-  const merged = facetCell("merged", "work", "closure.work");
-  const released = facetCell("released", "release", "closure.release");
-  const activated = passport.closure_state === "complete" && facetComplete("release")
-    ? cell("activated", "complete", evidenceRefOf(closure.release, "closure_state"), null)
-    : cell("activated", "unknown", null, passport.closure_state === "complete"
-      ? "closure is complete but no release facet is complete"
-      : "the passport reports closure blocked");
-  const consumerProven = facetCell("consumer_proven", "proof", "closure.proof");
+  // This passport's closure facets establish source assurance only. The
+  // pinned contract carries no typed merge, release, activation or consumer
+  // delivery facts, so those stages cannot be inferred from review completion.
+  const downstream = (stage) => cell(stage, "unknown", null,
+    "the passport carries source assurance, without a delivery fact for this stage");
+  const merged = downstream("merged");
+  const released = downstream("released");
+  const activated = downstream("activated");
+  const consumerProven = downstream("consumer_proven");
 
   return [planned, approved, sourceVerified, merged, released, activated, consumerProven];
 }

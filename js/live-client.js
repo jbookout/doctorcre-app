@@ -8,6 +8,15 @@
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 
+// Verified pre-commit refusals from new-deal and its argument/subject checks
+// in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
+// unrecognized errors can follow a committed write; retain those for replay.
+const CREATION_REFUSALS = new Set([
+  'missing_required', 'subject_not_found', 'needs_disambiguation', 'not_a_client',
+  'deal_name_exists', 'salesforce_id_in_use', 'unknown_deal_type',
+  'unknown_phase', 'unknown_lane',
+]);
+
 /**
  * @param {Object} [opts]
  * @param {string} [opts.baseUrl] same-origin by default; override for dev
@@ -21,6 +30,7 @@ export function createLiveClient(opts = {}) {
   const fetchImpl = opts.fetchImpl || ((path, init) => fetch(`${baseUrl}${path}`, init));
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   let rpcId = 0;
+  const dealCreations = new Map();
 
   async function rpc(verb, args = {}) {
     const res = await fetchImpl('/mcp', {
@@ -58,6 +68,7 @@ export function createLiveClient(opts = {}) {
     if (envelope.result?.isError) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
+      err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
     return payload;
@@ -117,6 +128,8 @@ export function createLiveClient(opts = {}) {
     phase: PHASE_TO_UI[d.phase] || d.phase,
     type: TYPE_TO_UI[d.type] || d.type,
     next_step: d.next_step || '',
+    market: d.market ?? d.city ?? '',
+    version: d.version ?? d.base_version,
   });
 
   const client = {
@@ -142,15 +155,20 @@ export function createLiveClient(opts = {}) {
     async getDeal(dealId) {
       const page = await rpc('get-deal-room', { deal: dealId });
       const { thread = [], critical_dates = [], events = [], deal_id, ...fields } = page;
-      // Thread: the newest next_step IS the cell's current step; older
-      // next_step rows are the archive the ruling requires ("supersede,
-      // never erase"). Notes pass through.
+      // Canonical action fields win over historical notes. The newest note
+      // is only a fallback for older producers without an action field.
+      // Older next_step rows remain archived; notes pass through.
+      const hasCanonicalStep = Object.hasOwn(fields, "next_step") || Object.hasOwn(fields, "next_action");
+      const canonicalStep = fields.next_step ?? fields.next_action ?? "";
       let currentSeen = false;
       const uiThread = [];
       let currentStep = null;
       for (const n of thread) {
         if (n.kind === 'next_step') {
-          if (!currentSeen) { currentSeen = true; currentStep = n.text; continue; }
+          if (!currentSeen) {
+            currentSeen = true; currentStep = n.text;
+            if (!hasCanonicalStep || n.text === canonicalStep) continue;
+          }
           uiThread.push({ ...n, kind: 'archived_step' });
         } else {
           uiThread.push(n);
@@ -169,7 +187,7 @@ export function createLiveClient(opts = {}) {
         return { ...e, summary };
       });
       return {
-        deal: dealToUi({ id: deal_id, ...fields, next_step: currentStep || fields.next_step || '' }),
+        deal: dealToUi({ id: deal_id, ...fields, next_step: hasCanonicalStep ? canonicalStep : (currentStep ?? '') }),
         thread: uiThread,
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
@@ -327,7 +345,8 @@ export function createLiveClient(opts = {}) {
     },
 
     async createDeal(args) {
-      const res = await write('new-deal', {
+      const key = args.idempotency_key || uuidv4();
+      const request = {
         client: args.client,
         name: args.name,
         deal_type: args.deal_type || 'other',
@@ -336,10 +355,46 @@ export function createLiveClient(opts = {}) {
         city: args.market || undefined,
         lane: args.lane || 'territory',
         reason: 'Created in the Deal Room',
-        idempotency_key: args.idempotency_key,
-      });
-      await write('set-lead', { deal: res.deal_id, new_lead: selfActor });
-      return { status: 'ok', deal_id: res.deal_id };
+        idempotency_key: key,
+      };
+      let operation = dealCreations.get(key);
+      if (operation && JSON.stringify(operation.request) !== JSON.stringify(request)) throw new Error('Reconcile the original deal creation before changing its fields.');
+      if (!operation) {
+        operation = { request, actor: selfActor };
+        dealCreations.set(key, operation);
+      }
+      if (operation.result) return operation.result;
+      if (operation.inFlight) return operation.inFlight;
+      operation.inFlight = (async () => {
+        let res = operation.receipt;
+        if (!res) {
+          try { res = await write('new-deal', operation.request); }
+          catch (error) {
+            // Only a verified first creation refusal proves no deal was made.
+            // A refusal after an uncertain attempt cannot retire that intent.
+            if (error.writeRefusal && !operation.creationUncertain) {
+              dealCreations.delete(key);
+              error.creationRefused = true;
+            } else operation.creationUncertain = true;
+            throw error;
+          }
+        }
+        if (typeof res?.deal_id !== 'string' || !res.deal_id.trim()) {
+          operation.creationUncertain = true;
+          throw new Error('Created deal receipt is unavailable. Reconcile the same request.');
+        }
+        operation.receipt = res;
+        if (!operation.lead) {
+          const fresh = await rpc('get-deal-room', { deal: res.deal_id });
+          if (!Number.isInteger(fresh?.base_version)) throw new Error('Created deal version is unavailable; lead was not assigned.');
+          operation.lead = { deal: res.deal_id, new_lead: operation.actor, base_version: fresh.base_version, idempotency_key: uuidv4() };
+        }
+        const lead = await write('set-lead', operation.lead);
+        if (lead?.ok !== true) throw new Error('Lead receipt is unavailable. Reconcile the same request.');
+        operation.result = { status: 'ok', deal_id: res.deal_id };
+        return operation.result;
+      })();
+      try { return await operation.inFlight; } finally { operation.inFlight = null; }
     },
 
     // ---------------------------------------------------------------- loops

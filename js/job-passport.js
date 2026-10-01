@@ -498,7 +498,8 @@ export function deriveJobPassports(turns, { now = Date.now() } = {}) {
       prior.conflict = true;
       rejected.push({ seq: Number(turn.seq) || 0, reason: "same_version_conflict" });
     } else if (comparison < 0 || (comparison === 0 && (Number(turn.seq) || 0) > prior.seq)) {
-      rows.set(incoming.work_request_id, { projection: incoming, seq: Number(turn.seq) || 0, conflict: false });
+      rows.set(incoming.work_request_id, { projection: incoming, seq: Number(turn.seq) || 0,
+        conflict: prior.conflict && incoming.source_state.state_version === prior.projection.source_state.state_version });
     } else {
       rejected.push({ seq: Number(turn.seq) || 0, reason: "stale_projection" });
     }
