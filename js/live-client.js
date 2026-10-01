@@ -33,7 +33,7 @@ export function createLiveClient(opts = {}) {
   let rpcId = 0;
   const dealCreations = new Map();
 
-  async function rpc(verb, args = {}, signal) {
+  async function rpc(verb, args = {}, signal, immediateAuth = false) {
     const res = await fetchImpl('/mcp', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -58,9 +58,12 @@ export function createLiveClient(opts = {}) {
       // written for whoever maintains the verb — it is not a statement about this
       // deal, and this page prints `error.message` at partners. It travels on the
       // error for the console and for a bug report, and no surface renders it.
-      const body = await res.text().catch(() => '');
       const error = new Error(`live ${verb} -> HTTP ${res.status}`);
       error.status = res.status;
+      // Authentication is decided by the headers; a stalled diagnostic body
+      // must never hide that decision behind a generic read timeout.
+      if (immediateAuth && (res.status === 401 || res.status === 403)) throw error;
+      const body = await res.text().catch(() => '');
       error.body = body.slice(0, 500);
       throw error;
     }
@@ -89,7 +92,7 @@ export function createLiveClient(opts = {}) {
         controller.abort();
       }, 10000);
     });
-    try { return await Promise.race([rpc(verb, args, controller.signal), deadline]); }
+    try { return await Promise.race([rpc(verb, args, controller.signal, true), deadline]); }
     finally { clearTimeout(timer); }
   }
 
@@ -474,9 +477,9 @@ export function createLiveClient(opts = {}) {
     // payload the command kernel classifies; nothing here turns one into an
     // empty answer, because an empty answer would paint as "no evidence" rather
     // than "unknown".
-    async engineeringPassport(args = {}) { return rpc('engineering-passport', args); },
+    async engineeringPassport(args = {}) { return progressRead('engineering-passport', args); },
     async readPortfolio(args = {}) { return rpc('read-portfolio', args); },
-    async workRequestCard(args = {}) { return rpc('work-request-card', args); },
+    async workRequestCard(args = {}) { return progressRead('work-request-card', args); },
     async declineWorkRequest(args) { return write('decline-work-request', args); },
     async supersedeWorkRequest(args) { return write('supersede-work-request', args); },
     async setWorkShapeDisposition(args) { return write('set-work-shape-disposition', args); },
@@ -557,9 +560,9 @@ export function createLiveClient(opts = {}) {
     // through `rpc` because they carry no idempotency key, and there is no
     // matching write. Open is local navigation for a checkpoint-proved native
     // target; no verb resumes, messages, or takes over a session.
-    async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
+    async sessionIdentity(args = {}) { return progressRead('read-session-identity', args); },
     async codexSessions() { return rpc('list-my-codex-sessions', {}); },
-    async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
+    async dispatchHistory(args) { return progressRead('read-dispatch-history', args); },
 
     // ------------------------------- Model Room assignments and turns (C12)
     // TWO READS, passed through untouched, and neither names an actor either:

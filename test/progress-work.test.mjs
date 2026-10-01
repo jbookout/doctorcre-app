@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { canonicalPassport } from '../js/progress-work-model.js';
 import { passportProjectionDigest } from '../js/job-passport.js';
-import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
+import { canonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 
 test('canonical Engineering read accepts current-generation arrays and refuses a broken seal',()=>{
-  const read={...fixture.engineering,current_receipts:fixture.engineering.receipts,current_reviewer_facts:[]};
+  const read=canonicalFixture();
   read.projection_digest=passportProjectionDigest(read);
   assert.equal(canonicalPassport(read),true);
   assert.equal(canonicalPassport({...read,closure_state:'complete'}),false);

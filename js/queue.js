@@ -1,3 +1,4 @@
+import { authGeneration, authCurrent, establishAuth, invalidateAuth } from './progress-auth.js';
 import {
   QUEUE_COLUMNS, queueColumnFor, queueIsStale, queueProjection,
 } from "./queue-model.mjs";
@@ -64,18 +65,32 @@ async function enqueue(event) { event.preventDefault(); const title = $("enqueue
   try { const csrf = await csrfToken(); const response = await fetch("/api/room/turn", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "content-type": "application/json", "x-carr-csrf": csrf, origin: location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ body: command }) }); if (!response.ok) throw new Error("The task was not accepted."); $("queueComposer").reset(); $("queueNotice").textContent = "Task submitted; waiting for the board to update."; }
   catch (error) { $("queueNotice").textContent = error.message; }
 }
+async function readQueue() {
+  const controller = new AbortController(); let timer;
+  const deadline = new Promise((_,reject) => { timer = setTimeout(() => { reject(new Error('Queue read timed out')); controller.abort(); },10000); });
+  const read = async () => {
+    const response = await fetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});
+    if (!response.ok) throw Object.assign(new Error('Queue unavailable'), {status:response.status});
+    return response.json();
+  };
+  try { return await Promise.race([read(),deadline]); } finally { clearTimeout(timer); }
+}
 async function poll() {
-  try { const response = await fetch("/api/room/queue", { cache: "no-store", credentials: "same-origin" }); const body = await response.json(); if (!response.ok) throw Object.assign(new Error(body.error || "Queue unavailable"),{status:response.status});
+  const epoch = authGeneration();
+  try { const body = await readQueue();
+    if (!authCurrent(epoch)) return;
+    establishAuth(epoch);
     const stale = body.live !== true || queueIsStale(body.projected_at); const model = queueProjection(body.events); setTargets(model.cards); render(model);
     document.dispatchEvent(new CustomEvent('progress-queue', { detail: { ...body, cards: model.cards, state: stale ? 'Stale' : 'Live' } }));
     $("queueLive").textContent = stale ? "Stale" : "Live"; $("queueLive").classList.toggle("is-stale", stale); $("queueSync").textContent = stale ? "Task board data is stale — cards are not live state." : `Synced ${new Date(body.projected_at).toLocaleTimeString()}.`;
-  } catch (error) { const authRequired = error.status === 401 || error.status === 403;
-    if (authRequired) { render({cards:[]}); setTargets([]); $('queueDrawer').hidden = true; }
+  } catch (error) { if (!authCurrent(epoch)) return; const authRequired = error.status === 401 || error.status === 403;
+    if (authRequired) { invalidateAuth(); render({cards:[]}); setTargets([]); $('queueDrawer').hidden = true; }
     $("queueLive").textContent = authRequired ? "Sign in" : "Offline"; $("queueLive").classList.add("is-stale"); $("queueSync").textContent = authRequired ? "Sign in to read queued work." : "Task board is offline — previously shown cards are not live state.";
     document.dispatchEvent(new CustomEvent('progress-queue-state',{detail:{state:authRequired?'Sign in':'Offline',authRequired}}));
   }
 }
 if (typeof document !== "undefined") {
+  document.addEventListener('progress-auth-lost', () => { render({cards:[]}); setTargets([]); $('queueDrawer').hidden = true; $('drawerTitle').textContent = ''; $('drawerSummary').textContent = ''; $('drawerMeta').replaceChildren(); $('queueLive').textContent = 'Sign in'; $('queueLive').classList.add('is-stale'); $('queueSync').textContent = 'Sign in to read queued work.'; });
   buildColumns(); let latest = { cards: [] }; const originalRender = render;
   render = model => { latest = model; originalRender(model); };
   ["queueTarget", "queueStatus"].forEach(id => $(id).addEventListener("change", () => originalRender(latest)));

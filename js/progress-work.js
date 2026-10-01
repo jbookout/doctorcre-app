@@ -1,8 +1,9 @@
+import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAuth } from './progress-auth.js';
 import { createLiveClient } from './live-client.js';
 import { boardView, boardFreshness } from './progress-board-model.js';
 import { mountProgressWire } from './room.js';
 import { validEngineeringPassport } from './job-passport.js';
-import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, scopeRefs, exactReference, canonicalPassport } from './progress-work-model.js';
+import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, scopeRefs, exactReference, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
 import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
@@ -15,8 +16,10 @@ const node = (tag, value, className) => {
 const empty = (host, value) => host.replaceChildren(node('p', value, 'work-empty'));
 let wire, turns = [], engineering = null, card = null, queueTask = null, selectedSession = scope.session;
 let dotCards = [], queueState = 'Connecting';
-let sessionIds = new Set(), dispatchCursor = null, reading = false, generation = 0;
+let sessionIds = new Set(), dispatchCursor = null, reading = false;
 let dispatchRows = [], dispatchPages = 0;
+let sessionQuery = '', sessionRequest = 0;
+let dispatchSelection = 0, dispatchPending = null;
 const signatures = new Map();
 function patch(host, value, build) {
   const signature = JSON.stringify(value);
@@ -59,15 +62,16 @@ $('stageDesc').textContent += ' Shared infrastructure covers all projects and is
 function linkedSessionRefs(value, target = new Set(), depth = 0) {
   if (!value || typeof value !== 'object' || depth > 12) return target;
   for (const [key, item] of Object.entries(value)) {
-    if (['session_id','canonical_session_id','session_ref','native_session_ref'].includes(key) && typeof item === 'string') target.add(item);
+    if (['session_id','canonical_session_id','session_ref','native_session_ref','native_host_id'].includes(key) && typeof item === 'string') target.add(item);
     else if (typeof item === 'object') linkedSessionRefs(item, target, depth + 1);
   }
   return target;
 }
+function nativeReference(ref) { return typeof ref === 'string' ? ref.replace(/^native:(?:codex|claude):/, '').replace(/^(?:session|codex|claude):/, '') : ref; }
 function deriveLinks() {
   const ids = new Set(scope.session ? [scope.session] : []);
   linkedSessionRefs(engineering, ids);
-  for (const turn of turns.filter(turn => scopedTurn(turn, scope))) {
+  for (const turn of turns.filter(turn => executionTurn(turn, scope))) {
     if (turn.session_id) ids.add(turn.session_id);
     try { linkedSessionRefs(JSON.parse(turn.body), ids); } catch { /* raw topic is not identity */ }
   }
@@ -111,50 +115,53 @@ function renderDot() {
   });
 }
 async function readDispatch(more = false) {
-  if (!selectedSession) return;
-  const id = selectedSession, epoch = generation;
+  if (!selectedSession || more && !dispatchCursor || dispatchPending?.selection === dispatchSelection) return;
+  const id = selectedSession, epoch = authGeneration(), selection = dispatchSelection;
+  const request = dispatchPending = {selection};
+  const cursor = more ? dispatchCursor : null;
+  $('workDispatchMore').disabled = true;
   try {
-    const read = await client.dispatchHistory({ session_id:id,limit:100,...(more && dispatchCursor ? {cursor:dispatchCursor} : {}) });
-    if (id !== selectedSession || epoch !== generation) return;
+    const read = await client.dispatchHistory({ session_id:id,limit:100,...(cursor ? {cursor} : {}) });
+    if (id !== selectedSession || selection !== dispatchSelection || !authReadable(epoch)) return;
     if (!Array.isArray(read.events)) throw new Error('dispatch shape');
-    const fresh = new Set(read.events.map(event=>JSON.stringify(event)));
-    dispatchRows = more ? [...dispatchRows,...read.events] : [...read.events,...dispatchRows.filter(event=>!fresh.has(JSON.stringify(event)))];
+    const eventKey = event => event.event_id != null ? `${event.session_id}:${event.event_id}` : JSON.stringify(event);
+    dispatchRows = [...new Map((more ? [...dispatchRows,...read.events] : [...read.events,...dispatchRows]).map(event => [eventKey(event),event])).values()];
     if (more) dispatchPages++;
     patch($('workDispatchHistory'),dispatchRows,()=>[node('h3','Session dispatches · Sent, received, acknowledged and acted are separate evidence'),
       ...dispatchRows.map(event=>record(event.stage || 'Dispatch',event)),
       ...(!dispatchRows.length ? [node('p','No recorded dispatch events for this session.','work-empty')] : []),
       ...['received_unavailable_reason','acknowledged_unavailable_reason'].filter(key=>read[key]).map(key=>node('p',read[key]))]);
     if (more || !dispatchPages) { dispatchCursor = read.next_cursor; $('workDispatchMore').hidden = read.more !== true || !dispatchCursor; }
-  } catch (error) { fail(error, $('workDispatchHistory'), 'Dispatch history'); }
+  } catch (error) { if (authCurrent(epoch) && selection === dispatchSelection) fail(error, $('workDispatchHistory'), 'Dispatch history'); }
+  finally { if (dispatchPending === request) { dispatchPending = null; $('workDispatchMore').disabled = false; } }
 }
-async function readSessions(query = '') {
-  const epoch = generation;
+async function readSessions(query = sessionQuery) {
+  sessionQuery = query;
+  const request = ++sessionRequest, epoch = authGeneration();
+  const current = () => authReadable(epoch) && request === sessionRequest && query === sessionQuery;
   try {
     const read = await client.sessionIdentity({limit:50,include_closed:true,...(query ? {query} : {})});
-    if (epoch !== generation) return;
+    if (!current()) return;
     if (!Array.isArray(read.sessions)) throw new Error('session shape');
     const unscoped = !scope.task && !scope.workRequest && !scope.session;
-    const rows = read.sessions.filter(row => query || unscoped || sessionIds.has(row.canonical_session_id) || sessionIds.has(row.native_host_session_id) || exactReference(row.attempt_ref,scopeRefs(scope)));
+    const rows = read.sessions.filter(row => query || unscoped || sessionIds.has(row.canonical_session_id) || [...sessionIds].some(ref => nativeReference(ref) === nativeReference(row.native_host_id) && row.native_host_id) || exactReference(row.latest_attempt_ref,scopeRefs(scope)));
     patch($('workSessionList'), {rows, query,filtered:read.permission_filtered}, () => {
       const nodes = [node('p',query ? 'Lookup results · selecting a session adds its explicit link to this view.' : 'Recorded sessions linked by exact evidence.','work-empty')];
       if (read.permission_filtered) nodes.push(node('p','CARR omitted sessions outside your permission.'));
       for (const row of rows) {
         const item = record(row.display_name || 'Recorded session',row);
         const pick = node('button','Read dispatch history'); pick.type = 'button'; pick.dataset.sessionId = row.canonical_session_id;
-        pick.addEventListener('click',() => { selectedSession = row.canonical_session_id; dispatchCursor = null; dispatchRows = []; dispatchPages = 0; readDispatch(); }); item.append(pick); nodes.push(item);
+        pick.addEventListener('click',() => { selectedSession = row.canonical_session_id; ++dispatchSelection; dispatchCursor = null; dispatchRows = []; dispatchPages = 0; readDispatch(); }); item.append(pick); nodes.push(item);
       }
       if (!rows.length) nodes.push(node('p','No linked native session is available in this read. Use lookup for an explicit session.','work-empty'));
       return nodes;
     });
     if (selectedSession) readDispatch();
-  } catch (error) { fail(error, $('workSessionList'), 'Sessions'); }
+  } catch (error) { if (authCurrent(epoch) && request === sessionRequest) fail(error, $('workSessionList'), 'Sessions'); }
 }
 function fail(error, host, label) {
   if (error.status === 401 || error.status === 403) {
-    ++generation; engineering = null; card = null; turns = []; dotCards = []; queueTask = null;
-    sessionIds.clear(); dispatchRows = []; dispatchCursor = null; dispatchPages = 0;
-    $('workDispatchMore').hidden = true; signatures.clear();
-    for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),'Sign in to read work evidence.');
+    invalidateAuth();
     const signIn = node('a','Sign in'); signIn.href = `/auth/login?return_to=${encodeURIComponent(location.pathname+location.search)}`; host.append(signIn);
   } else {
     const status = host.querySelector('.work-read-error') || node('p',null,'work-read-error');
@@ -163,16 +170,27 @@ function fail(error, host, label) {
   $('workReadState').textContent = 'Work evidence unavailable · last-known records may be stale.';
   $('workReadState').dataset.state = 'stale';
 }
+document.addEventListener('progress-auth-lost', () => {
+    engineering = null; card = null; turns = []; dotCards = []; queueTask = null;
+    sessionIds.clear(); ++dispatchSelection; dispatchRows = []; dispatchCursor = null; dispatchPages = 0;
+    $('workDispatchMore').hidden = true; signatures.clear();
+    for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),'Sign in to read work evidence.');
+    scope.refs = []; scope.sourceSeqs = []; selectedSession = scope.session;
+    $('workTitle').textContent = 'Work detail'; document.title = 'Work detail · Progress';
+    breadcrumbs('Progress', 'Sign in');
+});
 async function refresh() {
   if (reading) return; reading = true;
-  const epoch = generation;
+  const epoch = authGeneration();
   try {
     const read = await client.readProgressBoard({board_id:scope.board});
-    if (epoch !== generation) return;
+    if (!authCurrent(epoch)) return;
+    establishAuth(epoch);
     const view = boardView(read); let task = view.stages.flatMap(stage => stage.tasks).find(task => task.id === scope.task);
     if (!task && scope.board === 'carr-v5' && /^[a-z_]+:.+/.test(scope.task || '')) {
       const split = scope.task.indexOf(':'), kind = scope.task.slice(0,split), id = scope.task.slice(split+1);
       const census = validSystemWork(await client.unfinishedWork({kinds:kind,id,limit:1}));
+      if (!authReadable(epoch)) return;
       task = systemPipeline(census.items,[]).stages.flatMap(stage => stage.tasks).find(item => item.id === scope.task);
     }
     task ||= queueTask;
@@ -182,24 +200,32 @@ async function refresh() {
     const age = boardFreshness(view.updated_at); $('workReadState').textContent = `${age.label}${age.state === 'stale' ? ' · Stale publication' : ''}`; $('workReadState').dataset.state = age.state;
     patch($('workMetadata'), {task,card}, () => [flow(task), ...(task ? [record(task === queueTask ? 'Projected task' : 'Published task',task)] : [node('p',scope.task ? 'This task is not in the loaded publication; linked wire evidence remains available.' : 'Shared project activity · infrastructure and queue cover all projects.','work-empty')]), ...(card ? [record('Work request',card)] : [])]);
     if (scope.workRequest) await Promise.allSettled([
-      client.workRequestCard({work_request:scope.workRequest}).then(value => { if (epoch !== generation) return; if (value.human_ref !== scope.workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; patch($('workMetadata'),{task,card},()=>[flow(task),...(task ? [record('Published task',task)] : []),record('Work request',card)]); }).catch(error=>fail(error,$('workMetadata'),'Work request')),
-      client.engineeringPassport({work_request:scope.workRequest}).then(value => { if (epoch !== generation) return;
+      client.workRequestCard({work_request:scope.workRequest}).then(value => { if (!authCurrent(epoch)) return; if (value.human_ref !== scope.workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; patch($('workMetadata'),{task,card},()=>[flow(task),...(task ? [record('Published task',task)] : []),record('Work request',card)]); }).catch(error=>authCurrent(epoch) && fail(error,$('workMetadata'),'Work request')),
+      client.engineeringPassport({work_request:scope.workRequest}).then(value => { if (!authCurrent(epoch)) return;
         if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value;
         // The canonical projection resolves a human reference into its immutable
         // wr:<uuid> binding. Keep that binding for subsequent exact wire joins.
         scope.refs = [...new Set([...(scope.refs || []),typeof value.work_request === 'string' ? value.work_request : value.work_request.id,...value.receipts.map(row=>row.attempt_id).filter(Boolean)])];
         patch($('workCanonicalBody'),value,()=>[record(`Closure: ${value.closure_state} · ${value.stale_conflict.state}`,value)]); deriveLinks(); renderReviews();
-      }).catch(error => fail(error,$('workCanonicalBody'),'Engineering Passport')),
+      }).catch(error => authCurrent(epoch) && fail(error,$('workCanonicalBody'),'Engineering Passport')),
     ]);
     else empty($('workCanonicalBody'),'No canonical work-request reference is linked to this task.');
-    renderReviews(); await readSessions(); wire?.refreshScope();
-  } catch (error) { fail(error,$('workMetadata'),'Publication'); }
+    if (!authReadable(epoch)) return;
+    renderReviews(); await readSessions();
+    if (authReadable(epoch)) wire?.refreshScope();
+  } catch (error) { if (authCurrent(epoch)) fail(error,$('workMetadata'),'Publication'); }
   finally { reading = false; }
 }
 document.addEventListener('progress-queue', event => {
+  if (!authReadable(authGeneration())) return;
   const cards = event.detail.cards;
   const task = cards.find(card => card.task_id === scope.task);
-  if (task) { queueTask = task; scope.sourceSeqs = [Number(task.source_seq)]; if (!$('workMetadata').querySelector('article')) $('workMetadata').append(record('Task',task)); if ($('workTitle').textContent === 'Task work') $('workTitle').textContent = task.title; wire?.refreshScope(); }
+  if (!task && event.detail.state === 'Live') {
+    const hadTask = queueTask !== null; queueTask = null; scope.sourceSeqs = [];
+    wire?.refreshScope();
+    if (hadTask) refresh();
+  }
+  if (task) { queueTask = task; scope.sourceSeqs = sourceSequence(task.source_seq) === null ? [] : [sourceSequence(task.source_seq)]; if (!$('workMetadata').querySelector('article')) $('workMetadata').append(record('Task',task)); if ($('workTitle').textContent === 'Task work') $('workTitle').textContent = task.title; wire?.refreshScope(); }
   dotCards = cards.filter(card => card.target === 'dot' && scopedQueueCard(card,scope));
   queueState = event.detail.state || (event.detail.live === true ? 'Live' : 'Stale'); renderDot();
 });
@@ -212,6 +238,7 @@ document.addEventListener('progress-queue-state',event=>{
 $('workDispatchMore').addEventListener('click',()=>readDispatch(true));
 empty($('workDotList'),'Waiting for the queue projection.');
 wire = mountProgressWire({scope,onRead:read=>{
+  if (!authReadable(authGeneration())) return;
   turns = read.turns;
   const refs = [...new Set([...(scope.refs || []),...read.model.jobPassports.passports.map(passport=>passport.attempt_lane.attempt_id)])].sort();
   const changed = JSON.stringify(refs) !== JSON.stringify(scope.refs || []);

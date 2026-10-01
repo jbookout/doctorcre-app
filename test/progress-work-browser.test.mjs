@@ -4,8 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
-import { scopedTurn, workScope, workDetailUrl } from '../js/progress-work-model.js';
-import { passportProjectionDigest } from '../js/job-passport.js';
+import { canonicalFixture } from './fixtures/progress-work.synthetic.mjs';
+import { scopedTurn, scopedQueueCard, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
+import { passportProjectionDigest, validEngineeringPassport } from '../js/job-passport.js';
 
 const NOW = new Date('2026-08-24T12:20:00Z');
 const taskId = 't_demo0001';
@@ -18,11 +19,12 @@ async function assertEventually(predicate) {
 function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0}={}) {
+
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:900}}); page.setDefaultTimeout(7000); await page.clock.install({time:NOW});
   const errors=[],calls=[],posts=[]; page.on('pageerror',error=>errors.push(error.message));
-  const state={offline:false,authLost:false,postFailure:false,turns:empty?[]:receipts(),queueReads:0,turnReads:0};
+  const state={rpcReply,offline:false,authLost:false,postFailure:false,turns:empty?[]:receipts(),queueReads:0,turnReads:0};
   if(!empty) state.turns.push({seq:8,msg_id:'review',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`${taskId} Fix round one; independent review requested.`},
     {seq:9,msg_id:'other',at:NOW.toISOString(),sponsor:'dell',seat:'human',kind:'turn',body:'Unrelated synthetic task'},
     {seq:10,msg_id:'heartbeat',at:NOW.toISOString(),sponsor:'joe',seat:'hermes',kind:'receipt',body:JSON.stringify({heartbeat:{cycle_at:NOW.toISOString(),cursor:10,desks:[{name:'Synthetic desk',seat:'codex',live:true,last_seen:NOW.toISOString(),auth:false}],profiles:[{key:'doc',name:'Doc',model:'codex',desk:'Synthetic desk',status:'active'},{key:'builder',name:'Builder',model:'codex',desk:null,status:'active'}]}})});
@@ -42,13 +44,14 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       const rpc=route.request().postDataJSON().params;calls.push(rpc);
       if(state.authLost)return route.fulfill({status:401,body:'{}'});
       if(state.offline)return route.fulfill({status:503,body:'Synthetic offline'});
-      const payload=rpc.name==='read-progress-board'?{ok:true,snapshot:{board_id:rpc.arguments.board_id,version:1,updated_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),snapshot_json:{title:rpc.arguments.board_id==='carr-v5'?'System progress':'Demo project',tasks:empty?{}:{[taskId]:{title:'Demo work detail',status:'review',work_request:'WR-900'}}}},questions:[]}
+      let payload=rpc.name==='read-progress-board'?{ok:true,snapshot:{board_id:rpc.arguments.board_id,version:1,updated_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),snapshot_json:{title:rpc.arguments.board_id==='carr-v5'?'System progress':'Demo project',tasks:empty?{}:{[taskId]:{title:'Demo work detail',status:'review',work_request:'WR-900'}}}},questions:[]}
         :rpc.name==='list-progress-boards'?{schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System progress',updated_at:NOW.toISOString(),task_counts:{}},{board_id:'demo-project',title:'Demo project',updated_at:NOW.toISOString(),task_counts:{review:1}}]}
-        :rpc.name==='read-session-identity'?{sessions:empty?[]:[{canonical_session_id:'session:fresh',display_name:'Demo builder',surface:'codex',work_state:'working'},{canonical_session_id:'session:other',display_name:'Other builder',surface:'codex'}],permission_filtered:false}
-        :rpc.name==='read-dispatch-history'?{events:[{stage:rpc.arguments.cursor?'acted':'sent',evidence:'synthetic dispatch',session_id:'session:fresh',attempt_ref:'attempt:a',work_request_ref:taskId}],more:!rpc.arguments.cursor,next_cursor:rpc.arguments.cursor?null:'synthetic-cursor'}
-        :rpc.name==='engineering-passport'?(()=>{const read={...fixture.engineering,current_receipts:fixture.engineering.receipts,current_reviewer_facts:fixture.engineering.reviewer_facts};read.projection_digest=passportProjectionDigest(read);return read;})()
+        :rpc.name==='read-session-identity'?{sessions:sessions || (empty?[]:[{canonical_session_id:'session:fresh',display_name:'Demo builder',surface:'codex',work_state:'working'},{canonical_session_id:'session:other',display_name:'Other builder',surface:'codex'}]),permission_filtered:false}
+        :rpc.name==='read-dispatch-history'?{events:[{event_id:rpc.arguments.cursor?2:1,stage:rpc.arguments.cursor?'acted':'sent',evidence:'synthetic dispatch',session_id:'session:fresh',attempt_ref:'attempt:a',work_request_ref:taskId}],more:!rpc.arguments.cursor,next_cursor:rpc.arguments.cursor?null:'synthetic-cursor'}
+        :rpc.name==='engineering-passport'?canonicalFixture()
         :rpc.name==='work-request-card'?{ok:true,human_ref:'WR-900',title:'Demo work request',state:'needs_revision',version:1,desired_outcome:'Synthetic acceptance',acting_identity:[{act:'review',performed_by:'actor:builder'}]}
         :rpc.name==='unfinished-work'?{schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true}:{};
+      if (state.rpcReply) payload=await state.rpcReply(rpc,payload);
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
     }
     if(url.pathname==='/api/room/turns'){
@@ -59,7 +62,8 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     }
     if(url.pathname==='/api/room/queue'){
       state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
-      const events=empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
+      if(state.queueWait)await state.queueWait;
+      const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
       return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),events})});
     }
     if(url.pathname==='/api/room/turn'){
@@ -83,6 +87,183 @@ test('exact work references never join similar titles or shared seats',()=>{
   assert.equal(scopedTurn({body:'Review t_demo.',seat:'codex'},scope),true);
   assert.equal(scopedTurn({body:JSON.stringify({job_passport:{payload:{work_request_id:'t_demo'}}})},scope),true);
   assert.match(workDetailUrl({board:'demo',task:'t_demo'}),/board=demo&task=t_demo/);
+});
+
+test('only explicit bindings and valid source sequences join execution evidence', async t => {
+  const scope = workScope('?task=t_demo');
+  const unrelated = {seq:undefined,task_id:'other-task',session_id:'session:other',body:JSON.stringify({title:'t_demo',session_id:'session:other'})};
+  assert.equal(scopedTurn(unrelated,scope),false);
+  for(const seq of [undefined,null,'',NaN,-1,1.5,Infinity])assert.equal(scopedQueueCard({task_id:'other',source_seq:seq},{...scope,sourceSeqs:[NaN]}),false);
+  assert.equal(scopedQueueCard({task_id:'other',source_seq:8},{...scope,sourceSeqs:[8]}),true);
+  const {page,state}=await open(t);
+  state.turns.push({seq:100,msg_id:'mention-only',session_id:'session:other',seat:'human',kind:'turn',at:NOW.toISOString(),body:`Discuss ${taskId}.`});
+  await page.clock.runFor(5100);
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Other builder/);
+});
+
+test('canonical current-generation Passport validates typed evidence before accepting its seal', () => {
+  const valid = canonicalFixture();
+  valid.projection_digest = passportProjectionDigest(valid);
+  assert.equal(canonicalPassport(valid),true);
+  const reseal = value => {value.projection_digest=passportProjectionDigest(value);return value;};
+  const forged=structuredClone(valid);
+  Object.assign(forged,{slice_plan:null,accepted_plan_revision:null,plan_digest:'invalid',operator_receipt:true,closure_state:'complete'});
+  for(const key of ['slices','execution_envelopes','receipts','reviewer_facts','current_receipts','current_reviewer_facts','qa_facts'])forged[key]=[];
+  for(const disposition of Object.values(forged.closure))Object.assign(disposition,{state:'invented',evidence_refs:[]});
+  assert.equal(canonicalPassport(reseal(forged)),false);
+  for(const change of [
+    value => value.current_receipts[0].attempt_id='attempt:unbound',
+    value => value.current_reviewer_facts.push({attempt_id:'attempt:unbound'}),
+    value => value.receipts[0].checks[0].state='invented',
+    value => value.slice_plan.work_request.id='wr:unbound',
+    value => value.slices[0].dependency_refs=['slice:unbound'],
+    value => {value.receipts[0].attribution.session_ref='session:unbound';value.current_receipts=structuredClone(value.receipts);},
+    value => value.closure.proof.evidence_refs=[{...value.receipts[0].evidence_refs[0],ref:'evidence:unbound'}],
+  ]) { const malformed=structuredClone(valid);change(malformed);assert.equal(canonicalPassport(reseal(malformed)),false); }
+});
+
+test('canonical completion requires an independent pass for the selected current receipt',()=>{
+  const value=canonicalFixture();
+  const evidence=structuredClone(value.receipts[0].evidence_refs);
+  const pass={slice_ref:'slice:a',attempt_id:'attempt:a',reviewer_ref:'actor:reviewer',session_ref:'session:reviewer',state:'passed',evidence_refs:evidence,is_independent:true,reviewed_deviation_refs:[],resolved_deviation_refs:[]};
+  value.current_reviewer_facts=[pass];value.reviewer_facts=[pass];value.slices[0].state='verified_complete';value.operator_receipt.remaining_risk=[];
+  for(const key of ['work','proof','explanation','release'])value.closure[key]={state:'complete',evidence_refs:evidence,note:'Bound independently verified receipt'};
+  value.closure_state='complete';value.projection_digest=passportProjectionDigest(value);
+  assert.equal(canonicalPassport(value),true);
+  value.current_reviewer_facts=[];value.projection_digest=passportProjectionDigest(value);
+  assert.equal(canonicalPassport(value),false);
+});
+
+test('canonical Passport accepts the pinned repository execution envelope while wire stays read-only',()=>{
+  const value=canonicalFixture();
+  const envelope=value.execution_envelopes[0];
+  Object.assign(envelope.server_binding.authority,{read_only:false,environment:'rehearsal',capability_profile:'capability:engineering-repository-write'});
+  envelope.server_binding.adapter.adapter_id='adapter:codex-desktop';
+  envelope.request.allowed_actions=['repository:create-worktree','repository:create-branch','repository:write-declared-scope','repository:run-checks','repository:commit','repository:push-branch','repository:open-pr'];
+  value.receipts[0].envelope_digest=passportProjectionDigest(envelope);
+  value.receipts[0].attribution.adapter_ref='adapter:codex-desktop';
+  value.current_receipts=structuredClone(value.receipts);
+  value.projection_digest=passportProjectionDigest(value);
+  assert.equal(canonicalPassport(value),true);
+  const wire=structuredClone(value);delete wire.current_receipts;delete wire.current_reviewer_facts;wire.projection_digest=passportProjectionDigest(wire);
+  assert.equal(validEngineeringPassport(wire),false);
+});
+
+test('linked sessions join pinned native host and latest attempt fields',async t=>{
+  const {page}=await open(t,{sessions:[
+    {canonical_session_id:'session:attempt-linked',latest_attempt_ref:'attempt:a',native_host_id:'host:a',display_name:'Attempt-linked builder'},
+    {canonical_session_id:'session:native-linked',native_host_id:'fresh',display_name:'Native-linked builder'},
+    {canonical_session_id:'session:unrelated',latest_attempt_ref:'attempt:other',display_name:'Unrelated builder'},
+  ]});
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Attempt-linked builder'));
+  assert.match(await page.locator('#workSessionList').textContent(),/Native-linked builder/);
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Unrelated builder/);
+});
+
+test('native adapter reference joins its exact producer host id',async t=>{
+  const {page}=await open(t,{path:'/control-room/progress/work?board=demo-project&session=native:codex:host-linked',sessions:[
+    {canonical_session_id:'session:host-linked',native_host_id:'host-linked',display_name:'Host-bound builder'},
+    {canonical_session_id:'session:unrelated',native_host_id:'other-host',display_name:'Other host'},
+  ]});
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Host-bound builder'));
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Other host/);
+});
+
+test('late Engineering success stays withheld after another protected read loses authentication',async t=>{
+  let release,started=false;const gate=new Promise(resolve=>release=resolve);
+  const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
+  await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
+  release();await new Promise(resolve=>setTimeout(resolve,100));
+  assert.equal(await page.locator('.passport-card').count(),0);
+  for(const id of ['workCanonicalBody','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
+  assert.equal(await page.locator('#workTitle').textContent(),'Work detail');
+});
+
+test('latest session lookup wins and refresh retains its query',async t=>{
+  const {page,state,calls}=await open(t);
+  await page.waitForSelector('[data-session-id="session:fresh"]');
+  let release, oldStarted=false;
+  const old=new Promise(resolve=>release=resolve);
+  state.rpcReply=async (rpc,payload)=>{
+    if(rpc.name!=='read-session-identity')return payload;
+    if(rpc.arguments.query==='old'){oldStarted=true;await old;}
+    return {sessions:[{canonical_session_id:`session:${rpc.arguments.query || 'default'}`,display_name:`Result ${rpc.arguments.query || 'default'}`}],permission_filtered:false};
+  };
+  await page.locator('#workSessionQuery').fill('old');await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
+  await assertEventually(()=>oldStarted);
+  await page.locator('#workSessionQuery').fill('new');await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Result new'));
+  release();await new Promise(resolve=>setTimeout(resolve,100));
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Result old/);
+  await page.clock.runFor(5100);await assertEventually(()=>calls.filter(call=>call.name==='read-session-identity'&&call.arguments.query==='new').length>=2);
+  assert.match(await page.locator('#workSessionList').textContent(),/Result new/);
+});
+
+for (const stalled of ['engineering-passport','read-session-identity'])test(`stalled ${stalled} expires, labels evidence stale and resumes refresh`,async t=>{
+  let stalledReads=0;
+  const never=new Promise(()=>{});
+  const {page,calls}=await open(t,{rpcReply:(rpc,payload)=>rpc.name===stalled?(stalledReads++,never):payload});
+  await assertEventually(()=>stalledReads>0);
+  await page.clock.runFor(11000);
+  await page.waitForFunction(()=>document.querySelector('#workReadState').dataset.state==='stale');
+  assert.match(await page.locator('#workReadState').textContent(),/unavailable|stale/i);
+  await page.clock.runFor(55000);
+  await assertEventually(()=>calls.filter(call=>call.name==='read-progress-board').length>1);
+});
+
+test('stalled queue expires and recovers instead of remaining live',async t=>{
+  const {page,state}=await open(t);await page.waitForSelector('.queue-card',{state:'attached'});
+  state.queueWait=new Promise(()=>{});
+  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1);
+  await page.clock.runFor(11000);
+  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');
+  state.queueWait=null;
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Live');
+});
+
+test('concurrent Earlier dispatches clicks append one stable event and preserve cursor',async t=>{
+  const {page,state,calls}=await open(t);await page.waitForSelector('[data-session-id="session:fresh"]');
+  await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
+  let release, pending=0;const gate=new Promise(resolve=>release=resolve);
+  state.rpcReply=async(rpc,payload)=>{if(rpc.name==='read-dispatch-history'&&rpc.arguments.cursor){pending++;await gate;return {...payload,events:[...payload.events,...payload.events]};}return payload;};
+  await page.locator('#workDispatchMore').evaluate(button=>{button.click();button.click();});
+  await assertEventually(()=>pending>0);release();
+  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
+  assert.equal(calls.filter(call=>call.name==='read-dispatch-history'&&call.arguments.cursor==='synthetic-cursor').length,1);
+  assert.equal(await page.locator('#workDispatchHistory .work-record > h3').filter({hasText:'acted'}).count(),1);
+  assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
+});
+
+test('fresh queue absence removes projected task metadata and sequence binding',async t=>{
+  const {page,state}=await open(t,{rpcReply:(rpc,payload)=>rpc.name==='read-progress-board'?{...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}}:payload});
+  await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  state.queueEmpty=true;
+  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>=3);
+  await page.clock.runFor(5100);await page.waitForFunction(()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo research/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Demo research/);
+  assert.equal(await page.locator('#queueLive').textContent(),'Live');
+  state.turns.push({seq:100,msg_id:'removed-binding',seat:'dot',kind:'turn',at:NOW.toISOString(),body:'Unrelated task after removal'});
+  await page.clock.runFor(5100);
+  assert.doesNotMatch(await page.locator('#workDotList').textContent(),/Unrelated task after removal/);
+});
+
+test('late canonical binding restores receipts discarded before the rescan',async t=>{
+  let release;const gate=new Promise(resolve=>release=resolve);
+  const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport')await gate;return payload;}});
+  await assertEventually(()=>state.turnReads>=1);
+  for(let poll=0;poll<6;poll++){
+    for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
+    const before=state.turnReads;await page.clock.runFor(5100);await assertEventually(()=>state.turnReads>before);
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.equal(await page.locator('.passport-card').count(),0);
+  release();await page.clock.runFor(16000);
+  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+  await page.clock.runFor(5100);await page.waitForSelector('.passport-card');
+  assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
 test('board → project → task uses one tap each and breadcrumbs return to the parent',async t=>{
@@ -229,14 +410,25 @@ test('empty, stale and offline states stay legible without inventing work',async
 });
 
 test('confirmed authentication loss clears protected queue and work evidence',async t=>{
-  const {page,state,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks'});
-  await page.waitForSelector('.queue-card');await page.waitForSelector('[data-session-id="session:fresh"]');
+  const {page,state,errors}=await open(t);
+  await page.waitForSelector('.queue-card',{state:'attached'});await page.waitForSelector('.passport-card');await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
   state.authLost=true;await page.clock.runFor(5100);
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
   assert.equal(await page.locator('.queue-card').count(),0);
   for(const id of ['workSessionList','workDispatchHistory','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workDispatchMore').isVisible(),false);assert.deepEqual(errors,[]);
+  assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
+  await page.clock.runFor(11000); // successful independent wire reads must remain withheld
+  assert.equal(await page.locator('.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
+  for(const id of ['wireFeed','jobPassportList','roomDesks','assignmentList','sessionList','stageTooltip'])assert.doesNotMatch(await page.locator('#'+id).textContent(),/Demo|Synthetic desk|Fix round/);
+  assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo/);
+  assert.doesNotMatch(await page.locator('#workBreadcrumbs').textContent(),/demo-project|Demo/);
+  assert.doesNotMatch(await page.title(),/Demo/);
+  state.authLost=false;await page.clock.runFor(11000);
+  await page.waitForSelector('.passport-card');
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
+  for(const id of ['roomStage','figCycle','figBridge','figDesks'])assert.equal(await page.locator('#'+id).evaluate(node=>node.hidden),false);
+  assert.deepEqual(errors,[]);
 });
 
 for(const [old,view] of [['/room.html','wire'],['/queue.html','tasks'],['/control-room/agents/queue','tasks'],['/agent-room','wire']])test(`legacy deep link ${old} opens matching Progress view`,async t=>{

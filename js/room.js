@@ -1,3 +1,4 @@
+import { authGeneration, authReadable, invalidateAuth } from './progress-auth.js';
 import { deriveJobPassports, jobPassportStatusLabel } from "./job-passport.js?v=job-passport-spatial-v1";
 import { scopedTurn } from './progress-work-model.js';
 
@@ -824,8 +825,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       headers: { accept: "application/json" }, credentials: "same-origin",
     });
     if (response.status === 401 || response.status === 403) {
-      state.turns = []; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
-      render(); state.csrf = null;
+      invalidateAuth();
       window.location.href = `/auth/login?return_to=${encodeURIComponent(location.pathname + location.search)}`;
       throw new Error("sign_in_required");
     }
@@ -1947,6 +1947,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       const keep = scoped ? new Set([...state.turns.slice(-DOM_TURN_CAP * 4), ...state.turns.filter(turn=>scopedTurn(turn,scope)).slice(-DOM_TURN_CAP * 4)]) : null;
       state.turns = keep ? state.turns.filter(turn=>keep.has(turn)) : state.turns.slice(-DOM_TURN_CAP * 4);
     }
+    // Deduplicate retained records, so a later exact-binding rescan can restore
+    // receipts discarded before that binding was known.
+    state.byMsgId = new Map(state.turns.map(turn => [String(turn.msg_id || `${turn.seq}`),turn]));
     const oldest = state.turns.length ? seqOf(state.turns[0]) : null;
     state.oldestSeq = oldest;
     if (!prepend) {
@@ -1957,6 +1960,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   }
 
   function render(fresh = []) {
+    if (!authReadable(authGeneration())) return;
     const model = deriveModel(state.turns, { now: Date.now(), viewer: state.viewer });
     const scoped = deriveModel(state.turns.filter(turn => scopedTurn(turn, scope)), { now: model.now, viewer: state.viewer });
     state.model = model;
@@ -1991,6 +1995,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   }
 
   async function poll() {
+    const epoch = authGeneration();
+    if (!authReadable(epoch)) { schedule(); return; }
     try {
       // latest_seq is the last returned row, not the room's overall tail.
       // Drain the server's oldest-first pages before showing a current window.
@@ -1999,6 +2005,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       let payload, turns = [];
       do {
         payload = await fetchTurns(from, 200);
+        if (!authReadable(epoch)) return;
         validateTurnPage(payload, from);
         const loaded = [...turns, ...(payload.turns || [])];
         const scoped = scope.task || scope.workRequest || scope.session;
@@ -2021,6 +2028,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       } else {
         $("roomBanner").hidden = true;
       }
+      for (const id of ['roomDesks','roomStage','roomHealth','roomPresence','figCycle','figBridge','figDesks']) $(id).hidden = false;
       delete $('roomHealth').dataset.stale;
       if (!state.following) state.missed += fresh.length;
       render(fresh);
@@ -2029,7 +2037,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
         $("wireResume").textContent = `Resume live · ${state.missed} new`;
       }
     } catch (error) {
-      if (String(error?.message) === "sign_in_required") return;
+      if (!authReadable(epoch) || String(error?.message) === "sign_in_required") return;
       state.backoffMs = Math.min(POLL_BACKOFF_CEILING_MS, (state.backoffMs || POLL_VISIBLE_MS) * 2);
       setState($("healthCycleDot"), "urgent");
       banner("Wire offline — last-known activity; retrying.");
@@ -2051,7 +2059,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const oldest = window[0] ? seqOf(window[0]) : null;
     if (!oldest || oldest <= 1) return;
     const generation = state.historyGeneration = (state.historyGeneration || 0) + 1;
-    const current = () => state.historyGeneration === generation;
+    const epoch = authGeneration();
+    const current = () => state.historyGeneration === generation && authReadable(epoch);
     try {
       // IDs belong to all rooms. Walk the supported oldest-first cursor rather
       // than guessing a predecessor by subtracting a row count from an ID.
@@ -2108,6 +2117,19 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   $("viewConversation").addEventListener("click", () => setFeedMode(true));
   $("viewEverything").addEventListener("click", () => setFeedMode(false));
   $("wireFilters").dataset.mode = "conversation";
+
+  document.addEventListener('progress-auth-lost', () => {
+    state.turns = []; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
+    state.historyGeneration = (state.historyGeneration || 0) + 1;
+    state.cursor = 0; state.csrf = null; state.model = null;
+    state.counted.clear();
+    for (const id of ['wireFeed','jobPassportList','deskList','assignmentList','sessionList','seatChips']) $(id)?.replaceChildren();
+    for (const selector of ['.stage-node:not(.stage-node-core)', '.stage-edge']) document.querySelectorAll(selector).forEach(node => node.remove());
+    for (const id of ['stageTooltip','figCycle','figBridge','figDesks']) { const host = $(id); if (host) { host.hidden = true; host.textContent = ''; } }
+    $('roomDesks').hidden = true; $('roomStage').hidden = true; $('roomHealth').hidden = true; $('roomPresence').hidden = true; $('presenceText').textContent = '';
+    $('jobPassportSummary').textContent = 'Sign in to read work evidence.';
+    banner('Sign in to read work evidence.');
+  });
 
   drawCore();
   bindKindToggle("kindTurns", "turns");

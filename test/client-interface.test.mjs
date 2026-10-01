@@ -63,3 +63,19 @@ test("Jev reading sends one deal id to the same-origin CARR API", async () => {
   assert.equal(calls[0].init.credentials, "same-origin");
   assert.deepEqual(JSON.parse(calls[0].init.body), { deal: "00000000-0000-4000-8000-000000000001" });
 });
+
+for(const method of ['engineeringPassport','workRequestCard','sessionIdentity','dispatchHistory'])test(`${method} bounds the response body and aborts on expiry`,async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  let signal;
+  const live=createLiveClient({fetchImpl:async(_path,init)=>{signal=init.signal;return {ok:true,json:()=>new Promise(()=>{})};}});
+  const read=live[method]({});const rejected=assert.rejects(read,error=>error.code==='progress_read_timeout');
+  await Promise.resolve();t.mock.timers.tick(10001);await rejected;
+  assert.equal(signal.aborted,true);
+});
+
+test('confirmed authentication denial survives a stalled error body',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const live=createLiveClient({fetchImpl:async()=>({ok:false,status:401,text:()=>new Promise(()=>{})})});
+  const read=live.engineeringPassport({});const rejected=assert.rejects(read,error=>error.status===401);
+  await Promise.resolve();t.mock.timers.tick(10001);await rejected;
+});

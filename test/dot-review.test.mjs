@@ -1,3 +1,4 @@
+import { authGeneration, authReadable } from '../js/progress-auth.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -21,7 +22,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({ console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
