@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C15 — the independent status page: DOM wiring only.
 //
 // Every decision lives in ./status-model.js. This page reads, paints, and does
@@ -199,14 +199,14 @@ async function appRelease() {
   // In fixture mode the switch rides along as a query param, because the
   // fixture server answers /app-release and this page's own client cannot.
   const query = view.outage ? `?outage=${encodeURIComponent(view.outage)}` : "";
-  const response = await fetch(`/app-release${query}`, { headers: { accept: "application/json" }, cache: "no-store" });
+  const response = await fetchRead(`/app-release${query}`, { headers: { accept: "application/json" }, cache: "no-store" });
   if (!response.ok) throw new Error(`app-release -> ${response.status}`);
   return response.json();
 }
 
 async function census() {
   if (view.outage === "census" || view.outage === "all") throw new Error("census outage requested by the fixture switch");
-  const response = await fetch(`${WORK_INVENTORY_ENDPOINT}?kinds=work_request`, { headers: { accept: "application/json" }, cache: "no-store" });
+  const response = await fetchRead(`${WORK_INVENTORY_ENDPOINT}?kinds=work_request`, { headers: { accept: "application/json" }, cache: "no-store" });
   if (!response.ok) throw new Error(`census -> ${response.status}`);
   return response.json();
 }

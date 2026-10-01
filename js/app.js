@@ -1120,12 +1120,16 @@ let dealDetailSnapshot = null;
 async function openDeal(dealId, { background = false } = {}) {
   const dialog = $('#dealDialog');
   if (background && (!dialog.open || dialog.dataset.dealId !== dealId)) return;
-  const scroll = dialog.scrollTop;
-  const disclosures = background ? [...dialog.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent) : [];
-  const advice = background ? dialog.querySelector('[data-jev-result]')?.innerHTML : null;
   const sequence = ++dealDetailSequence;
   const detail = await state.client.getDeal(dealId);
   if (sequence !== dealDetailSequence) return;
+  if (background && (!dialog.open || dialog.dataset.dealId !== dealId || $('#formDialog').open || dialog.querySelector('[data-jev-deal]:disabled'))) return;
+  // Interaction may have changed during the read. Capture it at paint time.
+  const scroll = dialog.scrollTop;
+  const disclosures = background ? [...dialog.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent) : [];
+  const advice = background ? dialog.querySelector('[data-jev-result]')?.innerHTML : null;
+  const focused = background && dialog.contains(document.activeElement) ? document.activeElement : null;
+  const focusAttributes = focused ? [...focused.attributes].filter(a => a.name === 'id' || a.name.startsWith('data-')).map(a => [a.name, a.value]) : [];
   const unchanged = JSON.stringify(detail) === dealDetailSnapshot;
   dealDetailSnapshot = JSON.stringify(detail);
   const deal = detail.deal;
@@ -1159,6 +1163,8 @@ async function openDeal(dealId, { background = false } = {}) {
   for (const node of dialog.querySelectorAll('details')) node.open = disclosures.includes(node.querySelector('summary')?.textContent);
   if (!dialog.open) dialog.showModal();
   if (background) dialog.scrollTop = scroll;
+  if (focused) [...dialog.querySelectorAll(focused.tagName)].find(node =>
+    focusAttributes.length ? focusAttributes.every(([name, value]) => node.getAttribute(name) === value) : node.textContent === focused.textContent)?.focus({ preventScroll: true });
 }
 
 async function readJevDeal(button) {

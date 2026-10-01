@@ -79,10 +79,17 @@ const view = {
   // nothing and never flash; the entrance animation already says "new".
   outcomeCards: { state: "pending", payload: null, rows: [], checkpoints: [], sequence: 0, previousById: new Map() },
   suggestions: { state: "pending", rows: [], coverage: null, sequence: 0, includeParked: false, sentence: null,
-    drafts: new Map(), workNumbers: new Map(), conflicts: new Map() },
+    drafts: new Map(), workNumbers: new Map(), snoozeDates: new Map(), conflicts: new Map() },
 };
 
 let client = null;
+const loadedPages = { conversation: 1, list: 1, outcomes: 1 };
+let backgroundReads = 0;
+function suggestionEditorActive() {
+  return $("suggestionsList")?.contains(document.activeElement)
+    || view.suggestions.snoozeDates.size > 0
+    || [...view.suggestions.drafts.values(), ...view.suggestions.workNumbers.values(), ...view.suggestions.snoozeDates.values()].some(Boolean);
+}
 let pendingOutcomeOpen = null;
 const openLinks = createOpenLinkGuard();
 let commandState = createCommandState();
@@ -352,6 +359,7 @@ function suggestionFlowSvg(card) {
 }
 
 function renderSuggestions() {
+  if (backgroundReads && suggestionEditorActive()) return;
   const state = view.suggestions;
   const cards = state.state === "read" ? suggestionCards({ suggestions: state.rows }, { includeParked: state.includeParked }) : [];
   const visibleConflicts = visibleSuggestionConflicts(state.conflicts, cards, view.route);
@@ -393,9 +401,9 @@ function renderSuggestions() {
           <button class="btn btn-quiet" type="button" data-choice="dismiss">Dismiss</button>
         </div>
         <div class="suggestion-fields">
-          <label>Task number for Act <input type="text" data-work-number="${escapeHtml(card.id)}" value="${escapeHtml(workNumber)}" placeholder="Number from Tasks"></label>
-          <a href="/tasks" target="_blank" rel="noopener">Open Tasks</a>
-          <label>Snooze until <input type="date" data-snooze-date="${escapeHtml(card.id)}" value="${defaultSnooze}"></label>
+          <label>Work number for Act <input type="text" data-work-number="${escapeHtml(card.id)}" value="${escapeHtml(workNumber)}" placeholder="Number from Choose work"></label>
+          <a href="/doc-chats/work" target="_blank" rel="noopener">Choose work</a>
+          <label>Snooze until <input type="date" data-snooze-date="${escapeHtml(card.id)}" value="${escapeHtml(state.snoozeDates.get(card.id) ?? defaultSnooze)}"></label>
         </div>
         ${conflictHtml}
         <div class="field suggestion-correction"><label for="correction-${escapeHtml(card.id)}">Correct this suggestion</label>
@@ -432,7 +440,7 @@ function render() {
  * CODE, and a read that lands after a newer one was issued is discarded — the
  * page paints the latest picture it asked for, never the last one that arrived.
  */
-async function takeConversation({ after = null } = {}) {
+async function takeConversation({ after = null, background = false } = {}) {
   if (view.route.state !== "ok") {
     view.conversation = view.route.state === "malformed" ? { state: "malformed" } : { state: "pending" };
     render();
@@ -445,8 +453,15 @@ async function takeConversation({ after = null } = {}) {
   try {
     const args = { conversation_id: view.route.id, limit: LIMIT };
     if (Number.isInteger(after)) args.after_sequence = after;
-    const payload = await client.readDocConversation(args);
+    let payload = await client.readDocConversation(args);
     if (view.sequence !== sequence) return;
+    if (background) {
+      for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
+        const incoming = await client.readDocConversation({ ...args, after_sequence: pagingState(payload).after });
+        if (view.sequence !== sequence) return;
+        payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
+      }
+    } else loadedPages.conversation = Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
     // Paging APPENDS; the server's order is kept and nothing is re-sorted.
     const merged = (Number.isInteger(after) && held)
       ? { ...payload, turns: [...held.turns, ...payload.turns] }
@@ -468,14 +483,21 @@ async function takeConversation({ after = null } = {}) {
  * destroy the ordering paging exists to preserve. No cursor means a fresh
  * first page, which is what every write settles into.
  */
-async function takeList({ cursor = null } = {}) {
+async function takeList({ cursor = null, background = false } = {}) {
   const sequence = view.sequence;
   const held = cursor ? view.list.rows : [];
   try {
-    const payload = await client.listDocConversations(
+    let payload = await client.listDocConversations(
       listArgs({ cursor, includeArchived: view.includeArchived }),
     );
     if (view.sequence !== sequence) return;
+    if (background) {
+      for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
+        const incoming = await client.listDocConversations(listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }));
+        if (view.sequence !== sequence) return;
+        payload = { ...incoming, conversations: [...payload.conversations, ...incoming.conversations] };
+      }
+    } else loadedPages.list = cursor ? loadedPages.list + 1 : 1;
     view.list = { state: "read", payload, rows: [...held, ...listRows(payload)] };
   } catch (error) {
     if (view.sequence !== sequence) return;
@@ -495,17 +517,25 @@ async function takeList({ cursor = null } = {}) {
  * one sequence across pages and re-sorting the union would destroy the
  * `updated_at desc, id desc` ordering paging exists to preserve.
  */
-async function takeOutcomeCards({ cursor = null } = {}) {
+async function takeOutcomeCards({ cursor = null, background = false } = {}) {
   const sequence = ++view.outcomeCards.sequence;
   const held = cursor ? view.outcomeCards.rows : [];
   view.outcomeCards = { ...view.outcomeCards, state: "loading" };
   render();
   try {
-    const [payload, checkpointPayload] = await Promise.all([
+    let [payload, checkpointPayload] = await Promise.all([
       client.docOutcomeCards(outcomeCardsRequest({ cursor })),
       client.codexSessions().catch(() => null),
     ]);
     if (view.outcomeCards.sequence !== sequence) return;
+    if (background && !refuseDocOutcomeCards(payload)) {
+      for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
+        const incoming = await client.docOutcomeCards(outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }));
+        if (view.outcomeCards.sequence !== sequence) return;
+        if (refuseDocOutcomeCards(incoming)) throw new Error("Outcome page unavailable");
+        payload = { ...incoming, cards: [...payload.cards, ...incoming.cards] };
+      }
+    } else if (!background) loadedPages.outcomes = cursor ? loadedPages.outcomes + 1 : 1;
     const refusal = refuseDocOutcomeCards(payload);
     if (refusal) {
       view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: `Updates temporarily unavailable.` };
@@ -527,21 +557,25 @@ async function takeOutcomeCards({ cursor = null } = {}) {
     : `${view.outcomeCards.rows.length} outcome card${view.outcomeCards.rows.length === 1 ? "" : "s"} shown.`);
 }
 
-async function takeSuggestions() {
+async function takeSuggestions({ background = false } = {}) {
   const sequence = ++view.suggestions.sequence;
-  view.suggestions = suggestionReadState(view.suggestions, { state: "loading" });
-  renderSuggestions();
+  if (!background) {
+    view.suggestions = suggestionReadState(view.suggestions, { state: "loading" });
+    renderSuggestions();
+  }
   try {
     const payload = await client.listDocSuggestions({
       ...(view.route.state === "ok" ? { conversation_id: view.route.id } : {}),
       include_parked: view.suggestions.includeParked,
     });
     if (sequence !== view.suggestions.sequence) return;
+    if (background && suggestionEditorActive()) return;
     if (!Array.isArray(payload?.suggestions)) throw new Error("Invalid suggestion response");
     view.suggestions = suggestionReadState(view.suggestions, { state: "read", payload });
     view.suggestions.conflicts = reconcileSuggestionConflicts(view.suggestions.conflicts, payload.suggestions);
   } catch (error) {
     if (sequence !== view.suggestions.sequence) return;
+    if (background && suggestionEditorActive()) return;
     const failure = classifyReadFailure(error);
     view.suggestions = suggestionReadState(view.suggestions, { state: "unavailable", sentence: failure.sentence });
   }
@@ -552,11 +586,15 @@ async function takeSuggestions() {
     : view.suggestions.sentence;
 }
 
-async function load() {
-  view.sequence += 1;
-  await Promise.all([takeConversation(), takeList(), takeOutcomeCards(), takeSuggestions()]);
-  const state = conversationState(view.conversation, view.route);
-  announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
+async function load({ background = false } = {}) {
+  if (background && suggestionEditorActive()) return;
+  if (background) backgroundReads++;
+  try {
+    view.sequence += 1;
+    await Promise.all([takeConversation({ background }), takeList({ background }), takeOutcomeCards({ background }), takeSuggestions({ background })]);
+    const state = conversationState(view.conversation, view.route);
+    announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
+  } finally { if (background) backgroundReads--; }
 }
 
 /** Opening one sets `?id=` so Back restores the list this page came from. */
@@ -649,7 +687,7 @@ async function decideSuggestion(id, choice, card) {
   const date = card.querySelector("[data-snooze-date]")?.value || null;
   const built = decisionArgs(row, choice, undefined, date, workNumber);
   if (!built) {
-    announce(choice === "act" ? "Enter the task number from Tasks before choosing Act." : "Read this suggestion again before deciding.");
+    announce(choice === "act" ? "Choose or create a work record, then enter its number before choosing Act." : "Read this suggestion again before deciding.");
     card.querySelector("[data-work-number]")?.focus();
     return;
   }
@@ -673,6 +711,8 @@ async function decideSuggestion(id, choice, card) {
     renderSuggestions();
   } else if (outcome.status === "ok") {
     view.suggestions.conflicts.delete(id);
+    view.suggestions.workNumbers.delete(id);
+    view.suggestions.snoozeDates.delete(id);
   }
   if (choice === "discuss" && outcome.status === "ok") $("docFab")?.click();
 }
@@ -783,6 +823,7 @@ async function boot() {
     if (!(target instanceof Element)) return;
     if (target.matches("[data-correction]")) view.suggestions.drafts.set(target.getAttribute("data-correction"), target.value);
     if (target.matches("[data-work-number]")) view.suggestions.workNumbers.set(target.getAttribute("data-work-number"), target.value);
+    if (target.matches("[data-snooze-date]")) view.suggestions.snoozeDates.set(target.getAttribute("data-snooze-date"), target.value);
   });
   $("suggestionsList")?.addEventListener("click", event => {
     const target = event.target instanceof Element ? event.target : null;
@@ -850,7 +891,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
+  mountAutoRefresh({ document, window: globalThis.window, shouldRefresh: () => !suggestionEditorActive(), refresh: () => load({ background: true }) });
 }
 
 boot();

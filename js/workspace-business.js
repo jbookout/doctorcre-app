@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Clients and Vendors: the browser half of the Journey 1 business read.
 //
 // THE URL IS THE VIEW'S MEMORY. Search text, every filter, the sort, the page
@@ -617,7 +617,7 @@ async function loadList(reason = "initial") {
   }
   renderList();
   try {
-    const response = await fetch(key, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(key, { headers: { accept: "application/json" }, cache: "no-store" });
     // THE SIGN-OUT IS HEARD EVEN WHEN THE ANSWER IS STALE. A superseded read is
     // not allowed to paint its DATA, but it still learned something true about
     // this session, and dropping that would leave records on screen that the
@@ -680,7 +680,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     renderRecordPanel();
   };
   try {
-    const response = await fetch(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
     // A record read is as authoritative about the session as a list read, and
     // it stays authoritative after the panel closes or another record is
     // opened. The expiry check runs before the selection and sequence guards

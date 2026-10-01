@@ -322,11 +322,13 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
   canonical.advisory.snapshot_digest = `sha256:${[...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
   const client = createLiveClient({ fetchImpl: async (path, init) => {
     paths.push({ path, init });
-    return { ok: true, json: async () => ({ ok: true, data: canonical }) };
+    return new Response(JSON.stringify({ ok: true, data: canonical }));
   } });
   const readback = await client.currentWorkRequests();
   assert.deepEqual(readback.items.map(item => item.human_ref), ["WR-000124", "WR-000123"]);
-  assert.deepEqual(paths[0], { path: "/api/system-work/current", init: {
+  assert.equal(paths[0].init.signal.aborted, false);
+  const { signal, ...readInit } = paths[0].init;
+  assert.deepEqual({ ...paths[0], init: readInit }, { path: "/api/system-work/current", init: {
     credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store",
   } });
   assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate \(uncalibrated\).*priority 20%/);
@@ -348,7 +350,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.16.0");
+  assert.equal(routes.version, "1.17.0");
   assert.equal(contract.version, "1.38.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -715,7 +717,7 @@ test("C07-9 the selection contract is what V5-UX-C08 consumes", () => {
   assert.equal(selectionFor(body, "service:nothing-here"), null, "an unknown id selects something");
   // The panel is a pure function of the payload in hand: no second request.
   assert.match(atlasJs, /selectionFor\(view\.payload, view\.selected\)/, "the DOM recomputes the selection");
-  assert.equal((atlasJs.match(/await fetch\(/g) || []).length, 1, "the selection panel takes a second request");
+  assert.doesNotMatch(atlasJs.split("function selectNode(")[1].split("\nfunction ")[0], /fetchRead\(/, "selection must use the already-read graph");
   // An unknown edge type is rendered as its own string, never mapped.
   assert.deepEqual(selectionFor(body, "doctrine_section:demo-section").out.map((edge) => edge.type), ["citation"]);
   assert.match(atlasJs, /escapeHtml\(edge\.type\)/, "an edge type is not rendered verbatim");
@@ -782,7 +784,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(pageJs, /export const escapeHtml/, "the one escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.16.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.17.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
   assert.match(pageJs, /parameters\.has\("tab"\)\) restoreTab\(\)/, "the deep link is read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");

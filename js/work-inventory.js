@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C10 — Complete Work Inventory, DOM wiring.
 //
 // Every decision about the payload lives in ./work-inventory-model.js. This file
@@ -60,6 +60,7 @@ const view = {
   status: "loading",
   payload: null,
   items: [],
+  loadedPages: 1,
   message: null,
   sequence: 0,
 };
@@ -535,7 +536,7 @@ function closeDisposition() {
 
 const accepts = (sequence) => sequence === view.sequence;
 
-async function read({ cursor = null, append = false } = {}) {
+async function read({ cursor = null, append = false, background = false } = {}) {
   const sequence = ++view.sequence;
   if (!append) {
     view.status = "loading";
@@ -550,7 +551,7 @@ async function read({ cursor = null, append = false } = {}) {
   }
   try {
     const path = inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT, cursor });
-    const response = await fetch(path, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(path, { headers: { accept: "application/json" }, cache: "no-store" });
     if (!accepts(sequence)) return;
     if (response.status === 401 || response.status === 403) return settle({ status: "unauthorized" }, sequence, append);
     if (!response.ok) {
@@ -563,11 +564,22 @@ async function read({ cursor = null, append = false } = {}) {
             : "The census read failed. Nothing here has been inferred.";
       return settle({ status: "error", message }, sequence, append);
     }
-    const payload = await response.json().catch(() => null);
+    let payload = await response.json().catch(() => null);
     if (!accepts(sequence)) return;
     if (!validWorkInventoryPayload(payload)) {
       return settle({ status: "error", message: "The census returned an unexpected shape, so no part of it is shown as an inventory." }, sequence, append);
     }
+    if (background) {
+      for (let page = 1; page < view.loadedPages && payload.next_cursor; page++) {
+        const next = await fetchRead(inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT, cursor: payload.next_cursor }), { headers: { accept: "application/json" }, cache: "no-store" });
+        if (!accepts(sequence)) return;
+        if (!next.ok) throw new Error("Work page unavailable");
+        const incoming = await next.json();
+        if (!accepts(sequence)) return;
+        if (!validWorkInventoryPayload(incoming)) throw new Error("Work page unavailable");
+        payload = { ...incoming, items: mergeInventoryPages(payload.items, incoming.items) };
+      }
+    } else view.loadedPages = append ? view.loadedPages + 1 : 1;
     settle({ status: "ready", payload }, sequence, append);
   } catch {
     if (!accepts(sequence)) return;
@@ -668,7 +680,7 @@ async function boot() {
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
   await read();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await read(); if (decision.ref) await readCard(decision.ref); } });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await read({ background: true }); if (decision.ref) await readCard(decision.ref); } });
 }
 
 boot();

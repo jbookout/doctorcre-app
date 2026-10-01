@@ -8,6 +8,7 @@
 import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
+import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -32,8 +33,12 @@ export function createLiveClient(opts = {}) {
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   let rpcId = 0;
   const dealCreations = new Map();
+  const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
 
-  async function rpc(verb, args = {}, signal) {
+  const rpc = (verb, args = {}, signal) => readWithDeadline(
+    currentSignal => rawRpc(verb, args, currentSignal), { timeoutMs: opts.readTimeoutMs || 10_000, signal });
+
+  async function rawRpc(verb, args = {}, signal) {
     const res = await fetchImpl('/mcp', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -101,7 +106,7 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    return rpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
+    return rawRpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -223,7 +228,7 @@ export function createLiveClient(opts = {}) {
     // The app sends only the deal id to CARR. CARR performs the bounded
     // on-demand TypeSafe call authorized by Joe in this task.
     async getJevDealReading(dealId) {
-      const res = await fetchImpl('/api/v1/jev-deal-reading', {
+      const res = await fetchReadImpl('/api/v1/jev-deal-reading', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ deal: dealId }),
@@ -242,7 +247,7 @@ export function createLiveClient(opts = {}) {
     // other live read, so the caller's catch is the one honest place that
     // decides "unavailable".
     async getPartyRecord({ dataset, id }) {
-      const res = await fetchImpl(`/api/v1/business/${dataset}/${id}`, {
+      const res = await fetchReadImpl(`/api/v1/business/${dataset}/${id}`, {
         headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
       });
       if (!res.ok) throw new Error(`live business ${dataset} record -> HTTP ${res.status}`);
@@ -283,7 +288,7 @@ export function createLiveClient(opts = {}) {
 
     async getChanges(cursor) {
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
+      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error(`live changes -> ${res.status}`);
       const data = await res.json();
       for (const e of data.events || []) {
@@ -455,7 +460,7 @@ export function createLiveClient(opts = {}) {
     // path failure the page may retry. A caller that saw only a thrown Error
     // could not tell those apart.
     async commandCenter() {
-      const res = await fetchImpl('/api/v1/command-center', {
+      const res = await fetchReadImpl('/api/v1/command-center', {
         headers: { accept: 'application/json' },
         credentials: 'same-origin',
         cache: 'no-store',
@@ -490,7 +495,7 @@ export function createLiveClient(opts = {}) {
     async currentWorkItem() { return rpc('current-work-item', {}); },
     async readResourceDashboard() { return rpc('read-resource-dashboard', {}); },
     async currentWorkRequests() {
-      const res = await fetchImpl('/api/system-work/current', {
+      const res = await fetchReadImpl('/api/system-work/current', {
         credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store',
       });
       if (!res.ok) {

@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C01 — the Control Room: DOM wiring only.
 //
 // Every decision about a payload lives in ./control-room-model.js, and the
@@ -692,7 +692,7 @@ async function census() {
   // be demonstrable for EVERY leg and this one is a plain HTTP read rather than
   // a client method the fixture could refuse for us.
   if (view.outage === "census") throw new Error("census outage requested by the fixture switch");
-  const response = await fetch(`${WORK_INVENTORY_ENDPOINT}?kinds=work_request`, { headers: { accept: "application/json" }, cache: "no-store" });
+  const response = await fetchRead(`${WORK_INVENTORY_ENDPOINT}?kinds=work_request`, { headers: { accept: "application/json" }, cache: "no-store" });
   if (!response.ok) {
     const error = new Error(`census -> ${response.status}`);
     error.status = response.status;

@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C07 — the Atlas tab: DOM wiring only.
 //
 // Every decision about a payload lives in ./atlas-model.js. This file reads,
@@ -63,6 +63,7 @@ const view = {
   q: "",
   includeRetired: false,
   payload: null,
+  loadedPages: 1,
   selected: null,
   outage: null,
   // "index" is the accessible primary surface; "anatomical" is the added,
@@ -117,7 +118,7 @@ async function read(cursor = null, { background = false } = {}) {
   // request line above is the PRODUCTION request and never carries it.
   const url = view.outage ? `${path}${path.includes("?") ? "&" : "?"}outage=${encodeURIComponent(view.outage)}` : path;
   try {
-    const response = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(url, { headers: { accept: "application/json" }, cache: "no-store" });
     if (sequence !== view.sequence) return;
     if (!response.ok) {
       view.status = classifyAtlasFailure(response.status);
@@ -125,7 +126,7 @@ async function read(cursor = null, { background = false } = {}) {
       render();
       return;
     }
-    const incoming = await response.json();
+    let incoming = await response.json();
     if (sequence !== view.sequence) return;
     if (!validAtlasPayload(incoming)) {
       // A payload this page cannot render honestly is an outage, not a graph.
@@ -134,6 +135,17 @@ async function read(cursor = null, { background = false } = {}) {
       render();
       return;
     }
+    if (background) {
+      for (let page = 1; page < view.loadedPages && incoming.next_cursor; page++) {
+        const next = await fetchRead(atlasRequestPath(requestOptions(incoming.next_cursor)), { headers: { accept: "application/json" }, cache: "no-store" });
+        if (sequence !== view.sequence) return;
+        if (!next.ok) throw new Error("Atlas page unavailable");
+        const payload = await next.json();
+        if (sequence !== view.sequence) return;
+        if (!validAtlasPayload(payload)) throw new Error("Atlas page unavailable");
+        incoming = appendPage(incoming, payload);
+      }
+    } else view.loadedPages = cursor === null ? 1 : view.loadedPages + 1;
     view.status = "ready";
     view.payload = cursor === null ? incoming : appendPage(view.payload, incoming);
     render();

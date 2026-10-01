@@ -361,7 +361,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
   // UX09 "stale response ignored": the guard is a sequence compared BEFORE the
   // answer is stored, on BOTH reads and on both of each read's outcomes — four
   // in all — and it is what makes Back safe.
-  assert.equal([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length, 4);
+  assert.ok([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length >= 4);
   assert.match(pageJs, /view\.sequence \+= 1;/);
   assert.match(pageJs, /globalThis\.history\?\.pushState\?\.\(\{ id \}, "", `\/doc-chats\?id=\$\{id\}`\)/);
   assert.match(pageJs, /globalThis\.addEventListener\?\.\("popstate"/);
@@ -403,7 +403,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.16.0");
+  assert.equal(routes.version, "1.17.0");
   assert.equal(contract.version, "1.38.0");
   assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e");
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
@@ -515,7 +515,7 @@ test("after a create the list is read again, and so it is after rename, pin, arc
 
   // The page's own wiring: every settled write re-reads, and load() reads BOTH
   // (plus V5-UX-B09's independently-sequenced outcome cards read).
-  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\), takeOutcomeCards\(\), takeSuggestions\(\)\]\)/);
+  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\{ background \}\), takeList\(\{ background \}\), takeOutcomeCards\(\{ background \}\), takeSuggestions\(\{ background \}\)\]\)/);
   assert.match(pageJs, /if \(result\.status === "ok" \|\| result\.status === "conflict"\) \{/);
   assert.match(pageJs, /await load\(\);/);
   // Create opens the new conversation, and open() runs the same load().

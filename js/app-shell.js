@@ -26,7 +26,7 @@ export const navigationItems = Object.freeze([
 ]);
 
 const sectionForRoute = {
-  "/tasks": "/", "/work": "/",
+  "/tasks": "/", "/work": "/", "/doc-chats/work": "/doc-chats",
   "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
   "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room",
   "/control-room/agents/queue": "/control-room",

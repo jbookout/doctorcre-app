@@ -246,7 +246,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /id="recordTitle" tabindex="-1"/);
   // The read is the server's; nothing is seeded, faked or counted here.
   assert.match(js, /const key = listRequestUrl\(query\)/);
-  assert.match(js, /fetch\(recordRequestUrl\(view\.dataset, id\)/);
+  assert.match(js, /fetchRead\(recordRequestUrl\(view\.dataset, id\)/);
   assert.match(modelJs, /API_PREFIX = "\/api\/v1\/business\/"/);
   assert.doesNotMatch(js, /const (rows|records|seed|fixture|sampleData)\s*=\s*\[/);
   assert.doesNotMatch(js, /Math\.random/);

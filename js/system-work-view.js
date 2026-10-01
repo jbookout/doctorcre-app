@@ -60,14 +60,14 @@ function renderOutcome(feedback) {
     <p class="truth-note">This accepted an observation. It did not execute or close the work.</p></section>`;
 }
 
-export function renderSystemWorkCard(card) {
+export function renderSystemWorkCard(card, { readAt = null } = {}) {
   if (!card) return `<section class="system-work-empty"><h2>Open a system concern</h2><p>Enter its Work Request reference, or report a new one.</p></section>`;
   const action = actionForCard(card);
   const criteria = Array.isArray(card.acceptance_criteria) ? card.acceptance_criteria : [];
   const source = card.source || {};
   return `${renderLifecycle(card)}<article class="system-work-card" data-state="${esc(card.state)}">
     <header><div><p class="eyebrow">${esc(card.human_ref)} · ${esc(humanize(card.state))}</p><h1>${esc(card.title)}</h1></div>
-      <span class="as-of">${esc(updatedLabel(source.observed_at))}</span></header>
+      <span class="as-of">${esc(readAt ? updatedLabel(readAt) : (source.freshness === "current" ? "Updated" : "Updating…"))}</span></header>
     <section><h2>Desired result</h2><p>${esc(card.desired_outcome)}</p><h3>How we’ll know</h3>
       <ul>${criteria.map((item) => `<li>${esc(item.text || item.label || item.id)}</li>`).join("")}</ul></section>
     ${card.triage ? `<section><h2>Human triage</h2><p>${esc(humanize(card.triage.classification))}</p><small>${esc(humanize(card.triage.human_actor_slug || card.triage.actor_slug))}${card.triage.triaged_at || card.triage.decided_at ? ` · ${esc(card.triage.triaged_at || card.triage.decided_at)}` : ""}</small></section>` : ""}

@@ -1,4 +1,4 @@
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 const ENDPOINT = "/api/v1/command-center";
 const EXPIRY_TICK_MS = 5_000;
 import {
@@ -255,7 +255,7 @@ async function load(reason = "initial") {
   if (reason === "retry" && !view.payload) view.message = null;
   render();
   try {
-    const response = await fetch(ENDPOINT, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(ENDPOINT, { headers: { accept: "application/json" }, cache: "no-store" });
     if (!acceptsResponse(view.sequence, sequence)) return;
     if (response.status === 401 || response.status === 403) return settle({ status: "unauthorized" }, sequence);
     if (!response.ok) {
