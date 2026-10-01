@@ -136,11 +136,12 @@ test("PR111 #4: reopened creation form recovers the retained intent",async()=>{
   h.addTeamDealForm();assert.equal(form.submit,"Check creation outcome");assert.match(form.body,/Demo record/);await form.onSubmit(new Map());assert.deepEqual(calls[1],calls[0]);
 });
 
-for (const reopen of [false,true]) test(`PR111 R1: terminal pre-creation refusal permits corrected input${reopen ? " after reopen" : ""}`, async () => {
+for (const refusal of ["not_a_client", "subject_not_found", "needs_disambiguation"])
+for (const reopen of [false,true]) test(`PR111 R1: ${refusal} permits corrected input${reopen ? " after reopen" : ""}`, async () => {
   const calls=[];let form,keys=0;
   const client=createLiveClient({selfActor:"joe",fetchImpl:async(_path,init)=>{
     const req=JSON.parse(init.body).params;calls.push(req);
-    if(req.name==="new-deal" && req.arguments.client==="invalid-client") return new Response(JSON.stringify({result:{isError:true,content:[{text:JSON.stringify({error:"not_a_client"})}]}}));
+    if(req.name==="new-deal" && req.arguments.client==="invalid-client") return new Response(JSON.stringify({result:{isError:true,content:[{text:JSON.stringify({error:refusal})}]}}));
     return rpc(req.name==="new-deal" ? {deal_id:"demo"} : req.name==="get-deal-room" ? {base_version:2} : {ok:true});
   }});
   const state={client};
@@ -152,6 +153,34 @@ for (const reopen of [false,true]) test(`PR111 R1: terminal pre-creation refusal
   const creates=calls.filter(req=>req.name==="new-deal");assert.equal(creates.length,2);
   assert.equal(creates[1].arguments.client,"C-demo");assert.notEqual(creates[0].arguments.idempotency_key,creates[1].arguments.idempotency_key);
   assert.equal(calls.filter(req=>req.name==="set-lead").length,1);
+});
+
+for (const errorCode of ["unhandled_verb_failure", "unknown_creation_failure"]) test(`PR111 R3: ${errorCode} after commit recovers one creation and its lead on reopen`, async () => {
+  const calls=[];let form,keys=0,committedKey=null,created=0,assigned=0;
+  const client=createLiveClient({selfActor:"joe",fetchImpl:async(_path,init)=>{
+    const req=JSON.parse(init.body).params;calls.push(req);
+    if(req.name==="new-deal") {
+      if(!committedKey) {
+        committedKey=req.arguments.idempotency_key;created++;
+        return new Response(JSON.stringify({result:{isError:true,content:[{type:"text",text:JSON.stringify({error:errorCode,verb:"new-deal",cause:"synthetic commit acknowledgment lost"})}]}}));
+      }
+      if(req.arguments.idempotency_key!==committedKey) return new Response(JSON.stringify({result:{isError:true,content:[{text:JSON.stringify({error:"deal_name_exists"})}]}}));
+      return rpc({ok:true,deal_id:"demo"});
+    }
+    if(req.name==="get-deal-room") return rpc({deal_id:"demo",base_version:2});
+    if(req.name==="set-lead") {assigned++;return rpc({ok:true});}
+    throw new Error(`Unexpected verb ${req.name}`);
+  }});
+  const state={client};
+  const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{state,openForm:value=>{form=value;},phaseOptions:()=>"",uuidv4:()=>`key-${++keys}`,esc:value=>String(value??""),loadHome:async()=>{},showToast:noop},["addTeamDealForm"]);
+  h.addTeamDealForm();const data=new Map([["client","C-demo"],["name","Demo record"]]);
+  await assert.rejects(form.onSubmit(data));
+  assert.ok(state.pendingDealCreation,"an internal or unknown failure cannot prove rollback");
+  h.addTeamDealForm();assert.equal(form.submit,"Check creation outcome");
+  await form.onSubmit(new Map());
+  const creates=calls.filter(req=>req.name==="new-deal");
+  assert.deepEqual(creates[1].arguments,creates[0].arguments);
+  assert.equal(created,1);assert.equal(assigned,1);assert.equal(state.pendingDealCreation,null);
 });
 
 for (const stage of ["uncertain creation","lead assignment"]) test(`PR111 R1: ${stage} refusal retains the creation intent`, async () => {
@@ -478,7 +507,7 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
     request:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",renderFeedback:noop,renderShareGrants:noop,
-    cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,
+    cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,
     renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
     renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},
   },["loadTour"]);

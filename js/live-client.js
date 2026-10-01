@@ -7,6 +7,15 @@
  */
 import { uuidv4 } from './uuid.js';
 
+// Verified pre-commit refusals from new-deal and its argument/subject checks
+// in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
+// unrecognized errors can follow a committed write; retain those for replay.
+const CREATION_REFUSALS = new Set([
+  'missing_required', 'subject_not_found', 'needs_disambiguation', 'not_a_client',
+  'deal_name_exists', 'salesforce_id_in_use', 'unknown_deal_type',
+  'unknown_phase', 'unknown_lane',
+]);
+
 /**
  * @param {Object} [opts]
  * @param {string} [opts.baseUrl] same-origin by default; override for dev
@@ -58,7 +67,7 @@ export function createLiveClient(opts = {}) {
     if (envelope.result?.isError) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
-      err.writeRefusal = typeof payload?.error === 'string' && !!payload.error.trim();
+      err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
     return payload;
@@ -358,7 +367,7 @@ export function createLiveClient(opts = {}) {
         if (!res) {
           try { res = await write('new-deal', operation.request); }
           catch (error) {
-            // Only an answered first creation refusal proves no deal was made.
+            // Only a verified first creation refusal proves no deal was made.
             // A refusal after an uncertain attempt cannot retire that intent.
             if (error.writeRefusal && !operation.creationUncertain) {
               dealCreations.delete(key);
