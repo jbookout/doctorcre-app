@@ -74,7 +74,9 @@ export function mountSystemWorkBoard({client,onPipeline}){
   if(append&&(loading||!cursor||cursorQuery!==JSON.stringify(args())))return;
   if(!force&&!append&&(libraryMode||dialog.open||cards.contains(document.activeElement)))return;
   const gen=++generation,queryArgs=args(),signature=JSON.stringify(queryArgs);
-  if(!append){cursor=null;cursorQuery=null;more.hidden=true;}
+  // Retained cards keep their continuation until replacement cards commit.
+  // Query transitions invalidate it immediately; loading blocks all appends.
+  if(!append&&cursorQuery!==signature){cursor=null;cursorQuery=null;more.hidden=true;}
   loading=true;more.disabled=true;error.hidden=true;
   try{
    const query={...queryArgs,...(append?{cursor}: {})};

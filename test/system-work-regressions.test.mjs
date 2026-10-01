@@ -59,6 +59,23 @@ test('finding 7: background polling preserves loaded library pages',async t=>{
 test('finding 8: focus entering cards during background read survives response',async t=>{
  let slow=false;const next=deferred();const h=await setup(t,{read:args=>slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()])});slow=true;h.d.querySelector('#live-library').focus();const pending=h.board.refresh();const link=h.d.querySelector('.work-card a');link.focus();next.resolve(envelope([row()]));await pending;assert.equal(h.d.activeElement,link);assert.equal(link.isConnected,true);
 });
+test('R1: focus-deferred background refresh retains the displayed page continuation',async t=>{
+ let slow=false;const next=deferred();const h=await setup(t,{read:args=>{
+  if(args.live_library)return envelope([]);
+  if(args.cursor)return envelope([row('older')]);
+  return slow?next.promise:envelope([row()],{next_cursor:'displayed-page-2'});
+ }});
+ const more=h.d.querySelector('#system-work-more');assert.equal(more.hidden,false);
+ slow=true;h.d.querySelector('#live-library').focus();const pending=h.board.refresh();
+ assert.equal(more.disabled,true);h.click('#system-work-more');assert.equal(h.calls.some(c=>c.cursor),false);
+ const link=h.d.querySelector('.work-card a');link.focus();
+ next.resolve(envelope([row('replacement')],{next_cursor:'replacement-page-2'}));await pending;
+ assert.equal(h.d.activeElement,link);assert.equal(link.isConnected,true);
+ assert.equal(more.hidden,false);assert.equal(more.disabled,false);
+ h.click('#system-work-more');await settle();
+ assert.equal(h.calls.filter(c=>c.cursor).length,1);assert.equal(h.calls.find(c=>c.cursor).cursor,'displayed-page-2');
+ assert.deepEqual([...h.d.querySelectorAll('.work-card')].map(c=>c.dataset.workId),['a','older']);
+});
 test('finding 9: Live coverage and freshness remain independently visible',async t=>{
  const h=await setup(t,{read:args=>args.live_library?envelope([],{census_complete:false,as_of:'2026-09-01T12:00:00Z',coverage:[{kind:'pull_request',state:'unavailable',reason:'GitHub unavailable'}]}):envelope()});
  const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/Live.*Incomplete/i);assert.match(text,/GitHub unavailable/);assert.match(text,/2026-09-01/);
