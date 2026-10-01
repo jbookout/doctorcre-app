@@ -452,8 +452,13 @@ async function refresh(force = false) {
   const loaded = client.readProgressBoard({ board_id: boardId }).then(read => {
     if (generation !== refreshGeneration) return;
     const view = boardView(read);
-    if (!view.version && !systemWork) {
-      clearBoard("unpublished");
+    if (!view.version) {
+      if (!systemWork) clearBoard("unpublished");
+      else {
+        meta.textContent = "No published system snapshot.";
+        meta.setAttribute("data-read-state", "unpublished");
+        badgeTimes.delete(freshness);
+      }
       setError("This board has not been published yet.");
       retry.hidden = false;
       return;

@@ -8,7 +8,7 @@ const items=kinds.map((kind,index)=>({id:`synthetic-${index}`,source:`synthetic.
  available_triage_actions:kind==='loop'?[{action:'cancel',verb:'close-loop',args:{loop_id:`synthetic-${index}`,resolution:'dropped'},fields:[{name:'outcome',label:'Why cancel?',required:true}],versioned:true}]:[]}));
 const live=Array.from({length:12},(_,i)=>({...items[2],id:`live-${i}`,title:i===0?'Synthetic older completed concept':`Synthetic Live ${i}`,
  completed:true,state:'done',available_triage_actions:[],last_activity_at:`2026-09-${String(i+1).padStart(2,'0')}T12:00:00Z`})).reverse();
-async function open(t,width){
+async function open(t,width,{snapshot=true}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:900}});const calls=[],errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
@@ -22,7 +22,7 @@ async function open(t,width){
     if(args.kinds)rows=rows.filter(r=>r.kind===args.kinds);
     if(args.source)rows=rows.filter(r=>r.source===args.source);
     payload={ok:true,schema:'unfinished-work.v1',items:rows.slice(0,args.limit||100),coverage:kinds.map(kind=>({kind,source_ref:`synthetic.${kind}`,count_total:1,state:'complete'})),census_complete:true,next_cursor:null};
-   }else if(rpc.name==='read-progress-board')payload={ok:true,snapshot:{board_id:'carr-v5',version:1,updated_at:'2026-10-01T12:00:00Z',snapshot_json:{title:'Synthetic system',tasks:{}}},questions:[]};
+   }else if(rpc.name==='read-progress-board')payload={ok:true,snapshot:snapshot?{board_id:'carr-v5',version:1,updated_at:'2026-10-01T12:00:00Z',snapshot_json:{title:'Synthetic system',tasks:{}}}:null,questions:[]};
    else if(rpc.name==='list-progress-boards')payload={ok:true,schema:'progress-board-directory.v1',boards:[]};
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
@@ -51,7 +51,16 @@ test('card action confirms and calls source verb with freshly read version',asyn
  await page.locator('.work-card[data-work-id="synthetic-2"]').getByRole('button',{name:'cancel'}).click();
  await page.locator('#work-triage textarea').fill('Synthetic concept is stale');page.once('dialog',dialog=>dialog.accept());
  await page.getByRole('button',{name:'Review and confirm'}).click();
- await page.waitForFunction(()=>document.querySelector('.triage-status')?.textContent.includes('saved'));
+ await page.waitForFunction(()=>document.querySelector('.triage-status')?.textContent.includes('Source result:'));
  const write=calls.find(c=>c.name==='close-loop');assert.equal(write.arguments.base_version,9);assert.equal(write.arguments.loop_id,'synthetic-2');
  assert.equal(write.arguments.resolution,'dropped');assert.ok(write.arguments.idempotency_key);assert.deepEqual(errors,[]);
+});
+
+test('finding 11: system census remains usable without inventing snapshot publication',async t=>{
+ const {page}=await open(t,390,{snapshot:false});
+ assert.equal(await page.locator('.work-card').count(),19);
+ const meta=page.locator('#board-meta');
+ assert.equal(await meta.getAttribute('data-read-state'),'unpublished');
+ assert.doesNotMatch(await meta.textContent(),/Published|Version null/);
+ await page.getByText('This board has not been published yet.',{exact:true}).waitFor();
 });
