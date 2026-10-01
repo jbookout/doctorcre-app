@@ -764,7 +764,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.ok(contract.mcp_operations.indexOf("add-room-turn") < answerAt);
   assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
   assert.ok(contract.mcp_operations.indexOf("capture-queue") > answerAt);
-  assert.equal(contract.producer.source_commit, "7580bdcea25e449bd4a212ab74eee38326101a02");
+  assert.equal(contract.producer.source_commit, "2688451d1e113b7eb1b2c51fb74432b2ed7c6e7a");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
