@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "e853b6c1e9b6c306a43f8589b38d39406c37cc9d";
+const pinnedProducer = "b93ca7ce64ada46f977f6af981d8a3c3a8fb161f";
 
 test("property evidence pins the Progress directory CARR producer", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);

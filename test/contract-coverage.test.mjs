@@ -16,7 +16,7 @@ test('every literal browser MCP call is pinned to a producer revision containing
   assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
     'the pinned operations stay unique and sorted');
   assert.equal(contract.producer.source_commit,
-    'e853b6c1e9b6c306a43f8589b38d39406c37cc9d',
+    'b93ca7ce64ada46f977f6af981d8a3c3a8fb161f',
     'the pinned CARR main source contains Codex sessions, Tour search/cart and client feedback');
 });
 
