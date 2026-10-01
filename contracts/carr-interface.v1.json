@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.36.0",
+  "version": "1.37.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "0cc6fe2538a81521bf8c25b0df58aa4063ed614b"
+    "source_commit": "97e916b7f907f268365ba7ba96635e36c0c65e03"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -52,6 +52,7 @@
     "list-doc-suggestions",
     "list-industry-events",
     "list-my-codex-sessions",
+    "list-progress-boards",
     "loop-board",
     "loop-headers",
     "new-deal",

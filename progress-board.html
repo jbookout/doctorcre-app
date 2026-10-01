@@ -19,10 +19,18 @@
     <main>
       <section class="intro" aria-labelledby="board-title">
         <p class="eyebrow">DELIVERY / PROGRESS BOARD</p>
-        <h1 id="board-title">Progress board</h1>
+        <h1 id="board-title" tabindex="-1">Progress</h1>
         <p id="board-meta" class="board-meta">Loading published board…</p>
+        <span id="board-freshness" class="freshness-badge"></span>
         <p id="board-error" class="error" role="alert" hidden></p>
+        <div class="read-recovery"><button id="board-retry" type="button" hidden>Retry reads</button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
       </section>
+      <section class="panel directory-panel" aria-labelledby="directory-title">
+        <div class="panel-heading"><h2 id="directory-title">Published boards</h2></div>
+        <p id="directory-error" class="error" role="alert" hidden></p>
+        <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
+      </section>
+      <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
       <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
         <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
         <div id="board-stages" class="flow-wrap" aria-live="polite">
