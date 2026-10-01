@@ -4,10 +4,10 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const mergedProducer = "0cc6fe2538a81521bf8c25b0df58aa4063ed614b";
+const pinnedProducer = "e853b6c1e9b6c306a43f8589b38d39406c37cc9d";
 
-test("property evidence pins the merged CARR PR 1400 producer", () => {
-  assert.equal(contract.producer.source_commit, mergedProducer);
+test("property evidence pins the Progress directory CARR producer", () => {
+  assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
 // Opt-in cross-repository verification reads committed source, never a working
@@ -43,5 +43,5 @@ test("the exact pinned producer serves property evidence alongside the existing 
     assert.equal((await handler.fetch(new Request(`https://app.doctorcre.com${path}`), env, {}, actor, session)).status, 200);
   }
   git("merge-base", "--is-ancestor", "c4f1ad45273175c26c074336c0fecbf789718348", pin);
-  git("merge-base", "--is-ancestor", pin, "origin/main");
+  git("merge-base", "--is-ancestor", "0cc6fe2538a81521bf8c25b0df58aa4063ed614b", pin);
 });

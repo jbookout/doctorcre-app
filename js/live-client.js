@@ -568,6 +568,7 @@ export function createLiveClient(opts = {}) {
     // (actor.human !== true is refused there, with no sponsored-agent route
     // at all); this client passes no actor field of its own.
     async answerWorkRequestForJoe(args) { return write('answer-work-request-for-joe', args); },
+    async listProgressBoards() { return rpc('list-progress-boards', {}); },
     async readProgressBoard(args) { return rpc('read-progress-board', args); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },

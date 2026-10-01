@@ -349,7 +349,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.15.0");
-  assert.equal(contract.version, "1.36.0");
+  assert.equal(contract.version, "1.37.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

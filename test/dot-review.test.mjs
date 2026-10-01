@@ -397,10 +397,10 @@ test("Dot 26: replaying a conflicted version cannot restore verified completion"
 });
 
 test("Dot 27: automatic board refresh preserves an unchanged questions answer draft", async () => {
-  const {boardView,answerRequest,taskPulse}=await import("../js/progress-board-model.js");
+  const {boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness}=await import("../js/progress-board-model.js");
   const dom=new JSDOM(source("progress-board.html"));
   const payload={snapshot:{board_id:"demo-board",version:1,snapshot_json:{title:"Demo board",tasks:{}}},questions:[{question_id:"demo-question",revision:1,prompt:"Demo question",choices:[],allow_free_text:true,status:null}]};
-  const h=handlers("js/progress-board.js","const boardId",null,{document:dom.window.document,location:{search:"?board=demo-board"},matchMedia:()=>({matches:false,addEventListener:noop}),setInterval:()=>0,createLiveClient:()=>({readProgressBoard:async()=>payload}),boardView,answerRequest,taskPulse,uuidv4:()=>"key"},["refresh"]);
+  const h=handlers("js/progress-board.js","const boardId",null,{document:dom.window.document,location:{search:"?board=demo-board"},matchMedia:()=>({matches:false,addEventListener:noop}),setInterval:()=>0,createLiveClient:()=>({listProgressBoards:async()=>({schema:"progress-board-directory.v1",boards:[]}),readProgressBoard:async()=>payload}),boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,uuidv4:()=>"key"},["refresh"]);
   await tick();const input=dom.window.document.querySelector("textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await h.refresh();
   assert.equal(dom.window.document.querySelector("textarea").value,"Unsaved answer");dom.window.close();
 });

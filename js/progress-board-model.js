@@ -7,6 +7,29 @@ export const STAGES = [
   { id: "live", label: "Live" },
 ];
 
+export const SYSTEM_BOARD_ID = "carr-v5";
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export function boardFreshness(updatedAt, at = new Date()) {
+  const timestamp = typeof updatedAt === "string" && updatedAt.trim()
+    ? Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(updatedAt) ? updatedAt : `${updatedAt}Z`) : NaN;
+  if (!Number.isFinite(timestamp)) return { state: "unknown", label: "Update time unavailable" };
+  const age = Math.max(0, at.getTime() - timestamp);
+  const minutes = Math.floor(age / 60000);
+  const elapsed = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago`
+    : minutes < 1440 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`
+      : `${Math.floor(minutes / 1440)}d ${Math.floor(minutes % 1440 / 60)}h ago`;
+  return { state: age >= STALE_AFTER_MS ? "stale" : "fresh", label: `Updated ${elapsed}` };
+}
+
+export function boardDirectory(read) {
+  if (read?.schema !== "progress-board-directory.v1" || !Array.isArray(read.boards))
+    throw new Error("Published board directory is unavailable.");
+  return read.boards.filter(board => board && typeof board.board_id === "string")
+    .slice().sort((a, b) => a.board_id === SYSTEM_BOARD_ID ? -1
+      : b.board_id === SYSTEM_BOARD_ID ? 1 : String(a.title).localeCompare(String(b.title)));
+}
+
 const STATUS_STAGE = { queued: "queued", running: "build", review: "review",
   blocked: "review", failed: "ci", done: "build" };
 const STATUSES = new Set(["Sent", "Received", "Applied"]);

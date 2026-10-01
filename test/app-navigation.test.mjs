@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Agent Room", "Design Lab", "Status"];
+const expected = ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Progress", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Agent Room", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {

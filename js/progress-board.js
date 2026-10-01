@@ -1,8 +1,8 @@
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, taskPulse } from "./progress-board-model.js";
+import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness } from "./progress-board-model.js";
 
-const boardId = new URLSearchParams(location.search).get("board");
+const boardId = new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
 const client = createLiveClient();
 const pendingRequests = new Map();
 let questionCards = new Map();
@@ -17,6 +17,12 @@ const taskDetailBody = document.getElementById("task-detail-body");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
+const directory = document.getElementById("board-directory");
+const directoryError = document.getElementById("directory-error");
+const freshness = document.getElementById("board-freshness");
+const live = document.getElementById("board-live");
+let directorySignature = "";
+let viewSignature = "";
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -34,7 +40,41 @@ function formatTime(value) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat(undefined,
-    { dateStyle: "medium", timeStyle: "short" }).format(date);
+    { dateStyle: "medium", timeStyle: "short", hour12: true }).format(date);
+}
+
+function freshnessBadge(updatedAt) {
+  const age = boardFreshness(updatedAt);
+  const badge = element("span", "freshness-badge", `${age.label}${age.state === "stale" ? " · Stale · 24h+" : ""}`);
+  badge.setAttribute("data-freshness", age.state);
+  return badge;
+}
+
+function renderDirectory(read) {
+  const boards = boardDirectory(read);
+  directoryError.hidden = true;
+  const signature = JSON.stringify(boards.map(board => [board, boardFreshness(board.updated_at)]));
+  if (signature === directorySignature || directory.contains(document.activeElement)) return;
+  const changed = directorySignature && JSON.stringify(boards) !== directory.dataset?.boards;
+  directorySignature = signature;
+  directory.replaceChildren();
+  if (directory.dataset) directory.dataset.boards = JSON.stringify(boards);
+  for (const board of boards) {
+    const link = element("a", "board-link");
+    link.href = `/control-room/progress?board=${encodeURIComponent(board.board_id)}`;
+    if (board.board_id === boardId) link.setAttribute("aria-current", "page");
+    link.setAttribute("data-board-id", board.board_id);
+    link.append(element("span", "eyebrow", board.board_id === SYSTEM_BOARD_ID ? "System-wide" : "Project"),
+      element("h3", "", board.title || board.project || board.board_id));
+    const published = element("time", "board-published", formatTime(board.updated_at) || "Publication time unavailable");
+    if (board.updated_at) published.dateTime = board.updated_at;
+    link.append(published, freshnessBadge(board.updated_at));
+    const counts = Object.entries(board.task_counts || {}).map(([status, count]) => `${count} ${status}`).join(" · ");
+    link.append(element("span", "board-counts", counts || "0 tasks"));
+    directory.append(link);
+  }
+  if (!boards.length) directory.append(element("p", "empty", "No published boards."));
+  if (changed) live.textContent = "Published boards updated.";
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -272,15 +312,32 @@ function renderQuestions(view) {
 }
 
 async function refresh(force = false) {
-  if (!boardId) { setError("Open a published board link to choose a project."); meta.textContent = "No board selected"; return; }
   if (!force && questions.contains(document.activeElement)) return;
-  const read = await client.readProgressBoard({ board_id: boardId });
+  const [listed, loaded] = await Promise.allSettled([
+    client.listProgressBoards(), client.readProgressBoard({ board_id: boardId }),
+  ]);
+  try {
+    if (listed.status === "rejected") throw listed.reason;
+    renderDirectory(listed.value);
+  } catch {
+    directoryError.textContent = "Published boards could not be listed. Refresh to try again.";
+    directoryError.hidden = false;
+  }
+  if (loaded.status === "rejected") throw loaded.reason;
+  const read = loaded.value;
   const view = boardView(read);
-  if (!view.version) { setError("This board has not been published yet."); return; }
+  if (!view.version) { setError("This board has not been published yet."); meta.textContent = "No published snapshot"; return; }
   setError("");
   title.textContent = view.title;
   document.title = `${view.title} · DoctorCRE`;
-  meta.textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+  meta.textContent = `Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+  const age = freshnessBadge(view.updated_at);
+  freshness.textContent = age.textContent;
+  freshness.setAttribute("data-freshness", boardFreshness(view.updated_at).state);
+  const signature = JSON.stringify(view);
+  if (signature === viewSignature) { renderStages(view); return; }
+  live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
+  viewSignature = signature;
   renderStages(view);
   renderQuestions(view);
 }
