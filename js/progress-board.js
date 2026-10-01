@@ -1,6 +1,6 @@
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness } from "./progress-board-model.js";
+import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
 const boardId = new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
 const client = createLiveClient();
@@ -9,7 +9,8 @@ let questionCards = new Map();
 const title = document.getElementById("board-title");
 const meta = document.getElementById("board-meta");
 const error = document.getElementById("board-error");
-const stages = document.getElementById("board-stages");
+const retry = document.getElementById("board-retry");
+const signIn = document.getElementById("board-sign-in");
 const flow = document.getElementById("board-flow");
 const taskDialog = document.getElementById("task-detail");
 const taskDetailTitle = document.getElementById("task-detail-title");
@@ -24,6 +25,11 @@ const live = document.getElementById("board-live");
 let directorySignature = "";
 let viewSignature = "";
 let refreshGeneration = 0;
+const badgeTimes = new Map();
+let ageTimer;
+let taskNodes = new Map();
+let renderedStages = "";
+let detailTaskId = null;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -44,17 +50,40 @@ function formatTime(value) {
     { dateStyle: "medium", timeStyle: "short", hour12: true }).format(date);
 }
 
-function freshnessBadge(updatedAt) {
+function updateBadge(badge, updatedAt) {
   const age = boardFreshness(updatedAt);
-  const badge = element("span", "freshness-badge", `${age.label}${age.state === "stale" ? " · Stale · 24h+" : ""}`);
+  const label = `${age.label}${age.state === "stale" ? " · Stale · 24h+" : ""}`;
+  if (badge.textContent !== label) badge.textContent = label;
   badge.setAttribute("data-freshness", age.state);
+}
+
+// This clock only patches badge nodes. It never reads the network or rebuilds
+// controls, and wakes at publication-relative minute boundaries (including 24h).
+function refreshAges() {
+  clearTimeout(ageTimer);
+  let delay = Infinity;
+  for (const [badge, updatedAt] of badgeTimes) {
+    if (badge.isConnected === false) { badgeTimes.delete(badge); continue; }
+    updateBadge(badge, updatedAt);
+    const next = nextFreshnessChange(updatedAt);
+    if (next !== null) delay = Math.min(delay, next);
+  }
+  if (Number.isFinite(delay)) ageTimer = setTimeout(refreshAges, Math.min(delay, 60000));
+}
+
+function freshnessBadge(updatedAt) {
+  const badge = element("span", "freshness-badge");
+  badgeTimes.set(badge, updatedAt);
+  updateBadge(badge, updatedAt);
   return badge;
 }
+
+document.addEventListener?.("visibilitychange", refreshAges);
 
 function renderDirectory(read) {
   const boards = boardDirectory(read);
   directoryError.hidden = true;
-  const signature = JSON.stringify(boards.map(board => [board, boardFreshness(board.updated_at)]));
+  const signature = JSON.stringify(boards);
   if (signature === directorySignature || directory.contains(document.activeElement)) return;
   const changed = directorySignature && JSON.stringify(boards) !== directory.dataset?.boards;
   directorySignature = signature;
@@ -75,6 +104,7 @@ function renderDirectory(read) {
     directory.append(link);
   }
   if (!boards.length) directory.append(element("p", "empty", "No published boards."));
+  refreshAges();
   if (changed) live.textContent = "Published boards updated.";
 }
 
@@ -98,6 +128,7 @@ function detailRow(label, value) {
 }
 
 function showTask(task, stage) {
+  detailTaskId = task.id;
   taskDetailTitle.textContent = task.title || task.id;
   taskDetailBody.replaceChildren();
   detailRow("Stage", stage.label);
@@ -141,17 +172,37 @@ function taskNode(task, stage, x, y, width, height, phone) {
   node.append(label);
   node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 12 },
     [task.executor || "Unassigned", task.pr != null ? `PR ${task.pr}` : "No PR"].join(" · ")));
-  node.addEventListener("click", () => showTask(task, stage));
+  const retained = taskNodes.get(task.id);
+  const target = retained?.node || node;
+  if (retained) {
+    target.replaceChildren(...node.childNodes);
+    for (const attribute of node.attributes) target.setAttribute(attribute.name, attribute.value);
+  }
+  const entry = { node: target, task, stage };
+  taskNodes.set(task.id, entry);
+  if (retained) return target;
+  const open = () => {
+    const current = taskNodes.get(task.id);
+    if (current) showTask(current.task, current.stage);
+  };
+  node.addEventListener("click", open);
   node.addEventListener("keydown", event => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task, stage); }
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
   });
   return node;
 }
 
 function renderStages(view) {
   currentView = view;
-  flow.replaceChildren();
   const phone = phoneQuery.matches;
+  const signature = JSON.stringify([view.stages, phone]);
+  if (signature === renderedStages) {
+    for (const { node, task } of taskNodes.values()) node.setAttribute("data-pulse", taskPulse(task));
+    return;
+  }
+  renderedStages = signature;
+  const focusedId = [...taskNodes].find(([, entry]) => entry.node === document.activeElement)?.[0];
+  flow.replaceChildren();
   const total = view.stages.reduce((sum, stage) => sum + stage.tasks.length, 0);
   taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
   const width = phone ? 360 : 1200;
@@ -183,7 +234,15 @@ function renderStages(view) {
     }
     if (phone) offset += wellHeight + 21;
   });
+  const ids = new Set(view.stages.flatMap(stage => stage.tasks.map(task => task.id)));
+  for (const id of taskNodes.keys()) if (!ids.has(id)) taskNodes.delete(id);
+  if (focusedId) (taskNodes.get(focusedId)?.node || title).focus();
 }
+
+taskDialog.addEventListener("close", () => {
+  if (detailTaskId) (taskNodes.get(detailTaskId)?.node || title).focus();
+  detailTaskId = null;
+});
 
 phoneQuery.addEventListener("change", () => { if (currentView) renderStages(currentView); });
 
@@ -279,10 +338,10 @@ function answerForm(q, view) {
 function renderQuestions(view) {
   const priorCards = questionCards;
   questionCards = new Map();
-  questions.replaceChildren();
+  const nextCards = [];
   questionCount.textContent = `${view.questions.filter(q => !q.status).length} WAITING`;
   if (!view.questions.length) {
-    questions.append(element("p", "empty", "No questions on this board."));
+    questions.replaceChildren(element("p", "empty", "No questions on this board."));
     return;
   }
   for (const q of view.questions) {
@@ -290,7 +349,7 @@ function renderQuestions(view) {
     const retained = priorCards.get(q.question_id);
     if (retained?.signature === signature) {
       questionCards.set(q.question_id, retained);
-      questions.append(retained.card);
+      nextCards.push(retained.card);
       continue;
     }
     const card = element("article", "question-card");
@@ -308,8 +367,75 @@ function renderQuestions(view) {
       card.append(answerForm(q, view));
     }
     questionCards.set(q.question_id, { signature, card });
-    questions.append(card);
+    nextCards.push(card);
   }
+  // Keep unchanged form cards connected even when the board version changes.
+  for (const [index, card] of nextCards.entries()) {
+    if (questions.children[index] !== card) {
+      if (questions.insertBefore) questions.insertBefore(card, questions.children[index] || null);
+      else questions.append(card);
+    }
+  }
+  for (const child of [...questions.children]) if (!nextCards.includes(child)) child.remove?.();
+}
+
+function clearBoard(state) {
+  currentView = null;
+  viewSignature = "";
+  renderedStages = "";
+  taskNodes.clear();
+  questionCards.clear();
+  pendingRequests.clear();
+  detailTaskId = null;
+  if (taskDialog.open) taskDialog.close();
+  taskDetailTitle.textContent = "";
+  taskDetailBody.replaceChildren();
+  flow.replaceChildren();
+  questions.replaceChildren();
+  taskCount.textContent = "—";
+  questionCount.textContent = "—";
+  title.textContent = "Progress";
+  document.title = "Progress · DoctorCRE";
+  meta.textContent = state === "unpublished" ? "No published snapshot" : "Board access unavailable";
+  badgeTimes.delete(freshness);
+  freshness.textContent = "";
+  freshness.removeAttribute?.("data-freshness");
+  meta.setAttribute("data-read-state", state);
+}
+
+function clearDirectory() {
+  directorySignature = "";
+  directory.replaceChildren();
+}
+
+function readFailure(cause, target) {
+  const unauthorized = cause.status === 401 || cause.status === 403;
+  const state = cause.status === 401 ? "signed-out" : cause.status === 403 ? "unauthorized"
+    : cause.code === "progress_read_timeout" ? "timeout"
+      : globalThis.navigator?.onLine === false ? "offline" : "unavailable";
+  let message;
+  if (unauthorized) {
+    message = cause.status === 401 ? "Your session ended. Sign in to read this board." : "You do not have access to this board.";
+    if (cause.status === 401) { ++refreshGeneration; clearBoard(state); clearDirectory(); }
+    else if (target === "board") clearBoard(state);
+    else clearDirectory();
+  } else {
+    const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "The read failed.";
+    const retained = target === "board" ? Boolean(currentView) : Boolean(directorySignature);
+    message = `${label} ${retained ? "Showing last-known publication." : "Publication unavailable."} Retry to read again.`;
+  }
+  if (target === "directory") {
+    directoryError.textContent = message;
+    directoryError.hidden = false;
+    directoryError.setAttribute("data-read-state", state);
+  } else {
+    setError(message);
+    meta.setAttribute("data-read-state", state);
+    if (currentView) meta.textContent = `Last-known publication ${formatTime(currentView.updated_at)} · Version ${currentView.version}`;
+  }
+  if (cause.status === 401) signIn.hidden = false;
+  retry.hidden = false;
+  refreshAges();
 }
 
 async function refresh(force = false) {
@@ -317,22 +443,26 @@ async function refresh(force = false) {
   const generation = ++refreshGeneration;
   client.listProgressBoards().then(read => {
     if (generation === refreshGeneration) renderDirectory(read);
-  }).catch(() => {
-    if (generation !== refreshGeneration) return;
-    directoryError.textContent = "Published boards could not be listed. Refresh to try again.";
-    directoryError.hidden = false;
+  }).catch(cause => {
+    if (generation === refreshGeneration) readFailure(cause, "directory");
   });
   const loaded = client.readProgressBoard({ board_id: boardId }).then(read => {
     if (generation !== refreshGeneration) return;
     const view = boardView(read);
-    if (!view.version) { setError("This board has not been published yet."); meta.textContent = "No published snapshot"; return; }
+    if (!view.version) {
+      clearBoard("unpublished");
+      setError("This board has not been published yet.");
+      retry.hidden = false;
+      return;
+    }
     setError("");
+    signIn.hidden = true;
     title.textContent = view.title;
     document.title = `${view.title} · DoctorCRE`;
     meta.textContent = `Published ${formatTime(view.updated_at)} · Version ${view.version}`;
-    const age = freshnessBadge(view.updated_at);
-    freshness.textContent = age.textContent;
-    freshness.setAttribute("data-freshness", boardFreshness(view.updated_at).state);
+    meta.setAttribute("data-read-state", "published");
+    badgeTimes.set(freshness, view.updated_at);
+    refreshAges();
     const signature = JSON.stringify(view);
     if (signature === viewSignature) { renderStages(view); return; }
     live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
@@ -341,11 +471,12 @@ async function refresh(force = false) {
     renderQuestions(view);
   }).catch(cause => {
     if (generation !== refreshGeneration) return;
-    setError(viewSignature ? "The board could not be refreshed." : "The board could not be loaded. Refresh to try again.");
+    readFailure(cause, "board");
     if (force) throw cause;
   });
   await loaded;
 }
 
+retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();
 setInterval(() => refresh(), 15000);

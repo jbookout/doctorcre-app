@@ -19,10 +19,11 @@
     <main>
       <section class="intro" aria-labelledby="board-title">
         <p class="eyebrow">DELIVERY / PROGRESS BOARD</p>
-        <h1 id="board-title">Progress</h1>
+        <h1 id="board-title" tabindex="-1">Progress</h1>
         <p id="board-meta" class="board-meta">Loading published board…</p>
         <span id="board-freshness" class="freshness-badge"></span>
         <p id="board-error" class="error" role="alert" hidden></p>
+        <div class="read-recovery"><button id="board-retry" type="button" hidden>Retry reads</button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
       </section>
       <section class="panel directory-panel" aria-labelledby="directory-title">
         <div class="panel-heading"><h2 id="directory-title">Published boards</h2></div>

@@ -149,3 +149,9 @@ footer { padding-top: 8px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.read-recovery { display: flex; gap: 16px; align-items: center; margin-top: 12px; }
+.read-recovery button { border: 1px solid var(--orange); border-radius: 9px; padding: 10px 16px; background: #0b2947; color: var(--ink); cursor: pointer; }
+.read-recovery button:hover { background: #173b5e; }
+.read-recovery button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.read-recovery a { color: var(--orange); }

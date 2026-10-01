@@ -10,11 +10,12 @@ const boards = [
   { board_id: "carr-v5", title: "System progress", project: "carr-v5", updated_at: "2026-10-01T14:30:00Z", task_counts: { running: 1 } },
 ];
 
-async function open(t, { width = 390, path = "/control-room/progress", directoryFails = false, onRpc } = {}) {
+async function open(t, { width = 390, path = "/control-room/progress", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
   page.setDefaultTimeout(5000);
   await page.clock.install({ time: NOW });
+  if (publicationTime) await page.clock.pauseAt(NOW);
   const calls = [], errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
@@ -26,10 +27,10 @@ async function open(t, { width = 390, path = "/control-room/progress", directory
       const listing = rpc.params.name === "list-progress-boards";
       const id = rpc.params.arguments.board_id;
       const board = boards.find(board => board.board_id === id);
-      const payload = listing ? { ok: true, schema: "progress-board-directory.v1", boards }
+      const payload = listing ? { ok: true, schema: "progress-board-directory.v1", boards: boards.map(board => ({ ...board, ...(publicationTime ? { updated_at: publicationTime } : {}) })) }
         : rpc.params.name === "read-progress-board" ? { ok: true, snapshot: { board_id: id,
-          version: 2, updated_at: board.updated_at, snapshot_json: { title: board.title,
-            tasks: { build: { title: "Synthetic build", status: "running", updated_at: "2026-10-01T14:30:00Z" } } } }, questions: [] } : {};
+          version: 2, updated_at: publicationTime || board.updated_at, snapshot_json: { title: board.title,
+            tasks: { build: { title: "Synthetic build", status: "running", updated_at: "2026-10-01T14:30:00Z" } } } }, questions: withQuestion ? snapshot().questions : [] } : {};
       return route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: {
         ...(listing && directoryFails ? { isError: true } : {}),
         content: [{ text: JSON.stringify(listing && directoryFails ? { error: "directory unavailable" } : payload) }],
@@ -146,6 +147,7 @@ test("ready directory renders while the selected board stays pending, then repor
   await page.clock.runFor(10001);
   await page.waitForFunction(() => !document.querySelector("#board-error").hidden);
   assert.equal(await page.locator(".board-link").count(), 2);
+  assert.equal(await page.locator("#board-meta").getAttribute("data-read-state"), "timeout");
 });
 
 function snapshot(version = 1, status = null) {
@@ -246,4 +248,159 @@ test("all visible header controls are clickable around the navigation breakpoint
     assert.equal(await page.locator(".app-shell-more-list").isVisible(), true);
     for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
   });
+});
+
+for (const state of ["answer focus", "directory focus", "failed reads", "offline"])
+  test(`badge clock crosses 24h during ${state} without replacing focused controls`, async t => {
+    let fail = false;
+    const { page, errors } = await open(t, {
+      publicationTime: "2026-09-30T15:00:16Z", withQuestion: true,
+      onRpc: async (route, rpc) => {
+        if (!fail) return false;
+        await route.fulfill({ status: 503, body: "Synthetic unavailable" });
+        return true;
+      },
+    });
+    await page.waitForFunction(() => document.querySelector(".pipeline-node"));
+    const target = state === "directory focus" ? ".board-link" : ".answer-form textarea";
+    if (state.includes("focus")) await page.locator(target).first().focus();
+    if (state === "answer focus") await page.locator(target).fill("Synthetic unsent draft");
+    await page.evaluate(selector => {
+      window.retainedControl = document.querySelector(selector);
+      window.retainedBadge = document.querySelector(".board-link .freshness-badge");
+    }, target);
+    if (state === "failed reads") fail = true;
+    if (state === "offline") {
+      fail = true;
+      await page.context().setOffline(true);
+    }
+    await page.clock.runFor(15999);
+    assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "fresh");
+    await page.clock.runFor(1);
+    assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
+    assert.equal(await page.locator('.board-link .freshness-badge[data-freshness="stale"]').count(), 2);
+    assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
+    if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
+    if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
+    if (fail) assert.match(await page.locator("#board-error").textContent(), /last-known/i);
+    assert.deepEqual(errors, []);
+  });
+
+test("task focus and dialog return target survive unchanged and changed polls", async t => {
+  let version = 1;
+  const { page, errors } = await open(t, { onRpc: async (route, rpc) => {
+    if (rpc.name !== "read-progress-board") return false;
+    const read = snapshot(version);
+    read.snapshot.snapshot_json.tasks = { build: { title: `Synthetic task ${version}`, status: "running" } };
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { content: [{ text: JSON.stringify(read) }] } }) });
+    return true;
+  } });
+  const task = page.locator('[data-task-id="build"]');
+  await task.focus();
+  await page.evaluate(() => window.retainedTask = document.activeElement);
+  await page.clock.runFor(15000);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
+  version = 2;
+  await page.clock.runFor(15000);
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
+  assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
+  await task.press("Enter");
+  version = 3;
+  await page.clock.runFor(15000);
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 3");
+  await page.getByRole("button", { name: "Close task detail" }).click();
+  assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
+  assert.match(await task.getAttribute("aria-label"), /Synthetic task 3/);
+  assert.deepEqual(errors, []);
+});
+
+
+for (const state of ["unpublished", "unauthorized", "signed-out"])
+  test(`confirmed ${state} clears prior protected board and permits recovery`, async t => {
+    let failure = false;
+    const { page, errors } = await open(t, { withQuestion: true, onRpc: async (route, rpc) => {
+      if (!failure || rpc.name !== "read-progress-board") return false;
+      if (state === "unpublished") await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { content: [{ text: JSON.stringify({ ok: true, snapshot: null, questions: [] }) }] } }) });
+      else await route.fulfill({ status: state === "signed-out" ? 401 : 403, body: "Synthetic denied" });
+      return true;
+    } });
+    await page.waitForFunction(() => document.querySelector(".pipeline-node"));
+    failure = true;
+    await page.clock.runFor(15000);
+    await page.waitForFunction(state => document.querySelector("#board-meta").dataset.readState === state, state);
+    assert.equal(await page.locator(".pipeline-node").count(), 0);
+    assert.equal(await page.locator(".answer-form").count(), 0);
+    assert.equal(await page.locator("#board-freshness").textContent(), "");
+    assert.equal(await page.locator("#board-title").textContent(), "Progress");
+    assert.equal(await page.locator("#board-retry").isVisible(), true);
+    assert.equal(await page.locator("#board-sign-in").isVisible(), state === "signed-out");
+    if (state === "signed-out") assert.equal(await page.locator(".board-link").count(), 0);
+    failure = false;
+    await page.locator("#board-retry").click();
+    await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
+    assert.equal(await page.locator(".pipeline-node").count(), 1);
+    assert.equal(await page.locator(".answer-form").count(), 1);
+    assert.equal(await page.locator("#board-error").isVisible(), false);
+    assert.deepEqual(errors, []);
+  });
+
+test("published empty, unpublished, timeout and partial discovery have distinct states", async t => {
+  const { page } = await open(t, { directoryFails: true, onRpc: async (route, rpc) => {
+    if (rpc.name !== "read-progress-board") return false;
+    const read = snapshot(); read.questions = [];
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { content: [{ text: JSON.stringify(read) }] } }) });
+    return true;
+  } });
+  await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
+  assert.equal(await page.locator("#task-count").textContent(), "0 TASKS");
+  assert.equal(await page.locator("#board-error").isVisible(), false);
+  assert.equal(await page.locator("#directory-error").isVisible(), true);
+  assert.equal(await page.locator("#directory-error").getAttribute("data-read-state"), "unavailable");
+  assert.match(await page.locator("#board-questions").textContent(), /No questions/);
+});
+
+test("timeout retains and ages last-known data; Retry preserves the draft and control", async t => {
+  let stalled = false;
+  const pending = [];
+  t.after(() => pending.forEach(resolve => resolve()));
+  const { page, errors } = await open(t, { withQuestion: true, onRpc: async (route, rpc) => {
+    if (!stalled || rpc.name !== "read-progress-board") return false;
+    await new Promise(resolve => pending.push(resolve));
+    await route.abort().catch(() => {});
+    return true;
+  } });
+  await page.waitForFunction(() => document.querySelector(".answer-form textarea"));
+  await page.locator(".answer-form textarea").fill("Retained synthetic draft");
+  await page.evaluate(() => window.retainedAnswer = document.activeElement);
+  await page.locator("#board-title").click();
+  stalled = true;
+  await page.clock.runFor(15000);
+  // A routed request may start after the virtual clock returns; wait for it.
+  for (let i = 0; !pending.length && i < 500; i++) await new Promise(resolve => setTimeout(resolve, 2));
+  assert.ok(pending.length);
+  await page.clock.runFor(10001);
+  await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "timeout");
+  assert.match(await page.locator("#board-error").textContent(), /timed out.*last-known/i);
+  assert.equal(await page.locator(".pipeline-node").count(), 1);
+  stalled = false;
+  await page.locator("#board-retry").click();
+  await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
+  assert.equal(await page.locator("textarea").inputValue(), "Retained synthetic draft");
+  assert.equal(await page.evaluate(() => window.retainedAnswer === document.querySelector("textarea")), true);
+  assert.deepEqual(errors, []);
+});
+
+test("an in-flight poll preserves a refocused unchanged answer card when tasks change", async t => {
+  const reads = controlledReads(t);
+  const { page } = await open(t, { onRpc: reads.onRpc });
+  await reads.reply(page, "list-progress-boards", 0, listing("Directory"));
+  await reads.reply(page, "read-progress-board", 0, snapshot());
+  await page.clock.runFor(15000);
+  await reads.request("read-progress-board", 1);
+  await page.locator("textarea").fill("Synthetic retained focus");
+  await page.evaluate(() => window.focusedAnswer = document.activeElement);
+  await reads.reply(page, "read-progress-board", 1, snapshot(2));
+  assert.equal(await page.evaluate(() => window.focusedAnswer === document.activeElement), true);
+  assert.equal(await page.locator("textarea").inputValue(), "Synthetic retained focus");
 });

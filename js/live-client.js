@@ -83,7 +83,9 @@ export function createLiveClient(opts = {}) {
     let timer;
     const deadline = new Promise((_, reject) => {
       timer = setTimeout(() => {
-        reject(new Error(`live ${verb} timed out`));
+        const error = new Error(`live ${verb} timed out`);
+        error.code = 'progress_read_timeout';
+        reject(error);
         controller.abort();
       }, 10000);
     });

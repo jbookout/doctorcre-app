@@ -10,9 +10,20 @@ export const STAGES = [
 export const SYSTEM_BOARD_ID = "carr-v5";
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
-export function boardFreshness(updatedAt, at = new Date()) {
+function publicationTimestamp(updatedAt) {
   const timestamp = typeof updatedAt === "string" && updatedAt.trim()
     ? Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(updatedAt) ? updatedAt : `${updatedAt}Z`) : NaN;
+  return timestamp;
+}
+
+export function nextFreshnessChange(updatedAt, now = Date.now()) {
+  const timestamp = publicationTimestamp(updatedAt);
+  if (!Number.isFinite(timestamp)) return null;
+  return now < timestamp ? timestamp - now + 60000 : 60000 - (now - timestamp) % 60000;
+}
+
+export function boardFreshness(updatedAt, at = new Date()) {
+  const timestamp = publicationTimestamp(updatedAt);
   if (!Number.isFinite(timestamp)) return { state: "unknown", label: "Update time unavailable" };
   const age = Math.max(0, at.getTime() - timestamp);
   const minutes = Math.floor(age / 60000);
@@ -43,7 +54,8 @@ export function taskStage(task) {
   if (STAGES.some(stage => stage.id === requested)) return requested;
   if (task.status === "done") return task.pr != null && task.pr_phase === "Merged" ? "merged" : "build";
   if (task.status === "measured") return typeof evidence === "string" && evidence.trim() ? "live" : "build";
-  return STATUS_STAGE[task.status ?? "queued"] || "queued";
+  return typeof task.status === "string" && Object.hasOwn(STATUS_STAGE, task.status)
+    ? STATUS_STAGE[task.status] : "queued";
 }
 
 export function taskHealth(task, at = new Date()) {
@@ -76,9 +88,9 @@ export function boardView(read) {
     ? Object.entries(data.tasks) : [];
   const stages = STAGES.map(stage => ({ ...stage, tasks: [] }));
   for (const [id, task] of tasks) {
-    if (!task || typeof task !== "object") continue;
+    if (!task || typeof task !== "object" || Array.isArray(task)) continue;
     const stage = taskStage(task);
-    stages.find(item => item.id === stage).tasks.push({ id, ...task });
+    stages.find(item => item.id === stage).tasks.push({ ...task, id });
   }
   return {
     board_id: snapshot?.board_id || data.project || null,
