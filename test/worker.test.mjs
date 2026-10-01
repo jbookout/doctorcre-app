@@ -161,6 +161,20 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.37.0" },
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.15.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.16.0" },
   });
+});
+
+
+test("retired Work deep links redirect to Home and retain their query", async () => {
+  let carrCalls = 0;
+  const env = environment({ carr: { fetch: async () => { carrCalls++; return new Response(); } } });
+  for (const path of ["/tasks", "/work", "/tasks.html"]) {
+    const response = await handleDoctorcreRequest(request(`${path}?ref=synthetic-work&actor=dell`), env);
+    assert.equal(response.status, 308);
+    const destination = new URL(response.headers.get("location"));
+    assert.equal(destination.pathname, "/");
+    assert.equal(destination.search, "?ref=synthetic-work&actor=dell");
+  }
+  assert.equal(carrCalls, 0, "redirects have no business effect");
 });

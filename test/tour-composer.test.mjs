@@ -1,3 +1,4 @@
+import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +12,7 @@ const html = await readFile(new URL("../tours/index.html", import.meta.url), "ut
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const script = `${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const script = `${autoRefreshScript}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const uuid = () => webcrypto.randomUUID();
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";
 const properties = [propA, propB].map((property_id, i) => ({ property_id, name: `Synthetic site ${i + 1}`, address: `${100 + i} Example Way`, county: "Escambia", state: "FL" }));
@@ -35,7 +36,7 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
   const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
   const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) });
   assert.equal(reads, 1);
-  assert.match(doc.querySelector("#status").textContent, /Saved Tour unavailable.*select.*retry/i);
+  assert.match(doc.querySelector("#status").textContent, /Saved Tour temporarily unavailable/i);
   assert.equal(doc.querySelector("#create-tour").disabled, false);
   fail = false; doc.querySelector(".tour-button").click(); await settle();
   assert.equal(reads, 2); assert.match(doc.querySelector("#status").textContent, /Tour ready/);
@@ -560,15 +561,16 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
     const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
-    const shellScript = (await readFile(new URL("../js/app-shell.js", import.meta.url), "utf8")).replace(/^export /gm, "");
+    const shellScript = (await readFile(new URL("../js/app-shell.js", import.meta.url), "utf8")).replace(/^export /gm, "").replace(/^import [^\n]*\n/gm, "");
     const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}\n${shellCss}</style></head>`);
     await page.route("https://tour.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
+      if (url.pathname === "/api/system-work/session") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: {slug: "joe"} }) });
       if (!url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "text/html", body: pageHtml });
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
-    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: shellScript }); await page.addScriptTag({ content: script });
+    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
     await page.locator("#create-tour-panel summary").click();
     for (const width of [375, 390]) {
       await page.setViewportSize({ width, height: 900 });

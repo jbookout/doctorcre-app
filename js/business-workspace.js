@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B01 — the business workspace: DOM wiring only.
 //
 // Two models decide everything this file paints. The canonical command-center
@@ -146,13 +147,13 @@ function renderFreshness(payload) {
   const line = $("homeFreshness");
   if (!line) return;
   if (!payload) {
-    line.textContent = view.status === "unauthorized" ? "No verified read · your session has ended" : "No verified read";
+    line.textContent = view.status === "unauthorized" ? "Unavailable · your session has ended" : "Unavailable";
     line.setAttribute("data-freshness", "missing");
     return;
   }
   const freshness = displayedFreshness(payload.source);
   const clock = formatClock(payload.source.observed_at);
-  line.textContent = `As of ${clock || "an unreadable time"} · ${freshness}`;
+  line.textContent = updatedLabel(payload.source.observed_at);
   line.setAttribute("data-freshness", freshness);
 }
 
@@ -283,7 +284,7 @@ function setValue(id, value, format) {
 
 function readCaption(read, detail) {
   const clock = formatClock(read.readAt);
-  return `Read at ${clock || "an unreadable time"} · ${detail}`;
+  return updatedLabel(read.readAt);
 }
 
 function railHtml(rail) {
@@ -336,7 +337,7 @@ function renderThisWeek() {
   const caption = $("thisWeekCaption");
   if (caption) {
     caption.textContent = readCaption(read, "critical dates for the next seven days, and follow-ups due today or overdue")
-      + (week.capped ? " · the read stopped at its row limit, so later dates may be missing" : "");
+      + (week.capped ? " · More dates available" : "");
   }
 }
 
@@ -347,7 +348,7 @@ function renderWaiting() {
   if (waiting.state !== "read") {
     paintIfChanged($("waitingList"), "");
     setValue("waitingValue", null);
-    setOwnState("waitingState", waiting.state === "loading" ? "loading" : "offline", waiting.state === "loading" ? "Reading waiting work…" : unavailableCopy("waiting_on_others"));
+    setOwnState("waitingState", waiting.state === "loading" ? "loading" : "offline", waiting.state === "loading" ? "Loading work…" : unavailableCopy("waiting_on_others"));
     const caption = $("waitingCaption");
     if (caption) caption.textContent = "";
     return;
@@ -359,7 +360,7 @@ function renderWaiting() {
   if (caption) {
     caption.textContent = readCaption(read, "open work whose blocker is a named counterparty")
       + (waiting.held ? ` · ${waiting.held} more ${waiting.held === 1 ? "is" : "are"} held jointly or by the system, on Tasks` : "")
-      + (waiting.capped ? " · the read stopped at its row limit, so some may be missing" : "");
+      + (waiting.capped ? " · More work available" : "");
   }
 }
 
@@ -431,14 +432,14 @@ async function load() {
     const payload = await client.commandCenter();
     if (!acceptsResponse(view.sequence, sequence)) return;
     if (!validWorkspacePayload(payload)) {
-      return settle({ status: "error", message: "The canonical read returned an unexpected shape, so no count is shown as current." }, sequence);
+      return settle({ status: "error", message: "Workspace temporarily unavailable." }, sequence);
     }
     settle({ status: "ready", payload }, sequence);
   } catch (error) {
     if (!acceptsResponse(view.sequence, sequence)) return;
     const status = Number(error?.status || 0);
     if (status === 401 || status === 403) return settle({ status: "unauthorized" }, sequence);
-    settle({ status: "error", message: "The workspace could not reach the canonical read. Nothing here has been inferred." }, sequence);
+    settle({ status: "error", message: "Temporarily unavailable" }, sequence);
   }
 }
 
@@ -796,6 +797,7 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await readSections(); await loadBoardRecords(readBoard()); } });
   // V5-UX-B05 — the Search tab. It is a tab on an already-admitted path, so no
   // route moves and no sign-in gate entry is needed: its address is a query
   // (?q= and ?kinds=) on /business, which the gate does not inspect. The tab is

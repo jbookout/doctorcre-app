@@ -1,8 +1,8 @@
 import { createLeadBoardClient } from "./leads-client.js";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { mountAutoRefresh } from "./auto-refresh.mjs";
 
 const client = createLeadBoardClient();
-const state = { board: null, claims: null, actor: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, actorReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, density: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
+const state = { board: null, claims: null, actor: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, actorReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const stageKey = (stage) => stage?.slug || stage?.stage || "unassigned";
@@ -93,7 +93,7 @@ function renderBoard() {
   const board = $("leadBoard");
   const leads = filtered();
   const all = state.board?.leads || [];
-  board.classList.toggle("compact", state.density);
+
   $("leadCount").textContent = `${all.length} total`;
   $("filterSummary").textContent = `${leads.length} of ${all.length} leads shown`;
   if (!all.length) { board.innerHTML = '<p class="board-state empty">The Lead Board is connected, but no leads have arrived yet.</p>'; return; }
@@ -116,8 +116,8 @@ export function claimEvidence(values, observedAt) {
   for (const field of researchFields) {
     let url;
     try { url = new URL(String(values[field] || "").trim()); }
-    catch { throw new Error(`The ${field} source needs a valid HTTPS URL.`); }
-    if (url.protocol !== "https:" || url.username || url.password) throw new Error(`The ${field} source must use HTTPS without credentials in the URL.`);
+    catch { throw new Error(`The ${field} reference needs a valid HTTPS URL.`); }
+    if (url.protocol !== "https:" || url.username || url.password) throw new Error(`The ${field} reference must use HTTPS without credentials in the URL.`);
     field_evidence[field] = [sources.length];
     sources.push({ url: url.toString(), observed_at: observedAt });
   }
@@ -317,7 +317,7 @@ async function refreshAfterReturn() {
   if (!actor) {
     state.actor = null;
     state.resumeChecking = false;
-    $("leadBoardError").textContent = "Your account could not be verified. Sign in and refresh the Lead Board.";
+    $("leadBoardError").textContent = "Sign-in required";
     $("leadBoardError").hidden = false;
     $("claimError").textContent = "Your account could not be verified. Candidate decisions are unavailable.";
     $("claimError").hidden = false;
@@ -379,7 +379,6 @@ async function moveLead(button) {
 
 if (typeof document !== "undefined") {
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["laneFilter", "lane"], ["stageFilter", "stage"]]) $(id).addEventListener(id === "leadSearch" ? "input" : "change", (event) => { state.filters[key] = event.target.value; renderBoard(); });
-  $("densityToggle").addEventListener("click", () => { state.density = !state.density; $("densityToggle").setAttribute("aria-pressed", String(state.density)); $("densityToggle").textContent = state.density ? "Compact density" : "Comfortable density"; renderBoard(); });
   $("refreshBoard").addEventListener("click", refresh);
   for (const view of ["board", "list"]) $(view + "View").addEventListener("click", () => { state.view = view; $("boardView").setAttribute("aria-pressed", String(view === "board")); $("listView").setAttribute("aria-pressed", String(view === "list")); renderBoard(); });
   $("leadBoard").addEventListener("click", (event) => { const button = event.target.closest("[data-move-lead]"); if (button) moveLead(button); });
@@ -397,7 +396,7 @@ if (typeof document !== "undefined") {
     if (state.resumeDeferred && !state.pendingClaims.size) refreshAfterReturn();
   });
   if (typeof window !== "undefined" && typeof document.addEventListener === "function") {
-    mountReadOnResume({ document, window, refresh: refreshAfterReturn });
+    mountAutoRefresh({ document, window: globalThis.window, refresh: refreshAfterReturn });
   }
   const actorRead = ++state.actorReadEpoch;
   client.getActor().then((actor) => {

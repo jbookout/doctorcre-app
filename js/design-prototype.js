@@ -234,7 +234,7 @@ function renderHome() {
   const title = $("homeTitle");
   if (title) title.textContent = `${weekdayName(TODAY)} · Priority Items`;
   const asOf = $("homeAsOf");
-  if (asOf) asOf.textContent = `As of ${formatClock(TODAY)} · source CARR`;
+  if (asOf) asOf.textContent = `Updated ${formatClock(TODAY)}`;
   const pipeAsOf = $("pipeAsOf");
   if (pipeAsOf) pipeAsOf.textContent = `as of ${formatClock(TODAY)}`;
 

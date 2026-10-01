@@ -80,7 +80,7 @@ test("clause 1: a private conversation is invisible to the partner, and absent, 
   // And the page renders that ambiguity as the ambiguity it is.
   const state = conversationState({ state: "not_found" });
   assert.equal(state.state, "not_found");
-  assert.match(state.sentence, /the record layer answers those the same way on purpose/);
+  assert.match(state.sentence, /Conversation unavailable/);
   assert.equal(classifyReadFailure({ payload: { error: "doc_conversation_not_found" } }).state, "not_found");
 });
 
@@ -108,7 +108,7 @@ test("clause 2: the visible count is the payload's own number, and the page prin
   assert.match(pageJs, /\$\("visibleCountLine"\)\.textContent = visibleCountLine\(payload\)/);
   assert.equal(/visible_conversation_count\s*=|rows\.length \+|conversations\.filter\(/.test(pageJs), false,
     "the page derives a visible count of its own");
-  assert.match(LIST_SCOPE, /read from the record layer/);
+  assert.equal(LIST_SCOPE, "");
 });
 
 /* ------------------------------------------------------------------ clause 3 */
@@ -239,7 +239,7 @@ test("clause 6: a rename moves the title and the version and retains every origi
   assert.deepEqual(turnRows(after).map((row) => row.body), turnRows(before).map((row) => row.body));
 
   // The prior titles exist and no door reads them back, and the page says so.
-  assert.match(TITLE_HISTORY_UNREADABLE, /no door reads them back yet/);
+  assert.equal(TITLE_HISTORY_UNREADABLE, "Previous titles unavailable");
   assert.match(pageJs, /\$\("titleHistoryLine"\)\.textContent = TITLE_HISTORY_UNREADABLE/);
 });
 
@@ -403,7 +403,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.15.0");
+  assert.equal(routes.version, "1.16.0");
   assert.equal(contract.version, "1.37.0");
   assert.equal(contract.producer.source_commit, "97e916b7f907f268365ba7ba96635e36c0c65e03");
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
@@ -594,8 +594,8 @@ test("the page is the shared shell, carries no composer in the transcript, and h
   for (const tag of ["input", "select", "button", "textarea", "form"]) {
     assert.equal(new RegExp(`<${tag}[\\s>]`).test(region[0]), false, `the transcript region draws a <${tag}>`);
   }
-  assert.match(COMPOSER_ABSENT, /reserved for an authority session/);
-  assert.match(DOC_REPLY_PENDING, /arrive in the next slice/);
+  assert.equal(COMPOSER_ABSENT, "Conversation history");
+  assert.equal(DOC_REPLY_PENDING, "");
   assert.match(pageJs, /\$\("composerAbsent"\)\.textContent = COMPOSER_ABSENT/);
   assert.equal(/add-doc-conversation-turn|addDocConversationTurn/.test(pageJs), false, "the page reaches for the authority-only verb");
   assert.equal(/add-doc-conversation-turn/.test(html), false);
@@ -619,9 +619,9 @@ test("the page is the shared shell, carries no composer in the transcript, and h
   assert.match(css, /\.turn-list \{[^}]*grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(css, /\.turn-body \{[^}]*overflow-wrap: anywhere;/);
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width can force a horizontal scroll");
-  assert.match(EXPOSURE_STATEMENT, /on a shared or unlocked phone/);
-  assert.match(EXPOSURE_STATEMENT, /Nothing is kept on this device/);
-  assert.match(EXPOSURE_STATEMENT, /the list above names every conversation you can see/);
+  assert.equal(EXPOSURE_STATEMENT, "");
+  assert.equal(EXPOSURE_STATEMENT, "");
+  assert.doesNotMatch(EXPOSURE_STATEMENT, /record layer/);
   assert.match(html, /<p class="caption" id="exposureStatement">/);
 });
 

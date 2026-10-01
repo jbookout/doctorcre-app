@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C10 — Complete Work Inventory, DOM wiring.
 //
 // Every decision about the payload lives in ./work-inventory-model.js. This file
@@ -103,14 +104,14 @@ function renderFilters() {
 
 function coverageRow(entry) {
   const orb = coverageOrbState(entry.state);
-  const total = Number.isInteger(entry.count_total) ? `${entry.count_total} in this source` : "total not claimed";
-  const reason = entry.reason ? ` · ${escapeHtml(entry.reason)}` : "";
+  const total = Number.isInteger(entry.count_total) ? `${entry.count_total} items` : "total not claimed";
+  const reason = entry.reason ? `` : "";
   const capped = entry.page_capped === true ? " · more rows remain behind the page limit" : "";
   const excluded = Number.isInteger(entry.excluded_other_tenant) && entry.excluded_other_tenant > 0
     ? ` · ${entry.excluded_other_tenant} row(s) outside this tenant were dropped` : "";
   return `<li class="work-item" data-kind="${escapeHtml(entry.kind)}" data-coverage="${escapeHtml(entry.state)}">
     <div><h3>${escapeHtml(KIND_LABEL[entry.kind] || entry.kind)}</h3>
-      <div class="work-meta"><span><b>${escapeHtml(entry.count_returned)}</b> shown</span><span>${escapeHtml(total)}</span><span class="mono">${escapeHtml(entry.source_ref)}</span></div>
+      <div class="work-meta"><span><b>${escapeHtml(entry.count_returned)}</b> shown</span><span>${escapeHtml(total)}</span></div>
       <p class="small">${escapeHtml(COVERAGE_COPY[entry.state] || "Coverage unknown.")}${reason}${capped}${excluded}</p>
     </div>
     <span class="status" data-state="${escapeHtml(orb)}"><span class="orb" data-state="${escapeHtml(orb)}" aria-hidden="true"></span> ${escapeHtml(entry.state)}</span>
@@ -122,8 +123,8 @@ function renderCoverage(payload) {
   coverageStrip.innerHTML = payload.coverage.map(coverageRow).join("");
   const summary = coverageSummary(payload.coverage);
   if (!coverageSummaryLine) return;
-  const total = summary.total === null ? "no census-wide total is claimed" : `${summary.total} records counted across every source`;
-  coverageSummaryLine.textContent = `${summary.complete.length} of ${summary.sources} sources complete · ${summary.partial.length} partial · ${summary.unavailable.length} unavailable · ${total}`;
+  const total = summary.total === null ? "no census-wide total is claimed" : `${summary.total} records counted across all areas`;
+  coverageSummaryLine.textContent = `${summary.complete.length} of ${summary.sources} areas available · ${summary.partial.length} partial · ${summary.unavailable.length} unavailable · ${total}`;
   coverageSummaryLine.setAttribute("data-stale", payload.census_complete ? "false" : "true");
 }
 
@@ -158,17 +159,17 @@ function renderGroups(visible) {
   kindGroups.innerHTML = groups.map((group) => `<section aria-labelledby="group-${escapeHtml(group.kind)}">
       <div class="card-heading"><div><p class="eyebrow">${escapeHtml(group.kind)}</p><h3 id="group-${escapeHtml(group.kind)}">${escapeHtml(group.label)}</h3></div><span class="as-of">${group.items.length} shown</span></div>
       ${group.items.length === 0
-        ? '<p class="small">No row from this source is in the records read so far.</p>'
+        ? '<p class="small">No items shown</p>'
         : `<ul class="work-list">${group.items.map(itemRow).join("")}</ul>`}
     </section>`).join("");
 }
 
 const STATE_COPY = {
-  loading: { title: "Reading the complete work inventory…", copy: "Six canonical sources are being read at request time. Nothing below is cached." },
-  no_access: { title: "Your session has ended", copy: "Sign in again to read the inventory. No count is shown from a session that has ended." },
-  offline: { title: "The census could not be read", copy: "Nothing here has been inferred, and no earlier page is being shown as current." },
-  empty: { title: "Every source answered, and there is no work", copy: "All six sources reported complete coverage and returned no records. This is an empty inventory, not a failed read." },
-  no_match: { title: "No record matches this status filter", copy: "The census returned records; your status text excluded all of them. Clear the filter to see every status again." },
+  loading: { title: "Loading…", copy: "" },
+  no_access: { title: "Sign-in required", copy: "" },
+  offline: { title: "Work temporarily unavailable", copy: "" },
+  empty: { title: "No work", copy: "" },
+  no_match: { title: "No matches", copy: "" },
 };
 
 function renderState(phase, payload) {
@@ -182,9 +183,9 @@ function renderState(phase, payload) {
     // in this region — above the list, before any count.
     const summary = coverageSummary(payload?.coverage || []);
     inventoryState.setAttribute("data-state", "partial");
-    inventoryState.innerHTML = `<h3>This census is incomplete, not empty</h3>
-      <p>${escapeHtml(payload?.source?.safe_explanation || "At least one source could not be enumerated in full.")}</p>
-      <p class="small">${summary.unavailable.length} source(s) unavailable · ${summary.partial.length} partial. Work held only in those sources is missing from the list below.</p>`;
+    inventoryState.innerHTML = `<h3>Partly available</h3>
+      <p>${escapeHtml("Some areas are unavailable")}</p>
+      <p class="small">${summary.unavailable.length} areas unavailable · ${summary.partial.length} partial. </p>`;
     return;
   }
   const copy = STATE_COPY[phase] || STATE_COPY.offline;
@@ -205,9 +206,9 @@ function render() {
     if (coverageStrip) coverageStrip.innerHTML = `<li class="work-item"><div><h3>Coverage unavailable</h3><p class="small">No source has answered, so no source is shown as healthy.</p></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> unknown</span></li>`;
     if (coverageSummaryLine) coverageSummaryLine.textContent = "Coverage unknown until the census answers.";
     if (kindGroups) kindGroups.innerHTML = "";
-    if (itemsCount) itemsCount.textContent = view.status === "loading" ? "Reading…" : "No verified read";
-    if (censusAsOf) censusAsOf.textContent = view.status === "loading" ? "Reading canonical state…" : "No verified read";
-    if (sourceLine) sourceLine.textContent = "Source pending";
+    if (itemsCount) itemsCount.textContent = view.status === "loading" ? "Reading…" : "Unavailable";
+    if (censusAsOf) censusAsOf.textContent = view.status === "loading" ? "Updating…" : "Unavailable";
+    if (sourceLine) sourceLine.textContent = "";
     if (loadMore) loadMore.hidden = true;
     if (retryRead) retryRead.hidden = view.status !== "error" && view.status !== "unauthorized";
     if (stageRowsBody) stageRowsBody.innerHTML = "";
@@ -221,15 +222,15 @@ function render() {
   }
 
   const payload = view.payload;
-  if (viewerLabel) viewerLabel.textContent = payload.viewer === "joe" ? "Joe’s workspace" : payload.viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
-  if (censusAsOf) censusAsOf.textContent = `${formatObserved(payload.source.observed_at)} · freshness ${payload.source.freshness}`;
+  if (viewerLabel) viewerLabel.textContent = payload.viewer === "joe" ? "Joe's Workspace" : payload.viewer === "dell" ? "Dell's Workspace" : "Partner workspace";
+  if (censusAsOf) censusAsOf.textContent = updatedLabel(payload.source.observed_at);
   renderCoverage(payload);
   renderGroups(visible);
   renderState(phase, payload);
   if (itemsCount) itemsCount.textContent = view.statusText
-    ? `${visible.length} of ${view.items.length} records read match this status filter`
-    : `${view.items.length} records read`;
-  if (sourceLine) sourceLine.textContent = `Source: ${payload.source.source} · ${payload.source.source_ref} · correlation ${payload.source.correlation_id}`;
+    ? `${visible.length} of ${view.items.length} items`
+    : `${view.items.length} items`;
+  if (sourceLine) sourceLine.textContent = "";
   if (loadMore) {
     loadMore.hidden = !payload.next_cursor;
     loadMore.disabled = false;
@@ -239,8 +240,8 @@ function render() {
   renderStages(visible, payload);
   renderDisposition(visible);
   announce(payload.census_complete
-    ? `${visible.length} records shown. Every source answered completely.`
-    : `${visible.length} records shown. This census is incomplete: ${coverageSummary(payload.coverage).unavailable.length} source(s) unavailable.`);
+    ? `${visible.length} records shown. All areas available.`
+    : `${visible.length} records shown. This census is incomplete: ${coverageSummary(payload.coverage).unavailable.length} areas unavailable.`);
 }
 
 /* ------------------------------------------------ delivery evidence (C11) */
@@ -316,7 +317,7 @@ function renderStages(visible, payload) {
     stagesState.hidden = payload.census_complete && rows.length > 0;
     stagesState.setAttribute("data-state", payload.census_complete ? "unknown" : "partial");
     stagesState.innerHTML = payload.census_complete
-      ? "<h3>No work request is in the records read so far</h3>"
+      ? "<h3>No work requests shown</h3>"
       : "<h3>Census incomplete: no stage can be counted</h3>";
   }
   const denominator = payload.census_complete ? stageDenominator(payload.coverage) : { known: false, total: null, reason: "the census is incomplete" };
@@ -325,20 +326,20 @@ function renderStages(visible, payload) {
   if (stagesCount) stagesCount.textContent = `${rows.length} work request(s) on this page`;
   if (stageDenominatorLine) {
     stageDenominatorLine.textContent = count === "unknown"
-      ? `Consumer proven: unknown — ${denominator.reason || "this source claimed no total"}.`
-      : `Consumer proven: ${count} of every work request this source holds.`;
+      ? `Consumer proven: unknown — ${denominator.reason || "this area has no total"}.`
+      : `Consumer proven: ${count} of every work request listed here.`;
   }
 }
 
 function dispositionRowHtml(item) {
   const card = cards.get(item.id) || null;
   const { state, source: stateSource } = dispositionState(item, card);
-  const stateMarker = stateSource === "census" ? ` <span class="small">from the census read</span>` : "";
+  const stateMarker = stateSource === "census" ? ` <span class="small"></span>` : "";
   const actions = card
     ? availableActions(card).map((action) => (action.available
       ? `<button class="btn btn-secondary" type="button" data-action="${escapeHtml(action.choice)}" data-record="${escapeHtml(item.id)}">${escapeHtml(action.label)}</button>`
       : `<span class="small">${escapeHtml(action.label)}: ${escapeHtml(action.reason)}</span>`)).join("")
-    : `<button class="btn" type="button" data-open-card="${escapeHtml(item.id)}">Read this record</button>`;
+    : `<button class="btn" type="button" data-open-card="${escapeHtml(item.id)}">Open details</button>`;
   const options = card
     ? `<div class="chip-bar">${dispositionOptions(card).map((option) => `<span class="chip"><span class="chip-label">${escapeHtml(option.label)}</span>${escapeHtml(option.available ? "available" : "not available here")}</span>`).join("")}</div>`
     : "";
@@ -516,7 +517,7 @@ async function submitDisposition() {
     return;
   }
   decision.refusal = result.reason === "version_conflict"
-    ? `someone else changed this record; read again. ${result.message || ""}`.trim()
+    ? `Changed elsewhere. ${result.message || ""}`.trim()
     : result.message || refusalMessage(result.code, { ref });
   renderDispositionForm();
   announce(decision.refusal);
@@ -667,6 +668,7 @@ async function boot() {
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
   await read();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await read(); if (decision.ref) await readCard(decision.ref); } });
 }
 
 boot();

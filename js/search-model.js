@@ -43,36 +43,25 @@ export const FIND_CAPS = Object.freeze({
 
 /** checkable_done 1 — what "authorized" can honestly mean on this page. */
 export const AUTHORIZATION_SENTENCE =
-  "This search shows what the record layer returns to you when you are signed in. " +
-  "This page adds no filter of its own and asks for nobody else's records.";
+  "";
 
 /** checkable_done 3 — saved views are a device fact, because no verb stores one. */
 export const SAVED_VIEW_SENTENCE =
-  "Saved views live in this browser on this device. There is no verb that stores a partner " +
-  "preference yet, so a view you save here does not follow you to another phone or computer, " +
-  "and it changes none of your workspace preferences.";
+  "Saved on this device";
 
 /** §3 — three of the four named sources have no door at all. */
 export const NOT_SEARCHED_SENTENCE =
-  "This searches people, practices, buildings, deals, leads and vendors — the records the record " +
-  "layer can search by name. Tasks, documents and your Doc conversation history are not searched " +
-  "here, because no door exists that searches them yet. This page will not pretend an empty " +
-  "result for those means there is nothing to find.";
+  "Search people, practices, buildings, deals, leads and vendors";
 
 /** UX01's out-of-scope half: a chip is a view, never a narrower question. */
 export const SCOPE_CHIP_SENTENCE =
-  "These chips hide rows from the answer you already received. They do not ask the record layer " +
-  "for a narrower search — it has no such door.";
+  "";
 
 /** §4.4 — most result kinds have no address to open into, and this says so. */
 export const NO_PAGE_SENTENCE = "This record has no page that opens by address yet.";
 
 export const EXPOSURE_STATEMENT =
-  "This search names real people, practices and deals, so on a shared or unlocked phone a " +
-  "passer-by reads those names at a glance — and what you typed stays in the address bar until " +
-  "you clear it. The words of a search are kept in this browser only when you save a view; " +
-  "nothing here is cached offline, and closing the page leaves nothing behind but the views you " +
-  "chose to save.";
+  "";
 
 /* ------------------------------------------------------------------ validation */
 
@@ -424,16 +413,16 @@ export function truncationNotes(payload, catchUp = null) {
 
 /** The nine states of §4.6. One state, one heading, one body. */
 export const SEARCH_STATE_COPY = Object.freeze({
-  loading: Object.freeze({ title: "Searching…", copy: "One read of the record layer. Nothing below is cached.", retry: false }),
-  empty: Object.freeze({ title: "Type a name to search.", copy: "Nothing has been asked of the record layer yet.", retry: false }),
-  no_match: Object.freeze({ title: "Nothing in the record layer matches that name.", copy: NOT_SEARCHED_SENTENCE, retry: false }),
-  stale: Object.freeze({ title: "Searching…", copy: "An older answer arrived after a newer one and was dropped.", retry: false }),
-  unavailable: Object.freeze({ title: "The record layer did not answer.", copy: "Nothing here has been inferred, and no earlier answer is being shown as current.", retry: true }),
-  refused: Object.freeze({ title: "The record layer refused this search.", copy: "The refusal is named below. Nothing was read.", retry: false }),
-  unknown: Object.freeze({ title: "This answer did not match the shape this page knows how to read.", copy: "Nothing is shown from it, because a shape this page cannot read is a shape it cannot report honestly.", retry: true }),
-  partial: Object.freeze({ title: "Part of this answer was truncated by the record layer.", copy: "The exact counts the producer reported are shown beside each truncated group.", retry: false }),
-  disambiguation: Object.freeze({ title: "More than one record matches that name.", copy: "Choose one exact target. This page opens none of them on your behalf.", retry: false }),
-  ready: Object.freeze({ title: "Results", copy: "Shown in the order the record layer returned them.", retry: false }),
+  loading: Object.freeze({ title: "Searching…", copy: "", retry: false }),
+  empty: Object.freeze({ title: "Search by name", copy: "", retry: false }),
+  no_match: Object.freeze({ title: "No matches", copy: "", retry: false }),
+  stale: Object.freeze({ title: "Updating…", copy: "", retry: false }),
+  unavailable: Object.freeze({ title: "Search temporarily unavailable", copy: "", retry: false }),
+  refused: Object.freeze({ title: "Sign-in required", copy: "", retry: false }),
+  unknown: Object.freeze({ title: "Search temporarily unavailable", copy: "", retry: false }),
+  partial: Object.freeze({ title: "Some results unavailable", copy: "", retry: false }),
+  disambiguation: Object.freeze({ title: "Multiple matches", copy: "", retry: false }),
+  ready: Object.freeze({ title: "Results", copy: "", retry: false }),
 });
 
 export const SEARCH_STATES = Object.freeze([

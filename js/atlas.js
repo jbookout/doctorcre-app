@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C07 — the Atlas tab: DOM wiring only.
 //
 // Every decision about a payload lives in ./atlas-model.js. This file reads,
@@ -103,14 +104,14 @@ const requestOptions = (cursor = null) => ({
 
 /* -------------------------------------------------------------------- reading */
 
-async function read(cursor = null) {
+async function read(cursor = null, { background = false } = {}) {
   view.sequence += 1;
   const sequence = view.sequence;
   view.status = "loading";
   // A read in flight leaves no stale list on screen: the previous page is not
   // "current" and must not be read as if it were.
-  if (cursor === null) { view.payload = null; view.selected = null; }
-  render();
+  if (cursor === null && !background) { view.payload = null; view.selected = null; }
+  if (!background) render();
   const path = atlasRequestPath(requestOptions(cursor));
   // The fixture's outage switch travels as a fixture-only key. The printed
   // request line above is the PRODUCTION request and never carries it.
@@ -182,14 +183,8 @@ function renderVersion() {
   const line = $("atlasVersionLine");
   if (!line) return;
   const payload = view.payload;
-  if (!payload) { line.innerHTML = `<span class="small">No version has been read.</span>`; return; }
-  // The digest says what this system DECLARES it has; the clock says when that
-  // was read. They are separate facts and the labels keep them separate.
-  line.innerHTML = [
-    `<span class="atlas-fact"><span class="chip-label">What this system declares</span><span class="mono">${escapeHtml(payload.version.registry_version)} · ${escapeHtml(payload.version.bundle_digest.slice(0, 12))}</span></span>`,
-    `<span class="atlas-fact"><span class="chip-label">When this was read</span><span>${escapeHtml(formatClock(payload.observed_at) || payload.observed_at)}</span></span>`,
-    `<span class="atlas-fact"><span class="chip-label">Freshness</span><span>${escapeHtml(payload.source.freshness)}</span></span>`,
-  ].join("");
+  if (!payload) { line.innerHTML = `<span class="small">Updating…</span>`; return; }
+  line.innerHTML = `<span class="as-of">${escapeHtml(updatedLabel(payload.observed_at))}</span>`;
 }
 
 function coverageRow(entry) {
@@ -205,7 +200,7 @@ function coverageRow(entry) {
         <span>${escapeHtml(reason)}</span>
       </div>
     </div>
-    <span class="status" data-state="${escapeHtml(orb)}"><span class="orb" data-state="${escapeHtml(orb)}" aria-hidden="true"></span> ${escapeHtml(entry.complete ? "answered" : "incomplete")}</span>
+    <span class="status" data-state="${escapeHtml(orb)}"><span class="orb" data-state="${escapeHtml(orb)}" aria-hidden="true"></span> ${escapeHtml(entry.complete ? "Available" : "Unavailable")}</span>
   </li>`;
 }
 
@@ -226,7 +221,7 @@ function renderCoverage() {
   const phase = atlasPhase({ status: view.status, payload });
   if (heading) heading.textContent = phase === "partial" ? INCOMPLETE_HEADING : "Coverage";
   // The producer's own sentence, verbatim, above the list on every render.
-  if (explanation) explanation.textContent = payload.source.safe_explanation;
+  if (explanation) explanation.textContent = updatedLabel(payload.observed_at);
   const groups = coverageGroups(payload.coverage);
   answered.innerHTML = groups.answered.map(coverageRow).join("");
   gaps.innerHTML = groups.gaps.map(coverageRow).join("");
@@ -234,7 +229,7 @@ function renderCoverage() {
 
 function renderControls() {
   const path = $("atlasRequestPath");
-  if (path) path.textContent = `Request: ${atlasRequestPath(requestOptions())}`;
+  if (path) path.textContent = "";
   for (const button of document.querySelectorAll("#atlasLayerFilters button[data-layer]")) {
     const value = button.dataset.layer === "all" ? null : button.dataset.layer;
     button.setAttribute("aria-pressed", String(value === view.layer));
@@ -352,7 +347,7 @@ function incidentSection(node) {
   if (node.class !== "service") return "";
   if (!incidentsAvailable()) return `<p class="small">${escapeHtml(NO_INCIDENT_READ_SENTENCE)}</p>`;
   const incidents = serviceNodeOpenIncidents(node, incidentIndex());
-  if (incidents.length === 0) return `<p class="small">No open incident names this service on the same incident-board read the dashboard holds.</p>`;
+  if (incidents.length === 0) return `<p class="small">No open incidents</p>`;
   const rows = incidents.map((row) => {
     const href = canonicalHref(row);
     return `<li class="work-item" data-incident="${escapeHtml(row.ref)}">
@@ -372,7 +367,7 @@ function incidentSection(node) {
 function traceDrawer() {
   if (!view.trace.ref || view.trace.state === "idle") return "";
   if (view.trace.state === "loading") return `<div class="state-block" data-state="loading"><h4>${escapeHtml(INCIDENT_TRACE_HEADING)}</h4><p>Reading ${escapeHtml(view.trace.ref)}…</p></div>`;
-  if (view.trace.state === "unknown") return `<div class="state-block" data-state="urgent"><h4>${escapeHtml(INCIDENT_TRACE_HEADING)}</h4><p>${escapeHtml(view.trace.ref)} could not be read. Nothing here has been inferred.</p></div>`;
+  if (view.trace.state === "unknown") return `<div class="state-block" data-state="urgent"><h4>${escapeHtml(INCIDENT_TRACE_HEADING)}</h4><p>Details temporarily unavailable.</p></div>`;
   const rows = incidentTraceRows(view.trace.payload?.trace);
   return `
     <div class="atlas-trace">
@@ -443,7 +438,7 @@ function renderSelection() {
     <div class="atlas-evidence">
       <div><p class="eyebrow">What this is</p><p>${escapeHtml(node.layer)}</p></div>
       <div><p class="eyebrow">The strongest thing we know about it</p><p>${escapeHtml(node.evidence)}</p></div>
-      <div><p class="eyebrow">Source</p><p class="mono">${escapeHtml(node.source_ref)}</p></div>
+      <div><p class="eyebrow">Reference</p><p class="mono">${escapeHtml(node.source_ref)}</p></div>
     </div>
     <div class="atlas-run">${run}${verbGap}</div>
     ${ruleNotes}
@@ -475,7 +470,7 @@ function renderState() {
     // The failure this slice exists to prevent: an incomplete atlas must never
     // read as an empty or a whole one, so the producer's own sentence is the
     // loudest thing here, above the list.
-    block.innerHTML = `<h3>${escapeHtml(INCOMPLETE_HEADING)}</h3><p>${escapeHtml(view.payload?.source?.safe_explanation || "")}</p>`;
+    block.innerHTML = `<h3>${escapeHtml(INCOMPLETE_HEADING)}</h3><p>${escapeHtml(updatedLabel(view.payload?.source?.observed_at))}</p>`;
     return;
   }
   const copy = ATLAS_STATE_COPY[phase] || ATLAS_STATE_COPY.offline;
@@ -728,6 +723,7 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
   $("atlasTourPrev")?.addEventListener("click", () => retreatTour());
   $("atlasTourExit")?.addEventListener("click", () => exitTour());
   if (node) view.selected = node;
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => read(null, { background: true }) });
   read().then(() => { if (node) selectNode(node, { push: false }); });
 }
 

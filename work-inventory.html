@@ -24,15 +24,6 @@
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </header>
@@ -40,12 +31,12 @@
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">
       <div>
-        <p class="eyebrow"><span class="orb" data-state="still" id="censusOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span> · every source, every status</p>
+        <p class="eyebrow"><span class="orb" data-state="still" id="censusOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span> · All work</p>
         <h1 id="pageTitle">All Work</h1>
       </div>
       <div class="chip-bar">
         <span class="status" data-state="unknown" id="censusStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="censusStatusLabel">Reading the census…</span></span>
-        <span class="as-of" id="censusAsOf">Reading canonical state…</span>
+        <span class="as-of" id="censusAsOf">Updating…</span>
       </div>
     </section>
 
@@ -53,18 +44,18 @@
 
     <section class="card glass" aria-labelledby="filterTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Filter</p><h2 id="filterTitle">Sources and status</h2></div>
+        <div><p class="eyebrow">Filter</p><h2 id="filterTitle">Areas and status</h2></div>
         <span class="panel-note">All statuses shown by default</span>
       </div>
-      <div class="chip-bar" id="kindChips" role="group" aria-label="Sources to read">
-        <span class="chip-label">Sources</span>
+      <div class="chip-bar" id="kindChips" role="group" aria-label="Work types">
+        <span class="chip-label">Areas</span>
         <button class="chip" type="button" data-kind="work_request" aria-pressed="true">Work requests</button>
         <button class="chip" type="button" data-kind="portfolio_node" aria-pressed="true">Portfolio nodes</button>
         <button class="chip" type="button" data-kind="loop" aria-pressed="true">Open loops</button>
         <button class="chip" type="button" data-kind="work_shape" aria-pressed="true">Work shapes</button>
         <button class="chip" type="button" data-kind="slice_plan" aria-pressed="true">Slice plans</button>
         <button class="chip" type="button" data-kind="governance_item" aria-pressed="true">Governance items</button>
-        <button class="chip chip-reset" type="button" id="kindReset">Read all six</button>
+        <button class="chip chip-reset" type="button" id="kindReset">All areas</button>
       </div>
       <div class="field">
         <label for="statusFilter">Status contains</label>
@@ -76,10 +67,10 @@
 
     <section class="card glass" aria-labelledby="coverageTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Coverage by source</h2></div>
+        <div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Availability</h2></div>
         <span class="as-of" id="coverageSummary">Coverage unknown until the census answers.</span>
       </div>
-      <ul class="work-list" id="coverageStrip" aria-label="Coverage by source">
+      <ul class="work-list" id="coverageStrip" aria-label="Work coverage">
         <li class="work-item"><div><h3>Reading coverage…</h3><div class="skeleton-line"></div></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Pending</span></li>
       </ul>
     </section>
@@ -90,14 +81,14 @@
         <span class="as-of" id="itemsCount">Reading…</span>
       </div>
       <div class="state-block" id="inventoryState" data-state="loading">
-        <h3>Reading the complete work inventory…</h3>
-        <p>Six canonical sources, read at request time.</p>
+        <h3>Loading work…</h3>
+
       </div>
       <div id="kindGroups"></div>
       <div class="chip-bar">
         <button class="btn btn-primary" type="button" id="loadMore" hidden>Load more</button>
-        <button class="btn" type="button" id="retryRead" hidden>Retry read</button>
-        <p class="small" id="sourceLine">Source pending</p>
+        <button class="btn" type="button" id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+        <p class="small" id="sourceLine"></p>
       </div>
     </section>
     <section class="card glass" aria-labelledby="stagesTitle">
@@ -110,12 +101,12 @@
       </div>
       <div class="stage-scroll">
         <table class="data-table stage-table" id="stageTable">
-          <caption>Counts have a known denominator; N/A carries a reason.</caption>
+          <caption>Delivery stages</caption>
           <thead><tr>
             <th scope="col">Record</th>
             <th scope="col">Planned</th>
             <th scope="col">Approved</th>
-            <th scope="col">Source verified</th>
+            <th scope="col">Reference verified</th>
             <th scope="col">Merged</th>
             <th scope="col">Released</th>
             <th scope="col">Activated</th>
@@ -125,7 +116,7 @@
           <tbody id="stageRows"></tbody>
         </table>
       </div>
-      <p class="small" id="stageDenominatorLine">Denominator unknown until the census answers.</p>
+      <p class="small" id="stageDenominatorLine"></p>
     </section>
 
     <section class="card glass" aria-labelledby="dispositionTitle">
@@ -135,7 +126,7 @@
       </div>
       <div class="state-block" id="dispositionMissing" data-state="unknown">
         <h3>Not available here</h3>
-        <p>No supported disposition command exists for combine, shelve, investigate or finish shipping. Joe decides those in the record layer.</p>
+        <p></p>
       </div>
       <ul class="work-list" id="dispositionRows"></ul>
     </section>
@@ -146,7 +137,7 @@
       <header><div><p class="eyebrow">Delivery evidence</p><h2 id="evidenceTitle">Record</h2></div><button class="btn icon-btn" type="button" id="evidenceClose" aria-label="Close">×</button></header>
       <div class="dialog-body">
         <dl class="detail-rows" id="evidenceRows"></dl>
-        <p class="small">Independent review is recorded by the reviewing seat, not from this page.</p>
+        <p class="small"></p>
       </div>
     </article>
   </dialog>
@@ -159,7 +150,7 @@
         <div class="field">
           <label for="dispositionReason" id="dispositionReasonLabel">Why</label>
           <input id="dispositionReason" type="text" autocomplete="off" required placeholder="Say why, in your own words">
-          <p class="field-hint">The record layer refuses this without a reason.</p>
+
         </div>
         <div class="field" id="dispositionSuccessorField" hidden>
           <label for="dispositionSuccessor">Successor</label>
@@ -179,7 +170,7 @@
         <p class="state-block" id="dispositionRefusal" data-state="refused" hidden></p>
         <div class="row-wrap">
           <button class="btn btn-primary" type="submit" id="dispositionConfirm">Record it</button>
-          <button class="btn btn-secondary" type="button" id="dispositionReread" hidden>Read again</button>
+          <button class="btn btn-secondary" type="button" id="dispositionReread" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
           <button class="btn btn-quiet" type="button" id="dispositionCancel">Leave it as it is</button>
         </div>
       </div>

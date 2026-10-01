@@ -89,7 +89,7 @@ test("the detail distinguishes a recorded value from one that was never recorded
   assert.equal(byLabel.Number.text, "#12");
   assert.equal(byLabel.Owner.text, "Joe");
   assert.equal(byLabel.Domain.text, "Marketing");
-  assert.equal(byLabel.Source.text, "Joe, voice memo");
+  assert.equal(byLabel.Reference.text, "Joe, voice memo");
   assert.equal(byLabel.Due.known, false, "no due date is 'not recorded', never a blank or 'none'");
   assert.equal(byLabel.Due.text, "not recorded");
   assert.equal(byLabel.Opened.known, true);

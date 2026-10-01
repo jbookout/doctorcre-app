@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { createSystemWorkClient } from "./system-work-client.js";
 import { actionForCard, renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
 
@@ -156,6 +157,7 @@ const actionForms = { triage: triageForm, "prepare-plan": planForm, "accept-plan
 
 async function boot() {
   const session = await client.bootstrap();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => refresh() });
   $("#systemWorkActor").textContent = `Signed in as ${session.actor?.display || session.actor?.slug || "partner"}`;
   $("#reportProblemButton").onclick = reportForm;
   $("#openWorkRequest").onsubmit = async (event) => { event.preventDefault();

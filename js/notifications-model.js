@@ -71,7 +71,7 @@ export const DEVICE_OFF = "device push is off for you";
 
 /** What quiet hours DO. Unchanged from B12a: the producer did not change. */
 export const QUIET_HOURS_EFFECT =
-  "Inside your quiet hours the record layer holds a device push instead of dropping it, and records that it held it. The in-app item is never suppressed.";
+  "";
 
 /**
  * The scope sentence that replaces B12a's honesty paragraph. The window is
@@ -80,7 +80,7 @@ export const QUIET_HOURS_EFFECT =
  * else's.
  */
 export const QUIET_HOURS_SCOPE =
-  "These are your own preferences. Neither verb takes an actor, so this form can only read and set yours, and a save carries the version this page last read so it can never silently overwrite a change made somewhere else.";
+  "";
 
 /** The banner shown when the record layer says quiet hours cover this moment. */
 export const QUIET_NOW_BANNER =
@@ -91,11 +91,11 @@ export const QUIET_SUPPRESSED_MARK = "held by your quiet hours";
 
 /** The candid mobile-exposure statement rule f0f9156e asks a page to make. */
 export const EXPOSURE_STATEMENT =
-  "This feed is yours alone, and its subjects name real deals, so on a shared or unlocked phone this page shows business subjects at a glance. It holds no document contents and no credentials, and nothing on it is cached offline.";
+  "";
 
 /** What acknowledging does, and the boundary it does not cross. */
 export const ACKNOWLEDGE_SCOPE =
-  "Acknowledging clears the notification. It does not complete, close or change the work the notification is about.";
+  "";
 
 /**
  * Every route this application serves, copied from
@@ -107,10 +107,11 @@ export const ACKNOWLEDGE_SCOPE =
 export const APP_ROUTE_PATHS = Object.freeze([
   "/", "/control-room", "/control-room/progress", "/control-room/agents/queue", "/deals", "/leads", "/clients", "/vendors",
   "/calendar", "/ideas-events", "/work-requests", "/agent-room", "/tours", "/share", "/design-lab",
-  "/all-work", "/tasks", "/search", "/status", "/incidents", "/updates", "/doc-chats",
+  "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats",
 ]);
 
 const LEGACY_ROUTE_HOMES = Object.freeze({
+  "/tasks": "/", "/work": "/", "/tasks.html": "/",
   "/progress-board": "/control-room/progress", "/workspace": "/", "/queue.html": "/control-room/agents/queue",
   "/pipeline": "/deals?view=board", "/business": "/", "/ideas": "/ideas-events",
   "/system-work.html": "/work-requests", "/room.html": "/agent-room", "/design": "/design-lab",
@@ -261,14 +262,14 @@ export function classifyReadFailure(error) {
 
 /** The eight states UX20 demands, each with the sentence the page renders. */
 export const FEED_STATES = Object.freeze({
-  loading: "Reading your notifications…",
-  empty: "You have no notifications, and nothing is unread.",
-  no_match: "No notification was created after that time. The filter matched nothing; the feed is not empty.",
-  stale: "This is the last picture that landed. A newer read has not answered yet.",
-  unavailable: "The feed did not answer. It may have been served; nothing was retried for you.",
-  refused: "The record layer refused this read. It was decided before the verb ran, and nothing was read.",
-  unknown: "The feed could not be shaped, so this page shows nothing rather than a guess.",
-  partial: "This list is capped, so it is shorter than your unread count.",
+  loading: "Loading notifications…",
+  empty: "No notifications",
+  no_match: "No matching notifications",
+  stale: "Updating…",
+  unavailable: "Notifications temporarily unavailable",
+  refused: "Unavailable for this account",
+  unknown: "Notifications temporarily unavailable",
+  partial: "More notifications available",
 });
 
 /**
@@ -410,9 +411,9 @@ export function preferenceSummary(view) {
 
 /** The documented answer when no row exists, said as an absence, not a value. */
 export const PREFERENCE_DEFAULTS_SENTENCE =
-  "You have never saved a notification preference, so these are the record layer's documented defaults: no quiet hours, device push off, UTC. Nothing has been written on your behalf.";
+  "Quiet hours off · Push off · UTC";
 export const PREFERENCE_SAVED_SENTENCE =
-  "These are your saved preferences, read back from the record layer.";
+  "Preferences saved";
 export function preferenceOriginSentence(view) {
   if (!view) return "unknown";
   return view.exists ? PREFERENCE_SAVED_SENTENCE : PREFERENCE_DEFAULTS_SENTENCE;
@@ -420,11 +421,11 @@ export function preferenceOriginSentence(view) {
 
 /** The five states the panel can be in, each with the sentence it renders. */
 export const PREFERENCE_STATES = Object.freeze({
-  loading: "Reading your preferences…",
+  loading: "Loading preferences…",
   ready: null,
-  unavailable: "Your preferences did not answer. They may have been read; nothing was retried for you.",
-  refused: "The record layer refused this read. It was decided before the verb ran, and nothing was read.",
-  unknown: "Your preferences could not be shaped, so this page shows nothing rather than a guess.",
+  unavailable: "Preferences temporarily unavailable",
+  refused: "Unavailable for this account",
+  unknown: "Preferences temporarily unavailable",
 });
 
 export function classifyPreferenceReadFailure(error) {
@@ -500,19 +501,19 @@ export const PREFERENCE_REFUSALS = Object.freeze({
   // would invite saving a change that was composed against a picture that is no
   // longer true.
   version_conflict:
-    "Your preferences changed somewhere else while this form was open, so nothing was saved. The form has been read again and now shows the current values and the current version, and anything you had typed and not saved has been replaced by them — check them and save again.",
+    "Preferences changed elsewhere. Your changes were not saved.",
   notification_preference_quiet_hours_incomplete:
     "Quiet hours are two times. Set a start and an end together, or clear them together. Nothing was saved.",
   notification_preference_quiet_hours_conflicting_request:
-    "Clearing quiet hours and setting one are the same request here, so the record layer refused it. Do one or the other. Nothing was saved.",
+    "Quiet hours could not be saved.",
   notification_preference_timezone_unknown:
-    "The record layer does not know that timezone. Use an IANA name such as America/Chicago. Nothing was saved.",
+    "Timezone unavailable. Preferences were not saved.",
   notification_preference_idempotency_key_required:
-    "That save carried no idempotency key, so the record layer refused it. Nothing was saved.",
+    "Preferences were not saved.",
   notification_preference_idempotency_key_reused:
-    "That key has already been used for a different save, so the record layer refused it. Nothing was saved.",
+    "Preferences were not saved.",
   notification_preference_not_set:
-    "The record layer refused the save without naming a reason. Nothing was saved.",
+    "Preferences were not saved.",
 });
 
 export const VERSION_CONFLICT = "version_conflict";
@@ -534,7 +535,7 @@ export function classifyPreferenceFailure(source) {
     currentVersion: Number.isInteger(payload.current_version) ? payload.current_version
       : (Number.isInteger(source?.conflict?.current_version) ? source.conflict.current_version : null),
     message: code
-      ? (PREFERENCE_REFUSALS[code] || `The record layer refused this save as ${code}. Nothing was saved.`)
+      ? (PREFERENCE_REFUSALS[code] || `Preferences were not saved.`)
       : REFUSAL_SENTENCE,
   };
 }
@@ -561,5 +562,5 @@ export function quietNowBanner(feedPayload, preferencePayload) {
  */
 export function versionConflictLine(currentVersion, baseVersion) {
   if (!Number.isInteger(currentVersion) || !Number.isInteger(baseVersion)) return null;
-  return `It was saving against version ${baseVersion}; the record layer holds version ${currentVersion}.`;
+  return `Preferences changed elsewhere.`;
 }

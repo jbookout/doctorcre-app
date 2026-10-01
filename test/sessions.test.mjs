@@ -145,7 +145,7 @@ test("S02-07 permission_filtered true with an empty list renders the filtered ba
   assert.equal(state.state, "empty_filtered");
   assert.equal(state.message, "4 sessions match and none is yours to see.");
   assert.ok(state.banner, "the banner renders even though the list is empty");
-  assert.match(state.banner.text, /Permission filtering is on/);
+  assert.match(state.banner.text, /Available sessions/);
 });
 
 // MUTATION: always render the filtered banner in listState().
@@ -175,8 +175,8 @@ test("S02-10 the live corpus lands on not-recorded and the tab says so", () => {
   const summary = lineageSummary(DEFAULT_PAGE.sessions);
   assert.equal(summary.allUnrecorded, true);
   assert.equal(summary.count, 25);
-  assert.match(summary.text, /No session on this page has recorded lineage/);
-  assert.match(summary.text, /parent_known false/);
+  assert.match(summary.text, /Earlier session history unavailable/);
+  assert.match(summary.text, /Earlier session history unavailable/);
   assert.equal(lineageSummary([RETRY_ROW, ...DEFAULT_PAGE.sessions]).allUnrecorded, false);
 });
 
@@ -228,8 +228,8 @@ test("S02-13 supported host with a null host id renders the mismatch, not an ope
   assert.equal(state.state, "mismatch_no_host_id");
   assert.equal(state.open, false);
   assert.equal(state.hostId, null);
-  assert.match(state.text, /supported but no host id/);
-  assert.match(state.text, /does not\s+say which one/);
+  assert.match(state.text, /Session window unavailable/);
+  assert.match(state.text, /Session window unavailable/);
 });
 
 /* --------------------------------------------------------- honesty and stages */

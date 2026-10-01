@@ -18,7 +18,7 @@ import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatCalendarDate } from "./visual-system.js";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import {
   addDays, approach, calendarHref, calendarPhase, entriesByDay, localToday, monthGrid, motionDirection,
   parseCalendarState, readCalendar, staggerDelay, stepAnchor, upcomingEntries, weekStrip,
@@ -177,12 +177,12 @@ function paintDayPanel() {
     return;
   }
   if (phase === "unauthorized" || phase === "unavailable") {
-    body.innerHTML = '<p class="small">Nothing is shown for this day until the record can be read.</p>';
+    body.innerHTML = '<p class="small">Calendar temporarily unavailable.</p>';
     return;
   }
   const rows = view.byDay.get(day) || [];
   if (rows.length === 0) {
-    const partial = view.result.failed?.length ? " Some deals could not be read, so this may not be every date." : "";
+    const partial = view.result.failed?.length ? " Some deals temporarily unavailable, so this may not be every date." : "";
     body.innerHTML = `<p class="small">No critical date is recorded on this day.${escapeHtml(partial)}</p>`;
     return;
   }
@@ -223,14 +223,14 @@ function paintAgenda() {
   const missing = phase === "ready" || phase === "partial" || phase === "empty" ? view.result.undated : [];
   if (undated) undated.hidden = missing.length === 0;
   if (undatedList) {
-    undatedList.innerHTML = missing.map((entry) => `<li><b>${escapeHtml(entry.label)}</b> · ${escapeHtml(entry.deal_name)} — the record carries no date this page can read</li>`).join("");
+    undatedList.innerHTML = missing.map((entry) => `<li><b>${escapeHtml(entry.label)}</b> · ${escapeHtml(entry.deal_name)} — Date unavailable</li>`).join("");
   }
 }
 
 const STATE_COPY = {
   loading: "Reading every deal's critical dates…",
   unauthorized: "Your session has ended. Sign in again to read the calendar; nothing is shown from an ended session.",
-  unavailable: "The deal board could not be read, so no date is shown. Nothing here has been inferred.",
+  unavailable: "Calendar temporarily unavailable.",
   empty: "No deal carries a critical date yet.",
 };
 
@@ -253,18 +253,18 @@ function paintNotices(phase) {
   const failed = view.result.failed;
   const names = failed.slice(0, 6).map((row) => escapeHtml(row.deal_name)).join(", ");
   const rest = failed.length > 6 ? ` and ${failed.length - 6} more` : "";
-  region.innerHTML = `<div class="notice notice-partial" role="status"><p class="notice-title">${failed.length} of ${view.result.dealCount} deals could not be read</p>`
-    + `<p class="notice-copy">Their dates are not on this calendar: ${names}${rest}. The rest are shown as read.</p>`
-    + '<button class="btn" type="button" data-retry="calendar">Check again</button></div>';
+  region.innerHTML = `<div class="notice notice-partial" role="status"><p class="notice-title">${failed.length} of ${view.result.dealCount} deals temporarily unavailable</p>`
+    + `<p class="notice-copy">Their dates are not on this calendar: ${names}${rest}. </p>`
+    + '<button class="btn" type="button" data-retry="calendar" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button></div>';
 }
 
 function render() {
   const phase = calendarPhase(view.result);
-  if (phase === "loading") setStatus("refreshing", "Reading the record…");
+  if (phase === "loading") setStatus("refreshing", "Updating…");
   else if (phase === "unauthorized") setStatus("unknown", "Session ended");
-  else if (phase === "unavailable") setStatus("urgent", "Record read unavailable");
-  else if (phase === "partial") setStatus("attention", "Partly read");
-  else setStatus("healthy", "Read from the record layer");
+  else if (phase === "unavailable") setStatus("urgent", "Unavailable");
+  else if (phase === "partial") setStatus("attention", "Partly available");
+  else setStatus("healthy", "Current");
 
   view.byDay = phase === "ready" || phase === "partial" ? entriesByDay(view.result.entries) : new Map();
   paintState(phase);
@@ -281,10 +281,10 @@ function render() {
 
   const asOf = $("calAsOf");
   if (asOf && view.result.status === "ready") {
-    asOf.textContent = `${view.result.entries.length} dated · ${view.result.readCount} of ${view.result.dealCount} deals read`;
+    asOf.textContent = updatedLabel(view.updatedAt);
   } else if (asOf) asOf.textContent = "";
   const source = $("calSource");
-  if (source) source.textContent = `Source: deal-room-board, then get-deal-room per deal · ${deploymentIdentity(client?.mode).detail}`;
+  if (source) source.textContent = "";
 }
 
 /* -------------------------------------------------------------- navigation */
@@ -375,15 +375,16 @@ async function load({ failClosed = false } = {}) {
   const sequence = ++view.sequence;
   if (failClosed) { view.result = { status: "loading" }; render(); }
   else if (view.result.status !== "ready") { view.result = { status: "loading" }; render(); }
-  else setStatus("refreshing", "Checking again…");
+  else setStatus("refreshing", "Updating…");
   const result = await readCalendar(client);
   if (sequence !== view.sequence) return;
   view.result = result;
+  if (["ready", "partial"].includes(result.status)) view.updatedAt = new Date().toISOString();
   view.painted = null;
   render();
   const phase = calendarPhase(result);
   if (phase === "ready" || phase === "partial") {
-    announce(`${result.entries.length} critical date${result.entries.length === 1 ? "" : "s"} read from ${result.readCount} of ${result.dealCount} deals.`);
+    announce(`${result.entries.length} critical dates`);
   } else {
     announce(STATE_COPY[phase] || "");
   }
@@ -399,7 +400,7 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
-  mountReadOnResume({ document, window, refresh: () => load({ failClosed: true }) });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ failClosed: true }) });
   await load();
 }
 

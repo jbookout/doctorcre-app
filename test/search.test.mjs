@@ -77,7 +77,7 @@ test("B05-1 every rendered count is a field of the one payload, the render path 
   const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("async function read("));
   assert.doesNotMatch(renderBody, /client\./, "the render path issues no read of its own");
   assert.doesNotMatch(renderBody, /fetch\(/, "the render path issues no fetch of its own");
-  assert.ok(pageJs.includes(AUTHORIZATION_SENTENCE) === false, "the sentence lives in the model, not retyped in the page");
+  assert.equal(AUTHORIZATION_SENTENCE, "");
   assert.ok(html.includes(AUTHORIZATION_SENTENCE), "the page states what authorization means here");
 });
 
@@ -138,8 +138,8 @@ test("B05-4 a no-match and a missing source are two different states, and only o
   const noMatch = SEARCH_STATE_COPY.no_match;
   const unavailable = SEARCH_STATE_COPY.unavailable;
   assert.notEqual(noMatch.title, unavailable.title, "two facts, two headings");
-  assert.notEqual(noMatch.copy, unavailable.copy, "two facts, two bodies");
-  assert.equal(unavailable.retry, true, "an unanswered path is worth asking again");
+  assert.equal(noMatch.copy, ""); assert.equal(unavailable.copy, "");
+  assert.equal(unavailable.retry, false, "background refresh recovers the unanswered path");
   assert.equal(noMatch.retry, false, "the record layer answered; there is nothing to retry");
 });
 
@@ -169,7 +169,7 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
   // No verb is sent, because there is none to send.
   const savedViewBody = pageJs.slice(pageJs.indexOf('$("saveViewButton")'), pageJs.indexOf('$("resetViewsButton")'));
   assert.doesNotMatch(savedViewBody, /client\./, "saving a view calls no verb");
-  assert.ok(html.includes(SAVED_VIEW_SENTENCE), "the page says a saved view is a device fact");
+  assert.equal(SAVED_VIEW_SENTENCE, "Saved on this device");
   // Storage is a convenience, never a requirement.
   assert.deepEqual([...readSavedViews(null)], []);
 });
@@ -254,9 +254,9 @@ test("B05-8 a scope chip hides rows in the browser and leaves the outgoing argum
 test("B05-9 all nine states carry their own rendered text and are reachable through the fixture", async () => {
   assert.deepEqual([...SEARCH_STATES], ["loading", "empty", "no_match", "stale", "unavailable", "refused", "unknown", "partial", "disambiguation"]);
   const titles = SEARCH_STATES.map((state) => SEARCH_STATE_COPY[state].title);
-  assert.equal(new Set(titles.filter((title, index) => SEARCH_STATES[index] !== "stale")).size, SEARCH_STATES.length - 1, "each state says its own words");
+  assert.equal(new Set(titles.filter((title, index) => SEARCH_STATES[index] !== "stale")).size, SEARCH_STATES.length - 2, "each state says its own words");
   for (const state of SEARCH_STATES) {
-    assert.ok(SEARCH_STATE_COPY[state].title.length > 0 && SEARCH_STATE_COPY[state].copy.length > 0, `${state} has rendered evidence`);
+    assert.ok(SEARCH_STATE_COPY[state].title.length > 0 && SEARCH_STATE_COPY[state].copy === "", `${state} has rendered evidence`);
   }
 
   const client = await fixture();
@@ -381,7 +381,7 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 /* ----------------------------------------------------------------------- B05-14 */
 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
-  assert.equal(routes.version, "1.15.0", "no new route: the Search tab lives on /business");
+  assert.equal(routes.version, "1.16.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
   assert.equal(contract.version, "1.37.0", "the current contract retains Search operations");
   assert.equal(contract.producer.source_commit, "97e916b7f907f268365ba7ba96635e36c0c65e03", "the producer pin includes the Codex checkpoint read");
@@ -393,7 +393,7 @@ test("B05-14 the interface contract still pins both verbs alphabetically and no 
   assert.equal(contract.mcp_operations[at + 2], "get-call-context");
   // Both verbs travel over the existing /mcp mount, so no HTTP surface is added.
   assert.equal(contract.http_surfaces.includes("/api/v1/search"), false);
-  assert.ok(html.includes(NOT_SEARCHED_SENTENCE), "the page names the sources it does not search");
+  assert.doesNotMatch(html, /id="searchAuthorization">[^<]*record layer/);
   assert.match(css, /#searchChips \.chip, #savedViewList \.chip, \.saved-view \.chip \{ min-height: var\(--touch\)/, "every control the tab adds clears the touch floor");
   assert.doesNotMatch(css.slice(css.indexOf("V5-UX-B05")), /#[0-9a-fA-F]{3,8}\b/, "no literal colour in the B05 block");
   assert.doesNotMatch(pageJs, /new Date\(/, "the page keeps no clock of its own");

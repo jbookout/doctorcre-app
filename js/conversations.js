@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
 //
 // Every decision about a payload, a state or a sentence lives in
@@ -167,7 +168,7 @@ function renderAccess() {
     <div class="work-meta"><span>granted by ${escapeHtml(row.grantedBy)} · ${escapeHtml(row.clock)}</span></div></div>
     <div class="stack-end"></div>
   </li>`).join("") || (payload
-    ? `<li class="work-item" data-priority="ordinary"><div><h3 class="access-row">Nobody else can read this conversation</h3><div class="work-meta"><span>read from the record layer</span></div></div><div class="stack-end"></div></li>`
+    ? `<li class="work-item" data-priority="ordinary"><div><h3 class="access-row">Nobody else can read this conversation</h3><div class="work-meta"><span></span></div></div><div class="stack-end"></div></li>`
     : "");
   $("shareControls").innerHTML = shareCandidates(payload, PARTNER_SLUGS).map((row) => `<button class="btn share-toggle" type="button" data-share="${escapeHtml(row.slug)}" aria-pressed="${row.granted}">${row.granted ? "Shared with" : "Not shared with"} ${escapeHtml(row.slug)}</button>`).join("");
   const header = identityHeader(payload);
@@ -286,7 +287,7 @@ function renderOutcomeCards() {
     list.innerHTML = "";
     block.hidden = false;
     block.dataset.state = "loading";
-    $("outcomeCardsStateTitle").textContent = "Taking the read…";
+    $("outcomeCardsStateTitle").textContent = "Updating…";
     if (paging) paging.hidden = true;
     return;
   }
@@ -295,7 +296,7 @@ function renderOutcomeCards() {
     block.hidden = false;
     block.dataset.state = "unavailable";
     $("outcomeCardsStateTitle").textContent = view.outcomeCards.sentence
-      || "The outcome cards read could not be rendered.";
+      || "Updates temporarily unavailable.";
     if (paging) paging.hidden = true;
     return;
   }
@@ -379,7 +380,7 @@ function renderSuggestions() {
       <div class="suggestion-content">
         <div class="suggestion-heading"><span class="suggestion-beacon" aria-hidden="true"></span><h3>${escapeHtml(card.polished)}</h3></div>
         <p class="work-meta">${escapeHtml(card.contributor)} · ${escapeHtml(formatClock(card.sourceAt) || "time unavailable")}
-          ${source ? ` · <a href="${source}">Open source conversation</a>` : ""}</p>
+          ${source ? ` · <a href="${source}">Open conversation</a>` : ""}</p>
         ${card.uncertainty ? `<p class="suggestion-uncertainty">${escapeHtml(card.uncertainty)}</p>` : ""}
         ${suggestionFlowSvg(card)}
         <details class="suggestion-original"><summary>Original and contributions</summary>
@@ -409,7 +410,7 @@ function renderSuggestions() {
       <div><strong>This suggestion changed.</strong>
         <p>${conflict.source === "read" ? "Current record" : "Record at refusal"}: ${escapeHtml(conflict.current.polished || conflict.current.original || "unavailable")}</p>
         ${conflict.choice ? `<p>Your ${escapeHtml(conflict.choice)} choice was not saved.</p>` : `<p>Your correction: ${escapeHtml(conflict.draft)}</p>`}
-        <p>Read again to review the current version before acting.</p></div>
+        <p>Updating…</p></div>
     </li>`).join("");
   list.querySelectorAll(".suggestion-card").forEach((node, index) =>
     node.style.setProperty("--suggestion-delay", `${Math.min(index * 75, 600)}ms`));
@@ -507,7 +508,7 @@ async function takeOutcomeCards({ cursor = null } = {}) {
     if (view.outcomeCards.sequence !== sequence) return;
     const refusal = refuseDocOutcomeCards(payload);
     if (refusal) {
-      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
+      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: `Updates temporarily unavailable.` };
     } else {
       view.outcomeCards = { ...view.outcomeCards, state: "read", payload, rows: [...held, ...payload.cards],
         checkpoints: codexCheckpoints(checkpointPayload), sequence };
@@ -547,7 +548,7 @@ async function takeSuggestions() {
   renderSuggestions();
   const live = $("suggestionsLive");
   if (live) live.textContent = view.suggestions.state === "read"
-    ? `${view.suggestions.rows.length} suggestions read from the record layer. ${suggestionStatus(view.suggestions, view.suggestions.rows.length).title}`
+    ? `${view.suggestions.rows.length} suggestions · ${suggestionStatus(view.suggestions, view.suggestions.rows.length).title}`
     : view.suggestions.sentence;
 }
 
@@ -849,6 +850,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
 }
 
 boot();

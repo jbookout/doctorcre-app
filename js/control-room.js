@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C01 — the Control Room: DOM wiring only.
 //
 // Every decision about a payload lives in ./control-room-model.js, and the
@@ -89,7 +90,7 @@ const payloadOf = (id) => (view.reads[id]?.state === "read" ? view.reads[id].pay
 function readFor(id) {
   const read = view.reads[id] || {};
   if (read.state === "read") return { state: "read", payload: read.payload };
-  return { state: "unknown", reason: read.reason || "this read has not answered yet" };
+  return { state: "unknown", reason: read.reason || "Updating…" };
 }
 
 /* -------------------------------------------------------------------- painting */
@@ -104,10 +105,10 @@ function renderCoverage() {
     const clock = resource.state === "read" && projectResourceDashboard(resource.payload).schema
       ? formatClock(resource.observed_at) : null;
     chips.push(clock
-      ? { state: "read", text: `Resources: read at ${clock}` }
+      ? { state: "read", text: `Resources: updated ${clock}` }
       : { state: "unknown", text: `Resources: unknown (${resource.reason || "the response could not be verified"})` });
   }
-  strip.innerHTML = `<span class="chip-label">Each read states its own clock</span>${chips
+  strip.innerHTML = `<span class="chip-label">Last updated</span>${chips
     .map((chip) => `<span class="chip" data-state="${escapeHtml(chip.state)}">${escapeHtml(chip.text)}</span>`)
     .join("")}`;
 }
@@ -193,7 +194,7 @@ function renderActiveWork() {
       item.blocker ? `blocked: ${item.blocker.code}${item.blocker.detail ? ` — ${item.blocker.detail}` : ""}` : "no blocker recorded",
     ].join(" · "),
     end: canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : "",
-  })).join("") || rowHtml({ title: "Nothing is held right now", meta: "the queue may still hold ready work, which this read deliberately does not show" });
+  })).join("") || rowHtml({ title: "Nothing is held right now", meta: "" });
 
   const stalls = stallCandidates(payload.current, { cadence: STUCK_SILENCE_HOURS });
   longestList.innerHTML = stalls.items.map((item) => rowHtml({
@@ -203,9 +204,9 @@ function renderActiveWork() {
 }
 
 function needsJoeDetailFieldsHtml(fields) {
-  if (!fields.available) return `<p class="small">The detail could not be read: ${escapeHtml(fields.reason)}.</p>`;
+  if (!fields.available) return `<p class="small">Details temporarily unavailable.</p>`;
   const row = (label, field) => `<dt>${escapeHtml(label)}</dt><dd>${
-    field.present ? escapeHtml(field.value) : `not provided by the server${field.reason ? ` (${escapeHtml(field.reason)})` : ""}`
+    field.present ? escapeHtml(field.value) : `Unavailable${field.reason ? ` (${escapeHtml(field.reason)})` : ""}`
   }</dd>`;
   const evidenceRow = fields.evidence.present
     ? `<dt>evidence links</dt><dd>${
@@ -213,9 +214,9 @@ function needsJoeDetailFieldsHtml(fields) {
         ? fields.evidence.items.map((entry) => escapeHtml(typeof entry === "string" ? entry : JSON.stringify(entry))).join("; ")
         : escapeHtml(fields.evidence.emptyText)
     }</dd>`
-    : `<dt>evidence links</dt><dd>not provided by the server (${escapeHtml(fields.evidence.reason)})</dd>`;
+    : `<dt>evidence links</dt><dd>Unavailable (${escapeHtml(fields.evidence.reason)})</dd>`;
   return `<dl class="detail-rows">
-    <dt>original request</dt><dd>${fields.originalRequest.present ? escapeHtml(fields.originalRequest.value) : `not provided by the server (${escapeHtml(fields.originalRequest.reason)})`}</dd>
+    <dt>original request</dt><dd>${fields.originalRequest.present ? escapeHtml(fields.originalRequest.value) : `Unavailable (${escapeHtml(fields.originalRequest.reason)})`}</dd>
     ${row("recommended answer", fields.recommendedAnswer)}
     ${row("business impact", fields.businessImpact)}
     ${evidenceRow}
@@ -234,16 +235,16 @@ function renderNeedsJoeDetail() {
   panel.hidden = false;
   title.textContent = `${detail.humanRef}, in full`;
   if (detail.state === "loading") {
-    asOfLine.textContent = "Taking the work-request-card read…";
+    asOfLine.textContent = "Updating…";
     rows.innerHTML = "";
     return;
   }
   if (detail.refusal) {
-    asOfLine.textContent = `The detail could not be read: ${detail.refusal}.`;
+    asOfLine.textContent = `Details temporarily unavailable.`;
     rows.innerHTML = "";
     return;
   }
-  asOfLine.textContent = "As of this read";
+  asOfLine.textContent = updatedLabel(detail.payload?.updated_at || detail.payload?.updatedAt);
   rows.innerHTML = needsJoeDetailFieldsHtml(needsJoeCardFields(detail.payload));
 }
 
@@ -295,7 +296,7 @@ function renderNeedsJoe() {
     title: item.title,
     meta: [
       `${item.human_ref} · ${item.state}`,
-      `source ${item.source.label || "unknown"} (${item.source.freshness || "unknown"})`,
+
       item.next_human_action || "no next action recorded",
       needsJoeAdvisoryLabel(payload, index),
     ].join(" · "),
@@ -321,7 +322,7 @@ function renderDelivery() {
   if (!payload || !validWorkInventoryPayload(payload)) {
     value.textContent = "unknown";
     value.setAttribute("data-state", "unavailable");
-    reason.textContent = view.reads.census?.reason || "the census did not answer.";
+    reason.textContent = view.reads.census?.reason || "Work temporarily unavailable.";
     state.hidden = false;
     return;
   }
@@ -331,7 +332,7 @@ function renderDelivery() {
   value.textContent = renderCount(returned, denominator);
   value.setAttribute("data-state", denominator.known ? "read" : "unavailable");
   reason.textContent = denominator.known
-    ? "Work requests read on this page, against the census's own total."
+    ? "Work requests shown"
     : `No denominator: ${denominator.reason}.`;
 }
 
@@ -375,7 +376,7 @@ function openResourceDetail(row) {
     ["Provider", row.name], ["Account", row.account], ["Project", row.project],
     ["Product", row.product], ["Period", row.period],
     ["As of", resourceTime(row.as_of)], ["Observed", resourceTime(row.observed_at)],
-    ["Source", row.source], ["Reason", row.reason],
+    ["Reason", row.reason],
     ...resourceFacts(row).map((fact) => [fact.label, fact.value]),
   ];
   $("resourceDetailRows").innerHTML = fields.map(([label, value]) =>
@@ -388,12 +389,12 @@ function renderResources() {
   if (read === paintedResourceRead) return;
   paintedResourceRead = read;
   const model = projectResourceDashboard(read?.state === "read" ? read.payload : null);
-  const reason = read?.state === "unknown" ? read.reason : read?.state === "pending" ? "Taking the resource read…" : null;
-  $("resourceAsOf").textContent = model.generated_at ? `Read ${resourceTime(model.generated_at)}` : "Read time unknown";
+  const reason = read?.state === "unknown" ? read.reason : read?.state === "pending" ? "Updating…" : null;
+  $("resourceAsOf").textContent = model.generated_at ? updatedLabel(model.generated_at) : "Updating…";
   $("resourceSummary").textContent = model.schema
-    ? `${model.evidenceCount} with source evidence · ${model.unconfiguredCount} unconfigured · ${model.collectorAbsentCount} awaiting first observation`
-    : read?.state === "pending" ? "Taking the resource read…" : "Provider coverage unknown";
-  $("resourceReadState").textContent = reason || (model.schema ? "Select a provider for its source, period and separate resource facts." : "The resource response could not be verified.");
+    ? `${model.evidenceCount} measured · ${model.unconfiguredCount} unconfigured · ${model.collectorAbsentCount} awaiting first observation`
+    : read?.state === "pending" ? "Updating…" : "Provider coverage unknown";
+  $("resourceReadState").textContent = reason || (model.schema ? "" : "The resource response could not be verified.");
   const visual = $("resourceCoverageVisual");
   visual.setAttribute("aria-label", `Provider evidence: ${model.providers.map((row) => `${row.name} ${RESOURCE_STATE_LABEL[row.state]}`).join(", ")}`);
   visual.innerHTML = `<svg viewBox="0 0 740 120" role="presentation" focusable="false" aria-hidden="true">
@@ -411,7 +412,7 @@ function renderResources() {
   list.innerHTML = model.providers.map((row) => `<button class="resource-provider" type="button" data-resource="${escapeHtml(row.provider)}" data-state="${escapeHtml(row.state)}" aria-label="${escapeHtml(row.name)}: ${escapeHtml(RESOURCE_STATE_LABEL[row.state])}; show resource detail">
     <span class="resource-provider-name">${escapeHtml(row.name)}</span>
     <span class="resource-provider-state">${escapeHtml(RESOURCE_STATE_LABEL[row.state])}</span>
-    <span class="resource-provider-meta">${escapeHtml(row.period || "Period unknown")} · ${escapeHtml(row.source || "Source unknown")}</span>
+    <span class="resource-provider-meta">${escapeHtml(row.period || "Period unknown")}</span>
   </button>`).join("");
   for (const button of list.querySelectorAll("button[data-resource]")) {
     button.addEventListener("click", () => openResourceDetail(model.providers.find((row) => row.provider === button.dataset.resource)));
@@ -473,7 +474,7 @@ function laneHtml(lane) {
     </details></li>`).join("");
   return `<section class="ops-lane" data-lane="${escapeHtml(lane.id)}" aria-label="${escapeHtml(lane.label)}">
     <div class="ops-lane-head"><h4>${escapeHtml(lane.label)}</h4><span class="chip" data-state="read">${lane.count}</span></div>
-    <p class="caption">Decided with ${escapeHtml(lane.verb)} in the record layer</p>
+    <p class="caption"></p>
     ${items ? `<ul class="ops-items">${items}</ul>` : `<p class="small">Nothing is waiting in this lane.</p>`}
   </section>`;
 }
@@ -482,16 +483,16 @@ function approvalsHtml(card, read) {
   return `<article class="ops-card" data-ops="approvals" data-state="${escapeHtml(card.state)}">
     <div class="ops-head">
       <span class="ops-orb" id="opsOrb" data-tempo="none" aria-hidden="true"></span>
-      <div><p class="eyebrow">governance-queue</p><h3>${escapeHtml(card.title)}</h3></div>
+      <div><p class="eyebrow">Decisions</p><h3>${escapeHtml(card.title)}</h3></div>
       <span class="as-of">${escapeHtml(asOf(read))}</span>
     </div>
     <p class="ops-value tile-value" id="opsApprovalsValue" data-state="${escapeHtml(card.state)}" aria-hidden="true">${escapeHtml(card.state === "read" ? String(shownApprovals ?? 0) : card.word)}</p>
     <p class="tile-sentence">${escapeHtml(card.sentence)}</p>
     ${card.oldest ? `<button class="btn ops-oldest" type="button" data-ops-oldest="${escapeHtml(card.oldest.key)}"><span id="opsWaiting">Oldest decision waiting</span></button>` : ""}
     ${card.lanes.length ? `<div class="ops-lanes">${card.lanes.map(laneHtml).join("")}</div>` : ""}
-    <p class="small">${escapeHtml(card.authority)}</p>
-    <p class="small">${escapeHtml(card.scope)}</p>
-    <p class="operations-rule">${escapeHtml(card.rule)}</p>
+
+
+
   </article>`;
 }
 
@@ -526,7 +527,7 @@ function scheduleHtml(card) {
   return `<article class="ops-card" data-ops="${escapeHtml(card.id)}" data-state="${escapeHtml(card.state)}">
     <div class="ops-head">
       <span class="ops-orb" data-tempo="${card.state === "attention" ? "urgent" : card.state === "read" ? "calm" : "none"}" aria-hidden="true"></span>
-      <div><p class="eyebrow">schedule-board</p><h3>${escapeHtml(card.title)}</h3></div>
+      <div><p class="eyebrow">Schedule</p><h3>${escapeHtml(card.title)}</h3></div>
       <span class="as-of">${escapeHtml(card.observed_at ? `As of ${formatClock(card.observed_at)}` : "unknown")}</span>
     </div>
     <p class="ops-value tile-value" data-state="${escapeHtml(card.state)}">${escapeHtml(card.word)}</p>
@@ -648,11 +649,9 @@ function renderStatus() {
   $("roomStatusLabel").textContent = words[phase];
   const freshness = $("roomFreshness");
   freshness.setAttribute("data-freshness", phase);
-  freshness.textContent = phase === "loading"
-    ? "Taking the reads…"
-    : `${words[phase]}${phase === "incomplete" ? ` (${incomplete.join(", ")} not read in full)` : ""} · ${deploymentIdentity(client?.mode).detail}`;
+  freshness.textContent = updatedLabel(Object.values(view.reads).find(read => read.observed_at)?.observed_at);
   const retry = $("retryRead");
-  if (retry) retry.hidden = phase === "loading";
+  if (retry) retry.hidden = false;
   announce(words[phase]);
   return phase;
 }
@@ -702,11 +701,10 @@ async function census() {
   return response.json();
 }
 
-async function load() {
+async function load({ background = false } = {}) {
   view.sequence += 1;
   view.status = "loading";
-  for (const id of Object.keys(view.reads)) view.reads[id] = { state: "pending" };
-  render();
+  if (!background) { for (const id of Object.keys(view.reads)) view.reads[id] = { state: "pending" }; render(); }
   view.status = "ready";
   await Promise.all([
     take("incidents", () => client.incidentBoard({ state: "open" }), "the incident ledger refused or could not be reached"),
@@ -825,8 +823,9 @@ async function boot() {
   const parameters = new URLSearchParams(location.search || "");
   if (parameters.has("tab")) restoreTab();
   const label = $("viewerLabel");
-  if (label) label.textContent = client.selfActor === "dell" ? "Dell's workspace" : "Joe's workspace";
+  if (label) label.textContent = client.selfActor === "dell" ? "Dell's Workspace" : "Joe's Workspace";
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ background: true }) });
 }
 
 boot();

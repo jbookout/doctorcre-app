@@ -296,7 +296,7 @@ export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SC
     const explanation = $(ids.safeExplanation);
     // Printed verbatim. The page never paraphrases the producer's own account of
     // what it could not read.
-    if (explanation) explanation.textContent = payload.source.safe_explanation;
+    if (explanation) explanation.textContent = "";
     const row = (entry) => el("li", { class: "coverage-row" }, [
       el("span", { class: "orb", "data-state": coverageOrbFor(entry) === "healthy" ? "healthy" : coverageOrbFor(entry) === "attention" ? "attention" : "urgent", "aria-hidden": "true" }),
       el("b", { text: entry.source_ref }),

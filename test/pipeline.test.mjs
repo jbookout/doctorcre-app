@@ -194,7 +194,7 @@ test("a critical date is refused without its source, and a date without a step i
 
   const noSource = completionPlan(intent, { effectiveDate: "2026-02-01", recordCriticalDate: true });
   assert.equal(noSource.steps.length, 1, "nothing beyond the move is planned");
-  assert.ok(noSource.errors.some((line) => /where the date came from/.test(line)));
+  assert.ok(noSource.errors.some((line) => /date reference/.test(line)));
 
   const noDate = completionPlan(intent, { recordCriticalDate: true, dateSource: "Landlord email" });
   assert.ok(noDate.errors.some((line) => /Pick the effective date/.test(line)));
@@ -768,8 +768,8 @@ test("pipeline.html asks for dates with a calendar only, and never claims a gate
   assert.match(html, /id="completionNextWhen" type="date"/);
   assert.doesNotMatch(html, /type="date"[^>]*placeholder/, "no typed-date fallback");
   assert.doesNotMatch(html, /DateTyped/);
-  assert.match(html, /CARR does not require evidence to move a phase\./);
-  assert.match(html, /Not recorded anywhere; the move is dated by when it is saved\./);
+  assert.doesNotMatch(html, /CARR does not require evidence/);
+  assert.doesNotMatch(html, /Not recorded anywhere/);
   assert.match(html, /value="cancel"|id="completionCancel"/);
   assert.match(html, />Cancel, keep phase</);
   // No sentence on this page may imply a check the record layer does not make.
@@ -865,7 +865,7 @@ test("Closed refuses without an outcome, and refuses an outcome the record layer
 
   const invented = completionPlan(closedIntent(), { outcome: "settled", closedOn: "2026-09-17" });
   assert.deepEqual(invented.steps.map((step) => step.verb), ["patch-deal-field"]);
-  assert.ok(invented.errors.some((line) => /won, lost or paused/.test(line)));
+  assert.ok(invented.errors.some((line) => /won, lost, or paused/.test(line)));
 
   const nonsense = completionPlan(closedIntent(), { outcome: "won", closedOn: "2026-09-17", wonValue: "lots" });
   assert.deepEqual(nonsense.steps.map((step) => step.verb), ["patch-deal-field"]);
@@ -973,8 +973,8 @@ test("the completion dialog asks for the reason and the partner's own words, and
   const html = await read("pipeline.html");
   assert.match(html, /id="completionReason"/);
   assert.match(html, /id="completionQuote"/);
-  assert.match(html, /A short reason, saved with the phase change itself\./);
-  assert.match(html, /Your own sentence, saved word for word with the phase change\./);
+  assert.match(html, /Reason for this change/);
+  assert.match(html, /In your words/);
   for (const phrase of ["needs evidence", "blocked", "not allowed", "requires approval", "cannot move until"]) {
     assert.ok(!html.toLowerCase().includes(phrase), `the page still says "${phrase}"`);
   }

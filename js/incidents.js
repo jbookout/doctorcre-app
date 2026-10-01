@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C14 — the incident page: DOM wiring only.
 //
 // Every decision about a payload, a reference or a sentence lives in
@@ -128,7 +129,7 @@ function renderDetail() {
   $("hypothesesEyebrow").textContent = HYPOTHESIS_EYEBROW;
 
   $("factList").innerHTML = factRows(payload.facts).map((fact) => rowHtml({
-    title: fact.statement, meta: `source ${fact.source} · recorded at ${fact.clock}`,
+    title: fact.statement, meta: fact.clock,
   })).join("") || rowHtml({ title: "No fact is recorded on this incident yet", meta: "read from the operational ledger" });
 
   $("hypothesisList").innerHTML = hypothesisRows(payload.hypotheses).map((row_) => rowHtml({
@@ -265,6 +266,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
 }
 
 boot();

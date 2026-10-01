@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C15 — the independent status page: DOM wiring only.
 //
 // Every decision lives in ./status-model.js. This page reads, paints, and does
@@ -72,7 +73,7 @@ function renderChips(model) {
       id, state: "unknown", text: `${id === APP_READ_ID ? "app" : READ_LABEL[id]}: ${model.emptyChipText}`,
     }))
     : statusChips({ release: view.release, reads: settledReads() });
-  strip.innerHTML = `<span class="chip-label">Each read states its own clock</span>${chips
+  strip.innerHTML = `<span class="chip-label">Last updated</span>${chips
     .map((chip) => `<span class="chip" data-state="${escapeHtml(chip.state)}">${escapeHtml(chip.text)}</span>`)
     .join("")}`;
 }
@@ -91,7 +92,7 @@ function renderLastKnown(model) {
   $("lastKnownChips").innerHTML = (view.snapshot?.reads || []).map((row) => {
     const clock = row.state === "read" ? formatClock(row.observed_at) : null;
     const name = row.id === APP_READ_ID ? "app" : (READ_LABEL[row.id] || row.id);
-    const text = clock ? `${name}: read at ${clock}` : `${name}: unknown (${row.reason || REFUSAL_SENTENCE})`;
+    const text = clock ? `${name}: updated ${clock}` : `${name}: unknown (${row.reason || REFUSAL_SENTENCE})`;
     return `<span class="chip" data-state="${escapeHtml(row.coverage_word === "read" ? "read" : "unknown")}" data-current="no">${escapeHtml(text)} · not current</span>`;
   }).join("");
 }
@@ -128,7 +129,7 @@ let lastAssuranceHtml = null;
 function renderAssurance() {
   const model = assuranceHealthState(view.assurance, view.assuranceScope);
   if (view.assuranceError) model.reason = view.assuranceError;
-  else if (view.assurancePending) model.reason = "Taking the scoped assurance read…";
+  else if (view.assurancePending) model.reason = "Updating…";
   const html = INTEGRATION_GAPS.map(gap => {
     const covered = gap.id === "v5-a01";
     const state = covered ? model.state : "unknown";
@@ -153,11 +154,10 @@ function scopeFromInputs() {
   if (workRequest) scope.work_request_id = workRequest;
   return assuranceHealthRequest({ scope }).scope;
 }
-async function takeAssurance() {
+async function takeAssurance({ quiet = false } = {}) {
   const sequence = ++view.assuranceSequence;
   const scope = view.assuranceScope;
-  view.assurance = null;
-  view.assurancePending = Boolean(scope);
+  if (!quiet) { view.assurance = null; view.assurancePending = Boolean(scope); }
   renderAssurance();
   const answer = await loadAssuranceHealth(client, scope);
   if (sequence !== view.assuranceSequence) return;
@@ -211,10 +211,12 @@ async function census() {
   return response.json();
 }
 
-async function load() {
+async function load({ quiet = false } = {}) {
   view.sequence += 1;
-  view.release = { state: "pending" };
-  for (const id of Object.keys(view.reads)) view.reads[id] = { state: "pending" };
+  if (!quiet) {
+    view.release = { state: "pending" };
+    for (const id of Object.keys(view.reads)) view.reads[id] = { state: "pending" };
+  }
   render();
   await Promise.all([
     take(APP_READ_ID, () => appRelease()),
@@ -222,7 +224,7 @@ async function load() {
     take("work", () => client.currentWorkItem()),
     take("needs_joe", () => client.currentWorkRequests()),
     take("census", () => census()),
-    takeAssurance(),
+    takeAssurance({ quiet }),
   ]);
   render();
   writeSnapshot(storage(), snapshotFromReads({ [APP_READ_ID]: view.release, ...view.reads }, Date.now()));
@@ -265,6 +267,7 @@ async function boot() {
   setInterval(renderAssurance, 1000);
   document.addEventListener("visibilitychange", renderAssurance);
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ quiet: true }) });
 }
 
 boot();
