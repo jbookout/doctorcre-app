@@ -104,6 +104,12 @@ body.color-assist .receipt{border-left:3px solid var(--warn)}body.color-assist .
 #receiptsTitle:focus{outline:none}#receiptsTitle:focus-visible{outline:3px solid var(--orange);outline-offset:3px}
 @media(max-width:680px){.receipts-head{flex-direction:column;gap:8px}.receipt-actions .receipt-undo{width:100%}.receipts-jump{padding:7px 11px}}
 .call-mode-note{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.45;text-align:center}
+.call-mode-availability{max-width:240px;font-size:11px;line-height:1.45;color:#b9c7d9}
+.call-mode-button{min-height:44px;min-width:44px}
+.call-mode-dialog #callModeClose{min-height:44px;min-width:44px}
+.call-mode-consent{min-height:44px}
+.call-mode-footer a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
+@media(max-width:680px){.top-actions{min-width:0;flex-wrap:wrap;justify-content:flex-end}.call-mode-availability{max-width:100%;flex:1 1 160px;text-align:right}}
 /* QA batch 1: at phone width the strips scroll inside their own regions, never the page. */
 .shell,.hero>div,.toolbar,.board-sticky,#boardSection{min-width:0;max-width:100%}
 .focus,.filters,.table-frame,.app-section-tabs,.deal-page-views{max-width:100%;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:#3a5878 #0a1a2e}

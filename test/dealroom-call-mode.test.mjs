@@ -154,6 +154,9 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
     clearInterval: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
     now: () => Date.parse("2026-09-23T15:01:05Z"),
   });
+  // These baseline recorder/review tests run against a reachable companion.
+  // Unknown, failed and pending eligibility are exercised in app-honest-controls.
+  controller.state.eligibility = 'available';
   return { doc, controller, requests, timers, calls, client, postCallClient };
 }
 
@@ -423,7 +426,7 @@ test("the context index is shaped to the companion's exact contract and never in
 
 test("the shipped Deal Room carries Call Mode: button, consent, both call kinds, Stop and the review panel", async () => {
   const html = await file("index.html");
-  assert.match(html, /<button type="button" class="call-mode-button" id="callModeButton" aria-haspopup="dialog" aria-label="Open Call Mode">/);
+  assert.match(html, /<button type="button" class="call-mode-button" id="callModeButton" aria-haspopup="dialog" aria-label="Open Call Mode" hidden>/);
   assert.match(html, /<dialog id="callModeDialog"[^>]*aria-labelledby="callModeTitle"/);
   assert.match(html, /<input type="checkbox" id="callModeConsent">/, "consent is an unticked checkbox");
   assert.match(html, /I have told everyone on this call that it will be recorded\./);
