@@ -2642,8 +2642,8 @@ export async function createFixtureClient(opts = {}) {
         return {
           state: 'not_found', query, candidates: [], retired_matches: retired,
           hint: retired > 0
-            ? 'Only retired aliases matched; no live record stands behind this name.'
-            : 'No live record matched this name.',
+            ? 'Only previous names matched.'
+            : 'No current match.',
         };
       }
       if (candidates.length === 1) {

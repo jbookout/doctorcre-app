@@ -298,9 +298,9 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(modelJs, /Not in the active pipeline/);
   assert.match(modelJs, /Pipeline not set/);
   assert.match(modelJs, /PIPELINE_FILTERS = \["any", "active", "other", "unknown"\]/);
-  // One plain sentence still carries the provenance the requirement is about.
-  assert.match(html, /not proof that an agreement was signed or that anyone was put on the work/);
-  assert.match(html, /Not recorded/);
+  // Labels carry the status; the list needs no provenance instructions.
+  assert.doesNotMatch(html, /not proof that an agreement was signed|Every list says where it came from/);
+  assert.match(modelJs, /Not recorded/);
   // Keyboard, touch and reduced motion.
   assert.match(js, /event\.key !== "Escape"/);
   assert.match(js, /ArrowLeft/);

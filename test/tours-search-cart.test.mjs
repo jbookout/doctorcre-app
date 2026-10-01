@@ -20,7 +20,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
-  assert.equal(contract.producer.source_commit, "97e916b7f907f268365ba7ba96635e36c0c65e03");
+  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e");
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
@@ -239,7 +239,8 @@ test("removing an unavailable saved property preserves other saved properties", 
   assert.match(rows[1].textContent, /Known clinic/);
   rows[0].querySelector("button").click();
   doc.querySelector("#save-selection").click();
-  await settle();
+  await waitFor(() => /saved with this Tour/.test(doc.querySelector("#selection-state").textContent),
+    "selection save and canonical readback finish before closing the browser");
   assert.deepEqual(store.ids, [knownId]);
   assert.match(doc.querySelector("#selection-list").textContent, /Known clinic/);
   assert.doesNotMatch(doc.querySelector("#selection-list").textContent, /details unavailable/i);

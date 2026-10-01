@@ -271,7 +271,7 @@ function organizationRow(row) {
     // the producer refuses to blend live rows with retired aliases, and so does
     // this page.
     counts: Object.freeze([
-      { label: "live records", value: row.live_rows },
+      { label: "Current matches", value: row.live_rows },
       { label: "retired aliases", value: row.retired_aliases },
       { label: "live as a role", value: row.live_as_role },
     ]),

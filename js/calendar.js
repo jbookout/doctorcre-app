@@ -190,7 +190,7 @@ function paintDayPanel() {
     const near = approach(entry, view.today);
     return `<li class="cal-day-entry" data-band="${near.band}" data-focus="${entry.key === view.focusEntry}" data-stagger-index="${index}">`
       + `<h3><span class="cal-pulse" data-pulse="${near.pulse}" aria-hidden="true"></span>${escapeHtml(entry.label)}</h3>`
-      + `<dl>${detailRow("Deal", entry.deal_name)}${detailRow("When", near.label)}${detailRow("Kind", entry.kind_label)}${detailRow("Source", entry.source)}${detailRow("Status", entry.status)}</dl>`
+      + `<dl>${detailRow("Deal", entry.deal_name)}${detailRow("When", near.label)}${detailRow("Kind", entry.kind_label)}${detailRow("Reference", entry.source)}${detailRow("Status", entry.status)}</dl>`
       + `<a class="small" href="/deals">Open the Deals board</a>`
       + "</li>";
   }).join("")}</ol>`;

@@ -203,7 +203,7 @@ function render() {
   else if (view.payload) setCensusStatus(coverageOrbState(coverageSummary(view.payload.coverage).worst), view.payload.census_complete ? "Census complete" : "Census incomplete");
 
   if (!view.payload) {
-    if (coverageStrip) coverageStrip.innerHTML = `<li class="work-item"><div><h3>Coverage unavailable</h3><p class="small">No source has answered, so no source is shown as healthy.</p></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> unknown</span></li>`;
+    if (coverageStrip) coverageStrip.innerHTML = `<li class="work-item"><div><h3>Coverage unavailable</h3><p class="small">Updates unavailable.</p></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> unknown</span></li>`;
     if (coverageSummaryLine) coverageSummaryLine.textContent = "Coverage unknown until the census answers.";
     if (kindGroups) kindGroups.innerHTML = "";
     if (itemsCount) itemsCount.textContent = view.status === "loading" ? "Reading…" : "Unavailable";
@@ -557,7 +557,7 @@ async function read({ cursor = null, append = false } = {}) {
       const failure = await response.json().catch(() => ({}));
       if (!accepts(sequence)) return;
       if (failure.error === "AUTHENTICATION_REQUIRED" || failure.error === "AUTHORIZATION_REFUSED") return settle({ status: "unauthorized" }, sequence, append);
-      const message = failure.error === "DEPENDENCY_UNAVAILABLE" ? "A source CARR depends on is unavailable right now, so no partial census is presented as whole."
+      const message = failure.error === "DEPENDENCY_UNAVAILABLE" ? "Work updates incomplete."
         : failure.error === "FRESHNESS_UNKNOWN" ? "CARR could not establish the freshness of this census, so no count is shown as current."
           : failure.error === "not_found" ? "This census endpoint is not available on this host."
             : "The census read failed. Nothing here has been inferred.";
@@ -599,7 +599,7 @@ function toggleKind(kind) {
   // Deselecting the last source would ask CARR for nothing and show nothing,
   // which is the empty-queue illusion again. The census keeps at least one leg.
   if (next.length === 0) {
-    announce("At least one source must stay selected. Nothing was changed.");
+    announce("Select at least one category.");
     return;
   }
   view.kinds = WORK_INVENTORY_KINDS.filter((entry) => next.includes(entry));

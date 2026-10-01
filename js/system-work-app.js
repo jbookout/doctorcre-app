@@ -78,7 +78,7 @@ function openForm({ eyebrow, title, submit, body, onSubmit }) {
 function reportForm() {
   const pending = client.pendingReport;
   const locked = pending ? " readonly" : "";
-  openForm({ eyebrow: "Source first", title: "Report a system problem", submit: pending ? "Check report outcome" : "Record concern",
+  openForm({ eyebrow: "System problem", title: "Report a system problem", submit: pending ? "Check report outcome" : "Record concern",
     body: field("Situation", `<textarea name="situation" maxlength="1000" required${locked}>${esc(pending?.situation || "")}</textarea>`, "Describe the system concern so current shared doctrine can be matched.") +
       field("Short name", `<input name="title" maxlength="200" required${locked} value="${esc(pending?.title || "")}">`) +
       field("Desired result", `<textarea name="desired_outcome" maxlength="2000" required${locked}>${esc(pending?.desired_outcome || "")}</textarea>`) +

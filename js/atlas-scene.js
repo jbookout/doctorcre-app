@@ -248,7 +248,7 @@ export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SC
     const rows = [
       ["Identity", node.id],
       ["Kind", `${singularLabel(node.class)} · ${node.key}`],
-      ["Evidence", `${EVIDENCE_DEPTH[node.evidence]?.plane || node.evidence}. Read from ${node.source_ref}.`],
+      ["Evidence", `${EVIDENCE_DEPTH[node.evidence]?.plane || node.evidence}`],
       ["Status", node.status || "no status recorded"],
     ];
     if (node.retired_at) {
@@ -283,7 +283,7 @@ export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SC
     } else if (node.class === "verb") {
       body.push(el("p", { class: "small", text: VERB_RUN_GAP_SENTENCE }));
     } else {
-      body.push(el("p", { class: "small", text: "This release reads no run for this component. That is a silence in the sources, not a report of nothing happening." }));
+      body.push(el("p", { class: "small", text: "Activity unavailable." }));
     }
     $(ids.componentBody).replaceChildren(...body);
   }

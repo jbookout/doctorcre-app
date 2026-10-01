@@ -404,10 +404,10 @@ function render() {
   const label = $("viewerLabel");
   if (label) label.textContent = payload ? viewerWorkspaceLabel(payload.viewer) : "Partner workspace";
 
-  if (phase === "loading") setStatus("refreshing", "Reading the command centre…");
+  if (phase === "loading") setStatus("refreshing", "Loading…");
   else if (unauthorized) setStatus("unknown", "Session ended");
-  else if (!verified) setStatus("urgent", "Command centre read unavailable");
-  else setStatus("healthy", `Read from the command centre · ${deploymentIdentity(client?.mode).detail}`);
+  else if (!verified) setStatus("urgent", "Updates unavailable.");
+  else setStatus("healthy", updatedLabel(payload.source.observed_at));
 
   renderFreshness(payload);
   renderNeedsAction(payload, verified);
@@ -417,7 +417,7 @@ function render() {
   renderTeamReview(payload, verified);
 
   if (unauthorized) announce("Sign in again to read the command centre. Nothing is shown from a session that has ended.");
-  else if (phase === "loading") announce("Reading the command centre…");
+  else if (phase === "loading") announce("Loading…");
   else if (!verified) announce(view.message || unavailableCopy("needs_action"));
   else announce(`${payload.needs_you_now.filter((item) => item.count > 0).length} flagged group(s) shown.`);
 }
@@ -475,8 +475,8 @@ async function loadBoardRecords(boardRead) {
   const verified = draftBoardReadiness.complete(sequence, board);
   view.boardStatus = verified ? "ready" : "error";
   if (readStatus) readStatus.textContent = verified
-    ? "Current record list verified. Quick add is ready."
-    : "Current record list could not be verified. Use Retry read before filing.";
+    ? ""
+    : "Updates unavailable. Draft retained.";
   const actor = verified ? board.actor : null;
   if (actor && actor !== draftViewer) {
       const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: actor });
@@ -614,9 +614,9 @@ function renderQuickAdd() {
   const question = $("quickAddQuestion");
   if (question) {
     question.textContent = view.boardStatus === "error"
-      ? "The current record list could not be verified. Retry read before filing, or keep this as a draft."
+      ? "Updates unavailable. Draft retained."
       : view.boardStatus === "loading"
-        ? "Checking the current record list. Keep this as a draft until it is ready."
+        ? "Updating…"
         : plan.args
           ? `${plan.summary} · files as ${plan.kind === "team_loop" ? "a team record" : "a personal record"}`
           : `Keep it as a draft, or answer: ${plan.questions.join(" ")}`;
@@ -710,7 +710,7 @@ function wire() {
       return;
     }
     if (!draftBoardReadiness.canFile(draftViewer, globalThis.navigator?.onLine !== false)) {
-      announce("The current record list has not been verified. Keep this entry as a draft and use Retry read if needed.");
+      announce("Updates unavailable. Draft retained.");
       return;
     }
     const current = renderQuickAdd();

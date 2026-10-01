@@ -13,6 +13,15 @@
     ]
   },
   {
+    "file": "business.html",
+    "removed": [
+      "Everyone the team works with. Search, filter, and open one to see what is on the record.",
+      "These come straight from the client and vendor records. Merged and deleted records are left out, and anything nobody filled in reads \"Not recorded\" rather than being guessed at. Status and ETL are what someone entered on the record — they are not proof that an agreement was signed or that anyone was put on the work.",
+      "About this list",
+      "Every list says where it came from and when."
+    ]
+  },
+  {
     "file": "calendar.html",
     "removed": [
       "Reading the record…",
@@ -62,7 +71,9 @@
   {
     "file": "design-operations.html",
     "removed": [
-      "Source"
+      "Source",
+      "coverage 5 of 5 sources · 213 items",
+      "Widen the census read to the sixth source"
     ]
   },
   {
@@ -73,7 +84,8 @@
       "Check again",
       "Source pending",
       "Reading this idea…",
-      "DoctorCRE · Ideas & Events · Industry events are sourced records."
+      "DoctorCRE · Ideas & Events · Industry events are sourced records.",
+      "Changed in the record"
     ]
   },
   {
@@ -146,6 +158,13 @@
     ]
   },
   {
+    "file": "js/atlas-scene.js",
+    "removed": [
+      "${EVIDENCE_DEPTH[node.evidence]?.plane || node.evidence}. Read from ${node.source_ref}.",
+      "This release reads no run for this component. That is a silence in the sources, not a report of nothing happening."
+    ]
+  },
+  {
     "file": "js/atlas.js",
     "removed": [
       "No version has been read.",
@@ -167,7 +186,15 @@
     "removed": [
       ": \"\"\", \"",
       ", payload: null, message: null, sequence: 0, freshnessKey: null,\n\n\n\n  records: Object.freeze([]), boardStatus:",
-      ",\n\n\n\n  week: { status:"
+      ",\n\n\n\n  week: { status:",
+      "The current record list has not been verified. Keep this entry as a draft and use Retry read if needed.",
+      "Reading the command centre…",
+      "Command centre read unavailable",
+      "`Read from the command centre · ${deploymentIdentity(client?.mode).detail}`",
+      "Current record list verified. Quick add is ready.",
+      "Current record list could not be verified. Use Retry read before filing.",
+      "The current record list could not be verified. Retry read before filing, or keep this as a draft.",
+      "Checking the current record list. Keep this as a draft until it is ready."
     ]
   },
   {
@@ -176,7 +203,8 @@
       ": \"\"\", \"",
       ">Nothing is shown for this day until the record can be read.",
       "Their dates are not on this calendar: ${names}${rest}. The rest are shown as read.",
-      ") {\n    announce(`${result.entries.length} critical date${result.entries.length === 1 ?"
+      ") {\n    announce(`${result.entries.length} critical date${result.entries.length === 1 ?",
+      "detailRow(\"Source\", entry.source)"
     ]
   },
   {
@@ -255,7 +283,8 @@
       "not provided by the server (${escapeHtml(fields.evidence.reason)})",
       "})`,\n      item.next_human_action ||",
       "Decided with ${escapeHtml(lane.verb)} in the record layer",
-      "schedule-board"
+      "schedule-board",
+      "read from the shared queue"
     ]
   },
   {
@@ -281,7 +310,8 @@
       ", payload: null, rows: [] },\n  includeArchived: false,\n\n\n\n\n\n\n\n\n\n  outcomeCards: { state:",
       "read from the record layer",
       ">Open source conversation",
-      "Read again to review the current version before acting."
+      "Read again to review the current version before acting.",
+      "Correction proposed with its source. The suggestion has not been overwritten."
     ]
   },
   {
@@ -305,7 +335,8 @@
   {
     "file": "js/design-prototype.js",
     "removed": [
-      "As of ${formatClock(TODAY)} · source CARR"
+      "As of ${formatClock(TODAY)} · source CARR",
+      "Approve: widen the census read"
     ]
   },
   {
@@ -313,7 +344,9 @@
     "removed": [
       "Reconcile the migration receipt with the record layer",
       "Name the demo retention window in the record layer",
-      "Demo rule: a demo surface names its missing read instead of drawing a zero."
+      "Demo rule: a demo surface names its missing read instead of drawing a zero.",
+      "Only retired aliases matched; no live record stands behind this name.",
+      "No live record matched this name."
     ]
   },
   {
@@ -333,13 +366,17 @@
   {
     "file": "js/incidents.js",
     "removed": [
-      ": \"\"\", \""
+      ": \"\"\", \"",
+      "read from the operational ledger"
     ]
   },
   {
     "file": "js/leads-app.js",
     "removed": [
-      ": \"\"\", \""
+      ": \"\"\", \"",
+      "Review the source before deciding.",
+      "Check an HTTPS source for each field. The app records the time you confirm these sources.",
+      "I checked these sources and their field links now."
     ]
   },
   {
@@ -430,7 +467,8 @@
     "file": "js/pipeline-model.js",
     "removed": [
       "How this ended. The record layer takes won, lost or paused, and nothing else.",
-      "The record layer records an outcome of won, lost or paused, and nothing else."
+      "The record layer records an outcome of won, lost or paused, and nothing else.",
+      " · source ${entry.source}"
     ]
   },
   {
@@ -447,6 +485,18 @@
       "Your session ended. Sign in to read this board.",
       "The read failed.",
       "Last-known publication ${formatTime(currentView.updated_at)} · Version ${currentView.version}"
+    ]
+  },
+  {
+    "file": "js/record-activity-model.js",
+    "removed": [
+      "Reading this record's recent activity…",
+      "No activity is recorded on this record yet.",
+      "The activity read found no live record under this name, so no activity is shown.",
+      "${count} records share this name, and the activity read will not guess which one this is, so none is shown.",
+      "The only match for this name is a different record, so its activity is not shown here.",
+      "This record carries no reference the activity read could be checked against, so none is shown.",
+      "Recent activity could not be read. Nothing here has been inferred."
     ]
   },
   {
@@ -488,7 +538,8 @@
       "The exact counts the producer reported are shown beside each truncated group.",
       "More than one record matches that name.",
       "Choose one exact target. This page opens none of them on your behalf.",
-      "Shown in the order the record layer returned them."
+      "Shown in the order the record layer returned them.",
+      "live records"
     ]
   },
   {
@@ -540,7 +591,34 @@
   {
     "file": "js/system-work-app.js",
     "removed": [
-      ": \"\"\", \""
+      ": \"\"\", \"",
+      "eyebrow: \"Source first\""
+    ]
+  },
+  {
+    "file": "js/system-work-board-model.js",
+    "removed": [
+      "System work read is unavailable.",
+      "Canonical completion state",
+      "${item.source} · ${item.age} days old",
+      "Current source version is unavailable."
+    ]
+  },
+  {
+    "file": "js/system-work-board.js",
+    "removed": [
+      "Open source",
+      "Source result: ${counts}${[...new Set(details)].join(' · ')||'The source answered. Open the source to verify the change.'}",
+      "The source answered. Open the source to verify the change.",
+      "Waiting for the source result.",
+      "${label}: ${read.coverage.reduce((n,c)=>n+(c.count_total??0),0)} items",
+      "All selected sources read",
+      "Incomplete census:",
+      " · Read ${read.source?.observed_at||read.as_of}",
+      " · Live: completion coverage unavailable. Showing last read.",
+      "Sign in to read system work.",
+      "System work read failed. Showing the last read; retry to refresh.",
+      "The source refused this action: ${cause.payload.error}. Review corrected fields to read the fresh source before retrying."
     ]
   },
   {
@@ -558,7 +636,8 @@
   {
     "file": "js/task-records.js",
     "removed": [
-      ": \"\"\", \""
+      ": \"\"\", \"",
+      "Your account could not be verified. No task records are shown. Retry read."
     ]
   },
   {
@@ -577,7 +656,10 @@
       "This census is incomplete, not empty",
       ">from the census read",
       ">Read this record",
-      ") {\n\n\n    announce(`${summary}${result.replayed ?"
+      ") {\n\n\n    announce(`${summary}${result.replayed ?",
+      "No source has answered, so no source is shown as healthy.",
+      "A source CARR depends on is unavailable right now, so no partial census is presented as whole.",
+      "At least one source must stay selected. Nothing was changed."
     ]
   },
   {
@@ -646,7 +728,12 @@
   {
     "file": "progress-board.html",
     "removed": [
-      "Retry reads"
+      "Retry reads",
+      "Source",
+      "All sources",
+      "PROGRESS · LIVE RECORD",
+      "<p class=\"caption\">An answer is Sent when it is saved. Received and Applied appear after the asker records those steps.</p>",
+      "<footer>Board data and answer status come from the signed-in CARR record.</footer>"
     ]
   },
   {
@@ -705,6 +792,15 @@
     ]
   },
   {
+    "file": "tours/property-panel.js",
+    "removed": [
+      "Open source",
+      "<dt>Source</dt>",
+      "<dt>Source CRS</dt>",
+      "Conflicting sources"
+    ]
+  },
+  {
     "file": "work-inventory.html",
     "removed": [
       "· every source, every status",
@@ -737,27 +833,6 @@
       "The seven sections",
       "Work",
       "Tasks, calendar, ideas and events."
-    ]
-  },
-  {
-    "file": "js/record-activity-model.js",
-    "removed": [
-      "Reading this record's recent activity…",
-      "No activity is recorded on this record yet.",
-      "The activity read found no live record under this name, so no activity is shown.",
-      "${count} records share this name, and the activity read will not guess which one this is, so none is shown.",
-      "The only match for this name is a different record, so its activity is not shown here.",
-      "This record carries no reference the activity read could be checked against, so none is shown.",
-      "Recent activity could not be read. Nothing here has been inferred."
-    ]
-  },
-  {
-    "file": "tours/property-panel.js",
-    "removed": [
-      "Open source",
-      "<dt>Source</dt>",
-      "<dt>Source CRS</dt>",
-      "Conflicting sources"
     ]
   }
 ]

@@ -305,7 +305,7 @@ function renderNeedsJoe() {
     // work-request-card actually carries it. The existing Open link, when the
     // item has a canonical page, is untouched.
     end: `${canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : ""}<button class="btn" type="button" data-needs-joe-detail="${escapeHtml(item.human_ref)}" aria-expanded="${view.needsJoeDetail.humanRef === item.human_ref}">${view.needsJoeDetail.humanRef === item.human_ref ? "Hide detail" : "Show more detail"}</button>`,
-  })).join("") || rowHtml({ title: "No shared request carries a bounded next action", meta: "read from the shared queue" });
+  })).join("") || rowHtml({ title: "No shared request carries a bounded next action", meta: "" });
   for (const button of list.querySelectorAll("button[data-needs-joe-detail]")) {
     button.addEventListener("click", () => openNeedsJoeDetail(button.dataset.needsJoeDetail));
   }

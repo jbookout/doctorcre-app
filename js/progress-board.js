@@ -1,3 +1,4 @@
+import { mountSystemWorkBoard } from './system-work-board.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
 import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
@@ -30,6 +31,7 @@ let ageTimer;
 let taskNodes = new Map();
 let renderedStages = "";
 let detailTaskId = null;
+let systemWork = null;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -441,6 +443,7 @@ function readFailure(cause, target) {
 async function refresh(force = false) {
   if (!force && questions.contains(document.activeElement)) return;
   const generation = ++refreshGeneration;
+  if (systemWork) systemWork.refresh();
   client.listProgressBoards().then(read => {
     if (generation === refreshGeneration) renderDirectory(read);
   }).catch(cause => {
@@ -450,7 +453,12 @@ async function refresh(force = false) {
     if (generation !== refreshGeneration) return;
     const view = boardView(read);
     if (!view.version) {
-      clearBoard("unpublished");
+      if (!systemWork) clearBoard("unpublished");
+      else {
+        meta.textContent = "No published system snapshot.";
+        meta.setAttribute("data-read-state", "unpublished");
+        badgeTimes.delete(freshness);
+      }
       setError("This board has not been published yet.");
       retry.hidden = false;
       return;
@@ -464,10 +472,10 @@ async function refresh(force = false) {
     badgeTimes.set(freshness, view.updated_at);
     refreshAges();
     const signature = JSON.stringify(view);
-    if (signature === viewSignature) { renderStages(view); return; }
+    if (signature === viewSignature) { if (!systemWork) renderStages(view); return; }
     live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
     viewSignature = signature;
-    renderStages(view);
+    if (!systemWork) renderStages(view);
     renderQuestions(view);
   }).catch(cause => {
     if (generation !== refreshGeneration) return;
@@ -476,6 +484,8 @@ async function refresh(force = false) {
   });
   await loaded;
 }
+
+if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client, onPipeline: renderStages });
 
 retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();

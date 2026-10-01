@@ -698,7 +698,7 @@ async function proposeSuggestionCorrection(id) {
   if (outcome.status === "ok") {
     view.suggestions.drafts.delete(id);
     view.suggestions.conflicts.delete(id);
-    announce("Correction proposed with its source. The suggestion has not been overwritten.");
+    announce("Correction proposed. Original suggestion retained.");
   } else if (outcome.status === "conflict") {
     const current = suggestionRow(id);
     view.suggestions.conflicts.set(id, correctionConflict(draft, current || refusedCurrent,

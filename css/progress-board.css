@@ -155,3 +155,19 @@ footer { padding-top: 8px; }
 .read-recovery button:hover { background: #173b5e; }
 .read-recovery button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .read-recovery a { color: var(--orange); }
+
+.work-filters { display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:18px 0; }
+.work-filters label,#work-triage-form label {display:grid;gap:7px;min-width:0;flex:1 1 160px;color:var(--muted);}
+.work-filters input,.work-filters select,#work-triage-form textarea,#work-triage-form select {box-sizing:border-box;width:100%;min-width:0;padding:12px;background:#06182b;border:1px solid var(--line);border-radius:8px;color:var(--ink);font:inherit;}
+.work-card-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;}
+.work-card {min-width:0;padding:18px;border:1px solid var(--line);border-radius:14px;background:rgba(2,13,29,.65);overflow-wrap:anywhere;transition:border-color .2s,transform .2s;}
+.work-card:hover {border-color:var(--blue);transform:translateY(-2px);}
+.work-card h4 {margin:0;font-size:1rem;}.work-card-meta,.work-suggestion {color:var(--muted);font-size:.8rem;}
+.work-actions {display:flex;flex-wrap:wrap;gap:8px;align-items:center;}.work-actions a {color:var(--blue);}
+#system-work-panel button,#work-triage button {padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:#0b2947;color:var(--ink);cursor:pointer;min-height:44px;}
+#system-work-panel button:hover,#work-triage button:hover {border-color:var(--orange);}
+#system-work-panel button:focus-visible,#work-triage button:focus-visible {outline:2px solid var(--blue);outline-offset:3px;}
+#system-work-panel {margin-bottom:16px;}.work-source {margin:22px 0;}.work-source h3 {overflow-wrap:anywhere;margin-bottom:12px;}
+#work-triage {box-sizing:border-box;width:min(960px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#06182b;color:var(--ink);border:1px solid var(--blue);border-radius:18px;padding:24px;}
+#work-triage::backdrop {background:rgba(0,5,13,.8);backdrop-filter:blur(8px);}#work-triage-form {display:grid;gap:16px;}#work-triage-form h2 {overflow-wrap:anywhere;}#work-triage-form textarea {min-height:110px;}
+@media(prefers-reduced-motion:reduce) {.work-card {transition:none;}.work-card:hover{transform:none;}}

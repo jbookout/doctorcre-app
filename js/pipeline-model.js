@@ -450,7 +450,7 @@ export function recordPanelSections(detail, options = {}) {
     : 'No next step recorded.';
 
   const criticalDates = (detail?.critical_dates || [])
-    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`);
+    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`);
 
   const latest = (detail?.thread || [])[0] || null;
 
@@ -570,7 +570,7 @@ export function contextDrawerSections(context, options = {}) {
     : ['No attached parties or vendors recorded on this deal.'];
   const dates = context?.criticalDates || [];
   const dateLines = dates.length
-    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`)
+    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`)
     : ['None recorded.'];
 
   return [

@@ -20,7 +20,7 @@ const evidence = { schema: "tour-property-evidence.v1", property_id: "10000000-0
 const panelSource = await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8");
 test("property evidence is an explicit additive CARR contract read above main's 1.33 release", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-  assert.equal(contract.version, "1.37.0");
+  assert.equal(contract.version, "1.38.0");
   assert.ok(contract.http_surfaces.includes("/api/tours/property-evidence/v1"));
 });
 const otherProperty = "10000000-0000-4000-8000-000000000002";

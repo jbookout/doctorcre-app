@@ -62,7 +62,7 @@ test("B05-1 every rendered count is a field of the one payload, the render path 
   assert.equal(visibleCount(groups), groups.reduce((total, group) => total + group.rows.length, 0));
   const organizations = groups.find((group) => group.id === "organizations");
   const fromPayload = payload.organizations[0];
-  assert.equal(organizations.rows[0].counts.find((entry) => entry.label === "live records").value, fromPayload.live_rows);
+  assert.equal(organizations.rows[0].counts.find((entry) => entry.label === "Current matches").value, fromPayload.live_rows);
   assert.equal(organizations.rows[0].counts.find((entry) => entry.label === "retired aliases").value, fromPayload.retired_aliases);
 
   // The arguments. `find` declares ONE property, `find-and-catch-up` two, both
@@ -383,8 +383,8 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.16.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.version, "1.37.0", "the current contract retains Search operations");
-  assert.equal(contract.producer.source_commit, "97e916b7f907f268365ba7ba96635e36c0c65e03", "the producer pin includes the Codex checkpoint read");
+  assert.equal(contract.version, "1.38.0", "the current contract retains Search operations");
+  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");

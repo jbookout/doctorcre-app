@@ -334,7 +334,7 @@ test("contextDrawerSections states three distinct honest states for the client: 
   assert.match(ok[0].lines[1], /205-555-0142/);
   assert.match(ok[0].lines[1], /a@example\.com/);
   assert.deepEqual(ok[1].lines, ["Client contact · Dr. Example"]);
-  assert.deepEqual(ok[2].lines, ["LOI expires · 2026-10-01 · source email"]);
+  assert.deepEqual(ok[2].lines, ["LOI expires · 2026-10-01 · email"]);
 });
 
 test("contextDrawerSections never invents a party or a date: an empty deal says so in both sections", () => {
@@ -932,7 +932,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.37.0");
+  assert.equal(contract.version, "1.38.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

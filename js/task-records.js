@@ -226,7 +226,7 @@ function settleTaskReadFocus(dialogAction) {
 
 function refuseUnverifiedViewer() {
   // Invalidate every board request started by a previously verified actor.
-  invalidateTaskRead(view, "unverified", "Your account could not be verified. No task records are shown. Retry read.");
+  invalidateTaskRead(view, "unverified", "Sign in to continue.");
   heldDialog = null;
   if (draftViewer) {
     unverifiedPreviousActor = draftViewer;
