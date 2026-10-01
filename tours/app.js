@@ -27,7 +27,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       ]);
     } finally { clearTimeout(timer); }
     const { response, payload } = result;
-    if (!response.ok) { const error = new Error(payload?.error || "request_failed"); error.status = response.status; throw error; }
+    if (!response.ok) { const error = new Error(payload?.error || "request_failed"); error.status = response.status; error.payload = payload; throw error; }
     if (typeof payload?.csrf_token === "string") {
       const binding = await sha256(payload.csrf_token), changed = sessionBinding && sessionBinding !== binding;
       state.csrf = payload.csrf_token; sessionBinding = binding;
@@ -582,6 +582,11 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     renderFeedback();
     const activeShareCount = state.shareGrants.filter((grant) => grant?.status === "active").length;
     $("#projection-state").textContent = state.projectionId ? "Approved" : tour.projection_status === "draft" ? "Draft · approval required" : "Not generated"; $("#share-state").textContent = activeShareCount ? `${activeShareCount} active` : state.shareStatus === "expired" ? "Expired · rotate" : "Not issued"; renderShareGrants();
+    if (state.pendingShare) {
+      $("#share-link").hidden = true;
+      $("#share-state").textContent = "Outcome unknown";
+      $("#rotate-share").textContent = "Check link outcome";
+    }
     $("#projection-note").textContent = state.projectionId ? "The approved projection is ready for a deliberately scoped, expiring share." : tour.projection_status === "draft" ? "A projection draft exists but cannot be shared until a human authority seals it." : "A projection is required before an external link can be issued.";
     if (!state.cheatDirty || state.cheatDraftTourId !== tour.id) {
       $("#cheat-content").value = cheatSheetText(tour.cheat_sheet?.content);
@@ -656,9 +661,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   }
   async function issueShare(rotate = false) {
     if (state.shareBusy) return;
-    if (!state.projectionId) throw new Error("projection_required");
+    if (!state.pendingShare && !state.projectionId) throw new Error("projection_required");
     const tourId = state.tour?.id, projectionId = state.projectionId;
-    if (state.pendingShare && (state.pendingShare.tourId !== tourId || state.pendingShare.projectionId !== projectionId)) throw new Error("Reconcile the retained confidential link before switching projections.");
+    if (state.pendingShare && state.pendingShare.tourId !== tourId) throw new Error("Reconcile the retained confidential link before switching Tours.");
     state.shareBusy = true;
     try {
       if (!state.pendingShare) {
@@ -677,22 +682,32 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       }
       const pending = state.pendingShare;
       const data = await post(pending.path, pending.payload);
-      if (state.tour?.id !== tourId || state.projectionId !== projectionId) return;
+      if (state.tour?.id !== tourId) return;
       if (!id(data?.share_grant_id) || data.ok === false) throw new Error("share_receipt_unavailable");
       state.rawShareToken = pending.raw;
-      state.shareGrantId = data.share_grant_id;
+      const currentProjection = state.projectionId === pending.projectionId;
+      if (currentProjection) state.shareGrantId = data.share_grant_id;
       state.pendingShare = null;
       $("#share-url").value = `https://reports.doctorcre.com/share#token=${pending.raw}`;
       $("#share-link").hidden = false;
-      $("#share-state").textContent = "Active";
+      $("#share-state").textContent = currentProjection ? "Active" : "Active · earlier projection";
       $("#rotate-share").textContent = "Rotate current";
       status("Confidential link generated. Copy it now.");
     } catch (error) {
-      if (state.pendingShare && state.tour?.id === tourId && state.projectionId === projectionId) {
-        $("#share-link").hidden = true;
-        $("#share-state").textContent = "Outcome unknown";
-        $("#rotate-share").textContent = "Check link outcome";
-        status("Link outcome unknown. Check link outcome replays the retained request.");
+      if (state.pendingShare && state.tour?.id === tourId) {
+        const validationRefused = error.status === 400 && typeof error.payload?.error === "string" && !!error.payload.error.trim();
+        if (validationRefused && !state.pendingShare.uncertain) {
+          state.pendingShare = null;
+          $("#share-state").textContent = "Request refused";
+          $("#rotate-share").textContent = "Rotate current";
+          status("Link request refused. Correct the fields and try again.");
+        } else {
+          state.pendingShare.uncertain = true;
+          $("#share-link").hidden = true;
+          $("#share-state").textContent = "Outcome unknown";
+          $("#rotate-share").textContent = "Check link outcome";
+          status("Link outcome unknown. Check link outcome replays the retained request.");
+        }
       }
       throw error;
     } finally { state.shareBusy = false; }

@@ -1047,7 +1047,12 @@ function addTeamDealForm() {
       const signature = JSON.stringify(args);
       if (!pending && state.pendingDealCreation && state.pendingDealCreation.signature !== signature) throw new Error('Reopen Add work record to check the retained creation before changing its fields.');
       state.pendingDealCreation ||= { signature, request: { ...args, lane:'territory', idempotency_key:uuidv4() } };
-      await state.client.createDeal(state.pendingDealCreation.request);
+      const operation = state.pendingDealCreation;
+      try { await state.client.createDeal(operation.request); }
+      catch (error) {
+        if (error.creationRefused && state.pendingDealCreation === operation) state.pendingDealCreation = null;
+        throw error;
+      }
       await loadHome(); showToast('Work record created in Deals');
       state.pendingDealCreation = null;
     } });

@@ -136,6 +136,40 @@ test("PR111 #4: reopened creation form recovers the retained intent",async()=>{
   h.addTeamDealForm();assert.equal(form.submit,"Check creation outcome");assert.match(form.body,/Demo record/);await form.onSubmit(new Map());assert.deepEqual(calls[1],calls[0]);
 });
 
+for (const reopen of [false,true]) test(`PR111 R1: terminal pre-creation refusal permits corrected input${reopen ? " after reopen" : ""}`, async () => {
+  const calls=[];let form,keys=0;
+  const client=createLiveClient({selfActor:"joe",fetchImpl:async(_path,init)=>{
+    const req=JSON.parse(init.body).params;calls.push(req);
+    if(req.name==="new-deal" && req.arguments.client==="invalid-client") return new Response(JSON.stringify({result:{isError:true,content:[{text:JSON.stringify({error:"not_a_client"})}]}}));
+    return rpc(req.name==="new-deal" ? {deal_id:"demo"} : req.name==="get-deal-room" ? {base_version:2} : {ok:true});
+  }});
+  const state={client};
+  const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{state,openForm:value=>{form=value;},phaseOptions:()=>"",uuidv4:()=>`key-${++keys}`,esc:value=>String(value??""),loadHome:async()=>{},showToast:noop},["addTeamDealForm"]);
+  h.addTeamDealForm();await assert.rejects(form.onSubmit(new Map([["client","invalid-client"],["name","Demo"]])));
+  assert.equal(state.pendingDealCreation,null);
+  if(reopen){h.addTeamDealForm();assert.equal(form.submit,"Create work record");}
+  await form.onSubmit(new Map([["client","C-demo"],["name","Demo"]]));
+  const creates=calls.filter(req=>req.name==="new-deal");assert.equal(creates.length,2);
+  assert.equal(creates[1].arguments.client,"C-demo");assert.notEqual(creates[0].arguments.idempotency_key,creates[1].arguments.idempotency_key);
+  assert.equal(calls.filter(req=>req.name==="set-lead").length,1);
+});
+
+for (const stage of ["uncertain creation","lead assignment"]) test(`PR111 R1: ${stage} refusal retains the creation intent`, async () => {
+  const calls=[];let form;
+  const refused=()=>new Response(JSON.stringify({result:{isError:true,content:[{text:JSON.stringify({error:"conflict"})}]}}));
+  const client=createLiveClient({selfActor:"joe",fetchImpl:async(_path,init)=>{
+    const req=JSON.parse(init.body).params;calls.push(req);
+    if(stage==="uncertain creation" && req.name==="new-deal") {if(calls.length===1)throw new Error("reply lost");return refused();}
+    return req.name==="new-deal" ? rpc({deal_id:"demo"}) : req.name==="get-deal-room" ? rpc({base_version:2}) : refused();
+  }});
+  const state={client};const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{state,openForm:value=>{form=value;},phaseOptions:()=>"",uuidv4:()=>"same-key",loadHome:async()=>{},showToast:noop},["addTeamDealForm"]);
+  h.addTeamDealForm();const data=new Map([["client","C-demo"],["name","Demo"]]);
+  await assert.rejects(form.onSubmit(data));const pending=state.pendingDealCreation;
+  await assert.rejects(form.onSubmit(data));assert.equal(state.pendingDealCreation,pending);
+  const writes=calls.filter(req=>req.name===(stage==="uncertain creation" ? "new-deal" : "set-lead"));
+  assert.deepEqual(writes[1].arguments,writes[0].arguments);
+});
+
 test("Dot 25: a task due today is not overdue at 8 AM Central", () => {
   const result=classifyPriority({due:"2026-09-30"},"2026-09-30T08:00:00-05:00");
   assert.equal(result.priority,"deadline"); assert.equal(result.reason,"due in 0 days");
@@ -430,6 +464,66 @@ for(const rotate of [false,true]) test(`PR111 #13: lost ${rotate?"rotation":"iss
 test("PR111 #13: retained share recovery stays reachable on its original Tour",async()=>{
   const {h,state,replies}=tourHarness();state.pendingShare={tourId:"A",projectionId:"projection-A"};replies.set("B",Promise.resolve({id:"B"}));
   await h.loadTour("B");assert.equal(state.tour.id,"A");assert.equal(state.pendingShare.tourId,"A");
+});
+
+for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "issue"} recovery survives same-Tour projection refresh`, async () => {
+  const {h,state,$,calls}=shareHarness(n=>{if(n===1)throw new Error("committed; reply lost");return {share_grant_id:grantId};},rotate);
+  await assert.rejects(h.issueShare(rotate));
+  // Use both source read/render handlers: a refreshed Tour replaces the current
+  // projection and grant, while the uncertain operation belongs to the old one.
+  $("#route-stops").replaceChildren=noop;
+  const currentGrant="00000000-0000-4000-8000-000000000004";
+  const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
+    state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
+    request:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),
+    status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
+    id:()=>false,tourMetaLine:()=>"",renderFeedback:noop,renderShareGrants:noop,
+    cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,
+    renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
+    renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},
+  },["loadTour"]);
+  await reload.loadTour("A");assert.equal(state.projectionId,"projection-B");
+  assert.match($("#rotate-share").textContent,/Check link outcome/);
+  const reloadedStatus=$("#share-state").textContent;
+  await h.issueShare(!rotate);
+  assert.match(reloadedStatus,/unknown/i);
+  assert.deepEqual(calls[1],calls[0]);assert.equal(calls.length,2);
+  assert.equal(state.pendingShare,null);assert.equal(state.shareGrantId,currentGrant);
+  assert.equal($("#share-link").hidden,false);
+  assert.match($("#share-state").textContent,/earlier projection/i);
+});
+
+for (const rotate of [false,true]) test(`PR111 R2: corrected ${rotate ? "rotation" : "issue"} follows a typed validation refusal`, async () => {
+  const {h,state,$}=shareHarness(null,rotate);const requests=[];let tokens=0,keys=0;
+  h.newShareToken=()=>`token-${++tokens}`;h.uuid=()=>`key-${++keys}`;
+  $("#receipt-digest").value="sha256:"+"A".repeat(64);
+  const transport=handlers("tours/app.js","  async function request(","  function validateDetail(",{
+    state,sessionBinding:"binding",AbortController,
+    fetch:async(path,init)=>{
+      const payload=JSON.parse(init.body);requests.push({path,payload});
+      return /^[a-f0-9]{64}$/.test(payload.receipt_digest.slice(7))
+        ? new Response(JSON.stringify({data:{share_grant_id:grantId}}))
+        : new Response(JSON.stringify({error:"invalid_payload"}),{status:400});
+    },
+  },["post"]);
+  h.post=transport.post;
+  await assert.rejects(h.issueShare(rotate));
+  $("#receipt-digest").value="sha256:"+"a".repeat(64);
+  await h.issueShare(rotate);
+  assert.equal(requests.length,2);assert.notEqual(requests[0].payload.idempotency_key,requests[1].payload.idempotency_key);
+  assert.equal(requests[1].payload.receipt_digest,"sha256:"+"a".repeat(64));
+  assert.equal(tokens,2);assert.equal(keys,2);assert.equal(state.pendingShare,null);assert.equal($("#share-link").hidden,false);
+});
+
+for (const response of [new Response("",{status:400}),new Response(JSON.stringify({error:"timeout"}),{status:408})]) test(`PR111 R2: ambiguous HTTP ${response.status} keeps the exact share request`, async () => {
+  const {h,state,$}=shareHarness(null);const requests=[];
+  const transport=handlers("tours/app.js","  async function request(","  function validateDetail(",{
+    state,sessionBinding:"binding",AbortController,
+    fetch:async(path,init)=>{requests.push({path,payload:JSON.parse(init.body)});return requests.length===1 ? response : new Response(JSON.stringify({data:{share_grant_id:grantId}}));},
+  },["post"]);
+  h.post=transport.post;await assert.rejects(h.issueShare());assert.ok(state.pendingShare);
+  $("#receipt-digest").value="sha256:"+"b".repeat(64);await h.issueShare();
+  assert.deepEqual(requests[1],requests[0]);assert.equal(state.pendingShare,null);
 });
 
 for(const badAt of [0,1,2]) test(`PR111 #14: malformed activity page ${badAt+1} stays unknown`,async()=>{

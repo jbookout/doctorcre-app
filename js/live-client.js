@@ -58,6 +58,7 @@ export function createLiveClient(opts = {}) {
     if (envelope.result?.isError) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
+      err.writeRefusal = typeof payload?.error === 'string' && !!payload.error.trim();
       throw err;
     }
     return payload;
@@ -353,8 +354,23 @@ export function createLiveClient(opts = {}) {
       if (operation.result) return operation.result;
       if (operation.inFlight) return operation.inFlight;
       operation.inFlight = (async () => {
-        const res = operation.receipt || await write('new-deal', operation.request);
-        if (typeof res?.deal_id !== 'string' || !res.deal_id.trim()) throw new Error('Created deal receipt is unavailable. Reconcile the same request.');
+        let res = operation.receipt;
+        if (!res) {
+          try { res = await write('new-deal', operation.request); }
+          catch (error) {
+            // Only an answered first creation refusal proves no deal was made.
+            // A refusal after an uncertain attempt cannot retire that intent.
+            if (error.writeRefusal && !operation.creationUncertain) {
+              dealCreations.delete(key);
+              error.creationRefused = true;
+            } else operation.creationUncertain = true;
+            throw error;
+          }
+        }
+        if (typeof res?.deal_id !== 'string' || !res.deal_id.trim()) {
+          operation.creationUncertain = true;
+          throw new Error('Created deal receipt is unavailable. Reconcile the same request.');
+        }
         operation.receipt = res;
         if (!operation.lead) {
           const fresh = await rpc('get-deal-room', { deal: res.deal_id });
