@@ -162,6 +162,45 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
 
 const agendaOf = (count) => Array.from({ length: count }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: `Deal ${i}` }));
 
+test('opening an active weekly call restores its session and publishes exact agenda context', async () => {
+  const h = harness({ agenda: agendaOf(2), state: {
+    state: 'recording', mode: 'weekly_deal_call', session: 'synthetic-active-call', started_at: '2026-09-23T15:00:00Z',
+  } });
+  try {
+    await h.controller.open();
+    assert.equal(h.controller.state.postCall.session, 'synthetic-active-call');
+    assert.equal(h.calls.publishCallContext.length, 1);
+    assert.equal(h.calls.publishCallContext[0].session, 'synthetic-active-call');
+    assert.equal(h.calls.publishCallContext[0].deals.length, 2);
+    assert.equal(h.doc.getElementById('callModeStop').hidden, false);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
+test('opening a completed weekly call restores status and displays the review panel', async () => {
+  const h = harness({ state: { state: 'ready_to_extract', mode: 'weekly_deal_call', session: 'synthetic-completed-call' },
+    statuses: [{ status: { state: 'ready_review' }, report: { report: { summary: 'Synthetic call summary' } } }],
+  });
+  try {
+    await h.controller.open();
+    assert.deepEqual(h.calls.getStatus, ['synthetic-completed-call']);
+    assert.equal(h.doc.getElementById('postCallPanel').hidden, false);
+    assert.match(h.doc.getElementById('postCallReport').innerHTML, /Synthetic call summary/);
+    assert.equal(h.calls.publishCallContext.length, 0);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
+test('refresh without a supplied snapshot reads and recovers the companion session', async () => {
+  const h = harness({ state: { state: 'ready_to_extract', mode: 'weekly_deal_call', session: 'synthetic-refresh-call' } });
+  try {
+    await h.controller.refresh();
+    assert.equal(h.requests.length, 1);
+    assert.deepEqual(h.calls.getStatus, ['synthetic-refresh-call']);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
 // ---------------------------------------------- 1. nothing before a click
 
 test("importing the Deal Room shell with no page around it starts nothing", async () => {

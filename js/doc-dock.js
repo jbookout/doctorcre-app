@@ -16,7 +16,7 @@ export function mountDocDock(reading) {
   notice.textContent = 'Doc cannot answer here yet.';
   const chats = document.createElement('a');
   chats.className = 'btn btn-primary';
-  chats.href = '/conversations.html';
+  chats.href = '/doc-chats';
   chats.textContent = 'Open Doc Chats';
   transcript?.replaceChildren(notice, chats);
   if (form) {

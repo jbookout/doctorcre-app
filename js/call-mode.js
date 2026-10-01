@@ -223,6 +223,11 @@ export function createCallMode(deps) {
       const element = $(`#${id}`);
       if (element) element.hidden = !eligible;
     }
+    const recheck = $('#callModeRetry');
+    if (recheck) {
+      recheck.hidden = eligible || state.eligibility === 'unknown';
+      recheck.disabled = state.eligibility === 'checking';
+    }
     if (!eligible) {
       for (const id of ['callModeStarts', 'callModeConsentRow', 'callModeStop', 'callModeSpeakers', 'postCallPanel', 'callModePermission']) {
         const element = $(`#${id}`);
@@ -531,9 +536,9 @@ export function createCallMode(deps) {
 
   // ------------------------------------------------------- recorder control
 
-  async function refresh({ quiet = false, snapshot = null } = {}) {
+  async function refresh({ quiet = false, snapshot: suppliedSnapshot = null } = {}) {
     try {
-      state.callMode = snapshot || await api('state');
+      state.callMode = suppliedSnapshot || await api('state');
       const notice = $('#callModePermission');
       if (notice) notice.hidden = true;
       render();
@@ -642,6 +647,13 @@ export function createCallMode(deps) {
    */
   async function handleClick(target) {
     const hit = (selector) => target?.closest?.(selector) || null;
+    const recheck = hit('#callModeRetry');
+    if (recheck) {
+      const hadFocus = root.activeElement === recheck;
+      if (await checkEligibility() && hadFocus && (root.activeElement === recheck || root.activeElement === root.body))
+        $('#callModeButton')?.focus();
+      return true;
+    }
     const confirm = hit('[data-post-call-confirm]');
     if (confirm) { await resolveCandidate(confirm.dataset.postCallConfirm, true, confirm); return true; }
     const skip = hit('[data-post-call-skip]');
