@@ -1,4 +1,5 @@
 import { createLiveClient } from "./live-client.js";
+import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
 import {
   STAGES, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
@@ -51,6 +52,12 @@ export function mountBoard(deps = {}) {
   let directorySignature = "";
   const badgeTimes = new Map();
   let ageTimer = null;
+  // On the system board the pipeline shows the system-work census (unfinished
+  // work plus recent Live) instead of snapshot tasks; every other panel still
+  // reads the snapshot.
+  let systemWork = null;
+  let censusPipeline = null;
+  let pipelineCards = [];
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -304,7 +311,19 @@ export function mountBoard(deps = {}) {
   }
 
   // ── pipeline ──────────────────────────────────────────────────────────────
-  function renderRail(view, visible) {
+  function censusCards() {
+    if (!censusPipeline) return null;
+    const tasks = {};
+    for (const stage of censusPipeline.stages)
+      for (const task of stage.tasks) tasks[task.id] = { ...task, stage: stage.id };
+    return boardView({ snapshot: { board_id: SYSTEM_BOARD_ID, version: 1, snapshot_json: { tasks } } }, currentNow()).cards;
+  }
+
+  function findCard(cardId) {
+    return pipelineCards.find(card => card.id === cardId) || currentView?.cards.find(card => card.id === cardId) || null;
+  }
+
+  function renderRail(visible) {
     const rail = byId("board-rail");
     rail.replaceChildren();
     const step = 600 / STAGES.length;
@@ -359,14 +378,18 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
-    if (!view) return;
+    const census = censusCards();
+    if (!view && !census) return;
+    const all = census || view.cards;
+    const kind = census ? "project" : view.kind;
+    pipelineCards = all;
     const container = byId("board-stages");
     const focusedId = [...cardNodes].find(([, node]) => node === doc.activeElement)?.[0];
     container.replaceChildren();
-    const visible = filterCards(view.cards, filters);
-    const grouped = view.kind === ALL_REPOS_BOARD;
-    byId("task-count").textContent = `${visible.length} OF ${view.cards.length} CARD${view.cards.length === 1 ? "" : "S"}`;
-    renderRail(view, visible);
+    const visible = filterCards(all, filters);
+    const grouped = kind === ALL_REPOS_BOARD;
+    byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
+    renderRail(visible);
     STAGES.forEach((stage, index) => {
       const cards = visible.filter(card => card.stage === stage.id);
       const column = el("section", "column", undefined,
@@ -377,7 +400,7 @@ export function mountBoard(deps = {}) {
       column.append(head);
       const body = el("div", "column-body");
       if (stage.id === "live") {
-        const live = liveView(cards, liveExpanded, view.kind);
+        const live = liveView(cards, liveExpanded, kind);
         column.dataset.collapsed = String(!liveExpanded);
         if (!liveExpanded && live.total)
           body.append(el("p", "live-summary", `${live.total} live · latest ${Math.min(LIVE_PREVIEW, live.total)} shown`));
@@ -395,7 +418,7 @@ export function mountBoard(deps = {}) {
       column.append(body);
       container.append(column);
     });
-    for (const id of [...cardNodes.keys()]) if (!view.cards.some(card => card.id === id)) cardNodes.delete(id);
+    for (const id of [...cardNodes.keys()]) if (!all.some(card => card.id === id)) cardNodes.delete(id);
     if (focusedId) {
       const node = cardNodes.get(focusedId);
       (node?.isConnected ? node : byId("board-title")).focus();
@@ -548,7 +571,7 @@ export function mountBoard(deps = {}) {
   }
 
   function openDetail(cardId) {
-    const card = currentView?.cards.find(item => item.id === cardId);
+    const card = findCard(cardId);
     if (!card) return;
     openCardId = cardId;
     returnFocus = doc.activeElement;
@@ -865,7 +888,7 @@ export function mountBoard(deps = {}) {
     renderCompleted(view);
     const dialog = byId("task-detail");
     if (openCardId && dialog.open) {
-      const card = view.cards.find(item => item.id === openCardId);
+      const card = findCard(openCardId);
       if (card) fillDetail(card);
     }
   }
@@ -958,6 +981,7 @@ export function mountBoard(deps = {}) {
       return false;
     }
     const seq = ++readSeq;
+    systemWork?.refresh();
     loadDirectory(seq);
     const run = (async () => {
       let read;
@@ -972,7 +996,13 @@ export function mountBoard(deps = {}) {
       const view = boardView(read, currentNow());
       if (view.error) { setError(view.error); return false; }
       if (!view.version) {
-        clearBoard("unpublished");
+        if (!systemWork) clearBoard("unpublished");
+        else {
+          const meta = byId("board-meta");
+          meta.textContent = "No published system snapshot.";
+          meta.setAttribute("data-read-state", "unpublished");
+          badgeTimes.delete(byId("board-freshness"));
+        }
         setError("This board has not been published yet.");
         byId("board-retry").hidden = false;
         return false;
@@ -998,6 +1028,8 @@ export function mountBoard(deps = {}) {
   }
 
   function start() {
+    if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
+      systemWork = mountSystemWorkBoard({ client, onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
     refresh().catch(() => setError("The board could not be loaded. Retry to read again."));
     schedule(() => refresh().catch(() => setError("The board could not be refreshed.")), REFRESH_MS);
     schedule(tick, TICK_MS);
