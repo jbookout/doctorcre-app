@@ -323,7 +323,7 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
   assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-csrf'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
-  await page.clock.runFor(5100);assert.ok(state.queueReads>1);assert.ok(state.turnReads>1);
+  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
 
