@@ -2,6 +2,7 @@ import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { webcrypto, createHash } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { chromium } from "playwright";
@@ -43,8 +44,8 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
 test("composer contracts pin the exact server PR revision and each authenticated assembly route", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
   assert.equal(contract.schema, "doctorcre-tour-composer.v1");
-  assert.equal(contract.producer.source_commit, "fff4e29a7eeb5f33ed2a5bcf7d6a44b81ef592a3");
-  assert.equal(contract.producer.pull_request, "https://github.com/jbookout/carr-system/pull/1437");
+  assert.equal(contract.producer.source_commit, "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33");
+  assert.equal(contract.producer.pull_request, "https://github.com/jbookout/carr-system/pull/1453");
   assert.deepEqual(Object.keys(contract.writes), ["/api/tours/create", "/api/tours/route-draft", "/api/tours/route-stop", "/api/tours/route-stop-transition", "/api/tours/route-accept"]);
   const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc); await saveAndAccept(doc);
   fill(doc, `#route-stops [data-property-id="${propB}"] [data-field="route_label"]`, "B2"); doc.querySelector("#save-composer").click(); await settle();
@@ -778,4 +779,77 @@ test("Dot Tour: the composer contract binds review to an exact CARR digest produ
   assert.equal(contract.reviewed_route.changed_draft_status, 409);
   assert.equal(contract.reviewed_route.producer.source_commit, "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33");
   assert.equal(contract.reviewed_route.producer.migration, "migrations/0759_tour_reviewed_route_digest.sql");
+});
+
+test("the digest-bearing detail read and release prerequisite bind the composer producer", async () => {
+  const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
+  assert.deepEqual(contract.reviewed_route.producer.source_commit, contract.producer.source_commit);
+  assert.deepEqual(contract.reads["/api/tours/detail"], {
+    method: "GET", query_fields: ["tour_id"], envelope: "data",
+    routes_order: "route_version descending",
+    route_fields: ["id", "route_version", "accepted", "stops", "acceptance_digest"],
+    acceptance_digest_pattern: "^sha256:[0-9a-f]{64}$",
+    legacy_response_digest: "route_acceptance_digest",
+  });
+  assert.deepEqual(contract.release_prerequisite, {
+    producer_source_commit: contract.producer.source_commit,
+    migration: contract.reviewed_route.producer.migration,
+    order: ["apply producer migration", "deploy producer", "deploy consumer"],
+    older_producer_behavior: "withhold review and acceptance",
+  });
+});
+
+// Opt-in verification follows the existing committed-producer check convention.
+// It reads git blobs only. SQL execution and production deployment stay in CARR.
+test("the committed digest producer detail reaches composer acceptance unchanged", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned detail producer",
+}, async t => {
+  const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
+  const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  const migration = committed(contract.reviewed_route.producer.migration);
+  assert.match(migration, /create or replace function ops\.read_tour_internal_detail\b/);
+  assert.match(migration, /'acceptance_digest',ops\.tour_route_review_digest\(v\.organization_tenant_id,v\.id\)/);
+  assert.match(migration, /p_acceptance_digest is distinct from ops\.tour_route_review_digest\(p_tenant,p_route_version_id\)/);
+  assert.match(migration, /order by v\.route_version desc/);
+  const runtime = committed("mcp-server/src/tour-runtime.js");
+  // Load the committed public pure projection, without importing database or
+  // renderer adapters. The function body is unmodified and never reimplemented.
+  const start = runtime.indexOf("export function projectTourDetail(");
+  const end = runtime.indexOf("\nasync function invoke(", start);
+  assert.ok(start >= 0 && end > start);
+  const { projectTourDetail } = await import(`data:text/javascript;base64,${Buffer.from(runtime.slice(start, end)).toString("base64")}`);
+  const timestampModule = `data:text/javascript;base64,${Buffer.from(committed("mcp-server/src/tour-route-timestamp.js")).toString("base64")}`;
+  const source = committed("mcp-server/src/tour-internal-web.js").replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
+  const { createTourInternalWebHandler } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const store = domain(), normalFetch = store.fetch;
+  const actor = { id: "synthetic-partner" }, session = { csrfToken: "synthetic-csrf" };
+  const handler = createTourInternalWebHandler({ readTourFn: async ({ input }) => {
+    const tour = store.tours.get(input.tour_id);
+    if (!tour) return { ok: false, status: 404 };
+    const routes = structuredClone(tour.routes);
+    for (const route of routes) route.acceptance_digest = fixtureReviewDigest(route);
+    return { ok: true, data: projectTourDetail({ id: tour.id, tour_name: tour.name, tour_status: "draft", routes }) };
+  } });
+  let displayedDigest;
+  store.fetch = async (path, options) => {
+    if (!path.startsWith("/api/tours/detail")) return normalFetch(path, options);
+    const result = await handler.fetch(new Request(`https://app.doctorcre.com${path}`), { APP_HOST: "app.doctorcre.com" }, {}, actor, session);
+    const payload = await result.clone().json();
+    if (payload.data) {
+      displayedDigest = payload.data.routes[0].acceptance_digest;
+      assert.equal(payload.data.route_acceptance_digest, displayedDigest);
+    }
+    return result;
+  };
+  const { dom, doc } = await open(store); t.after(() => dom.window.close());
+  await create(doc); await addCart(doc);
+  doc.querySelector("#save-composer").click(); await settle();
+  const reviewedDigest = displayedDigest;
+  assert.match(reviewedDigest, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(doc.querySelector("#route-reviewed").disabled, false);
+  doc.querySelector("#route-reviewed").click();
+  assert.equal(doc.querySelector("#accept-route").disabled, false);
+  doc.querySelector("#accept-route").click(); await settle();
+  assert.equal(store.calls.find(call => call.path === "/api/tours/route-accept").body.acceptance_digest, reviewedDigest);
+  assert.equal([...store.tours.values()][0].routes[0].accepted, true);
 });

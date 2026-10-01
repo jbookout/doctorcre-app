@@ -3,11 +3,28 @@
   "version": "1.1.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "fff4e29a7eeb5f33ed2a5bcf7d6a44b81ef592a3",
-    "pull_request": "https://github.com/jbookout/carr-system/pull/1437"
+    "source_commit": "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/1453"
   },
   "consumer": "jbookout/doctorcre-app",
   "authentication": "same-origin session and x-carr-csrf; no caller authority fields",
+  "reads": {
+    "/api/tours/detail": {
+      "method": "GET",
+      "query_fields": ["tour_id"],
+      "envelope": "data",
+      "routes_order": "route_version descending",
+      "route_fields": ["id", "route_version", "accepted", "stops", "acceptance_digest"],
+      "acceptance_digest_pattern": "^sha256:[0-9a-f]{64}$",
+      "legacy_response_digest": "route_acceptance_digest"
+    }
+  },
+  "release_prerequisite": {
+    "producer_source_commit": "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33",
+    "migration": "migrations/0759_tour_reviewed_route_digest.sql",
+    "order": ["apply producer migration", "deploy producer", "deploy consumer"],
+    "older_producer_behavior": "withhold review and acceptance"
+  },
   "writes": {
     "/api/tours/create": {
       "fields": [
