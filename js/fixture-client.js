@@ -4,12 +4,19 @@
  */
 import { uuidv4 } from './uuid.js';
 import { PHASES } from './client.js';
+import { readinessRequest, threadRequest } from './correspondence-model.js';
 import {
   MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
 } from './workspace-command-center-model.js';
 
 const LEASE_TTL_MS = 3000;
 const IDEM_TTL_MS = 60 * 60 * 1000;
+const CORRESPONDENCE_CEILING = {
+  dispatchable: false, provider_operation: null, send_authority_holder: 'human_partner_outside_carr',
+  send_authority_seam: 'step:v5-representative-workflow-external-send-authority-decision', automatic_internal_update: false,
+  effects: { creates_effect: false, database_writes: 0, network_calls: 0, provider_actions: 0,
+    notifications: 0, schedules: 0, deployments: 0, activations: 0, acceptances: 0 },
+};
 /** The cells patch-deal-field bases on; mirrors the record layer's DEAL_ROOM_FIELDS. */
 const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_state'];
 
@@ -1494,6 +1501,23 @@ export async function createFixtureClient(opts = {}) {
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
         premises: [], negotiation_rounds: [], documents: [] };
+    },
+
+    async correspondenceReadiness(args = {}) {
+      readinessRequest(args);
+      // Synthetic installation fixture; counts never stand in for deal evidence.
+      return structuredClone({ ok: true, schema_version: 'doctorcre-v5-j103-correspondence-store.v1',
+        readiness: { server_instant: '2026-09-30T12:00:00Z', partners: [{ partner_slug: 'demo-partner',
+          consents_in_force: 0, consents_revoked: 0, read_receipts: 0, drafts: 0 }], read_receipt_writer_granted_to_runtime: false },
+        mailbox_reads_possible: false, activation: { human_step: { step: 'demo-local-store-consent', owner: 'Demo partner', what: 'Synthetic consent step' },
+          status: 'consent_not_recorded', note: 'Synthetic adapter unavailable' },
+        owed: [], kernel_gaps: [], policy: { correspondence: 'demo-policy', journey: 'demo-journey-policy' },
+        consentable_operations: [], never_consentable_operations: [], ...CORRESPONDENCE_CEILING });
+    },
+    async readCorrespondenceThread(args) {
+      return structuredClone({ ok: true, decision: 'unavailable', reason_id: 'j103.store.no_read_receipt',
+        owed_seam: 'step:journey-one-authorized-adapter-read-receipt', native_identity: threadRequest(args),
+        receipts: [], ...CORRESPONDENCE_CEILING });
     },
 
     // V5-UX-B04: fixture stand-in for the pinned `/api/v1/business/{dataset}/<id>`

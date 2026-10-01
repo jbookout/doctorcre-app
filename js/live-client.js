@@ -6,6 +6,7 @@
  * staging; one may be passed directly for isolated client tests.
  */
 import { uuidv4 } from './uuid.js';
+import { readinessRequest, threadRequest } from './correspondence-model.js';
 
 /**
  * @param {Object} [opts]
@@ -121,6 +122,8 @@ export function createLiveClient(opts = {}) {
   const client = {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
+    async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
+    async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
 
     // Each deal carries `field_base` — the latest committed event id and time for
     // every editable cell, read in the same statement as the values it belongs

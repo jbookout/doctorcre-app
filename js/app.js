@@ -17,6 +17,7 @@ import {
 } from './field-write-reconciliation.mjs';
 import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
+import { mountEvidence } from './correspondence.js';
 
 const POLL_MS = 1400;
 /**
@@ -1107,8 +1108,13 @@ function detailRows(items, renderer, empty='Nothing captured yet.') {
   return items?.length ? items.map(renderer).join('') : `<div class="detail-row">${esc(empty)}</div>`;
 }
 
+let disposeDealEvidence = null;
+let dealDetailSequence = 0;
 async function openDeal(dealId) {
+  const sequence = ++dealDetailSequence;
+  disposeDealEvidence?.();
   const detail = await state.client.getDeal(dealId);
+  if (sequence !== dealDetailSequence) return;
   const deal = detail.deal;
   const parked = deal.operating_state === 'parked';
   const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
@@ -1129,6 +1135,9 @@ async function openDeal(dealId) {
       <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
     </div>`;
   $('#dealDetail').innerHTML = html;
+  const evidenceRoot = document.createElement('div');
+  $('#dealDetail .deal-content').append(evidenceRoot);
+  disposeDealEvidence = mountEvidence(evidenceRoot, { client: state.client, detail });
   $('#dealDialog').showModal();
 }
 
@@ -1221,6 +1230,11 @@ async function finishAgenda(status = 'completed') {
 }
 
 function wireEvents() {
+  $('#dealDialog').addEventListener('close', () => {
+    ++dealDetailSequence;
+    disposeDealEvidence?.();
+    disposeDealEvidence = null;
+  });
   document.addEventListener('click', async (event) => {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {

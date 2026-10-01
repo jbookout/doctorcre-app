@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.34.0",
+  "version": "1.35.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "0cc6fe2538a81521bf8c25b0df58aa4063ed614b"
@@ -27,6 +27,7 @@
     "capture-queue",
     "claim-card",
     "close-loop",
+    "correspondence-readiness",
     "create-doc-conversation",
     "create-national-account",
     "create-national-market-deal",
@@ -59,6 +60,7 @@
     "presence-lease",
     "promote-pool",
     "propose-doc-correction",
+    "read-correspondence-thread",
     "read-dispatch-history",
     "read-doc-conversation",
     "read-doc-outcome-cards",
@@ -124,5 +126,111 @@
     "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
     "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one.",
     "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
-  ]
+  ],
+  "mcp_read_contracts": {
+    "correspondence-readiness": {
+      "write": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "response": {
+        "schema_version": "doctorcre-v5-j103-correspondence-store.v1",
+        "required_keys": [
+          "ok",
+          "schema_version",
+          "readiness",
+          "mailbox_reads_possible",
+          "activation",
+          "owed",
+          "kernel_gaps",
+          "policy",
+          "consentable_operations",
+          "never_consentable_operations",
+          "dispatchable",
+          "provider_operation",
+          "send_authority_holder",
+          "send_authority_seam",
+          "automatic_internal_update",
+          "effects"
+        ],
+        "readiness_keys": [
+          "server_instant",
+          "partners",
+          "read_receipt_writer_granted_to_runtime"
+        ],
+        "partner_keys": [
+          "partner_slug",
+          "consents_in_force",
+          "consents_revoked",
+          "read_receipts",
+          "drafts"
+        ],
+        "evidence_coverage": "Installation counts only; no deal or meeting index."
+      }
+    },
+    "read-correspondence-thread": {
+      "write": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_system": {
+            "type": "string"
+          },
+          "native_id": {
+            "type": "string"
+          },
+          "native_id_epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "source_system",
+          "native_id",
+          "native_id_epoch"
+        ]
+      },
+      "response": {
+        "required_keys": [
+          "ok",
+          "decision",
+          "reason_id",
+          "native_identity",
+          "receipts",
+          "dispatchable",
+          "provider_operation",
+          "send_authority_holder",
+          "send_authority_seam",
+          "automatic_internal_update",
+          "effects"
+        ],
+        "decisions": {
+          "unavailable": {
+            "additional_required_keys": [
+              "owed_seam"
+            ],
+            "receipts": []
+          },
+          "receipts_found": {
+            "receipt_keys": [
+              "read_receipt_id",
+              "partner_slug",
+              "adapter_kind",
+              "account_digest",
+              "native_identity",
+              "thread_metadata",
+              "metadata_digest",
+              "consent_in_force",
+              "recorded_at"
+            ]
+          }
+        },
+        "thread_metadata": "Opaque JSON object. Store enforces related relevance, forbids raw content and returns metadata only; no subject/body/attachment bytes.",
+        "identity_source": "Use only native identity already recorded on the deal activity; this verb does not discover threads by deal."
+      }
+    }
+  }
 }

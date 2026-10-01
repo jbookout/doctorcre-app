@@ -179,7 +179,7 @@ test("the Ideas page is routed and uses the pinned idea and event verbs", async 
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(routes.routes["/ideas-events"], "ideas.html");
-  assert.equal(carr.version, "1.34.0");
+  assert.equal(carr.version, "1.35.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
   assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);
