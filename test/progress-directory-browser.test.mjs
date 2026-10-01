@@ -10,7 +10,7 @@ const boards = [
   { board_id: "carr-v5", title: "System progress", project: "carr-v5", updated_at: "2026-10-01T14:30:00Z", task_counts: { running: 1 } },
 ];
 
-async function open(t, { width = 390, path = "/control-room/progress", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
+async function open(t, { width = 390, path = "/control-room/progress?board=demo-project", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
   page.setDefaultTimeout(5000);
@@ -24,6 +24,7 @@ async function open(t, { width = 390, path = "/control-room/progress", directory
     if (url.pathname === "/mcp") {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params);
       if (onRpc && await onRpc(route, rpc.params)) return;
+      if (rpc.params.name === 'unfinished-work') return route.fulfill({ contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify({schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true})}]}})});
       const listing = rpc.params.name === "list-progress-boards";
       const id = rpc.params.arguments.board_id;
       const board = boards.find(board => board.board_id === id);
@@ -70,7 +71,7 @@ test("desktop and phone main navigation reach Progress with one tap", async t =>
 });
 
 test("no-param load shows system board, counts, timestamps and stale project; selection opens it", async t => {
-  const { page, calls, errors } = await open(t);
+  const { page, calls, errors } = await open(t, { path: "/control-room/progress" });
   await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
   assert.equal(await page.locator(".board-link").first().getAttribute("data-board-id"), "carr-v5");
   const project = page.locator('[data-board-id="demo-project"]');

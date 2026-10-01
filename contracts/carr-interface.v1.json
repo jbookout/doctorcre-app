@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.37.0",
+  "version": "1.38.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "97e916b7f907f268365ba7ba96635e36c0c65e03"
+    "source_commit": "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -14,6 +14,7 @@
     "database_access": "forbidden"
   },
   "mcp_operations": [
+    "accept-ready-plan-amendment",
     "acknowledge-dispatch",
     "acknowledge-notification",
     "add-critical-date",
@@ -21,12 +22,18 @@
     "add-industry-event",
     "add-loop",
     "add-room-turn",
+    "advance-workflow-cutover-stage",
     "answer-board-question",
     "answer-work-request-for-joe",
     "append-tour-selection-cart-version",
+    "approve-retrieval-proposals",
+    "cancel-capability-session",
+    "cancel-workflow-cutover-plan",
     "capture-queue",
     "claim-card",
+    "close-investigation",
     "close-loop",
+    "confirm-slice-completions",
     "correspondence-readiness",
     "create-doc-conversation",
     "create-national-account",
@@ -81,6 +88,7 @@
     "resolve-conflict",
     "resolve-post-call-candidate",
     "revert-deal-field",
+    "review-and-triage",
     "review-deal",
     "schedule-board",
     "search-tour-properties",
@@ -94,6 +102,8 @@
     "start-deal-review",
     "supersede-work-request",
     "today-triage",
+    "triage-incident",
+    "unfinished-work",
     "update-deal",
     "update-industry-event",
     "update-lead",
@@ -436,5 +446,23 @@
       },
       "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
     }
+  },
+  "system_work_inventory": {
+    "schema": "unfinished-work.v1",
+    "endpoint": "/api/v1/work-inventory?system=true",
+    "ordering": "opened_at ascending, kind and id in C text order; Live library last_activity_at descending",
+    "personal_scope": "server-derived owner only",
+    "live_limit": 10,
+    "filters": [
+      "source",
+      "kinds",
+      "age",
+      "text",
+      "live_library",
+      "cursor",
+      "id",
+      "limit"
+    ],
+    "cache": "GitHub comes from published producer cache; no GitHub requests per page load"
   }
 }

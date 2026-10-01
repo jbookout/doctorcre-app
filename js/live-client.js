@@ -586,6 +586,15 @@ export function createLiveClient(opts = {}) {
     // (actor.human !== true is refused there, with no sponsored-agent route
     // at all); this client passes no actor field of its own.
     async answerWorkRequestForJoe(args) { return write('answer-work-request-for-joe', args); },
+    async unfinishedWork(args = {}) { return progressRead('unfinished-work', args); },
+    async triageSystemWork(verb, args) {
+      const allowed = new Set(['close-loop','update-loop','decline-work-request','review-and-triage',
+        'cancel-capability-session','triage-incident','cancel-workflow-cutover-plan',
+        'advance-workflow-cutover-stage','confirm-slice-completions','close-investigation',
+        'accept-ready-plan-amendment','approve-retrieval-proposals']);
+      if (!allowed.has(verb)) throw new Error('Unsupported system work action.');
+      return write(verb, args);
+    },
     async listProgressBoards() { return progressRead('list-progress-boards', {}); },
     async readProgressBoard(args) { return progressRead('read-progress-board', args); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
