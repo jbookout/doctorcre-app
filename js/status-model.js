@@ -32,15 +32,11 @@ export const SNAPSHOT_SCHEMA = "doctorcre-status-snapshot.v1";
 /** The only keys a stored read may carry. Anything else is a payload leak. */
 export const SNAPSHOT_READ_KEYS = Object.freeze(["id", "state", "observed_at", "reason", "coverage_word"]);
 
-/**
- * Titles, not descriptions. Each row is the literal word unknown with the
- * reason it is unknown: there is no producer, and simulating one would be the
- * fabrication this whole surface exists to prevent.
- */
+/** Coverage boundaries of the scoped assurance verb; unknown never means zero. */
 export const INTEGRATION_GAPS = Object.freeze([
-  Object.freeze({ id: "v5-a01", title: "Truthful health and scoped degradation (V5-A01)", word: "unknown", reason: "no producer yet" }),
-  Object.freeze({ id: "v5-f08", title: "Backup, restore and degraded-operation posture (V5-F08)", word: "unknown", reason: "no producer yet" }),
-  Object.freeze({ id: "v5-f07", title: "Supervisor and job health (V5-F07)", word: "unknown", reason: "no producer yet" }),
+  Object.freeze({ id: "v5-a01", title: "Truthful health and scoped degradation (V5-A01)", word: "unknown", reason: "Choose a workflow and version to read scoped assurance health." }),
+  Object.freeze({ id: "v5-f08", title: "Backup, restore and degraded-operation posture (V5-F08)", word: "unknown", reason: "The scoped assurance read does not cover backup or restore posture." }),
+  Object.freeze({ id: "v5-f07", title: "Supervisor and job health (V5-F07)", word: "unknown", reason: "The scoped assurance read does not cover supervisor or job health." }),
 ]);
 
 /** Anchors only. The page never fetches these: CSP connect-src is 'self'. */

@@ -5,6 +5,7 @@
  * on each reviewed Deal Room host, so no baseUrl is needed in production or
  * staging; one may be passed directly for isolated client tests.
  */
+import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 
@@ -135,6 +136,7 @@ export function createLiveClient(opts = {}) {
   const client = {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
+    async readAssuranceHealth(args) { return rpc('read-assurance-health', assuranceHealthRequest(args)); },
     async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
     async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
 
