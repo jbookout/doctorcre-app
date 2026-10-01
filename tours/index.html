@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tour Operations · CARR</title>
   <link rel="stylesheet" href="/tours/app.css">
+  <link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
   <link rel="stylesheet" href="/tours/property-panel.css">
   <script type="module" src="/tours/app.js"></script>
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -59,6 +60,7 @@
         <div class="workspace-grid">
           <section class="card route-card" aria-labelledby="composer-title">
             <div class="section-head"><div><p class="eyebrow" id="route-version">No route version</p><h3 id="composer-title">Tour composer</h3></div><span id="composer-badge" class="badge">Draft</span></div>
+            <section id="accepted-itinerary" class="accepted-itinerary" aria-label="Accepted itinerary" hidden></section>
             <div class="composer-toolbar"><button id="add-cart-stops" type="button">Add cart properties as stops</button><button id="undo-route" type="button" hidden>Undo last edit</button></div>
             <details id="route-endpoint-editor" class="route-endpoint-editor" hidden><summary>Route endpoints</summary><div class="endpoint-grid">
               <fieldset><legend>Start</legend><label for="edit-start-latitude">Latitude<input id="edit-start-latitude" type="number" min="-90" max="90" step="any"></label><label for="edit-start-longitude">Longitude<input id="edit-start-longitude" type="number" min="-180" max="180" step="any"></label><label for="edit-start-source">Location source reference<input id="edit-start-source" maxlength="240"></label></fieldset>

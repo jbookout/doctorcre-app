@@ -1,0 +1,21 @@
+{
+  "schema": "doctorcre-tour-map.v1",
+  "contract": "carr-map-tour-v1",
+  "version": "1.2.0",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/1443",
+    "source_commit": "edf9c2d74a7e64070f8c2dc5189ea8b6181af435",
+    "contract_path": "workspace/contracts/market-map-route-planning.v1.json",
+    "module_path": "mcp-server/src/tour-map-route-state.js",
+    "sha256": "22ce47404fe11be4f0fa4d4d6b1f5c89b131ecac6e14332471e854bf27e6d2c2"
+  },
+  "consumer_module": "tours/vendor/tour-map-route-state.js",
+  "read_adapter": "accepted routes from /api/tours/detail; missing geometry remains unknown",
+  "navigation_requirements": "Approved access coordinate, exact-route complete promotion receipt and authenticated user_ref. No receipt is synthesized. Receipt retrieval seam remains upstream-owed in PR 1443.",
+  "maplibre": {
+    "version": "6.4.1",
+    "source": "existing reports/vendor/maplibre-gl-6.4.1 vendored distribution",
+    "style": "explicit blank placeholder; no paid key or external tiles"
+  }
+}

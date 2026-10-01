@@ -1,3 +1,4 @@
+import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
 import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
 
@@ -33,6 +34,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       state.csrf = payload.csrf_token; sessionBinding = binding;
       if (changed) {
         createPending = null; restoredTourId = ""; createPhase = "ready"; routeEndpoints.clear();
+        itineraryView?.destroy(); itineraryView = null; $("#accepted-itinerary").hidden = true;
         if (composer) { composer.plan = null; composer.phase = "session-changed"; composer.saved = false; composer.dirty = false; composer.undo = null; composer.message = "Session changed. Previous requests cannot be retried here. Reload the route for this session."; }
         persistPending(); renderCreate(); renderComposerSummary();
         throw new Error("session_changed");
@@ -309,7 +311,19 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     }
   }
   function stops() { return Array.isArray(state.tour?.stops) ? state.tour.stops : []; }
-  let composer = null;
+  let composer = null, itineraryView = null;
+  function renderAcceptedItinerary() {
+    const root = $("#accepted-itinerary");
+    const route = acceptedRouteFromDetail(state.tour);
+    const options = { route, scope: sessionBinding };
+    // PR 1443 deliberately does not authenticate or retrieve promotion receipts.
+    // This surface withholds navigation until that upstream seam supplies one.
+    if (!route) { itineraryView?.destroy(); itineraryView = null; root.hidden = true; return; }
+    try {
+      if (itineraryView) itineraryView.update(options);
+      else itineraryView = mountAcceptedItinerary(root, options);
+    } catch { itineraryView?.destroy(); itineraryView = null; root.hidden = false; root.textContent = "Accepted itinerary could not be read. Reload the saved Tour to retry."; }
+  }
   const node = (tag, content, className) => { const el = document.createElement(tag); if (content) el.textContent = content; if (className) el.className = className; return el; };
   function routeRows(tour) {
     return (Array.isArray(tour?.stops) ? tour.stops : []).filter(stop => id(stop.property_id)).map(stop => ({ ...stop,
@@ -602,6 +616,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     if (downloadable) $("#download-pdf").href = `/api/tours/pdf/download?render_job_id=${encodeURIComponent(state.renderJobId)}`;
     mountPropertyPanel({ tour, request });
     if (composer && tour.routes?.length) renderComposer();
+    renderAcceptedItinerary();
   }
   async function loadLibrary() {
     status("Loading tours…"); const data = await request("/api/tours/library");
@@ -613,6 +628,12 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     if (!composer && retained?.plan && id(retained.tourId)) {
       restoredTourId = retained.tourId; renderCreate(); status("An unresolved route request must be reconciled before another Tour can be edited.");
       await loadTour(restoredTourId);
+    }
+    if (!state.tour && !retained?.plan && !createPending) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
+        if (saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) await loadTour(saved.tour_id);
+      } catch { /* A stale tab pointer cannot select an unavailable Tour. */ }
     }
     renderCreate();
   }
