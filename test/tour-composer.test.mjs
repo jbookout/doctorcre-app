@@ -2,7 +2,7 @@ import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { webcrypto } from "node:crypto";
+import { webcrypto, createHash } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { chromium } from "playwright";
 
@@ -15,6 +15,31 @@ const uuid = () => webcrypto.randomUUID();
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";
 const properties = [propA, propB].map((property_id, i) => ({ property_id, name: `Synthetic site ${i + 1}`, address: `${100 + i} Example Way`, county: "Escambia", state: "FL" }));
 const settle = async () => { for (let i = 0; i < 16; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
+
+for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary restoration surfaces ${failure} and permits explicit retry`, async () => {
+  const store = domain(), tourId = uuid();
+  store.tours.set(tourId, { id: tourId, name: "Synthetic restored Tour", routes: [{ id: uuid(), route_version: 1, accepted: false, stops: [] }] });
+  const normalFetch = store.fetch; let reads = 0, fail = true;
+  store.fastTimeout = failure === "timeout";
+  store.fetch = async (path, options) => {
+    if (path.startsWith("/api/tours/detail")) {
+      ++reads;
+      if (fail) {
+        if (failure === "timeout") return new Promise(() => {});
+        return failure === "503" ? response(null, 503) : response({ id: "invalid" });
+      }
+    }
+    return normalFetch(path, options);
+  };
+  const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
+  const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) });
+  assert.equal(reads, 1);
+  assert.match(doc.querySelector("#status").textContent, /Saved Tour unavailable.*select.*retry/i);
+  assert.equal(doc.querySelector("#create-tour").disabled, false);
+  fail = false; doc.querySelector(".tour-button").click(); await settle();
+  assert.equal(reads, 2); assert.match(doc.querySelector("#status").textContent, /Tour ready/);
+  dom.window.close();
+});
 test("composer contracts pin the exact server PR revision and each authenticated assembly route", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
   assert.equal(contract.schema, "doctorcre-tour-composer.v1");
@@ -94,6 +119,7 @@ function domain() {
 async function open(store, storage = {}) {
   const dom = new JSDOM(html, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
+  if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
   for (const [key, value] of Object.entries(storage)) dom.window.sessionStorage.setItem(key, value);
   dom.window.eval(script); await settle();
   return { dom, doc: dom.window.document };

@@ -630,16 +630,20 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       await loadTour(restoredTourId);
     }
     if (!state.tour && !retained?.plan && !createPending) {
+      let saved = null;
       try {
-        const saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
-        if (saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) await loadTour(saved.tour_id);
-      } catch { /* A stale tab pointer cannot select an unavailable Tour. */ }
+        saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
+      } catch { /* Invalid tab pointers do not select a Tour. */ }
+      if (saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
+        try { await loadTour(saved.tour_id, { requireComposerDetail: true }); }
+        catch { status("Saved Tour unavailable. Select it from the library to retry."); }
+      }
     }
     renderCreate();
   }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
-  async function loadTour(tourId) {
+  async function loadTour(tourId, { requireComposerDetail = false } = {}) {
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
     if (navigationBusy || composer?.busy) return;
     if (composer?.tourId !== tourId && (composer?.dirty || composer?.plan || composer?.busy)) { status("Save or reconcile the current route before switching Tours."); return; }
@@ -647,7 +651,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     try {
       const seq = ++tourLoadSeq; ++state.feedbackSeq; status("Loading tour…");
       const tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
-      if (tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
+      if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
       const changed = composer && composer.snapshot !== routeSnapshot(tour);
       if (changed && (composer.dirty || composer.plan || composer.busy)) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }

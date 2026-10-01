@@ -29,11 +29,37 @@ async function loadVendoredMapLibre() {
   return import("./vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
 }
 
+// Provider bounds may span world copies; canonical bounds use EPSG:4326.
+export function normalizedProviderBounds([[west, south], [east, north]]) {
+  const wrap = value => ((value + 180) % 360 + 360) % 360 - 180;
+  return east - west >= 360 ? [-180, south, 180, north] : [wrap(west), south, wrap(east), north];
+}
+
+// Read compatibility v1: the pinned composer permits equal ISO instants.
+// Preserve those exact windows without changing the pinned map module or
+// widening its validation of identity, order, durations or other appointments.
+function buildAcceptedRouteState(route, options) {
+  const iso = value => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return false;
+    const time = Date.parse(value);
+    return Number.isFinite(time) && new Date(time).toISOString() === (/\.\d{3}Z$/.test(value) ? value : value.replace(/Z$/, ".000Z"));
+  };
+  const equalWindows = new Map();
+  const stops = Array.isArray(route.stops) ? route.stops.map(stop => {
+    if (!iso(stop?.appointment_start) || !iso(stop?.appointment_end) || Date.parse(stop.appointment_start) !== Date.parse(stop.appointment_end)) return stop;
+    equalWindows.set(stop.route_stop_id, { start: stop.appointment_start, end: stop.appointment_end });
+    return { ...stop, appointment_start: null, appointment_end: null };
+  }) : route.stops;
+  const result = buildRouteVersionState({ ...route, stops }, options);
+  for (const stop of result.route.stops) if (equalWindows.has(stop.route_stop_id)) stop.appointment = equalWindows.get(stop.route_stop_id);
+  return result;
+}
+
 /** One persistent map, with all surfaces derived from the CARR route projection. */
 export function mountAcceptedItinerary(root, initial) {
   const doc = root.ownerDocument, win = doc.defaultView;
   const make = (tag, text, className) => { const el = doc.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
-  let options, state, projection, routeInput, map = null, gl = null, destroyed = false, generation = 0, mapFailure = "", returnNotice = "";
+  let options, state, projection, routeInput, map = null, gl = null, destroyed = false, generation = 0, mapFailure = "", returnNotice = "", storageNotice = "";
   const markers = new Map();
   const motion = win.matchMedia?.("(prefers-reduced-motion: reduce)");
   let reducedMotion = initial.prefersReducedMotion ?? motion?.matches ?? false;
@@ -64,7 +90,8 @@ export function mountAcceptedItinerary(root, initial) {
     try {
       win.sessionStorage.setItem(key(), JSON.stringify({ stop: state.current_route_stop_id, return_state: handoff ? buildReturnState(handoff) : null }));
       win.sessionStorage.setItem("doctorcre-itinerary-tour-v1", JSON.stringify({ scope: options.scope, tour_id: state.tour_id }));
-    } catch { notice.textContent = "Current stop stays in this tab's memory. Storage unavailable; keep this tab open when navigating."; }
+      storageNotice = "";
+    } catch { storageNotice = "Storage unavailable; navigation return cannot be restored after reload. Current stop stays in this tab's memory; keep this tab open."; renderStatus(); }
   }
   function restore() {
     if (!options.scope) return;
@@ -92,9 +119,9 @@ export function mountAcceptedItinerary(root, initial) {
   function renderStatus() {
     const noCoordinates = projection && !projection.markers.some(marker => marker.position);
     canvas.hidden = Boolean(mapFailure || noCoordinates);
-    notice.textContent = returnNotice || (mapFailure || noCoordinates
+    notice.textContent = [storageNotice, returnNotice || (mapFailure || noCoordinates
       ? `${mapFailure || "No recorded coordinates are available."} Use the ordered list; visit order and current stop are preserved.`
-      : "Pins show recorded locations. The basemap is a configured placeholder; use the ordered list for visit order.");
+      : "Pins show recorded locations. The basemap is a configured placeholder; use the ordered list for visit order.")].filter(Boolean).join(" ");
   }
   function select(stopId, feature = false) {
     const stop = state.route.stops.find(item => item.route_stop_id === stopId);
@@ -140,6 +167,7 @@ export function mountAcceptedItinerary(root, initial) {
   }
   function render() {
     if (!state) return;
+    const focusedStop = list.contains(doc.activeElement) ? doc.activeElement.closest('[data-itinerary-stop]')?.dataset.itineraryStop : null;
     projection = projectRoute(state, { prefersReducedMotion: reducedMotion, promotion_receipt: options.promotion_receipt, user_ref: options.user_ref });
     version.textContent = `Version ${projection.route_version} · accepted`;
     for (const button of modes.children) button.setAttribute("aria-pressed", String(button.dataset.mapMode === state.mode));
@@ -159,6 +187,7 @@ export function mountAcceptedItinerary(root, initial) {
       list.append(row);
     }
     if (!projection.list.length) list.append(make("li", "No active stops on this accepted route."));
+    if (focusedStop) [...list.children].find(row => row.dataset.itineraryStop === focusedStop)?.querySelector("button")?.focus({ preventScroll: true });
     card.replaceChildren(); card.removeAttribute("data-property-id");
     const selected = projection.card;
     if (selected) {
@@ -175,11 +204,14 @@ export function mountAcceptedItinerary(root, initial) {
         const handoff = buildNativeNavLink(state, { route_stop_id: selected.route_stop_id, platform, travel_mode: "driving", now: new Date().toISOString(), promotion_receipt: options.promotion_receipt, user_ref: options.user_ref });
         if (!handoff.available) continue;
         const link = make("a", label); link.href = handoff.link; link.rel = "noopener noreferrer";
-        link.addEventListener("click", () => {
+        link.addEventListener("click", event => {
+          const freshHandoff = buildNativeNavLink(state, { route_stop_id: selected.route_stop_id, platform, travel_mode: "driving", now: new Date().toISOString(), promotion_receipt: options.promotion_receipt, user_ref: options.user_ref });
+          if (!freshHandoff.available) { event.preventDefault(); render(); return; }
+          link.href = freshHandoff.link;
           // Search can inspect a property; navigation explicitly makes it current.
           state = reduceMapEvent(state, { type: "mode_change", mode: "tour", route_version: state.route_version }).state;
           state = reduceMapEvent(state, { type: "route_stop_change", route_stop_id: selected.route_stop_id, route_version: state.route_version }).state;
-          persist(handoff); render();
+          persist(freshHandoff); render();
         }); actions.append(link);
       }
       if (actions.children.length) card.append(actions);
@@ -191,12 +223,26 @@ export function mountAcceptedItinerary(root, initial) {
     const previousScope = options?.scope;
     options = { ...initial, ...next }; routeInput = options.route;
     if (!routeInput) { state = projection = null; root.hidden = true; return; }
+    // Geometry is optional; identity, order and appointment validation remain canonical.
+    if (Array.isArray(routeInput.stops)) routeInput = { ...routeInput, stops: routeInput.stops.map(stop => {
+      const point = stop?.position;
+      const usable = point && typeof point.latitude === "number" && Number.isFinite(point.latitude) && Math.abs(point.latitude) <= 90
+        && typeof point.longitude === "number" && Number.isFinite(point.longitude) && Math.abs(point.longitude) <= 180;
+      return stop && { ...stop, position: usable ? point : null };
+    }) };
     root.hidden = false;
     const same = state && state.tour_id === routeInput.tour_id && state.route_version_id === routeInput.route_version_id
       && state.route_version === routeInput.route_version && state.projection_id === routeInput.projection_id && options.scope === previousScope;
-    if (!same) {
+    const refreshed = buildAcceptedRouteState(routeInput, {
+      mode: same ? state.mode : "tour", selected_property_id: same ? state.selected_property_id : null,
+    });
+    if (same) {
+      state = { ...state, ...refreshed, camera: state.camera, filters: state.filters, sliders: state.sliders,
+        drawn_geometry: state.drawn_geometry, lineage: state.lineage,
+        current_route_stop_id: refreshed.route.stops.some(stop => stop.route_stop_id === state.current_route_stop_id) ? state.current_route_stop_id : null };
+    } else {
       returnNotice = "";
-      state = buildRouteVersionState(routeInput, { mode: "tour" }); restore();
+      state = refreshed; restore();
       if (!state.selected_property_id && state.route.stops.length) state = reduceMapEvent(state, { type: "route_stop_change", route_version: state.route_version, route_stop_id: state.route.stops[0].route_stop_id }).state;
     }
     render();
@@ -215,7 +261,7 @@ export function mountAcceptedItinerary(root, initial) {
       gl.setWorkerUrl(new URL("./vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs", import.meta.url).href);
       map = new gl.Map({ container: canvas, style: structuredClone(PLACEHOLDER_STYLE), center: [-87.3, 30.5], zoom: 8, attributionControl: false });
       map.on("error", () => fallback("Map could not load."));
-      map.on("moveend", () => { if (!state) return; const [[w, s], [e, n]] = map.getBounds().toArray(); dispatch({ type: "bounds_change", bounds: [w, s, e, n] }); });
+      map.on("moveend", () => { if (!state || destroyed) return; dispatch({ type: "bounds_change", bounds: normalizedProviderBounds(map.getBounds().toArray()) }); });
       map.on("load", () => { if (!canvas.hidden && !destroyed) { renderMarkers(); focus(); } });
       renderMarkers(); renderStatus(); focus();
     } catch { fallback("Map could not load."); }

@@ -12,6 +12,13 @@
   },
   "consumer_module": "tours/vendor/tour-map-route-state.js",
   "read_adapter": "accepted routes from /api/tours/detail; missing geometry remains unknown",
+  "read_compatibility": {
+    "version": "1.0.0",
+    "module": "tours/itinerary-map.js",
+    "appointment_producer_contract": "contracts/tour-composer.v1.json",
+    "equal_appointment_instants": "Producer-legal equal ISO UTC instants retain their exact start/end strings and fixed state. All other appointment validation remains in the unchanged pinned canonical module.",
+    "optional_geometry": "Unusable optional stop coordinates become unknown non-navigable locations; route identity and order still require canonical validation."
+  },
   "navigation_requirements": "Approved access coordinate, exact-route complete promotion receipt and authenticated user_ref. No receipt is synthesized. Receipt retrieval seam remains upstream-owed in PR 1443.",
   "maplibre": {
     "version": "6.4.1",

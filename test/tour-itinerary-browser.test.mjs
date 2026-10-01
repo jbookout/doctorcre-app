@@ -47,11 +47,43 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
       await page.waitForFunction(() => document.querySelector("#accepted-itinerary .maplibregl-canvas"));
       await page.waitForFunction(() => document.querySelectorAll("#accepted-itinerary .itinerary-pin").length === 2);
       assert.equal(await root.locator("[data-itinerary-stop]").count(), 2);
+      const second = root.locator(`[data-itinerary-stop="${stops[1].id}"] button`);
+      const first = root.locator(`[data-itinerary-stop="${stops[0].id}"] button`);
+      await first.focus(); await first.press("Enter");
+      assert.equal(await first.evaluate(el => document.activeElement === el), true);
+      await first.press("Tab");
+      assert.equal(await second.evaluate(el => document.activeElement === el), true);
+      await second.press("Enter");
+      assert.equal(await second.evaluate(el => document.activeElement === el), true);
       await root.locator(`[data-itinerary-stop="${stops[1].id}"] button`).click();
       assert.equal(await root.locator("[data-itinerary-card]").getAttribute("data-property-id"), stops[1].property_id);
       await root.locator('[data-map-mode="search"]').click();
       assert.equal(await root.locator(".maplibregl-canvas").count(), 1);
       await root.locator('[data-map-mode="tour"]').click();
+      if (name === "phone") {
+        stops[1].property_name = "Refreshed synthetic property";
+        stops[1].property_address = "202 Example Way";
+        await page.locator("#reload-composer").click();
+        await page.waitForFunction(() => document.querySelector('[data-itinerary-card]').textContent.includes("Refreshed synthetic property"));
+        assert.match(await root.locator('[data-itinerary-card]').textContent(), /202 Example Way/);
+        await page.evaluate(async () => {
+          const component = await import("/tours/itinerary-map.js"), gl = await import("/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
+          const detail = (await (await fetch("/api/tours/detail")).json()).data;
+          const root = document.createElement("section"); root.id = "provider-regression"; document.body.append(root);
+          const provider = { ...gl, Map: class extends gl.Map { constructor(options) { super(options); window.regressionMap = this; } } };
+          window.regressionView = component.mountAcceptedItinerary(root, { route: component.acceptedRouteFromDetail(detail), prefersReducedMotion: true, loadMapLibre: async () => provider });
+          await window.regressionView.ready;
+        });
+        await page.waitForFunction(() => window.regressionMap.loaded());
+        for (const [center, zoom] of [[[-87, 30], 0], [[200, 30], 8], [[180, 30], 8]]) {
+          await page.evaluate(({ center, zoom }) => {
+            const button = document.querySelector("#provider-regression .itinerary-stop button"); button.focus();
+            window.regressionMap.jumpTo({ center, zoom });
+          }, { center, zoom });
+          assert.equal(await page.evaluate(() => document.activeElement.closest('[data-itinerary-stop]') !== null), true);
+        }
+        await page.evaluate(() => { window.regressionView.destroy(); document.querySelector("#provider-regression").remove(); });
+      }
       await page.reload(); await root.waitFor({ state: "visible" });
       assert.equal(await root.locator("[aria-current=step]").getAttribute("data-itinerary-stop"), stops[1].id);
       await page.waitForFunction(() => document.querySelectorAll("#accepted-itinerary .itinerary-pin").length === 2);
