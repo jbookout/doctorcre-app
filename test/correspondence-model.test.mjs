@@ -58,7 +58,7 @@ test('every correspondence and meeting item has a source label', () => {
 });
 
 test('native thread references come only from recorded activity provenance, never a name or deal id', () => {
-  assert.deepEqual(threadReferences({ deal: { id: 'demo-deal' }, thread: [{ id: 'demo-note' }] }), []);
-  assert.deepEqual(threadReferences({ activities: [{ ...meeting, detail: { native_identity: identity } }] }), [identity]);
-  assert.deepEqual(threadReferences({ activities: [{ ...meeting, detail: { native_identity: { ...identity, extra: 'demo' } } }] }), []);
+  assert.deepEqual(threadReferences({ deal: { id: 'demo-deal' }, thread: [{ id: 'demo-note' }] }), { references: [], complete: true });
+  assert.deepEqual(threadReferences({ activities: [{ ...meeting, detail: { native_identity: identity } }] }), { references: [identity], complete: true });
+  assert.deepEqual(threadReferences({ activities: [{ ...meeting, detail: { native_identity: { ...identity, extra: 'demo' } } }] }), { references: [], complete: false });
 });

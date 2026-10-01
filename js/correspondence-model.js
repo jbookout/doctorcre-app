@@ -83,9 +83,13 @@ export function meetingEvidence(activities) {
 }
 export function threadReferences(detail) {
   const refs = new Map();
+  let complete = true;
   for (const row of Array.isArray(detail?.activities) ? detail.activities : []) {
-    if (!['meeting', 'correspondence'].includes(row?.kind) || !text(row.source)) continue;
-    try { const identity = threadRequest(row.detail?.native_identity); refs.set(JSON.stringify(identity), identity); } catch { /* no verified pointer */ }
+    if (row?.kind !== 'correspondence' &&
+        !(row?.kind === 'meeting' && Object.hasOwn(row.detail ?? {}, 'native_identity'))) continue;
+    if (!text(row.source)) { complete = false; continue; }
+    try { const identity = threadRequest(row.detail?.native_identity); refs.set(JSON.stringify(NATIVE_KEYS.map(key => identity[key])), identity); }
+    catch { complete = false; }
   }
-  return [...refs.values()];
+  return { references: [...refs.values()], complete };
 }
