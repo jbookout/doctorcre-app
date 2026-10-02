@@ -190,3 +190,39 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
   await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-id="d14"]')).transform !== 'none');
   assert.equal(await page.locator('[data-id="d20"] .attention-dot').evaluate(e => getComputedStyle(e).animationName), 'none');
 });
+
+
+test('W4 detail and next-step rereads time out at the client seam and recover without losing a draft', async t => {
+  const { page, errors } = await open(t);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const read = state.client.getDeal;
+    window.detailProbe = { calls: 0, hang: true, release: null };
+    state.client.getDeal = async (...args) => {
+      window.detailProbe.calls++;
+      if (window.detailProbe.hang) return new Promise(resolve => { window.detailProbe.release = async () => resolve(await read(...args)); });
+      return read(...args);
+    };
+  });
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.waitForFunction(() => window.detailProbe.calls > 0);
+  await page.clock.runFor(10_001);
+  await page.locator('[data-retry-detail]').waitFor();
+  await page.evaluate(() => { window.detailProbe.hang = false; });
+  await page.locator('[data-retry-detail]').click();
+  await page.locator('#detailNextForm').waitFor();
+  await page.locator('#detailNextForm textarea').fill('Unsaved deadline demo');
+  await page.evaluate(() => { window.detailProbe.hang = true; window.detailProbe.calls = 0; });
+  await page.locator('#detailNextForm button').click();
+  await page.waitForFunction(() => window.detailProbe.calls > 0);
+  await page.clock.runFor(10_001);
+  await page.waitForFunction(() => document.querySelector('#detailNextStatus').textContent.includes('could not be re-read'));
+  assert.equal(await page.locator('#detailNextForm textarea').isEnabled(), true);
+  assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
+  await page.evaluate(() => { window.detailProbe.hang = false; });
+  await page.locator('#detailNextForm button').click();
+  await page.waitForFunction(() => document.querySelector('#detailNextStatus').textContent === 'Next step confirmed');
+  await page.evaluate(() => window.detailProbe.release());
+  assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
+  assert.deepEqual(errors, []);
+});

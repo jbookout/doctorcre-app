@@ -19,14 +19,14 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the calendar</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">

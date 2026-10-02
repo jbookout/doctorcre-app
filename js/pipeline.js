@@ -26,6 +26,7 @@
 //      none to report.
 
 import { createCommandDock } from './command-dock.js';
+import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand, pendingCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
@@ -49,9 +50,9 @@ import {
 } from './change-receipts.mjs';
 import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
-  columnLabel, completionPlan, contextDrawerSections, filterDeals, groupByColumn, keyboardTarget,
-  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, orderColumn, presenceChip,
-  recordPanelSections, tapMoveTargets, typeFilters,
+  columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
+  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, presenceChip,
+  tapMoveTargets,
 } from './pipeline-model.js';
 import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS, noteEntries } from './local-deals-model.js';
 import { uuidv4 } from './uuid.js';
@@ -90,7 +91,6 @@ const state = {
   lifted: null,
   target: null,
   panelDeal: null,
-  panelPinned: false,
   panelReturnTo: null,
   intent: null,
   boardStatus: 'starting',
@@ -190,7 +190,6 @@ function renderChips() {
 
 function renderStatus(status) {
   state.boardStatus = status.state;
-  const live = state.mode === 'live';
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
     : status.state === SYNC_STATES.RECONNECTING ? 'Reconnecting'
@@ -265,6 +264,7 @@ function applyBoardSnapshot(board) {
   }
   renderChips();
   renderBoard();
+  if (state.panelDeal && $('recordPanel')?.open) refreshPanel();
 }
 
 async function loadBoard() {
@@ -282,6 +282,9 @@ async function pollOnce(initial = false) {
   if (!outcome.applied) return;
   const result = outcome.changes;
   state.presence = result.presence || [];
+  const capture = (result.capture_sessions || []).find(session => !['done','completed','failed','cancelled'].includes(session.state));
+  $('captureStatus').hidden = !capture;
+  if (capture) $('captureStatus').textContent = `Capture: ${String(capture.state).replaceAll('_',' ')}`;
   const batch = result.events || [];
   state.feed = observeChangeBatch(state.feed, batch);
   for (const event of batch) {
@@ -718,6 +721,9 @@ function validateDetail(detail, id) {
   }
   return detail;
 }
+function readDealDetail(id) {
+  return readWithDeadline(signal => state.client.getDeal(id, { signal })).then(detail => validateDetail(detail, id));
+}
 async function saveNextStep(id) {
   const key = nextStepKey(id);
   const pending = pendingCommand(commandState, key);
@@ -730,7 +736,7 @@ async function saveNextStep(id) {
   if (!pending) {
     nextReads.add(id); syncNextForm();
     try {
-      const fresh = validateDetail(await state.client.getDeal(id), id);
+      const fresh = await readDealDetail(id);
       if (state.panelDeal !== id || nextDraft !== draft) return;
       const recorded = stepValues(fresh.deal);
       const crossed = ['text','date'].some(name => draft.dirty.has(name) && recorded[name] !== draft.base[name]);
@@ -787,9 +793,10 @@ async function refreshPanel() {
   if (!id) return;
   const seq = ++panelReadSequence;
   try {
-    const detail = validateDetail(await state.client.getDeal(id), id);
+    const detail = await readDealDetail(id);
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     state.panelDetail = detail;
+    setContextOpenVisible(true);
     $('recordPanel').dataset.updated = new Date().toISOString();
     // A poll preserves drafts, expanded entries and the dialog scroll position.
     if (!$('panelBody').querySelector('.detail-grid')) paintPanel(detail);
@@ -834,6 +841,7 @@ async function refreshPanel() {
     }
   } catch {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
+    setContextOpenVisible(false);
     const message = 'Deal details could not be read. <button class="btn" type="button" data-retry-detail>Retry</button>';
     const status = $('detailReadStatus');
     if (status) status.innerHTML = `Details are stale. ${message}`;
@@ -851,6 +859,8 @@ function paintPanel(detail) {
 }
 async function openPanel(dealId, trigger) {
   const panel = $('recordPanel');
+  disposeEvidence?.(); disposeEvidence = null;
+  setContextOpenVisible(false);
   state.panelDeal = dealId; state.panelDetail = null; nextDraft = null;
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
@@ -863,6 +873,8 @@ function closePanel() {
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   $('recordPanel').close(); state.panelDeal = null; state.panelDetail = null;
+  state.panelReturnTo = null;
+  setContextOpenVisible(false);
   if (id) document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus({preventScroll:true});
 }
 function fieldPatch(field, value) {
@@ -953,6 +965,12 @@ function openMoveChooser(dealId) {
 function wireBoard() {
   const board = $('kanban');
   if (!board) return;
+
+  board.addEventListener('click', (event) => {
+    if (event.target.closest('button,input,select,a')) return;
+    const card = event.target.closest('.kanban-card');
+    if (card && card.dataset.dragging !== 'true') openPanel(card.dataset.id, card);
+  });
 
   board.addEventListener('dragstart', (event) => {
     const card = event.target.closest('.kanban-card');
@@ -1045,7 +1063,7 @@ function wire() {
     state.personalScope = false; state.filter = chip.dataset.filter;
     renderChips();
     renderBoard();
-    say(`Showing ${state.filter === 'all' ? 'every deal type' : state.filter} on the board.`);
+    say(`Showing ${state.filter === 'all' ? 'all owners' : actorName(state.filter)} on the board.`);
   });
 
   document.addEventListener('click', async (event) => {
@@ -1063,7 +1081,6 @@ function wire() {
     const card = event.target.closest('.kanban-card');
     if (card && !event.target.closest('button')) { openPanel(card.dataset.id, card); return; }
     if (openDeal) {
-      $('receiptsDialog')?.close();
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
@@ -1078,20 +1095,13 @@ function wire() {
   });
   $('moveCancel')?.addEventListener('click', () => $('moveDialog')?.close());
 
-  $('recordPanel')?.addEventListener('cancel', event => { event.preventDefault(); closePanel(); });
-  $('panelClose')?.addEventListener('click', () => { state.panelPinned = false; closePanel(); });
-  $('panelPin')?.addEventListener('click', () => {
-    state.panelPinned = !state.panelPinned;
-    $('panelPin').setAttribute('aria-pressed', String(state.panelPinned));
-    $('recordPanel')?.setAttribute('data-pinned', String(state.panelPinned));
-  });
+  $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
+  $('panelClose')?.addEventListener('click', closePanel);
 
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();
-    const dialog = $('receiptsDialog');
-    if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+    document.dispatchEvent(new Event('doctorcre:open-today'));
   });
-  $('receiptsClose')?.addEventListener('click', () => $('receiptsDialog')?.close());
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());
@@ -1214,6 +1224,10 @@ async function boot() {
   state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(state.client);
   state.mode = state.client.mode;
+  const identity = deploymentIdentity(state.mode);
+  $('deploymentBadge').textContent = identity.label;
+  $('deploymentBadge').dataset.mode = identity.mode;
+  $('deploymentBadge').title = identity.detail;
   state.selfActor = state.client.selfActor || null;
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace: 'team' }),

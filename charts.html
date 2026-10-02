@@ -14,8 +14,8 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to charts</a>
   <main id="main" class="shell">
-    <div class="hero"><div><p class="eyebrow">Home · open deal board</p><h1>Charts</h1>
-      <nav class="app-section-tabs" aria-label="Home pages"><a href="/">Overview</a><a href="/?view=charts" aria-current="page">Charts</a></nav>
+    <div data-layout-slot="sidebar" class="hero"><div><p class="eyebrow">Home · open deal board</p><h1>Charts</h1>
+      <nav data-layout-slot="tabs" class="page-views" aria-label="Home pages"><a href="/">Overview</a><a href="/?view=charts" aria-current="page">Charts</a></nav>
     </div></div>
     <section class="card glass" data-charts="read" aria-labelledby="chartsTitle">
       <div class="card-heading"><div><p class="eyebrow">The open board</p><h2 id="chartsTitle">Board snapshot</h2></div><span class="caption" id="chartsReadAt">Reading the board…</span></div>

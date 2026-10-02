@@ -12,7 +12,7 @@
  *      button row, the field grid);
  *   3. the four things this board invents: the card title button, the partner
  *      presence chip, the unconfirmed-changes bar and the change list inside the
- *      Recent changes popup.
+ *      Recent changes in the shared Today drawer.
  *
  * Nothing here restates a token, a colour or a motion duration: those have one
  * home and it is the shared system.
@@ -52,7 +52,7 @@
 .check-option { display: flex; gap: 8px; align-items: center; min-height: var(--touch); font-size: 12px; }
 .field-hint.error { color: var(--red-text); font-size: 12px; font-weight: 700; }
 
-/* ------------------------------------------------------ Recent changes popup */
+/* ------------------------------------------------------ Recent changes in Today */
 .receipt-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 
 @media (max-width: 1100px) {
@@ -128,3 +128,7 @@
 .kanban-card[data-phase="Closed"] .attention-dot { animation: none; }
 
 .kanban-card .auto-move span { display: block; white-space: nowrap; text-overflow: ellipsis; }
+
+/* The editable deal dialog owns its grid; the shell supplies its viewport placement. */
+.has-app-layout dialog.deal-detail#recordPanel { width: min(1180px,calc(100vw - 28px)); padding: 0; }
+.has-app-layout .deal-detail #panelBody { display: block; }

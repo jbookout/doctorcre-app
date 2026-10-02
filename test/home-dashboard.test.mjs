@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createFixtureClient } from '../js/fixture-client.js';
+import { createLiveClient } from '../js/live-client.js';
 import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HIDDEN_HOME_WIDGETS, readHomeDashboard, topNewLeads } from '../js/home-dashboard-model.js';
 
 const NOW = Date.parse('2026-10-01T15:00:00Z');
@@ -91,6 +92,29 @@ test('PR124 R2 malformed Home boards never publish a successful read or authorit
   const empty = await readHomeDashboard(client);
   assert.equal(empty.reads.board.state, 'read');
   assert.equal(dealSnapshot(empty.board).active, 0, 'validated empty boards retain zero counts');
+});
+test('malformed board identity is unavailable, never a verified empty workload', async t => {
+  const fixture = await fixtureClient();
+  for (const deals of [[{}], [{ id: '' }], [{ id: '  ' }], [null], [board.deals[0], {}]]) {
+    await t.test(JSON.stringify(deals), async () => {
+      const payload = { actor: 'joe', deals };
+      const live = createLiveClient({ fetchImpl: async () => new Response(JSON.stringify({
+        result: { content: [{ type: 'text', text: JSON.stringify(payload) }] },
+      })) });
+      const client = { ...fixture, getBoard: options => live.getBoard(options), getLeadBoard: async () => ({ leads: [] }) };
+      const result = await readHomeDashboard(client);
+      assert.equal(result.board, null);
+      assert.equal(result.reads.board.state, 'error');
+      assert.equal(result.details.size, 0);
+      assert.equal(dealSnapshot(payload), null);
+      assert.equal(agendaSnapshot(payload, new Map()), null);
+      assert.equal(result.reads.leads.state, 'read', 'independent reads remain available');
+    });
+  }
+  const empty = { actor: 'joe', deals: [] };
+  const result = await readHomeDashboard({ ...fixture, getBoard: async () => empty, getLeadBoard: async () => ({ leads: [] }) });
+  assert.equal(result.reads.board.state, 'read');
+  assert.deepEqual(dealSnapshot(result.board), { active: 0, inMarket: 0, national: 0, flagged: [] });
 });
 test('Home publishes independent ready data, shares one board, bounds detail concurrency and never invents failed data', async () => {
   let boardReads = 0, inFlight = 0, peak = 0;

@@ -1,3 +1,4 @@
+import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
 import { validIncidentBoardPayload, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, STUCK_SILENCE_HOURS } from './control-room-model.js';
 import { validScheduleBoardPayload } from './operations-model.js';
@@ -7,7 +8,7 @@ import { readWithDeadline } from './auto-refresh.mjs';
 export const HOME_SCOPES = ['team', 'mine'];
 export const HIDDEN_HOME_WIDGETS = Object.freeze({
   pastClients: 'Past-client follow-up moments, executed lease expiry through 24 calendar months, owner and contact holds',
-  vendors: 'Ranked introduction suggestions and new vendor prospects with compatibility evidence',
+  vendors: 'New vendor prospects with compatibility evidence',
   listings: 'Fresh client/listing matches with listing URL, agent contact and authorized attachments',
   capture: 'Doc task/idea classification and document-now/table workflow',
 });
@@ -108,14 +109,19 @@ export function controlSnapshot(reads) {
 // A single board snapshot supplies flags and agenda. Slow or failed optional
 // data never prevents the deals from arriving. Every read has a deadline.
 export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
-  const result = { board: null, details: new Map(), leads: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
-    reads: Object.fromEntries(['board', 'leads', 'incidents', 'work', 'requests', 'resources', 'schedule'].map(key => [key, { state: 'loading' }])) };
+  const result = { board: null, details: new Map(), leads: null, relationships: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
+    reads: Object.fromEntries(['board', 'leads', 'relationships', 'incidents', 'work', 'requests', 'resources', 'schedule'].map(key => [key, { state: 'loading' }])) };
   const publish = () => onUpdate(result);
   const take = async (name, read, target = result) => {
     try {
       if (signal?.aborted) return;
       const value = await readWithDeadline(read, { timeoutMs, signal });
-      if (name === 'board' && target === result && !validHomeBoard(value)) throw new Error('Invalid Home board');
+      if (name === 'relationships' && (!validNetwork(value) || Date.parse(value.valid_until) <= Date.now())) throw Object.assign(new Error('Relationships unavailable'), {code:'invalid_payload'});
+      if (name === 'board' && target === result && !validHomeBoard(value)) {
+        const error = new Error('Home board unavailable');
+        error.code = 'invalid_payload';
+        throw error;
+      }
       if (target instanceof Map) target.set(name, value); else target[name] = value;
       result.reads[name] = { state: 'read' };
       if (name === 'board' && target === result) {
@@ -138,7 +144,7 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
       }
     }));
   });
-  await Promise.all([board, take('leads', signal => client.getLeadBoard({ signal })),
+  await Promise.all([board, take('leads', signal => client.getLeadBoard({ signal })), take('relationships', signal => client.getRelationshipNetwork({ signal })),
     ...[['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal })],
       ['work', signal => client.currentWorkItem({ signal })], ['requests', signal => client.currentWorkRequests({ signal })],
       ['resources', signal => client.readResourceDashboard({ signal })], ['schedule', signal => client.scheduleBoard({ signal })]]

@@ -1,0 +1,26 @@
+{
+  "schema": "doctorcre-leads-map.v1",
+  "contract": "carr-map-tour-v1",
+  "component_version": "1.0.0",
+  "mode": "search",
+  "renderer": "MapLibre GL JS 6.4.1 (existing vendored distribution)",
+  "geometry": {
+    "url": "https://www2.census.gov/geo/tiger/GENZ2025/kml/cb_2025_us_state_5m.zip",
+    "download_sha256": "076aabf7b7e3adaf170f8dc014a8936032a4c1e5cee3ec1f0a5aa2bab538d856",
+    "as_of": "2025",
+    "crs": "EPSG:4326",
+    "precision": "1:5,000,000 cartographic outline",
+    "rights": "US Census public data; attribution displayed",
+    "purpose": "context only, no navigation"
+  },
+  "market_locations": {
+    "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_place_national.zip",
+    "download_sha256": "49644173a453469d9bd77fb7a493b027f87567e209edaf2078aac7543ac2ee29",
+    "precision": "place representative point, never a lead address"
+  },
+  "events": [
+    "market_select",
+    "filter_change"
+  ],
+  "unknown_market": "retained in list; never guessed or geocoded"
+}
