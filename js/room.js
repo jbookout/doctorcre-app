@@ -2009,7 +2009,7 @@ function boot() {
       if (String(error?.message) === "sign_in_required") return;
       state.backoffMs = Math.min(POLL_BACKOFF_CEILING_MS, (state.backoffMs || POLL_VISIBLE_MS) * 2);
       setState($("healthCycleDot"), "urgent");
-      banner("wire unreachable — retrying");
+      banner("Connection interrupted");
     } finally {
       schedule();
     }

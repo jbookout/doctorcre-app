@@ -130,7 +130,8 @@
   .cal-grid[data-view="week"] .cal-weekday { display: none; }
   .cal-grid[data-view="week"] .cal-day { min-height: 0; }
   .cal-agenda-item { grid-template-columns: auto minmax(0, 1fr); }
-  .cal-agenda-day, .cal-agenda-when { grid-column: 2; }
+  .cal-agenda-item > :not(.cal-pulse) { grid-column: 2; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+  .cal-agenda-item .cal-pulse { grid-column: 1; grid-row: 1; }
 }
 
 /* --------------------------------------------------------- reduced motion

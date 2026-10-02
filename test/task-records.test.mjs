@@ -188,7 +188,7 @@ test("a due date is the dated marker and a calendar day, and nothing else", () =
 /* ------------------------------------------------------------------ D5 refusals */
 
 test("an ambiguous number is never guessed at", () => {
-  assert.equal(loopRefusalMessage("ambiguous_number", { number: "201" }), "Two open records share number 201; open the record layer to renumber.");
+  assert.equal(loopRefusalMessage("ambiguous_number", { number: "201" }), "Work number 201 matches multiple items.");
   assert.match(loopRefusalMessage("not_found"), /no longer on the board/);
   assert.match(loopRefusalMessage("need_number_or_id"), /without a number/);
   assert.match(loopRefusalMessage(null), /nothing was sent/);
@@ -302,8 +302,8 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract, both bumped for an additive change.
-  assert.equal(routes.routes["/tasks"], "tasks.html");
-  assert.equal(routes.version, "1.15.0");
+  assert.equal(routes.redirects["/tasks"], "/");
+  assert.equal(routes.version, "1.17.0");
   assert.equal(carr.version, "1.38.0");
   for (const verb of ["add-loop", "close-loop", "loop-board", "loop-headers", "read-loop", "update-loop"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);

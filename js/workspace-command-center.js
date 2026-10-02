@@ -1,3 +1,4 @@
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 const ENDPOINT = "/api/v1/command-center";
 const EXPIRY_TICK_MS = 5_000;
 import {
@@ -41,10 +42,10 @@ const view = { scope: DEFAULT_SCOPE, payload: null, status: "loading", message: 
  * a different unit, and it starts by building the projection.
  */
 const HEALTH_LABEL = {
-  loading: "Checking the workspace read…",
-  refreshing: "Refreshing the workspace read…",
-  available: "Workspace read available",
-  unavailable: "Workspace read unavailable",
+  loading: "Updating…",
+  refreshing: "Updating…",
+  available: "Current",
+  unavailable: "Unavailable",
 };
 
 function setHealth(state) {
@@ -59,18 +60,14 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 function formatObserved(value) {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return "Observed time unavailable";
-  return `Observed ${date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+  return updatedLabel(value);
 }
 
 function setAsOf(text) {
   if (observedAt) observedAt.textContent = text;
 }
 
-function sourceLabel(source) {
-  if (!source) return "Source unavailable · freshness unknown";
-  // The label states the freshness against the current clock; an expired stamp is never shown as fresh.
-  return `Source: ${escapeHtml(humanSourceLabel(source.source))} · freshness: ${escapeHtml(displayedFreshness(source))} · ${escapeHtml(formatObserved(source.observed_at))}`;
-}
+function sourceLabel(source) { return escapeHtml(updatedLabel(source?.observed_at)); }
 
 /**
  * The card is replaced wholesale, so anything focused inside it is put back by id. When the
@@ -87,7 +84,7 @@ function paintCard(html, className) {
   restored?.focus();
 }
 
-const WITHHELD_COPY = "This source is withheld until its tenant scope and freshness can be verified.";
+const WITHHELD_COPY = "Updating…";
 
 function renderAggregate(target, title, detail, source, unavailable = false) {
   if (!target) return;
@@ -110,7 +107,7 @@ function renderAggregates(payload, scope) {
   const cardStates = aggregateCardState(payload, scope, now);
   const summary = summarizeWorkspaceScope(payload, scope, now);
   if (cardStates.needs !== "fresh") {
-    setAggregates("Stale read", "—", "Counts withheld until freshness is verified.", { source: payload.source, destination: summary.flaggedDestination });
+    setAggregates("Updating…", "—", "Updating…", { source: payload.source, destination: summary.flaggedDestination });
     return;
   }
   // The flagged count and its link are the same filtered set, so the card can drill straight in.
@@ -145,19 +142,19 @@ function homeCardHtml({ eyebrow, title, copy, action, retry, refreshing, source,
   const counted = skeleton ? '<div class="skeleton-line"></div><div class="skeleton-line short"></div>'
     : count === null ? "" : `<div class="count-line"><strong>${escapeHtml(count)}</strong><span>${escapeHtml(countLabel)}</span></div>`;
   const joeLink = needsJoe ? `<a class="action secondary-action" id="needsJoeLink" href="${escapeHtml(safeDestination(needsJoe.destination))}">${escapeHtml(`${needsJoe.count} system ${needsJoe.count === 1 ? "request needs" : "requests need"} Joe`)}</a>` : "";
-  return `<div class="attention-icon" aria-hidden="true"><span></span></div><div class="attention-content"><p class="eyebrow">${escapeHtml(eyebrow)}${badge}</p><h2 id="attentionTitle">${escapeHtml(title)}</h2><p class="attention-copy">${escapeHtml(copy)}</p>${counted}<div class="home-actions"><a id="homePrimaryAction" class="action primary-action" data-primary-action data-state="${escapeHtml(action.state)}" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>${joeLink}${retry ? '<button class="action secondary-action" type="button" id="retryHome">Retry read</button>' : ""}</div>${source ? `<p class="source">${sourceLabel(source)}</p>` : ""}</div>`;
+  return `<div class="attention-icon" aria-hidden="true"><span></span></div><div class="attention-content"><p class="eyebrow">${escapeHtml(eyebrow)}${badge}</p><h2 id="attentionTitle">${escapeHtml(title)}</h2><p class="attention-copy">${escapeHtml(copy)}</p>${counted}<div class="home-actions"><a id="homePrimaryAction" class="action primary-action" data-primary-action data-state="${escapeHtml(action.state)}" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>${joeLink}</div>${source ? `<p class="source">${sourceLabel(source)}</p>` : ""}</div>`;
 }
 
 function renderLoading() {
   setHealth("loading");
-  setAsOf("Reading canonical state…");
+  setAsOf("Updating…");
   card.setAttribute("aria-busy", "true");
   paintCard(homeCardHtml({
     eyebrow: `${SCOPE_LABEL[view.scope]} · loading`, title: "Loading your next place…", copy: "Checking verified workspace state.",
     action: { label: "Open Deal Room", href: DEAL_ROOM_DESTINATION, state: "loading" },
     retry: false, refreshing: false, source: null, count: null, countLabel: "", needsJoe: null, skeleton: true,
   }), "attention-card glass loading");
-  setAggregates("Loading", "Loading…", "Reading safe aggregate state.", { unavailable: false, sourceText: "Source pending" });
+  setAggregates("Loading", "Loading…", "", { unavailable: false, sourceText: "" });
 }
 
 function renderUnauthorized() {
@@ -173,14 +170,14 @@ function renderUnauthorized() {
 
 function renderUnavailable(message) {
   setHealth("unavailable");
-  setAsOf("No verified read");
+  setAsOf("Unavailable");
   card.setAttribute("aria-busy", "false");
-  const copy = message || "Home cannot verify the current read, so no stale count is shown as current.";
+  const copy = message || "Home is temporarily unavailable.";
   paintCard(homeCardHtml({
-    eyebrow: "Home read unavailable", title: "Progress could not be checked", copy,
-    action: primaryHomeAction(null, { scope: view.scope }), retry: true, refreshing: false, source: null, count: null, countLabel: "", needsJoe: null,
+    eyebrow: "Home unavailable", title: "Progress could not be checked", copy,
+    action: primaryHomeAction(null, { scope: view.scope }), retry: false, refreshing: false, source: null, count: null, countLabel: "", needsJoe: null,
   }), "attention-card glass unavailable");
-  setAggregates("Unavailable", "—", "The overall read is unavailable.");
+  setAggregates("Unavailable", "—", "Temporarily unavailable");
 }
 
 function renderSummary(refreshing) {
@@ -192,13 +189,13 @@ function renderSummary(refreshing) {
   card.setAttribute("aria-busy", refreshing ? "true" : "false");
   if (viewerWorkspace) viewerWorkspace.textContent = viewerWorkspaceLabel(payload.viewer);
   setHealth(refreshing ? "refreshing" : stale ? "unavailable" : "available");
-  setAsOf(stale ? `${formatObserved(payload.source.observed_at)} · outside its freshness window` : formatObserved(payload.source.observed_at));
-  if (stale) setAggregates("Stale read", "—", "Counts withheld until freshness is verified.", { source: payload.source, destination: summary.flaggedDestination });
+  setAsOf(stale ? `${formatObserved(payload.source.observed_at)}` : formatObserved(payload.source.observed_at));
+  if (stale) setAggregates("Updating…", "—", "Updating…", { source: payload.source, destination: summary.flaggedDestination });
   else renderAggregates(payload, view.scope);
   paintCard(homeCardHtml({
     eyebrow: copy.eyebrow, title: copy.title, copy: copy.copy,
     action: primaryHomeAction(payload, { scope: view.scope, now }),
-    retry: stale, refreshing, source: payload.source, count: copy.count, countLabel: copy.countLabel,
+    retry: false, refreshing, source: payload.source, count: copy.count, countLabel: copy.countLabel,
     needsJoe: stale ? null : needsJoeWork(payload, now),
   }), `attention-card glass ${refreshing ? "refreshing " : ""}${stale ? "unavailable" : summary.state === "empty" ? "empty" : "ready"}`);
 }
@@ -258,22 +255,22 @@ async function load(reason = "initial") {
   if (reason === "retry" && !view.payload) view.message = null;
   render();
   try {
-    const response = await fetch(ENDPOINT, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(ENDPOINT, { headers: { accept: "application/json" }, cache: "no-store" });
     if (!acceptsResponse(view.sequence, sequence)) return;
     if (response.status === 401 || response.status === 403) return settle({ status: "unauthorized" }, sequence);
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}));
       if (!acceptsResponse(view.sequence, sequence)) return;
       if (failure.error === "AUTHENTICATION_REQUIRED" || failure.error === "AUTHORIZATION_REFUSED") return settle({ status: "unauthorized" }, sequence);
-      return settle({ status: "error", message: failure.error === "DEPENDENCY_UNAVAILABLE" ? "The canonical read is unavailable right now." : undefined }, sequence);
+      return settle({ status: "error", message: failure.error === "DEPENDENCY_UNAVAILABLE" ? "Temporarily unavailable" : undefined }, sequence);
     }
     const payload = await response.json().catch(() => null);
     if (!acceptsResponse(view.sequence, sequence)) return;
-    if (!validWorkspacePayload(payload)) return settle({ status: "error", message: "The canonical read returned an unexpected shape, so the count was withheld." }, sequence);
+    if (!validWorkspacePayload(payload)) return settle({ status: "error", message: "Temporarily unavailable" }, sequence);
     settle({ status: "ready", payload }, sequence);
   } catch {
     if (!acceptsResponse(view.sequence, sequence)) return;
-    settle({ status: "error", message: "The workspace could not reach the canonical read. Nothing here has been inferred." }, sequence);
+    settle({ status: "error", message: "Temporarily unavailable" }, sequence);
   }
 }
 
@@ -292,6 +289,7 @@ function settle({ status, payload = null, message = null }, sequence) {
 
 wireScopeSwitch();
 watchExpiry();
+mountAutoRefresh({ document, window: globalThis.window, refresh: () => load("background") });
 load();
 
 // V5-UX-B12b: the unread badge next to Notifications in the More disclosure.

@@ -193,7 +193,7 @@ test("the coverage block is drawn from the payload, and an incomplete atlas is n
   assert.match(sceneJs, /coverageGroups\(payload\.coverage\)/);
   assert.match(sceneJs, /atlasDegraded\(payload\)/);
   assert.match(sceneJs, /INCOMPLETE_HEADING/);
-  assert.match(sceneJs, /payload\.source\.safe_explanation/, "the producer's own explanation is printed verbatim");
+  assert.doesNotMatch(sceneJs, /textContent = payload\.source\.safe_explanation/, "internal provenance is absent from the screen");
   for (const source of [sceneJs, anatomyJs, operationsHtml, systemCss]) {
     assert.doesNotMatch(source, /the atlas is complete/i);
   }

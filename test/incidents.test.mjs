@@ -187,7 +187,7 @@ test("the fixture write validates both patterns, refuses a duplicate, and replay
 test("a read that did not answer is unknown in the app's own words", async () => {
   const client = await fixture({ outage: "incidents" });
   await assert.rejects(() => client.getIncident({ ref: REF }), /fixture outage/);
-  assert.equal(REFUSAL_SENTENCE, "the record layer refused or timed out");
+  assert.equal(REFUSAL_SENTENCE, "Temporarily unavailable");
   assert.match(pageJs, /view\[slot\] = \{ state: "unknown", reason: REFUSAL_SENTENCE \}/);
   // The server's own text is never painted: the catch takes no argument, so
   // there is nothing to leak into the sentence a person reads.
@@ -199,7 +199,7 @@ test("a read that did not answer is unknown in the app's own words", async () =>
 
 test("the route and the two verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/incidents"], "incidents.html");
-  assert.equal(routes.version, "1.15.0");
+  assert.equal(routes.version, "1.17.0");
   assert.equal(contract.version, "1.38.0");
   for (const verb of ["get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);

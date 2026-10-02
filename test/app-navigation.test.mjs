@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Progress", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Agent Room", "Design Lab", "Status"];
+const expected = ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "Progress", "Work Requests", "All Work", "Incidents", "Agent Room", "Agent Queue", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {
@@ -44,15 +44,15 @@ test("built report uses only report-adapter asset routes and includes the shared
   }
 });
 
-test("the shared navigation has one stable set of destinations, with no Queue link", async () => {
+test("the shared navigation has one stable set of destinations, including every secondary page", async () => {
   const { navigationItems, appShellMarkup } = await import("../js/app-shell.js");
   assert.deepEqual(navigationItems.map(({ label }) => label), expected);
   for (const route of Object.keys(routes)) {
     const html = appShellMarkup(route);
     const labels = [...html.matchAll(/data-app-nav-item[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]);
     assert.deepEqual(labels, expected, `${route}: same order and items`);
-    assert.doesNotMatch(html, />Queue<\/a>/);
-    assert.equal((html.match(/aria-current="page"/g) || []).length, 1, `${route}: one active destination or utility`);
+    assert.match(html, />Agent Queue<\/a>/);
+    assert.equal((html.match(/aria-current="page"/g) || []).length, route === "/calendar" ? 0 : 1, `${route}: one active destination or utility`);
   }
 });
 

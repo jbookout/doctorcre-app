@@ -417,14 +417,14 @@ function readFailure(cause, target) {
       : globalThis.navigator?.onLine === false ? "offline" : "unavailable";
   let message;
   if (unauthorized) {
-    message = cause.status === 401 ? "Your session ended. Sign in to read this board." : "You do not have access to this board.";
+    message = cause.status === 401 ? "Sign-in required" : "You do not have access to this board.";
     if (cause.status === 401) { ++refreshGeneration; clearBoard(state); clearDirectory(); }
     else if (target === "board") clearBoard(state);
     else clearDirectory();
   } else {
-    const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "The read failed.";
+    const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "Progress temporarily unavailable.";
     const retained = target === "board" ? Boolean(currentView) : Boolean(directorySignature);
-    message = `${label} ${retained ? "Showing last-known publication." : "Publication unavailable."} Retry to read again.`;
+    message = label;
   }
   if (target === "directory") {
     directoryError.textContent = message;
@@ -433,7 +433,7 @@ function readFailure(cause, target) {
   } else {
     setError(message);
     meta.setAttribute("data-read-state", state);
-    if (currentView) meta.textContent = `Last-known publication ${formatTime(currentView.updated_at)} · Version ${currentView.version}`;
+    if (currentView) meta.textContent = `Updated ${formatTime(currentView.updated_at)} ↻`;
   }
   if (cause.status === 401) signIn.hidden = false;
   retry.hidden = false;

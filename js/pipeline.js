@@ -183,8 +183,8 @@ function renderStatus(status) {
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
     : status.state === SYNC_STATES.RECONNECTING ? (live ? 'Reconnecting' : 'Fixture unavailable')
-    : status.state === SYNC_STATES.READY ? (live ? 'Read from the record layer' : 'Fixture ready')
-    : 'Reading the record…';
+    : status.state === SYNC_STATES.READY ? (live ? 'Current' : 'Fixture ready')
+    : 'Updating…';
   const orbState = status.state === SYNC_STATES.READY ? 'healthy'
     : status.state === SYNC_STATES.ERROR || status.state === SYNC_STATES.OFFLINE ? 'urgent'
     : status.state === SYNC_STATES.RECONNECTING ? 'attention' : 'refreshing';
@@ -197,7 +197,7 @@ function renderStatus(status) {
   if (asOf) {
     asOf.textContent = status.last_read_at
       ? `${state.deals.size} record(s) from the last board read · ${deploymentIdentity(state.mode).detail}`
-      : `Reading the record layer… · ${deploymentIdentity(state.mode).detail}`;
+      : `Updating… · ${deploymentIdentity(state.mode).detail}`;
   }
 }
 
@@ -262,7 +262,7 @@ async function loadBoard() {
     return;
   }
   await pollOnce(true);
-  say(`${state.deals.size} record(s) read from the record layer.`);
+  say(`${state.deals.size} deals`);
 }
 
 async function pollOnce(initial = false) {
@@ -636,7 +636,7 @@ async function openPanel(dealId, trigger) {
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   panel.hidden = false;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Record';
-  $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Reading the record…</h3></div>';
+  $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   setContextOpenVisible(false);
   $('panelClose')?.focus();
   let detail = null;
@@ -697,7 +697,7 @@ async function openContextDrawer() {
   const dialog = $('contextDrawer');
   const detail = state.panelDetail;
   if (!dialog || !detail) return;
-  $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Reading the record…</h3></div>';
+  $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
   const context = await loadDealContext(state.client, detail);

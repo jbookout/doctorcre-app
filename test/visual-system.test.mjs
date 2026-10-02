@@ -195,9 +195,7 @@ test("each prototype page is labelled synthetic, keyboard operable, reachable fr
     assert.match(html, /Synthetic examples/, `${key} synthetic label`);
     assert.ok(html.split("\n").filter((line) => line.includes("prototype-banner")).length === 1, `${key} banner is one line`);
     assert.match(html, /aria-live="polite"/, `${key} live region`);
-    assert.match(html, /data-pref="theme" data-on="light"/, `${key} theme icon`);
-    assert.match(html, /data-pref="motion" data-on="reduced"/, `${key} motion icon`);
-    assert.match(html, /data-pref="density" data-on="compact"/, `${key} density icon`);
+    assert.doesNotMatch(html, /data-pref="(?:density|motion)"/, `${key} uses one density and OS motion`);
     assert.doesNotMatch(html, /data-pref="theme"[^>]*>\s*<button[^>]*>Dark/, `${key} must not print theme words`);
     assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/, `${key} uses the shared system`);
     assert.match(html, /id="receiptDock"/, `${key} command feedback dock`);

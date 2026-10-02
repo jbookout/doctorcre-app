@@ -1,19 +1,7 @@
-// The shell every DoctorCRE surface shares: the three presentation icons, the
-// tab strip, and the one floating Doc.
-//
-// Each of those was written three times — once in js/design-prototype.js, once
-// in js/work-inventory.js, once again in js/task-records.js — and the copies had
-// already drifted: the prototype kept its preferences under
-// "doctorcre.presentation.v1" while the product pages used
-// "doctorcre.visual-preferences", so a person who set a light theme on the
-// prototype and then opened a product page was shown the dark one back. One
-// module now owns all three, and it MIGRATES the legacy key rather than
-// pretending the older choice was never made.
-//
-// The markup stays literal in each page. This file wires what is already there
-// and never injects a shell, because the static suites read the HTML.
+// Shared presentation preferences, notification badge and local page tabs.
+// The app shell owns header controls. Legacy preference keys migrate on entry.
 import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from "./visual-system.js";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { mountAutoRefresh } from "./auto-refresh.mjs";
 
 export { mountDocDock } from "./doc-dock.js";
 
@@ -85,12 +73,14 @@ export function applyPreferences(preferences) {
     const key = button.dataset.pref;
     const on = preferences[key] === button.dataset.on;
     button.setAttribute("aria-pressed", String(on));
-    const words = `${PREF_WORDS[key][preferences[key]]}. Switch to ${PREF_WORDS[key][on ? button.dataset.off : button.dataset.on].toLowerCase()}.`;
+    const words = key === "theme" ? "Dark mode" : PREF_WORDS[key][preferences[key]];
     button.setAttribute("aria-label", words);
     button.setAttribute("title", words);
   });
+  document.body?.classList.toggle("night", preferences.theme === "dark");
+  try { localStorage.setItem("dealroom-theme", preferences.theme === "dark" ? "night" : "light"); } catch {}
   const live = document.getElementById("prefsLive");
-  if (live) live.textContent = `${PREF_WORDS.theme[preferences.theme]}, ${PREF_WORDS.density[preferences.density]}, ${PREF_WORDS.motion[preferences.motion]}.`;
+  if (live) live.textContent = `${PREF_WORDS.theme[preferences.theme]}.`;
 }
 
 /**
@@ -99,13 +89,18 @@ export function applyPreferences(preferences) {
  * @param {{storageKey?: string, legacyKeys?: string[], storage?: Storage|null}} [options]
  * @returns {{current: () => object}}
  */
+const mountedPrefs = new WeakMap();
+
 export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_PREFERENCE_KEYS, storage } = {}) {
+  if (mountedPrefs.has(document)) return mountedPrefs.get(document);
   let store = storage ?? null;
   if (storage === undefined) {
     try { store = globalThis.localStorage || null; } catch { /* storage access may be blocked */ }
   }
   const system = systemPreferences();
-  let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...migratePreferences(store, { storageKey, legacyKeys }) }, system);
+  const saved = migratePreferences(store, { storageKey, legacyKeys });
+  try { if (!saved.theme && store?.getItem("dealroom-theme") === "light") saved.theme = "light"; } catch {}
+  let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...saved, density: "comfortable", motion: system.prefersReducedMotion ? "reduced" : "full" }, system);
   applyPreferences(current);
   document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
     const key = button.dataset.pref;
@@ -114,7 +109,9 @@ export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_P
     try { store?.setItem(storageKey, JSON.stringify(current)); } catch { /* a convenience, never a requirement */ }
     applyPreferences(current);
   }));
-  return { current: () => ({ ...current }) };
+  const mounted = { current: () => ({ ...current }) };
+  mountedPrefs.set(document, mounted);
+  return mounted;
 }
 
 /**
@@ -126,7 +123,7 @@ export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_P
  * (the count is over every row the recipient holds, never recomputed from a
  * capped list — the same field `js/notifications-model.js`'s `unreadLine`
  * prints). The return read uses the same event boundary as the Notifications
- * page; no interval polls while the page stays open. It fails QUIET — a failed
+ * page; background refresh keeps the count current. It fails QUIET — a failed
  * or malformed read hides the badge rather than printing a stale or fabricated
  * number, matching `notification-feed`'s
  * B12a rule that a refusal is never drawn as an empty result.
@@ -165,7 +162,7 @@ export async function mountNotificationBadge(client, { elementId = "navUnreadBad
     }
   };
   if (typeof document.addEventListener === "function" && typeof globalThis.window?.addEventListener === "function") {
-    mountReadOnResume({ document, window: globalThis.window, refresh: read });
+    mountAutoRefresh({ document, window: globalThis.window, refresh: read });
   }
   await read();
 }

@@ -20,7 +20,7 @@ function sourceLink(locator) {
   try {
     const url = new URL(locator);
     if (url.protocol !== "https:") return escape(locator);
-    return `<a href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">Open source</a>`;
+    return `<a href="${escape(url.href)}" target="_blank" rel="noopener noreferrer">Details</a>`;
   } catch { return escape(locator); }
 }
 function stateLabel(status) {
@@ -51,20 +51,20 @@ export function propertyPanelView(evidence) {
 }
 function provenance(item) {
   return `<dl class="property-provenance">
-    <div><dt>Source</dt><dd>${sourceLink(item.source?.locator)}</dd></div>
+    <div><dt>Reference</dt><dd>${sourceLink(item.source?.locator)}</dd></div>
     <div><dt>Evidence class</dt><dd>${escape(humanToken(item.source?.evidence_class))}</dd></div>
     <div><dt>Retrieved</dt><dd>${escape(shortDate(item.source?.retrieved_at))}</dd></div>
     <div><dt>As of</dt><dd>${escape(shortDate(item.as_of))}</dd></div>
     <div><dt>Effective</dt><dd>${escape(shortDate(item.effective_from))}${item.effective_to ? ` to ${escape(shortDate(item.effective_to))}` : " onward"}</dd></div>
     <div><dt>Geometry precision</dt><dd>${escape(humanToken(item.geometry_precision))}</dd></div>
     <div><dt>Geometry method</dt><dd>${escape(humanToken(item.geometry_method))}</dd></div>
-    <div><dt>Source CRS</dt><dd>${escape(item.source_crs || "Unknown")}</dd></div>
+    <div><dt>Coordinate system</dt><dd>${escape(item.source_crs || "Unknown")}</dd></div>
     <div><dt>Review</dt><dd>${escape(item.review_state)}</dd></div>
     <div><dt>Determination</dt><dd>Context only</dd></div>
   </dl>`;
 }
 export function propertyFactDetail(item) {
-  const conflict = item.conflicts.length ? `<div class="property-conflicts"><b>Conflicting sources</b>${item.conflicts.map(candidate =>
+  const conflict = item.conflicts.length ? `<div class="property-conflicts"><b>Conflicting details</b>${item.conflicts.map(candidate =>
     `<section><h4>${escape(candidate.value || "Unknown")}</h4>${provenance(candidate)}</section>`).join("")}</div>` : "";
   return `${provenance(item)}${conflict}`;
 }

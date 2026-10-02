@@ -24,10 +24,6 @@
     <div class="top-actions">
       <span class="sync" id="syncStatus" role="status">Checking connection…</span>
       <span class="capture" id="captureStatus" hidden>Capture inactive</span>
-      <button type="button" class="call-mode-button" id="callModeButton" aria-haspopup="dialog" aria-label="Open Call Mode"><span aria-hidden="true">✦</span> Call Mode</button>
-      <span class="avatar" id="selfAvatar" aria-label="Signed-in partner">?</span>
-      <button type="button" class="icon-button color-assist-toggle" id="colorAssistButton" aria-label="Turn on color-blind-friendly view" aria-pressed="false" title="Color-blind-friendly view"><span aria-hidden="true">◐</span><span class="assist-label">Color assist</span></button>
-      <button type="button" class="icon-button" id="themeButton" aria-label="Toggle dark theme" title="Toggle dark theme">☾</button>
     </div>
   </header>
 
@@ -175,7 +171,7 @@
       <section class="post-call" id="postCallPanel" aria-labelledby="postCallTitle" hidden>
         <header class="post-call-heading">
           <div><p class="eyebrow">Weekly call follow-through</p><h3 id="postCallTitle">Post-call report</h3></div>
-          <button type="button" class="text-button post-call-refresh" id="postCallRefresh">Refresh</button>
+          <button type="button" class="text-button post-call-refresh" id="postCallRefresh" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </header>
         <div class="post-call-status" id="postCallStatus" role="status" aria-live="polite"></div>
         <div class="post-call-report" id="postCallReport"></div>

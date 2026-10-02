@@ -781,7 +781,7 @@ export async function createFixtureClient(opts = {}) {
       },
     },
     {
-      card_id: "card:doc-outcome:3", requested_outcome: "Reconcile the migration receipt with the record layer",
+      card_id: "card:doc-outcome:3", requested_outcome: "Review the demo update",
       intent_kind: "submission", work_request_ref: "WR-000142", owner: "joe", controlled_phase: "confirmed_closed",
       source_freshness: { state: "stale", observed_at: "2026-09-20T09:00:00+00:00", source_ref: "work-request:WR-000142" },
       routing_state: "verified", state_evidence: { observed_at: "2026-09-20T09:00:00+00:00", routing_source: "canonical_work_request" },
@@ -1210,7 +1210,7 @@ export async function createFixtureClient(opts = {}) {
     held({ human_ref: 'WR-000903', title: 'Demo bounded request: verify the demo release evidence', state: 'verification', owner: 'dell', executor: 'dell', done_predicate: ['A demo consumer receipt exists for every clause'], sequence: 3, held_since: '2026-09-15T16:30:00.000Z', hours_since_last_change: 19 }),
   ];
   const sharedRequests = [
-    { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window in the record layer' },
+    { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window' },
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
     // V5-UX-C13a: two more shared requests, distinct from WR-000901..905 above
     // (those keep the sparse engineering-passport card shape B10a already
@@ -2642,8 +2642,8 @@ export async function createFixtureClient(opts = {}) {
         return {
           state: 'not_found', query, candidates: [], retired_matches: retired,
           hint: retired > 0
-            ? 'Only retired aliases matched; no live record stands behind this name.'
-            : 'No live record matched this name.',
+            ? 'Only previous names matched.'
+            : 'No current match.',
         };
       }
       if (candidates.length === 1) {
@@ -2820,7 +2820,7 @@ export async function createFixtureClient(opts = {}) {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
       const rules = [
-        { rule_id: 'd0000000-0000-4000-8000-00000000c141', statement: 'Demo rule: a demo surface names its missing read instead of drawing a zero.', human_quote: 'demo partner words about honest zeros', scope: 'demo', taught_at: ago(74), enforcement_class: 'demo_hook', binding_moment: 'before a demo surface ships', admission_reason: 'Demo admission: enforcement checked against the demo fixture', enforcement_status: 'checked', fixture_refs: [], admitted_at: ago(72) },
+        { rule_id: 'd0000000-0000-4000-8000-00000000c141', statement: 'Demo rule: a demo surface marks unavailable information.', human_quote: 'demo partner words about honest zeros', scope: 'demo', taught_at: ago(74), enforcement_class: 'demo_hook', binding_moment: 'before a demo surface ships', admission_reason: 'Demo admission: enforcement checked against the demo fixture', enforcement_status: 'checked', fixture_refs: [], admitted_at: ago(72) },
       ];
       const batches = [
         { batch_id: 'd0000000-0000-4000-8000-00000000c142', manifest_digest: `sha256:${'d'.repeat(64)}`, reason: 'Demo guidance import: three demo leasing notes', staging_key: 'demo-leasing-notes', staged_at: ago(30), entry_count: 3 },

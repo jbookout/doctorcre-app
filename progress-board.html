@@ -14,7 +14,7 @@
   <div class="shell">
     <header class="masthead">
       <a class="brand" href="/control-room" aria-label="DoctorCRE Control Room">✦ <span>DoctorCRE</span></a>
-      <span class="edition">PROGRESS · LIVE RECORD</span>
+      <span class="edition">PROGRESS</span>
     </header>
     <main>
       <section class="intro" aria-labelledby="board-title">
@@ -23,7 +23,7 @@
         <p id="board-meta" class="board-meta">Loading published board…</p>
         <span id="board-freshness" class="freshness-badge"></span>
         <p id="board-error" class="error" role="alert" hidden></p>
-        <div class="read-recovery"><button id="board-retry" type="button" hidden>Retry reads</button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
+        <div class="read-recovery"><button id="board-retry" type="button" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
       </section>
       <section class="panel directory-panel" aria-labelledby="directory-title">
         <div class="panel-heading"><h2 id="directory-title">Published boards</h2></div>
@@ -41,7 +41,7 @@
         <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
         <form id="system-work-filters" class="work-filters">
           <label>Search<input name="text" type="search" maxlength="200"></label>
-          <label>Source<select name="source"><option value="">All sources</option></select></label>
+          <label>Category<select name="source"><option value="">All categories</option></select></label>
           <label>Kind<select name="kind"><option value="">All kinds</option></select></label>
           <label>Minimum age in days<input name="age" type="number" min="0" value="0"></label>
           <button type="submit">Search</button>
@@ -52,7 +52,7 @@
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
         <div class="panel-heading"><div><p class="eyebrow">02 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
-        <p class="caption">An answer is Sent when it is saved. Received and Applied appear after the asker records those steps.</p>
+
         <div id="board-questions" class="questions" aria-live="polite"></div>
       </section>
     </main>
@@ -63,7 +63,7 @@
       <h2 id="task-detail-title"></h2>
       <div id="task-detail-body" class="task-detail-body"></div>
     </dialog>
-    <footer>Board data and answer status come from the signed-in CARR record.</footer>
+
   </div>
 </body>
 </html>

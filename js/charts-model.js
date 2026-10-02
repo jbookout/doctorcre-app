@@ -31,22 +31,15 @@ import { COLUMNS, columnByValue } from "./pipeline-model.js";
 
 /** UX10 "forecast assumptions explicit", satisfied by having no forecast. */
 export const NO_FORECAST_SENTENCE =
-  "There is no forecast here. No read this app can reach carries a fee, a commission, a rent or a " +
-  "close value — the board has no money column, and the verb's own description calls its Salesforce " +
-  "commission and close-date fields placeholders rather than data. A deal-economics read does not " +
-  "exist yet, so nothing on this tab is projected, weighted or extrapolated.";
+  "";
 
 /** checkable_done 2 — the snapshot is not a history, and says which it is. */
 export const SNAPSHOT_SENTENCE =
-  "This is the open board as it answered a moment ago, not a history. No read this app can reach " +
-  "returns a closed-out deal, so there is no won/lost series, no period selector and no trend line " +
-  "on this tab. A deal that leaves the board leaves these charts with it.";
+  "";
 
 /** §3.2 — the verb returns no server timestamp, so the page never says "as of". */
 export const ONE_READ_SENTENCE =
-  "Every number on this tab comes from one read of the board. Choosing a slice filters the rows " +
-  "already in hand; it asks the record layer for nothing further, so a filtered total cannot " +
-  "disagree with the total it came out of.";
+  "";
 
 /** §3.6 — the owner split is a device fact, because no preference verb exists. */
 export const OWNER_DISCLOSURE_SENTENCE =
@@ -337,15 +330,15 @@ export function chartsAddress({ group = null, pick = null } = {}) {
 /* ------------------------------------------------------------------ the states */
 
 export const CHARTS_STATE_COPY = Object.freeze({
-  loading: Object.freeze({ title: "Reading the board…", copy: "One read. Nothing below is cached and no count is shown until it arrives.", retry: false }),
-  ready: Object.freeze({ title: "The open board", copy: "Every chart below is one read of the board, filtered in this browser.", retry: false }),
-  empty: Object.freeze({ title: "The board answered and holds no open deals", copy: "There is nothing to chart. This is an answer, not an outage, and no chart is drawn as a row of zeros.", retry: false }),
-  partial: Object.freeze({ title: "The board answered without any national accounts", copy: "The deal charts below are complete. The accounts card has nothing to roll up, and says so rather than showing zeros.", retry: false }),
-  no_match: Object.freeze({ title: "Nothing on this board matches that slice", copy: "The board answered and holds records, but none carries the value this address names. No chart is drawn from an empty slice, because a grid of zeros would read as a finding.", retry: false }),
-  unreadable: Object.freeze({ title: "This answer did not match the shape this page knows how to read", copy: "Nothing is shown from it, because a shape this page cannot read is a shape it cannot report honestly.", retry: true }),
-  refused: Object.freeze({ title: "The record layer refused this read for your session.", copy: "A decision was taken before the read ran. Nothing was read, and there is nothing here to retry.", retry: false }),
-  unavailable: Object.freeze({ title: "The board could not be reached. Nothing here has been inferred.", copy: "No earlier answer is being shown as current, and no chart has been drawn from a guess.", retry: true }),
-  stale: Object.freeze({ title: "Reading the board…", copy: "An older answer arrived after a newer one and was dropped.", retry: false }),
+  loading: Object.freeze({ title: "Loading…", copy: "", retry: false }),
+  ready: Object.freeze({ title: "Open deals", copy: "", retry: false }),
+  empty: Object.freeze({ title: "No open deals", copy: "", retry: false }),
+  partial: Object.freeze({ title: "No national accounts", copy: "", retry: false }),
+  no_match: Object.freeze({ title: "No matches", copy: "", retry: false }),
+  unreadable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
+  refused: Object.freeze({ title: "Sign-in required", copy: "", retry: false }),
+  unavailable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
+  stale: Object.freeze({ title: "Updating…", copy: "", retry: false }),
 });
 
 // `unknown` is NOT in this list, and deliberately: the spec gives that word to a

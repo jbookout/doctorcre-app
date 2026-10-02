@@ -168,6 +168,6 @@ footer { padding-top: 8px; }
 #system-work-panel button:hover,#work-triage button:hover {border-color:var(--orange);}
 #system-work-panel button:focus-visible,#work-triage button:focus-visible {outline:2px solid var(--blue);outline-offset:3px;}
 #system-work-panel {margin-bottom:16px;}.work-source {margin:22px 0;}.work-source h3 {overflow-wrap:anywhere;margin-bottom:12px;}
-#work-triage {box-sizing:border-box;width:min(550px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#06182b;color:var(--ink);border:1px solid var(--blue);border-radius:18px;padding:24px;}
+#work-triage {box-sizing:border-box;width:min(960px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#06182b;color:var(--ink);border:1px solid var(--blue);border-radius:18px;padding:24px;}
 #work-triage::backdrop {background:rgba(0,5,13,.8);backdrop-filter:blur(8px);}#work-triage-form {display:grid;gap:16px;}#work-triage-form h2 {overflow-wrap:anywhere;}#work-triage-form textarea {min-height:110px;}
 @media(prefers-reduced-motion:reduce) {.work-card {transition:none;}.work-card:hover{transform:none;}}
