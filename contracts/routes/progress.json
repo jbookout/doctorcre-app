@@ -3,7 +3,8 @@
     {
       "path": "/control-room/progress",
       "asset": "progress-board.html",
-      "order": 2
+      "order": 2,
+      "gatePath": "/control-room"
     }
   ],
   "redirects": [

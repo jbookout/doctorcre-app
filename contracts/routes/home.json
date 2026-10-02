@@ -3,7 +3,8 @@
     {
       "path": "/",
       "asset": "workspace.html",
-      "order": 0
+      "order": 0,
+      "gatePath": "/"
     }
   ],
   "redirects": [

@@ -3,7 +3,8 @@
     {
       "path": "/ideas-events",
       "asset": "ideas.html",
-      "order": 9
+      "order": 9,
+      "gatePath": "/control-room"
     }
   ],
   "redirects": [

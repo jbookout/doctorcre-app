@@ -1,7 +1,9 @@
 export default {
   "id": "search",
   "files": [
-    "search.html"
+    "js/search-page.js",
+    "search.html",
+    "test/search.test.mjs"
   ],
   "navigation": [],
   "activeRoutes": {},

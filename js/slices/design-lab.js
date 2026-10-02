@@ -1,7 +1,10 @@
 export default {
   "id": "design-lab",
   "files": [
-    "design.html"
+    "css/design.css",
+    "design.html",
+    "js/atlas-demo-graph.js",
+    "js/design-prototype.js"
   ],
   "navigation": [
     {

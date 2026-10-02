@@ -1,7 +1,11 @@
 export default {
   "id": "ideas-events",
   "files": [
-    "ideas.html"
+    "css/ideas.css",
+    "ideas.html",
+    "js/ideas-model.js",
+    "js/ideas.js",
+    "test/ideas.test.mjs"
   ],
   "navigation": [
     {

@@ -1,7 +1,14 @@
 export default {
   "id": "work-requests",
   "files": [
-    "system-work.html"
+    "css/system-work.css",
+    "js/system-work-app.js",
+    "js/system-work-client.js",
+    "js/system-work-view.js",
+    "system-work.html",
+    "test/delivery-evidence.test.mjs",
+    "test/system-work-regressions.test.mjs",
+    "test/work-request-report-entry.test.mjs"
   ],
   "navigation": [
     {

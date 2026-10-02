@@ -3,7 +3,8 @@
     {
       "path": "/status",
       "asset": "status.html",
-      "order": 16
+      "order": 16,
+      "gatePath": "/control-room"
     }
   ],
   "redirects": []

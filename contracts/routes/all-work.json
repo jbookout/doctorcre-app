@@ -3,7 +3,8 @@
     {
       "path": "/all-work",
       "asset": "work-inventory.html",
-      "order": 14
+      "order": 14,
+      "gatePath": "/work-inventory"
     }
   ],
   "redirects": [

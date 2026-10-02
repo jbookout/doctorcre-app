@@ -1,4 +1,5 @@
 import { GENERATED_PATHS, prepareSlices, sliceNames, sliceOutputs } from "./slices.mjs";
+import { NAVIGATION_GROUPS } from "../js/slice-registration.js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -119,10 +120,9 @@ async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
       // Partner controls live on the signed-in app, not the report hostname.
       const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
         .replace('const registration = registerSlices(slices);\nexport const navigationItems = registration.navigationItems;\nconst sectionForRoute = registration.sectionForRoute;',
-          `export const navigationItems = Object.freeze(${JSON.stringify(sliceRegistration.navigationItems)});\nconst sectionForRoute = ${JSON.stringify(sliceRegistration.sectionForRoute)};`)
-        .replace('  mountSliceSections(root, pathname, slices);\n', '')
+          `const NAVIGATION_GROUPS = ${JSON.stringify(NAVIGATION_GROUPS)};\nexport const navigationItems = Object.freeze(${JSON.stringify(sliceRegistration.navigationItems)});\nconst sectionForRoute = ${JSON.stringify(sliceRegistration.sectionForRoute)};`)
         .replace("  else mountAccount(root, host, pathname);", "")
-        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
+        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
       const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
       if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
         throw new Error("report shell bundle needs an explicit export update");
@@ -212,7 +212,7 @@ async function verifyCommittedSource(root, archive, result) {
   const onDiskRegistration = await sliceOutputs(names, path => readFile(join(root, path)));
   const paths = await inputPaths(root, onDiskRegistration);
   const contractPaths = Object.values(CONTRACT_INPUTS);
-  const slicePaths = ['contracts/routes.v1.json', ...names.map(name => `contracts/routes/${name}.json`)];
+  const slicePaths = ['contracts/routes.v1.json', 'contracts/slice-ownership.v1.json', ...names.map(name => `contracts/routes/${name}.json`)];
   const sourcePaths = [...new Set([...paths, ...contractPaths, ...slicePaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
   const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
     ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths, ...slicePaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();

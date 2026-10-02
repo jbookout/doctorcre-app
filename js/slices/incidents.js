@@ -1,7 +1,11 @@
 export default {
   "id": "incidents",
   "files": [
-    "incidents.html"
+    "css/incidents.css",
+    "incidents.html",
+    "js/incidents-model.js",
+    "js/incidents.js",
+    "test/incidents.test.mjs"
   ],
   "navigation": [
     {

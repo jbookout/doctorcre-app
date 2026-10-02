@@ -1,6 +1,9 @@
 export default {
   "id": "all-work",
   "files": [
+    "css/work-inventory.css",
+    "js/work-inventory.js",
+    "test/work-inventory.test.mjs",
     "work-inventory.html"
   ],
   "navigation": [

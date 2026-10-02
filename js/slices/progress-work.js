@@ -1,9 +1,23 @@
 export default {
   "id": "progress-work",
   "files": [
+    "css/progress-work.css",
+    "css/queue.css",
+    "css/room.css",
+    "js/progress-auth.js",
+    "js/progress-legacy.js",
+    "js/progress-work.js",
+    "js/queue-model.mjs",
+    "js/queue.js",
+    "js/room.js",
     "progress-work.html",
     "queue.html",
-    "room.html"
+    "room.html",
+    "test/progress-work-browser.test.mjs",
+    "test/progress-work.test.mjs",
+    "test/queue-panel-model.test.mjs",
+    "test/room-panel-model.test.mjs",
+    "test/room-stage-moons.test.mjs"
   ],
   "navigation": [
     {

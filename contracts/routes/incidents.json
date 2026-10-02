@@ -3,7 +3,8 @@
     {
       "path": "/incidents",
       "asset": "incidents.html",
-      "order": 17
+      "order": 17,
+      "gatePath": "/incidents"
     }
   ],
   "redirects": []

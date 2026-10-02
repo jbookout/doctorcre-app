@@ -1,5 +1,5 @@
 import { slices } from "./slices.generated.js";
-import { registerSlices, mountSliceSections } from "./slice-registration.js";
+import { registerSlices, NAVIGATION_GROUPS } from "./slice-registration.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -36,7 +36,7 @@ function link({ label, href }, current, base) {
 export function appShellMarkup(pathname, base = "", search = "") {
   const current = pathname === "/ideas-events" ? `/ideas-events?tab=${new URLSearchParams(search).get("tab") === "events" ? "events" : "ideas"}` : activeDestination(pathname);
   const primary = navigationItems.filter(item => !item.group).map((item) => link(item, current, base)).join("");
-  const more = ["Workspace", "Updates", "Operations", "Reference"].map((group) =>
+  const more = NAVIGATION_GROUPS.map((group) =>
     `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
   const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
   return `<header class="app-shell-header" aria-label="Workspace rail">
@@ -71,13 +71,12 @@ export function appShellMarkup(pathname, base = "", search = "") {
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const host = root.getElementById("appShell");
   if (!host) return;
-  mountSliceSections(root, pathname, slices);
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);
+  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);
   else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");

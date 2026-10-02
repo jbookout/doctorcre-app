@@ -3,7 +3,8 @@
     {
       "path": "/deals",
       "asset": "pipeline.html",
-      "order": 4
+      "order": 4,
+      "gatePath": "/deals"
     }
   ],
   "redirects": [

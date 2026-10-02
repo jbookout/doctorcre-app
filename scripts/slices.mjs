@@ -3,31 +3,32 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, writeFile, rename } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { registerSlices } from '../js/slice-registration.js';
+import { JSDOM } from 'jsdom';
+import { createAppLayout } from '../js/app-layout.js';
+import ownership from '../contracts/slice-ownership.v1.json' with { type: 'json' };
+import { registerSlices, NAVIGATION_GROUPS } from '../js/slice-registration.js';
 
 export const GENERATED_PATHS = ['contracts/app-routes.v1.json', 'js/slices.generated.js'];
-const SHARED = new Set([...GENERATED_PATHS, 'contracts/routes.v1.json', 'js/app-shell.js',
-  'js/slice-registration.js', 'js/app-layout.js', 'css/app-shell.css', 'scripts/slices.mjs', 'scripts/check-repository.mjs',
-  'scripts/artifact.mjs', 'package.json', 'test/w1-shell-browser.test.mjs',
-  'test/progress-directory-browser.test.mjs', 'test/control-room.test.mjs', 'test/app-navigation.test.mjs', 'test/ia-routes.test.mjs']);
 const safePath = path => typeof path === 'string' && path.length > 0 && !path.startsWith('/') && !path.split('/').includes('..') && posix.normalize(path) === path;
+const pathname = path => typeof path === 'string' && /^\/(?!\/)[^?#]*$/.test(path);
 
-export function assertSliceOwnership(slices) {
+export function assertSliceOwnership(slices, shared = ownership.shared) {
+  const sharedFiles = new Set([...GENERATED_PATHS, ...shared]);
   const owners = new Map();
   for (const slice of slices) {
     assert.match(slice.id, /^[a-z][a-z0-9-]*$/, 'slice id must be a descriptive slug');
     for (const path of [`js/slices/${slice.id}.js`, `contracts/routes/${slice.id}.json`, ...(slice.files || [])]) {
       assert.ok(safePath(path), `unsafe slice file: ${path}`);
       if (owners.has(path)) throw new Error(`${path} is written by ${owners.get(path)} and ${slice.id}`);
-      if (SHARED.has(path)) throw new Error(`shared integration file cannot be slice-owned: ${path}`);
+      if (sharedFiles.has(path)) throw new Error(`shared integration file cannot be slice-owned: ${path}`);
       owners.set(path, slice.id);
     }
   }
   return owners;
 }
 
-export function assembleSlices(slices, fragments, metadata) {
-  assertSliceOwnership(slices);
+export function assembleSlices(slices, fragments, metadata, shared = ownership.shared) {
+  assertSliceOwnership(slices, shared);
   assert.equal(metadata.schema, 'doctorcre-app-routes.v1');
   assert.match(metadata.version, /^\d+\.\d+\.\d+$/);
   const seen = new Set();
@@ -41,11 +42,15 @@ export function assembleSlices(slices, fragments, metadata) {
       return [row.path, row[target]];
     }));
   const contract = { ...metadata, routes: assemble('routes', 'asset'), redirects: assemble('redirects', 'to') };
+  contract.gatePaths = Object.fromEntries(fragments.flatMap(f => f.routes || []).map(row => {
+    assert.ok(pathname(row.gatePath), `route needs an admitted CARR gatePath: ${row.path}`);
+    return [row.path, row.gatePath];
+  }));
   const { navigationItems, sectionForRoute } = registerSlices(slices);
   const nav = new Set();
   for (const slice of slices) for (const item of slice.navigation || []) assert.ok(Number.isFinite(item.order), `navigation needs an order: ${slice.id}`);
   for (const item of navigationItems) {
-    assert.ok(item.label && item.href && ['Workspace', 'Updates', 'Operations', 'Reference', undefined].includes(item.group), 'invalid navigation entry');
+    assert.ok(item.label && item.href && (item.group === undefined || NAVIGATION_GROUPS.includes(item.group)), 'invalid navigation entry');
     assert.ok(Object.hasOwn(contract.routes, item.href.split('?')[0]), `navigation has no route: ${item.href}`);
     assert.ok(!nav.has(item.href), `duplicate navigation: ${item.href}`); nav.add(item.href);
   }
@@ -59,7 +64,10 @@ export function assembleSlices(slices, fragments, metadata) {
     for (const section of slice.sections || []) {
       assert.ok(Object.hasOwn(contract.routes, section.page), `section has no page: ${section.page}`);
       assert.ok(section.id && section.slot && typeof section.html === 'string', 'invalid slice section');
-      if (section.module) assert.ok(section.module.startsWith('/') && safePath(section.module.slice(1)) && slice.files?.includes(section.module.slice(1)), `section module must be owned by ${slice.id}`);
+      if (section.module) {
+        assert.ok(section.module.startsWith('/js/') && /\.m?js$/.test(section.module) && safePath(section.module.slice(1)), `unsupported section module deployment path: ${section.module}`);
+        assert.ok(slice.files?.includes(section.module.slice(1)), `section module must be owned by ${slice.id}`);
+      }
       assert.ok(!sectionIds.has(section.id), `duplicate section id: ${section.id}`); sectionIds.add(section.id);
     }
   }
@@ -69,6 +77,9 @@ export function assembleSlices(slices, fragments, metadata) {
 // Discovery and assembly also accept committed bytes for source-bound artifacts.
 export async function sliceOutputs(names, readSource) {
   const metadata = JSON.parse(await readSource('contracts/routes.v1.json'));
+  const { schema, shared } = JSON.parse(await readSource('contracts/slice-ownership.v1.json'));
+  assert.equal(schema, 'doctorcre-slice-ownership.v1');
+  assert.ok(Array.isArray(shared) && shared.every(safePath) && new Set(shared).size === shared.length, 'invalid shared ownership');
   const slices = [], fragments = [];
   for (const name of names) {
     const source = String(await readSource(`js/slices/${name}.js`));
@@ -78,12 +89,35 @@ export async function sliceOutputs(names, readSource) {
     slices.push(slice);
     fragments.push(JSON.parse(await readSource(`contracts/routes/${name}.json`)));
   }
-  const result = assembleSlices(slices, fragments, metadata);
+  const result = assembleSlices(slices, fragments, metadata, shared);
   for (const [index, slice] of slices.entries()) for (const row of fragments[index].routes || []) {
     assert.ok(slice.files?.includes(row.asset), `route asset must be owned by ${slice.id}: ${row.asset}`);
   }
+  // Parse the target artifact, including runtime layout targets, before accepting
+  // selectors or IDs. JSDOM never runs page scripts or loads remote resources.
+  const pages = new Map();
+  for (const slice of slices) for (const section of slice.sections || []) {
+    assert.notEqual(section.page, '/share', 'public report sections are not supported by the report adapter');
+    let page = pages.get(section.page);
+    if (!page) {
+      page = new JSDOM(String(await readSource(result.contract.routes[section.page]))).window.document;
+      if (page.getElementById('appShell')) {
+        const { layout, status } = createAppLayout(page);
+        page.body.append(layout, status);
+      }
+      pages.set(section.page, page);
+    }
+    let target;
+    try { target = page.querySelector(section.slot); } catch { throw new Error(`invalid section slot: ${section.slot}`); }
+    assert.ok(target && !target.closest('#appShell') && !['SCRIPT', 'STYLE'].includes(target.tagName), `missing or unsupported section slot: ${section.slot}`);
+    const markup = page.createElement('template'); markup.innerHTML = section.html;
+    const ids = [...markup.content.querySelectorAll('[id]')].map(node => node.id);
+    assert.ok(ids.includes(section.id), `section markup needs its id: ${section.id}`);
+    assert.ok(new Set(ids).size === ids.length && ids.every(id => !page.getElementById(id)), `section id collision: ${section.id}`);
+    target.append(markup.content);
+  }
   const registry = `${names.map((name, i) => `import slice${i} from "./slices/${name}.js";`).join('\n')}\nexport const slices = Object.freeze([${names.map((_, i) => `slice${i}`).join(', ')}]);\nexport const routeContract = ${JSON.stringify(result.contract)};\n`;
-  return { ...result, outputs: new Map([
+  return { ...result, shared, outputs: new Map([
     ['contracts/app-routes.v1.json', Buffer.from(`${JSON.stringify(result.contract, null, 2)}\n`)],
     ['js/slices.generated.js', Buffer.from(registry)],
   ]) };
@@ -99,7 +133,15 @@ export async function sliceNames(root) {
 
 export async function prepareSlices(root) {
   const result = await sliceOutputs(await sliceNames(root), path => readFile(join(root, path)));
-  for (const path of assertSliceOwnership(result.slices).keys()) await readFile(join(root, path));
+  const owners = assertSliceOwnership(result.slices, result.shared);
+  for (const path of owners.keys()) await readFile(join(root, path));
+  for (const directory of ['js', 'css', 'test']) {
+    const entries = await readdir(join(root, directory), { withFileTypes: true }).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
+    for (const entry of entries) if (entry.isFile() && /\.(?:m?js|css)$/.test(entry.name)) {
+      const path = `${directory}/${entry.name}`;
+      assert.ok(owners.has(path) || result.shared.includes(path) || GENERATED_PATHS.includes(path), `file needs a slice owner or shared declaration: ${path}`);
+    }
+  }
   for (const [path, bytes] of result.outputs) {
     const target = join(root, path);
     const current = await readFile(target).catch(error => { if (error.code === 'ENOENT') return null; throw error; });

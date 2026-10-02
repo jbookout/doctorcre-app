@@ -3,7 +3,8 @@
     {
       "path": "/control-room",
       "asset": "control-room.html",
-      "order": 1
+      "order": 1,
+      "gatePath": "/control-room"
     }
   ],
   "redirects": []

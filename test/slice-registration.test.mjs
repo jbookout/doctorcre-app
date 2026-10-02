@@ -25,6 +25,7 @@ test('two new slices add route, navigation and page sections without shared sour
   await mkdir(join(root, 'js/slices'), { recursive: true });
   await mkdir(join(root, 'contracts/routes'), { recursive: true });
   await writeFile(join(root, 'contracts/routes.v1.json'), JSON.stringify({ schema: 'doctorcre-app-routes.v1', version: '1.19.0' }));
+  await writeFile(join(root, 'contracts/slice-ownership.v1.json'), JSON.stringify({ schema: 'doctorcre-slice-ownership.v1', shared: ['js/app-shell.js'] }));
   await writeFile(join(root, 'progress-board.html'), '<main>Demo unchanged progress</main>');
   await writeFile(join(root, 'js/app-shell.js'), '// Demo shared shell remains unchanged');
   const before = await Promise.all(['progress-board.html', 'js/app-shell.js'].map(p => readFile(join(root, p), 'utf8')));
@@ -32,7 +33,7 @@ test('two new slices add route, navigation and page sections without shared sour
     const slice = definition(id);
     slice.navigation[0].order += index;
     await writeFile(join(root, `js/slices/${id}.js`), `export default ${JSON.stringify(slice)};`);
-    await writeFile(join(root, `contracts/routes/${id}.json`), JSON.stringify({ routes: [{ path: `/${id}`, asset: `${id}.html`, order: index }], redirects: [] }));
+    await writeFile(join(root, `contracts/routes/${id}.json`), JSON.stringify({ routes: [{ path: `/${id}`, asset: `${id}.html`, order: index, gatePath: '/control-room' }], redirects: [] }));
     await writeFile(join(root, `${id}.html`), `<main>Demo ${id}</main>`);
     await mkdir(join(root, 'test'), { recursive: true });
     await writeFile(join(root, `test/${id}.test.mjs`), '// Demo local tests');
@@ -59,7 +60,7 @@ test('two new slices add route, navigation and page sections without shared sour
 });
 
 test('a registered section mounts its own controls module once after its markup', () => {
-  const dom = new JSDOM('<main></main>');
+  const dom = new JSDOM('<main></main>', { url: 'http://localhost/' });
   const slice = definition('alpha');
   slice.sections[0].module = '/js/alpha-controls.js';
   for (let i = 0; i < 2; i++) mountSliceSections(dom.window.document, '/alpha', [slice]);

@@ -1,7 +1,16 @@
 export default {
   "id": "progress",
   "files": [
-    "progress-board.html"
+    "css/progress-board.css",
+    "js/progress-board.js",
+    "js/system-work-board.js",
+    "progress-board.html",
+    "test/progress-board-form.test.mjs",
+    "test/progress-board.test.mjs",
+    "test/progress-directory-browser.test.mjs",
+    "test/system-work-board-browser.test.mjs",
+    "test/system-work-board.test.mjs",
+    "test/system-work-branding.test.mjs"
   ],
   "navigation": [
     {

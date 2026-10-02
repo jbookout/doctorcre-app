@@ -1,7 +1,10 @@
 export default {
   "id": "relationships",
   "files": [
-    "relationships.html"
+    "js/relationship-network.js",
+    "relationships.html",
+    "test/relationship-network.test.mjs",
+    "test/w14-relationship-browser.test.mjs"
   ],
   "navigation": [
     {

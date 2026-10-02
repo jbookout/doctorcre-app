@@ -3,7 +3,8 @@
     {
       "path": "/work-requests",
       "asset": "system-work.html",
-      "order": 10
+      "order": 10,
+      "gatePath": "/system-work.html"
     }
   ],
   "redirects": [
