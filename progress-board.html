@@ -43,7 +43,7 @@
         <div id="completed-list" class="completed-list"></div>
       </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
-        <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
+        <div class="panel-heading"><h2 id="system-work-title" tabindex="-1">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
         <form id="system-work-filters" class="work-filters">
           <label>Search<input name="text" type="search" maxlength="200"></label>
           <label>Category<select name="source"><option value="">All categories</option></select></label>
@@ -53,6 +53,9 @@
         </form>
         <p id="system-work-coverage" class="caption" role="status"></p>
         <p id="system-work-error" class="error" role="alert" hidden></p>
+        <button id="system-work-retry" type="button" hidden>Retry system work</button>
+        <span id="system-work-count" class="panel-count">—</span>
+        <div class="flow-wrap"><svg id="system-work-flow" class="pipeline-diagram" role="group" aria-label="System work delivery stages"></svg></div>
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
