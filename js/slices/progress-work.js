@@ -1,7 +1,9 @@
 export default {
   "id": "progress-work",
   "files": [
-    "progress-work.html"
+    "progress-work.html",
+    "queue.html",
+    "room.html"
   ],
   "navigation": [
     {

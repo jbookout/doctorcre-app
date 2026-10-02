@@ -12,5 +12,11 @@ export function mountSliceSections(root, pathname, slices) {
     const slot = root.querySelector(section.slot);
     if (!slot) throw new Error(`missing slice section slot: ${slice.id} ${section.slot}`);
     slot.insertAdjacentHTML('beforeend', section.html);
+    if (!root.getElementById(section.id)) throw new Error(`slice section markup needs its id: ${slice.id} ${section.id}`);
+    if (section.module) {
+      const script = root.createElement('script');
+      script.type = 'module'; script.src = section.module;
+      slot.append(script);
+    }
   }
 }

@@ -4,11 +4,7 @@ import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
-const ROOT_FILES = [
-  "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
-  "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "relationships.html", "pipeline.html", "progress-board.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
-];
+const ROOT_FILES = ["manifest.webmanifest"];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
@@ -101,9 +97,9 @@ function parseTar(archive) {
   throw new Error("artifact archive trailer is missing");
 }
 
-async function inputPaths(root) {
-  const routes = JSON.parse(await readFile(join(root, "contracts/app-routes.v1.json")));
-  const paths = [...new Set([...ROOT_FILES, ...Object.values(routes.routes)])];
+async function inputPaths(root, sliceRegistration) {
+  const pageAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => path.endsWith('.html'));
+  const paths = [...ROOT_FILES, ...pageAssets];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));
@@ -167,7 +163,7 @@ async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
 
 export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
   const sliceRegistration = await prepareSlices(root);
-  const paths = await inputPaths(root);
+  const paths = await inputPaths(root, sliceRegistration);
   const readSource = async (path) => {
     const sourcePath = join(root, path);
     if (!(await lstat(sourcePath)).isFile()) throw new Error(`artifact input is not a file: ${path}`);
@@ -212,13 +208,14 @@ export function verifyArtifact(archive, expectedSha256 = null) {
 async function verifyCommittedSource(root, archive, result) {
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
-  const paths = await inputPaths(root);
-  const contractPaths = Object.values(CONTRACT_INPUTS);
   const names = await sliceNames(root);
+  const onDiskRegistration = await sliceOutputs(names, path => readFile(join(root, path)));
+  const paths = await inputPaths(root, onDiskRegistration);
+  const contractPaths = Object.values(CONTRACT_INPUTS);
   const slicePaths = ['contracts/routes.v1.json', ...names.map(name => `contracts/routes/${name}.json`)];
   const sourcePaths = [...new Set([...paths, ...contractPaths, ...slicePaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
   const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
-    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths, ...slicePaths, ...Object.values(JSON.parse(await readFile(join(root, "contracts/app-routes.v1.json"))).routes)], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();
+    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths, ...slicePaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();
   if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
 
   // Compare the bytes themselves, not Git's working-tree status/cache. A forged

@@ -1,7 +1,8 @@
 export default {
   "id": "home",
   "files": [
-    "workspace.html"
+    "workspace.html",
+    "charts.html"
   ],
   "navigation": [
     {

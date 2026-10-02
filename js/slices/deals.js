@@ -1,7 +1,8 @@
 export default {
   "id": "deals",
   "files": [
-    "index.html"
+    "index.html",
+    "pipeline.html"
   ],
   "navigation": [
     {

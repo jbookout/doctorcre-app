@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { assertSliceOwnership, assembleSlices, prepareSlices } from '../scripts/slices.mjs';
+import { buildArtifact } from '../scripts/artifact.mjs';
 import { registerSlices, mountSliceSections } from '../js/slice-registration.js';
 
 const definition = id => ({ id, files: [`${id}.html`, `test/${id}.test.mjs`], navigation: [{ label: id, href: `/${id}`, order: 100, group: 'Workspace' }], sections: [{ page: '/alpha', slot: 'main', id: `${id}-panel`, html: `<section id="${id}-panel">Demo ${id}</section>` }] });
@@ -44,9 +45,26 @@ test('two new slices add route, navigation and page sections without shared sour
   mountSliceSections(dom.window.document, '/alpha', slices);
   assert.deepEqual([...dom.window.document.querySelectorAll('main section')].map(n => n.id), ['alpha-panel', 'beta-panel']);
   assert.deepEqual(await Promise.all(['progress-board.html', 'js/app-shell.js'].map(p => readFile(join(root, p), 'utf8'))), before);
+  for (const directory of ['css', 'data', 'public-shell', 'reports', 'tours']) await mkdir(join(root, directory));
+  await writeFile(join(root, 'manifest.webmanifest'), '{}');
+  await writeFile(join(root, 'contracts/carr-interface.v1.json'), JSON.stringify({ schema: 'doctorcre-carr-interface.v1', version: '1.0.0' }));
+  const artifact = await buildArtifact({ root, outDir: join(root, 'dist'), commit: '1'.repeat(40) });
+  assert.ok(artifact.manifest.files.some(file => file.path === 'alpha.html'));
+  assert.ok(artifact.manifest.files.some(file => file.path === 'beta.html'));
   const a = definition('alpha'), b = definition('beta');
   assert.throws(() => assembleSlices([a, b], [
     { routes: [{ path: '/same', asset: 'alpha.html', order: 0 }] },
     { routes: [{ path: '/same', asset: 'beta.html', order: 1 }] },
   ], { schema: 'doctorcre-app-routes.v1', version: '1.19.0' }), /duplicate route.*\/same/);
+});
+
+test('a registered section mounts its own controls module once after its markup', () => {
+  const dom = new JSDOM('<main></main>');
+  const slice = definition('alpha');
+  slice.sections[0].module = '/js/alpha-controls.js';
+  for (let i = 0; i < 2; i++) mountSliceSections(dom.window.document, '/alpha', [slice]);
+  const script = dom.window.document.querySelector('script[type="module"]');
+  assert.equal(script?.getAttribute('src'), '/js/alpha-controls.js');
+  assert.equal(dom.window.document.querySelectorAll('script').length, 1);
+  assert.equal(script.previousElementSibling.id, 'alpha-panel');
 });

@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import assert from 'node:assert/strict';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile, rename } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerSlices } from '../js/slice-registration.js';
@@ -58,6 +59,7 @@ export function assembleSlices(slices, fragments, metadata) {
     for (const section of slice.sections || []) {
       assert.ok(Object.hasOwn(contract.routes, section.page), `section has no page: ${section.page}`);
       assert.ok(section.id && section.slot && typeof section.html === 'string', 'invalid slice section');
+      if (section.module) assert.ok(section.module.startsWith('/') && safePath(section.module.slice(1)) && slice.files?.includes(section.module.slice(1)), `section module must be owned by ${slice.id}`);
       assert.ok(!sectionIds.has(section.id), `duplicate section id: ${section.id}`); sectionIds.add(section.id);
     }
   }
@@ -98,7 +100,14 @@ export async function sliceNames(root) {
 export async function prepareSlices(root) {
   const result = await sliceOutputs(await sliceNames(root), path => readFile(join(root, path)));
   for (const path of assertSliceOwnership(result.slices).keys()) await readFile(join(root, path));
-  for (const [path, bytes] of result.outputs) await writeFile(join(root, path), bytes);
+  for (const [path, bytes] of result.outputs) {
+    const target = join(root, path);
+    const current = await readFile(target).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (current?.equals(bytes)) continue;
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    await writeFile(temporary, bytes);
+    await rename(temporary, target);
+  }
   return result;
 }
 
