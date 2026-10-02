@@ -145,7 +145,7 @@ test("S02-07 permission_filtered true with an empty list renders the filtered ba
   assert.equal(state.state, "empty_filtered");
   assert.equal(state.message, "4 sessions match and none is yours to see.");
   assert.ok(state.banner, "the banner renders even though the list is empty");
-  assert.match(state.banner.text, /Permission filtering is on/);
+  assert.match(state.banner.text, /Available sessions/);
 });
 
 // MUTATION: always render the filtered banner in listState().
@@ -175,8 +175,8 @@ test("S02-10 the live corpus lands on not-recorded and the tab says so", () => {
   const summary = lineageSummary(DEFAULT_PAGE.sessions);
   assert.equal(summary.allUnrecorded, true);
   assert.equal(summary.count, 25);
-  assert.match(summary.text, /No session on this page has recorded lineage/);
-  assert.match(summary.text, /parent_known false/);
+  assert.match(summary.text, /Earlier session history unavailable/);
+  assert.match(summary.text, /Earlier session history unavailable/);
   assert.equal(lineageSummary([RETRY_ROW, ...DEFAULT_PAGE.sessions]).allUnrecorded, false);
 });
 
@@ -228,8 +228,8 @@ test("S02-13 supported host with a null host id renders the mismatch, not an ope
   assert.equal(state.state, "mismatch_no_host_id");
   assert.equal(state.open, false);
   assert.equal(state.hostId, null);
-  assert.match(state.text, /supported but no host id/);
-  assert.match(state.text, /does not\s+say which one/);
+  assert.match(state.text, /Session window unavailable/);
+  assert.match(state.text, /Session window unavailable/);
 });
 
 /* --------------------------------------------------------- honesty and stages */
@@ -391,7 +391,7 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads", () => {
-  assert.equal(contract.version, "1.35.0", "the checkpoint read and lead calls advance the interface");
+  assert.equal(contract.version, "1.38.0", "the checkpoint read and lead calls advance the interface");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -411,7 +411,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b",
+  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");

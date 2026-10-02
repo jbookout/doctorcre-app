@@ -8,8 +8,24 @@ import { createServer } from 'node:http';
 import { extname } from 'node:path';
 import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
+import { appShellMarkup } from '../js/app-shell.js';
+import { mountGlobalCallMode } from '../js/global-call-mode.js';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+
+// Translation animations can round a 44px rectangle just below 44px. Read its
+// settled geometry, preserving the exact touch-target floor without a sleep.
+async function touchTargetBox(locator) {
+  await locator.evaluate(async element => {
+    const animations = [];
+    for (let node = element; node; node = node.parentElement) {
+      animations.push(...node.getAnimations().filter(animation =>
+        animation.effect.getTiming().iterations !== Infinity));
+    }
+    await Promise.all(animations.map(animation => animation.finished));
+  });
+  return locator.boundingBox();
+}
 
 async function dock(check) {
   const dom = new JSDOM(await read('pipeline.html'), { url: 'https://example.test/pipeline.html' });
@@ -73,6 +89,7 @@ test('Dictate with Quill is disabled with a reason and never claims to listen wi
 
 async function callSurface(fetchImpl, check) {
   const dom = new JSDOM(await read('index.html'));
+  dom.window.document.getElementById('appShell').innerHTML = appShellMarkup('/deals');
   const effects = [];
   const ui = createCallMode({ root: dom.window.document, fetchImpl, eligibilityTimeoutMs: 20,
     client: () => { effects.push('client'); }, postCallClient: { getStatus: () => { effects.push('post-call'); } },
@@ -212,7 +229,7 @@ test('honest controls fit 390px and iPad in both motion settings with 44px touch
     for (const width of [390, 820]) for (const reducedMotion of ['reduce', 'no-preference']) {
       const page = await browser.newPage({ viewport: { width, height: 1180 }, reducedMotion });
       // Isolate these UI seams from unrelated backend boot and shell requests.
-      await page.route(/\/(pipeline|app|app-shell)\.js$/, route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+      await page.route(/\/(pipeline|app)\.js$/, route => route.fulfill({ contentType: 'text/javascript', body: '' }));
       await page.route(/https:\/\/.*/, route => route.abort());
       await page.goto(`${base}/deals?view=board`);
       await page.evaluate(async () => (await import('/js/doc-dock.js')).mountDocDock('Deals'));
@@ -221,8 +238,8 @@ test('honest controls fit 390px and iPad in both motion settings with 44px touch
       assert.equal(await page.locator('#docMic').isDisabled(), true);
       assert.match(await page.locator('#docTranscript').textContent(), /Doc cannot answer here yet/);
       for (const selector of ['#docFab', '#docChatClose', '#docTranscript a', '#docMic']) {
-        const box = await page.locator(selector).boundingBox();
-        assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target`);
+        const box = await touchTargetBox(page.locator(selector));
+        assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
       }
       const dockBox = await page.locator('#docChat').boundingBox();
       assert.ok(dockBox.x >= 0 && dockBox.x + dockBox.width <= width);
@@ -262,12 +279,52 @@ test('honest controls fit 390px and iPad in both motion settings with 44px touch
       });
       for (const selector of ['#callModeButton', '#callModeClose', '[data-call-mode-start]', '#callModeConsentRow', '#callModeStandalone']) {
         for (const locator of await page.locator(selector).all()) {
-          const box = await locator.boundingBox();
-          assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target`);
+          const box = await touchTargetBox(locator);
+          assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
         }
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.close();
     }
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+});
+
+// Pin the fractional translation that made CI intermittently report 43.999px.
+test('Doc touch targets are measured after their entry animation settles', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 820, height: 1180 } });
+    await page.setContent(`<style>${await read('css/system.css')} .doc-chat { top: 986.5px; bottom: auto; display: block; }</style><div class="doc-chat"><button class="btn">Dictate with Quill</button></div>`);
+    await page.locator('.doc-chat').evaluate(el => {
+      el.getAnimations().forEach(animation => animation.cancel());
+      el.animate([{ transform: 'translateY(4.6646px)' }, { transform: 'translateY(4.6646px)' }], { duration: 500 });
+    });
+    const box = await touchTargetBox(page.locator('button'));
+    assert.ok(box.height >= 44, `44px target reported as ${box.height}`);
+  } finally { await browser.close(); }
+});
+
+test('shared Call Mode offers eligibility and a working retry without backend reads', async () => {
+  const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  let reachable = false;
+  globalThis.fetch = async url => {
+    requests.push(String(url));
+    if (String(url) !== `${CALL_MODE_URL}/api/state`) throw new Error('unexpected backend read');
+    if (!reachable) throw new Error('unreachable');
+    return { ok: true, json: async () => ({ state: 'idle' }) };
+  };
+  let call;
+  try {
+    call = await mountGlobalCallMode(dom.window.document);
+    unavailable(dom.window.document);
+    const retry = dom.window.document.getElementById('callModeRetry');
+    assert.ok(retry && !retry.hidden);
+    reachable = true;
+    assert.equal(await call.handleClick(retry), true);
+    assert.equal(dom.window.document.getElementById('callModeButton').hidden, false);
+    assert.equal(retry.hidden, true);
+    assert.deepEqual(requests, [`${CALL_MODE_URL}/api/state`, `${CALL_MODE_URL}/api/state`]);
+  } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
 });

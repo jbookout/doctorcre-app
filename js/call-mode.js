@@ -255,9 +255,6 @@ export function createCallMode(deps) {
       transcribing: 'Quill is processing this call', ready_to_extract: 'Transcript ready for extraction',
       filed: 'Call summary saved', state_unknown: 'Recorder state needs attention',
     }[snapshot.state] || 'Ready to record');
-    $('#callModeDetail').textContent = recording ? 'Quill is recording separate local and other-side audio tracks.'
-      : processing ? 'The recording has stopped. Quill is preparing the local transcript for the review pipeline.'
-        : 'Record the weekly Joe and Dell deal call, or another call. Quill keeps the local and other-side tracks separate.';
     const labels = snapshot.speaker_labels || {};
     const speakers = $('#callModeSpeakers');
     speakers.hidden = !labels.mic;
@@ -267,8 +264,8 @@ export function createCallMode(deps) {
       toolbarButton.classList.toggle('recording', recording);
       toolbarButton.innerHTML = recording
         ? `<span aria-hidden="true">●</span> ${elapsedTime(snapshot.started_at, now)}`
-        : '<span aria-hidden="true">✦</span> Call Mode';
-      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(snapshot.started_at, now)}` : 'Open Call Mode');
+        : '<span aria-hidden="true">☎</span>';
+      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(snapshot.started_at, now)}` : 'Call mode');
     }
     renderPostCall();
   }
@@ -597,8 +594,10 @@ export function createCallMode(deps) {
         const ok = await publishOrRecord(state.callMode.session || null);
         if (!ok) toast(`Recording started, but the weekly deal context needs attention: ${state.postCall.error}`);
         try {
-          if (deps.startAgenda) await deps.startAgenda();
-          toast('Weekly deal call is recording. The agenda is open.');
+          if (deps.startAgenda) {
+            await deps.startAgenda();
+            toast('Weekly deal call is recording. The agenda is open.');
+          } else toast('Weekly deal call is recording.');
         } catch (error) {
           console.error('Could not start the weekly agenda', error);
           toast('Weekly deal call is recording. The agenda could not open.');

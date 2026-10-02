@@ -1,37 +1,106 @@
 {
   "schema": "doctorcre-tour-composer.v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "fff4e29a7eeb5f33ed2a5bcf7d6a44b81ef592a3",
-    "pull_request": "https://github.com/jbookout/carr-system/pull/1437"
+    "source_commit": "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33",
+    "pull_request": "https://github.com/jbookout/carr-system/pull/1453"
   },
   "consumer": "jbookout/doctorcre-app",
   "authentication": "same-origin session and x-carr-csrf; no caller authority fields",
+  "reads": {
+    "/api/tours/detail": {
+      "method": "GET",
+      "query_fields": ["tour_id"],
+      "envelope": "data",
+      "routes_order": "route_version descending",
+      "route_fields": ["id", "route_version", "accepted", "stops", "acceptance_digest"],
+      "acceptance_digest_pattern": "^sha256:[0-9a-f]{64}$",
+      "legacy_response_digest": "route_acceptance_digest"
+    }
+  },
+  "release_prerequisite": {
+    "producer_source_commit": "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33",
+    "migration": "migrations/0759_tour_reviewed_route_digest.sql",
+    "order": ["apply producer migration", "deploy producer", "deploy consumer"],
+    "older_producer_behavior": "withhold review and acceptance"
+  },
   "writes": {
     "/api/tours/create": {
-      "fields": ["idempotency_key", "tour_name", "subject_type", "subject_id", "canonical_dataset_version", "start_point", "end_point"],
+      "fields": [
+        "idempotency_key",
+        "tour_name",
+        "subject_type",
+        "subject_id",
+        "canonical_dataset_version",
+        "start_point",
+        "end_point"
+      ],
       "result": "tour_id"
     },
     "/api/tours/route-draft": {
-      "fields": ["idempotency_key", "tour_id", "route_version", "base_route_version_id", "expected_route_version", "start_point", "end_point"],
+      "fields": [
+        "idempotency_key",
+        "tour_id",
+        "route_version",
+        "base_route_version_id",
+        "expected_route_version",
+        "start_point",
+        "end_point"
+      ],
       "result": "route_version_id"
     },
     "/api/tours/route-stop": {
-      "fields": ["idempotency_key", "route_version_id", "property_id", "route_sequence", "route_label", "stop_state", "appointment_start", "appointment_end", "locked_appointment", "dwell_minutes", "buffer_minutes", "access_coordinate_status", "assertion_set_digest"],
+      "fields": [
+        "idempotency_key",
+        "route_version_id",
+        "property_id",
+        "route_sequence",
+        "route_label",
+        "stop_state",
+        "appointment_start",
+        "appointment_end",
+        "locked_appointment",
+        "dwell_minutes",
+        "buffer_minutes",
+        "access_coordinate_status",
+        "assertion_set_digest"
+      ],
       "result": "route_stop_id"
     },
     "/api/tours/route-stop-transition": {
-      "fields": ["idempotency_key", "old_route_version_id", "new_route_version_id", "old_route_stop_id", "new_route_stop_id", "disposition"],
+      "fields": [
+        "idempotency_key",
+        "old_route_version_id",
+        "new_route_version_id",
+        "old_route_stop_id",
+        "new_route_stop_id",
+        "disposition"
+      ],
       "result": "route_stop_transition_id"
     },
     "/api/tours/route-accept": {
-      "fields": ["route_version_id", "expected_prior_route_version", "acceptance_digest", "idempotency_key"],
+      "fields": [
+        "route_version_id",
+        "expected_prior_route_version",
+        "acceptance_digest",
+        "idempotency_key"
+      ],
       "result": "route_version_acceptance_id"
     }
   },
-  "point_fields": ["latitude", "longitude", "position_role", "precision_class", "source_ref"],
-  "stop_states": ["active", "held", "excluded"],
+  "point_fields": [
+    "latitude",
+    "longitude",
+    "position_role",
+    "precision_class",
+    "source_ref"
+  ],
+  "stop_states": [
+    "active",
+    "held",
+    "excluded"
+  ],
   "invariants": [
     "Create seeds empty draft version 1; later versions require an accepted base.",
     "Stops and transitions append; saving freezes the browser draft for review.",
@@ -41,6 +110,24 @@
     "409 is a refusal; network, 5xx and failed post-write reads are unknown outcomes.",
     "Unknown outcomes require a successful read before explicit same-key retry; no automatic writes.",
     "Pending intents are tab-local and bound to a hash of the current session CSRF token.",
+    "Acceptance compares the reviewed server digest with current draft contents; changed contents require reload and a new review.",
     "The current detail read omits endpoints, transition rows and assertion-set digests; endpoints for a new version require manual entry, changes are compared with accepted stops, and a missing digest binds the visible candidate snapshot without upgrading unknown access or rights."
-  ]
+  ],
+  "reviewed_route": {
+    "schema": "doctorcre-tour-reviewed-route-digest.v1",
+    "version": "1.0.0",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33",
+      "migration": "migrations/0759_tour_reviewed_route_digest.sql",
+      "pull_request": "https://github.com/jbookout/carr-system/pull/1453"
+    },
+    "response_digest": "routes[0].acceptance_digest",
+    "legacy_response_digest": "route_acceptance_digest",
+    "acceptance_field": "acceptance_digest",
+    "changed_draft_status": 409,
+    "missing_digest": "withhold review and acceptance; reload after the producer is updated",
+    "invariant": "Forward the opaque server digest from the same detail as the displayed stop set; never refresh the digest when accepting."
+  },
+  "active_route_label_pattern": "^[A-Za-z0-9]{1,3}$"
 }

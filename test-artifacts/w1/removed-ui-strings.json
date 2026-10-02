@@ -1,0 +1,838 @@
+[
+  {
+    "file": "business-workspace.html",
+    "removed": [
+      "Reading the command centre…",
+      "Retry read",
+      "Record layer",
+      "Calls: no record-layer read returns logged calls yet",
+      "This search shows what the record layer returns to you when you are signed in. This page adds no filter of its own and asks for nobody else's records.",
+      "These chips hide rows from the answer you already received. They do not ask the record layer for a narrower search — it has no such door.",
+      "This searches people, practices, buildings, deals, leads and vendors — the records the record layer can search by name. Tasks, documents and your Doc conversation history are not searched here, because no door exists that searches them yet. This page will not pretend an empty result for those means there is nothing to find.",
+      "Every number on this tab comes from one read of the board."
+    ]
+  },
+  {
+    "file": "business.html",
+    "removed": [
+      "Everyone the team works with. Search, filter, and open one to see what is on the record.",
+      "These come straight from the client and vendor records. Merged and deleted records are left out, and anything nobody filled in reads \"Not recorded\" rather than being guessed at. Status and ETL are what someone entered on the record — they are not proof that an agreement was signed or that anyone was put on the work.",
+      "About this list",
+      "Every list says where it came from and when."
+    ]
+  },
+  {
+    "file": "calendar.html",
+    "removed": [
+      "Reading the record…",
+      "Reading the record layer…",
+      "Check again",
+      "Source pending",
+      "DoctorCRE · Calendar · Read only: dates are added on the deal itself."
+    ]
+  },
+  {
+    "file": "control-room.html",
+    "removed": [
+      "Taking the reads…",
+      "Read again",
+      "Reads that answered",
+      "Each read states its own clock",
+      "Taking the resource read…",
+      "Try the queue read again",
+      "Assignments are shown in the order the record layer returned them. Nothing on this tab is re-sorted, re-filtered or re-ranked in the browser.",
+      "Find dispatch history by session name or canonical ID",
+      "Search includes closed sessions you are allowed to see. Results and history are read-only.",
+      "Choose a Kanban topic or a shared Work Request to see its conversation and ledger history in the record layer's own order. No composer and no action lives here.",
+      "Try the atlas read again",
+      "Sources that answered",
+      "Search, layer and retired are read from CARR on every change. Nothing on this page is re-sorted or re-filtered in the browser.",
+      "Take the read again",
+      "The lookup and the closed toggle are read from CARR on every change. Nothing on this page is re-sorted, re-filtered or re-ranked in the browser.",
+      "Nothing on this page writes to the record layer.",
+      "DoctorCRE · Control Room · A read that did not answer is unknown, never zero."
+    ]
+  },
+  {
+    "file": "conversations.html",
+    "removed": [
+      "Read again",
+      "Rename, pin and archive ride one door on a compare-and-swap. If a partner moved this conversation first, the page re-reads it and asks you to press again.",
+      "DoctorCRE · Conversations · Turning sharing off ends future access, and never unreads what was already read."
+    ]
+  },
+  {
+    "file": "design-business.html",
+    "removed": [
+      "Source CARR",
+      "Source (new tab)"
+    ]
+  },
+  {
+    "file": "design-operations.html",
+    "removed": [
+      "Source",
+      "coverage 5 of 5 sources · 213 items",
+      "Widen the census read to the sixth source"
+    ]
+  },
+  {
+    "file": "ideas.html",
+    "removed": [
+      "Reading the record…",
+      "Reading the record layer…",
+      "Check again",
+      "Source pending",
+      "Reading this idea…",
+      "DoctorCRE · Ideas & Events · Industry events are sourced records.",
+      "Changed in the record"
+    ]
+  },
+  {
+    "file": "incidents.html",
+    "removed": [
+      "Read again",
+      "DoctorCRE · Incident · Facts and hypotheses are kept apart, and a read that did not answer is unknown."
+    ]
+  },
+  {
+    "file": "index.html",
+    "removed": [
+      "Color assist"
+    ]
+  },
+  {
+    "file": "js/app.js",
+    "removed": [
+      "The last board snapshot could not be shown${status.board_error ?",
+      ": ''}, so what is on screen is older than the answer that arrived.",
+      "The board could not be re-read${status.board_error ?",
+      ": ''}. Values are from the last successful read at ${at}.",
+      "No board read has succeeded yet in this session.",
+      "The change feed answered on its last read.",
+      "The change feed is not answering${status.feed_error ?",
+      ": ''}, so new receipts and presence may be missing.",
+      "The change feed has not been read yet.",
+      "Signed in as ${actorName(state.selfActor)}",
+      "On-demand advice from the recorded evidence. It does not change the deal.",
+      "Color-friendly view on · patterns and labels supplement color",
+      "Color-friendly view off",
+      "Turn off color-blind-friendly view"
+    ]
+  },
+  {
+    "file": "js/assurance-health-model.js",
+    "removed": [
+      "Choose a workflow and version to read scoped assurance health."
+    ]
+  },
+  {
+    "file": "js/atlas-model.js",
+    "removed": [
+      "Relationships are shown for nodes on this page. A relationship to a node on another page is not drawn here.",
+      "No run evidence exists for a verb: public.tool_call verb name is a published gap (column_not_granted), so this release draws no traffic for it at all.",
+      "No test relation is read by any leg of this graph, so test coverage for this rule is not shown here and is not claimed to be absent.",
+      "This page lists what this system declares it has, what is installed and what has been",
+      "observed running. It is an inventory of machinery, not of deals, and it holds no client or",
+      "property information. The record layer's actor check is the only gate and this app adds none.",
+      "This device remembers the selected node id only, and nothing here is cached offline.",
+      "The atlas has not been read yet",
+      "It is read when this tab is first opened, so the dashboard's own reads are not delayed.",
+      "Reading the atlas…",
+      "One request-time read. Nothing below is cached, and no earlier page is left on screen.",
+      "No node matches this search.",
+      "The coverage below still names every source that answered and every known gap.",
+      "This session cannot read the atlas. Nothing here has been inferred.",
+      "Sign in again, or ask for the read to be granted. No partial graph is drawn from a refused read.",
+      "The atlas read is not available on this host.",
+      "The host answered 404. That is the same answer whether the surface is switched off or this tenant is out of scope, and this page does not guess which.",
+      "CARR could not establish the freshness of this atlas, so nothing is shown as current.",
+      "Nothing below is drawn from an earlier read.",
+      "A source CARR depends on is unavailable right now, so no partial atlas is presented as whole.",
+      "Try again once the source answers.",
+      "The atlas read failed. Nothing here has been inferred.",
+      "No earlier page is being shown as current.",
+      "Declared and installed describe how this system is wired to work. Observed, on a node's own selection, is",
+      "what has actually been seen running — a separate fact, never inferred from the wiring, and never shown as if",
+      "it were happening now."
+    ]
+  },
+  {
+    "file": "js/atlas-scene.js",
+    "removed": [
+      "${EVIDENCE_DEPTH[node.evidence]?.plane || node.evidence}. Read from ${node.source_ref}.",
+      "This release reads no run for this component. That is a silence in the sources, not a report of nothing happening."
+    ]
+  },
+  {
+    "file": "js/atlas.js",
+    "removed": [
+      "No version has been read.",
+      "What this system declares",
+      "When this was read",
+      "Freshness",
+      "No open incident names this service on the same incident-board read the dashboard holds.",
+      "Source"
+    ]
+  },
+  {
+    "file": "js/business-workspace-model.js",
+    "removed": [
+      "Calls: no record-layer read returns logged calls yet"
+    ]
+  },
+  {
+    "file": "js/business-workspace.js",
+    "removed": [
+      ": \"\"\", \"",
+      ", payload: null, message: null, sequence: 0, freshnessKey: null,\n\n\n\n  records: Object.freeze([]), boardStatus:",
+      ",\n\n\n\n  week: { status:",
+      "The current record list has not been verified. Keep this entry as a draft and use Retry read if needed.",
+      "Reading the command centre…",
+      "Command centre read unavailable",
+      "`Read from the command centre · ${deploymentIdentity(client?.mode).detail}`",
+      "Current record list verified. Quick add is ready.",
+      "Current record list could not be verified. Use Retry read before filing.",
+      "The current record list could not be verified. Retry read before filing, or keep this as a draft.",
+      "Checking the current record list. Keep this as a draft until it is ready."
+    ]
+  },
+  {
+    "file": "js/calendar.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">Nothing is shown for this day until the record can be read.",
+      "Their dates are not on this calendar: ${names}${rest}. The rest are shown as read.",
+      ") {\n    announce(`${result.entries.length} critical date${result.entries.length === 1 ?",
+      "detailRow(\"Source\", entry.source)"
+    ]
+  },
+  {
+    "file": "js/call-mode.js",
+    "removed": [
+      "Quill is recording separate local and other-side audio tracks.",
+      "The recording has stopped. Quill is preparing the local transcript for the review pipeline.",
+      "Record the weekly Joe and Dell deal call, or another call. Quill keeps the local and other-side tracks separate.",
+      "Open Call Mode"
+    ]
+  },
+  {
+    "file": "js/charts-model.js",
+    "removed": [
+      "There is no forecast here. No read this app can reach carries a fee, a commission, a rent or a",
+      "close value — the board has no money column, and the verb's own description calls its Salesforce",
+      "commission and close-date fields placeholders rather than data. A deal-economics read does not",
+      "exist yet, so nothing on this tab is projected, weighted or extrapolated.",
+      "This is the open board as it answered a moment ago, not a history. No read this app can reach",
+      "returns a closed-out deal, so there is no won/lost series, no period selector and no trend line",
+      "on this tab. A deal that leaves the board leaves these charts with it.",
+      "Every number on this tab comes from one read of the board. Choosing a slice filters the rows",
+      "disagree with the total it came out of.",
+      "Reading the board…",
+      "One read. Nothing below is cached and no count is shown until it arrives.",
+      "The open board",
+      "Every chart below is one read of the board, filtered in this browser.",
+      "The board answered and holds no open deals",
+      "There is nothing to chart. This is an answer, not an outage, and no chart is drawn as a row of zeros.",
+      "The board answered without any national accounts",
+      "The deal charts below are complete. The accounts card has nothing to roll up, and says so rather than showing zeros.",
+      "Nothing on this board matches that slice",
+      "The board answered and holds records, but none carries the value this address names. No chart is drawn from an empty slice, because a grid of zeros would read as a finding.",
+      "This answer did not match the shape this page knows how to read",
+      "Nothing is shown from it, because a shape this page cannot read is a shape it cannot report honestly.",
+      "The record layer refused this read for your session.",
+      "A decision was taken before the read ran. Nothing was read, and there is nothing here to retry.",
+      "The board could not be reached. Nothing here has been inferred.",
+      "No earlier answer is being shown as current, and no chart has been drawn from a guess.",
+      "An older answer arrived after a newer one and was dropped."
+    ]
+  },
+  {
+    "file": "js/charts.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">These counts are the record layer's own totals for each account across the whole board. Choosing a slice above does not filter them, because they are an aggregate this page cannot re-derive from the rows without inventing a total. These five counts arrive from the record layer as text and are read as numbers here. A count this page cannot read as a number says",
+      "rather than nothing, and a record layer that has never recorded a review here says",
+      "rather than a clock of zero days.",
+      ">Retry",
+      ">Reading the board…",
+      ") {\n\n      canvas.innerHTML ="
+    ]
+  },
+  {
+    "file": "js/control-room-model.js",
+    "removed": [
+      "Taking the reads…",
+      "No read answered",
+      "Some reads did not answer",
+      "Some reads came back incomplete",
+      "Every read answered",
+      "Not in this release: no release feed exists to read, so no change is claimed."
+    ]
+  },
+  {
+    "file": "js/control-room.js",
+    "removed": [
+      ": \"\"\", \"",
+      ",\n  outage: null,\n\n\n  atlas: { status:",
+      "},\n\n\n\n    approvals: { state:",
+      "},\n  },\n\n\n\n  needsJoeDetail: { humanRef: null, state:",
+      ", text: `Resources: read at ${clock}` }\n      : { state:",
+      ">Each read states its own clock",
+      ">The detail could not be read: ${escapeHtml(fields.reason)}.",
+      "not provided by the server (${escapeHtml(fields.evidence.reason)})",
+      "})`,\n      item.next_human_action ||",
+      "Decided with ${escapeHtml(lane.verb)} in the record layer",
+      "schedule-board",
+      "read from the shared queue"
+    ]
+  },
+  {
+    "file": "js/conversations-model.js",
+    "removed": [
+      "You cannot write into this conversation from here yet. The only door that appends a turn is reserved for an authority session, so this page shows the history and does not offer a box that could not send.",
+      "Doc's replies arrive in the next slice. Nothing on this page is waiting on an answer.",
+      "This list is read from the record layer: the conversations you created and the ones shared with you, pinned first and then most recently updated. It is not a roster kept on this device.",
+      "The record layer keeps every previous title of this conversation, but no door reads them back yet, so this page shows only the name it has now.",
+      "This page shows the words of your conversations with Doc, so on a shared or unlocked phone a passer-by reads them at a glance — and the list above names every conversation you can see. The record layer's membership check is the only gate and this app adds none. Nothing is kept on this device and nothing here is cached offline: close the page and it is gone until the record layer answers again.",
+      "This page has not read this conversation's version yet. Nothing was sent.",
+      "A conversation is identified by the id the record layer minted. Nothing was sent.",
+      "Reading this conversation…",
+      "No conversation with that link is visible to you. It may not exist, or it may not be shared with you — the record layer answers those the same way on purpose, so this page cannot tell you which.",
+      "This is the last picture that landed. A newer read has not answered yet.",
+      "The record layer refused this read. It was decided before the verb ran, and nothing was read."
+    ]
+  },
+  {
+    "file": "js/conversations.js",
+    "removed": [
+      ": \"\"\", \"",
+      ", payload: null, rows: [] },\n  includeArchived: false,\n\n\n\n\n\n\n\n\n\n  outcomeCards: { state:",
+      "read from the record layer",
+      ">Open source conversation",
+      "Read again to review the current version before acting.",
+      "Correction proposed with its source. The suggestion has not been overwritten."
+    ]
+  },
+  {
+    "file": "js/correspondence.js",
+    "removed": [
+      ">Source: ${source}",
+      ">Source: ${esc(item.source)}"
+    ]
+  },
+  {
+    "file": "js/delivery-evidence-model.js",
+    "removed": [
+      "Say why, in 1 to 500 characters. The record layer refuses a withdrawal without a reason.",
+      "Say why. The record layer refuses a shape disposition without a rationale.",
+      "the same safety key was already spent on different arguments, so the record layer refused it. Read the record again before deciding.",
+      "the record layer could not be reached, so nothing here has been inferred.",
+      "the record layer refused this: ${String(code).replace(/_/g, \" \")}.",
+      "the record layer refused this without naming a reason."
+    ]
+  },
+  {
+    "file": "js/design-prototype.js",
+    "removed": [
+      "As of ${formatClock(TODAY)} · source CARR",
+      "Approve: widen the census read"
+    ]
+  },
+  {
+    "file": "js/fixture-client.js",
+    "removed": [
+      "Reconcile the migration receipt with the record layer",
+      "Name the demo retention window in the record layer",
+      "Demo rule: a demo surface names its missing read instead of drawing a zero.",
+      "Only retired aliases matched; no live record stands behind this name.",
+      "No live record matched this name."
+    ]
+  },
+  {
+    "file": "js/ideas-model.js",
+    "removed": [
+      "Enter a title, organizer, and source.",
+      "Read this event again before editing it."
+    ]
+  },
+  {
+    "file": "js/ideas.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">Source: ${escapeHtml(row.source)}"
+    ]
+  },
+  {
+    "file": "js/incidents.js",
+    "removed": [
+      ": \"\"\", \"",
+      "read from the operational ledger"
+    ]
+  },
+  {
+    "file": "js/leads-app.js",
+    "removed": [
+      ": \"\"\", \"",
+      "Review the source before deciding.",
+      "Check an HTTPS source for each field. The app records the time you confirm these sources.",
+      "I checked these sources and their field links now."
+    ]
+  },
+  {
+    "file": "js/model-room-model.js",
+    "removed": [
+      "Open returns to a verified Codex Desktop thread on this Mac.",
+      "Other hosts keep the canonical session ID for manual resume. Opening sends no message and takes over no session.",
+      "Room participants come from conversation turns. Dispatch receipt and",
+      "either state from a message.",
+      "Search by a session's friendly name or canonical ID, including closed",
+      "historical instructions are displayed as records and never executed.",
+      "Sent, received, acknowledged and acted remain separate evidence rows.",
+      "no_dispatch_spine marks pre-spine history matched only from its room-turn body.",
+      "Assignments are read from room ${QUEUE_ROOM}, board ${QUEUE_BOARD}, which is",
+      "where the projector writes them. The room ${TURN_ROOM} carries this tab's conversation and no queue at all.",
+      "This is a window on the room, not the whole of it: the read answered more: true,",
+      "so the number of turns below is what this page asked for and not a count of what exists.",
+      "The queue could not be read.",
+      "The queue projector keeps only the latest state per ticket:",
+      "read-room-queue overwrites by task_id, so it exposes no ticket-level event history. The card below is the",
+      "entire history this page can show for this topic, not a claim that nothing came before it.",
+      "This ledger is work-request-card's own acting-identity and",
+      "outcome-feedback history, in the order the record layer returned it. Nothing here is re-sorted, merged or",
+      "inferred, and a delivery state that is not recorded reads as unknown rather than as a guess.",
+      "This move is not supported: no pinned verb changes a",
+      "projected assignment's status. Source or shipping status can only change at its source, never by dragging",
+      "This item cannot be answered from here yet: the record layer's",
+      "for-joe requires the exact current version as a compare-and-swap. Guessing one would risk answering a",
+      "different version than the one shown above. This is a gap in the record layer, not a missing control on this"
+    ]
+  },
+  {
+    "file": "js/model-room.js",
+    "removed": [
+      ": \"\"\", \"",
+      ", payload: null, refusal: null },\n  \n  selected: null,\n  dispatch: { state:",
+      ",\n\n\n\n  workItems: { state:",
+      ", payload: null, refusal: null },\n\n\n\n  composer: { text:",
+      ", message: null },\n\n\n\n\n\n  answer: { answerText:",
+      ">Taking the dispatch read…",
+      ">The dispatch read could not be rendered: ${escapeHtml(view.dispatch.refusal)}.",
+      "small\\\">Taking the work-request-card read…",
+      "The work-item history could not be read: ${escapeHtml(view.historyCard.refusal)}.",
+      "The Model Room reads have answered."
+    ]
+  },
+  {
+    "file": "js/notifications-model.js",
+    "removed": [
+      "Inside your quiet hours the record layer holds a device push instead of dropping it, and records that it held it. The in-app item is never suppressed.",
+      "These are your own preferences. Neither verb takes an actor, so this form can only read and set yours, and a save carries the version this page last read so it can never silently overwrite a change made somewhere else.",
+      "This feed is yours alone, and its subjects name real deals, so on a shared or unlocked phone this page shows business subjects at a glance. It holds no document contents and no credentials, and nothing on it is cached offline.",
+      "Acknowledging clears the notification. It does not complete, close or change the work the notification is about.",
+      "Reading your notifications…",
+      "You have no notifications, and nothing is unread.",
+      "This is the last picture that landed. A newer read has not answered yet.",
+      "The record layer refused this read. It was decided before the verb ran, and nothing was read.",
+      "The feed could not be shaped, so this page shows nothing rather than a guess.",
+      "This list is capped, so it is shorter than your unread count.",
+      "You have never saved a notification preference, so these are the record layer's documented defaults: no quiet hours, device push off, UTC. Nothing has been written on your behalf.",
+      "These are your saved preferences, read back from the record layer.",
+      "Reading your preferences…",
+      "Your preferences could not be shaped, so this page shows nothing rather than a guess.",
+      "Your preferences changed somewhere else while this form was open, so nothing was saved. The form has been read again and now shows the current values and the current version, and anything you had typed and not saved has been replaced by them — check them and save again.",
+      "Clearing quiet hours and setting one are the same request here, so the record layer refused it. Do one or the other. Nothing was saved.",
+      "The record layer does not know that timezone. Use an IANA name such as America/Chicago. Nothing was saved.",
+      "That save carried no idempotency key, so the record layer refused it. Nothing was saved.",
+      "That key has already been used for a different save, so the record layer refused it. Nothing was saved.",
+      "The record layer refused the save without naming a reason. Nothing was saved.",
+      "The record layer refused this save as ${code}. Nothing was saved."
+    ]
+  },
+  {
+    "file": "js/notifications.js",
+    "removed": [
+      ": \"\"\", \"",
+      "No event has been recorded yet",
+      "read from the change stream"
+    ]
+  },
+  {
+    "file": "js/operations-model.js",
+    "removed": [
+      "Read-only. This card grants no authority: each decision is taken with its own partner verb in the record layer, never from this page."
+    ]
+  },
+  {
+    "file": "js/pipeline-model.js",
+    "removed": [
+      "How this ended. The record layer takes won, lost or paused, and nothing else.",
+      "The record layer records an outcome of won, lost or paused, and nothing else.",
+      " · source ${entry.source}"
+    ]
+  },
+  {
+    "file": "js/pipeline.js",
+    "removed": [
+      "Read from the record layer",
+      "Reading the record…",
+      "Reading the record layer… · ${deploymentIdentity(state.mode).detail}"
+    ]
+  },
+  {
+    "file": "js/progress-board.js",
+    "removed": [
+      "Your session ended. Sign in to read this board.",
+      "The read failed.",
+      "Last-known publication ${formatTime(currentView.updated_at)} · Version ${currentView.version}"
+    ]
+  },
+  {
+    "file": "js/record-activity-model.js",
+    "removed": [
+      "Reading this record's recent activity…",
+      "No activity is recorded on this record yet.",
+      "The activity read found no live record under this name, so no activity is shown.",
+      "${count} records share this name, and the activity read will not guess which one this is, so none is shown.",
+      "The only match for this name is a different record, so its activity is not shown here.",
+      "This record carries no reference the activity read could be checked against, so none is shown.",
+      "Recent activity could not be read. Nothing here has been inferred."
+    ]
+  },
+  {
+    "file": "js/room.js",
+    "removed": [
+      "wire unreachable — retrying"
+    ]
+  },
+  {
+    "file": "js/search-model.js",
+    "removed": [
+      "This search shows what the record layer returns to you when you are signed in.",
+      "This page adds no filter of its own and asks for nobody else's records.",
+      "Saved views live in this browser on this device. There is no verb that stores a partner",
+      "preference yet, so a view you save here does not follow you to another phone or computer,",
+      "and it changes none of your workspace preferences.",
+      "This searches people, practices, buildings, deals, leads and vendors — the records the record",
+      "layer can search by name. Tasks, documents and your Doc conversation history are not searched",
+      "here, because no door exists that searches them yet. This page will not pretend an empty",
+      "result for those means there is nothing to find.",
+      "These chips hide rows from the answer you already received. They do not ask the record layer",
+      "for a narrower search — it has no such door.",
+      "This search names real people, practices and deals, so on a shared or unlocked phone a",
+      "passer-by reads those names at a glance — and what you typed stays in the address bar until",
+      "nothing here is cached offline, and closing the page leaves nothing behind but the views you",
+      "chose to save.",
+      "One read of the record layer. Nothing below is cached.",
+      "Type a name to search.",
+      "Nothing has been asked of the record layer yet.",
+      "Nothing in the record layer matches that name.",
+      "An older answer arrived after a newer one and was dropped.",
+      "The record layer did not answer.",
+      "Nothing here has been inferred, and no earlier answer is being shown as current.",
+      "The record layer refused this search.",
+      "The refusal is named below. Nothing was read.",
+      "This answer did not match the shape this page knows how to read.",
+      "Nothing is shown from it, because a shape this page cannot read is a shape it cannot report honestly.",
+      "Part of this answer was truncated by the record layer.",
+      "The exact counts the producer reported are shown beside each truncated group.",
+      "More than one record matches that name.",
+      "Choose one exact target. This page opens none of them on your behalf.",
+      "Shown in the order the record layer returned them.",
+      "live records"
+    ]
+  },
+  {
+    "file": "js/search.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">The record layer truncated this list of retired references.",
+      ">Retry"
+    ]
+  },
+  {
+    "file": "js/sessions-model.js",
+    "removed": [
+      "Permission filtering is on for this answer: the record layer removed sessions you may not see",
+      "before it counted them.",
+      "No session on this page has recorded lineage: all ${list.length} carry parent_known false, so retry,",
+      "replacement and resume cannot be told apart for any of them. That is the record layer's state today,",
+      "not a filter on this page.",
+      "Host recorded as supported but no host id: the record layer says a native host exists and does not",
+      "say which one, so nothing here can name a window to open."
+    ]
+  },
+  {
+    "file": "js/sessions.js",
+    "removed": [
+      ": \"\"\", \"",
+      ", clock(card.observedAt))}\n      ${chip(",
+      ", card.observationSource)}",
+      ">Taking the read…"
+    ]
+  },
+  {
+    "file": "js/status-model.js",
+    "removed": [
+      "the record layer refused or timed out",
+      "Choose a workflow and version to read scoped assurance health.",
+      "The scoped assurance read does not cover backup or restore posture.",
+      "The scoped assurance read does not cover supervisor or job health.",
+      "DoctorCRE is serving and the record layer answered."
+    ]
+  },
+  {
+    "file": "js/status.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">Each read states its own clock"
+    ]
+  },
+  {
+    "file": "js/system-work-app.js",
+    "removed": [
+      ": \"\"\", \"",
+      "eyebrow: \"Source first\""
+    ]
+  },
+  {
+    "file": "js/system-work-board-model.js",
+    "removed": [
+      "System work read is unavailable.",
+      "Canonical completion state",
+      "${item.source} · ${item.age} days old",
+      "Current source version is unavailable."
+    ]
+  },
+  {
+    "file": "js/system-work-board.js",
+    "removed": [
+      "Open source",
+      "Source result: ${counts}${[...new Set(details)].join(' · ')||'The source answered. Open the source to verify the change.'}",
+      "The source answered. Open the source to verify the change.",
+      "Waiting for the source result.",
+      "${label}: ${read.coverage.reduce((n,c)=>n+(c.count_total??0),0)} items",
+      "All selected sources read",
+      "Incomplete census:",
+      " · Read ${read.source?.observed_at||read.as_of}",
+      " · Live: completion coverage unavailable. Showing last read.",
+      "Sign in to read system work.",
+      "System work read failed. Showing the last read; retry to refresh.",
+      "The source refused this action: ${cause.payload.error}. Review corrected fields to read the fresh source before retrying."
+    ]
+  },
+  {
+    "file": "js/system-work-view.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">Current shared source",
+      ">This Work Request is read-only until its source is current again.",
+      "This is a safe empty state, not a failure. Report a concern only when you observed a system behavior that blocks, degrades, or makes a governed outcome unsafe or unverifiable.",
+      "A report is not an idea, routine question, or a demo. It is sourced from current shared doctrine and still requires human review.",
+      "These are real, current sourced requests that can take the next bounded human step. Opening one does not execute work.",
+      ")} source"
+    ]
+  },
+  {
+    "file": "js/task-records.js",
+    "removed": [
+      ": \"\"\", \"",
+      "Your account could not be verified. No task records are shown. Retry read."
+    ]
+  },
+  {
+    "file": "js/work-inventory-model.js",
+    "removed": [
+      "Every row this source holds was enumerated.",
+      "This source answered, but not completely — the reason is stated.",
+      "This source could not be read. Its work is missing from the list below."
+    ]
+  },
+  {
+    "file": "js/work-inventory.js",
+    "removed": [
+      ": \"\"\", \"",
+      ">No row from this source is in the records read so far.",
+      "This census is incomplete, not empty",
+      ">from the census read",
+      ">Read this record",
+      ") {\n\n\n    announce(`${summary}${result.replayed ?",
+      "No source has answered, so no source is shown as healthy.",
+      "A source CARR depends on is unavailable right now, so no partial census is presented as whole.",
+      "At least one source must stay selected. Nothing was changed."
+    ]
+  },
+  {
+    "file": "js/workspace-business-model.js",
+    "removed": [
+      "You are offline, so nothing was read. Nothing here is filled in from an older answer.",
+      "The read did not finish. Nothing here is filled in from an older answer."
+    ]
+  },
+  {
+    "file": "js/workspace-business.js",
+    "removed": [
+      ": \"\"\", \"",
+      "Check again",
+      "Source: find-and-catch-up, shown only when its one match is this record"
+    ]
+  },
+  {
+    "file": "js/workspace-command-center-model.js",
+    "removed": [
+      "Read needs verification",
+      "Home cannot verify the current read, so no count is shown as current."
+    ]
+  },
+  {
+    "file": "js/workspace-command-center.js",
+    "removed": [
+      "Checking the workspace read…",
+      "Refreshing the workspace read…",
+      "Workspace read available",
+      "Workspace read unavailable",
+      ": \"\"\", \"",
+      ">Retry read",
+      ", copy,\n    action: primaryHomeAction(null, { scope: view.scope }), retry: true, refreshing: false, source: null, count: null, countLabel:"
+    ]
+  },
+  {
+    "file": "leads.html",
+    "removed": [
+      "Comfortable density"
+    ]
+  },
+  {
+    "file": "notifications.html",
+    "removed": [
+      "Read again"
+    ]
+  },
+  {
+    "file": "pipeline.html",
+    "removed": [
+      "Reading the record…",
+      "Reading the record layer…",
+      "Retry read",
+      "How this ended. The record layer takes won, lost or paused, and nothing else.",
+      "The date the record closed, written alongside the outcome. Optional. Recorded only on a won outcome.",
+      "Filed as a note on the record. CARR does not require evidence to move a phase.",
+      "A short reason, saved with the phase change itself.",
+      "Your own sentence, saved word for word with the phase change.",
+      "Recorded as the next step.",
+      "Both values stay in the record's history whichever one is kept.",
+      "Session memory only, and never a substitute for the record's own change history.",
+      "Read-only. Nothing here can be changed from this drawer."
+    ]
+  },
+  {
+    "file": "progress-board.html",
+    "removed": [
+      "Retry reads",
+      "Source",
+      "All sources",
+      "PROGRESS · LIVE RECORD",
+      "<p class=\"caption\">An answer is Sent when it is saved. Received and Applied appear after the asker records those steps.</p>",
+      "<footer>Board data and answer status come from the signed-in CARR record.</footer>"
+    ]
+  },
+  {
+    "file": "queue.html",
+    "removed": [
+      "Reading the canonical Hermes projection…"
+    ]
+  },
+  {
+    "file": "room.html",
+    "removed": [
+      "Reading the wire…"
+    ]
+  },
+  {
+    "file": "search.html",
+    "removed": [
+      "Results come from the signed-in record layer."
+    ]
+  },
+  {
+    "file": "status.html",
+    "removed": [
+      "Read again",
+      "Taking the reads…",
+      "Reads that answered",
+      "Each read states its own clock",
+      "Not current. This is which reads answered the last time this device saw the page, and it carries no business rows.",
+      "Read scope",
+      "DoctorCRE · Status · A read that did not answer is unknown, never zero."
+    ]
+  },
+  {
+    "file": "tasks.html",
+    "removed": [
+      "Reading the record…",
+      "Reading the record layer…",
+      "Retry read",
+      "Source pending",
+      "The record layer refuses a close without one."
+    ]
+  },
+  {
+    "file": "tours/app.js",
+    "removed": [
+      "Client responses are unavailable. Select Refresh to try again.",
+      "Approve a Tour projection to read client responses.",
+      "Saved Tour unavailable. Select it from the library to retry."
+    ]
+  },
+  {
+    "file": "tours/index.html",
+    "removed": [
+      "Location source reference",
+      "Search to see source-reviewed candidates and visible unknowns."
+    ]
+  },
+  {
+    "file": "tours/property-panel.js",
+    "removed": [
+      "Open source",
+      "<dt>Source</dt>",
+      "<dt>Source CRS</dt>",
+      "Conflicting sources"
+    ]
+  },
+  {
+    "file": "work-inventory.html",
+    "removed": [
+      "· every source, every status",
+      "Reading canonical state…",
+      "Sources and status",
+      "Sources",
+      "Read all six",
+      "Coverage by source",
+      "Reading the complete work inventory…",
+      "Six canonical sources, read at request time.",
+      "Retry read",
+      "Source pending",
+      "Source verified",
+      "Denominator unknown until the census answers.",
+      "No supported disposition command exists for combine, shelve, investigate or finish shipping. Joe decides those in the record layer.",
+      "Independent review is recorded by the reviewing seat, not from this page.",
+      "The record layer refuses this without a reason.",
+      "Read again"
+    ]
+  },
+  {
+    "file": "workspace.html",
+    "removed": [
+      "Checking the workspace read…",
+      "Reading canonical state…",
+      "Retry read",
+      "Reading safe aggregate state.",
+      "Source pending",
+      "Source labels stay with every read.",
+      "The seven sections",
+      "Work",
+      "Tasks, calendar, ideas and events."
+    ]
+  }
+]

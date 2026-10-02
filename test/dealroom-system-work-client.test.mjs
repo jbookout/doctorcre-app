@@ -32,7 +32,9 @@ test("current collection uses the fixed read route with no caller-selected filte
   const { calls, client } = harness([{ status: 200, body: { actor: { slug: "joe" }, csrf_token: "csrf" } }, { status: 200, body: { ok: true, data: { items: [] } } }]);
   await client.bootstrap();
   assert.deepEqual(await client.current(), { items: [] });
-  assert.deepEqual(calls[1], { path: "/api/system-work/current", init: { credentials: "same-origin", headers: { accept: "application/json" } }, body: null });
+  assert.equal(calls[1].init.signal.aborted, false);
+  const { signal, ...readInit } = calls[1].init;
+  assert.deepEqual({ ...calls[1], init: readInit }, { path: "/api/system-work/current", init: { credentials: "same-origin", headers: { accept: "application/json" } }, body: null });
 });
 
 test("approval obtains a one-time challenge bound to the exact material", async () => {

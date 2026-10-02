@@ -179,7 +179,7 @@ export const COMPLETION_CAPTIONS = Object.freeze({
   next: 'Recorded as the next step.',
   effective_off: 'Not recorded anywhere; the move is dated by when it is saved.',
   effective_on: 'Recorded as a critical date on the record.',
-  outcome: 'How this ended. The record layer takes won, lost or paused, and nothing else.',
+  outcome: 'Outcome',
   closed_on: 'The date the record closed, written alongside the outcome.',
   won_value: 'Optional. Recorded only on a won outcome.',
 });
@@ -261,7 +261,7 @@ export function completionPlan(intent, form = {}) {
   const source = text(form.dateSource);
   if (form.recordCriticalDate === true) {
     if (!effective) errors.push('Pick the effective date, or clear the critical-date box.');
-    if (!source) errors.push('Say where the date came from; the record layer records a critical date only with its source.');
+    if (!source) errors.push('Enter a date reference.');
     if (effective && source) {
       steps.push({
         verb: 'add-critical-date',
@@ -276,7 +276,7 @@ export function completionPlan(intent, form = {}) {
     if (!outcome) {
       errors.push('Choose the outcome — Won, Lost or Paused — before closing this record.');
     } else if (!isDealOutcome(outcome)) {
-      errors.push('The record layer records an outcome of won, lost or paused, and nothing else.');
+      errors.push('Select won, lost, or paused.');
     } else {
       const fields = { outcome };
       const closedOn = text(form.closedOn);
@@ -450,7 +450,7 @@ export function recordPanelSections(detail, options = {}) {
     : 'No next step recorded.';
 
   const criticalDates = (detail?.critical_dates || [])
-    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`);
+    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`);
 
   const latest = (detail?.thread || [])[0] || null;
 
@@ -570,7 +570,7 @@ export function contextDrawerSections(context, options = {}) {
     : ['No attached parties or vendors recorded on this deal.'];
   const dates = context?.criticalDates || [];
   const dateLines = dates.length
-    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`)
+    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`)
     : ['None recorded.'];
 
   return [

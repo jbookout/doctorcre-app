@@ -148,8 +148,8 @@ test("clause 4 (INVERTED by V5-UX-B12): the quiet-hours region carries the real 
     assert.equal(file.includes("QUIET_HOURS_UNAVAILABLE"), false,
       "the retired constant is still referenced");
   }
-  assert.match(QUIET_HOURS_EFFECT, /holds a device push instead of dropping it/);
-  assert.match(QUIET_HOURS_SCOPE, /Neither verb takes an actor/);
+  assert.equal(QUIET_HOURS_EFFECT, "");
+  assert.equal(QUIET_HOURS_SCOPE, "");
   assert.match(pageJs, /\$\("quietHoursScope"\)\.textContent = QUIET_HOURS_SCOPE/);
   assert.match(pageJs, /\$\("quietHoursEffect"\)\.textContent = QUIET_HOURS_EFFECT/);
 });
@@ -303,7 +303,7 @@ test("clause 8: acknowledging changes only read_at and unread_count — nothing 
   }
   // The source work is untouched: the acknowledgement is not granted to move it.
   assert.deepEqual(await client.getChanges(null), dealsBefore, "the change stream moved");
-  assert.match(ACKNOWLEDGE_SCOPE, /does not complete, close or change the work/);
+  assert.equal(ACKNOWLEDGE_SCOPE, "");
 });
 
 /* ------------------------------------------------------------------ clause 9 */
@@ -364,9 +364,9 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.15.0");
-  assert.equal(contract.version, "1.35.0");
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b");
+  assert.equal(routes.version, "1.17.0");
+  assert.equal(contract.version, "1.38.0");
+  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e");
   assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -421,7 +421,7 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(css, /#feedList \.work-item \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(css, /overflow-wrap: anywhere/);
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width can force a horizontal scroll");
-  assert.match(EXPOSURE_STATEMENT, /on a shared or unlocked phone/);
+  assert.equal(EXPOSURE_STATEMENT, "");
   assert.match(html, /<p class="caption" id="exposureStatement">/);
 });
 
@@ -464,7 +464,7 @@ test("B12-1 defaults panel: with no row the page prints the record layer's docum
   assert.equal(model.quietHoursSet, false);
   assert.equal(model.version, 1);
   assert.equal(preferenceOriginSentence(model), PREFERENCE_DEFAULTS_SENTENCE);
-  assert.match(PREFERENCE_DEFAULTS_SENTENCE, /Nothing has been written on your behalf/);
+  assert.equal(PREFERENCE_DEFAULTS_SENTENCE, "Quiet hours off · Push off · UTC");
   assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off · version 1");
   assert.equal(preferenceSummary(null), "unknown");
   assert.equal(preferenceState({ state: "read", payload: prefs }).state, "ready");
@@ -532,7 +532,7 @@ test("B12-3 version_conflict: a stale base_version is refused with the current v
   // The kernel classifies a conflict as `conflict`, not `refused`, so the page
   // must read the CODE off the settled outcome too, or the sentence is lost.
   assert.equal(classifyPreferenceFailure({ code: "version_conflict" }).conflict, true);
-  assert.match(PREFERENCE_REFUSALS.version_conflict, /read again and now shows the current values and the current version/);
+  assert.match(PREFERENCE_REFUSALS.version_conflict, /changed elsewhere/);
 
   // Nothing moved: a conflict is a refusal that wrote nothing.
   const after = await client.notificationPreferences();
@@ -593,7 +593,7 @@ test("B12-4 the half pair is refused BY NAME by the record layer, and the page r
     },
   );
   // A reason id this page has never been taught is still named, never swallowed.
-  assert.match(classifyPreferenceFailure({ code: "invented_reason" }).message, /refused this save as invented_reason/);
+  assert.equal(classifyPreferenceFailure({ code: "invented_reason" }).message, "Preferences were not saved.");
   // A malformed clock time never leaves the page at all.
   assert.equal(setPreferenceArgs({ quiet_hours_start: "25:00" }, preferenceView(prefs)).message, TIME_REFUSAL);
   assert.equal(toInputTime("22:00:00"), "22:00", "a stored HH:MM:SS must reach the control as HH:MM");
@@ -745,8 +745,8 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 /* ------------------------------------------------------------- behaviour 9 */
 
 test("B12-9 the current contract still pins both preference verbs and their order", async () => {
-  assert.equal(contract.version, "1.35.0", "the current interface retains notification preferences");
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b",
+  assert.equal(contract.version, "1.38.0", "the current interface retains notification preferences");
+  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e",
     "the producer pin includes preference verbs and the Codex checkpoint read");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 
@@ -758,7 +758,7 @@ test("B12-9 the current contract still pins both preference verbs and their orde
   assert.equal(contract.mcp_operations[set + 1], "set-work-shape-disposition");
 
   // The route contract does NOT move: this slice adds no page.
-  assert.equal(routes.version, "1.15.0");
+  assert.equal(routes.version, "1.17.0");
   assert.equal(routes.routes["/updates"], "notifications.html");
 
   // The repository check pins both verbs, and the shared client interface
@@ -826,11 +826,11 @@ test("B12-10 reconcile-then-retry: a dispatched save keeps its VERB, so a later 
 
 /* ------------------------------------------ review round 1, findings F2/F3 */
 
-test("B12-11 a version_conflict names both versions and says the typed values were replaced", async () => {
+test("B12-11 a version conflict reports unsaved changes while retaining version evidence", async () => {
   // F3: the number the refusal carries is SHOWN, beside the one the form was
   // saving against. A person told only that "something changed" has been handed
   // a fact they cannot check.
-  assert.equal(versionConflictLine(3, 1), "It was saving against version 1; the record layer holds version 3.");
+  assert.equal(versionConflictLine(3, 1), "Preferences changed elsewhere.");
   assert.equal(versionConflictLine(3, null), null, "half this sentence is not worth saying");
   assert.equal(versionConflictLine(null, 1), null);
 
@@ -847,7 +847,7 @@ test("B12-11 a version_conflict names both versions and says the typed values we
       const refusal = classifyPreferenceFailure(error);
       assert.equal(refusal.currentVersion, 2);
       assert.equal(versionConflictLine(refusal.currentVersion, first.version),
-        "It was saving against version 1; the record layer holds version 2.");
+        "Preferences changed elsewhere.");
       return true;
     },
   );
@@ -856,7 +856,7 @@ test("B12-11 a version_conflict names both versions and says the typed values we
   // F2: the discard is stated rather than silent. The typed values are NOT
   // preserved across the re-read, on purpose — see the comment on the constant.
   assert.match(PREFERENCE_REFUSALS.version_conflict,
-    /anything you had typed and not saved has been replaced by them/);
+    /Your changes were not saved/);
   assert.match(pageJs, /const line = versionConflictLine\(current, built\.args\.base_version\);/);
   assert.match(pageJs, /const current = refusal\.currentVersion \?\? fresh\?\.version \?\? null;/);
 });

@@ -18,6 +18,7 @@ import {
 import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
 import { mountEvidence } from './correspondence.js';
+import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -180,19 +181,11 @@ function syncDetailNode() {
  */
 function syncDetail(status) {
   const at = status.last_read_at ? clockLabel(status.last_read_at) : null;
-  const board = status.board_health === HEALTH.OK
-    ? `Board values are from the last successful read at ${at}; they change when the next read succeeds.`
-    : status.board_health === HEALTH.RENDER_FAILED
-      ? `The last board snapshot could not be shown${status.board_error ? ` (${status.board_error})` : ''}, so what is on screen is older than the answer that arrived.`
-      : at
-        ? `The board could not be re-read${status.board_error ? ` (${status.board_error})` : ''}. Values are from the last successful read at ${at}.`
-        : 'No board read has succeeded yet in this session.';
-  const feed = status.feed_health === HEALTH.OK
-    ? 'The change feed answered on its last read.'
-    : status.feed_health === HEALTH.FAILED
-      ? `The change feed is not answering${status.feed_error ? ` (${status.feed_error})` : ''}, so new receipts and presence may be missing.`
-      : 'The change feed has not been read yet.';
-  return `${board} ${feed}`;
+  const board = status.board_health === HEALTH.OK ? `Updated ${at}`
+    : status.board_health === HEALTH.RENDER_FAILED ? `Display unavailable · Updated ${at || 'unknown'}`
+    : at ? `Connection interrupted · Updated ${at}` : 'Updating…';
+  const feed = status.feed_health === HEALTH.FAILED ? 'Activity temporarily unavailable' : '';
+  return `${board}${feed ? ` · ${feed}` : ''}`;
 }
 
 /**
@@ -205,8 +198,8 @@ function setSync(status) {
   const live = state.mode === 'live';
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
-    : status.state === SYNC_STATES.RECONNECTING ? (live ? 'Reconnecting' : 'Fixture unavailable')
-    : status.state === SYNC_STATES.READY ? (live ? 'Live sync' : 'Fixture ready')
+    : status.state === SYNC_STATES.RECONNECTING ? 'Reconnecting'
+    : status.state === SYNC_STATES.READY ? 'Current'
     : 'Syncing…';
   el.classList.toggle('offline',
     [SYNC_STATES.OFFLINE, SYNC_STATES.RECONNECTING, SYNC_STATES.ERROR].includes(status.state));
@@ -257,7 +250,7 @@ function applyBoardSnapshot(home) {
   state.accounts = home.accounts || [];
   for (const deal of state.deals.values()) if (!deal.last_review_at) state.changed.add(deal.id);
   $('#selfAvatar').textContent = state.selfActor === 'dell' ? 'D' : state.selfActor === 'joe' ? 'J' : '?';
-  $('#selfAvatar').setAttribute('aria-label', `Signed in as ${actorName(state.selfActor)}`);
+  document.dispatchEvent(new CustomEvent('doctorcre:partner', { detail: state.selfActor }));
 }
 
 async function pollOnce(initial = false, { force = false } = {}) {
@@ -1124,11 +1117,22 @@ function detailRows(items, renderer, empty='Nothing captured yet.') {
 
 let disposeDealEvidence = null;
 let dealDetailSequence = 0;
-async function openDeal(dealId) {
+let dealDetailSnapshot = null;
+async function openDeal(dealId, { background = false } = {}) {
+  const dialog = $('#dealDialog');
+  if (background && (!dialog.open || dialog.dataset.dealId !== dealId)) return;
   const sequence = ++dealDetailSequence;
-  disposeDealEvidence?.();
   const detail = await state.client.getDeal(dealId);
   if (sequence !== dealDetailSequence) return;
+  if (background && (!dialog.open || dialog.dataset.dealId !== dealId || $('#formDialog').open || dialog.querySelector('[data-jev-deal]:disabled'))) return;
+  // Interaction may have changed during the read. Capture it at paint time.
+  const scroll = dialog.scrollTop;
+  const disclosures = background ? [...dialog.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent) : [];
+  const advice = background ? dialog.querySelector('[data-jev-result]')?.innerHTML : null;
+  const focused = background && dialog.contains(document.activeElement) ? document.activeElement : null;
+  const focusAttributes = focused ? [...focused.attributes].filter(a => a.name === 'id' || a.name.startsWith('data-')).map(a => [a.name, a.value]) : [];
+  const unchanged = JSON.stringify(detail) === dealDetailSnapshot;
+  dealDetailSnapshot = JSON.stringify(detail);
   const deal = detail.deal;
   const parked = deal.operating_state === 'parked';
   const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
@@ -1137,9 +1141,9 @@ async function openDeal(dealId) {
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
       <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.market_agent || actorName(deal.owner))}</p></div>
       <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
-      <section class="detail-section"><h3>Jev deal reading</h3><p class="subhead">On-demand advice from the recorded evidence. It does not change the deal.</p><button type="button" data-jev-deal="${esc(deal.id)}">Read this deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
+      <section class="detail-section"><h3>Jev deal reading</h3><p class="subhead"></p><button type="button" data-jev-deal="${esc(deal.id)}">Read this deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
       <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))} · source: ${esc(d.source || 'not captured')}</small></div>`)}</div></section>
+      <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Premises</h3><div class="detail-list">${detailRows(detail.premises, (p) => `<div class="detail-row"><b>${esc(p.label)}</b><small>${esc([p.address,p.suite,p.city,p.state].filter(Boolean).join(' · '))}${p.area_amount ? ` · ${esc(p.area_amount)} ${esc(p.area_basis || 'SF')}` : ''}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Negotiation rounds</h3><div class="detail-list">${detailRows(detail.negotiation_rounds, (n) => `<div class="detail-row"><b>Round ${esc(n.round_no)} · ${esc(n.side)}</b><small>${esc(n.rate_amount ? `${n.rate_amount} ${n.rate_basis || ''}` : 'Rate not captured')} · ${esc(n.term_months ? `${n.term_months} months` : 'Term not captured')}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Participants</h3><div class="detail-list">${detailRows(detail.participants, (p) => `<div class="detail-row"><b>${esc(p.name)}</b><small>${esc(String(p.role).replaceAll('_',' '))}</small></div>`)}</div></section>
@@ -1148,11 +1152,20 @@ async function openDeal(dealId) {
       <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
     </div>`;
+  disposeDealEvidence?.();
   $('#dealDetail').innerHTML = html;
+  const clock = document.createElement('time'); clock.className = 'as-of'; clock.textContent = updatedLabel(new Date().toISOString());
+  $('#dealDetail header').append(clock);
   const evidenceRoot = document.createElement('div');
   $('#dealDetail .deal-content').append(evidenceRoot);
   disposeDealEvidence = mountEvidence(evidenceRoot, { client: state.client, detail });
-  $('#dealDialog').showModal();
+  dialog.dataset.dealId = dealId;
+  if (unchanged && advice) dialog.querySelector('[data-jev-result]').innerHTML = advice;
+  for (const node of dialog.querySelectorAll('details')) node.open = disclosures.includes(node.querySelector('summary')?.textContent);
+  if (!dialog.open) dialog.showModal();
+  if (background) dialog.scrollTop = scroll;
+  if (focused) [...dialog.querySelectorAll(focused.tagName)].find(node =>
+    focusAttributes.length ? focusAttributes.every(([name, value]) => node.getAttribute(name) === value) : node.textContent === focused.textContent)?.focus({ preventScroll: true });
 }
 
 async function readJevDeal(button) {
@@ -1306,16 +1319,7 @@ function wireEvents() {
   $('#agendaSkip').onclick = () => advanceAgenda('skipped');
   $('#agendaEnd').onclick = () => finishAgenda('completed');
   $('#agendaClose').onclick = () => finishAgenda('abandoned');
-  $('#themeButton').onclick = () => { document.body.classList.toggle('night'); localStorage.setItem('dealroom-theme',document.body.classList.contains('night')?'night':'light'); };
-  $('#colorAssistButton').onclick = () => {
-    const enabled = !document.body.classList.contains('color-assist');
-    document.body.classList.toggle('color-assist', enabled);
-    const button = $('#colorAssistButton');
-    button.setAttribute('aria-pressed', String(enabled));
-    button.setAttribute('aria-label', `${enabled ? 'Turn off' : 'Turn on'} color-blind-friendly view`);
-    localStorage.setItem('dealroom-color-assist', enabled ? 'on' : 'off');
-    showToast(enabled ? 'Color-friendly view on · patterns and labels supplement color' : 'Color-friendly view off');
-  };
+
   // Coming back is not the same as being current: BOTH reads start again from
   // scratch, and `force` supersedes whatever was left hanging when the
   // connection went away rather than queueing behind it. Without the forced
@@ -1339,7 +1343,7 @@ async function boot() {
   if (localStorage.getItem('dealroom-color-assist') === 'on') {
     document.body.classList.add('color-assist');
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');
-    $('#colorAssistButton').setAttribute('aria-label', 'Turn off color-blind-friendly view');
+    $('#colorAssistButton').setAttribute('aria-label', 'Color assist');
   }
   const bootConfig = resolveDealroomBoot(location);
   const params = new URLSearchParams(location.search);
@@ -1359,6 +1363,7 @@ async function boot() {
   badge.title = identity.detail;
   badge.setAttribute('aria-label', identity.detail);
   state.client = await createClient(bootConfig.mode, bootConfig.options);
+  mountAutoRefresh({ document, window, shouldRefresh: () => $('#dealDialog').open && !$('#formDialog').open && !$('#dealDialog').querySelector('[data-jev-deal]:disabled'), refresh: () => openDeal($('#dealDialog').dataset.dealId, { background: true }) });
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace:'all' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
@@ -1370,6 +1375,7 @@ async function boot() {
   installCallMode();
   wireEvents();
   await loadHome();
+  const linkedDeal = params.get('deal');
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one.
@@ -1385,6 +1391,15 @@ async function boot() {
   state.boardRefreshTimer = setInterval(() => {
     state.boardSync.requestRefresh('periodic');
   }, BOARD_REFRESH_MS);
+  if (linkedDeal && state.deals.has(linkedDeal)) {
+    try { await openDeal(linkedDeal); }
+    catch (error) {
+      $('#dealDetail').innerHTML = '<header><h2>Deal details unavailable.</h2><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></header>';
+      $('#dealDialog').dataset.dealId = linkedDeal;
+      $('#dealDialog').showModal();
+      console.error('Linked deal details unavailable', error);
+    }
+  }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }
 

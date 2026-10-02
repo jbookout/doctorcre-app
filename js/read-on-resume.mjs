@@ -24,7 +24,7 @@ export function mountReadOnResume({ document, window, refresh }) {
     });
   };
 
-  document.addEventListener("visibilitychange", () => {
+  const visibility = () => {
     if (document.visibilityState === "hidden") {
       hidden = true;
       resumed = false;
@@ -33,19 +33,23 @@ export function mountReadOnResume({ document, window, refresh }) {
       resumed = true;
       read();
     }
-  });
+  };
 
   // Some back-forward cache restores do not deliver visibilitychange. The
   // pagehide/pageshow pair is the browser's explicit boundary in that case.
-  window.addEventListener("pagehide", () => {
+  const pagehide = () => {
     hidden = true;
     resumed = false;
-  });
+  };
 
-  window.addEventListener("pageshow", (event) => {
+  const pageshow = (event) => {
     if (!event.persisted || document.visibilityState !== "visible" || resumed) return;
     hidden = false;
     resumed = true;
     read();
-  });
+  };
+  document.addEventListener("visibilitychange", visibility);
+  window.addEventListener("pagehide", pagehide);
+  window.addEventListener("pageshow", pageshow);
+  return { dispose() { document.removeEventListener?.("visibilitychange", visibility); window.removeEventListener?.("pagehide", pagehide); window.removeEventListener?.("pageshow", pageshow); } };
 }

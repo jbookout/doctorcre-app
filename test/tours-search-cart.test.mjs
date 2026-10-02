@@ -1,3 +1,4 @@
+import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -5,11 +6,11 @@ import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import { JSDOM } from "jsdom";
 
-const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
+const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 // Inline the app's module dependencies for the classic-script browser harness.
 const tourFormat = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const propertyPanel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^export /gm, "");
-const script = `${mapScript}\n${tourFormat}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${(await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "")}`;
+const script = `${autoRefreshScript}\n${mapScript}\n${tourFormat}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${(await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "")}`;
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const tourId = "11111111-1111-4111-8111-111111111111";
 const propertyId = "22222222-2222-4222-8222-222222222222";
@@ -19,7 +20,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b");
+  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e");
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
@@ -238,7 +239,8 @@ test("removing an unavailable saved property preserves other saved properties", 
   assert.match(rows[1].textContent, /Known clinic/);
   rows[0].querySelector("button").click();
   doc.querySelector("#save-selection").click();
-  await settle();
+  await waitFor(() => /saved with this Tour/.test(doc.querySelector("#selection-state").textContent),
+    "selection save and canonical readback finish before closing the browser");
   assert.deepEqual(store.ids, [knownId]);
   assert.match(doc.querySelector("#selection-list").textContent, /Known clinic/);
   assert.doesNotMatch(doc.querySelector("#selection-list").textContent, /details unavailable/i);
@@ -364,7 +366,7 @@ test("a Save selection click while a save is in flight reuses it and the button 
 });
 
 test("two immediate clicks on each versioned route or cheat-sheet write send one idempotency key", async () => {
-  const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, stops: [],
+  const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, route_acceptance_digest: `sha256:${"a".repeat(64)}`, stops: [],
     cheat_sheet: { revision_number: 1, restore_revision_id: versionId } };
   for (const [button, path, completed] of [["#save-route", "/api/tours/route-version", "Route version saved."], ["#reorder-route", "/api/tours/route-reorder", "Route version saved."],
     ["#accept-route", "/api/tours/route-accept", "Route version accepted."], ["#save-sheet", "/api/tours/cheat-sheet/autosave", "Internal cheat sheet saved."], ["#restore-sheet", "/api/tours/cheat-sheet/restore", "Tour ready."]]) {

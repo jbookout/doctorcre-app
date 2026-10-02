@@ -100,6 +100,6 @@ test("a second return while a read is in flight queues one fresh read", async ()
 
 test("the shipped Notifications page binds resume to its existing read path", async () => {
   const source = await readFile(new URL("../js/notifications.js", import.meta.url), "utf8");
-  assert.match(source, /mountReadOnResume\(\{[\s\S]*?refresh:\s*load/);
+  assert.match(source, /mountAutoRefresh\(\{[\s\S]*?refresh:\s*load/);
   assert.doesNotMatch(source, /setInterval\(/);
 });

@@ -39,13 +39,13 @@ export { REFUSAL_SENTENCE };
 
 /** Where a composer would be. Not a disabled input: there is no door behind one. */
 export const COMPOSER_ABSENT =
-  "You cannot write into this conversation from here yet. The only door that appends a turn is reserved for an authority session, so this page shows the history and does not offer a box that could not send.";
+  "Conversation history";
 export const DOC_REPLY_PENDING =
-  "Doc's replies arrive in the next slice. Nothing on this page is waiting on an answer.";
+  "";
 
 /** What the list IS, said before anybody mistakes it for a feed. */
 export const LIST_SCOPE =
-  "This list is read from the record layer: the conversations you created and the ones shared with you, pinned first and then most recently updated. It is not a roster kept on this device.";
+  "";
 export const LIST_EMPTY =
   "You have no conversation yet. Create one below.";
 
@@ -55,19 +55,19 @@ export const SHARING_CAVEAT =
 
 /** §10 item 3: the title history exists, and no door reads it back. */
 export const TITLE_HISTORY_UNREADABLE =
-  "The record layer keeps every previous title of this conversation, but no door reads them back yet, so this page shows only the name it has now.";
+  "Previous titles unavailable";
 
 /** The candid mobile-exposure statement rule f0f9156e asks a page to make. */
 export const EXPOSURE_STATEMENT =
-  "This page shows the words of your conversations with Doc, so on a shared or unlocked phone a passer-by reads them at a glance — and the list above names every conversation you can see. The record layer's membership check is the only gate and this app adds none. Nothing is kept on this device and nothing here is cached offline: close the page and it is gone until the record layer answers again.";
+  "";
 
 /** The refusals this page raises before anything is sent. */
 export const VERSION_REFUSAL =
-  "This page has not read this conversation's version yet. Nothing was sent.";
+  "Conversation updating. Changes are not ready yet.";
 export const NO_CHANGE_REFUSAL =
   "A rename has to change the title, the pin or the archive state. Nothing was sent.";
 export const ID_REFUSAL =
-  "A conversation is identified by the id the record layer minted. Nothing was sent.";
+  "Conversation unavailable. Nothing changed.";
 export const TITLE_REFUSAL =
   "A conversation needs a title of 1 to 200 characters. Nothing was sent.";
 
@@ -301,14 +301,14 @@ export function listPagingState(payload) {
 
 /** The eight states, each with the sentence the page renders. */
 export const CONVERSATION_STATES = Object.freeze({
-  loading: "Reading this conversation…",
+  loading: "Loading…",
   ready: "",
   empty: "This conversation has no turns yet.",
-  not_found: "No conversation with that link is visible to you. It may not exist, or it may not be shared with you — the record layer answers those the same way on purpose, so this page cannot tell you which.",
+  not_found: "Conversation unavailable",
   malformed: "That link does not carry a conversation id.",
-  stale: "This is the last picture that landed. A newer read has not answered yet.",
-  unavailable: "The conversation did not answer. It may have been served; nothing was retried for you.",
-  refused: "The record layer refused this read. It was decided before the verb ran, and nothing was read.",
+  stale: "Updating…",
+  unavailable: "Conversation temporarily unavailable",
+  refused: "Unavailable for this account",
 });
 
 /**

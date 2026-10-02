@@ -89,7 +89,7 @@ test("the detail distinguishes a recorded value from one that was never recorded
   assert.equal(byLabel.Number.text, "#12");
   assert.equal(byLabel.Owner.text, "Joe");
   assert.equal(byLabel.Domain.text, "Marketing");
-  assert.equal(byLabel.Source.text, "Joe, voice memo");
+  assert.equal(byLabel.Reference.text, "Joe, voice memo");
   assert.equal(byLabel.Due.known, false, "no due date is 'not recorded', never a blank or 'none'");
   assert.equal(byLabel.Due.text, "not recorded");
   assert.equal(byLabel.Opened.known, true);
@@ -179,7 +179,7 @@ test("the Ideas page is routed and uses the pinned idea and event verbs", async 
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(routes.routes["/ideas-events"], "ideas.html");
-  assert.equal(carr.version, "1.35.0");
+  assert.equal(carr.version, "1.38.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
   assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);

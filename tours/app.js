@@ -1,3 +1,4 @@
+import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
 import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
@@ -327,14 +328,14 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   const node = (tag, content, className) => { const el = document.createElement(tag); if (content) el.textContent = content; if (className) el.className = className; return el; };
   function routeRows(tour) {
     return (Array.isArray(tour?.stops) ? tour.stops : []).filter(stop => id(stop.property_id)).map(stop => ({ ...stop,
-      route_label: text(stop.route_label, `Stop ${stop.route_sequence || 1}`), stop_state: stop.stop_state || "active",
+      route_label: text(stop.route_label, String(stop.route_sequence || 1)), stop_state: stop.stop_state || "active",
       dwell_minutes: Number(stop.dwell_minutes || 0), buffer_minutes: Number(stop.buffer_minutes || 0),
       locked_appointment: stop.locked_appointment === true, appointment_start: stop.appointment_start || null, appointment_end: stop.appointment_end || null }));
   }
   function initComposer(tour) {
     const rows = routeRows(tour), accepted = (tour.routes || []).find(route => route.accepted);
     const base = accepted ? { ...accepted, stops: routeRows({ stops: accepted.stops }) } : null;
-    composer = { sessionBinding, tourId: tour.id, routeId: tour.route_version_id, prior: Number(tour.accepted_route_version || 0), snapshot: routeSnapshot(tour), rows, base, dirty: false, saved: tour.route_version_state === "draft" && rows.length > 0,
+    composer = { sessionBinding, tourId: tour.id, routeId: tour.route_version_id, prior: Number(tour.accepted_route_version || 0), snapshot: routeSnapshot(tour), reviewDigest: tour.routes?.[0]?.acceptance_digest || "", rows, base, dirty: false, saved: tour.route_version_state === "draft" && rows.length > 0,
       phase: "ready", message: "", busy: false, plan: null, undo: null };
     const retained = readPending()?.composer;
     if (retained?.tourId === tour.id && retained.plan) composer = { ...retained, busy: false, phase: "unknown", message: "Outcome unknown after reload. Reconcile the saved route before retrying the retained request." };
@@ -394,7 +395,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
         if (type === "checkbox") control.checked = row[field];
         else control.value = type === "datetime-local" ? localTime(row[field]) : row[field] ?? "";
         if (type === "number") { control.min = "0"; control.max = "1440"; control.step = "1"; }
-        if (field === "route_label") control.maxLength = 80;
+        if (field === "route_label") control.maxLength = 3;
         const locked = composer.base?.stops.find(old => old.property_id === row.property_id)?.locked_appointment;
         control.disabled = !editable || (locked && field !== "route_label") || (row.stop_state !== "active" && field === "route_label");
         control.addEventListener(type === "checkbox" || type === "select" ? "change" : "input", () => {
@@ -408,7 +409,18 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       const controls = node("div", "", "stop-controls");
       for (const [word, delta] of [["Up", -1], ["Down", 1]]) {
         const button = node("button", word); button.type = "button"; button.disabled = !editable || index + delta < 0 || index + delta >= composer.rows.length;
-        button.addEventListener("click", () => { if (!editableComposer()) return; rememberEdit(); const rows = composer.rows; [rows[index], rows[index + delta]] = [rows[index + delta], rows[index]]; renderComposer(); }); controls.append(button);
+        button.addEventListener("click", () => {
+          if (!editableComposer()) return;
+          const focused = document.activeElement === button;
+          rememberEdit(); const rows = composer.rows;
+          [rows[index], rows[index + delta]] = [rows[index + delta], rows[index]];
+          renderComposer();
+          if (focused) {
+            const moved = [...list.children].find(item => item.dataset.propertyId === row.property_id);
+            const actions = [...moved.querySelectorAll(".stop-controls button")];
+            (actions.find(action => action.textContent === word && !action.disabled) || actions.find(action => !action.disabled))?.focus();
+          }
+        }); controls.append(button);
       }
       item.append(controls); list.append(item);
     });
@@ -423,7 +435,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     if (!changes.children.length) changes.append(node("li", "No changes from the accepted route."));
     $("#composer-badge").textContent = composer.phase === "ready" ? composer.dirty ? "Unsaved" : composer.saved ? "Review draft" : state.tour.route_version_state === "accepted" ? "Accepted" : "Draft" : composer.phase;
     $("#composer-badge").dataset.phase = composer.phase;
-    $("#composer-state").textContent = composer.message || (composer.saved ? "Draft saved. Review all changes before accepting this route." : "Add cart properties, then set stop order and timing.");
+    $("#composer-state").textContent = (composer.saved && composer.phase === "ready" && !digest(composer.reviewDigest) ? "Route review digest unavailable. Reload after the Tour service is updated before accepting." : composer.message || (composer.saved ? "Draft saved. Review all changes before accepting this route." : "Add cart properties, then set stop order and timing."));
     $("#add-cart-stops").disabled = !editableComposer() || !state.selectedIds.length;
     $("#route-endpoint-editor").hidden = !composer.base;
     for (const control of document.querySelectorAll("#route-endpoint-editor input")) control.disabled = !editableComposer();
@@ -432,9 +444,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     $("#reconcile-composer").hidden = composer.phase !== "unknown";
     $("#retry-composer").hidden = composer.phase !== "reconciled";
     $("#reload-composer").disabled = navigationBusy || composer.busy || composer.phase === "unknown" || composer.phase === "reconciled";
-    $("#route-reviewed").disabled = navigationBusy || Boolean(createPending) || composer.busy || composer.dirty || composer.phase !== "ready" || !composer.saved;
+    $("#route-reviewed").disabled = navigationBusy || Boolean(createPending) || composer.busy || composer.dirty || composer.phase !== "ready" || !composer.saved || !digest(composer.reviewDigest);
     $("#accept-route").hidden = state.tour.route_version_state !== "draft";
-    $("#accept-route").disabled = navigationBusy || Boolean(createPending) || !composer.saved || composer.dirty || composer.busy || composer.phase !== "ready" || !$("#route-reviewed").checked;
+    $("#accept-route").disabled = navigationBusy || Boolean(createPending) || !composer.saved || composer.dirty || composer.busy || composer.phase !== "ready" || !$("#route-reviewed").checked || !digest(composer.reviewDigest);
   }
   function addCartStops() {
     if (!editableComposer()) return;
@@ -445,7 +457,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     for (const property_id of added) {
       const property = knownProperty(property_id);
       composer.rows.push({ property_id, name: property?.name || null, address: property?.address || null,
-        route_label: `Stop ${composer.rows.length + 1}`, stop_state: "active", dwell_minutes: 30, buffer_minutes: 10,
+        route_label: String(composer.rows.length + 1), stop_state: "active", dwell_minutes: 30, buffer_minutes: 10,
         locked_appointment: false, appointment_start: null, appointment_end: null, access_coordinate_status: "unknown" });
     }
     renderComposer();
@@ -457,7 +469,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       let sequence = 0; const labels = new Set();
       const rows = current.rows.map(row => {
         const active = row.stop_state === "active", label = active ? row.route_label.trim() : null;
-        if (active && (!/^[A-Za-z0-9._ -]{1,80}$/.test(label) || labels.has(label))) throw new Error("Use a unique route label for each active stop (letters, numbers, spaces, periods, hyphens or underscores).");
+        if (active && (!/^[A-Za-z0-9]{1,3}$/.test(label) || labels.has(label))) throw new Error("Use a unique route label of 1–3 letters or numbers for each active stop.");
         labels.add(label);
         if (![row.dwell_minutes, row.buffer_minutes].every(value => Number.isInteger(value) && value >= 0 && value <= 1440)) throw new Error("Dwell and buffer must be whole minutes from 0 to 1440.");
         if (Boolean(row.appointment_start) !== Boolean(row.appointment_end) || (row.appointment_start && Date.parse(row.appointment_end) < Date.parse(row.appointment_start)) || (row.locked_appointment && !row.appointment_start)) throw new Error("Each appointment needs a start and end; a fixed appointment needs a time window.");
@@ -515,7 +527,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       if (composer === current) {
         state.tour = detail;
         if (plan.kind === "accept") { initComposer(detail); composer.message = "Route accepted. Later edits create a new version."; }
-        else { current.routeId = detail.route_version_id; current.prior = Number(detail.accepted_route_version || 0); current.snapshot = routeSnapshot(detail); current.rows = routeRows(detail); }
+        else { current.routeId = detail.route_version_id; current.prior = Number(detail.accepted_route_version || 0); current.snapshot = routeSnapshot(detail); current.reviewDigest = detail.routes[0].acceptance_digest || ""; current.rows = routeRows(detail); }
         $("#route-reviewed").checked = false; renderTour();
       }
     } catch (error) {
@@ -526,11 +538,12 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     }
   }
   async function acceptComposer() {
-    if (!composer || navigationBusy || createPending || !composer.saved || composer.dirty || composer.busy || composer.phase !== "ready" || !$("#route-reviewed").checked) return;
+    if (!composer || navigationBusy || createPending || !composer.saved || composer.dirty || composer.busy || composer.phase !== "ready" || !$("#route-reviewed").checked || !digest(composer.reviewDigest)) return;
     const current = composer; current.busy = true; renderComposerSummary();
     const prior = current.prior, routeId = current.routeId;
+    // Bind the displayed stop set; a fresh read at Accept could include unreviewed changes.
     current.plan = { kind: "accept", tourId: current.tourId, routeId, index: 0, steps: [{ path: "/api/tours/route-accept", resultField: "route_version_acceptance_id",
-      body: { route_version_id: routeId, expected_prior_route_version: prior, acceptance_digest: await sha256(JSON.stringify({ routeId, prior, stops: current.rows })), idempotency_key: uuid() } }] };
+      body: { route_version_id: routeId, expected_prior_route_version: prior, acceptance_digest: current.reviewDigest, idempotency_key: uuid() } }] };
     persistPending();
     await runComposerPlan(current); current.busy = false; if (composer === current) renderComposer();
   }
@@ -551,8 +564,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     $("#feedback-empty").hidden = state.feedbackStatus !== "ready" || list.children.length > 0;
     list.setAttribute("aria-busy", String(state.feedbackStatus === "loading"));
     $("#feedback-state").textContent = state.feedbackStatus === "loading" ? "Loading client responses…" :
-      state.feedbackStatus === "unavailable" ? "Client responses are unavailable. Select Refresh to try again." :
-      state.feedbackStatus === "missing" ? "Approve a Tour projection to read client responses." : "";
+      state.feedbackStatus === "unavailable" ? "Client responses temporarily unavailable" :
+      state.feedbackStatus === "missing" ? "Client responses unavailable" : "";
     $("#refresh-feedback").disabled = !id(state.projectionId);
   }
   async function loadFeedback() {
@@ -563,7 +576,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     renderFeedback();
     if (id(projectionId)) {
       try {
-        const feedback = await request(`/api/tours/feedback?projection_id=${encodeURIComponent(projectionId)}`);
+        const data = await request(`/api/tours/feedback?projection_id=${encodeURIComponent(projectionId)}`);
+        const feedback = data.feedback;
+        if (!Array.isArray(feedback?.items)) throw new Error("read_invalid");
         if (seq !== state.feedbackSeq || projectionId !== state.projectionId) return;
         state.feedback = feedback;
         state.feedbackStatus = "ready";
@@ -635,13 +650,15 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       await loadTour(restoredTourId);
     }
     if (!state.tour && !retained?.plan && !createPending) {
+      const requestedTour = new URLSearchParams(window.location.search).get("tour");
+      if (id(requestedTour) && state.tours.some(tour => tour.id === requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
       let saved = null;
       try {
         saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
       } catch { /* Invalid tab pointers do not select a Tour. */ }
-      if (saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
+      if (!state.tour && saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
         try { await loadTour(saved.tour_id, { requireComposerDetail: true }); }
-        catch { status("Saved Tour unavailable. Select it from the library to retry."); }
+        catch { status("Saved Tour temporarily unavailable."); }
       }
     }
     renderCreate();
@@ -809,7 +826,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     node.addEventListener("mouseleave", () => { for (const item of document.querySelectorAll("#property-results .property-result")) item.classList.remove("county-highlight"); });
   }
   $("#refresh").addEventListener("click", () => void action(loadLibrary)); $("#save-route").addEventListener("click", exclusive("route", () => saveRoute(false))); $("#reorder-route").addEventListener("click", exclusive("route", () => saveRoute(true)));
-  $("#accept-route").addEventListener("click", exclusive("route", async () => { if (state.tour?.routes?.length) return acceptComposer(); if (!state.tour?.route_version_id) return; const prior = Number(state.tour.accepted_route_version || 0); await post("/api/tours/route-accept", { route_version_id: state.tour.route_version_id, expected_prior_route_version: prior, acceptance_digest: await sha256(`${state.tour.route_version_id}:${prior}`), idempotency_key: uuid() }); await loadTour(state.tour.id); status("Route version accepted."); }));
+  $("#accept-route").addEventListener("click", exclusive("route", async () => { if (state.tour?.routes?.length) return acceptComposer(); if (!state.tour?.route_version_id || !digest(state.tour.route_acceptance_digest)) return; const prior = Number(state.tour.accepted_route_version || 0); await post("/api/tours/route-accept", { route_version_id: state.tour.route_version_id, expected_prior_route_version: prior, acceptance_digest: state.tour.route_acceptance_digest, idempotency_key: uuid() }); await loadTour(state.tour.id); status("Route version accepted."); }));
   $("#cheat-content").addEventListener("input", () => { state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; $("#sheet-state").textContent = "Unsaved changes"; });
   $("#save-sheet").addEventListener("click", exclusive("sheet", saveSheet)); $("#restore-sheet").addEventListener("click", exclusive("sheet", async () => { const revision = state.tour?.cheat_sheet?.restore_revision_id; if (!state.tour || !id(revision)) return; await post("/api/tours/cheat-sheet/restore", { tour_id: state.tour.id, restore_revision_id: revision, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); }));
   $("#generate-projection").addEventListener("click", () => void action(async () => { if (!state.tour?.route_version_id || state.tour.route_version_state !== "accepted") return; await post("/api/tours/projection", { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, as_of: new Date().toISOString(), idempotency_key: uuid() }); await loadTour(state.tour.id); status("Client projection draft created. Human approval is required before sharing."); }));
@@ -822,4 +839,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   $("#render-pdf").addEventListener("click", () => void action(async () => { if (!id(state.projectionId)) throw new Error("projection_required"); const data = await post("/api/tours/pdf/render", { projection_id: state.projectionId, idempotency_key: uuid() }); state.renderJobId = text(data.render_job_id); state.pdfQcRunDigest = text(data.qc_run_digest); await loadTour(state.tour.id); status("PDF rendered and QC checked. Human review is required before download."); }));
   $("#review-pdf").addEventListener("click", () => void action(async () => { if (!id(state.renderJobId) || !digest(state.pdfQcRunDigest)) throw new Error("pdf_review_required"); const reviewedAt = new Date().toISOString(); await post("/api/tours/pdf/review", { render_job_id: state.renderJobId, qc_run_digest: state.pdfQcRunDigest, decision: "accept", reviewed_at: reviewedAt, review_receipt_digest: await sha256(`tour-pdf-human-review:${state.renderJobId}:${state.pdfQcRunDigest}:${reviewedAt}`), reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }); await loadTour(state.tour.id); status("PDF review receipt recorded. Internal download is available."); }));
   $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
+  mountAutoRefresh({ document, window, refresh: async () => {
+    await loadLibrary();
+    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
+    if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id);
+    else if (id(state.projectionId)) await loadFeedback();
+  } });
 })();

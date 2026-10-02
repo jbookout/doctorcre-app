@@ -21,11 +21,21 @@
   function setStatus(message) { status.textContent = message; }
 
   async function request(path, options = {}) {
-    const response = await fetch(path, { credentials: "same-origin", ...options });
-    let data = null;
-    try { data = await response.json(); } catch { /* errors remain generic */ }
-    if (!response.ok) throw new Error(data?.error || "request_failed");
-    return data;
+    const controller = new AbortController(); let timer;
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(path, { credentials: "same-origin", ...options, signal: controller.signal });
+          let data = null;
+          try { data = await response.json(); } catch { /* errors remain generic */ }
+          if (!response.ok) throw new Error(data?.error || "request_failed");
+          return data;
+        })(),
+        new Promise((_, reject) => { timer = setTimeout(() => {
+          reject(new Error("request_timeout")); controller.abort();
+        }, 15000); }),
+      ]);
+    } finally { clearTimeout(timer); }
   }
 
   function text(value, fallback) {

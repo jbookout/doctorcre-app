@@ -1,3 +1,6 @@
+import { mountPrefs } from "./shell.js";
+import { resolveDealroomBoot } from "./boot-mode.js";
+import { mountAutoRefresh } from "./auto-refresh.mjs";
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this component owns only the app-wide destinations and phone menu.
 export const navigationItems = Object.freeze([
@@ -5,25 +8,29 @@ export const navigationItems = Object.freeze([
   { label: "Leads", href: "/leads" },
   { label: "Tours", href: "/tours" },
   { label: "Deals", href: "/deals" },
-  { label: "People", href: "/clients" },
-  { label: "Work", href: "/tasks" },
+  { label: "Vendors", href: "/vendors" },
   { label: "Control Room", href: "/control-room" },
+  { label: "Clients", href: "/clients", group: "Workspace" },
+  { label: "Ideas", href: "/ideas-events?tab=ideas", group: "Workspace" },
+  { label: "Events", href: "/ideas-events?tab=events", group: "Workspace" },
   { label: "Updates", href: "/updates", group: "Updates" },
   { label: "Doc Chats", href: "/doc-chats", group: "Updates" },
+  { label: "Progress", href: "/control-room/progress", group: "Operations" },
   { label: "Work Requests", href: "/work-requests", group: "Operations" },
   { label: "All Work", href: "/all-work", group: "Operations" },
   { label: "Incidents", href: "/incidents", group: "Operations" },
   { label: "Agent Room", href: "/agent-room", group: "Operations" },
+  { label: "Agent Queue", href: "/control-room/agents/queue", group: "Operations" },
   { label: "Design Lab", href: "/design-lab", group: "Reference" },
   { label: "Status", href: "/status", group: "Reference" },
 ]);
 
 const sectionForRoute = {
-  "/vendors": "/clients", "/calendar": "/tasks", "/ideas-events": "/tasks",
+  "/tasks": "/", "/work": "/", "/doc-chats/work": "/doc-chats",
   "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
-  "/business": "/", "/progress-board": "/control-room", "/queue.html": "/control-room",
-  "/control-room/progress": "/control-room", "/control-room/agents/queue": "/control-room",
-  "/ideas": "/tasks", "/system-work.html": "/work-requests", "/room.html": "/agent-room",
+  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room",
+  "/control-room/agents/queue": "/control-room",
+  "/ideas": "/ideas-events?tab=ideas", "/system-work.html": "/work-requests", "/room.html": "/agent-room",
   "/work-inventory": "/all-work", "/design": "/design-lab",
   "/design/business": "/design-lab", "/design/operations": "/design-lab",
   "/notifications": "/updates", "/conversations": "/doc-chats",
@@ -48,12 +55,12 @@ function link({ label, href }, current, base) {
   return `<a data-app-nav-item aria-label="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${label}${badge}</a>`;
 }
 
-export function appShellMarkup(pathname, base = "") {
-  const current = activeDestination(pathname);
-  const primary = navigationItems.slice(0, 7).map((item) => link(item, current, base)).join("");
-  const more = ["Updates", "Operations", "Reference"].map((group) =>
+export function appShellMarkup(pathname, base = "", search = "") {
+  const current = pathname === "/ideas-events" ? `/ideas-events?tab=${new URLSearchParams(search).get("tab") === "events" ? "events" : "ideas"}` : activeDestination(pathname);
+  const primary = navigationItems.filter(item => !item.group).map((item) => link(item, current, base)).join("");
+  const more = ["Workspace", "Updates", "Operations", "Reference"].map((group) =>
     `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
-  const moreActive = navigationItems.slice(7).some((item) => item.href === current);
+  const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
   return `<header class="app-shell-header">
     <a class="app-shell-brand" href="${base}/" aria-label="DoctorCRE Home">
       <svg viewBox="0 0 42 42" role="img" aria-label="Work flows from leads through deals to delivery">
@@ -65,59 +72,40 @@ export function appShellMarkup(pathname, base = "") {
       <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false">More</button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
     </details>
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
-    <span class="app-shell-live" aria-hidden="true"></span>
-  </header><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
-}
-
-const localSections = Object.freeze({
-  "/clients": [["Clients", "/clients"], ["Vendors", "/vendors"]],
-  "/vendors": [["Clients", "/clients"], ["Vendors", "/vendors"]],
-  "/tasks": [["Tasks", "/tasks"], ["Calendar", "/calendar"], ["Ideas", "/ideas-events?tab=ideas"], ["Events", "/ideas-events?tab=events"]],
-  "/calendar": [["Tasks", "/tasks"], ["Calendar", "/calendar"], ["Ideas", "/ideas-events?tab=ideas"], ["Events", "/ideas-events?tab=events"]],
-  "/ideas-events": [["Tasks", "/tasks"], ["Calendar", "/calendar"], ["Ideas", "/ideas-events?tab=ideas"], ["Events", "/ideas-events?tab=events"]],
-});
-
-function mountLocalSections(root, pathname, base) {
-  const items = localSections[pathname];
-  const title = root.querySelector("main h1");
-  if (!items || !title) return;
-  const tabs = root.createElement("nav");
-  tabs.className = "app-section-tabs";
-  tabs.setAttribute("aria-label", `${pathname === "/clients" || pathname === "/vendors" ? "People" : "Work"} pages`);
-  for (const [label, href] of items) {
-    const anchor = root.createElement("a");
-    anchor.href = `${base}${href}`;
-    anchor.textContent = label;
-    anchor.dataset.sectionTab = label.toLowerCase();
-    tabs.append(anchor);
-  }
-  title.insertAdjacentElement("afterend", tabs);
-  const sync = () => {
-    const selected = pathname === "/ideas-events"
-      ? new URLSearchParams(globalThis.location?.search || "").get("tab") === "events" ? "events" : "ideas"
-      : pathname.slice(1);
-    for (const anchor of tabs.querySelectorAll("a")) {
-      if (anchor.dataset.sectionTab === selected) anchor.setAttribute("aria-current", "page");
-      else anchor.removeAttribute("aria-current");
-    }
-  };
-  sync();
-  globalThis.window?.addEventListener?.("popstate", sync);
-  if (pathname === "/ideas-events") root.getElementById("ideaTabs")?.addEventListener("click", () => setTimeout(sync, 0));
+    <div class="app-shell-controls" aria-label="Workspace controls">
+      <button class="app-shell-control" type="button" data-pref="theme" data-on="dark" data-off="light" aria-pressed="true" aria-label="Dark mode" title="Dark mode"><span aria-hidden="true">☾</span></button>
+      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog" hidden><span aria-hidden="true">☎</span></button>
+      <button class="app-shell-control" id="colorAssistButton" type="button" aria-pressed="false" aria-label="Color assist" title="Color assist"><span aria-hidden="true">◐</span></button>
+      <div class="app-shell-account"><button class="app-shell-avatar" id="selfAvatar" type="button" aria-label="Account and settings" aria-expanded="false" aria-controls="accountMenu">…</button>
+        <div class="app-shell-account-menu" id="accountMenu" hidden>
+          <strong id="accountWorkspace">Workspace</strong>
+          <button type="button" id="accountProfile">Profile</button>
+          <button type="button" id="accountTheme">Theme</button>
+          <a href="${base}/updates#prefForm">Notification preferences</a>
+          <button type="button" id="accountSignOut">Sign out</button>
+          <p id="accountStatus" role="status"></p>
+        </div>
+      </div>
+    </div>
+  </header><div class="app-shell-call-availability"${base ? ' hidden' : ''}>
+    <span id="callModeAvailability" role="status">Checking Quill on this device…</span>
+    <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Recheck Quill</button>
+  </div><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
 }
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const host = root.getElementById("appShell");
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
-  host.innerHTML = appShellMarkup(pathname, base);
+  host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
-  mountLocalSections(root, pathname, base);
+  if (base) host.querySelector(".app-shell-controls").remove();
+  else mountAccount(root, host, pathname);
   const menu = host.querySelector(".app-shell-menu");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");
   const phone = globalThis.matchMedia?.("(max-width: 900px)");
-  const setMode = () => { menu.open = !phone?.matches; moreList.hidden = !phone?.matches; moreButton.setAttribute("aria-expanded", "false"); };
+  const setMode = () => { menu.open = !phone?.matches; moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); };
   setMode();
   phone?.addEventListener?.("change", setMode);
   moreButton.addEventListener("click", () => {
@@ -129,6 +117,81 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     if (phone?.matches && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
     else if (!moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); moreButton.focus(); }
   });
+  root.addEventListener("click", (event) => {
+    if (!event.target.closest(".app-shell-more") && !moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); }
+  });
+}
+
+
+
+export function partnerIdentity(session) {
+  const slug = session?.actor?.slug;
+  return slug === "joe" || slug === "dell" ? { slug, name: slug === "joe" ? "Joe" : "Dell", initial: slug === "joe" ? "J" : "D" } : null;
+}
+
+function mountAccount(root, host, pathname) {
+  mountPrefs();
+  const avatar = host.querySelector("#selfAvatar");
+  const panel = host.querySelector("#accountMenu");
+  let session = null;
+  const showPartner = (identity) => {
+    if (!identity) return;
+    const title = `${identity.name}'s Workspace`;
+    avatar.textContent = identity.initial;
+    avatar.setAttribute("aria-label", `${identity.name}: account and settings`);
+    host.querySelector("#accountWorkspace").textContent = title;
+    const workspace = root.getElementById("viewerWorkspace");
+    if (workspace) workspace.textContent = title;
+    host.querySelector("#accountProfile").onclick = () => {
+      const dialog = root.createElement("dialog");
+      dialog.className = "app-shell-profile";
+      dialog.innerHTML = `<header><h2>Profile</h2><button type="button" aria-label="Close profile">×</button></header><div class="app-shell-profile-identity"><span>${identity.initial}</span><h3>${identity.name}</h3></div>`;
+      root.body.append(dialog);
+      dialog.querySelector("button").onclick = () => dialog.close();
+      dialog.addEventListener("close", () => { dialog.remove(); avatar.focus(); });
+      close(); dialog.showModal();
+    };
+  };
+  const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
+  avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
+  host.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
+  root.addEventListener("click", (event) => { if (!event.target.closest(".app-shell-account")) close(); });
+  host.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
+  const assist = host.querySelector("#colorAssistButton");
+  const applyAssist = (enabled) => { root.body.classList.toggle("color-assist", enabled); root.documentElement.dataset.colorAssist = enabled ? "on" : "off"; assist.setAttribute("aria-pressed", String(enabled)); };
+  try { applyAssist(localStorage.getItem("dealroom-color-assist") === "on"); } catch { applyAssist(false); }
+  assist.onclick = () => { const enabled = !root.body.classList.contains("color-assist"); applyAssist(enabled); try { localStorage.setItem("dealroom-color-assist", enabled ? "on" : "off"); } catch {} };
+  const boot = resolveDealroomBoot(globalThis.location);
+  const readIdentity = async () => {
+    try {
+      if (boot.mode === "fixture") session = { actor: { slug: boot.options.selfActor === "dell" ? "dell" : "joe" } };
+      else {
+        const response = await fetch("/api/system-work/session", { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
+        if (!response.ok) return;
+        session = await response.json();
+      }
+      showPartner(partnerIdentity(session));
+    } catch { /* retain the last authenticated identity during a connection loss */ }
+  };
+  readIdentity();
+  mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity, intervalMs: 60_000 });
+  host.querySelector("#accountSignOut").onclick = async (event) => {
+    if (boot.mode === "fixture") { host.querySelector("#accountStatus").textContent = "Demo account"; return; }
+    if (!session?.csrf_token) { host.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
+    event.target.disabled = true;
+    try {
+      const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
+      if (!response.ok) throw new Error();
+      globalThis.location.assign("/auth/login");
+    } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
+  };
+  if (!root.getElementById("callModeDialog")) {
+    import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
+      const call = await mountGlobalCallMode(root);
+      host.querySelector("#callModeButton").onclick = () => call.open();
+      host.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
+    });
+  }
 }
 
 if (typeof document !== "undefined") mountAppShell();

@@ -29,7 +29,7 @@ import { createCommandDock } from "./command-dock.js";
 import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { preferenceSaveView } from "./notification-preference-draft.mjs";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -180,7 +180,7 @@ function renderActivity() {
     <div class="work-meta"><span>${escapeHtml(row.subject)} · ${escapeHtml(row.clock)}</span></div></div>
     <div class="stack-end"></div>
   </li>`).join("") || (payload
-    ? `<li class="work-item" data-priority="ordinary"><div><h3>No event has been recorded yet</h3><div class="work-meta"><span>read from the change stream</span></div></div><div class="stack-end"></div></li>`
+    ? `<li class="work-item" data-priority="ordinary"><div><h3>No recent activity</h3><div class="work-meta"><span></span></div></div><div class="stack-end"></div></li>`
     : "");
 }
 
@@ -379,7 +379,7 @@ async function savePreference(form) {
     dirty = false;
     draftBaseVersion = null;
     await load();
-    sentence = sentence || "Saved. This is what the record layer now holds.";
+    sentence = sentence || "Saved";
   }
   $("prefMessage").textContent = sentence || "";
   if (sentence) announce(sentence);
@@ -479,7 +479,7 @@ async function boot() {
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
-  mountReadOnResume({ document, window, refresh: load });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
   await load();
 }
 
