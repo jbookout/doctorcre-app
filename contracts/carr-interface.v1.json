@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.38.0",
+  "version": "1.39.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e"
+    "source_commit": "a4c4d75cb53e5fea20a6e711e18a34eb9a75fbf3"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -108,6 +108,7 @@
     "update-industry-event",
     "update-lead",
     "update-loop",
+    "update-vendor",
     "work-request-card"
   ],
   "http_surfaces": [
@@ -446,6 +447,13 @@
       },
       "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
     }
+  },
+  "vendor_directory": {
+    "schema": "carr-vendor-directory.v1",
+    "version": "1.1.0",
+    "path": "contracts/vendor-directory.v1.json",
+    "sha256": "af68a55a68eca6cf5bb17b786a33308faa2261cc3cdcf51bce73deafff7b5e5b",
+    "request_selector": "contract=vendor-directory.v1"
   },
   "system_work_inventory": {
     "schema": "unfinished-work.v1",

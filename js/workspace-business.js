@@ -80,7 +80,7 @@ const dom = {
 // they go.
 const phoneNavLinks = [...document.querySelectorAll(".mobile-nav a[href]")];
 
-const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[data-scope]")] : [];
+const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[data-owner]")] : [];
 
 // One place holds what this view believes. Every renderer reads it, and the
 // session-state transitions live in the model so they can be tested without a
@@ -93,6 +93,7 @@ view.activity = { id: null, sequence: 0, result: null };
 view.evidence = { id: null, sequence: 0, result: null };
 let searchTimer = null;
 let dealroomClientPromise = null;
+const initialBootMode = resolveDealroomBoot(window.location);
 
 /**
  * The one dealroom client this page builds, for the MCP reads it makes (the
@@ -101,7 +102,7 @@ let dealroomClientPromise = null;
  */
 function dealroomClient() {
   if (!dealroomClientPromise) {
-    const bootMode = resolveDealroomBoot(window.location);
+    const bootMode = initialBootMode;
     dealroomClientPromise = bootMode.mode === "live" ? Promise.resolve(createLiveClient()) : createFixtureClient(bootMode.options);
   }
   return dealroomClientPromise;
@@ -119,14 +120,14 @@ function formatMoment(value) {
 
 function formatDay(value) {
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? null : date.toLocaleDateString([], { dateStyle: "medium" });
+  return Number.isNaN(date.valueOf()) ? null : date.toLocaleDateString([], { dateStyle: "medium", ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? {timeZone:'UTC'} : {}) });
 }
 
 const HEALTH_LABEL = {
   loading: "Checking…",
   refreshing: "Refreshing…",
   available: "Up to date",
-  stale: "Checked a while ago",
+  stale: "Updating…",
   unauthorized: "Signed out",
   unavailable: "Records unavailable",
 };
@@ -222,6 +223,12 @@ function renderControls({ syncSearch = false } = {}) {
       dom.search.value = next;
     }
   }
+  document.querySelector('#territoryField').hidden = dataset !== 'vendors';
+  const territory = document.querySelector('#territoryInput');
+  if (document.activeElement !== territory) territory.value = query.territory || '';
+  document.querySelector('[data-vendor-sort]').hidden = dataset !== 'vendors';
+  document.querySelector('#territories').innerHTML = (facets.territories || []).map(option => `<option value="${escapeHtml(option.slug)}"></option>`).join('');
+  dom.sort.querySelector('[value="deal_type"]').textContent = dataset === 'vendors' ? 'Service' : 'Deal type';
   if (dom.sort) dom.sort.value = SORTS.includes(query.sort) ? query.sort : "name";
   for (const field of FILTER_FIELDS[dataset]) {
     const select = dom[field.select];
@@ -242,7 +249,7 @@ function renderControls({ syncSearch = false } = {}) {
     }
   }
   scopeButtons.forEach((button) => {
-    const selected = button.dataset.scope === query.scope;
+    const selected = button.dataset.owner === query.owner;
     button.setAttribute("aria-pressed", selected ? "true" : "false");
     button.classList.toggle("on", selected);
   });
@@ -285,7 +292,7 @@ function renderChips() {
   if (!dom.chips) return;
   const chips = filterChips(view.query, view.facets);
   if (!chips.length) {
-    dom.chips.innerHTML = '<p class="chip-empty">No filters. Showing everything.</p>';
+    dom.chips.innerHTML = '';
     return;
   }
   dom.chips.innerHTML = `${chips.map((chip) =>
@@ -300,26 +307,89 @@ function renderNotices(notices) {
 
 // --------------------------------------------------------------- the list
 
+const metric = value => Number.isInteger(value) ? String(value) : '—';
+const winRate = stats => Number.isFinite(stats?.win_rate) ? `${Math.round(stats.win_rate * 100)}%` : '—';
+const shortNote = value => typeof value === 'string' ? value.split(/\n/)[0].slice(0, 140) : '';
+function tierHtml(stats) {
+  const computed = stats?.computed_tier || 'Unrated';
+  const tier = stats?.override?.tier || computed;
+  return `<span class="trust-line"><span class="trust-tier" data-tier="${escapeHtml(tier)}">${escapeHtml(tier)}</span>${stats?.override ? `<span>Computed: ${escapeHtml(computed)}</span>` : ''}</span>`;
+}
+function relationshipHtml(record) {
+  const stats = record.relationship || {};
+  const intro = stats.introductions || [];
+  const list = kind => {
+    const items = intro.filter(item => kind === 'made' ? ['intro','intro_received','introduced'].includes(item.kind) : ['can_introduce','intro_requested'].includes(item.kind));
+    return items.length ? `<ol class="network-list">${items.map(item => `<li>${escapeHtml(item.from_name)} → ${escapeHtml(item.to_name)}<p class="note-summary">${escapeHtml(shortNote(item.note))}</p>${item.occurred_at ? `<time>${escapeHtml(formatDay(item.occurred_at))}</time>` : ''}${kind === 'suggested' ? '<span class="observed">Suggested · not yet made</span>' : ''}</li>`).join('')}</ol>` : '<p class="observed">None recorded</p>';
+  };
+  return `<section class="record-section relationship-section" aria-label="Partnership">${tierHtml(stats)}${stats.override ? `<p class="note-summary">${escapeHtml(stats.override.recorded_by)} · ${escapeHtml(formatMoment(stats.override.recorded_at))} · ${escapeHtml(stats.override.reason)}</p>` : ''}<div class="relationship-metrics"><div class="relationship-metric"><strong>${metric(stats.deals_referred)}</strong><span>Deals referred</span></div><div class="relationship-metric"><strong>${metric(stats.deals_worked)}</strong><span>Deals worked</span></div><div class="relationship-metric"><strong>${winRate(stats)}</strong><span>Win rate${stats.win_rate != null ? ` · ${stats.won} won / ${stats.won + stats.lost} resolved` : ''}</span></div><div class="relationship-metric"><strong>${stats.last_contacted_at ? escapeHtml(formatMoment(stats.last_contacted_at)) : '—'}</strong><span>Last contacted</span></div></div><p class="note-summary">${escapeHtml(shortNote(stats.last_contact_note))}</p><details class="trust-editor" data-details-key="trust"><summary>Trust rating</summary><form class="trust-form" id="trustForm"><label>Tier<select name="tier"><option value="">Use computed tier</option>${['Proven','Established','Trial'].map(tier => `<option${tier === stats.override?.tier ? ' selected' : ''}>${tier}</option>`).join('')}</select></label><label>Reason<input name="reason" maxlength="500" value="${escapeHtml(stats.override?.reason || '')}"></label><button class="action primary-action" type="submit"${view.pendingTrust ? ' disabled' : ''}>Save rating</button><p class="trust-status" role="status" id="trustStatus">${view.trustStatus?.id === record.id ? escapeHtml(view.trustStatus.text) : ''}</p></form></details></section><section class="record-section"><h3>Services & products</h3><p class="note-summary">${escapeHtml(shortNote(record.offers) || 'Not recorded')}</p>${record.offers ? `<details class="record-details" data-details-key="offers"><summary>Details</summary><p class="entry-detail">${escapeHtml(record.offers)}</p></details>` : ''}${record.loan_programs?.length ? `<h3>Loan programs</h3><ul>${record.loan_programs.map(program => `<li>${escapeHtml(program)}</li>`).join('')}</ul>` : ''}</section><section class="record-section"><h3>Networking</h3><div class="network-grid"><div><h4>Introductions made</h4>${list('made')}</div><div><h4>Suggested introductions</h4>${list('suggested')}</div></div></section>${stats.recent_entries?.length ? `<section class="record-section"><h3>Conversations</h3><ol class="network-list">${stats.recent_entries.map(entry => `<li><p class="note-summary">${escapeHtml(shortNote(entry.summary))}</p><time>${escapeHtml(formatMoment(entry.when))}</time><details class="record-details" data-details-key="entry-${escapeHtml(entry.id)}"><summary>Details</summary><p class="entry-detail">${escapeHtml(entry.detail || entry.summary)}</p></details></li>`).join('')}</ol></section>` : ''}`;
+}
+function capturePanelState() {
+  return { id: view.recordId, open: [...dom.panelBody.querySelectorAll('details[open][data-details-key]')].map(el => el.dataset.detailsKey), tier: dom.panelBody.querySelector('[name="tier"]')?.value, reason: dom.panelBody.querySelector('[name="reason"]')?.value, focus: dom.panelBody.contains(document.activeElement) ? document.activeElement.name : null, scroll: dom.panel.scrollTop };
+}
+function restorePanelState(state) {
+  if (state.id !== view.recordId) return;
+  dom.panelBody.querySelectorAll('details[data-details-key]').forEach(el => { el.open = state.open.includes(el.dataset.detailsKey); });
+  for (const name of ['tier','reason']) if (state[name] !== undefined && dom.panelBody.querySelector(`[name="${name}"]`)) dom.panelBody.querySelector(`[name="${name}"]`).value = state[name];
+  if (state.focus) focusWithoutScrolling(dom.panelBody.querySelector(`[name="${state.focus}"]`));
+  dom.panel.scrollTop = state.scroll;
+}
+async function saveTrust(event) {
+  if (event.target.id !== 'trustForm') return;
+  event.preventDefault();
+  const form = event.target, record = view.record.payload?.record;
+  if (!record || view.pendingTrust) return;
+  const tier = form.elements.tier.value, reason = form.elements.reason.value.trim();
+  if (tier && !reason) { form.elements.reason.setCustomValidity('Enter a reason'); form.elements.reason.reportValidity(); return; }
+  form.elements.reason.setCustomValidity('');
+  const operation = { vendor: record.ref, base_version: record.record_version, fields: { trust_override: tier ? { tier, reason } : null }, idempotency_key: crypto.randomUUID() };
+  view.pendingTrust = operation;
+  view.trustStatus = { id: record.id, text: 'Saving…' };
+  form.querySelector('button').disabled = true;
+  document.querySelector('#trustStatus').textContent = 'Saving…';
+  try {
+    const client = await dealroomClient();
+    let deadline;
+    try { const receipt = await Promise.race([client.updateVendorTrust(operation), new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Unconfirmed')), 15000); })]); if (receipt?.ok !== true || !Array.isArray(receipt.updated) || !receipt.updated.includes('trust_override')) throw new Error('Unconfirmed'); }
+    finally { clearTimeout(deadline); }
+    view.pendingTrust = null;
+    view.trustStatus = { id: record.id, text: 'Rating saved' };
+    await loadRecord(record.id); await loadList('background');
+  } catch (error) {
+    if (error.status === 401) return expireNow();
+    const refused = ['offline','AUTHORIZATION_REFUSED','trust_override_invalid','version_conflict','key_reuse','not_a_vendor','no_updatable_fields'].includes(error.payload?.error);
+    if (refused || error.status === 403) view.pendingTrust = null;
+    // Reconcile the read before allowing any new write. Never replay a write
+    // whose response was lost; it may have committed.
+    await loadRecord(record.id);
+    const saved = view.record.payload?.record.relationship?.override;
+    const changed = view.record.payload?.record.record_version > operation.base_version;
+    const matches = changed && (tier ? saved?.tier === tier && saved?.reason === reason && saved?.recorded_by === view.record.payload?.viewer : saved === null);
+    if (matches) view.pendingTrust = null;
+    view.trustStatus = { id: record.id, text: matches ? 'Rating confirmed' : 'Rating not confirmed' };
+    renderRecordPanel();
+  }
+}
+
 function rowFacts(dataset, row) {
   const facts = [];
   if (dataset === "clients") {
     const status = recordedCode(row.recorded_status, row.recorded_status_label);
     facts.push({ label: "Status", value: status.text, known: status.known, unresolved: status.known && !status.resolved });
-    const etl = recordedValue(row.recorded_etl_status);
-    facts.push({ label: "ETL", value: etl.text, known: etl.known });
+    facts.push({ label: "Vertical", value: row.vertical || "Not recorded", known: Boolean(row.vertical) });
+    facts.push({ label: "Deal type", value: row.deal_type || "Not recorded", known: Boolean(row.deal_type) });
     const type = recordedCode(row.recorded_client_type, row.recorded_client_type_label);
     facts.push({ label: "Client type", value: type.text, known: type.known, unresolved: type.known && !type.resolved });
   } else {
     const category = recordedCode(row.recorded_category, row.recorded_category_label);
     facts.push({ label: "Category", value: category.text, known: category.known, unresolved: category.known && !category.resolved });
-    const stage = recordedCode(row.recorded_stage, row.recorded_stage_label);
-    facts.push({ label: "Stage", value: stage.text, known: stage.known, unresolved: stage.known && !stage.resolved });
-    const level = recordedCode(row.relationship_level, row.relationship_level_label);
-    // A level with no entry in the list is a bare number; say so rather than
-    // letting it read as a name everyone is supposed to recognise.
-    facts.push({ label: "Relationship", value: level.text, known: level.known, unresolved: level.known && !level.resolved });
-    const touch = row.last_touch ? formatDay(row.last_touch) : null;
-    facts.push({ label: "Last touch", value: touch || "Not recorded", known: Boolean(touch) });
+    const stats = row.relationship;
+    facts.push({ label: 'Territory', value: row.territory || 'Not recorded', known: Boolean(row.territory) });
+    facts.push({ label: 'Referred', value: metric(stats?.deals_referred), known: stats?.deals_referred != null });
+    facts.push({ label: 'Worked', value: metric(stats?.deals_worked), known: stats?.deals_worked != null });
+    facts.push({ label: 'Win rate', value: winRate(stats), known: stats?.win_rate != null });
+    facts.push({ label: 'Last contacted', value: stats?.last_contacted_at ? formatMoment(stats.last_contacted_at) : 'Not recorded', known: Boolean(stats?.last_contacted_at) });
+
   }
   const place = [row.city, row.state].filter(Boolean).join(", ");
   facts.push({ label: "Location", value: place || "Not recorded", known: Boolean(place) });
@@ -333,7 +403,7 @@ function rowHtml(dataset, row, selectedId) {
   const selected = row.id === selectedId;
   const facts = rowFacts(dataset, row).map((fact) =>
     `<span class="row-fact${fact.known ? "" : " unknown"}${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("");
-  return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="row-ref${ref.known ? "" : " unknown"}">${escapeHtml(ref.text)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span><span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
+  return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="row-ref${ref.known ? "" : " unknown"}">${escapeHtml(ref.text)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span>${dataset === "vendors" ? tierHtml(row.relationship) + `<span class="contact-note">${escapeHtml(shortNote(row.relationship?.last_contact_note))}</span>` : ""}<span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
 }
 
 function paintList(html, { busy = false } = {}) {
@@ -353,13 +423,27 @@ function renderEmpty(phase) {
 }
 
 function renderPager(payload) {
-  if (!dom.pager) return;
-  const summary = pageSummary(payload);
-  dom.pager.hidden = summary.pageCount <= 1 && !payload.out_of_range;
-  const link = (id, label, page, enabled, rel) => enabled
-    ? `<a class="action secondary-action" id="${id}" rel="${rel}" href="${escapeHtml(viewHref({ ...view.query, page }))}">${label}</a>`
-    : `<span class="action secondary-action disabled" id="${id}" aria-disabled="true">${label}</span>`;
-  dom.pager.innerHTML = `${link("pagerPrevious", "Previous", Math.max(1, view.query.page - 1), summary.hasPrevious, "prev")}<span class="pager-position">Page ${summary.page} of ${summary.pageCount}</span>${link("pagerNext", "Next", view.query.page + 1, summary.hasNext, "next")}`;
+  const sentinel = document.querySelector('#scrollSentinel');
+  sentinel.hidden = view.loadedPageCount >= payload.page_count;
+}
+
+async function loadMore() {
+  if (view.loadingMore || view.list.status !== 'ready' || view.loadedPageCount >= view.list.payload?.page_count) return;
+  view.loadingMore = true;
+  const epoch = view.list.sequence;
+  const query = { ...view.query, page: view.loadedPageCount + 1 };
+  try {
+    const response = await fetchRead(listRequestUrl(query), { cache: 'no-store' });
+    if (response.status === 401) return expireNow();
+    const payload = response.ok ? await response.json() : null;
+    if (epoch !== view.list.sequence) return;
+    if (!validListPayload(payload, view.dataset) || !echoesQuery(payload, query) || payload.total !== view.list.payload.total) return loadList('background');
+    const ids = new Set(view.loadedRows.map(row => row.id));
+    if (payload.rows.some(row => ids.has(row.id))) return loadList('background');
+    view.loadedRows.push(...payload.rows);
+    view.loadedPageCount++;
+    renderList();
+  } catch { /* The next scheduled refresh recovers automatically. */ } finally { view.loadingMore = false; }
 }
 
 function renderList() {
@@ -399,42 +483,15 @@ function renderList() {
   if (dom.viewer) {
     dom.viewer.textContent = payload.viewer === "joe" ? "Joe’s workspace" : payload.viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
   }
-  if (dom.observedAt) dom.observedAt.textContent = `${stale ? "Not current · " : ""}Checked ${formatMoment(payload.source.observed_at)}`;
+  if (dom.observedAt) dom.observedAt.textContent = updatedLabel(payload.source.observed_at);
   if (dom.source) dom.source.textContent = sourceLabel(payload.source, dataset);
-  const summary = pageSummary(payload);
-  // The server's total, said plainly. An empty page and an empty result are two
-  // different sentences, and neither of them is a bare "0".
-  const noun = DATASET_LABEL[dataset].toLowerCase();
-  const counted = payload.total === 0
-    ? `No ${noun} match this filter`
-    : payload.rows.length === 0
-      ? `No ${noun} on page ${summary.page} · ${payload.total} match this filter`
-      : `${summary.from}–${summary.to} of ${payload.total} ${noun}`;
-  if (dom.summary) dom.summary.textContent = `${counted}${refreshing ? " · refreshing" : ""}`;
-
-  const notices = [];
-  if (stale) {
-    notices.push({ kind: "stale", title: "Checked a while ago",
-      copy: "Updating…", retry: true });
-  }
-  if (refreshing) {
-    notices.push({ kind: "refreshing", title: "Refreshing", copy: "Showing the previous list while a fresh one loads." });
-  }
-  if (payload.partial) {
-    // The count is records, not cells: one record with two unnamed codes is one
-    // record here, and the read model counts it the same way.
-    notices.push({ kind: "partial", title: `${payload.partial.count} ${payload.partial.count === 1 ? "record uses a code" : "records use codes"} with no name`, copy: payload.partial.note });
-  }
-  if (payload.out_of_range) {
-    notices.push({ kind: "empty", title: "Past the last page",
-      copy: `This page is past the end of the list. ${payload.total} ${payload.total === 1 ? "record matches" : "records match"} this filter.` });
-  }
-  renderNotices(notices);
+  if (dom.summary) dom.summary.textContent = `${payload.total} ${DATASET_LABEL[dataset].toLowerCase()}`;
+  renderNotices([]);
 
   if (payload.rows.length === 0) {
     renderEmpty(payload.out_of_range ? "out-of-range" : hasActiveFilters(query) ? "empty-no-matches" : "empty-no-records");
   } else {
-    paintList(payload.rows.map((row) => rowHtml(dataset, row, view.recordId)).join(""));
+    paintList((view.loadedRows || payload.rows).map((row) => rowHtml(dataset, row, view.recordId)).join(""));
   }
   renderPager(payload);
 }
@@ -452,17 +509,15 @@ function renderList() {
 const PHONE_PANEL = typeof window.matchMedia === "function" ? window.matchMedia("(max-width: 767px)") : null;
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function panelIsModal() {
-  return panelModality({ recordId: view.recordId, phoneWidth: Boolean(PHONE_PANEL?.matches) }) === "modal";
-}
+function panelIsModal() { return Boolean(view.recordId); }
 
-function backgroundRegions() {
-  return [...document.querySelectorAll("[data-panel-background]")];
-}
+function backgroundRegions() { return [...document.querySelectorAll("[data-panel-background], #appShell")]; }
 
 function applyPanelModality() {
   if (!dom.panel) return;
   const modal = panelIsModal();
+  document.querySelector('#recordBackdrop').hidden = !modal;
+  document.body.classList.toggle('record-open', modal);
   dom.panel.setAttribute("role", modal ? "dialog" : "complementary");
   if (modal) dom.panel.setAttribute("aria-modal", "true");
   else dom.panel.removeAttribute("aria-modal");
@@ -534,11 +589,14 @@ function renderRecordPanel() {
   const owner = ownerPresentation(payload.record);
   const kind = partyKindText(payload.record.party_kind);
   if (dom.panelTitle) dom.panelTitle.textContent = payload.record.name;
-  const sections = recordSections(dataset, payload.record).map((section) =>
-    `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.map((field) =>
-      `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.text)}${field.known && !field.resolved ? '<span class="unresolved-flag">code with no name</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
+  const sections = recordSections(dataset, payload.record).filter(section => !["About this record", "Status on the record", "Category and relationship", "What they offer and need", "Introduction notes", "Record", "Recorded state"].includes(section.title)).filter(section => section.fields.some(field => field.known && !['Vendor reference','Client reference','What they offer','Last touch'].includes(field.label))).map((section) =>
+    `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.filter(field => !['ETL status','What this status means','Version','What this level means','Vendor reference','Client reference','What they offer','Last touch'].includes(field.label) && field.known).map((field) =>
+      `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${(section.title === 'Notes' ? `<p class="note-summary">${escapeHtml(shortNote(field.text))}</p><details class="record-details" data-details-key="notes"><summary>Details</summary><p class="entry-detail">${escapeHtml(field.text)}</p></details>` : escapeHtml(field.text))}${field.known && !field.resolved ? '<span class="unresolved-flag">Not recorded</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `${current ? "" : '<div class="notice notice-stale"><p class="notice-title">Checked a while ago</p><p class="notice-copy">Updating…</p><button type="button" class="action secondary-action" data-retry="record" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button></div>'}<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span class="tone tone-plain${kind.known ? "" : " unknown"}">${escapeHtml(kind.text)}</span></p><p class="record-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</p><p class="record-note">${escapeHtml(payload.recorded_field_note)}</p>${payload.partial ? `<div class="notice notice-partial"><p class="notice-title">Code with no name</p><p class="notice-copy">${escapeHtml(payload.partial.note)}</p></div>` : ""}${sections}${activityHtml(payload.record.id)}<p class="record-note">Not shown here: ${escapeHtml(payload.not_in_this_read.join(", "))}.</p><p class="source">${escapeHtml(sourceLabel(payload.source, dataset))}</p>`;
+    const drafts = capturePanelState();
+    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(sourceLabel(payload.source))}</p>`;
+    restorePanelState(drafts);
+
     // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
     // refuses a `style` attribute written into markup, so the activity-row
     // template above only emits `data-stagger-ms`, and this reads it back.
@@ -592,6 +650,7 @@ async function loadActivity(id, record) {
  * generations — and repaints as signed out.
  */
 function expireNow() {
+  view.loadedRows = []; view.loadedPageCount = 0;
   Object.assign(view, expireSession(view));
   renderControls();
   renderChips();
@@ -600,7 +659,8 @@ function expireNow() {
 }
 
 async function loadList(reason = "initial") {
-  const query = view.query;
+  const query = { ...view.query, page: 1 };
+  const targetPages = reason === 'background' ? Math.max(1, view.loadedPageCount || 1) : 1;
   const key = listRequestUrl(query);
   const sequence = ++view.list.sequence;
   // Remembered answers are only for restoring a place, and only while the
@@ -611,7 +671,10 @@ async function loadList(reason = "initial") {
   if (cached && validListPayload(cached, view.dataset)) {
     view.list.payload = cached;
     view.list.status = "refreshing";
+  } else if (reason === "background" && view.list.payload) {
+    view.list.status = "refreshing";
   } else {
+    view.loadedRows = []; view.loadedPageCount = 0;
     view.list.payload = null;
     view.list.status = view.signedOut ? "unauthorized" : "loading";
   }
@@ -637,6 +700,19 @@ async function loadList(reason = "initial") {
     if (!validListPayload(payload, view.dataset) || !echoesQuery(payload, query)) {
       return settleList({ status: "error", code: "FRESHNESS_UNKNOWN" }, sequence);
     }
+    const refreshedRows = [...payload.rows];
+    for (let page = 2; page <= Math.min(targetPages, payload.page_count); page++) {
+      const nextQuery = { ...query, page };
+      const nextResponse = await fetchRead(listRequestUrl(nextQuery), { cache: 'no-store' });
+      if (nextResponse.status === 401) return expireNow();
+      const next = nextResponse.ok ? await nextResponse.json() : null;
+      if (!acceptsResponse(view.list.sequence, sequence)) return;
+      if (!validListPayload(next, view.dataset) || !echoesQuery(next, nextQuery) || next.total !== payload.total || next.rows.some(row => refreshedRows.some(old => old.id === row.id))) return settleList({ status: 'error', code: 'FRESHNESS_UNKNOWN' }, sequence);
+      refreshedRows.push(...next.rows);
+    }
+    if (!acceptsResponse(view.list.sequence, sequence)) return;
+    view.loadedRows = refreshedRows;
+    view.loadedPageCount = Math.min(targetPages, payload.page_count);
     settleList({ status: "ready", payload }, sequence);
   } catch {
     if (!acceptsResponse(view.list.sequence, sequence)) return;
@@ -667,8 +743,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
   view.evidence.result = null;
   const sequence = ++view.record.sequence;
   view.record.id = id;
-  view.record.status = "loading";
-  view.record.payload = null;
+  if (view.record.payload?.record?.id !== id) { view.record.status = "loading"; view.record.payload = null; }
   view.record.code = null;
   renderRecordPanel();
   if (focusOnOpen) focusWithoutScrolling(dom.panelTitle);
@@ -694,6 +769,10 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     const payload = await response.json().catch(() => null);
     if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
+    if (view.pendingTrust?.vendor === payload.record.ref) {
+      const expected = view.pendingTrust.fields.trust_override, saved = payload.record.relationship?.override;
+      if (payload.record.record_version > view.pendingTrust.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }
+    }
     settle("ready", null, payload);
     // The party record read supplies no deal activity/native thread index. This
     // section reads installation readiness and states unavailable explicitly.
@@ -717,6 +796,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
 
 function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   const parsed = parseViewState(window.location.pathname, window.location.search);
+  if (parsed) parsed.query.page = 1;
   if (!parsed) return;
   // THE ADDRESS AND THE VIEW SAY THE SAME THING. Anything unrecognised was
   // already dropped by the parser; rewriting the current entry to the canonical
@@ -737,9 +817,7 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
-    dom.intro.textContent = parsed.dataset === "clients"
-      ? "Everyone the team works with. Search, filter, and open one to see what is on the record."
-      : "Every vendor the team knows. Search, filter, and open one to see what is on the record.";
+    dom.intro.textContent = "";
   }
   if (datasetChanged) {
     view.cache.clear();
@@ -796,6 +874,14 @@ function closeRecord() {
 // ------------------------------------------------------------------ events
 
 function wireControls() {
+  document.querySelector('#refreshList').addEventListener('click', () => loadList('background'));
+  document.querySelector('#recordBackdrop').addEventListener('click', closeRecord);
+  document.querySelector('#territoryInput').addEventListener('change', event => updateQuery({ territory: event.target.value.trim() }));
+  dom.panelBody?.addEventListener('submit', saveTrust);
+  dom.panelBody?.addEventListener('input', event => { if (event.target.name === 'reason') event.target.setCustomValidity(''); });
+  const sentinel = document.querySelector('#scrollSentinel');
+  if (typeof IntersectionObserver === 'function') new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); }, { rootMargin: '400px' }).observe(sentinel);
+  window.addEventListener('scroll', () => { if (sentinel.getBoundingClientRect().top < window.innerHeight + 400) loadMore(); }, { passive: true });
   dom.form?.addEventListener("submit", (event) => {
     event.preventDefault();
     if (searchTimer) clearTimeout(searchTimer);
@@ -821,7 +907,7 @@ function wireControls() {
   dom.reset?.addEventListener("click", () => navigate(viewHref(defaultQuery(view.dataset), view.recordId)));
 
   scopeButtons.forEach((button) => {
-    button.addEventListener("click", () => updateQuery({ scope: button.dataset.scope }));
+    button.addEventListener("click", () => updateQuery({ owner: button.dataset.owner, scope: "team" }));
     button.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
@@ -830,7 +916,7 @@ function wireControls() {
         : (index + (event.key === "ArrowRight" ? 1 : scopeButtons.length - 1)) % scopeButtons.length;
       const target = scopeButtons[next];
       focusWithoutScrolling(target);
-      if (target && target.dataset.scope !== view.query.scope) updateQuery({ scope: target.dataset.scope });
+      if (target && target.dataset.owner !== view.query.owner) updateQuery({ owner: target.dataset.owner, scope: "team" });
     });
   });
 

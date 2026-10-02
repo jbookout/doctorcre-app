@@ -176,10 +176,10 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
     ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room"]);
 });
 
-test("Home opens current owning sections and People offers both directories", async () => {
+test("Home opens Vendors; Clients remains in More", async () => {
   const home = await readFile(`${ROOT}/workspace.html`, "utf8");
   const people = await readFile(`${ROOT}/business.html`, "utf8");
-  for (const route of ["/", "/leads", "/tours", "/deals", "/clients", "/control-room"]) {
+  for (const route of ["/", "/leads", "/tours", "/deals", "/vendors", "/control-room"]) {
     assert.match(home, new RegExp(`href="${route}"`), `${route}: Home section link`);
   }
   assert.match(people, /id="appShell"/);
@@ -237,9 +237,9 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /id="filterC"/);
   assert.match(html, /id="sortSelect"/);
   assert.match(html, /id="scopeSwitch"[^>]*role="group"[^>]*aria-label="Record scope"/);
-  assert.match(html, /data-scope="team"[^>]*aria-pressed="true"/);
-  assert.match(html, /data-scope="mine"[^>]*aria-pressed="false"/);
-  assert.match(html, /id="pager"/);
+  assert.match(html, /data-owner="all"[^>]*aria-pressed="true"/);
+  assert.match(html, /data-owner="joe"[^>]*aria-pressed="false"/);
+  assert.match(html, /id="scrollSentinel"/);
   assert.match(html, /id="recordPanel"/);
   assert.match(html, /id="recordClose"/);
   assert.match(html, /id="noticeRegion"[^>]*role="status"[^>]*aria-live="polite"/);
@@ -252,12 +252,13 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.doesNotMatch(js, /Math\.random/);
   assert.doesNotMatch(modelJs, /total:\s*[a-z]*rows\.length/i);
   assert.match(modelJs, /const total = payload\.total/);
-  // Read-only: no method, no body, no CSRF-bearing write leaves this surface.
+  // Writes use the app-owned client; this surface never builds raw transport.
   assert.doesNotMatch(js, /method:\s*"(POST|PUT|PATCH|DELETE)"/);
   assert.doesNotMatch(js, /x-carr-csrf|body:\s*JSON\.stringify/);
   // No operational logging or engineering detail in a business surface.
   assert.doesNotMatch(js, /console\.(log|warn|error|debug)/);
-  assert.doesNotMatch(js, /DATABASE_URL|Authorization|Bearer |token/i);
+  assert.doesNotMatch(js, /DATABASE_URL|\bAuthorization\b|Bearer |token/i);
+  assert.match(js, /client\.updateVendorTrust\(operation\)/);
   // Loading, refreshing, stale, both empties, past-the-end, unauthorized and
   // unavailable are distinct, and a late answer cannot paint over a newer one.
   assert.match(modelJs, /export function listPhase/);
@@ -321,7 +322,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(js, /searchBoxValue\(\{/);
   assert.match(js, /renderControls\(\{ syncSearch: true \}\)/);
   // The phone panel is a dialog with an inert background and contained focus.
-  assert.match(js, /panelModality\(\{ recordId: view\.recordId, phoneWidth/);
+  assert.match(js, /function panelIsModal\(\) \{ return Boolean\(view\.recordId\)/);
   assert.match(js, /matchMedia\("\(max-width: 767px\)"\)/);
   assert.match(js, /setAttribute\("role", modal \? "dialog" : "complementary"\)/);
   assert.match(js, /setAttribute\("aria-modal", "true"\)/);
@@ -337,7 +338,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   // what is actually covering the list.
   assert.match(css, /@media\(max-width:767px\)[\s\S]*\.record-panel\.open\{position:fixed/);
   assert.match(html, /data-panel-background/);
-  assert.match(html, /<aside class="record-panel glass" id="recordPanel" role="complementary"/);
+  assert.match(html, /<aside class="record-panel glass" id="recordPanel" role="dialog"/);
   assert.doesNotMatch(html, /<aside[^>]*data-panel-background/, "the panel is never inert against itself");
   // The sign-out is heard even when the answer that carried it is stale — in
   // BOTH reads, pinned separately, because the record path is the one this
@@ -357,15 +358,15 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   }
   assert.match(bodyOf("loadRecord"), /view\.recordId !== id/);
   // The partial count is records, and the sentence says records.
-  assert.match(js, /"record uses a code" : "records use codes"/);
+  assert.doesNotMatch(js, /title: "Checked a while ago"/);
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
   assert.match(css, /\.record-row\{[^}]*min-height:44px/);
   assert.match(css, /\.field input,\.field select\{[^}]*min-height:44px/);
   assert.match(css, /\.panel-close\{[^}]*min-height:44px/);
   assert.match(css, /@media\(max-width:767px\)/);
-  // Calls is visible as unavailable and cannot be started here; Tours is a
-  // real, reachable surface and must not be marked inert.
-  assert.match(html, /class="inert-entry" aria-disabled="true">Calls</);
+  // The shared shell owns destinations; directory controls add no unavailable
+  // destination pills or explanatory footer.
+  assert.doesNotMatch(html, /inert-entry/);
   assert.doesNotMatch(html, /class="inert-entry" aria-disabled="true">Tours</);
   assert.doesNotMatch(html, /href="[^"]*"[^>]*>Calls</);
   assert.match(appShellMarkup("/clients"), /href="\/tours">Tours<\/a>/);
