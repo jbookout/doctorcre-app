@@ -644,3 +644,53 @@ test('published task detail retains summary, model, safe PR links and related an
   assert.doesNotMatch(await detail.textContent(),/Unrelated answer/);
   assert.deepEqual(errors,[]);
 });
+
+for (const width of [390, 1280]) test(`work detail retains the board details at ${width}px`, async t => {
+  const {page,errors} = await open(t,{width,rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
+      status:'blocked', stage:'review', updated_at:'2026-08-24T12:19:00Z',
+      stage_entered_at:'2026-08-24T12:00:00Z', blocked_reason:'Synthetic missing review',
+      next_action:'Synthetic rerun review', question:'SYNTHETIC INLINE QUESTION',
+      executor:'codex', provider:'OpenAI', model:'Synthetic model', effort:'high',
+      pr:104, repo:'jbookout/doctorcre-app', pr_checks:'failure', review_verdict:'CHANGES REQUESTED',
+      evidence:'https://example.test/evidence',
+      stage_history:[{stage:'build',entered_at:'2026-08-24T11:00:00Z'},
+        {stage:'review',entered_at:'2026-08-24T12:00:00Z'}],
+    });
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})}).first();
+  const delivery = page.locator('#workMetadata .work-delivery');
+  const field = label => page.locator('#workMetadata .work-detail-fields > div').filter({has:page.locator('dt',{hasText:new RegExp(`^${label}$`)})}).locator('dd');
+  assert.equal(await field('Blocked because').textContent(), 'Synthetic missing review');
+  assert.equal(await field('Next action').textContent(), 'Synthetic rerun review');
+  assert.match(await field('Stage').textContent(), /Review.*20m/);
+  assert.match(await delivery.locator('.work-stage-history').textContent(), /Building 1h 0m.*Review 20m/s);
+  assert.equal(await field('Question').textContent(), 'SYNTHETIC INLINE QUESTION');
+  assert.equal(await field('Model line').textContent(), 'OpenAI · Synthetic model · high');
+  assert.equal(await field('pr checks').textContent(), 'failure');
+  assert.equal(await field('review verdict').textContent(), 'CHANGES REQUESTED');
+  assert.equal(await task.locator('a[href="https://example.test/evidence"]').count(), 1);
+  assert.equal(await task.locator('a[href="https://github.com/jbookout/doctorcre-app/pull/104"]').count(), 1);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), true);
+  await page.clock.runFor(65000);
+  await page.waitForFunction(() => [...document.querySelectorAll('#workMetadata dt')].some(dt => dt.textContent === 'Stage' && dt.nextElementSibling.textContent.includes('21m')));
+  assert.match(await field('Stage').textContent(), /Review.*21m/);
+  assert.match(await delivery.locator('.work-stage-history').textContent(), /Review 21m/);
+  assert.deepEqual(errors, []);
+});
+
+test('merged work detail displays the release wait and inline question', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
+      status:'done', stage:'merged', release_wait:'Synthetic canary pending',
+      question:'SYNTHETIC V1 QUESTION', stage_history:[],
+    });
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})}).first();
+  const row = page.locator('#workMetadata .work-delivery .work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^Waiting on release$/})});
+  assert.equal(await row.locator('dd').textContent(), 'Synthetic canary pending');
+  assert.match(await task.textContent(), /SYNTHETIC V1 QUESTION/);
+  assert.deepEqual(errors, []);
+});
