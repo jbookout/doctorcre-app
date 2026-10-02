@@ -1229,6 +1229,11 @@ async function boot() {
   setInterval(() => { refreshPanel(); }, BOARD_REFRESH_MS);
   setInterval(() => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); }, POLL_MS);
   setInterval(() => state.boardSync.requestRefresh('periodic'), BOARD_REFRESH_MS);
+  // Home record links address a deal directly, including records outside the
+  // current board scope. The existing detail read enforces identity and shows
+  // failures; its outcome must not hold up board/feed polling.
+  const linkedDeal = incomingScope.get('deal');
+  if (linkedDeal) openPanel(linkedDeal);
 }
 
 if (globalThis.document) boot();

@@ -12,10 +12,19 @@ export const HIDDEN_HOME_WIDGETS = Object.freeze({
   capture: 'Doc task/idea classification and document-now/table workflow',
 });
 
+// Validate the shape Home consumes as a whole. Dropping an invalid member
+// would turn an incomplete read into authoritative counts and missing flags.
+function validHomeBoard(board) {
+  const row = value => value && typeof value === 'object' && !Array.isArray(value);
+  return row(board) && Array.isArray(board.deals) && board.deals.every(deal => row(deal)
+    && typeof deal.id === 'string' && deal.id.trim().length > 0
+    && ['name', 'owner', 'phase', 'operating_state', 'workspace_kind', 'account_client_id'].every(key => deal[key] == null || typeof deal[key] === 'string')
+    && ['attention', 'in_market'].every(key => deal[key] == null || typeof deal[key] === 'boolean'));
+}
+
 export function scopedDeals(board, scope) {
-  if (!Array.isArray(board?.deals) || (scope === 'mine' && !board.actor)) return null;
-  return board.deals.filter(deal => deal && typeof deal.id === 'string'
-    && !['closed', 'Closed'].includes(deal.phase)
+  if (!validHomeBoard(board) || (scope === 'mine' && !board.actor)) return null;
+  return board.deals.filter(deal => !['closed', 'Closed'].includes(deal.phase)
     && (deal.operating_state || 'active') === 'active'
     && (scope !== 'mine' || deal.owner === board.actor));
 }
@@ -106,6 +115,7 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
     try {
       if (signal?.aborted) return;
       const value = await readWithDeadline(read, { timeoutMs, signal });
+      if (name === 'board' && target === result && !validHomeBoard(value)) throw new Error('Invalid Home board');
       if (target instanceof Map) target.set(name, value); else target[name] = value;
       result.reads[name] = { state: 'read' };
       if (name === 'board' && target === result) {
