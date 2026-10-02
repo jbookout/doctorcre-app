@@ -95,7 +95,7 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
       if(['version_conflict','invoice_not_unpaid','invalid_received_on','payment_date_out_of_range','invoice_not_found','offline'].includes(code)||[401,403].includes(error?.status)){
         if(payments.get(row.key)===intent)payments.delete(row.key);
         await auto.refresh();
-        if(selected===row.key){renderDetail();$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent=code==='version_conflict'?'Invoice changed. Review payment date.':code==='offline'?'Payment not recorded. You are offline.':'Payment not recorded. Review payment date.';}
+        if(selected===row.key){renderDetail();$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent=code==='version_conflict'?'Invoice changed. Payment not recorded.':code==='offline'?'Payment not recorded. You are offline.':'Payment not recorded.';}
       }else{
         await auto.refresh();
         if(selected===row.key && payments.get(row.key)===intent){$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent='Payment confirmation pending.';}
