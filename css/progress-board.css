@@ -74,6 +74,11 @@ h3 { font-size: 1.05rem; }
 
 /* columns */
 .columns { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+/* The app layout's sidebars narrow the board below the viewport width, so the
+   stage grid follows its own panel rather than the window. */
+.pipeline-panel { container-type: inline-size; }
+@container (max-width: 960px) { .columns { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 520px) { .columns { grid-template-columns: minmax(0, 1fr); } }
 .column { min-width: 0; display: flex; flex-direction: column; border: 1px solid color-mix(in srgb, var(--stage-accent) 45%, transparent); border-radius: 16px; background: rgba(2,13,29,.58); }
 .column-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 8px; border-bottom: 1px solid color-mix(in srgb, var(--stage-accent) 25%, transparent); }
 .stage-index { color: var(--stage-accent); font-size: .68rem; font-weight: 800; letter-spacing: .1em; }
@@ -205,9 +210,9 @@ textarea { width: 100%; min-height: 88px; resize: vertical; color: var(--ink); b
 footer { padding-top: 8px; }
 
 /* legend: one tap away on every screen, bottom-left so it never sits under the shell's Doc button (bottom-right) */
-.legend-toggle { position: fixed; left: 16px; bottom: 16px; z-index: 30; padding: 10px 16px; border: 1px solid var(--orange); border-radius: 999px; background: rgba(8,24,44,.92); color: var(--ink); font-weight: 800; letter-spacing: .08em; cursor: pointer; box-shadow: 0 12px 30px rgba(0,0,0,.45); backdrop-filter: blur(12px); }
+.legend-toggle { position: fixed; left: calc(var(--layout-rail, 0px) + 16px); bottom: calc(var(--layout-bottom, 0px) + 16px); z-index: 30; padding: 10px 16px; border: 1px solid var(--orange); border-radius: 999px; background: rgba(8,24,44,.92); color: var(--ink); font-weight: 800; letter-spacing: .08em; cursor: pointer; box-shadow: 0 12px 30px rgba(0,0,0,.45); backdrop-filter: blur(12px); }
 .legend-toggle[aria-expanded="true"] { background: var(--orange); color: #08121b; }
-.legend { position: fixed; left: 16px; bottom: 84px; z-index: 30; width: min(440px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow: auto; margin: 0; animation: legend-in .22s ease-out; }
+.legend { position: fixed; left: calc(var(--layout-rail, 0px) + 16px); bottom: calc(var(--layout-bottom, 0px) + 84px); z-index: 30; width: min(440px, calc(100vw - var(--layout-rail, 0px) - 32px)); max-height: min(70vh, 640px); overflow: auto; margin: 0; animation: legend-in .22s ease-out; }
 @keyframes legend-in { from { opacity: 0; transform: translateY(8px); } }
 .legend-body { display: grid; gap: 12px; }
 .legend-group h3 { margin: 0 0 6px; color: var(--muted); font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; }
