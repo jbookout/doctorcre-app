@@ -125,7 +125,7 @@ const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no d
 
 function autoHtml(deal) {
   const move = automaticMove(deal);
-  return move ? `<div class="auto-move"><span>${esc(move.text)}</span><button class="btn btn-quiet" type="button" data-undo="${esc(move.eventId)}" aria-label="Undo phase change on ${esc(deal.name)}">Undo</button></div>` : '';
+  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time><button class="btn btn-quiet" type="button" data-undo="${esc(move.eventId)}" aria-label="Undo phase change on ${esc(deal.name)}">Undo</button></div>` : '';
 }
 function cardHtml(deal) {
   const attention = needsAttention(deal);
@@ -323,7 +323,7 @@ async function sendFieldWrite(dealId, field, value, extra = null) {
     deal: dealId,
     field,
     value,
-    extra: {intent_origin:'manual_ui', ...(extra || {})},
+    extra,
     base: state.fieldBase.get(cell)?.id || null,
     baseNow: () => state.fieldBase.get(cell)?.id || null,
     getState: () => state.fieldWrites,

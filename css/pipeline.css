@@ -69,7 +69,7 @@
 .kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(8,minmax(0,1fr)); overflow: visible; gap: 10px; }
 .kanban-column { min-width: 0; padding: 9px; }
 .kanban-column > h3 { min-height: 48px; font-size: 21px; gap: 6px; }
-.kanban-card { height: 212px; min-width: 0; grid-template-rows: 44px 32px 24px 1fr; gap: 9px; padding: 10px; overflow: hidden; }
+.kanban-card { height: 212px; min-width: 0; grid-template-rows: 44px 24px 20px 1fr; gap: 6px; padding: 10px; overflow: hidden; }
 .kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
 .kanban-lane-label { display: none; }
@@ -126,3 +126,5 @@
 .hero-meta #retryRead { border: 0; background: transparent; color: var(--quiet); }
 
 .kanban-card[data-phase="Closed"] .attention-dot { animation: none; }
+
+.kanban-card .auto-move span { display: block; white-space: nowrap; text-overflow: ellipsis; }

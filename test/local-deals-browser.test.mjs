@@ -165,3 +165,26 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
   assert.equal(await page.locator('.deal-note[data-id="demo-note"] details').evaluate(e => e.open), true);
   assert.deepEqual(errors, []);
 });
+
+
+test('W4 a long automatic reason keeps its date and Undo visible inside the fixed-size card', async t => {
+  const { page } = await open(t);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js'); const original = state.client.getBoard;
+    state.client.getBoard = async (...args) => {
+      const board = await original(...args);
+      board.deals.find(d => d.id === 'd14').phase_change.reason = 'Demo submitted letter of intent with updated negotiated terms';
+      return board;
+    };
+  });
+  await refresh(page);
+  const card = page.locator('[data-id="d14"]');
+  const date = card.locator('.auto-move time');
+  assert.equal(await date.textContent(), '10/3');
+  const outer = await card.boundingBox(), stamp = await date.boundingBox(), undo = await card.locator('[data-undo]').boundingBox();
+  assert.ok(stamp.y >= outer.y && stamp.y + stamp.height <= outer.y + outer.height);
+  assert.ok(undo.y + undo.height <= outer.y + outer.height);
+  await card.hover();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-id="d14"]')).transform !== 'none');
+  assert.equal(await page.locator('[data-id="d20"] .attention-dot').evaluate(e => getComputedStyle(e).animationName), 'none');
+});
