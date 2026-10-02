@@ -60,6 +60,12 @@ test("PRs retain the unconditional required test job and full suite", async (t) 
   assert.equal(result.trace.includes("npm run build"), false, "failed tests cannot yield a green job");
 });
 
+test("description check runs for PRs and stays out of main pushes", () => {
+  const check = "node scripts/check-pr-description.mjs";
+  assert.equal(commands(ci, "pull_request").filter(command => command === check).length, 1);
+  assert.equal(commands(ci, "push").includes(check), false);
+});
+
 test("main keeps artifact checks while avoiding a repeated full suite", async (t) => {
   const pr = await replay(t, ci, "pull_request");
   const main = await replay(t, ci, "push");
