@@ -1,3 +1,4 @@
+import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -103,7 +104,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);
+  if (!base && pathname !== "/share") { mountAppLayout(root, host, pathname); mountDocPresence({ document:root, window:root.defaultView }); }
   else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");

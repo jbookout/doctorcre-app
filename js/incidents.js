@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C14 — the incident page: DOM wiring only.
 //
@@ -169,6 +170,7 @@ async function take(slot, run) {
 }
 
 async function load() {
+  selectDocRecord('incident', view.refState === 'ok' ? view.ref : null);
   view.sequence += 1;
   if (view.refState === "ok") {
     view.detail = { state: "pending" };

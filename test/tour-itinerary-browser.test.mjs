@@ -41,8 +41,10 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
   try {
     for (const [name, width, height] of [["phone", 390, 844], ["ipad", 820, 1180], ["desktop", 1440, 1000]]) {
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
+      page.setDefaultTimeout(30000);
+      await page.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
       const errors = []; page.on("pageerror", e => errors.push(e.message));
-      await page.goto(`${base}/tours`); if (width <= 760) await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
+      await page.goto(`${base}/tours`, {waitUntil:"domcontentloaded"}); if (width <= 760) await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
       const root = page.locator("#accepted-itinerary"); await root.waitFor({ state: "visible" });
       await page.waitForFunction(() => document.querySelector("#accepted-itinerary .maplibregl-canvas"));
       await page.waitForFunction(() => document.querySelectorAll("#accepted-itinerary .itinerary-pin").length === 2);

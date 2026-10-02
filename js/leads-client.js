@@ -1,4 +1,5 @@
 import { uuidv4 } from "./uuid.js";
+import { observeDocClient } from './doc-context.js';
 
 /** A deliberately small MCP client for the lead board and candidate decisions.
  * Authentication remains the host's
@@ -71,7 +72,7 @@ export function createLeadBoardClient(options = {}) {
     return payload;
   }
 
-  return {
+  return observeDocClient({
     async getActor() {
       const board = await rpc("deal-room-board", { workspace: "team" });
       return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
@@ -99,5 +100,5 @@ export function createLeadBoardClient(options = {}) {
         idempotency_key: uuid(),
       });
     },
-  };
+  }, options.docContext === false ? null : undefined);
 }

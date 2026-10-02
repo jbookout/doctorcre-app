@@ -1,3 +1,4 @@
+import { pageDocContext, selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B04 — Ideas and Events: DOM wiring only.
 //
@@ -363,6 +364,7 @@ async function openIdea(number, { push = true } = {}) {
     return;
   }
   const loop = read.loop;
+  selectDocRecord('loop', loop.loop_id || loop.number);
   if (title) title.textContent = loop.title || row?.label || `Idea #${number}`;
   const rows = ideaDetailRows(loop)
     .map((field) => `<dt>${escapeHtml(field.label)}</dt><dd${field.known ? "" : ' class="unknown"'}>${escapeHtml(field.text)}</dd>`).join("");
@@ -373,6 +375,7 @@ async function openIdea(number, { push = true } = {}) {
 }
 
 function closeIdea() {
+  selectDocRecord(null, null);
   const dialog = $("ideaDialog");
   if (dialog?.open) dialog.close();
 }
@@ -403,6 +406,7 @@ async function load() {
 /* ------------------------------------------------------------------- wiring */
 
 function selectTab(key, { push = false } = {}) {
+  pageDocContext?.navigate(key === 'events' ? 'events' : 'ideas', {query:view.state.q});
   view.state = { ...view.state, tab: key };
   tabs?.select(key === "events" ? "tabEvents" : "tabIdeas");
   remember({ push });

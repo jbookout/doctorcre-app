@@ -1,8 +1,10 @@
+import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import {
   QUEUE_COLUMNS, queueColumnFor, queueIsStale, queueProjection,
 } from "./queue-model.mjs";
 
 
+let docBody = null, docObservedAt = null;
 const $ = (id) => document.getElementById(id);
 const text = (tag, value, className = "") => { const node = document.createElement(tag); node.textContent = String(value ?? ""); if (className) node.className = className; return node; };
 const fingerprint = (card) => JSON.stringify([card.title, card.summary, card.target, card.effective_model, card.status, card.priority, card.cap, card.updated_at]);
@@ -22,7 +24,7 @@ function updateCard(node, card) {
   node.querySelector(".queue-card-meta").textContent = `${card.target} · ${card.priority} · ${card.status}`;
 }
 function showDrawer(card) {
-  $("queueDrawer").hidden = false; $("drawerTitle").textContent = card.title; $("drawerSummary").textContent = card.summary;
+  selectDocRecord('room-task', card.task_id); $("queueDrawer").showModal(); $("drawerTitle").textContent = card.title; $("drawerSummary").textContent = card.summary;
   const meta = $("drawerMeta"); meta.replaceChildren();
   for (const [label, value] of [["Task", card.task_id], ["Status", card.status], ["Target", card.target], ["Model", card.effective_model || "—"], ["Updated", card.updated_at]]) {
     meta.append(text("dt", label), text("dd", value));
@@ -34,6 +36,8 @@ function filtered(cards) {
 }
 function render(projection) {
   const cards = filtered(projection.cards);
+  setDocFilters({ target:$("queueTarget").value, status:$("queueStatus").value });
+  if (docBody) publishDocRead('roomQueue', { events:docBody.events.filter(row => cards.some(card => card.task_id === row.task_id)) }, [], { observedAt:docObservedAt });
   for (const column of QUEUE_COLUMNS) {
     const host = document.querySelector(`[data-column="${column.id}"] .queue-card-list`);
     const wanted = cards.filter((card) => queueColumnFor(card.status) === column.id);
@@ -60,9 +64,10 @@ async function enqueue(event) { event.preventDefault(); const title = $("enqueue
   catch (error) { $("queueNotice").textContent = error.message; }
 }
 async function poll() {
+  const ticket = pageDocContext?.begin('roomQueue');
   try { const response = await fetch("/api/room/queue", { cache: "no-store", credentials: "same-origin" }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Queue unavailable");
-    const stale = body.live !== true || queueIsStale(body.projected_at); const model = queueProjection(body.events); setTargets(model.cards); render(model);
+    const stale = body.live !== true || queueIsStale(body.projected_at); const model = queueProjection(body.events); docBody = stale ? null : body; docObservedAt = Date.now(); if (stale) pageDocContext?.fail(ticket); else pageDocContext?.finish(ticket, body); setTargets(model.cards); render(model);
     $("queueLive").textContent = stale ? "Stale" : "Live"; $("queueLive").classList.toggle("is-stale", stale); $("queueSync").textContent = stale ? "Task board data is stale — cards are not live state." : `Synced ${new Date(body.projected_at).toLocaleTimeString()}.`;
-  } catch { $("queueLive").textContent = "Offline"; $("queueLive").classList.add("is-stale"); $("queueSync").textContent = "Task board is offline — previously shown cards are not live state."; }
+  } catch { docBody = null; pageDocContext?.fail(ticket); $("queueLive").textContent = "Offline"; $("queueLive").classList.add("is-stale"); $("queueSync").textContent = "Task board is offline — previously shown cards are not live state."; }
 }
-if (typeof document !== "undefined") { buildColumns(); let latest = { cards: [] }; const originalRender = render; render = (model) => { latest = model; originalRender(model); }; ["queueTarget", "queueStatus"].forEach((id) => $(id).addEventListener("change", () => originalRender(latest))); $("drawerClose").addEventListener("click", () => { $("queueDrawer").hidden = true; }); $("queueComposer").addEventListener("submit", enqueue); const dialog = $("taskBoardDialog"); if (dialog) { $("openTaskBoard").addEventListener("click", () => { dialog.showModal(); poll(); }); $("closeTaskBoard").addEventListener("click", () => dialog.close()); } else poll(); setInterval(() => { if (!dialog || dialog.open) poll(); }, document.hidden ? 30_000 : 5_000); }
+if (typeof document !== "undefined") { buildColumns(); $("queueDrawer").addEventListener("close", () => selectDocRecord(null,null)); let latest = { cards: [] }; const originalRender = render; render = (model) => { latest = model; originalRender(model); }; ["queueTarget", "queueStatus"].forEach((id) => $(id).addEventListener("change", () => originalRender(latest))); $("drawerClose").addEventListener("click", () => { $("queueDrawer").close(); selectDocRecord(null,null); }); $("queueComposer").addEventListener("submit", enqueue); const dialog = $("taskBoardDialog"); if (dialog) { $("openTaskBoard").addEventListener("click", () => { dialog.showModal(); poll(); }); $("closeTaskBoard").addEventListener("click", () => dialog.close()); } else poll(); setInterval(() => { if (!dialog || dialog.open) poll(); }, document.hidden ? 30_000 : 5_000); }

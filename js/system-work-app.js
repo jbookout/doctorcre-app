@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { createSystemWorkClient } from "./system-work-client.js";
 import { actionForCard, renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
@@ -39,6 +40,7 @@ function refusal(error) {
 async function refresh(ref = state.selectedRef) {
   const selected = ref ? validateHumanRef(ref) : null;
   state.selectedRef = selected;
+  selectDocRecord('work', selected);
   const epoch = ++state.readEpoch;
   state.readReady = false;
   try {

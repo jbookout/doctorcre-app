@@ -3,6 +3,7 @@
  * data/board-seed.json. Zero network. Live and fixture share one interface.
  */
 import { uuidv4 } from './uuid.js';
+import { observeDocClient } from './doc-context.js';
 import { PHASES } from './client.js';
 import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
@@ -1141,6 +1142,7 @@ export async function createFixtureClient(opts = {}) {
   const docSuggestions = new Map([
     ['d0000000-0000-4000-8000-000000000081', {
       id: 'd0000000-0000-4000-8000-000000000081', conversation_id: DOC_PRIVATE,
+      material_facts: { page:'deals', record_kind: 'deal', record_id: 'd14', record_version: 1 },
       obligation_key: 'demo:gulf-breeze:survey-window', material_version: 1, version: 1,
       source_sequence: 1, original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
       polished_text: 'Confirm the survey window before the LOI moves forward.',
@@ -3282,5 +3284,5 @@ export async function createFixtureClient(opts = {}) {
     },
   };
 
-  return client;
+  return opts.docContext === false ? client : observeDocClient(client);
 }

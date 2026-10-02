@@ -463,3 +463,7 @@ test("the matched record's id rides into add-loop as source_note prose, because 
   const unmatched = quickAddPlan(parseQuickAdd("Send the redline friday", { now: Date.parse(NOW), viewer: "joe", records }), { viewer: "joe", sentence: "Send the redline friday" });
   assert.equal("source_note" in unmatched.args, false);
 });
+
+test("canonical loop identity survives the board projection for Doc selection", () => {
+  assert.equal(normalizeBoardRow({...boardRow(),loop_id:"synthetic-loop-a"}).loop_id,"synthetic-loop-a");
+});

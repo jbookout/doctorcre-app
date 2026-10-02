@@ -1,3 +1,4 @@
+import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { deriveJobPassports, jobPassportStatusLabel } from "./job-passport.js?v=job-passport-spatial-v1";
 
 // MODEL ROOM OBSERVATORY — the panel Joe watches the model fleet from.
@@ -1948,6 +1949,8 @@ function boot() {
   }
 
   function render(fresh = []) {
+    setDocFilters({ seats:[...state.filters.seats], text:state.filters.text, turns:state.filters.turns, system:state.filters.system });
+    publishDocRead('roomTurns', { turns:state.turns.filter(turn => turnPasses(turn,state.filters)) }, [], { observedAt:state.docObservedAt });
     const model = deriveModel(state.turns, { now: Date.now(), viewer: state.viewer });
     state.model = model;
     renderStage(model);
@@ -1973,6 +1976,7 @@ function boot() {
   }
 
   async function poll() {
+    const docTicket = pageDocContext?.begin('roomTurns');
     try {
       // latest_seq is the last returned row, not the room's overall tail.
       // Drain the server's oldest-first pages before showing a current window.
@@ -1990,7 +1994,10 @@ function boot() {
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
       $("composerInput").placeholder = `Speak into the room as ${PARTNER_LABEL[state.viewer] || "a partner"}…`;
+      state.docObservedAt = Date.now();
+
       const fresh = absorb(payload);
+      pageDocContext?.finish(docTicket, { turns:state.turns });
       if (state.backoffMs) {
         // Recovery announces itself by counting the missed turns in, rather
         // than silently resuming as if nothing had happened.
@@ -2006,6 +2013,7 @@ function boot() {
         $("wireResume").textContent = `Resume live · ${state.missed} new`;
       }
     } catch (error) {
+      pageDocContext?.fail(docTicket, error);
       if (String(error?.message) === "sign_in_required") return;
       state.backoffMs = Math.min(POLL_BACKOFF_CEILING_MS, (state.backoffMs || POLL_VISIBLE_MS) * 2);
       setState($("healthCycleDot"), "urgent");

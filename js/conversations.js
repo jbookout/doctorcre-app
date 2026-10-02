@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
 //
@@ -596,6 +597,7 @@ async function takeSuggestions({ background = false, signal } = {}) {
 }
 
 async function load({ background = false, signal } = {}) {
+  selectDocRecord('conversation', view.route.state === 'ok' ? view.route.id : null);
   if (background && suggestionEditorActive()) return;
   if (background) backgroundReads++;
   try {
@@ -609,6 +611,7 @@ async function load({ background = false, signal } = {}) {
 
 /** Opening one sets `?id=` so Back restores the list this page came from. */
 function open(id) {
+  selectDocRecord('conversation', id);
   const route = idFromSearch(`?id=${id}`);
   view.route = route;
   view.conversation = { state: "pending" };

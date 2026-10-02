@@ -1,3 +1,4 @@
+import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
@@ -230,6 +231,7 @@ async function loadHome() {
 }
 
 function applyBoardSnapshot(home) {
+  state.docObservedAt = Date.now();
   state.selfActor = home.actor || state.client.selfActor || state.selfActor;
   state.deals = new Map((home.deals || []).map((deal) => [deal.id, {
     workspace_kind: deal.account_client_id ? 'national_account' : 'team', ...deal,
@@ -475,6 +477,8 @@ function renderBoardOnly() {
   renderPendingWrites();
   if ($('#boardSection').hidden) return;
   const deals = workspaceDeals();
+  setDocFilters({ workspace:state.workspace, account:state.accountId, filter:state.filter, query:state.query });
+  if (state.boardSync?.status().board_health === 'ok' && !state.boardSync.status().board_read_in_flight) publishDocRead('getBoard', { deals }, [], { observedAt:state.docObservedAt });
   renderStats(deals);
   renderFocus(deals);
   const rows = $('#rows');
@@ -1120,6 +1124,7 @@ let disposeDealEvidence = null;
 let dealDetailSequence = 0;
 let dealDetailSnapshot = null;
 async function openDeal(dealId, { background = false } = {}) {
+  if (!background) selectDocRecord('deal', dealId);
   const dialog = $('#dealDialog');
   if (background && (!dialog.open || dialog.dataset.dealId !== dealId)) return;
   const sequence = ++dealDetailSequence;
@@ -1417,3 +1422,5 @@ if (typeof document !== 'undefined' && document.getElementById('rows')) {
     document.body.insertAdjacentHTML('afterbegin', `<div class="offline">Deal Room could not start: ${esc(error.message)}</div>`);
   });
 }
+
+if (typeof document !== 'undefined') document.getElementById('dealDialog')?.addEventListener('close', () => selectDocRecord(null, null));

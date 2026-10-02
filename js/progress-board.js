@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountSystemWorkBoard } from './system-work-board.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
@@ -130,6 +131,7 @@ function detailRow(label, value) {
 }
 
 function showTask(task, stage) {
+  selectDocRecord('task', task.id);
   detailTaskId = task.id;
   taskDetailTitle.textContent = task.title || task.id;
   taskDetailBody.replaceChildren();
@@ -490,3 +492,5 @@ if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client, onP
 retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();
 setInterval(() => refresh(), 15000);
+
+taskDialog?.addEventListener('close', () => selectDocRecord(null, null));

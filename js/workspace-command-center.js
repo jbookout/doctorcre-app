@@ -1,10 +1,11 @@
+import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { createLeadBoardClient } from './leads-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { localToday } from './calendar-model.js';
-import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
+import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeDashboard, scopedDeals, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -14,6 +15,7 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
+  let snapshotDocObservedAt = null;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
@@ -53,6 +55,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const refresh = async ({ signal } = {}) => {
+    const docTicket = pageDocContext?.begin('getBoard');
     const epoch = ++sequence;
     const previous = snapshot;
     let latest = null;
@@ -76,7 +79,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         for (const read of Object.values(latest.reads)) if (read.state === 'loading') { read.state = 'error'; read.code = 'read_timeout'; }
       }
     }
-    finally { if (epoch === sequence && !disposed) { if (latest) { latest.loading = false; snapshot = project(latest); } render(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
+    finally { if (epoch === sequence && !disposed) {
+      if (!latest?.unauthorized && latest?.reads?.board?.state === 'ready') {
+        snapshotDocObservedAt = Date.parse(latest.updatedAt);
+        const rows = scopedDeals(latest.board, scope);
+        pageDocContext?.finish(docTicket, { deals: rows || [] });
+        publishDocRead('getLeadBoard', { leads: topNewLeads(latest.leads, { scope, actor:latest.board?.actor, now:now() }) });
+        for (const [key,method] of [['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']]) if (latest.control?.[key]) publishDocRead(method,latest.control[key]);
+      } else if (latest?.unauthorized) pageDocContext?.clear(); else pageDocContext?.fail(docTicket); if (latest) { latest.loading = false; snapshot = project(latest); } render(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
   };
   const paintLeadDetail = lead => {
     const expanded = $('homeDetail').querySelector('details')?.open;
@@ -88,12 +98,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
     if (focused) ([...$('homeDetail').querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === focused) || $('homeDetail').querySelector('[data-close-detail]'))?.focus();
   };
-  $('homeDetail').addEventListener('close', () => { selectedLead = null; });
+  $('homeDetail').addEventListener('close', () => { selectedLead = null; selectDocRecord(null,null); });
   $('homeLeads').addEventListener('click', event => {
     const button = event.target.closest('[data-lead]');
     const lead = leadEntries.get(button?.dataset.lead);
     if (!lead) return;
-    selectedLead = lead.id;
+    selectedLead = lead.id; selectDocRecord('lead', lead.id);
     paintLeadDetail(lead);
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
@@ -101,7 +111,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const auto = mountAutoRefresh({ document, window, refresh, intervalMs });
   $('refreshHome').addEventListener('click', auto.refresh);
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
-  const select = value => { scope = value; buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); }); render(); };
+  const select = value => { scope = value; setDocFilters({ scope }); if (snapshot?.board) publishDocRead('getBoard', { deals:scopedDeals(snapshot.board,scope) || [] }, [], { observedAt:snapshotDocObservedAt }); if (snapshot?.leads) publishDocRead('getLeadBoard', { leads:topNewLeads(snapshot.leads,{scope,actor:snapshot.board?.actor,now:now()}) }, [], { observedAt:snapshotDocObservedAt }); buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); }); render(); };
   buttons.forEach(button => {
     button.addEventListener('click', () => select(button.dataset.scope));
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
@@ -112,8 +122,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
   const boot = resolveDealroomBoot(location);
-  const client = boot.mode === 'live' ? createLiveClient() : await createFixtureClient(boot.options);
-  client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient().getLeadBoard : async () => ({ leads: [] });
+  const client = boot.mode === 'live' ? createLiveClient({docContext:false}) : await createFixtureClient({...boot.options,docContext:false});
+  client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient({docContext:false}).getLeadBoard : async () => ({ leads: [] });
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
 }

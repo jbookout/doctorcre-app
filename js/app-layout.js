@@ -104,7 +104,7 @@ export function mountAppLayout(root, host, pathname) {
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
   const refresh = async ({ signal } = {}) => {
-    try { client ||= await createClient(boot.mode, boot.options); }
+    try { client ||= await createClient(boot.mode, { ...boot.options, docContext: false }); }
     catch { render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),

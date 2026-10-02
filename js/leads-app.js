@@ -1,3 +1,4 @@
+import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createLeadBoardClient } from "./leads-client.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { entryDetailsHtml } from "./entry-details.mjs";
@@ -106,6 +107,7 @@ function renderLeadDetail() {
   if (hadFocus) $("leadDetailBody").querySelector("summary")?.focus();
 }
 function openLeadDetail(id, trigger) {
+  selectDocRecord('lead', id);
   state.detailId = id; state.detailPainted = null; state.detailReturn = trigger;
   renderLeadDetail();
   const dialog = $("leadDetailDialog"); if (!dialog.open) dialog.showModal();
@@ -114,6 +116,8 @@ function openLeadDetail(id, trigger) {
 function renderBoard() {
   const board = $("leadBoard");
   const leads = filtered();
+  setDocFilters({ ...state.filters });
+  if (state.board) publishDocRead('getLeadBoard', { ...state.board, leads });
   const all = state.board?.leads || [];
 
   $("leadCount").textContent = `${all.length} total`;
@@ -426,7 +430,7 @@ if (typeof document !== "undefined") {
     if (select && button) { select.value = column.dataset.stage; if (select.value) moveLead(button); }
   });
   $("leadDetailClose").addEventListener("click", () => $("leadDetailDialog").close());
-  $("leadDetailDialog").addEventListener("close", () => { state.detailId = null; state.detailReturn?.focus?.(); });
+  $("leadDetailDialog").addEventListener("close", () => { selectDocRecord(null, null); state.detailId = null; state.detailReturn?.focus?.(); });
   $("refreshClaims").addEventListener("click", refreshClaims);
   $("claimCards").addEventListener("click", (event) => {
     const retry = event.target.closest("[data-retry-pending]");

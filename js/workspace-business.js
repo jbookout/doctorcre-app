@@ -1,3 +1,4 @@
+import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Clients and Vendors: the browser half of the Journey 1 business read.
 //
@@ -573,6 +574,7 @@ async function loadActivity(id, record) {
   const settle = (result) => {
     if (view.activity.sequence !== sequence || view.recordId !== id) return;
     view.activity.result = result;
+    if (result.state === 'ready') publishDocRead('businessActivity', { record, activities:result.rows }, [{ dataset:view.dataset, id }]);
     renderRecordPanel();
   };
   if (!request) return settle({ state: "no_ref" });
@@ -592,6 +594,7 @@ async function loadActivity(id, record) {
  * generations — and repaints as signed out.
  */
 function expireNow() {
+  pageDocContext?.clear();
   Object.assign(view, expireSession(view));
   renderControls();
   renderChips();
@@ -603,6 +606,8 @@ async function loadList(reason = "initial") {
   const query = view.query;
   const key = listRequestUrl(query);
   const sequence = ++view.list.sequence;
+  setDocFilters({ ...query });
+  view.list.docTicket = pageDocContext?.begin('businessList', [{ dataset:view.dataset }]);
   // Remembered answers are only for restoring a place, and only while the
   // session is known good; cachedPayload refuses to open once signed out.
   const cached = reason === "initial" || reason === "history" ? cachedPayload(view, key) : null;
@@ -649,6 +654,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
   // A verified answer is the only thing that proves the session is back.
   if (status === "ready") Object.assign(view, restoreSession(view));
   view.list.status = status;
+  if (status === 'ready') pageDocContext?.finish(view.list.docTicket, payload); else pageDocContext?.fail(view.list.docTicket);
   view.list.code = code;
   // A refused or failed read never keeps an older answer alive as if current.
   view.list.payload = status === "ready" ? payload : null;
@@ -666,6 +672,8 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
   view.evidence.id = id;
   view.evidence.result = null;
   const sequence = ++view.record.sequence;
+  selectDocRecord(view.dataset, id);
+  const docTicket = pageDocContext?.begin('businessRecord', [{ dataset:view.dataset, id }]);
   view.record.id = id;
   view.record.status = "loading";
   view.record.payload = null;
@@ -675,6 +683,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
   const settle = (status, code, payload = null) => {
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     view.record.status = status;
+    if (status === 'ready') pageDocContext?.finish(docTicket, payload); else pageDocContext?.fail(docTicket);
     view.record.code = code;
     view.record.payload = payload;
     renderRecordPanel();
@@ -727,6 +736,8 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   if (wantedHref !== currentHref()) {
     window.history.replaceState({ ...(window.history.state || {}) }, "", wantedHref);
   }
+  if (parsed.dataset !== view.dataset) pageDocContext?.navigate(parsed.dataset);
+  if (!parsed.recordId) selectDocRecord(null, null);
   const datasetChanged = parsed.dataset !== view.dataset;
   const queryChanged = datasetChanged || !sameQuery(parsed.query, view.query);
   const recordChanged = parsed.recordId !== view.recordId;

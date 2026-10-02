@@ -86,6 +86,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#homeDetail dd').first().textContent(), /10\/1\/2026/);
     await screenshot(page, width === 1440 ? 'desktop-detail' : `phone-detail-${width}`);
     await page.keyboard.press('Escape'); assert.equal(await first.evaluate(node => document.activeElement === node), true);
+    if (width <= 760) await page.locator('#appSidebarToggle').click();
     await page.getByRole('button', { name: 'Just Me', exact: true }).click();
     assert.equal(await page.locator('.home-flags .home-flag').count(), 2);
     assert.match(await page.locator('.home-lead').first().textContent(), /Demo New Practice 2/);

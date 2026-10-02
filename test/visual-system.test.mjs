@@ -14,7 +14,7 @@ const css = await read("css/system.css");
 const pages = Object.fromEntries(await Promise.all(Object.entries(contract.prototypes).map(async ([key, file]) => [key, await read(file)])));
 const prototypeJs = await read("js/design-prototype.js");
 const atlasSceneJs = await read("js/atlas-scene.js");
-const docDockJs = await read("js/doc-dock.js");
+const docDockJs = await read("js/doc-presence.js");
 const workInventoryHtml = await read("work-inventory.html");
 const tasksHtml = await read("tasks.html");
 const pipelineHtml = await read("pipeline.html");
@@ -42,7 +42,7 @@ const SURFACES = {
   "ideas.html": ideasHtml,
   "js/design-prototype.js": prototypeJs,
   "js/shell.js": shellJs,
-  "js/doc-dock.js": docDockJs,
+  "js/doc-presence.js": docDockJs,
 };
 
 // --------------------------------------------------------------- contract ↔ stylesheet
@@ -161,8 +161,8 @@ test("Doc is one floating icon and one chat on every surface, and never a per-ti
     assert.doesNotMatch(mobileNav, />Doc</, `${name} duplicates Doc in the mobile navigation`);
   }
   assert.doesNotMatch(prototypeJs, /"data-doc"/, "no per-tile Ask Doc wiring remains");
-  assert.match(docDockJs, /Prototype reply/, "Doc's prototype answers are marked as prototype answers");
-  assert.doesNotMatch(docDockJs, /fetch\(|getUserMedia|SpeechRecognition|MediaRecorder/, "dictation is a prototype toggle: no audio and no network");
+  assert.doesNotMatch(docDockJs, /CANNED|Prototype reply/, "Doc never invents a canned answer");
+  assert.doesNotMatch(docDockJs, /getUserMedia|SpeechRecognition|MediaRecorder/, "unsupported audio capture is never simulated");
 });
 
 test("each surface is built from tabs and popups, and no title carries a description paragraph", () => {
