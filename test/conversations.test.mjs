@@ -80,7 +80,7 @@ test("clause 1: a private conversation is invisible to the partner, and absent, 
   // And the page renders that ambiguity as the ambiguity it is.
   const state = conversationState({ state: "not_found" });
   assert.equal(state.state, "not_found");
-  assert.match(state.sentence, /the record layer answers those the same way on purpose/);
+  assert.match(state.sentence, /Conversation unavailable/);
   assert.equal(classifyReadFailure({ payload: { error: "doc_conversation_not_found" } }).state, "not_found");
 });
 
@@ -108,7 +108,7 @@ test("clause 2: the visible count is the payload's own number, and the page prin
   assert.match(pageJs, /\$\("visibleCountLine"\)\.textContent = visibleCountLine\(payload\)/);
   assert.equal(/visible_conversation_count\s*=|rows\.length \+|conversations\.filter\(/.test(pageJs), false,
     "the page derives a visible count of its own");
-  assert.match(LIST_SCOPE, /read from the record layer/);
+  assert.equal(LIST_SCOPE, "");
 });
 
 /* ------------------------------------------------------------------ clause 3 */
@@ -239,7 +239,7 @@ test("clause 6: a rename moves the title and the version and retains every origi
   assert.deepEqual(turnRows(after).map((row) => row.body), turnRows(before).map((row) => row.body));
 
   // The prior titles exist and no door reads them back, and the page says so.
-  assert.match(TITLE_HISTORY_UNREADABLE, /no door reads them back yet/);
+  assert.equal(TITLE_HISTORY_UNREADABLE, "Previous titles unavailable");
   assert.match(pageJs, /\$\("titleHistoryLine"\)\.textContent = TITLE_HISTORY_UNREADABLE/);
 });
 
@@ -361,7 +361,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
   // UX09 "stale response ignored": the guard is a sequence compared BEFORE the
   // answer is stored, on BOTH reads and on both of each read's outcomes — four
   // in all — and it is what makes Back safe.
-  assert.equal([...pageJs.matchAll(/if \(view\.sequence !== sequence\) return;/g)].length, 4);
+  assert.ok([...pageJs.matchAll(/if \(view\.sequence !== sequence(?: \|\| signal\?\.aborted)?\) return;/g)].length >= 4);
   assert.match(pageJs, /view\.sequence \+= 1;/);
   assert.match(pageJs, /globalThis\.history\?\.pushState\?\.\(\{ id \}, "", `\/doc-chats\?id=\$\{id\}`\)/);
   assert.match(pageJs, /globalThis\.addEventListener\?\.\("popstate"/);
@@ -403,9 +403,9 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.15.0");
-  assert.equal(contract.version, "1.33.0");
-  assert.equal(contract.producer.source_commit, "c4f1ad45273175c26c074336c0fecbf789718348");
+  assert.equal(routes.version, "1.18.0");
+  assert.equal(contract.version, "1.39.0");
+  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65");
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -515,7 +515,7 @@ test("after a create the list is read again, and so it is after rename, pin, arc
 
   // The page's own wiring: every settled write re-reads, and load() reads BOTH
   // (plus V5-UX-B09's independently-sequenced outcome cards read).
-  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\), takeList\(\), takeOutcomeCards\(\), takeSuggestions\(\)\]\)/);
+  assert.match(pageJs, /await Promise\.all\(\[takeConversation\(\{ background, signal \}\), takeList\(\{ background, signal \}\), takeOutcomeCards\(\{ background, signal \}\), takeSuggestions\(\{ background, signal \}\)\]\)/);
   assert.match(pageJs, /if \(result\.status === "ok" \|\| result\.status === "conflict"\) \{/);
   assert.match(pageJs, /await load\(\);/);
   // Create opens the new conversation, and open() runs the same load().
@@ -539,7 +539,7 @@ test("the list request carries exactly cursor, limit and include_archived — an
   const liveJs = await read("js/live-client.js");
   assert.equal(/actor/.test(JSON.stringify(listArgs({ cursor: "c", includeArchived: true }))), false);
   assert.equal(/listArgs\([^)]*actor/.test(modelJs + pageJs), false, "an actor reaches the list request");
-  assert.match(liveJs, /async listDocConversations\(args = \{\}\) \{ return rpc\('list-doc-conversations', args\); \}/);
+  assert.match(liveJs, /async listDocConversations\(args = \{\}, \{ signal \} = \{\}\) \{ return rpc\('list-doc-conversations', args, signal\); \}/);
   assert.equal(/list-doc-conversations'[^)]*actor/.test(liveJs), false);
   // And the live answer is the same for both partners' own lists: each sees its
   // own, because neither one asked.
@@ -594,8 +594,8 @@ test("the page is the shared shell, carries no composer in the transcript, and h
   for (const tag of ["input", "select", "button", "textarea", "form"]) {
     assert.equal(new RegExp(`<${tag}[\\s>]`).test(region[0]), false, `the transcript region draws a <${tag}>`);
   }
-  assert.match(COMPOSER_ABSENT, /reserved for an authority session/);
-  assert.match(DOC_REPLY_PENDING, /arrive in the next slice/);
+  assert.equal(COMPOSER_ABSENT, "Conversation history");
+  assert.equal(DOC_REPLY_PENDING, "");
   assert.match(pageJs, /\$\("composerAbsent"\)\.textContent = COMPOSER_ABSENT/);
   assert.equal(/add-doc-conversation-turn|addDocConversationTurn/.test(pageJs), false, "the page reaches for the authority-only verb");
   assert.equal(/add-doc-conversation-turn/.test(html), false);
@@ -619,9 +619,9 @@ test("the page is the shared shell, carries no composer in the transcript, and h
   assert.match(css, /\.turn-list \{[^}]*grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(css, /\.turn-body \{[^}]*overflow-wrap: anywhere;/);
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width can force a horizontal scroll");
-  assert.match(EXPOSURE_STATEMENT, /on a shared or unlocked phone/);
-  assert.match(EXPOSURE_STATEMENT, /Nothing is kept on this device/);
-  assert.match(EXPOSURE_STATEMENT, /the list above names every conversation you can see/);
+  assert.equal(EXPOSURE_STATEMENT, "");
+  assert.equal(EXPOSURE_STATEMENT, "");
+  assert.doesNotMatch(EXPOSURE_STATEMENT, /record layer/);
   assert.match(html, /<p class="caption" id="exposureStatement">/);
 });
 

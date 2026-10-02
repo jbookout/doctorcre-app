@@ -77,6 +77,9 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args:Object) => Promise<Object>} readAssuranceHealth read-only assurance-health.v1 for an exact workflow scope
+ * @property {(args?:Object) => Promise<Object>} correspondenceReadiness governed installation read, no arguments
+ * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {() => Promise<{deals:BoardDeal[], as_of:string, last_call_at:string}>} getBoard

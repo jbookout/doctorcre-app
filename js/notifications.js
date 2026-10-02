@@ -29,7 +29,7 @@ import { createCommandDock } from "./command-dock.js";
 import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { preferenceSaveView } from "./notification-preference-draft.mjs";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -180,7 +180,7 @@ function renderActivity() {
     <div class="work-meta"><span>${escapeHtml(row.subject)} · ${escapeHtml(row.clock)}</span></div></div>
     <div class="stack-end"></div>
   </li>`).join("") || (payload
-    ? `<li class="work-item" data-priority="ordinary"><div><h3>No event has been recorded yet</h3><div class="work-meta"><span>read from the change stream</span></div></div><div class="stack-end"></div></li>`
+    ? `<li class="work-item" data-priority="ordinary"><div><h3>No recent activity</h3><div class="work-meta"><span></span></div></div><div class="stack-end"></div></li>`
     : "");
 }
 
@@ -237,9 +237,23 @@ async function takePreference() {
 async function takeActivity() {
   const sequence = view.sequence;
   try {
-    const payload = await client.getChanges(null);
-    if (view.sequence !== sequence) return;
-    view.activity = { state: "read", payload, observed_at: new Date().toISOString() };
+    let cursor = view.activity?.payload?.cursor || null;
+    let events = view.activity?.payload?.events || [];
+    const seen = new Set();
+    let payload;
+    do {
+      payload = await client.getChanges(cursor);
+      if (view.sequence !== sequence) return;
+      if (!Array.isArray(payload?.events) || typeof payload.cursor !== "string" || payload.ok === false) throw new Error("Activity page unavailable.");
+      const rows = payload.events;
+      if (rows.some(row => !row || typeof row !== "object" || Array.isArray(row))) throw new Error("Activity event unavailable.");
+      events = [...events, ...rows].slice(-12);
+      if (!rows.length) break;
+      if (!payload.cursor || payload.cursor === cursor || seen.has(payload.cursor)) throw new Error("Activity cursor did not advance.");
+      seen.add(payload.cursor);
+      cursor = payload.cursor;
+    } while (true);
+    view.activity = { state: "read", payload: { ...payload, cursor: cursor || payload.cursor, events }, observed_at: new Date().toISOString() };
   } catch {
     if (view.sequence !== sequence) return;
     view.activity = { state: "unknown" };
@@ -365,7 +379,7 @@ async function savePreference(form) {
     dirty = false;
     draftBaseVersion = null;
     await load();
-    sentence = sentence || "Saved. This is what the record layer now holds.";
+    sentence = sentence || "Saved";
   }
   $("prefMessage").textContent = sentence || "";
   if (sentence) announce(sentence);
@@ -465,7 +479,7 @@ async function boot() {
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
-  mountReadOnResume({ document, window, refresh: load });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
   await load();
 }
 

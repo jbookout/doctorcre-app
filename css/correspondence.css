@@ -1,0 +1,19 @@
+.correspondence-evidence { min-width: 0; margin-block: 20px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius, 14px); background: var(--glass, var(--card)); backdrop-filter: blur(var(--glass-blur, 18px)); color: var(--text, var(--ink)); animation: evidence-enter .35s ease-out; }
+.correspondence-evidence h3 { margin: 0 0 16px; font-family: var(--display); font-size: 24px; }
+.correspondence-evidence h4 { margin: 0 0 10px; font-family: var(--display); font-size: 19px; }
+.evidence-state { margin-block: 12px; padding: 12px; border-left: 2px solid var(--orange); background: var(--ground-1, var(--ink-1, var(--field))); }
+.evidence-state[data-state="loading"] { border-left-color: var(--cyan); }
+.correspondence-evidence p { margin: 8px 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; }
+.correspondence-evidence .evidence-source { color: var(--muted); font-size: 12px; }
+.evidence-timeline { list-style: none; padding: 0 0 0 12px; margin: 0; border-left: 1px solid var(--line-strong); }
+.evidence-group + .evidence-group { margin-top: 18px; }
+.evidence-item { min-width: 0; padding: 8px 0 12px; border-bottom: 1px solid var(--line); }
+.evidence-item summary { min-height: 44px; min-width: 44px; padding: 8px; cursor: pointer; border-radius: 8px; overflow-wrap: anywhere; transition: background .2s ease; }
+.evidence-item summary:hover, .evidence-item summary:active { background: var(--glass-hi, var(--field)); }
+.evidence-item summary:focus-visible { outline: 2px solid var(--focus, var(--orange)); outline-offset: 2px; }
+.evidence-item time { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
+.evidence-item details[open] { border-left: 2px solid var(--orange); padding-left: 8px; }
+@keyframes evidence-enter { from { opacity: .65; } to { opacity: 1; } }
+@media (max-width: 480px) { .correspondence-evidence { padding: 12px; } .evidence-timeline { padding-left: 8px; } }
+@media (prefers-reduced-motion: reduce) { .correspondence-evidence, .evidence-item summary { animation: none; transition: none; } }
+html[data-motion="reduced"] .correspondence-evidence, html[data-motion="reduced"] .evidence-item summary { animation: none; transition: none; }

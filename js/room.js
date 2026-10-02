@@ -1,4 +1,6 @@
+import { authGeneration, authReadable, invalidateAuth } from './progress-auth.js';
 import { deriveJobPassports, jobPassportStatusLabel } from "./job-passport.js?v=job-passport-spatial-v1";
+import { scopedTurn } from './progress-work-model.js';
 
 // MODEL ROOM OBSERVATORY — the panel Joe watches the model fleet from.
 //
@@ -686,9 +688,8 @@ export function turnPasses(turn, filters) {
 
 /* ------------------------------------------------------------------ the page */
 
-const isBrowser = typeof document !== "undefined" && typeof window !== "undefined";
 
-function boot() {
+export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   const $ = (id) => document.getElementById(id);
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const REDUCED = () => reduced.matches;
@@ -823,7 +824,11 @@ function boot() {
     const response = await fetch(`/api/room/turns?after_seq=${afterSeq}&limit=${limit}`, {
       headers: { accept: "application/json" }, credentials: "same-origin",
     });
-    if (response.status === 401) { window.location.href = "/auth/login?return_to=/agent-room"; throw new Error("sign_in_required"); }
+    if (response.status === 401 || response.status === 403) {
+      invalidateAuth();
+      window.location.href = `/auth/login?return_to=${encodeURIComponent(location.pathname + location.search)}`;
+      throw new Error("sign_in_required");
+    }
     if (!response.ok) throw new Error(`turns_${response.status}`);
     return response.json();
   }
@@ -1295,11 +1300,12 @@ function boot() {
 
   function renderWire(freshOnly) {
     const feed = $("wireFeed");
-    const visible = state.turns.filter((turn) => turnPasses(turn, state.filters));
-    const capped = visible.slice(-DOM_TURN_CAP);
+    const visible = (state.historyTurns || state.turns).filter((turn) => scopedTurn(turn, scope) && turnPasses(turn, state.filters));
+    const capped = state.historyTurns ? visible.slice(0, DOM_TURN_CAP) : visible.slice(-DOM_TURN_CAP);
 
     const items = [];
-    if (state.oldestSeq !== null && state.oldestSeq > 1) items.push({ kind: "earlier" });
+    const oldest = capped[0] ? seqOf(capped[0]) : null;
+    if (oldest !== null && oldest > 1 && state.historyExhausted !== oldest) items.push({ kind: "earlier" });
     if (!capped.length && !state.pending.size) items.push({ kind: "quiet" });
     for (const turn of capped) items.push({ kind: "turn", turn, pending: false });
     for (const pending of state.pending.values()) items.push({ kind: "turn", turn: pending, pending: true });
@@ -1414,6 +1420,7 @@ function boot() {
   function onFeedScroll() {
     const feed = $("wireFeed");
     const distance = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+    if (state.historyTurns) return;
     const following = distance <= 120;
     if (following !== state.following) {
       state.following = following;
@@ -1935,7 +1942,14 @@ function boot() {
     }
     if (!arriving.length) return arriving;
     state.turns = [...state.turns, ...arriving].sort((a, b) => seqOf(a) - seqOf(b));
-    if (state.turns.length > DOM_TURN_CAP * 4) state.turns = state.turns.slice(-DOM_TURN_CAP * 4);
+    if (state.turns.length > DOM_TURN_CAP * 4) {
+      const scoped = scope.task || scope.workRequest || scope.session;
+      const keep = scoped ? new Set([...state.turns.slice(-DOM_TURN_CAP * 4), ...state.turns.filter(turn=>scopedTurn(turn,scope)).slice(-DOM_TURN_CAP * 4)]) : null;
+      state.turns = keep ? state.turns.filter(turn=>keep.has(turn)) : state.turns.slice(-DOM_TURN_CAP * 4);
+    }
+    // Deduplicate retained records, so a later exact-binding rescan can restore
+    // receipts discarded before that binding was known.
+    state.byMsgId = new Map(state.turns.map(turn => [String(turn.msg_id || `${turn.seq}`),turn]));
     const oldest = state.turns.length ? seqOf(state.turns[0]) : null;
     state.oldestSeq = oldest;
     if (!prepend) {
@@ -1946,41 +1960,62 @@ function boot() {
   }
 
   function render(fresh = []) {
+    if (!authReadable(authGeneration())) return;
     const model = deriveModel(state.turns, { now: Date.now(), viewer: state.viewer });
+    const scoped = deriveModel(state.turns.filter(turn => scopedTurn(turn, scope)), { now: model.now, viewer: state.viewer });
     state.model = model;
     renderStage(model);
     renderSeatChips(model);
     renderDesks(model);
     renderWire(fresh.length > 0);
-    renderAssignments(model);
-    renderSessions(model);
-    renderJobPassport(model);
+    renderAssignments(scoped);
+    renderSessions(scoped);
+    renderJobPassport(scoped);
+    if (!scoped.jobPassports.enabled) {
+      $('jobPassport').hidden = false;
+      $('jobPassportSummary').textContent = scoped.jobPassports.rejected.length
+        ? `${scoped.jobPassports.rejected.length} malformed, stale or conflicting updates withheld.`
+        : 'No validated Job Passport in the loaded wire.';
+      $('jobPassportList').replaceChildren();
+    }
     renderHealth(model);
-    if (fresh.length) animateArrivals(fresh, model);
+    if (fresh.length) animateArrivals(fresh.filter(turn => scopedTurn(turn, scope)), model);
+    onRead({ turns: state.turns, model: scoped, globalModel: model });
+  }
+
+  function validateTurnPage(page, from) {
+    const sequence = value => (typeof value === "number" || typeof value === "string" && /^(0|[1-9]\d*)$/.test(value)) && Number.isSafeInteger(Number(value)) && Number(value) >= 0;
+    if (!Array.isArray(page?.turns) || typeof page.more !== "boolean" || !sequence(page.latest_seq) || page.ok === false) throw new Error("Room page unavailable.");
+    let last = from;
+    for (const turn of page.turns) {
+      if (!sequence(turn?.seq) || Number(turn.seq) <= last) throw new Error("Room turn sequence unavailable.");
+      last = Number(turn.seq);
+    }
+    if (Number(page.latest_seq) !== last || page.more && last <= from) throw new Error("Room cursor unavailable.");
   }
 
   async function poll() {
+    const epoch = authGeneration();
+    if (!authReadable(epoch)) { schedule(); return; }
     try {
-      // Loop #521: the first poll used to fetch from seq 0 (the OLDEST page),
-      // so the health strip derived its cycle-age tile from a stale window and
-      // showed red for minutes after every page load. When the cursor is still
-      // at the initial value, jump straight to the present: read the newest
-      // full page instead of the oldest one. History stays reachable through
-      // Load earlier.
-      const initialFetch = state.cursor === 0;
-      const from = initialFetch
-        ? Math.max(0, (state.latestSeqHint ?? 0) - PAGE_SIZE)
-        : state.cursor;
-      const payload = await fetchTurns(from, PAGE_SIZE);
-      if (Number.isFinite(Number(payload.latest_seq))) {
-        state.latestSeqHint = Number(payload.latest_seq);
-        if (initialFetch) {
-          // First response arrived with the present: drop any turns below the
-          // window we actually wanted so the panel never renders the old span.
-          const cutoff = Math.max(0, Number(payload.latest_seq) - PAGE_SIZE);
-          payload.turns = (payload.turns || []).filter((t) => Number(t.seq) > cutoff);
-        }
-      }
+      // latest_seq is the last returned row, not the room's overall tail.
+      // Drain the server's oldest-first pages before showing a current window.
+      let from = state.rescanRequested ? 0 : state.cursor;
+      state.rescanRequested = false;
+      let payload, turns = [];
+      do {
+        payload = await fetchTurns(from, 200);
+        if (!authReadable(epoch)) return;
+        validateTurnPage(payload, from);
+        const loaded = [...turns, ...(payload.turns || [])];
+        const scoped = scope.task || scope.workRequest || scope.session;
+        const keep = scoped ? new Set([...loaded.slice(-DOM_TURN_CAP), ...loaded.filter(turn => scopedTurn(turn,scope)).slice(-DOM_TURN_CAP)]) : null;
+        turns = keep ? loaded.filter(turn => keep.has(turn)) : loaded.slice(-DOM_TURN_CAP);
+        const next = Number(payload.latest_seq);
+        if (payload.more && !(next > from)) throw new Error("Room cursor did not advance.");
+        if (Number.isFinite(next)) from = next;
+      } while (payload.more);
+      payload = { ...payload, turns };
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
       $("composerInput").placeholder = `Speak into the room as ${PARTNER_LABEL[state.viewer] || "a partner"}…`;
@@ -1993,6 +2028,8 @@ function boot() {
       } else {
         $("roomBanner").hidden = true;
       }
+      for (const id of ['roomDesks','roomStage','roomHealth','roomPresence','figCycle','figBridge','figDesks']) $(id).hidden = false;
+      delete $('roomHealth').dataset.stale;
       if (!state.following) state.missed += fresh.length;
       render(fresh);
       if (!state.following && state.missed) {
@@ -2000,10 +2037,11 @@ function boot() {
         $("wireResume").textContent = `Resume live · ${state.missed} new`;
       }
     } catch (error) {
-      if (String(error?.message) === "sign_in_required") return;
+      if (!authReadable(epoch) || String(error?.message) === "sign_in_required") return;
       state.backoffMs = Math.min(POLL_BACKOFF_CEILING_MS, (state.backoffMs || POLL_VISIBLE_MS) * 2);
       setState($("healthCycleDot"), "urgent");
-      banner("wire unreachable — retrying");
+      banner("Wire offline — last-known activity; retrying.");
+      $('roomHealth').dataset.stale = 'true';
     } finally {
       schedule();
     }
@@ -2013,15 +2051,43 @@ function boot() {
     clearTimeout(state.timer);
     const base = document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
     state.timer = setTimeout(poll, state.backoffMs || base);
-  }
+}
 
   async function loadEarlier() {
-    const oldest = state.oldestSeq;
+    const visible = (state.historyTurns || state.turns).filter(turn => scopedTurn(turn, scope) && turnPasses(turn, state.filters));
+    const window = state.historyTurns ? visible.slice(0, DOM_TURN_CAP) : visible.slice(-DOM_TURN_CAP);
+    const oldest = window[0] ? seqOf(window[0]) : null;
     if (!oldest || oldest <= 1) return;
-    const from = Math.max(0, oldest - 1 - PAGE_SIZE);
-    const payload = await fetchTurns(from, Math.min(PAGE_SIZE, oldest - 1 - from));
-    absorb(payload, { prepend: true });
-    render();
+    const generation = state.historyGeneration = (state.historyGeneration || 0) + 1;
+    const epoch = authGeneration();
+    const current = () => state.historyGeneration === generation && authReadable(epoch);
+    try {
+      // IDs belong to all rooms. Walk the supported oldest-first cursor rather
+      // than guessing a predecessor by subtracting a row count from an ID.
+      let from = 0, earlier = state.turns.filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters)).slice(-PAGE_SIZE);
+      if (earlier.length < PAGE_SIZE) {
+        earlier = [];
+        while (true) {
+          const page = await fetchTurns(from, 200);
+          if (!current()) return;
+          validateTurnPage(page, from);
+          earlier = [...earlier, ...(page.turns || []).filter(turn => seqOf(turn) < oldest && scopedTurn(turn, scope) && turnPasses(turn, state.filters))].slice(-PAGE_SIZE);
+          if (!page.more || (page.turns || []).some(turn => seqOf(turn) >= oldest)) break;
+          if (!(Number(page.latest_seq) > from)) throw new Error("Room cursor did not advance.");
+          from = Number(page.latest_seq);
+        }
+      }
+      if (!earlier.length) { state.historyExhausted = oldest; render(); return; }
+      const payload = { turns: earlier };
+      const rows = new Map([...window, ...payload.turns].map(turn => [String(turn.msg_id || turn.seq), turn]));
+      state.historyTurns = [...rows.values()].sort((a, b) => seqOf(a) - seqOf(b)).slice(0, DOM_TURN_CAP);
+      state.following = false;
+      $("wireResume").hidden = false;
+      $("wireResume").textContent = "Resume live";
+      render();
+    } catch {
+      if (current()) banner("Earlier turns unavailable. Try Load earlier again.");
+    }
   }
 
   /* ------------------------------------------------------------- wiring up */
@@ -2052,6 +2118,19 @@ function boot() {
   $("viewEverything").addEventListener("click", () => setFeedMode(false));
   $("wireFilters").dataset.mode = "conversation";
 
+  document.addEventListener('progress-auth-lost', () => {
+    state.turns = []; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
+    state.historyGeneration = (state.historyGeneration || 0) + 1;
+    state.cursor = 0; state.csrf = null; state.model = null;
+    state.counted.clear();
+    for (const id of ['wireFeed','jobPassportList','deskList','assignmentList','sessionList','seatChips']) $(id)?.replaceChildren();
+    for (const selector of ['.stage-node:not(.stage-node-core)', '.stage-edge']) document.querySelectorAll(selector).forEach(node => node.remove());
+    for (const id of ['stageTooltip','figCycle','figBridge','figDesks']) { const host = $(id); if (host) { host.hidden = true; host.textContent = ''; } }
+    $('roomDesks').hidden = true; $('roomStage').hidden = true; $('roomHealth').hidden = true; $('roomPresence').hidden = true; $('presenceText').textContent = '';
+    $('jobPassportSummary').textContent = 'Sign in to read work evidence.';
+    banner('Sign in to read work evidence.');
+  });
+
   drawCore();
   bindKindToggle("kindTurns", "turns");
   bindKindToggle("kindSystem", "system");
@@ -2068,7 +2147,7 @@ function boot() {
     render();
   });
   $("wireFeed").addEventListener("scroll", onFeedScroll, { passive: true });
-  $("wireResume").addEventListener("click", () => { state.following = true; scrollToBottom(true); });
+  $("wireResume").addEventListener("click", () => { state.historyGeneration = (state.historyGeneration || 0) + 1; state.historyTurns = null; state.following = true; render(); scrollToBottom(true); });
   $("composerInput").addEventListener("input", updateCounter);
   $("composerInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendComposer(); }
@@ -2109,6 +2188,14 @@ function boot() {
   }
   updateCounter();
   poll();
+  let scopeSignature = JSON.stringify(scope);
+  return { refreshScope: () => {
+    const next = JSON.stringify(scope);
+    // A newly read canonical binding may name an older receipt. Rescan the
+    // supported cursor on the next poll rather than inferring its predecessor.
+    if (next !== scopeSignature) { state.rescanRequested = true; scopeSignature = next; }
+    render();
+  }, poll };
 }
 
-if (isBrowser && document.getElementById("wireFeed")) boot();
+// Mounted by Progress work detail; old Observatory entry points redirect.

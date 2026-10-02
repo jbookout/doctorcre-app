@@ -30,6 +30,7 @@ import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
+import { mountEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
 import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
@@ -182,8 +183,8 @@ function renderStatus(status) {
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
     : status.state === SYNC_STATES.RECONNECTING ? (live ? 'Reconnecting' : 'Fixture unavailable')
-    : status.state === SYNC_STATES.READY ? (live ? 'Read from the record layer' : 'Fixture ready')
-    : 'Reading the record…';
+    : status.state === SYNC_STATES.READY ? (live ? 'Current' : 'Fixture ready')
+    : 'Updating…';
   const orbState = status.state === SYNC_STATES.READY ? 'healthy'
     : status.state === SYNC_STATES.ERROR || status.state === SYNC_STATES.OFFLINE ? 'urgent'
     : status.state === SYNC_STATES.RECONNECTING ? 'attention' : 'refreshing';
@@ -196,7 +197,7 @@ function renderStatus(status) {
   if (asOf) {
     asOf.textContent = status.last_read_at
       ? `${state.deals.size} record(s) from the last board read · ${deploymentIdentity(state.mode).detail}`
-      : `Reading the record layer… · ${deploymentIdentity(state.mode).detail}`;
+      : `Updating… · ${deploymentIdentity(state.mode).detail}`;
   }
 }
 
@@ -261,7 +262,7 @@ async function loadBoard() {
     return;
   }
   await pollOnce(true);
-  say(`${state.deals.size} record(s) read from the record layer.`);
+  say(`${state.deals.size} deals`);
 }
 
 async function pollOnce(initial = false) {
@@ -332,6 +333,7 @@ const FOLLOW_UP_SENDERS = {
   'add-deal-note': (request) => state.client.addDealNote(request),
   'set-next-step': (request) => state.client.setNextStep(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
+  'update-deal': (request) => state.client.updateDeal(request),
 };
 
 /**
@@ -347,6 +349,7 @@ const FOLLOW_UP_SENDERS = {
  * receipt rather than pretending the move failed.
  */
 async function runOutcomeWrite(operationKey, step, intent) {
+  operations.set(operationKey, { kind: 'outcome-read', step, intent, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
 
   let version = null;
@@ -358,7 +361,7 @@ async function runOutcomeWrite(operationKey, step, intent) {
   }
   if (!Number.isInteger(version)) {
     dock.record(operationKey, {
-      summary: step.summary, status: 'failed', undo: false,
+      summary: step.summary, status: 'failed', retry: true, undo: false,
       reason: `${intent.name} moved, but the record could not be re-read for its version, so the outcome was not written. Nothing was guessed.`,
     });
     return null;
@@ -417,7 +420,10 @@ async function runMove(intent, form) {
 
   const [phaseStep, ...followUps] = plan.steps;
   const cell = cellKey(intent.deal, 'phase');
-  operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value, summary: moveSummary(intent) });
+  if (!pendingFieldWrite(state.fieldWrites, cell)) {
+    operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
+      summary: moveSummary(intent), intent: { ...intent }, followUps, followUpToken: uuidv4(), followUpsStarted: false });
+  }
   dock.record(cell, { summary: moveSummary(intent), status: 'sending', undo: false });
   renderBoard();
 
@@ -461,13 +467,19 @@ async function runMove(intent, form) {
   }
   announce(`${intent.name} moved to ${intent.to_label}.`);
 
-  const token = uuidv4();
-  for (const step of followUps) {
-    const operationKey = `${step.verb}:${intent.deal}:${token}`;
-    if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, intent);
+  if (!result.superseded) await resumeMoveFollowUps(cell);
+  return { ok: true, errors: [] };
+}
+
+async function resumeMoveFollowUps(cell) {
+  const move = operations.get(cell);
+  if (!move?.followUps || move.followUpsStarted) return;
+  move.followUpsStarted = true;
+  for (const step of move.followUps) {
+    const operationKey = `${step.verb}:${move.intent.deal}:${move.followUpToken}`;
+    if (step.verb === 'update-deal') await runOutcomeWrite(operationKey, step, move.intent);
     else await runFollowUp(operationKey, step);
   }
-  return { ok: true, errors: [] };
 }
 
 async function retryFieldWrite(cell) {
@@ -482,7 +494,10 @@ async function retryFieldWrite(cell) {
     status: result.status, reason: fieldWriteMessage(result, subject) || null,
     retry: result.retry, undo: false, request: result.request,
   });
-  if (result.status === 'ok' && !result.superseded) confirmLocalWrite(deal, { phase: value });
+  if (result.status === 'ok' && !result.superseded) {
+    confirmLocalWrite(deal, { phase: value });
+    await resumeMoveFollowUps(cell);
+  }
   renderBoard();
   const message = fieldWriteMessage(result, subject);
   if (message) showToast(message);
@@ -609,7 +624,11 @@ async function resolveConflictChoice() {
 
 /* ------------------------------------------------------------- record panel */
 
+let disposeEvidence = null;
+let panelReadSequence = 0;
 async function openPanel(dealId, trigger) {
+  const sequence = ++panelReadSequence;
+  disposeEvidence?.();
   const panel = $('recordPanel');
   if (!panel) return;
   state.panelDeal = dealId;
@@ -617,24 +636,27 @@ async function openPanel(dealId, trigger) {
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   panel.hidden = false;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Record';
-  $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Reading the record…</h3></div>';
+  $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   setContextOpenVisible(false);
   $('panelClose')?.focus();
   let detail = null;
   try {
     detail = await state.client.getDeal(dealId);
   } catch {
+    if (sequence !== panelReadSequence || state.panelDeal !== dealId) return;
     $('panelBody').innerHTML = '<div class="state-block" data-state="offline"><h3>This record could not be read. Nothing here has been inferred.</h3></div>';
     return;
   }
   // The panel may have moved on while the read was open; a late answer never
   // paints over a record the person has since opened.
   if (state.panelDeal !== dealId) return;
+  if (sequence !== panelReadSequence) return;
   state.panelDetail = detail;
   $('panelTitle').textContent = detail.deal?.name || 'Record';
   $('panelBody').innerHTML = recordPanelSections(detail, { actorLabel: actorName, dateLabel: dateWords })
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('');
+      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('') + '<div id="panelEvidence"></div>';
+  disposeEvidence = mountEvidence($('panelEvidence'), { client: state.client, detail });
   // V5-UX-B04: the context drawer reuses this same read, so it opens only
   // once there is a detail to open it on.
   setContextOpenVisible(true);
@@ -644,6 +666,9 @@ function closePanel() {
   const panel = $('recordPanel');
   if (!panel || panel.hidden) return;
   if (state.panelPinned) return;
+  ++panelReadSequence;
+  disposeEvidence?.();
+  disposeEvidence = null;
   panel.hidden = true;
   const returnTo = state.panelReturnTo;
   state.panelDeal = null;
@@ -672,7 +697,7 @@ async function openContextDrawer() {
   const dialog = $('contextDrawer');
   const detail = state.panelDetail;
   if (!dialog || !detail) return;
-  $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Reading the record…</h3></div>';
+  $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
   const context = await loadDealContext(state.client, detail);
@@ -913,11 +938,13 @@ function mountDock() {
     onDispatch: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
+      else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
+      else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.args && entry?.send) {
         runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
       }

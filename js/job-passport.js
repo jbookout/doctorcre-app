@@ -53,6 +53,10 @@ function sha256(text) {
   return [h0,h1,h2,h3,h4,h5,h6,h7].map((n)=>n.toString(16).padStart(8,"0")).join("");
 }
 function canonicalDigest(value) { return `sha256:${sha256(canonicalize(value))}`; }
+export function passportProjectionDigest(value) {
+  const projection = structuredClone(value); delete projection.projection_digest;
+  return canonicalDigest(projection);
+}
 function semanticEqual(a, b) { return canonicalize(a) === canonicalize(b); }
 
 // Browser-side mirror for the additive sections. It accepts only redacted
@@ -271,21 +275,29 @@ function compareCanonicalReliabilityRevision(next, prior) {
   return nextVector.some((part, index) => part > priorVector[index]) ? 1 : 0;
 }
 function validPlannedCheck(value) { return exactKeys(value, ["check_ref", "failure_condition", "evidence_requirement"]) && validId(value.check_ref) && string(value.failure_condition) && ["redacted_evidence_required", "metadata_only_sufficient"].includes(value.evidence_requirement); }
-function validExecutionEnvelope(value, passport) {
+function validExecutionEnvelope(value, passport, canonical = false) {
+  // Canonical reads also describe the pinned repository-writing adapter. The
+  // historical wire remains strictly read-only.
+  const repositoryActions = ['repository:create-worktree','repository:create-branch','repository:write-declared-scope','repository:run-checks','repository:commit','repository:push-branch','repository:open-pr'];
+  const repositoryWrite = canonical && value?.server_binding?.authority?.read_only === false
+    && value.server_binding.authority.environment === 'rehearsal'
+    && value.server_binding.authority.capability_profile === 'capability:engineering-repository-write'
+    && value.server_binding.adapter?.surface === 'codex_desktop' && value.server_binding.adapter?.adapter_id === 'adapter:codex-desktop'
+    && semanticEqual(value?.request?.allowed_actions,repositoryActions);
   const identity = value?.server_binding?.identity; const authority = value?.server_binding?.authority; const adapter = value?.server_binding?.adapter;
   const declared = value?.request?.declared_expectations; const state = value?.state_binding; const handoff = value?.handoff; const phase = value?.phase_binding; const evaluation = value?.evaluation_context;
   if (!object(value) || Object.keys(value).some((key) => !ENVELOPE_CORE_FIELDS.includes(key) && !ENVELOPE_ACTIVATION_FIELDS.includes(key)) || ENVELOPE_CORE_FIELDS.some((key) => !Object.prototype.hasOwnProperty.call(value, key))
     || value.schema_version !== "execution-envelope.v1" || !validId(value.envelope_id) || value.work_request_id !== passport.work_request.id || !validPlanRef(value.plan_revision)
     || !semanticEqual(value.plan_revision, passport.accepted_plan_revision) || !exactKeys(value.agent_session, ["id", "lease_expires_at"]) || !validId(value.agent_session.id) || !timestamp(value.agent_session.lease_expires_at)
     || !timestamp(value.issued_at) || !timestamp(value.expires_at) || !exactKeys(value.request, ["job_ref", "input_digest", "data_class", "allowed_actions", "declared_expectations"]) || !validId(value.request.job_ref) || !DIGEST.test(value.request.input_digest)
-    || !["synthetic_only", "metadata_only"].includes(value.request.data_class) || !Array.isArray(value.request.allowed_actions) || value.request.allowed_actions.length !== 0 || !exactKeys(declared, ["plan_step_refs", "component_refs", "component_dependencies", "resource_refs"])
+    || !["synthetic_only", "metadata_only"].includes(value.request.data_class) || !Array.isArray(value.request.allowed_actions) || (repositoryWrite ? false : value.request.allowed_actions.length !== 0) || !exactKeys(declared, ["plan_step_refs", "component_refs", "component_dependencies", "resource_refs"])
     || !list(declared.plan_step_refs) || !declared.plan_step_refs.every(string) || !list(declared.component_refs) || !declared.component_refs.every(string)
     || !list(declared.resource_refs) || !declared.resource_refs.every(string) || !list(declared.component_dependencies) || !declared.component_dependencies.every((edge) => exactKeys(edge, ["component_ref", "depends_on_component_ref"]) && string(edge.component_ref) && string(edge.depends_on_component_ref))
     || !exactKeys(value.server_binding, ["identity", "authority", "adapter"]) || !exactKeys(identity, ["organization_tenant_id", "sponsoring_human_id", "agent_principal_id", "runtime_principal", "personal_brain_scope", "personal_brain_version", "personal_rule_count", "derived_by", "client_mutable"])
     || !validId(identity.organization_tenant_id) || !validId(identity.sponsoring_human_id) || !validId(identity.agent_principal_id) || !validId(identity.runtime_principal) || !validId(identity.personal_brain_scope) || !validId(identity.personal_brain_version)
     || !Number.isInteger(identity.personal_rule_count) || identity.personal_rule_count < 0 || identity.derived_by !== "server_identity_resolution" || identity.client_mutable !== false
     || !exactKeys(authority, ["environment", "risk_class", "capability_profile", "capability_grant_ref", "read_only", "derived_by", "client_mutable"]) || !["local", "rehearsal", "staging", "production"].includes(authority.environment) || !/^R[0-6]$/.test(authority.risk_class)
-    || !validId(authority.capability_profile) || !validId(authority.capability_grant_ref) || authority.read_only !== true || authority.derived_by !== "server_capability_resolution" || authority.client_mutable !== false
+    || !validId(authority.capability_profile) || !validId(authority.capability_grant_ref) || (repositoryWrite ? false : authority.read_only !== true) || authority.derived_by !== "server_capability_resolution" || authority.client_mutable !== false
     || !exactKeys(adapter, ["surface", "adapter_id", "adapter_version", "harness_id", "harness_version", "provider_id", "model_id", "native_session_ref", "configuration_fingerprint"])
     || !["claude_desktop", "codex_desktop", "hermes_desktop", "grok_x_native"].includes(adapter.surface) || !string(adapter.adapter_id) || !string(adapter.adapter_version) || !string(adapter.harness_id) || !string(adapter.harness_version) || !string(adapter.provider_id) || !string(adapter.model_id) || !validId(adapter.native_session_ref) || !DIGEST.test(adapter.configuration_fingerprint)
     || !exactKeys(handoff, ["mode", "replaces_agent_session_id", "capability_inherited", "checkpoint_ref", "native_session_transfer"]) || !["original", "replacement"].includes(handoff.mode) || handoff.capability_inherited !== false || handoff.native_session_transfer !== "semantic_state_only"
@@ -353,7 +365,7 @@ function validQAFacts(value, receipts) { if (!list(value)) return false; const k
 function validDisposition(value, states) { return exactKeys(value, ["state", "evidence_refs", "note"]) && states.has(value.state) && validEvidence(value.evidence_refs, ["complete", "passed", "released", "resolved", "proposed"].includes(value.state)) && string(value.note); }
 function validLearning(value) { return exactKeys(value, ["state", "route", "evidence_refs", "note"]) && ["unresolved", "proposed", "rejected", "nothing_durable"].includes(value.state) && (value.route === null || ["regression_test", "gate_or_validator", "decision_record", "skill_or_workflow", "memory_or_rule_candidate", "incident_finding", "speculative_finding", "nothing_durable"].includes(value.route)) && (value.state === "unresolved" ? value.route === null : value.route !== null) && validEvidence(value.evidence_refs, ["proposed", "rejected"].includes(value.state)) && string(value.note); }
 function derivedOperator(slices, receipts, qa) { const evidence = new Map(receipts.flatMap((receipt) => receipt.evidence_refs.map((item) => [item.ref, item]))); return { what_changed: slices.filter((slice) => slice.state === "verified_complete").map((slice) => slice.slice_ref), why: "derived from accepted plan and typed receipts", evidence_refs: [...evidence.keys()].sort().map((key) => evidence.get(key)), deviations: [...new Set(receipts.flatMap((receipt) => receipt.deviations.map((deviation) => deviation.deviation_ref)))].sort(), remaining_risk: slices.filter((slice) => slice.state !== "verified_complete").map((slice) => slice.slice_ref), manual_qa_items: slices.filter((slice) => slice.manual_qa_required && !qa.has(slice.slice_ref)).map((slice) => slice.slice_ref) }; }
-function validEngineeringPassport(value) {
+export function validEngineeringPassport(value) {
   if (!exactKeys(value, ["schema_version", "work_request", "accepted_plan_revision", "plan_digest", "slice_plan", "execution_envelopes", "slices", "receipts", "reviewer_facts", "qa_facts", "operator_receipt", "closure", "closure_state", "stale_conflict", "projection_digest"]) || value.schema_version !== "engineering-passport.v1" || !validBinding(value.work_request) || !validPlanRef(value.accepted_plan_revision) || !DIGEST.test(value.plan_digest) || !validEngineeringPlan(value.slice_plan) || value.slice_plan.plan_digest !== value.plan_digest || !semanticEqual(value.slice_plan.work_request, value.work_request) || !semanticEqual(value.slice_plan.accepted_plan_revision, value.accepted_plan_revision) || !["blocked", "complete"].includes(value.closure_state) || !exactKeys(value.stale_conflict, ["state", "reason"]) || !["none", "stale", "conflict", "uncertain"].includes(value.stale_conflict.state) || (value.stale_conflict.state === "none" ? value.stale_conflict.reason !== null : !string(value.stale_conflict.reason))) return false;
   if (!list(value.execution_envelopes)) return false;
   const envelopeDigests = new Set();
@@ -370,6 +382,88 @@ function validEngineeringPassport(value) {
   if (!exactKeys(value.closure, ["work", "proof", "explanation", "release", "learning"]) || !validDisposition(value.closure.work, new Set(["unresolved", "complete"])) || !validDisposition(value.closure.proof, new Set(["unresolved", "complete"])) || !validDisposition(value.closure.explanation, new Set(["unresolved", "complete"])) || !validDisposition(value.closure.release, new Set(["unresolved", "released", "not_required"])) || !validLearning(value.closure.learning)) return false;
   const complete = value.stale_conflict.state === "none" && projected.length > 0 && receipts.length === projected.length && projected.every((slice) => slice.state === "verified_complete") && receipts.every((receipt) => receipt.outcome === "claimed_complete" && receipt.artifact_refs.length > 0 && receipt.evidence_refs.length > 0) && projected.every((slice) => reviewerBy.get(slice.slice_ref)?.state === "passed") && projected.every((slice) => !slice.manual_qa_required || qaBy.get(slice.slice_ref)?.state === "passed") && value.closure.work.state === "complete" && value.closure.proof.state === "complete" && value.closure.explanation.state === "complete" && (value.closure.release.state === "released" || (value.closure.release.state === "not_required" && projected.every((slice) => slice.release_requirement === "not_required"))) && ["proposed", "rejected", "nothing_durable"].includes(value.closure.learning.state) && value.closure.learning.route !== null && receipts.every((receipt) => receipt.deviations.every((deviation) => !deviation.plan_revision_required && deviation.review_state === "resolved" && reviewerBy.get(receipt.slice_ref).resolved_deviation_refs.includes(deviation.deviation_ref)));
   if ((value.closure_state === "complete") !== complete) return false; const copy = structuredClone(value); delete copy.projection_digest; return canonicalDigest(copy) === value.projection_digest;
+}
+
+// Canonical HTTP/MCP projection retains historical receipts alongside the
+// explicitly selected current generation. Its closure rules differ from wire.
+export function validCanonicalEngineeringPassport(value) {
+  const keys = ['schema_version','work_request','accepted_plan_revision','plan_digest','slice_plan','execution_envelopes','slices','current_receipts','current_reviewer_facts','receipts','reviewer_facts','qa_facts','operator_receipt','closure','closure_state','stale_conflict','projection_digest'];
+  if (!exactKeys(value,keys) || value.schema_version !== 'engineering-passport.v1' || !validEngineeringPlan(value.slice_plan)
+    || !semanticEqual(value.work_request,value.slice_plan.work_request) || !semanticEqual(value.accepted_plan_revision,value.slice_plan.accepted_plan_revision)
+    || value.plan_digest !== value.slice_plan.plan_digest || !['complete','blocked'].includes(value.closure_state)
+    || !exactKeys(value.stale_conflict,['state','reason']) || !['none','stale'].includes(value.stale_conflict.state)
+    || (value.stale_conflict.state === 'none' ? value.stale_conflict.reason !== null : !string(value.stale_conflict.reason))) return false;
+  const arrays = ['execution_envelopes','slices','current_receipts','current_reviewer_facts','receipts','reviewer_facts','qa_facts'];
+  if (!arrays.every(key => list(value[key]))) return false;
+  const envelopes = new Map();
+  for (const envelope of value.execution_envelopes) {
+    if (!validExecutionEnvelope(envelope,value,true)) return false;
+    const digest = canonicalDigest(envelope); if (envelopes.has(digest)) return false; envelopes.set(digest,envelope);
+  }
+  // Attempt numbers are job-local. Separate envelope generations may each
+  // carry attempt:1; the producer's receipt key is (envelope, attempt).
+  const receiptKey = receipt => JSON.stringify([receipt?.envelope_digest,receipt?.attempt_id]);
+  const receiptsByLineage = new Map();
+  for (const receipt of value.receipts) {
+    if (!validReceipt(receipt,value.slice_plan,new Set(),new Set()) || receiptsByLineage.has(receiptKey(receipt))) return false;
+    const envelope = envelopes.get(receipt.envelope_digest);
+    const source = value.slice_plan.slices.find(slice => slice.slice_ref === receipt.slice_ref);
+    if (!envelope || receipt.attribution.actor_ref !== envelope.server_binding.identity.agent_principal_id
+      || receipt.attribution.session_ref !== envelope.agent_session.id || receipt.attribution.adapter_ref !== envelope.server_binding.adapter.adapter_id
+      || !sameSet(envelope.request.declared_expectations.plan_step_refs,source.declared_plan_step_refs)
+      || !sameSet(envelope.request.declared_expectations.component_refs,source.declared_component_refs)
+      || !sameSet(envelope.request.declared_expectations.resource_refs,source.declared_resource_refs)) return false;
+    receiptsByLineage.set(receiptKey(receipt),receipt);
+  }
+  const current = new Map();
+  for (const receipt of value.current_receipts) {
+    if (!semanticEqual(receipt,receiptsByLineage.get(receiptKey(receipt))) || current.has(receipt.slice_ref)) return false;
+    current.set(receipt.slice_ref,receipt);
+  }
+  const reviews = new Set();
+  for (const fact of value.reviewer_facts) {
+    // Historical facts omit their ledger receipt_id, so distinct generations
+    // may have equal public payloads. Validate each against matching
+    // slice/attempt candidates; digests only establish current fact membership.
+    // Current facts below must still validate against the selected receipt.
+    const candidates = value.receipts.filter(receipt => receipt.slice_ref === fact?.slice_ref && receipt.attempt_id === fact?.attempt_id);
+    if (!candidates.some(receipt => validReviewerFacts([fact],[receipt]))) return false;
+    reviews.add(canonicalDigest(fact));
+  }
+  if (!validReviewerFacts(value.current_reviewer_facts,[...current.values()]) || !value.current_reviewer_facts.every(fact => reviews.has(canonicalDigest(fact)))
+    || !validQAFacts(value.qa_facts,[...current.values()])) return false;
+  const reviewerBy = new Map(value.current_reviewer_facts.map(fact => [fact.slice_ref,fact]));
+  const plan = [...value.slice_plan.slices].sort((a,b) => a.ordinal-b.ordinal);
+  if (value.slices.length !== plan.length) return false;
+  for (const [index,slice] of value.slices.entries()) {
+    const source = plan[index], receipt = current.get(source.slice_ref), review = reviewerBy.get(source.slice_ref);
+    const passed = ref => value.stale_conflict.state === 'none' && reviewerBy.get(ref)?.state === 'passed' && current.get(ref)?.outcome === 'claimed_complete';
+    const expected = !receipt ? source.dependency_refs.every(passed) ? 'eligible' : 'blocked'
+      : passed(source.slice_ref) ? 'verified_complete' : ['failed','reopened'].includes(receipt.outcome) ? 'reopened' : 'claimed';
+    if (!exactKeys(slice,['slice_ref','ordinal','dependency_refs','state','planned_check_refs','deviation_refs','manual_qa_required','release_requirement'])
+      || slice.slice_ref !== source.slice_ref || slice.ordinal !== source.ordinal || slice.state !== expected
+      || !semanticEqual(slice.dependency_refs,source.dependency_refs) || !semanticEqual(slice.planned_check_refs,source.planned_checks.map(check => check.check_ref))
+      || !semanticEqual(slice.deviation_refs,(receipt?.deviations || []).map(row => row.deviation_ref))
+      || slice.manual_qa_required !== source.manual_qa_required || slice.release_requirement !== source.release_requirement || (review && !receipt)) return false;
+  }
+  const recordedEvidence = new Set(value.receipts.flatMap(receipt => receipt.evidence_refs.map(canonicalDigest)));
+  const boundEvidence = refs => validEvidence(refs) && refs.every(ref => recordedEvidence.has(canonicalDigest(ref)));
+  const operator = value.operator_receipt;
+  const known = new Set(plan.map(slice => slice.slice_ref));
+  const deviations = new Set(value.receipts.flatMap(receipt => receipt.deviations.map(row => row.deviation_ref)));
+  if (!exactKeys(operator,['what_changed','why','evidence_refs','deviations','remaining_risk','manual_qa_items']) || !string(operator.why) || !boundEvidence(operator.evidence_refs)
+    || !['what_changed','remaining_risk','manual_qa_items'].every(key => list(operator[key]) && operator[key].every(ref => known.has(ref)))
+    || !list(operator.deviations) || !operator.deviations.every(ref => deviations.has(ref))
+    || !sameSet(operator.remaining_risk,value.slices.filter(slice => slice.state !== 'verified_complete').map(slice => slice.slice_ref))) return false;
+  const closure = value.closure;
+  if (!exactKeys(closure,['work','proof','explanation','release','learning'])
+    || !['work','proof','explanation'].every(key => validDisposition(closure[key],new Set(['unresolved','complete'])))
+    || !validDisposition(closure.release,new Set(['unresolved','complete','released','not_required'])) || !validLearning(closure.learning)
+    || !Object.values(closure).every(disposition => boundEvidence(disposition.evidence_refs))) return false;
+  const complete = value.stale_conflict.state === 'none' && value.slices.length > 0 && value.slices.every(slice => slice.state === 'verified_complete');
+  if ((value.closure_state === 'complete') !== complete || ['work','proof','explanation'].some(key => (closure[key].state === 'complete') !== complete)
+    || complete && !['complete','released','not_required'].includes(closure.release.state)) return false;
+  return value.projection_digest === passportProjectionDigest(value);
 }
 
 function compareProjection(a, b) {
@@ -498,7 +592,8 @@ export function deriveJobPassports(turns, { now = Date.now() } = {}) {
       prior.conflict = true;
       rejected.push({ seq: Number(turn.seq) || 0, reason: "same_version_conflict" });
     } else if (comparison < 0 || (comparison === 0 && (Number(turn.seq) || 0) > prior.seq)) {
-      rows.set(incoming.work_request_id, { projection: incoming, seq: Number(turn.seq) || 0, conflict: false });
+      rows.set(incoming.work_request_id, { projection: incoming, seq: Number(turn.seq) || 0,
+        conflict: prior.conflict && incoming.source_state.state_version === prior.projection.source_state.state_version });
     } else {
       rejected.push({ seq: Number(turn.seq) || 0, reason: "stale_projection" });
     }

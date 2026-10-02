@@ -26,7 +26,7 @@ import {
 
 test("Calendar rereads on return and clears prior-session dates while checking", async () => {
   const source = await readFile(new URL("../js/calendar.js", import.meta.url), "utf8");
-  assert.match(source, /mountReadOnResume\(\{[\s\S]*?refresh:\s*\(\)\s*=>\s*load\(\{\s*failClosed:\s*true\s*\}\)/);
+  assert.match(source, /mountAutoRefresh\(\{[\s\S]*?refresh:\s*\(\)\s*=>\s*load\(\{\s*failClosed:\s*true\s*\}\)/);
   assert.match(source, /if\s*\(failClosed\)\s*\{[\s\S]*?status:\s*["']loading["']/);
   assert.match(source, /asOf\.textContent\s*=\s*""/, "a failed return cannot retain an old read count");
 });
@@ -322,7 +322,7 @@ test("the Calendar is a routed, shipped surface that reads only pinned verbs", a
   const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.15.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.18.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
   assert.match(artifact, /"calendar\.html"/);
   assert.match(check, /"calendar\.html"/);
