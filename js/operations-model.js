@@ -32,7 +32,7 @@ export const GOVERNANCE_LANES = Object.freeze([
 
 export const APPROVALS_OUT_OF_SCOPE = "Approvals of production effects are not in this card. Their verbs (accept-ready-plan, accept-workflow, issue-execution-envelope) are partner-only and hash-pinned, and no read lists what is pending, so none is claimed here.";
 
-const APPROVALS_AUTHORITY = "Read-only. This card grants no authority: each decision is taken with its own partner verb in the record layer, never from this page.";
+const APPROVALS_AUTHORITY = "";
 
 // Kept verbatim from the placeholder it replaces: a statement about behaviour
 // already true of every command on this app (CR-AC-22, C23), not a promise.

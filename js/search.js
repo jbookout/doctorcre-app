@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
 // Every decision this file paints is made in ./search-model.js. Nothing here
@@ -68,7 +69,7 @@ function rowHtml(row) {
       ${row.retired ? '<p class="small quiet">retired alias</p>' : ""}
       <div class="work-meta">${counts}</div>
       <div class="chip-list">${refChipHtml(row.refs, "Ref")}${roleRefs}${retiredRefs}</div>
-      ${row.retiredRefsTruncated ? '<p class="small quiet">The record layer truncated this list of retired references.</p>' : ""}
+      ${row.retiredRefsTruncated ? '<p class="small quiet">More previous references available</p>' : ""}
       ${row.allRetired ? '<p class="small quiet">Every record behind this name is retired.</p>' : ""}
     </div>
     <div class="stack-end">${open}</div>
@@ -129,7 +130,7 @@ function renderRetired() {
     // The producer's own sentence, printed rather than paraphrased.
     `<p class="small">${escapeHtml(summary.note)}</p>`,
     summary.retiredParties > 0 ? `<p class="small">${escapeHtml(String(summary.retiredParties))} matched names are retired aliases and open nothing.</p>` : "",
-    summary.organizations.map((row) => `<p class="small">${escapeHtml(row.name)}: ${escapeHtml(String(row.retiredAliases))} retired aliases${row.truncated ? ", list truncated by the record layer" : ""}${row.allRetired ? ", every record behind the name retired" : ""}.</p>`).join(""),
+    summary.organizations.map((row) => `<p class="small">${escapeHtml(row.name)}: ${escapeHtml(String(row.retiredAliases))} retired aliases${row.truncated ? ", additional aliases omitted" : ""}${row.allRetired ? ", every record behind the name retired" : ""}.</p>`).join(""),
   ].join("");
 }
 
@@ -149,7 +150,7 @@ function renderState(phase) {
       phase === "partial" ? notes.map((note) => `<p class="small">${escapeHtml(note)}</p>`).join("") : "",
       // Retry is offered by ONE state. A no-match has nothing to retry: the
       // record layer answered, and it answered with nothing.
-      copy.retry ? '<button class="btn" type="button" id="searchRetry">Retry</button>' : "",
+      copy.retry ? '<button class="btn" type="button" id="searchRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
     ].join("");
   }
   const live = $("searchLive");
@@ -351,6 +352,7 @@ export function mountSearch({ client: searchClient, storage: storageImpl } = {})
   }
   wire();
   const address = restoreFromAddress({ reread: true });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => view.query ? read({ push: false }) : undefined });
   return { view, address };
 }
 

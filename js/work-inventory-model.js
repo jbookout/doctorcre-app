@@ -45,9 +45,9 @@ export function coverageOrbState(state) {
 }
 
 export const COVERAGE_COPY = Object.freeze({
-  complete: "Every row this source holds was enumerated.",
-  partial: "This source answered, but not completely — the reason is stated.",
-  unavailable: "This source could not be read. Its work is missing from the list below.",
+  complete: "Complete",
+  partial: "Partly available",
+  unavailable: "Unavailable",
 });
 
 const SOURCE_KEYS = ["source", "source_ref", "observed_at", "valid_until", "freshness", "correlation_id", "safe_explanation"];

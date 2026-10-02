@@ -37,6 +37,6 @@ test('the shell does not call fixture connectivity live', async () => {
   const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
   assert.match(html, /id="deploymentBadge"/);
   assert.match(html, /Checking connection/);
-  assert.match(app, /Fixture ready/);
-  assert.match(app, /Live sync/);
+  assert.doesNotMatch(app, /Fixture ready|Live sync/);
+  assert.match(app, /deploymentIdentity/);
 });

@@ -40,7 +40,7 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.doesNotMatch(js, /api\/v1\/workspace\/command-center/);
   assert.match(js, /AUTHENTICATION_REQUIRED/);
   assert.match(js, /observed_at/);
-  assert.match(js, /displayedFreshness\(source\)/);
+  assert.match(js, /updatedLabel\(source\?\.observed_at\)/);
   assert.doesNotMatch(js, /escapeHtml\(source\.freshness\)/);
   assert.match(js, /\.catch/);
   assert.doesNotMatch(html, /System online/);
@@ -63,7 +63,7 @@ test("Home asset is a dark, visual, responsive workstation with honest states", 
   assert.match(dealJs, /params\.get\('owner'\) === 'me'/);
   assert.match(html, /id="appShell"/);
   const sharedNavigation = appShellMarkup("/");
-  for (const label of ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room", "Work Requests", "Agent Room"]) {
+  for (const label of ["Home", "Leads", "Tours", "Deals", "Clients", "Vendors", "Control Room", "Work Requests", "Agent Room"]) {
     assert.match(sharedNavigation, new RegExp(`>${label}<`), `shared navigation is missing ${label}`);
   }
   assert.doesNotMatch(sharedNavigation, />Queue<\/a>/);
@@ -130,7 +130,7 @@ test("Home distinguishes loading, refreshing, stale and unavailable and cannot b
   assert.match(modelJs, /export function freshnessSignature/);
   assert.match(modelJs, /export function displayedFreshness/);
   // Retry is an explicit read, and focus survives a repaint — including the repaint that removes Retry.
-  assert.match(js, /id="retryHome"/);
+  assert.match(js, /mountAutoRefresh/);
   assert.match(js, /load\("retry"\)/);
   assert.match(js, /document\.activeElement/);
   assert.match(js, /card\.querySelector\("#homePrimaryAction"\)/);
@@ -153,7 +153,7 @@ test("Home has one first-region primary action, one workspace directory, and sec
   assert.equal((primaryRegion.match(/data-primary-action/g) || []).length, 1);
   assert.match(primaryRegion, /id="homePrimaryAction"/);
   assert.doesNotMatch(html, /glance-card|Where to go|Open the owning surface/);
-  assert.equal((html.match(/aria-label="The seven sections"/g) || []).length, 1);
+  assert.equal((html.match(/aria-label="Workspace"/g) || []).length, 1);
   assert.ok(html.indexOf("data-home-primary-region") < html.indexOf("id=\"commandCenterVisual\""));
 });
 
@@ -172,19 +172,19 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
     const nav = appShellMarkup(route);
     assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length, `${route}: same destinations`);
   }
-  assert.deepEqual(navigationItems.slice(0, 7).map(({ label }) => label),
-    ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room"]);
+  assert.deepEqual(navigationItems.filter(item => !item.group).map(({ label }) => label),
+    ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room"]);
 });
 
-test("Home opens the seven owning sections and People offers both directories", async () => {
+test("Home opens current owning sections and People offers both directories", async () => {
   const home = await readFile(`${ROOT}/workspace.html`, "utf8");
   const people = await readFile(`${ROOT}/business.html`, "utf8");
-  for (const route of ["/", "/leads", "/tours", "/deals", "/clients", "/tasks", "/control-room"]) {
+  for (const route of ["/", "/leads", "/tours", "/deals", "/clients", "/control-room"]) {
     assert.match(home, new RegExp(`href="${route}"`), `${route}: Home section link`);
   }
   assert.match(people, /id="appShell"/);
-  assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">People<\/a>/);
-  assert.match(appShellMarkup("/vendors"), /href="\/clients" aria-current="page">People<\/a>/);
+  assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">Clients<\/a>/);
+  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">Vendors<\/a>/);
 });
 
 test("More keeps Updates, Operations and Reference in stable groups", () => {
@@ -246,7 +246,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /id="recordTitle" tabindex="-1"/);
   // The read is the server's; nothing is seeded, faked or counted here.
   assert.match(js, /const key = listRequestUrl\(query\)/);
-  assert.match(js, /fetch\(recordRequestUrl\(view\.dataset, id\)/);
+  assert.match(js, /fetchRead\(recordRequestUrl\(view\.dataset, id\)/);
   assert.match(modelJs, /API_PREFIX = "\/api\/v1\/business\/"/);
   assert.doesNotMatch(js, /const (rows|records|seed|fixture|sampleData)\s*=\s*\[/);
   assert.doesNotMatch(js, /Math\.random/);
@@ -298,9 +298,9 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(modelJs, /Not in the active pipeline/);
   assert.match(modelJs, /Pipeline not set/);
   assert.match(modelJs, /PIPELINE_FILTERS = \["any", "active", "other", "unknown"\]/);
-  // One plain sentence still carries the provenance the requirement is about.
-  assert.match(html, /not proof that an agreement was signed or that anyone was put on the work/);
-  assert.match(html, /Not recorded/);
+  // Labels carry the status; the list needs no provenance instructions.
+  assert.doesNotMatch(html, /not proof that an agreement was signed|Every list says where it came from/);
+  assert.match(modelJs, /Not recorded/);
   // Keyboard, touch and reduced motion.
   assert.match(js, /event\.key !== "Escape"/);
   assert.match(js, /ArrowLeft/);

@@ -40,7 +40,7 @@ test('finding 3: late action receipt stays with its operation and never modifies
 test('finding 4: definite refusal and pre-write validation allow correction and fresh recovery',async t=>{
  let refused=true;const h=await setup(t,{write:()=>{if(refused)throw Object.assign(new Error('Conflict'),{payload:{error:'version_conflict'}});return {ok:true,message:'Source updated'};}});
  h.open('a');h.submit('');await settle();assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').disabled,false);assert.equal(h.writes.length,0);
- h.submit('First progress');await settle();assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').disabled,false);assert.match(h.d.querySelector('.triage-status').textContent,/version_conflict/);
+ h.submit('First progress');await settle();assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').disabled,false);assert.match(h.d.querySelector('.triage-status').textContent,/Version conflict/);
  refused=false;h.submit('Corrected progress');await settle();assert.equal(h.calls.filter(c=>c.id==='a').length,3);assert.equal(h.writes.length,2);
 });
 test('finding 5: successful Close refreshes despite restored card focus',async t=>{
@@ -53,8 +53,8 @@ test('finding 6: filter transition invalidates old query cursor and blocks appen
  next.resolve(envelope([row('new')]));await settle();assert.equal(h.d.querySelector('.work-card').dataset.workId,'new');
 });
 test('finding 7: background polling preserves loaded library pages',async t=>{
- const h=await setup(t,{read:args=>envelope(args.live_library?[row(args.cursor?'older':'recent')]:[row()],{next_cursor:args.live_library&&!args.cursor?'library-page-2':null})});h.click('#live-library');await settle();h.click('#system-work-more');await settle();assert.equal(h.d.querySelectorAll('.work-card').length,2);
- h.d.querySelector('#live-library').focus();await h.board.refresh();await settle();assert.equal(h.d.querySelectorAll('.work-card').length,2);
+ let revision=1;const h=await setup(t,{read:args=>envelope(args.live_library?[{...row(args.cursor?'older':'recent'),title:`Library revision ${revision}`}]:[row()],{next_cursor:args.live_library&&!args.cursor?'library-page-2':null})});h.click('#live-library');await settle();h.click('#system-work-more');await settle();assert.equal(h.d.querySelectorAll('.work-card').length,2);
+ revision=2;h.d.querySelector('#live-library').focus();await h.board.refresh();await settle();assert.equal(h.d.querySelectorAll('.work-card').length,2);assert.ok([...h.d.querySelectorAll('.work-card h4')].every(card=>card.textContent==='Library revision 2'));assert.ok(h.calls.filter(call=>call.cursor==='library-page-2').length>=2);
 });
 test('finding 8: focus entering cards during background read survives response',async t=>{
  let slow=false;const next=deferred();const h=await setup(t,{read:args=>slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()])});slow=true;h.d.querySelector('#live-library').focus();const pending=h.board.refresh();const link=h.d.querySelector('.work-card a');link.focus();next.resolve(envelope([row()]));await pending;assert.equal(h.d.activeElement,link);assert.equal(link.isConnected,true);
@@ -78,7 +78,7 @@ test('R1: focus-deferred background refresh retains the displayed page continuat
 });
 test('finding 9: Live coverage and freshness remain independently visible',async t=>{
  const h=await setup(t,{read:args=>args.live_library?envelope([],{census_complete:false,as_of:'2026-09-01T12:00:00Z',coverage:[{kind:'pull_request',state:'unavailable',reason:'GitHub unavailable'}]}):envelope()});
- const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/Live.*Incomplete/i);assert.match(text,/GitHub unavailable/);assert.match(text,/2026-09-01/);
+ const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/Live.*Incomplete/i);assert.match(text,/Pull request unavailable/);assert.ok([...h.d.querySelectorAll('#system-work-coverage time')].some(time=>time.title.includes('2026-09-01')));
 });
 test('finding 10: source stages and terminal pulse preserve pipeline contract',()=>{
  for(const state of ['queued','running','review','blocked','failed']){const item={...row(),kind:'progress_task',state};const expected=taskStage({status:state});assert.equal(systemPipeline([item],[]).stages.find(s=>s.tasks.length).id,expected);}
@@ -91,8 +91,16 @@ test('findings 2 and 3: reopening a pending action cannot replace it and receive
 });
 test('finding 9: pinned producer source metadata and per-source observation age are shown',async t=>{
  const h=await setup(t,{read:args=>envelope(args.live_library?[]:[row()],{source:{observed_at:'2026-10-01T12:00:00Z',freshness:'unknown'},coverage:[{kind:'pull_request',state:'unavailable',observed_at:'2026-09-01T12:00:00Z',reason:'github_cache_missing_stale_or_incomplete'}],census_complete:false})});
- const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/2026-10-01/);assert.match(text,/unknown/);assert.match(text,/2026-09-01/);
+ const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/Update time unavailable/);const clocks=[...h.d.querySelectorAll('#system-work-coverage time')];for(const date of ['2026-10-01','2026-09-01'])assert.ok(clocks.some(time=>time.title.includes(date)));assert.doesNotMatch(text,/source|census|github_cache|Read /i);
 });
 test('finding 2: acknowledged receipt allows a later independent progress update',async t=>{
  const h=await setup(t);h.open('a');h.submit('First progress');await settle();h.click('[data-receipt-close]');await settle();h.open('a');h.submit('Second progress');await settle();assert.equal(h.writes.length,2);assert.notEqual(h.writes[0].args.idempotency_key,h.writes[1].args.idempotency_key);assert.equal(h.writes[1].args.body,'Second progress');
+});
+
+test('W1: background work updates recover without prompting and do not overlap',async t=>{
+ let fail=false,slow=false;const next=deferred();const h=await setup(t,{read:args=>{if(fail)throw new Error('Synthetic offline');return slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()]);}});
+ fail=true;await h.board.refresh();assert.equal(h.d.querySelector('#system-work-error').textContent,'System work updates unavailable.');
+ fail=false;slow=true;const pending=h.board.refresh();const count=h.calls.length;await h.board.refresh();assert.equal(h.calls.length,count);
+ next.resolve(envelope([{...row(),title:'Automatically updated'}]));await pending;assert.equal(h.d.querySelector('#system-work-error').hidden,true);assert.equal(h.d.querySelector('.work-card h4').textContent,'Automatically updated');assert.equal(h.writes.length,0);
+ assert.equal(h.d.querySelector('#system-work-coverage button').getAttribute('aria-label'),'Refresh');assert.doesNotMatch(h.d.querySelector('#system-work-coverage').textContent,/source|census|items|read|retry/i);
 });

@@ -6,15 +6,11 @@ function evidenceGroup(title, state, source) {
   const group = title === 'Threads' ? 'threads' : 'meetings';
   if (state?.state !== 'ready') {
     const loading = state?.state === 'loading';
-    const label = loading ? `Reading ${title.toLowerCase()}…` : title === 'Threads' ? 'Threads unavailable' : 'Meeting evidence unavailable';
-    const reason = state?.reason === 'adapter_unavailable' ? 'The local correspondence adapter is not available.'
-      : state?.reason === 'thread_coverage_unavailable' ? 'Some correspondence on this record has missing or invalid provenance.'
-      : state?.reason === 'native_identity_unavailable' ? 'Thread evidence is not linked to this record yet.'
-      : title === 'Threads' ? 'The governed read did not return verified thread evidence.' : 'This record has no sourced meeting evidence available in this read.';
-    return `<div class="evidence-state" data-evidence-group="${group}" data-state="${loading ? 'loading' : 'unavailable'}"><h4>${label}</h4>${loading ? '' : `<p>${reason}</p>`}<p class="evidence-source">Source: ${source}</p></div>`;
+    const label = loading ? `Loading ${title.toLowerCase()}…` : title === 'Threads' ? 'Threads unavailable' : 'Meeting evidence unavailable';
+    return `<div class="evidence-state" data-evidence-group="${group}" data-state="${loading ? 'loading' : 'unavailable'}"><h4>${label}</h4></div>`;
   }
   const items = [...state.items].sort((a, b) => Date.parse(b.when) - Date.parse(a.when));
-  return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${items.map(item => `<li class="evidence-item" data-kind="${esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(when(item.when))}</time></summary><p>${item.kind === 'thread' ? 'Metadata read receipt; mailbox content remains at its source.' : 'Meeting recorded in this deal’s activity.'}</p></details><p class="evidence-source">Source: ${esc(item.source)}</p></li>`).join('')}</ol></div>`;
+  return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${items.map(item => `<li class="evidence-item" data-kind="${esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(when(item.when))}</time></summary><p>${item.kind === 'thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
 }
 export function renderEvidence(view = {}) {
   return `<section class="correspondence-evidence" aria-label="Evidence" aria-live="polite"><h3>Evidence</h3>${evidenceGroup('Threads', view.threads, 'CARR governed correspondence')}${evidenceGroup('Meetings', view.meetings, 'CARR deal activity')}</section>`;

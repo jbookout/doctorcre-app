@@ -1,3 +1,4 @@
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Clients and Vendors: the browser half of the Journey 1 business read.
 //
 // THE URL IS THE VIEW'S MEMORY. Search text, every filter, the sort, the page
@@ -137,11 +138,7 @@ function setHealth(state) {
 }
 
 /** Where it came from and when, without naming a table. */
-function sourceLabel(source, dataset) {
-  if (!source) return "Source unknown";
-  const current = displayedFreshness(source, dataset) === "fresh";
-  return `${SOURCE_LABEL[dataset]} · checked ${formatMoment(source.observed_at)}${current ? "" : " · not current"}`;
-}
+function sourceLabel(source) { return updatedLabel(source?.observed_at); }
 
 // ------------------------------------------------------------- navigation
 
@@ -298,7 +295,7 @@ function renderChips() {
 function renderNotices(notices) {
   if (!dom.notices) return;
   dom.notices.innerHTML = notices.map((notice) =>
-    `<div class="notice notice-${escapeHtml(notice.kind)}"><p class="notice-title">${escapeHtml(notice.title)}</p><p class="notice-copy">${escapeHtml(notice.copy)}</p>${notice.retry ? '<button type="button" class="action secondary-action" data-retry="list">Check again</button>' : ""}</div>`).join("");
+    `<div class="notice notice-${escapeHtml(notice.kind)}"><p class="notice-title">${escapeHtml(notice.title)}</p><p class="notice-copy">${escapeHtml(notice.copy)}</p>${notice.retry ? '<button type="button" class="action secondary-action" data-retry="list" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : ""}</div>`).join("");
 }
 
 // --------------------------------------------------------------- the list
@@ -391,7 +388,7 @@ function renderList() {
     renderNotices([]);
     paintList(`<li class="record-empty"><p class="empty-title">${signedOut ? "Your session has ended" : "This did not load"}</p><p class="empty-copy">${escapeHtml(refusalCopy(list.code || (signedOut ? "AUTHENTICATION_REQUIRED" : "INTERNAL_ERROR")))}</p>${signedOut
       ? `<a class="action primary-action" href="/auth/login?return_to=${encodeURIComponent(currentHref())}">Sign in</a>`
-      : '<button type="button" class="action secondary-action" data-retry="list">Check again</button>'}</li>`);
+      : '<button type="button" class="action secondary-action" data-retry="list" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>'}</li>`);
     return;
   }
 
@@ -418,7 +415,7 @@ function renderList() {
   const notices = [];
   if (stale) {
     notices.push({ kind: "stale", title: "Checked a while ago",
-      copy: "This list is no longer current. Check again before acting on it.", retry: true });
+      copy: "Updating…", retry: true });
   }
   if (refreshing) {
     notices.push({ kind: "refreshing", title: "Refreshing", copy: "Showing the previous list while a fresh one loads." });
@@ -528,7 +525,7 @@ function renderRecordPanel() {
   }
   if (record.status !== "ready" || !record.payload) {
     if (dom.panelTitle) dom.panelTitle.textContent = record.code === "RECORD_NOT_FOUND" ? "Not here" : "This did not load";
-    if (dom.panelBody) dom.panelBody.innerHTML = `<p class="attention-copy">${escapeHtml(refusalCopy(record.code))}</p><button type="button" class="action secondary-action" data-retry="record">Check again</button>`;
+    if (dom.panelBody) dom.panelBody.innerHTML = `<p class="attention-copy">${escapeHtml(refusalCopy(record.code))}</p><button type="button" class="action secondary-action" data-retry="record" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>`;
     return;
   }
   const payload = record.payload;
@@ -541,7 +538,7 @@ function renderRecordPanel() {
     `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.map((field) =>
       `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.text)}${field.known && !field.resolved ? '<span class="unresolved-flag">code with no name</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `${current ? "" : '<div class="notice notice-stale"><p class="notice-title">Checked a while ago</p><p class="notice-copy">Check again before acting on it.</p><button type="button" class="action secondary-action" data-retry="record">Check again</button></div>'}<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span class="tone tone-plain${kind.known ? "" : " unknown"}">${escapeHtml(kind.text)}</span></p><p class="record-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</p><p class="record-note">${escapeHtml(payload.recorded_field_note)}</p>${payload.partial ? `<div class="notice notice-partial"><p class="notice-title">Code with no name</p><p class="notice-copy">${escapeHtml(payload.partial.note)}</p></div>` : ""}${sections}${activityHtml(payload.record.id)}<p class="record-note">Not shown here: ${escapeHtml(payload.not_in_this_read.join(", "))}.</p><p class="source">${escapeHtml(sourceLabel(payload.source, dataset))}</p>`;
+    dom.panelBody.innerHTML = `${current ? "" : '<div class="notice notice-stale"><p class="notice-title">Checked a while ago</p><p class="notice-copy">Updating…</p><button type="button" class="action secondary-action" data-retry="record" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button></div>'}<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span class="tone tone-plain${kind.known ? "" : " unknown"}">${escapeHtml(kind.text)}</span></p><p class="record-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</p><p class="record-note">${escapeHtml(payload.recorded_field_note)}</p>${payload.partial ? `<div class="notice notice-partial"><p class="notice-title">Code with no name</p><p class="notice-copy">${escapeHtml(payload.partial.note)}</p></div>` : ""}${sections}${activityHtml(payload.record.id)}<p class="record-note">Not shown here: ${escapeHtml(payload.not_in_this_read.join(", "))}.</p><p class="source">${escapeHtml(sourceLabel(payload.source, dataset))}</p>`;
     // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
     // refuses a `style` attribute written into markup, so the activity-row
     // template above only emits `data-stagger-ms`, and this reads it back.
@@ -561,7 +558,7 @@ function activityHtml(recordId) {
   const body = state.state === "ready"
     ? `<ol class="activity-list">${state.rows.map((row, index) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}" data-stagger-ms="${Math.min(index * 30, 540)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
     : `<p class="record-note activity-note" data-state="${escapeHtml(state.state)}">${escapeHtml(activityCopy(state))}</p>`;
-  return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note">Source: find-and-catch-up, shown only when its one match is this record's own reference.</p></section>`;
+  return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note"></p></section>`;
 }
 
 /**
@@ -620,7 +617,7 @@ async function loadList(reason = "initial") {
   }
   renderList();
   try {
-    const response = await fetch(key, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(key, { headers: { accept: "application/json" }, cache: "no-store" });
     // THE SIGN-OUT IS HEARD EVEN WHEN THE ANSWER IS STALE. A superseded read is
     // not allowed to paint its DATA, but it still learned something true about
     // this session, and dropping that would leave records on screen that the
@@ -683,7 +680,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     renderRecordPanel();
   };
   try {
-    const response = await fetch(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
     // A record read is as authoritative about the session as a list read, and
     // it stays authoritative after the panel closes or another record is
     // opened. The expiry check runs before the selection and sequence guards
@@ -922,6 +919,7 @@ function start() {
   if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   wireControls();
   watchExpiry();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
   mountBadge();

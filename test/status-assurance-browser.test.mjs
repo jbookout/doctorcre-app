@@ -43,7 +43,7 @@ test('390px and iPad Status render server scoped state and evidence age with dar
     assert.equal(await covered.locator('[data-layer]').count(), 6);
     assert.ok((await covered.locator('[data-layer]').allTextContents()).every(text => text.includes('5m old')));
     assert.deepEqual(calls.find(call => call.name === 'read-assurance-health'), { name: 'read-assurance-health', arguments: { scope } });
-    for (const [id, reason] of [['v5-f08', /does not cover backup or restore/], ['v5-f07', /does not cover supervisor or job/]]) {
+    for (const [id, reason] of [['v5-f08', /Backup status unavailable/], ['v5-f07', /Job status unavailable/]]) {
       const row = page.locator(`[data-gap="${id}"]`);
       assert.equal(await row.getAttribute('data-state'), 'unknown'); assert.match(await row.textContent(), reason);
     }

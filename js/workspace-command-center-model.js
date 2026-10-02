@@ -140,12 +140,12 @@ export function homeCardCopy(summary) {
   const label = SCOPE_LABEL[summary.scope] || "Workspace";
   const deals = (value) => `${value} ${value === 1 ? "deal" : "deals"}`;
   if (summary.state === "stale") {
-    return { eyebrow: `${label} · stale read`, title: "Read needs verification", count: "—", countLabel: "count withheld",
-      copy: "This canonical read is older than its freshness window. Retry the read or open the owning Deal Room view before acting." };
+    return { eyebrow: `${label} · updating`, title: "Updating…", count: "—", countLabel: "count withheld",
+      copy: "Updates resume automatically" };
   }
   if (summary.state === "unavailable") {
     return { eyebrow: `${label} · unavailable`, title: "Progress could not be checked", count: "—", countLabel: "count withheld",
-      copy: "Home cannot verify the current read, so no count is shown as current." };
+      copy: "Home temporarily unavailable" };
   }
   // Two independent clauses: the personal active count is not a subset of the team flagged total.
   const mineCountLabel = `${deals(summary.active)} active and owned by you · ${summary.teamFlagged} flagged team-wide`;
@@ -189,7 +189,7 @@ export function freshnessSignature(payload, scope = DEFAULT_SCOPE, now = () => D
 }
 
 export function viewerWorkspaceLabel(viewer) {
-  return viewer === "joe" ? "Joe’s workspace" : viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
+  return viewer === "joe" ? "Joe's Workspace" : viewer === "dell" ? "Dell's Workspace" : "Partner workspace";
 }
 
 export function scopeNote(scope) {

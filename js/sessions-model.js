@@ -182,8 +182,7 @@ export function listState(payload) {
   const banner = filtered
     ? {
       state: "filtered",
-      text: "Permission filtering is on for this answer: the record layer removed sessions you may not see "
-        + "before it counted them.",
+      text: "Available sessions",
     }
     : null;
   if (rows > 0) return { state: "rows", banner, message: null };
@@ -262,9 +261,7 @@ export function lineageSummary(rows) {
   return {
     allUnrecorded: true,
     count: unrecorded,
-    text: `No session on this page has recorded lineage: all ${list.length} carry parent_known false, so retry, `
-      + "replacement and resume cannot be told apart for any of them. That is the record layer's state today, "
-      + "not a filter on this page.",
+    text: "Earlier session history unavailable",
   };
 }
 
@@ -292,8 +289,7 @@ export function hostState(row, options = {}) {
     return {
       state: "mismatch_no_host_id",
       open: false,
-      text: "Host recorded as supported but no host id: the record layer says a native host exists and does not "
-        + "say which one, so nothing here can name a window to open.",
+      text: "Session window unavailable",
       hostId: null,
     };
   }

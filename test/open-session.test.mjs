@@ -146,10 +146,10 @@ test('every Open surface retires the clicked anchor and gates cached re-renders'
 
 test('each Open surface reads sponsor-scoped checkpoint proof, including on browser return', () => {
   const live = readFileSync(new URL('../js/live-client.js', import.meta.url), 'utf8');
-  assert.match(live, /codexSessions\(\) \{ return rpc\('list-my-codex-sessions', \{\}\); \}/);
+  assert.match(live, /codexSessions\(_args = \{\}, \{ signal \} = \{\}\) \{ return rpc\('list-my-codex-sessions', \{\}, signal\); \}/);
   for (const file of ['sessions.js', 'model-room.js', 'conversations.js']) {
     const source = readFileSync(new URL(`../js/${file}`, import.meta.url), 'utf8');
-    assert.ok((source.match(/client\.codexSessions\(/g) || []).length >= 2,
+    assert.ok((source.match(/client\.codexSessions\(|readClient\("codexSessions"/g) || []).length >= 2,
       `${file} needs fresh checkpoint proof for render and reconciliation`);
   }
 });

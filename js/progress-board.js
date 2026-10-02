@@ -943,14 +943,12 @@ export function mountBoard(deps = {}) {
         : win.navigator?.onLine === false ? "offline" : "unavailable";
     let message;
     if (status === 401 || status === 403) {
-      message = status === 401 ? "Your session ended. Sign in to read this board." : "You do not have access to this board.";
+      message = status === 401 ? "Sign-in required" : "You do not have access to this board.";
       if (status === 401) { ++readSeq; clearBoard(state); clearDirectory(); }
       else if (target === "board") clearBoard(state);
       else clearDirectory();
     } else {
-      const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "The read failed.";
-      const retained = target === "board" ? Boolean(currentView) : Boolean(directorySignature);
-      message = `${label} ${retained ? "Showing last-known publication." : "Publication unavailable."} Retry to read again.`;
+      message = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "Progress temporarily unavailable.";
     }
     if (target === "directory") {
       const error = byId("directory-error");
@@ -961,7 +959,7 @@ export function mountBoard(deps = {}) {
       setError(message);
       const meta = byId("board-meta");
       meta.setAttribute("data-read-state", state);
-      if (currentView) meta.textContent = `Last-known publication ${formatTime(currentView.updated_at)} · Version ${currentView.version}`;
+      if (currentView) meta.textContent = `Updated ${formatTime(currentView.updated_at)} ↻`;
     }
     if (status === 401) byId("board-sign-in").hidden = false;
     byId("board-retry").hidden = false;
@@ -1030,8 +1028,8 @@ export function mountBoard(deps = {}) {
   function start() {
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
-    refresh().catch(() => setError("The board could not be loaded. Retry to read again."));
-    schedule(() => refresh().catch(() => setError("The board could not be refreshed.")), REFRESH_MS);
+    refresh().catch(() => setError("Progress temporarily unavailable."));
+    schedule(() => refresh().catch(() => setError("Progress temporarily unavailable.")), REFRESH_MS);
     schedule(tick, TICK_MS);
   }
 

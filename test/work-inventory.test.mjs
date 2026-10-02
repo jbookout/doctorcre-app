@@ -240,7 +240,7 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
 
   // Route and contract.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.15.0", "an additive route is a minor version of the route contract");
+  assert.equal(routes.version, "1.17.0", "an additive route is a minor version of the route contract");
   assert.ok(carr.http_surfaces.includes("/api/v1/work-inventory"), "the consumed path belongs in the pinned interface");
 
   // The page is listed everywhere a page has to be listed.
@@ -255,8 +255,8 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   assert.match(html, /\/css\/system\.css/);
   // One icon button per preference: filled is on, hollow is off, and the only
   // words are the accessible label and the tooltip (2026-09-16 review).
-  assert.match(html, /data-pref="theme" data-on="light" data-off="dark"/);
-  assert.match(html, /data-pref="motion" data-on="reduced" data-off="full"/);
+  assert.match(html, /src="\/js\/app-shell\.js"/);
+  assert.doesNotMatch(html, /data-pref="motion"/);
   assert.doesNotMatch(html, /draggable="true"|ondragstart/, "no drag-only path exists on this surface");
   assert.doesNotMatch(js, /addEventListener\("(?:drag|mouseover)/);
   for (const id of ["kindChips", "statusFilter", "coverageStrip", "kindGroups", "loadMore", "inventoryState"]) {
@@ -291,8 +291,8 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   }
   assert.match(js, /cache: "no-store"/);
   assert.match(js, /view\.payload = null;/);
-  assert.match(js, /safe_explanation/, "an incomplete census shows the census's own explanation");
-  assert.match(js, /incomplete, not empty/i);
+  assert.match(js, /updatedLabel\(payload\.source\.observed_at\)/, "the census displays its update timestamp");
+  assert.match(js, /Partly available/);
 
   // The fixture server really serves the census, with all six kinds and a second page.
   assert.match(serveScript, /\/api\/v1\/work-inventory/);

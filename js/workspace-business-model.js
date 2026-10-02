@@ -545,9 +545,9 @@ export const REFUSAL_COPY = {
   DEPENDENCY_NOT_PROVISIONED: "This workspace has not been given access to these records yet, so nothing was read.",
   // The installed service worker answers an unreachable read with this exact
   // code rather than a cached list, so it is a reachable state here.
-  offline: "You are offline, so nothing was read. Nothing here is filled in from an older answer.",
+  offline: "You are offline.",
   METHOD_NOT_ALLOWED: "This page only reads records.",
-  INTERNAL_ERROR: "The read did not finish. Nothing here is filled in from an older answer.",
+  INTERNAL_ERROR: "Temporarily unavailable",
 };
 
 export function refusalCopy(code) {
