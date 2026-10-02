@@ -172,13 +172,13 @@ export function createLiveClient(opts = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
         ...(options.account_client_id ? { account_client_id: options.account_client_id } : {}),
-      });
+      }, options.signal);
       selfActor = board.actor || selfActor;
       return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals };
     },
 
-    async getDeal(dealId) {
-      const page = await rpc('get-deal-room', { deal: dealId });
+    async getDeal(dealId, { signal } = {}) {
+      const page = await rpc('get-deal-room', { deal: dealId }, signal);
       const { thread = [], critical_dates = [], events = [], deal_id, ...fields } = page;
       // Canonical action fields win over historical notes. The newest note
       // is only a fallback for older producers without an action field.
@@ -491,12 +491,13 @@ export function createLiveClient(opts = {}) {
     // arguments at all and refuse any field, so nothing is defaulted in here:
     // a tenant, an owner or a filter invented by the browser is exactly what
     // those verbs exist to refuse.
-    async incidentBoard(args = {}) { return rpc('incident-board', args); },
-    async currentWorkItem() { return rpc('current-work-item', {}); },
-    async readResourceDashboard() { return rpc('read-resource-dashboard', {}); },
-    async currentWorkRequests() {
+    async incidentBoard(args = {}, { signal } = {}) { return rpc('incident-board', args, signal); },
+    async currentWorkItem({ signal } = {}) { return rpc('current-work-item', {}, signal); },
+    async readResourceDashboard({ signal } = {}) { return rpc('read-resource-dashboard', {}, signal); },
+    async currentWorkRequests({ signal } = {}) {
       const res = await fetchReadImpl('/api/system-work/current', {
         credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store',
+        ...(signal ? { signal } : {}),
       });
       if (!res.ok) {
         const error = new Error(`live current work requests -> HTTP ${res.status}`);
@@ -525,7 +526,7 @@ export function createLiveClient(opts = {}) {
     // refuses any field, so none is sent. It grants no authority: the decisions
     // it lists are taken with their own partner verbs, none of which is pinned.
     async governanceQueue() { return rpc('governance-queue', {}); },
-    async scheduleBoard() { return rpc('schedule-board', {}); },
+    async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 
     // ---------------------------------------------------- incident page (C14)
     // One read and one write, passed through untouched. The write's arguments

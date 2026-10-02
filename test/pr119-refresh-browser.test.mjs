@@ -161,14 +161,17 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
  assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
 });
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
- const {page,errors}=await open(t);let held=null,count=0;
- const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json',import.meta.url))).toString('base64')}`});
- await page.route('**/api/v1/command-center',async route=>{if(++count===2){held=route;return;}await route.fulfill({json:await fixture.commandCenter()});});
- await page.goto(origin+'/');await page.waitForFunction(()=>document.querySelector('#dealAttention')?.getAttribute('aria-busy')!=='true');
- await online(page);await page.waitForFunction(()=>document.querySelector('#dealAttention')?.getAttribute('aria-busy')==='true');
- await page.clock.fastForward(120_000);await online(page);await page.waitForFunction(()=>document.querySelector('#dealAttention')?.getAttribute('aria-busy')!=='true');
- assert.ok(count>=3);await held.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}).catch(()=>{});
- assert.notEqual(await page.locator('#dealAttention').getAttribute('aria-busy'),'true');assert.equal(await page.locator('#retryHome').count(),0);assert.deepEqual(errors,[]);
+ const hooks=`const read=c.getBoard;window.homeReads=0;c.getBoard=async args=>{const p=await read(args);if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
+ const {page,errors}=await open(t,{clientHooks:hooks});
+ await page.goto(origin+'/');await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ const expected=await page.locator('#dealCounts').textContent();
+ await online(page);await page.waitForFunction(()=>window.homeWaiting);
+ await page.clock.fastForward(120_000);await online(page);
+ await page.waitForFunction(expected=>window.homeReads>=3 && document.querySelector('#dealCounts')?.textContent===expected,expected);
+ await page.evaluate(()=>window.releaseHome());
+ await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+ assert.equal(await page.locator('#dealCounts').textContent(),expected);
+ assert.equal(await page.locator('#retryHome').count(),0);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 10: retained Act caller reaches a supported work lookup and create flow',async t=>{
  const {page,errors}=await open(t);await page.goto(origin+'/doc-chats');
