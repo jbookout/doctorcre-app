@@ -57,6 +57,18 @@ test('account and Doc entry points, filters, date range, wide evidence popup and
   const doc=await readFile(new URL('js/doc-dock.js',root),'utf8'); assert.match(doc,/link.href = "\/doc-activity"/);
   assert.match(await readFile(new URL('conversations.html',root),'utf8'),/href="\/doc-activity"/);
 });
+test('an invalid date range is labelled and never sent to the server',async t=>{
+  const {page,calls}=await open(t);
+  await page.locator('[name=to]').fill('2026-10-01');
+  await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
+  const reads=calls.filter(c=>c.name==='read-doc-activity').length;
+  await page.locator('[name=from]').fill('2026-10-03');
+  await page.getByText('Invalid date range',{exact:true}).waitFor();
+  assert.equal(calls.filter(c=>c.name==='read-doc-activity').length,reads);
+  await page.locator('[name=from]').fill('2026-10-01');
+  await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
+  assert.equal(await page.locator('.activity-row').count(),5);
+});
 test('unknown undo outcome retains exact request for explicit check; polling never repeats writes',async t=>{
   const {page,calls}=await open(t,{undoFailure:true});
   await page.locator('[data-undo]').first().click(); await page.getByRole('button',{name:'Check undo',exact:true}).waitFor();

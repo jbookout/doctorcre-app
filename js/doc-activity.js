@@ -62,7 +62,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs = 
     const seq = ++view.sequence;
     try {
       const values = Object.fromEntries(new window.FormData(form)), args = activityFilters(values);
-      if (args.since && args.until && Date.parse(args.since) >= Date.parse(args.until)) { message('Choose a valid date range'); return; }
+      if (args.since && args.until && Date.parse(args.since) >= Date.parse(args.until)) { message('Invalid date range'); return; }
       const entries = [], cursors = new Set(); let answer, cursor = null;
       for (let page = 0; page < view.pages; page++) {
         answer = await readWithDeadline(current => client.readDocActivity({ ...args, ...(cursor ? { cursor } : {}) }, { signal: current }), { signal });
