@@ -1147,7 +1147,7 @@ async function openDeal(dealId, { background = false } = {}) {
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
       <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.market_agent || actorName(deal.owner))}</p></div>
       <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
-      <section class="detail-section"><h3>Jev deal reading</h3><p class="subhead"></p><button type="button" data-jev-deal="${esc(deal.id)}">Read this deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
+      <section class="detail-section"><h3>Insights</h3><button type="button" class="secondary" data-jev-deal="${esc(deal.id)}">Review deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
       <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Premises</h3><div class="detail-list">${detailRows(detail.premises, (p) => `<div class="detail-row"><b>${esc(p.label)}</b><small>${esc([p.address,p.suite,p.city,p.state].filter(Boolean).join(' · '))}${p.area_amount ? ` · ${esc(p.area_amount)} ${esc(p.area_basis || 'SF')}` : ''}</small></div>`)}</div></section>
@@ -1155,7 +1155,7 @@ async function openDeal(dealId, { background = false } = {}) {
       <section class="detail-section"><h3>Participants</h3><div class="detail-list">${detailRows(detail.participants, (p) => `<div class="detail-row"><b>${esc(p.name)}</b><small>${esc(String(p.role).replaceAll('_',' '))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Recent activity</h3><div class="detail-list">${detailRows(detail.activities, (a) => `<div class="detail-row"><b>${esc(a.summary)}</b><small>${esc(actorName(a.actor))} · ${esc(relative(a.occurred_at))} · ${esc(a.kind)}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${entryDetailsHtml(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}</small></div>`)}</div></section>
+      <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
     </div>`;
   disposeDealEvidence?.();
@@ -1177,23 +1177,23 @@ async function openDeal(dealId, { background = false } = {}) {
 async function readJevDeal(button) {
   const target = $('#dealDialog [data-jev-result]');
   button.disabled = true;
-  target.innerHTML = '<div class="detail-row">Reading recorded evidence…</div>';
+  target.innerHTML = '<div class="detail-row">Reviewing…</div>';
   try {
     const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
     if (!reading.judged) {
       const message = reading.reason === 'insufficient_recorded_evidence'
-        ? 'Not enough recorded deal evidence for a reliable reading yet.'
-        : 'Jev is unavailable for this reading.';
+        ? 'Insufficient evidence'
+        : 'Insights unavailable';
       target.innerHTML = `<div class="detail-row">${esc(message)}</div>`;
       return;
     }
     const waiting = String(reading.waiting_on || 'not recorded').replaceAll('_', ' ');
     const silence = Math.round(Number(reading.silence_is_bad) * 100);
     target.innerHTML = `<div class="detail-row"><b>Movement ${esc(reading.movement_rung)} of ${esc(reading.movement_rungs)}</b><small>${esc(reading.movement_label)}</small></div>
-      <div class="detail-row"><b>Waiting on: ${esc(waiting)}</b><small>Jev judgment; verify against the record.</small></div>
-      <div class="detail-row"><b>Silence concern: ${esc(silence)}%</b><small>Model probability, not a deal-close forecast.</small></div>`;
+      <div class="detail-row"><b>Waiting on: ${esc(waiting)}</b></div>
+      <div class="detail-row"><b>Estimated silence concern: ${esc(silence)}%</b></div>`;
   } catch {
-    target.innerHTML = '<div class="detail-row">Jev is unavailable for this reading.</div>';
+    target.innerHTML = '<div class="detail-row">Insights unavailable</div>';
   } finally {
     button.disabled = false;
   }

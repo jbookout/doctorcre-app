@@ -48,3 +48,5 @@
 
 .doc-presence { top:70px; }
 html:has(.doc-presence) { scroll-padding-top:160px; }
+
+.doc-presence.doc-in-detail { top:0; flex-shrink:0; }
