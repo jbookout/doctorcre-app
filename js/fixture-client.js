@@ -27,6 +27,7 @@ const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_sta
  * @param {string} [opts.selfActor]
  */
 export async function createFixtureClient(opts = {}) {
+  const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
     if (!r.ok) throw new Error(`fixture seed failed: ${r.status}`);
@@ -2999,6 +3000,7 @@ export async function createFixtureClient(opts = {}) {
     // it appears on the change feed and advances lastFieldEvent exactly as a
     // live revert would.
     async revertDealField({ event_id, idempotency_key }) {
+      if (activityFixture.owns(event_id)) return activityFixture.undo({ event_id, idempotency_key });
       return withIdem(idempotency_key, () => {
         const event = events.find((e) => e.id === event_id);
         if (!event || event.subject_type !== 'deal' || !event.field || !BASED_FIELDS.includes(event.field)) {
@@ -3036,6 +3038,8 @@ export async function createFixtureClient(opts = {}) {
         };
       });
     },
+
+    async readDocActivity(args = {}) { return activityFixture.read(args); },
 
     async getPendingConfirms() {
       return { proposals: pendingConfirms.map((p) => ({ ...p })) };

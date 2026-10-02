@@ -82,6 +82,7 @@
  * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
+ * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
  * @property {() => Promise<{deals:BoardDeal[], as_of:string, last_call_at:string}>} getBoard
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges

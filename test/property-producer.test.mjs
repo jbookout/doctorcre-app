@@ -6,9 +6,9 @@ import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e";
+const pinnedProducer = "61952fc7c41e26f168276449312b5dad0239d3a0";
 
-test("property evidence pins the Progress directory CARR producer", () => {
+test("property evidence pins the W10 CARR producer with the inherited Progress directory", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 

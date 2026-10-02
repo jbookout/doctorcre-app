@@ -650,6 +650,7 @@ export function createLiveClient(opts = {}) {
     async createNationalAccount(args) { return write('create-national-account', args); },
     async createNationalMarketDeal(args) { return write('create-national-market-deal', args); },
     async revertDealField(args) { return write('revert-deal-field', args); },
+    async readDocActivity(args = {}, { signal } = {}) { return rpc('read-doc-activity', args, signal); },
   };
   return client;
 }

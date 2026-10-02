@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.38.0",
+  "version": "1.39.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e"
+    "source_commit": "61952fc7c41e26f168276449312b5dad0239d3a0"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -71,6 +71,7 @@
     "read-assurance-health",
     "read-correspondence-thread",
     "read-dispatch-history",
+    "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
     "read-loop",
@@ -445,6 +446,12 @@
         ]
       },
       "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
+    },
+    "doc_activity": {
+      "operation": "read-doc-activity",
+      "schema_version": "doc-activity.v1",
+      "producer_module": "mcp-server/src/doc-activity.js",
+      "undo_operation": "revert-deal-field"
     }
   },
   "system_work_inventory": {

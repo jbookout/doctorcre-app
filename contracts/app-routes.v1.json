@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-app-routes.v1",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "routes": {
     "/": "workspace.html",
     "/control-room": "control-room.html",
@@ -23,7 +23,8 @@
     "/incidents": "incidents.html",
     "/updates": "notifications.html",
     "/doc-chats": "conversations.html",
-    "/doc-chats/work": "tasks.html"
+    "/doc-chats/work": "tasks.html",
+    "/doc-activity": "activity.html"
   },
   "redirects": {
     "/progress-board": "/control-room/progress",
