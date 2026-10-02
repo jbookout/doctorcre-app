@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "path": "/incidents",
+      "asset": "incidents.html",
+      "order": 17
+    }
+  ],
+  "redirects": []
+}

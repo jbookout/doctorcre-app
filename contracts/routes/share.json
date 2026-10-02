@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "path": "/share",
+      "asset": "reports/share.html",
+      "order": 12
+    }
+  ],
+  "redirects": []
+}

@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "path": "/work-requests",
+      "asset": "system-work.html",
+      "order": 10
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/system-work.html",
+      "to": "/work-requests",
+      "order": 6
+    }
+  ]
+}

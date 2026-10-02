@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "path": "/relationships",
+      "asset": "relationships.html",
+      "order": 21
+    }
+  ],
+  "redirects": []
+}

@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "path": "/updates",
+      "asset": "notifications.html",
+      "order": 18
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/notifications",
+      "to": "/updates",
+      "order": 13
+    }
+  ]
+}

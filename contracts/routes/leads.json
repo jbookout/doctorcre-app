@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "path": "/leads",
+      "asset": "leads.html",
+      "order": 5
+    }
+  ],
+  "redirects": []
+}

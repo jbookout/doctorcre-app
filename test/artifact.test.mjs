@@ -83,7 +83,6 @@ test("one contract path declaration drives both assembly and committed-source ve
   for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
-    ["route_contract", "contracts/app-routes.v1.json", "contracts/synthetic-routes.v1.json"],
   ];
   let source = await readFile(join(root, "scripts/artifact.mjs"), "utf8");
   for (const [, oldPath, newPath] of contracts) {
@@ -156,4 +155,17 @@ test("an empty or misnamed digest sidecar cannot turn off digest verification", 
     await writeFile(join(outDir, "doctorcre-app.tar.sha256"), content);
     await assert.rejects(runCli(root, ["verify"]), /artifact digest sidecar is invalid/);
   }
+});
+
+
+test("slice fragments and generated registry stay bound to committed source", async t => {
+  const { root } = await committedFixture(t);
+  const fragment = join(root, "contracts/routes/home.json");
+  const original = await readFile(fragment, "utf8");
+  await writeFile(fragment, original + "\n");
+  await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
+  await writeFile(fragment, original);
+  const registry = join(root, "js/slices.generated.js");
+  await writeFile(registry, (await readFile(registry, "utf8")) + "// Demo tampered registry\n");
+  await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
 });

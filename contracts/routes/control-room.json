@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "path": "/control-room",
+      "asset": "control-room.html",
+      "order": 1
+    }
+  ],
+  "redirects": []
+}

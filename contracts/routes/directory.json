@@ -1,0 +1,15 @@
+{
+  "routes": [
+    {
+      "path": "/clients",
+      "asset": "business.html",
+      "order": 6
+    },
+    {
+      "path": "/vendors",
+      "asset": "business.html",
+      "order": 7
+    }
+  ],
+  "redirects": []
+}

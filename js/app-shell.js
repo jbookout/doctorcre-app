@@ -1,41 +1,14 @@
+import { slices } from "./slices.generated.js";
+import { registerSlices, mountSliceSections } from "./slice-registration.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this module owns the shared rail and layout.
-export const navigationItems = Object.freeze([
-  { label: "Home", href: "/" },
-  { label: "Leads", href: "/leads" },
-  { label: "Tours", href: "/tours" },
-  { label: "Local Deals", href: "/deals" },
-  { label: "Vendors", href: "/vendors" },
-  { label: "Control Room", href: "/control-room" },
-  { label: "Relationships", href: "/relationships", group: "Workspace" },
-  { label: "Clients", href: "/clients", group: "Workspace" },
-  { label: "Ideas", href: "/ideas-events?tab=ideas", group: "Workspace" },
-  { label: "Events", href: "/ideas-events?tab=events", group: "Workspace" },
-  { label: "Updates", href: "/updates", group: "Updates" },
-  { label: "Doc Chats", href: "/doc-chats", group: "Updates" },
-  { label: "Progress", href: "/control-room/progress", group: "Operations" },
-  { label: "Work Requests", href: "/work-requests", group: "Operations" },
-  { label: "All Work", href: "/all-work", group: "Operations" },
-  { label: "Incidents", href: "/incidents", group: "Operations" },
-  { label: "Project activity", href: "/control-room/progress/work", group: "Operations" },
-  { label: "Design Lab", href: "/design-lab", group: "Reference" },
-  { label: "Status", href: "/status", group: "Reference" },
-]);
-
-const sectionForRoute = {
-  "/tasks": "/", "/work": "/", "/doc-chats/work": "/doc-chats",
-  "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
-  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room/progress/work",
-  "/control-room/agents/queue": "/control-room/progress/work", "/agent-room": "/control-room/progress/work",
-  "/ideas": "/ideas-events?tab=ideas", "/system-work.html": "/work-requests", "/room.html": "/control-room/progress/work",
-  "/work-inventory": "/all-work", "/design": "/design-lab",
-  "/design/business": "/design-lab", "/design/operations": "/design-lab",
-  "/notifications": "/updates", "/conversations": "/doc-chats",
-};
+const registration = registerSlices(slices);
+export const navigationItems = registration.navigationItems;
+const sectionForRoute = registration.sectionForRoute;
 
 export function activeDestination(pathname) {
   return sectionForRoute[pathname] || pathname;
@@ -98,6 +71,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const host = root.getElementById("appShell");
   if (!host) return;
+  mountSliceSections(root, pathname, slices);
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;

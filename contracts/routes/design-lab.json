@@ -1,0 +1,26 @@
+{
+  "routes": [
+    {
+      "path": "/design-lab",
+      "asset": "design.html",
+      "order": 13
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/design",
+      "to": "/design-lab",
+      "order": 9
+    },
+    {
+      "path": "/design/business",
+      "to": "/design-lab?reference=business",
+      "order": 10
+    },
+    {
+      "path": "/design/operations",
+      "to": "/design-lab?reference=operations",
+      "order": 11
+    }
+  ]
+}

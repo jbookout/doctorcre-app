@@ -1,3 +1,4 @@
+import { prepareSlices } from "./slices.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
@@ -7,6 +8,8 @@ const ROOT = new URL("../", import.meta.url);
 const ROOT_PATH = fileURLToPath(ROOT);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
 const json = async (path) => JSON.parse(await read(path));
+
+await prepareSlices(ROOT_PATH);
 
 const fixture = await json("data/board-seed.json");
 assert.equal(fixture.fixture?.synthetic, true, "the local board fixture must be explicitly synthetic");

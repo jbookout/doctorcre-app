@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "path": "/deals",
+      "asset": "index.html",
+      "order": 4
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/pipeline",
+      "to": "/deals?view=board",
+      "order": 4
+    }
+  ]
+}

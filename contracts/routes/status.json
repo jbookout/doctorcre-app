@@ -1,0 +1,10 @@
+{
+  "routes": [
+    {
+      "path": "/status",
+      "asset": "status.html",
+      "order": 16
+    }
+  ],
+  "redirects": []
+}
