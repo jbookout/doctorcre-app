@@ -146,6 +146,12 @@ export function createLiveClient(opts = {}) {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
     async readAssuranceHealth(args) { return rpc('read-assurance-health', assuranceHealthRequest(args)); },
+    async getRelationshipNetwork({ signal } = {}) {
+      const response = await fetchReadImpl('/api/v1/business/relationships?contract=relationship-network.v1', {signal,credentials:'same-origin',cache:'no-store',headers:{accept:'application/json'}});
+      if (!response.ok) throw Object.assign(new Error('Relationships unavailable'), {status:response.status});
+      return response.json();
+    },
+    async updateVendorTrust(args) { return write("update-vendor", args); },
     async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
     async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
 

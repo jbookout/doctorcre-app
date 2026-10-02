@@ -17,6 +17,7 @@ function surface(fetchImpl, { actor = () => "joe" } = {}) {
     setAttribute(name, value) { this.attributes[name] = value; }
     getAttribute(name) { return this.attributes[name]; }
     querySelector(selector) { return selector === "form" ? this.form : { focus() {} }; }
+    replaceChildren() { this.innerHTML = ""; this.textContent = ""; }
     showModal() { this.open = true; }
     close() { this.open = false; this.listeners.close?.(); }
   }

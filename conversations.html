@@ -19,25 +19,25 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the conversations</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass hero-card" data-section="hero" aria-labelledby="pageTitle">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="conversationOrb" aria-hidden="true"></span> <span class="mono" id="conversationId" hidden></span></p>
           <h1 id="pageTitle">Doc Chats</h1>
         </div>
         <div class="hero-meta">
           <span class="as-of" id="conversationAsOf" hidden></span>
-          <button class="btn" type="button" id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+          <button class="btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </div>
       </div>
       <p class="visibility-badge" id="visibilityBadge" data-visibility="none" hidden><span class="lock-glyph" id="visibilityGlyph" aria-hidden="true">🔒</span> <span id="visibilityWord"></span></p>

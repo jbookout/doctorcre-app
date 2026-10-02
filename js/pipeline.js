@@ -26,6 +26,8 @@
 //      none to report.
 
 import { createCommandDock } from './command-dock.js';
+import { entryDetailsHtml } from './entry-details.mjs';
+import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
@@ -84,7 +86,6 @@ const state = {
   lifted: null,
   target: null,
   panelDeal: null,
-  panelPinned: false,
   panelReturnTo: null,
   intent: null,
   boardStatus: 'starting',
@@ -253,6 +254,7 @@ function applyBoardSnapshot(board) {
   }
   renderChips();
   renderBoard();
+  if (state.panelDeal && $('recordPanel')?.open) openPanel(state.panelDeal, null, { background:true });
 }
 
 async function loadBoard() {
@@ -626,36 +628,47 @@ async function resolveConflictChoice() {
 
 let disposeEvidence = null;
 let panelReadSequence = 0;
-async function openPanel(dealId, trigger) {
+async function openPanel(dealId, trigger, { background = false } = {}) {
   const sequence = ++panelReadSequence;
-  disposeEvidence?.();
+  if (!background) disposeEvidence?.();
   const panel = $('recordPanel');
   if (!panel) return;
   state.panelDeal = dealId;
-  state.panelDetail = null;
-  state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
+  if (!background) { state.panelDetail = null; state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId; }
   panel.hidden = false;
+  if (typeof panel.showModal === 'function' && !panel.open) panel.showModal();
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Record';
-  $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
-  setContextOpenVisible(false);
-  $('panelClose')?.focus();
+  if (!background) {
+    $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
+    setContextOpenVisible(false);
+    $('panelClose')?.focus();
+  }
   let detail = null;
   try {
-    detail = await state.client.getDeal(dealId);
+    detail = await readWithDeadline(() => state.client.getDeal(dealId));
   } catch {
     if (sequence !== panelReadSequence || state.panelDeal !== dealId) return;
-    $('panelBody').innerHTML = '<div class="state-block" data-state="offline"><h3>This record could not be read. Nothing here has been inferred.</h3></div>';
+    disposeEvidence?.();
+    state.panelDetail = null;
+    $('panelBody').innerHTML = '<div class="state-block" data-state="offline"><h3>Unavailable</h3></div>';
+    setContextOpenVisible(false);
     return;
   }
   // The panel may have moved on while the read was open; a late answer never
   // paints over a record the person has since opened.
   if (state.panelDeal !== dealId) return;
   if (sequence !== panelReadSequence) return;
+  if (background && JSON.stringify(state.panelDetail) === JSON.stringify(detail)) return;
+  const expanded = Boolean($('panelBody').querySelector('details')?.open);
+  const restoreSummary = $('panelBody').querySelector('summary') === document.activeElement;
   state.panelDetail = detail;
   $('panelTitle').textContent = detail.deal?.name || 'Record';
   $('panelBody').innerHTML = recordPanelSections(detail, { actorLabel: actorName, dateLabel: dateWords })
-    .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('') + '<div id="panelEvidence"></div>';
+    .filter(section => section.state !== 'not_in_release').map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
+      <h3>${esc(section.title)}</h3>${section.title === 'Latest communication' && detail.thread?.[0]?.text ? entryDetailsHtml(detail.thread[0].text) : section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('') + '<div id="panelEvidence"></div>';
+  if (expanded) { const disclosure = $('panelBody').querySelector('details'); if (disclosure) disclosure.open = true; }
+  if (restoreSummary) $('panelBody').querySelector('summary')?.focus();
+  disposeEvidence?.();
   disposeEvidence = mountEvidence($('panelEvidence'), { client: state.client, detail });
   // V5-UX-B04: the context drawer reuses this same read, so it opens only
   // once there is a detail to open it on.
@@ -665,10 +678,10 @@ async function openPanel(dealId, trigger) {
 function closePanel() {
   const panel = $('recordPanel');
   if (!panel || panel.hidden) return;
-  if (state.panelPinned) return;
   ++panelReadSequence;
   disposeEvidence?.();
   disposeEvidence = null;
+  if (typeof panel.close === 'function' && panel.open) panel.close();
   panel.hidden = true;
   const returnTo = state.panelReturnTo;
   state.panelDeal = null;
@@ -751,6 +764,12 @@ function openMoveChooser(dealId) {
 function wireBoard() {
   const board = $('kanban');
   if (!board) return;
+
+  board.addEventListener('click', (event) => {
+    if (event.target.closest('button,input,select,a')) return;
+    const card = event.target.closest('.kanban-card');
+    if (card && card.dataset.dragging !== 'true') openPanel(card.dataset.id, card);
+  });
 
   board.addEventListener('dragstart', (event) => {
     const card = event.target.closest('.kanban-card');
@@ -856,7 +875,6 @@ function wire() {
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
     if (openDeal) {
-      $('receiptsDialog')?.close();
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
@@ -871,19 +889,13 @@ function wire() {
   });
   $('moveCancel')?.addEventListener('click', () => $('moveDialog')?.close());
 
-  $('panelClose')?.addEventListener('click', () => { state.panelPinned = false; closePanel(); });
-  $('panelPin')?.addEventListener('click', () => {
-    state.panelPinned = !state.panelPinned;
-    $('panelPin').setAttribute('aria-pressed', String(state.panelPinned));
-    $('recordPanel')?.setAttribute('data-pinned', String(state.panelPinned));
-  });
+  $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
+  $('panelClose')?.addEventListener('click', closePanel);
 
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();
-    const dialog = $('receiptsDialog');
-    if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+    document.dispatchEvent(new Event('doctorcre:open-today'));
   });
-  $('receiptsClose')?.addEventListener('click', () => $('receiptsDialog')?.close());
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());

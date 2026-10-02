@@ -1,8 +1,9 @@
 import { createLeadBoardClient } from "./leads-client.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
+import { entryDetailsHtml } from "./entry-details.mjs";
 
 const client = createLeadBoardClient();
-const state = { board: null, claims: null, actor: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, actorReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
+const state = { board: null, claims: null, actor: null, pendingClaims: new Map(), boardReadEpoch: 0, claimReadEpoch: 0, actorReadEpoch: 0, resumeReadEpoch: 0, activeClaim: null, suspendedClaim: null, suspending: false, resumeChecking: false, moving: false, resumeDeferred: false, detailId: null, detailPainted: null, detailReturn: null, view: "board", filters: { search: "", owner: "", lane: "", stage: "" } };
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const stageKey = (stage) => stage?.slug || stage?.stage || "unassigned";
@@ -81,14 +82,41 @@ function leadCard(lead) {
   const confidence = confidenceInfo(lead.event_confidence);
   const locked = isStageLocked(lead);
   const stageOptions = stageChoices(boardStages(), lead).map((stage) => `<option value="${esc(stageKey(stage))}"${lead.stage === stageKey(stage) ? " selected" : ""}>${esc(stage.label || title(stageKey(stage)))}</option>`).join("");
-  const identity = lead.registry_ref || lead.id;
-  return `<article class="lead-card" id="lead-${esc(lead.id)}" data-freshness="${fresh.key}" tabindex="-1">
+  const identity = lead.registry_ref || '';
+  return `<article class="lead-card" id="lead-${esc(lead.id)}" data-freshness="${fresh.key}" draggable="${!locked}" tabindex="0" data-open-lead="${esc(lead.id)}" aria-label="${esc(lead.name || "Lead")} details">
     <div class="lead-card-head"><div><h2 class="lead-name">${label(lead.name, "Unnamed lead")}</h2><p class="lead-place">${label(lead.specialty, "Specialty not captured")} · ${label([lead.city, lead.state].filter(Boolean).join(", "), "Place not captured")}</p></div><span class="lead-ref">${esc(identity)}</span></div>
     <div class="lead-signals"><span class="signal freshness"><i class="freshness-dot" aria-hidden="true"></i><strong>${esc(fresh.text)}</strong></span><span class="signal"><strong>Score ${label(lead.score, "—")}</strong></span><span class="signal${confidence.verify ? " verify" : ""}"><strong>${esc(confidence.text)}</strong></span><span class="signal stage-label"><strong>${esc(lead.stage_label || title(lead.stage))}</strong></span>${lead.suppressed ? '<span class="signal suppressed"><strong>Suppressed</strong></span>' : ""}${confidence.verify ? '<span class="signal verify"><strong>Verify</strong></span>' : ""}</div>
     <div class="lead-meta"><span>Lane<b>${label(lead.lane)}</b></span><span>Owner<b>${label(lead.owner_label || lead.owner)}</b></span><span>Lease event<b>${label(lead.est_lease_event)}</b></span><span>Last touch<b>${dateLabel(lead.last_touch)}</b></span><span>Next action<b>${dateLabel(lead.next_action_date)}</b></span><span>Segment<b>${label(lead.segment)}</b></span></div>
     <div class="lead-move"><label class="sr-only" for="stage-${esc(lead.id)}">Move ${esc(lead.name || identity)} to stage</label><select id="stage-${esc(lead.id)}" data-stage-select="${esc(lead.id)}"${locked ? " disabled" : ""}>${stageOptions}</select><button type="button" data-move-lead="${esc(lead.id)}" aria-label="Move ${esc(lead.name || identity)} to selected stage"${locked ? " disabled" : ""}>Move</button></div>${locked ? '<p class="stage-locked">Stage locked by suppression instruction. Review the record before changing it.</p>' : ""}
   </article>`;
 }
+function clearLeadDetail() {
+  state.detailId = null; state.detailPainted = null; state.detailReturn = null;
+  $("leadDetailDialog").close();
+  $("leadDetailTitle").textContent = "";
+  $("leadDetailBody").replaceChildren();
+}
+function renderLeadDetail() {
+  if (!state.detailId) return;
+  const lead = state.board?.leads?.find(item => item.id === state.detailId);
+  if (!lead) { clearLeadDetail(); return; }
+  const signature = JSON.stringify(lead);
+  if (state.detailPainted === signature) return;
+  state.detailPainted = signature;
+  const hadFocus = $("leadDetailBody").contains?.(document.activeElement);
+  const expanded = $("leadDetailBody").querySelector("details")?.open || false;
+  $("leadDetailTitle").textContent = lead.name || "Lead";
+  const notes = typeof lead.notes === "string" ? lead.notes : "";
+  $("leadDetailBody").innerHTML = `<div class="lead-detail-grid"><section><h3>${esc(lead.specialty || "Specialty")}</h3><p>${esc([lead.city,lead.state].filter(Boolean).join(", "))}</p><p>${esc(lead.stage_label || title(lead.stage))}</p></section><section><h3>Next action</h3><p>${esc(lead.next_action || "—")}</p><p>${esc(dateLabel(lead.next_action_date))}</p></section><section><h3>Owner</h3><p>${esc(lead.owner_label || lead.owner || "—")}</p></section>${notes ? `<section><h3>Notes</h3>${entryDetailsHtml(notes)}</section>` : ""}</div>`;
+  const details = $("leadDetailBody").querySelector("details"); if (details) details.open = expanded;
+  if (hadFocus) $("leadDetailBody").querySelector("summary")?.focus();
+}
+function openLeadDetail(id, trigger) {
+  state.detailId = id; state.detailPainted = null; state.detailReturn = trigger;
+  renderLeadDetail();
+  const dialog = $("leadDetailDialog"); if (!dialog.open) dialog.showModal();
+}
+
 function renderBoard() {
   const board = $("leadBoard");
   const leads = filtered();
@@ -264,7 +292,7 @@ export function errorMessage(error) {
 }
 function staleNotice() {
   const generated = dateTime(state.board?.generated_at);
-  if (generated && Date.now() - generated > 15 * 60000) notice(`Stale snapshot: generated ${new Date(generated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Refresh before relying on it.`, "stale");
+  if (generated && Date.now() - generated > 15 * 60000) notice(`Stale snapshot: generated ${new Date(generated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Updating…`, "stale");
   else notice("");
 }
 async function refresh() {
@@ -273,16 +301,18 @@ async function refresh() {
   try {
     const next = await client.getLeadBoard();
     if (readEpoch !== state.boardReadEpoch) return;
-    state.board = next; refreshFilters(); pipeline(); renderBoard(); staleNotice();
+    state.board = next; refreshFilters(); pipeline(); renderBoard(); renderLeadDetail(); staleNotice();
   } catch (error) {
     if (readEpoch !== state.boardReadEpoch) return;
     state.board = null;
+    clearLeadDetail();
     $("leadBoardError").textContent = errorMessage(error); $("leadBoardError").hidden = false;
     board.innerHTML = '<p class="board-state empty">The board is unavailable. Existing lead records were not changed.</p>';
   } finally { if (readEpoch === state.boardReadEpoch) board.setAttribute("aria-busy", "false"); }
 }
 async function refreshAfterReturn() {
   const resumeEpoch = ++state.resumeReadEpoch;
+  const previousActor = state.actor;
   state.actor = null; // Reverify before another decision can use the current cookie.
   const dialog = $("claimDialog");
   if (dialog.open) {
@@ -315,6 +345,7 @@ async function refreshAfterReturn() {
   try { actor = await client.getActor(); } catch { actor = null; }
   if (resumeEpoch !== state.resumeReadEpoch || actorRead !== state.actorReadEpoch) return;
   if (!actor) {
+    clearLeadDetail();
     state.actor = null;
     state.resumeChecking = false;
     $("leadBoardError").textContent = "Sign-in required";
@@ -323,6 +354,7 @@ async function refreshAfterReturn() {
     $("claimError").hidden = false;
     return;
   }
+  if (previousActor !== actor) clearLeadDetail();
   state.actor = actor;
   await Promise.all([refresh(), refreshClaims({ allowPending: true })]);
   if (resumeEpoch !== state.resumeReadEpoch) return;
@@ -381,7 +413,30 @@ if (typeof document !== "undefined") {
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["laneFilter", "lane"], ["stageFilter", "stage"]]) $(id).addEventListener(id === "leadSearch" ? "input" : "change", (event) => { state.filters[key] = event.target.value; renderBoard(); });
   $("refreshBoard").addEventListener("click", refresh);
   for (const view of ["board", "list"]) $(view + "View").addEventListener("click", () => { state.view = view; $("boardView").setAttribute("aria-pressed", String(view === "board")); $("listView").setAttribute("aria-pressed", String(view === "list")); renderBoard(); });
-  $("leadBoard").addEventListener("click", (event) => { const button = event.target.closest("[data-move-lead]"); if (button) moveLead(button); });
+  $("leadBoard").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-move-lead]"); if (button) { moveLead(button); return; }
+    if (event.target.closest("select,button,a")) return;
+    const card = event.target.closest("[data-open-lead]"); if (card) openLeadDetail(card.dataset.openLead, card);
+  });
+  $("leadBoard").addEventListener("keydown", event => { if (["Enter", " "].includes(event.key) && event.target.matches?.("[data-open-lead]")) { event.preventDefault(); openLeadDetail(event.target.dataset.openLead,event.target); } });
+  $("leadBoard").addEventListener("dragstart", event => {
+    const card = event.target.closest('[data-open-lead]');
+    if (!card || card.draggable === false || state.moving) { event.preventDefault(); return; }
+    event.dataTransfer.setData('text/x-doctorcre-lead', card.dataset.openLead);
+    event.dataTransfer.effectAllowed = 'move';
+  });
+  $("leadBoard").addEventListener("dragover", event => { if (event.target.closest('[data-stage]') && event.dataTransfer.types.includes('text/x-doctorcre-lead')) event.preventDefault(); });
+  $("leadBoard").addEventListener("drop", event => {
+    const column = event.target.closest('[data-stage]');
+    const id = event.dataTransfer.getData('text/x-doctorcre-lead');
+    if (!column || !id || state.moving) return;
+    event.preventDefault();
+    const select = document.querySelector(`[data-stage-select="${CSS.escape(id)}"]`);
+    const button = document.querySelector(`[data-move-lead="${CSS.escape(id)}"]`);
+    if (select && button) { select.value = column.dataset.stage; if (select.value) moveLead(button); }
+  });
+  $("leadDetailClose").addEventListener("click", () => $("leadDetailDialog").close());
+  $("leadDetailDialog").addEventListener("close", () => { state.detailId = null; state.detailReturn?.focus?.(); });
   $("refreshClaims").addEventListener("click", refreshClaims);
   $("claimCards").addEventListener("click", (event) => {
     const retry = event.target.closest("[data-retry-pending]");
@@ -396,7 +451,7 @@ if (typeof document !== "undefined") {
     if (state.resumeDeferred && !state.pendingClaims.size) refreshAfterReturn();
   });
   if (typeof window !== "undefined" && typeof document.addEventListener === "function") {
-    mountAutoRefresh({ document, window: globalThis.window, refresh: refreshAfterReturn });
+    mountAutoRefresh({ document, window: globalThis.window, refresh: refreshAfterReturn, onResume: clearLeadDetail });
   }
   const actorRead = ++state.actorReadEpoch;
   client.getActor().then((actor) => {

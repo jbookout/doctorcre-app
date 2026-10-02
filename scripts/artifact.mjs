@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
   "business.html", "calendar.html", "charts.html", "automations.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "pipeline.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
+  "relationships.html", "pipeline.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
+const CONTRACT_INPUTS = {
+  carr_interface: "contracts/carr-interface.v1.json",
+  route_contract: "contracts/app-routes.v1.json",
+};
 const SHA = /^[0-9a-f]{64}$/;
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -96,24 +100,23 @@ function parseTar(archive) {
   throw new Error("artifact archive trailer is missing");
 }
 
-export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
-  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
+async function inputPaths(root) {
   const paths = [...ROOT_FILES];
-  for (const directory of ROOT_DIRECTORIES) paths.push(...await walk(root, directory));
-  paths.sort();
+  for (const directory of ROOT_DIRECTORIES) {
+    if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
+    paths.push(...await walk(root, directory));
+  }
+  return paths.sort();
+}
 
+async function assembleArtifact(commit, paths, readSource) {
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
   const payload = [];
   const files = new Map();
-  const siteDir = join(outDir, "site");
-  await rm(siteDir, { recursive: true, force: true });
-  await mkdir(siteDir, { recursive: true });
   for (const path of paths) {
-    const sourcePath = join(root, ...path.split("/"));
-    const info = await stat(sourcePath);
-    if (!info.isFile()) throw new Error(`artifact input is not a file: ${path}`);
-    let content = await readFile(sourcePath);
+    let content = await readSource(path);
     if (path === "reports/share.js") {
-      const source = await readFile(join(root, "js/app-shell.js"), "utf8");
+      const source = (await readSource("js/app-shell.js")).toString("utf8");
       // Token-authenticated public reports carry navigation back to the app.
       // Partner controls live on the signed-in app, not the report hostname.
       const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
@@ -126,28 +129,26 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
       content = Buffer.from(`${shell.replace(/^export (?=(?:const|function) )/gm, "")}\n${content.toString("utf8")}`);
     }
     if (path === "reports/share.css") {
-      const shell = await readFile(join(root, "css/app-shell.css"));
+      const shell = await readSource("css/app-shell.css");
       content = Buffer.concat([content, Buffer.from("\n"), shell]);
     }
     files.set(path, content);
-    const deploymentPath = join(siteDir, ...path.split("/"));
-    await mkdir(dirname(deploymentPath), { recursive: true });
-    await writeFile(deploymentPath, content);
     payload.push({ path, bytes: content.length, sha256: digest(content) });
   }
 
   const contract = async (path) => {
-    const content = await readFile(join(root, path));
+    const content = await readSource(path);
     const parsed = JSON.parse(content);
     return { path, schema: parsed.schema, version: parsed.version, sha256: digest(content) };
   };
+  const contracts = {};
+  for (const [key, path] of Object.entries(CONTRACT_INPUTS)) contracts[key] = await contract(path);
   const manifest = {
     schema: "doctorcre-static-artifact.v1",
     repository: "jbookout/doctorcre-app",
     source_commit: commit,
     entrypoint: "workspace.html",
-    carr_interface: await contract("contracts/carr-interface.v1.json"),
-    route_contract: await contract("contracts/app-routes.v1.json"),
+    ...contracts,
     files: payload,
   };
   const manifestContent = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
@@ -156,7 +157,25 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
   entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const archive = tar(entries);
   const archiveSha256 = digest(archive);
+  return { archive, archiveSha256, manifest, manifestContent, files };
+}
 
+export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
+  const paths = await inputPaths(root);
+  const readSource = async (path) => {
+    const sourcePath = join(root, path);
+    if (!(await lstat(sourcePath)).isFile()) throw new Error(`artifact input is not a file: ${path}`);
+    return readFile(sourcePath);
+  };
+  const { archive, archiveSha256, manifest, manifestContent, files } = await assembleArtifact(commit, paths, readSource);
+  const siteDir = join(outDir, "site");
+  await rm(siteDir, { recursive: true, force: true });
+  await mkdir(siteDir, { recursive: true });
+  for (const [path, content] of files) {
+    const deploymentPath = join(siteDir, path);
+    await mkdir(dirname(deploymentPath), { recursive: true });
+    await writeFile(deploymentPath, content);
+  }
   await mkdir(outDir, { recursive: true });
   await writeFile(join(outDir, "doctorcre-app.tar"), archive);
   await writeFile(join(outDir, "doctorcre-app.manifest.json"), manifestContent);
@@ -184,6 +203,32 @@ export function verifyArtifact(archive, expectedSha256 = null) {
   return { archiveSha256, manifest, fileCount: manifest.files.length };
 }
 
+async function verifyCommittedSource(root, archive, result) {
+  const commit = sourceCommit(root);
+  if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
+  const paths = await inputPaths(root);
+  const contractPaths = Object.values(CONTRACT_INPUTS);
+  const sourcePaths = [...paths, ...contractPaths].sort();
+  const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
+    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();
+  if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
+
+  // Compare the bytes themselves, not Git's working-tree status/cache. A forged
+  // archive and sidecars can agree internally while disagreeing with the commit.
+  const source = new Map();
+  for (const path of sourcePaths) {
+    const committed = execFileSync("git", ["show", `${commit}:${path}`], { cwd: root, maxBuffer: 32 * 1024 * 1024 });
+    const sourcePath = join(root, path);
+    if (!(await lstat(sourcePath)).isFile() || !(await readFile(sourcePath)).equals(committed)) {
+      throw new Error(`artifact source input mismatch: ${path}`);
+    }
+    source.set(path, committed);
+  }
+  const expected = await assembleArtifact(commit, paths, async (path) => source.get(path));
+  if (!archive.equals(expected.archive)) throw new Error("artifact does not match committed source");
+  return expected;
+}
+
 export async function runCli(root, args = process.argv.slice(2)) {
   const outDir = join(root, "dist");
   const command = args[0] || "build";
@@ -194,8 +239,14 @@ export async function runCli(root, args = process.argv.slice(2)) {
   }
   if (command === "verify") {
     const archive = await readFile(join(outDir, "doctorcre-app.tar"));
-    const sidecar = (await readFile(join(outDir, "doctorcre-app.tar.sha256"), "utf8")).trim().split(/\s+/)[0];
-    const result = verifyArtifact(archive, sidecar);
+    const sidecar = await readFile(join(outDir, "doctorcre-app.tar.sha256"), "utf8");
+    const match = sidecar.match(/^([0-9a-f]{64})  doctorcre-app\.tar\n?$/);
+    if (!match) throw new Error("artifact digest sidecar is invalid");
+    const result = verifyArtifact(archive, match[1]);
+    const expected = await verifyCommittedSource(root, archive, result);
+    if (!(await readFile(join(outDir, "doctorcre-app.manifest.json"))).equals(expected.manifestContent)) {
+      throw new Error("published manifest mismatch");
+    }
     console.log(`verified doctorcre-app.tar: ${result.fileCount} files, sha256:${result.archiveSha256}`);
     return;
   }

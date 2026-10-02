@@ -2,7 +2,7 @@ import { mountSystemWorkBoard } from './system-work-board.js';
 import { workDetailUrl } from './progress-work-model.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
+import { boardView, answerRequest, taskPulse, taskIdentity, taskSummary, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
 import { mountAutoRefresh } from './auto-refresh.mjs';
 import { governanceTasks, withGovernance, jobLinks } from './control-room-workspace-model.js';
@@ -23,6 +23,8 @@ const flow = document.getElementById("board-flow");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
+const completedList = document.getElementById("completed-list");
+const completedCount = document.getElementById("completed-count");
 const directory = document.getElementById("board-directory");
 const directoryError = document.getElementById("directory-error");
 const freshness = document.getElementById("board-freshness");
@@ -147,6 +149,7 @@ function titleLines(value, width) {
 
 function taskNode(task, stage, x, y, width, height, phone) {
   const pulse = taskPulse(task);
+  const identity = taskIdentity(task);
   const node = svg("g", "pipeline-node", { "data-task-id": task.id, "data-stage": stage.id,
     "data-pulse": pulse, role: "button", tabindex: 0,
     "aria-label": `${task.title || task.id}, ${stage.label}. Open task detail.` });
@@ -160,10 +163,14 @@ function taskNode(task, stage, x, y, width, height, phone) {
     label.append(svg("tspan", "", { x: x + 35, dy: index ? 14 : 0 }, line));
   }
   node.append(label);
-  const links = jobLinks(task);
-  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 31 }, task.executor || "Unassigned"));
-  node.append(svg("text", "node-links", { x: x + 12, y: y + height - 13 },
-    [links.workRequest ? `Work Request ${links.workRequest}` : "Work Request unavailable", links.prLabel].filter(Boolean).join(" · ")));
+  const summary = taskSummary(task);
+  const summaryLimit = phone ? 46 : 24;
+  node.append(svg("text", "node-summary", { x: x + 12, y: y + height - 56 },
+    summary.length > summaryLimit ? `${summary.slice(0, summaryLimit - 1)}…` : summary));
+  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 41 }, identity.provider));
+  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 27 },
+    `${identity.model} · ${identity.effort}`));
+  node.append(svg("text", "node-links", { x: x + 12, y: y + height - 13 }, taskReferences(task)));
   const retained = taskNodes.get(task.id);
   const target = retained?.node || node;
   if (retained) {
@@ -191,6 +198,7 @@ function renderStages(view) {
   if (boardId !== SYSTEM_BOARD_ID) view = { ...view, stages: view.stages.map(stage => ({ ...stage, tasks: stage.tasks.map(task => ({ ...task, task_id: task.id })) })) };
   currentView = view;
   onTasks?.(view.stages.flatMap(stage => stage.tasks));
+  renderCompleted(view);
   const phone = phoneQuery.matches;
   const signature = JSON.stringify([view.stages, phone]);
   if (signature === renderedStages) {
@@ -204,8 +212,8 @@ function renderStages(view) {
   taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
   const width = phone ? 360 : 1200;
   const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
-  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 110) + 21, 0) - 21
-    : Math.max(270, 93 + maxTasks * 111);
+  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 129) + 21, 0) - 21
+    : Math.max(270, 93 + maxTasks * 115);
   flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
   flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
   let offset = 0;
@@ -213,7 +221,7 @@ function renderStages(view) {
     const x = phone ? 8 : 8 + index * 199;
     const y = phone ? offset : 8;
     const wellWidth = phone ? 344 : 186;
-    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 110) : height - 16;
+    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 129) : height - 16;
     const group = svg("g", "flow-stage", { "data-stage": stage.id });
     group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
     group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
@@ -222,7 +230,7 @@ function renderStages(view) {
       String(stage.tasks.length).padStart(2, "0")));
     if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
     stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
-      y + 44 + taskIndex * (phone ? 110 : 111), wellWidth - 18, phone ? 100 : 101, phone)));
+      y + 44 + taskIndex * 129, wellWidth - 18, 120, phone)));
     flow.append(group);
     if (index < view.stages.length - 1) {
       const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`
@@ -234,6 +242,41 @@ function renderStages(view) {
   const ids = new Set(view.stages.flatMap(stage => stage.tasks.map(task => task.id)));
   for (const id of taskNodes.keys()) if (!ids.has(id)) taskNodes.delete(id);
   if (focusedId) (taskNodes.get(focusedId)?.node || title).focus();
+}
+
+function renderCompleted(view) {
+  const live = view.stages.find(stage => stage.id === "live");
+  const signature = JSON.stringify(live.tasks);
+  if (completedList.dataset.signature === signature) return;
+  completedList.dataset.signature = signature;
+  completedList.replaceChildren();
+  completedCount.textContent = `${live.tasks.length} LIVE`;
+  if (!live.tasks.length) {
+    completedList.append(element("p", "empty", "No live tasks yet."));
+    return;
+  }
+  for (const task of live.tasks) {
+    const identity = taskIdentity(task);
+    const card = element("article", "completed-card");
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `${task.title || task.id}. Open task detail.`);
+    card.append(element("strong", "", task.title || task.id),
+      element("p", "card-summary", taskSummary(task)),
+      element("span", "card-provider", identity.provider),
+       element("span", "card-model", `${identity.model} · ${identity.effort}`),
+       element("span", "card-links", taskReferences(task)));
+    card.addEventListener("click", () => showTask(task, live));
+    card.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task, live); }
+    });
+    completedList.append(card);
+  }
+}
+
+function taskReferences(task) {
+  const links = jobLinks(task);
+  return [links.workRequest ? `Work Request ${links.workRequest}` : "Work Request unavailable", links.prLabel].filter(Boolean).join(" · ");
 }
 
 phoneQuery.addEventListener("change", () => { if (pipeline) renderStages(pipeline); });
@@ -380,6 +423,9 @@ function clearBoard(state) {
   questionCards.clear();
   pendingRequests.clear();
   flow.replaceChildren();
+  completedList.replaceChildren();
+  delete completedList.dataset.signature;
+  completedCount.textContent = "—";
   questions.replaceChildren();
   taskCount.textContent = "—";
   questionCount.textContent = "—";
