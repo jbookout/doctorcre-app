@@ -38,50 +38,8 @@ export function createDayStore(indexedDB, name = "doctorcre-tour-day-drafts-v1")
   };
 }
 
-export function noteState(note, available = false) {
+export function noteState(note) {
+  if (note.storage_error || note.status === "failed") return "Audio not saved";
   if (note.status === "recording") return "Recording";
-  if (note.status === "filed") return "Filed to tour & client";
-  if (note.status === "processing") return "Preparing note";
-  if (note.status === "uncertain") return "Checking sync";
-  if (note.status === "syncing") return "Syncing";
-  return available ? "Saved on phone · Waiting to sync" : "Saved on phone · Filing unavailable";
-}
-
-export function matchesNote(note, receipt) {
-  return ["id", "tour_id", "client_id", "property_id", "route_version_id", "route_stop_id"].every(key => receipt?.[key] === note[key]);
-}
-
-// Unknown write outcomes are read before any resend. The same immutable note ID
-// is the producer's idempotency key; processing does not imply business filing.
-export function createNoteSync({ store, api, scope, tourId, onChange = () => {} }) {
-  let running = null;
-  async function run() {
-    if (!api.capabilities?.voiceNotes || api.scope !== scope) return;
-    for (const note of await store.list(scope, tourId)) {
-      if (api.scope !== scope) break;
-      if (["recording", "filed", "empty"].includes(note.status) || !note.audio?.size) continue;
-      try {
-        let receipt;
-        if (["uncertain", "syncing", "processing"].includes(note.status)) {
-          receipt = await api.lookupNote(note.id);
-          // Only an explicit authoritative absence allows the same-key resend.
-          if (receipt?.status !== "absent" && !matchesNote(note, receipt)) throw new Error("receipt_mismatch");
-        }
-        if (!receipt || receipt.status === "absent") {
-          await store.patch(scope, note.id, { status: "syncing" }); onChange();
-          if (api.scope !== scope) break;
-          receipt = await api.submitNote(note);
-        }
-        if (api.scope !== scope || !matchesNote(note, receipt)) throw new Error("receipt_mismatch");
-        const filed = receipt.status === "filed" && typeof receipt.summary === "string" && receipt.summary.trim()
-          && typeof receipt.transcript === "string" && receipt.transcript.trim()
-          && typeof receipt.tour_feedback_ref === "string" && receipt.tour_feedback_ref
-          && typeof receipt.client_activity_ref === "string" && receipt.client_activity_ref;
-        if (!filed && receipt.status !== "processing") throw new Error("receipt_incomplete");
-        await store.patch(scope, note.id, { status: filed ? "filed" : "processing", receipt, summary: receipt.summary || "", transcript: receipt.transcript || "" });
-      } catch { await store.patch(scope, note.id, { status: "uncertain" }); }
-      onChange();
-    }
-  }
-  return { sync() { if (!running) running = run().finally(() => { running = null; }); return running; } };
+  return note.audio?.size ? "Saved on phone · Filing unavailable" : "Audio unavailable";
 }

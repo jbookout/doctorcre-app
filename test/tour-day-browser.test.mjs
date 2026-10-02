@@ -4,13 +4,16 @@ import { readFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { chromium } from "playwright";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
+import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
 
-async function open(t, { width = 390, reducedMotion = "reduce", denied = false } = {}) {
+async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false, realMic = false } = {}) {
   const requests = [], errors = [], current = structuredClone(detail);
   let actor = "joe", refuse = false;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost"); requests.push({ path: url.pathname, method: request.method });
+    if (url.pathname === "/auth/signout") { refuse = true; response.end('{}'); return; }
+    if (url.pathname === "/auth/login") { response.end('<title>Synthetic login</title>'); return; }
     if (url.pathname.startsWith("/api/")) {
       response.setHeader("content-type", "application/json");
       if (refuse) { response.writeHead(401); response.end('{}'); return; }
@@ -20,24 +23,32 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false }
       const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
       if (file.includes("..")) throw new Error("invalid path");
       response.setHeader("content-type", file.endsWith(".css") ? "text/css" : /\.m?js$/.test(file) ? "text/javascript" : "text/html");
+      if (workerHeaders) {
+        const secured = await handleDoctorcreRequest(new Request(`https://doctorcre.com${url.pathname}`), { CARR: { fetch: async () => new Response('synthetic gate') }, ASSETS: { fetch: async () => new Response('synthetic asset') } });
+        for (const header of ['content-security-policy', 'permissions-policy', 'x-content-type-options', 'cross-origin-opener-policy', 'cross-origin-resource-policy']) response.setHeader(header, secured.headers.get(header));
+      }
       response.end(await readFile(new URL(file, root)));
     } catch { response.writeHead(404); response.end(); }
   });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://localhost:${server.address().port}`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion, permissions: denied ? [] : ["microphone"] });
   const page = await context.newPage(); page.setDefaultTimeout(7000); page.on("pageerror", e => errors.push(e.message));
   // All tests stay on the local synthetic server. Call/navigation links are
   // inspected as strings and never activated.
   await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  await page.addInitScript(() => {
+  await context.addInitScript(({ realMic }) => {
     window.syntheticRecorders = [];
     window.syntheticRecordingErrors = [];
     window.syntheticMicEvents = [];
+    window.syntheticChunks = [];
+    window.syntheticAudioBlobs = {};
+    const createURL = URL.createObjectURL;
+    URL.createObjectURL = function(blob) { const url = createURL.call(this, blob); window.syntheticAudioBlobs[url] = blob; return url; };
     // A local oscillator feeds the real MediaRecorder encoder. No system
     // microphone, OS consent, live conversation or speaker output is involved.
-    navigator.mediaDevices.getUserMedia = async () => {
+    if (!realMic) navigator.mediaDevices.getUserMedia = async () => {
       window.syntheticMicEvents.push("requested");
       const audio = new AudioContext(), oscillator = audio.createOscillator(), destination = audio.createMediaStreamDestination();
       oscillator.connect(destination); oscillator.start();
@@ -46,9 +57,10 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false }
     const start = MediaRecorder.prototype.start;
     MediaRecorder.prototype.start = function(...args) {
       window.syntheticRecorders.push(this);
+      this.addEventListener('dataavailable', event => { if (event.data.size) window.syntheticChunks.push(event.data); });
       try { return start.apply(this, args); } catch (error) { window.syntheticRecordingErrors.push(error.message); throw error; }
     };
-  });
+  }, { realMic });
   if (denied) await page.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("denied", "NotAllowedError"); }; });
   t.after(async () => { await browser.close(); await new Promise(r => server.close(r)); });
   await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
@@ -58,7 +70,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false }
 }
 const record = async page => {
   await page.locator("#day-record").click();
-  await page.waitForFunction(() => document.querySelector("#day-record").hasAttribute("data-recording"));
+  await page.waitForFunction(() => document.querySelector("#day-record").hasAttribute("data-recording")).catch(async error => { throw new Error(JSON.stringify(await page.evaluate(() => ({ status: document.querySelector('#day-status').textContent, visibility: document.visibilityState, text: document.querySelector('#day-record').textContent, states: window.syntheticRecorders.map(r => r.state), errors: window.syntheticRecordingErrors, mic: window.syntheticMicEvents }))) + ' ' + error.message); });
   await page.waitForFunction(() => window.syntheticRecorders.some(r => r.state === "recording")).catch(async error => { throw new Error(JSON.stringify(await page.evaluate(() => ({ errors: window.syntheticRecordingErrors, mic: window.syntheticMicEvents, count: window.syntheticRecorders.length, status: document.querySelector("#day-status").textContent, recording: document.querySelector("#day-record").hasAttribute("data-recording") }))) + error.message); });
   await page.waitForTimeout(1300);
   await page.locator("#day-record").click();
@@ -93,19 +105,66 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
 });
 
 test("browser MediaRecorder audio is durable per property and Details preserves its original bytes", async t => {
-  const { page, requests, errors } = await open(t);
+  const { page, requests, errors } = await open(t, { workerHeaders: true });
   await record(page);
   await page.locator(".note-card").click(); await page.locator("#day-dialog summary").click();
   assert.equal(await page.locator("#day-dialog audio").count(), 1);
   assert.match(await page.locator("#day-dialog-body").textContent(), /Transcript pending/);
-  const size = await page.locator("#day-dialog audio").evaluate(async e => (await (await fetch(e.src)).blob()).size); assert.ok(size > 100);
+  await page.locator('#day-dialog audio').evaluate(async e => { await e.play(); e.pause(); });
+  const original = await page.evaluate(async () => [...new Uint8Array(await new Blob(window.syntheticChunks).arrayBuffer())]);
+  const bytes = await page.locator('#day-dialog audio').evaluate(async e => [...new Uint8Array(await window.syntheticAudioBlobs[e.src].arrayBuffer())]);
+  assert.ok(bytes.length > 100); assert.deepEqual(bytes, original);
   await page.screenshot({ path: new URL("test-artifacts/w16/phone-note-details.png", root).pathname, fullPage: true });
   await page.getByLabel("Close property", { exact: true }).click();
   await page.locator("#day-next").click(); assert.equal(await page.locator(".note-card").count(), 0);
   await page.reload(); await page.waitForFunction(() => document.querySelector("#day-current").textContent.includes("garden"));
   await page.locator("#day-previous").click(); await page.locator(".note-card").click(); await page.locator("#day-dialog summary").click();
-  assert.equal(await page.locator("#day-dialog audio").evaluate(async e => (await (await fetch(e.src)).blob()).size), size);
+  assert.deepEqual(await page.locator('#day-dialog audio').evaluate(async e => [...new Uint8Array(await window.syntheticAudioBlobs[e.src].arrayBuffer())]), original);
   assert.deepEqual(errors, []); assert.equal(requests.some(r => r.method !== "GET"), false);
+});
+
+test('R3: real synthetic microphone capture works under Worker headers, other documents deny it', async t => {
+  const { page } = await open(t, { workerHeaders: true, realMic: true });
+  assert.equal(await page.evaluate(() => document.featurePolicy.allowsFeature('microphone')), true);
+  await record(page);
+  const other = await handleDoctorcreRequest(new Request('https://doctorcre.com/tours/index.html'), { ASSETS: { fetch: async () => new Response('synthetic') } });
+  assert.match(other.headers.get('permissions-policy'), /microphone=\(\)/);
+});
+
+test('R2: shared shell sign-out revokes the offline account binding', async t => {
+  const { page, context, origin } = await open(t);
+  await page.goto(`${origin}/tours/day.html?tour=${tourId}&mode=live`);
+  await page.waitForFunction(() => !document.querySelector('#day-record').disabled);
+  await record(page);
+  await page.evaluate(async () => { await navigator.serviceWorker.register('/tours/day-sw.js', { scope: '/tours/' }); await navigator.serviceWorker.ready; });
+  await page.waitForFunction(() => navigator.serviceWorker.controller);
+  await page.locator('#selfAvatar').click(); await page.locator('#accountSignOut').click();
+  await page.waitForURL('**/auth/login');
+  await context.setOffline(true); await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
+  await page.waitForFunction(() => document.querySelector('#day-status')?.textContent === 'Tour unavailable');
+  assert.equal(await page.locator('.note-card').count(), 0); assert.equal(await page.locator('.day-stop').count(), 0); assert.equal(await page.locator('#day-record').isDisabled(), true);
+});
+
+test('R6: another tab cannot finalize a live owner recording', async t => {
+  const { page, context, origin } = await open(t);
+  await page.locator('#day-record').click(); await page.waitForFunction(() => window.syntheticRecorders[0]?.state === 'recording');
+  await page.waitForTimeout(1300);
+  const second = await context.newPage(); await second.goto(`${origin}/tours/day.html?tour=${tourId}`); await second.waitForSelector('.note-card');
+  assert.equal(await page.evaluate(() => window.syntheticRecorders[0].state), 'recording');
+  assert.match(await second.locator('.note-card').textContent(), /Recording/);
+  assert.doesNotMatch(await second.locator('.note-card').textContent(), /Saved on phone/);
+  await page.locator('#day-record').click(); await page.waitForFunction(() => document.querySelector('.note-card')?.textContent.includes('Saved on phone'));
+  await second.locator('#day-refresh').click(); await second.waitForFunction(() => document.querySelector('.note-card')?.textContent.includes('Saved on phone'));
+});
+
+test('R10: map pin, list and dock share one restored selection', async t => {
+  const { page } = await open(t);
+  await page.locator('[data-route-stop-id="66666666-6666-4666-8666-666666666666"]').click();
+  await page.waitForFunction(() => document.querySelector('#day-current').textContent.includes('garden'));
+  await page.reload(); await page.waitForFunction(() => document.querySelector('#day-title').textContent === 'Synthetic tour');
+  assert.match(await page.locator('#day-current').textContent(), /garden/);
+  await page.locator('#day-previous').click(); await page.reload(); await page.waitForFunction(() => document.querySelector('#day-title').textContent === 'Synthetic tour');
+  assert.match(await page.locator('#day-current').textContent(), /waterfront/);
 });
 
 test("mic denial recovers controls; recording freezes property while tour reads keep updating", async t => {

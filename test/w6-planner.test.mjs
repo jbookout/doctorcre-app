@@ -10,6 +10,15 @@ const html = await readFile(new URL("../tours/index.html", import.meta.url), "ut
 const clientA = "11111111-1111-4111-8111-111111111111", clientB = "22222222-2222-4222-8222-222222222222";
 const record = id => ({ id, name: id === clientA ? "Demo Practice A" : "Demo Practice B", city: "Demo City", state: "FL", vertical: "Demo specialty", notes: "Synthetic original entry" });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+test("R13: Tour day opens its whole surface in a separate tab", async () => {
+  const { detail } = await import("./fixtures/tour-day.synthetic.mjs");
+  const app = harness({ tour: async () => detail });
+  try {
+    await app.view.ready; app.doc.querySelector("[data-tour-id]").click(); await settle();
+    const link = app.doc.querySelector('a[href^="/tours/day.html"]');
+    assert.ok(link); assert.equal(link.target, "_blank"); assert.match(link.rel, /noopener/);
+  } finally { app.close(); }
+});
 function harness(api = {}, beforeMount = () => {}) {
   const dom = new JSDOM(html, { url: "https://example.test/tours", pretendToBeVisual: true });
   const doc = dom.window.document;

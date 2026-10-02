@@ -157,7 +157,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     link.href = `/tours/route-editor.html?tour=${encodeURIComponent(tour.id)}`; link.target = "_blank"; link.rel = "noopener"; body.append(link);
     if (tour.routes?.some(route => route.accepted === true && route.stops?.some(stop => stop.stop_state === "active"))) {
       const day = element("a", "Tour day", "download-button");
-      day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`; body.append(day);
+      day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`; day.target = "_blank"; day.rel = "noopener noreferrer"; body.append(day);
     }
     if (focused === "SUMMARY") body.querySelector("summary")?.focus({ preventScroll: true });
     if (focused === "A") link.focus({ preventScroll: true });

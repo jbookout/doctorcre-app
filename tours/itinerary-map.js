@@ -38,7 +38,7 @@ export function normalizedProviderBounds([[west, south], [east, north]]) {
 // Read compatibility v1: the pinned composer permits equal ISO instants.
 // Preserve those exact windows without changing the pinned map module or
 // widening its validation of identity, order, durations or other appointments.
-function buildAcceptedRouteState(route, options) {
+export function buildAcceptedRouteState(route, options) {
   const iso = value => {
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) return false;
     const time = Date.parse(value);
@@ -140,13 +140,13 @@ export function mountAcceptedItinerary(root, initial) {
     if (!stop) return;
     dispatch(state.mode === "tour" ? { type: "route_stop_change", route_stop_id: stopId }
       : { type: feature ? "feature_click" : "selected_record", property_id: stop.property_id });
-    if (state.mode === "tour") persist();
     focus();
     options.onSelect?.(stopId);
   }
   function dispatch(event) {
     if (!state || destroyed) return;
     state = reduceMapEvent(state, { ...event, route_version: state.route_version }).state;
+    if (event.type === "route_stop_change") persist();
     render();
   }
   function focus() {

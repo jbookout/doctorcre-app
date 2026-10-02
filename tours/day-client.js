@@ -14,8 +14,7 @@ export function createDayClient({ fetchImpl = globalThis.fetch } = {}) {
   return {
     get scope() { return scope; },
     // No upload endpoint or transcription/dual-filing receipt is deployed or
-    // pinned. Keep local capture honest; only a reviewed producer successor can
-    // turn on the live transport. The injected test adapter exercises the queue.
+    // pinned. This surface supports local capture only.
     capabilities: Object.freeze({ voiceNotes: false }),
     async session(options) {
       const session = await read("/api/system-work/session", options);

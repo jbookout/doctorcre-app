@@ -4,7 +4,7 @@
   "status": "app_capture_only_upstream_contract_required",
   "route_contract": "contracts/tour-map.v1.json",
   "tour_read_contract": "contracts/tour-composer.v1.json",
-  "app_state": "Account-scoped IndexedDB audio drafts and itinerary snapshot; never canonical business records. No bearer tokens persisted. Reload resumption is limited to the last authenticated tab binding; online resumption revalidates identity before syncing.",
+  "app_state": "Account-scoped IndexedDB audio drafts and itinerary snapshot; never canonical business records. No bearer tokens persisted. Offline reload requires the last authenticated tab binding, which successful sign-out revokes. Online resumption revalidates identity. Capture-only: no upload or filing transport.",
   "layout": "Awaiting W1b shared sidebar/tab slot API. Tour day contains no page-level navigation or tab markup; existing app shell is the temporary shared host.",
   "live_voice_notes": false,
   "producer_requirements": {

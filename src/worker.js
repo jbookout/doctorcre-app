@@ -67,19 +67,21 @@ function unavailable(documentRequest) {
   });
 }
 
-function secure(response) {
+function secure(response, path) {
   const headers = new Headers(response.headers);
+  const capture = path === "/tours/day.html";
   headers.set("content-security-policy", [
     "default-src 'self'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'",
     "form-action 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data:",
     "connect-src 'self' http://127.0.0.1:4682", "worker-src 'self'",
+    ...(capture ? ["media-src 'self' blob:"] : []),
   ].join("; "));
   headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");
   headers.set("referrer-policy", "same-origin");
-  headers.set("permissions-policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+  headers.set("permissions-policy", `camera=(), geolocation=(), microphone=${capture ? "(self)" : "()"}, payment=(), usb=()`);
   headers.set("cross-origin-opener-policy", "same-origin");
   headers.set("cross-origin-resource-policy", "same-origin");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
@@ -104,7 +106,7 @@ async function assetResponse(request, env, path) {
   headers.set("cache-control", path.endsWith(".html") || path.endsWith(".js") || path.endsWith(".css")
     ? "no-cache" : "public, max-age=300");
   if (path === "/public-shell/sw.js") headers.set("service-worker-allowed", "/");
-  return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
+  return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), path);
 }
 
 async function carrResponse(request, env, documentRequest = false) {
