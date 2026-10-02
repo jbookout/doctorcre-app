@@ -13,13 +13,13 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip-link" href="#tour-detail">Skip to tour workspace</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
     <div><p class="eyebrow">CARR · Internal</p><h1>Itinerary</h1></div>
 
     <p id="status" role="status" aria-live="polite">Loading tours…</p>
-  </header>
+  </div>
   <main class="layout">
-    <aside class="library" aria-label="Tour library"><div class="section-head"><h2>Tours</h2><button id="refresh" type="button" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button></div><ul id="tour-list" class="tour-list" aria-busy="true"></ul></aside>
+    <aside data-layout-slot="sidebar" class="library" aria-label="Tour library"><div class="section-head"><h2>Tours</h2><button data-layout-refresh id="refresh" type="button" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button></div><ul id="tour-list" class="tour-list" aria-busy="true"></ul></aside>
     <section id="tour-detail" class="workspace" tabindex="-1">
       <details id="create-tour-panel" class="card create-tour-panel">
         <summary>Start a Tour</summary>

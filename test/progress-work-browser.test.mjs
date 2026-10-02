@@ -340,10 +340,15 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
   let release, pending=0;const gate=new Promise(resolve=>release=resolve);
   state.rpcReply=async(rpc,payload)=>{if(rpc.name==='read-dispatch-history'&&rpc.arguments.cursor){pending++;await gate;return {...payload,events:[...payload.events,...payload.events]};}return payload;};
   await page.locator('#workDispatchMore').evaluate(button=>{button.click();button.click();});
-  await assertEventually(()=>pending>0);release();
-  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
+  await assertEventually(()=>pending>0);
+  t.after(()=>release());
+  const actedEvent=page.locator('#workDispatchHistory .work-record > h3').filter({hasText:/^acted$/});
+  assert.equal(await actedEvent.count(),0);
+  assert.equal(await page.locator('#workDispatchMore').isDisabled(),true);
   assert.equal(calls.filter(call=>call.name==='read-dispatch-history'&&call.arguments.cursor==='synthetic-cursor').length,1);
-  assert.equal(await page.locator('#workDispatchHistory .work-record > h3').filter({hasText:'acted'}).count(),1);
+  release();
+  await actedEvent.waitFor({state:'visible'});
+  assert.equal(await actedEvent.count(),1);
   assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
 });
 

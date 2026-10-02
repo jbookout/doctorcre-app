@@ -65,9 +65,9 @@ test('refused read renders unknown without server error prose and retry stays re
   await page.waitForFunction(() => document.querySelector('[data-gap="v5-a01"]')?.textContent.includes('refused'));
   assert.equal(await covered.getAttribute('data-state'), 'unknown');
   assert.doesNotMatch(await covered.textContent(), /healthy|private runbook|no producer yet/);
-  await page.locator('#retryRead').click();
+  await page.locator('#appSyncRefresh').click();
   await page.waitForFunction(() => document.querySelector('[data-gap="v5-a01"]')?.textContent.includes('refused'));
-  assert.ok(calls.every(call => ['read-assurance-health', 'incident-board', 'current-work-item', 'current-work-requests', 'read-session-identity', 'notification-feed'].includes(call.name)));
+  assert.ok(calls.every(call => ['read-assurance-health', 'incident-board', 'current-work-item', 'current-work-requests', 'read-session-identity', 'notification-feed', 'deal-room-board', 'today-triage'].includes(call.name)));
 });
 
 test('missing scope is unknown without inventing a workflow; entering a scope performs the exact read', async t => {

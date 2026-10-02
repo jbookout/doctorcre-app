@@ -1,0 +1,180 @@
+// Synthetic only. No names or relationship facts originate from CARR records.
+export function relationshipNetworkFixture(now = new Date().toISOString()) {
+  const node = (
+    id,
+    name,
+    kind,
+    territory,
+    verticals,
+    owner = "joe",
+    summary = "Demo business relationship",
+  ) => ({
+    id,
+    record_id: id.split(":")[1],
+    name,
+    kind,
+    territory,
+    verticals,
+    owner,
+    summary,
+    contact_state: "active",
+  });
+  const nodes = [
+    node(
+      "party:demo-lender",
+      "Demo Healthcare Lending",
+      "vendor",
+      "Demo Coast",
+      ["dental"],
+    ),
+    node("party:demo-client", "Demo Coastal Dental", "client", "Demo Coast", [
+      "dental",
+    ]),
+    node("party:demo-lead", "Demo Dental Expansion", "lead", "Demo Coast", [
+      "dental",
+    ]),
+    node("party:demo-build", "Demo Practice Builders", "vendor", "Demo Coast", [
+      "dental",
+    ]),
+    node(
+      "deal:demo-won",
+      "Demo Dental Relocation",
+      "deal",
+      "Demo Coast",
+      ["dental"],
+      "joe",
+      "Closed · Won",
+    ),
+    node(
+      "deal:demo-open",
+      "Demo Second Location",
+      "deal",
+      "Demo Coast",
+      ["dental"],
+      "joe",
+      "Touring",
+    ),
+    node(
+      "party:demo-therapy",
+      "Demo Therapy Group",
+      "client",
+      "Demo Inland",
+      ["physical-therapy"],
+      "dell",
+    ),
+    node(
+      "deal:demo-lost",
+      "Demo Therapy Search",
+      "deal",
+      "Demo Inland",
+      ["physical-therapy"],
+      "dell",
+      "Closed · Lost",
+    ),
+  ];
+  const edge = (id, from, to, kind, summary, detail = summary, via = null) => ({
+    id,
+    from,
+    to,
+    kind,
+    summary,
+    detail,
+    via,
+    when: "2026-10-01T15:00:00Z",
+  });
+  const edges = [
+    edge(
+      "demo-offer",
+      "party:demo-lender",
+      "party:demo-lead",
+      "can_introduce",
+      "Worked together on equipment financing; offered an introduction.",
+      "Original synthetic email: Demo Healthcare Lending offered to connect the practice manager for the expansion. Willingness to introduce has not been confirmed.",
+    ),
+    edge(
+      "demo-made",
+      "party:demo-build",
+      "party:demo-client",
+      "introduced",
+      "Introduction made at a practice planning meeting.",
+    ),
+    edge(
+      "demo-client-referral",
+      "party:demo-client",
+      "party:demo-lead",
+      "referred",
+      "Client introduced another practice owner.",
+    ),
+    edge(
+      "demo-vendor-won",
+      "party:demo-lender",
+      "deal:demo-won",
+      "referred",
+      "Referred the relocation deal.",
+    ),
+    edge(
+      "demo-vendor-open",
+      "party:demo-lender",
+      "deal:demo-open",
+      "referred",
+      "Referred a second location.",
+    ),
+    edge(
+      "demo-worked",
+      "party:demo-build",
+      "deal:demo-won",
+      "worked",
+      "Managed the buildout.",
+    ),
+    edge(
+      "demo-client-won",
+      "party:demo-client",
+      "deal:demo-won",
+      "client_deal",
+      "Practice relocation",
+    ),
+    edge(
+      "demo-client-open",
+      "party:demo-client",
+      "deal:demo-open",
+      "client_deal",
+      "Second location",
+    ),
+    edge(
+      "demo-client-sent",
+      "party:demo-client",
+      "deal:demo-lost",
+      "referred",
+      "Introduced a therapy practice owner.",
+    ),
+    edge(
+      "demo-therapy-deal",
+      "party:demo-therapy",
+      "deal:demo-lost",
+      "client_deal",
+      "Practice search",
+    ),
+  ];
+  return {
+    schema: "carr-relationship-network.v1",
+    observed_at: now,
+    valid_until: new Date(Date.parse(now) + 60000).toISOString(),
+    nodes,
+    edges,
+    referrals: [
+      { node_id: "party:demo-lender", deals: 2, won: 1, lost: 0, win_rate: 1 },
+      { node_id: "party:demo-client", deals: 1, won: 0, lost: 1, win_rate: 0 },
+    ],
+    suggestions: [
+      {
+        id: "demo-offer",
+        from: "party:demo-lender",
+        to: "party:demo-lead",
+        via: null,
+        reason: edges[0].summary,
+        detail: edges[0].detail,
+        when: edges[0].when,
+      },
+    ],
+  };
+}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const NOW = new Date('2026-10-01T15:00:00Z');
@@ -45,6 +46,7 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
       try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
+    if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
     if (url.pathname === '/pipeline/changes') {
       feedReads++;
@@ -104,7 +106,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'today-triage': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -220,13 +222,17 @@ test('R6 settled board failure shows unavailable rather than Updating and automa
 test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
   for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
+    // Finish Home's detail wave before observing the receiving Deals request.
+    // Otherwise a late Home request can advance the clock before Deals starts its deadline.
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
+    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
+      && request.postDataJSON()?.params?.name === 'get-deal-room'
+      && new URL(request.frame().url()).pathname === '/deals');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
     await page.locator('#rows .deal-link').first().waitFor();
     await firstFeed;
-    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
-      && request.postDataJSON()?.params?.name === 'get-deal-room');
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
