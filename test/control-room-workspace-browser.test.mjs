@@ -139,8 +139,16 @@ test('finding 8: poll preserves calendar, management and popup activity focus pl
 });
 test('finding 9: persisted pagehide/pageshow continues Control Room polling',async t=>{
  const {page,state}=await open(t);await page.locator('#tabAttention').click();await page.waitForSelector('#incidentGroups [data-incident]');
- await page.evaluate(()=>{dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));});state.incidentState='monitoring';await page.clock.runFor(30001);
- await page.waitForFunction(()=>document.querySelector('#incidentGroups [data-incident] .work-meta').textContent.includes('monitoring'));
+ const incidentRead=()=>page.waitForResponse(response=>new URL(response.url()).pathname==='/mcp'
+  && response.request().postDataJSON()?.params?.name==='incident-board');
+ const showsState=state=>page.waitForFunction(expected=>document.querySelector('#incidentGroups [data-incident] .work-meta')?.textContent.includes(expected),state);
+ // Consume the resume read before advancing past a read deadline. Otherwise
+ // the virtual clock can time out a network response that has not arrived yet.
+ state.incidentState='monitoring';const resumed=incidentRead();
+ await page.evaluate(()=>{dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));});
+ await (await resumed).finished();await showsState('monitoring');
+ state.incidentState='investigating';const polled=incidentRead();await page.clock.runFor(15001);
+ await (await polled).finished();await showsState('investigating');
 });
 test('finding 10: System Map restores selected node on initial load and history navigation',async t=>{
  const {page}=await open(t,{path:'/control-room?mode=live&tab=system-map&node=service%3Ademo-worker'});
