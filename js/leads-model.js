@@ -64,6 +64,6 @@ export function automaticMove(lead) {
 }
 export function undoReview(lead) {
   const move = automaticMove(lead);
-  if (!move || !BOARD_STAGES.some(([key]) => key === move.from)) return null;
+  if (!move || !FILTER_STAGES.some(([key]) => key === move.from && key !== "do_not_contact")) return null;
   return { stage: move.from, stage_review: { reason: "Undo automatic stage move", evidence_ids: [], undo_event_id: move.event_id } };
 }

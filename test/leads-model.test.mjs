@@ -40,5 +40,6 @@ test('Doc evidence checks mail and calendar before asking only unanswered questi
 });
 test('one-tap undo binds to latest automatic event, restores prior stage, rejects stale/reverted state',()=>{
  const l=leads.find(l=>l.stage==='engaged'); assert.equal(undoReview(l).stage,'outreach_active');assert.equal(undoReview(l).stage_review.undo_event_id,l.last_stage_move.event_id);
+ assert.equal(undoReview({...l,last_stage_move:{...l.last_stage_move,from:'archived'}}).stage,'archived');
  assert.equal(undoReview({...l,stage:'nurture_drip'}),null);assert.equal(undoReview({...l,last_stage_move:{...l.last_stage_move,undone:true}}),null);
 });
