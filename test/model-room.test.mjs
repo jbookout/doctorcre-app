@@ -441,12 +441,12 @@ test("C12-16 the browser does not sort, filter or re-rank the server's arrays", 
   assert.deepEqual(window_.turns.map((turn) => turn.seq), LIVE_TURNS.turns.map((turn) => String(turn.seq)));
 });
 
-test("C12-17 the Observatory keeps its wire and gains the local task board", async () => {
-  const room = await read("room.html");
+test("C12-17 Progress work detail keeps the wire and task board", async () => {
+  const room = await read("progress-work.html");
   assert.match(room, /id="roomStage"/);
   assert.match(room, /id="wireFeed"/);
-  assert.match(room, /id="openTaskBoard"/);
-  assert.match(room, /id="taskBoardDialog"/);
+  assert.match(room, /id="workTasks"/);
+  assert.match(room, /id="queueColumns"/);
   assert.equal(/room\.html/.test(viewSource), false, "the Model Room tab does not redirect to the Observatory");
 });
 

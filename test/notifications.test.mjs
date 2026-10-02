@@ -364,7 +364,7 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.17.0");
+  assert.equal(routes.version, "1.18.0");
   assert.equal(contract.version, "1.39.0");
   assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65");
   assert.equal(routes.routes["/updates"], "notifications.html");
@@ -758,7 +758,7 @@ test("B12-9 the current contract still pins both preference verbs and their orde
   assert.equal(contract.mcp_operations[set + 1], "set-work-shape-disposition");
 
   // The route contract does NOT move: this slice adds no page.
-  assert.equal(routes.version, "1.17.0");
+  assert.equal(routes.version, "1.18.0");
   assert.equal(routes.routes["/updates"], "notifications.html");
 
   // The repository check pins both verbs, and the shared client interface

@@ -111,8 +111,7 @@ test("normal motion flows; reduced motion stops animation while preserving stale
     assert.equal(await page.locator(selector).first().evaluate(node => getComputedStyle(node, node.classList.contains("freshness-badge") ? "::before" : null).animationName), "none");
   assert.equal(await page.locator('[data-freshness="stale"]').first().evaluate(node => getComputedStyle(node, "::before").borderRadius), "1px");
   await page.locator(".pipeline-node").click();
-  assert.equal(await page.locator("#task-detail").isVisible(), true);
-  assert.match(await page.locator("#task-detail-title").textContent(), /Synthetic build/);
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
 });
 
 function holdRequests(t, name) {
@@ -291,7 +290,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.deepEqual(errors, []);
   });
 
-test("task focus and dialog return target survive unchanged and changed polls", async t => {
+test("task focus survives board polls before opening work detail", async t => {
   let version = 1;
   const { page, errors } = await open(t, { onRpc: async (route, rpc) => {
     if (rpc.name !== "read-progress-board") return false;
@@ -311,12 +310,7 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   await task.press("Enter");
-  version = 3;
-  await page.clock.runFor(15000);
-  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 3");
-  await page.getByRole("button", { name: "Close task detail" }).click();
-  assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
-  assert.match(await task.getAttribute("aria-label"), /Synthetic task 3/);
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
   assert.deepEqual(errors, []);
 });
 

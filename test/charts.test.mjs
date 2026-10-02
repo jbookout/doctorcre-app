@@ -259,8 +259,8 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   assert.equal(new Set(CHARTS_STATES.map((state) => CHARTS_STATE_COPY[state].title)).size, CHARTS_STATES.length - 1,
     "loading and stale deliberately share one heading; every other state has its own");
 
-  // No refusal body ever reaches a rendered string.
-  assert.equal(refused.body, "a body no surface may render");
+  // Authentication is decided by the status without waiting for a diagnostic body.
+  assert.equal(refused.body, undefined);
   assert.ok(!pageJs.includes(".body"), "the page never reads an error body");
 
   // The empty and unavailable branches draw no chart at all: a chart of zeros
