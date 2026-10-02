@@ -6,12 +6,13 @@ import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready' } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const context = await browser.newContext({ viewport: { width: 390, height: 900 } });
-  const page = await context.newPage(); page.setDefaultTimeout(3000);
+  const page = await context.newPage(); page.setDefaultTimeout(7000);
+  await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
-  context.on('page', p => { p.setDefaultTimeout(3000); p.on('pageerror', e => errors.push(e.message)); });
+  context.on('page', p => { p.setDefaultTimeout(7000); p.on('pageerror', e => errors.push(e.message)); });
   page.on('pageerror', e => errors.push(e.message));
   const env = {
     CARR: { fetch: async request => {
@@ -29,7 +30,12 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
       }
       if (rpc.name === 'unfinished-work') {
         if (!unfinished) { payload = { error: 'unknown_tool', tool: 'unfinished-work' }; isError = true; }
-        else payload = { schema: 'unfinished-work.v1', items: [], coverage: [], census_complete: true };
+        else {
+          const args = rpc.arguments;
+          const items = rows.filter(row => row.completed === Boolean(args.live_library)
+            && (!args.text || row.title.includes(args.text)));
+          payload = { schema: 'unfinished-work.v1', items, coverage: [], census_complete: true };
+        }
       }
       return Response.json({ result: { isError, content: [{ text: JSON.stringify(payload) }] } });
     } },
@@ -53,9 +59,14 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === '/mcp' && control && await control(route, route.request().postDataJSON().params)) return;
+    return route.continue();
+  });
   await page.goto(`${origin}${path}`);
-  return { page, context, calls, errors, recover: () => { readState = 'ready'; } };
+  return { page, context, calls, errors, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
 
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
@@ -97,5 +108,126 @@ for (const boardRead of ['missing', 'failed']) test(`${boardRead} board read sta
   await page.locator('#board-flow [data-task-id="build"]').waitFor();
   assert.equal(await page.locator('#board-title').textContent(), 'Demo project');
   assert.equal(await page.locator('#board-error').isVisible(), false);
+  assert.deepEqual(errors, []);
+});
+
+const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthetic.loop',
+  title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
+  age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
+const systemPath = '/control-room/progress/board/carr-v5';
+async function panelTasks(page, ids) {
+  await page.waitForFunction(expected => {
+    const actual = [...document.querySelectorAll('#system-work-flow [data-task-id]')].map(n => n.dataset.taskId).sort();
+    return JSON.stringify(actual) === JSON.stringify(expected.slice().sort());
+  }, ids.map(id => `loop:${id}`));
+  assert.equal(await page.locator('#system-work-count').textContent(), `${ids.length} TASK${ids.length === 1 ? '' : 'S'}`);
+}
+
+for (const denied of ['unfinished-work', 'read-progress-board']) {
+  for (const order of ['denial-first', 'success-first']) test(`${denied} sign-out clears both flows (${order}) and recovers`, async t => {
+    let active = false, release;
+    const held = new Promise(resolve => { release = resolve; });
+    const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')], control: async (route, rpc) => {
+      if (!active || !['unfinished-work', 'read-progress-board'].includes(rpc.name)) return false;
+      const isDenied = rpc.name === denied;
+      if ((order === 'denial-first') !== isDenied) await held;
+      if (isDenied) await route.fulfill({ status: 401, body: '{}' });
+      else await route.continue();
+      return true;
+    } });
+    await page.locator('#board-flow [data-task-id="build"]').waitFor();
+    await panelTasks(page, ['open']);
+    active = true;
+    const success = order === 'success-first'
+      ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.status() === 200) : null;
+    await page.clock.runFor(15000);
+    if (order === 'denial-first') {
+      await page.locator(denied === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
+    } else {
+      await success;
+    }
+    release();
+    await page.locator('#board-sign-in').waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('#board-flow [data-task-id], #system-work-flow [data-task-id], .work-card').length === 0);
+    // Give the previously held successful response time to arrive and render.
+    await page.waitForLoadState('networkidle');
+    assert.equal(await page.locator('#board-flow [data-task-id], #system-work-flow [data-task-id], .work-card').count(), 0);
+    assert.equal(await page.locator('#system-work-coverage').textContent(), '');
+    active = false;
+    await page.locator('#board-retry').click();
+    await page.locator('#board-flow [data-task-id="build"]').waitFor();
+    await panelTasks(page, ['open']);
+    assert.equal(await page.locator('#board-sign-in').isVisible(), false);
+    assert.deepEqual(errors, []);
+  });
+}
+
+test('Library pipeline membership and count follow mode, filters, and automatic refresh', async t => {
+  const { page, setRows, errors } = await open(t, { path: systemPath, rows: [workRow('open'), workRow('done', true)] });
+  await panelTasks(page, ['open', 'done']);
+  await page.locator('#live-library').click();
+  await page.locator('#system-work-cards [data-work-id="done"]').waitFor();
+  await panelTasks(page, ['done']);
+  setRows([workRow('open'), ...Array.from({ length: 12 }, (_, i) => workRow(`done-${i}`, true))]);
+  await page.clock.runFor(15000);
+  await panelTasks(page, Array.from({ length: 12 }, (_, i) => `done-${i}`));
+  await page.locator('[name="text"]').fill('done-11');
+  await page.locator('#system-work-filters').getByRole('button', { name: 'Search', exact: true }).click();
+  await panelTasks(page, ['done-11']);
+  await page.locator('#live-library').click();
+  const recent = ['done-0', 'done-1', 'done-10', 'done-11', 'done-2', 'done-3', 'done-4', 'done-5', 'done-6', 'done-7'];
+  await panelTasks(page, recent);
+  await page.locator('[name="text"]').fill('open');
+  await page.locator('#system-work-filters').getByRole('button', { name: 'Search', exact: true }).click();
+  await panelTasks(page, ['open', ...recent]);
+  assert.deepEqual(errors, []);
+});
+
+test('Library can render before the first unfinished read and rejects its late response', async t => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  t.after(() => release());
+  const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open'), workRow('done', true)],
+    control: async (route, rpc) => {
+      if (rpc.name !== 'unfinished-work' || rpc.arguments.live_library) return false;
+      await held; await route.continue(); return true;
+    } });
+  await page.locator('#live-library').click();
+  await panelTasks(page, ['done']);
+  release();
+  await page.waitForLoadState('networkidle');
+  await panelTasks(page, ['done']);
+  assert.deepEqual(errors, []);
+});
+
+for (const failed of ['unfinished-work', 'read-progress-board']) test(`${failed} service failure preserves the independent flow and recovers`, async t => {
+  let active = false;
+  const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')],
+    control: async (route, rpc) => {
+      if (!active || rpc.name !== failed) return false;
+      await route.fulfill({ status: 503, body: '{}' }); return true;
+    } });
+  await page.locator('#board-flow [data-task-id="build"]').waitFor();
+  await panelTasks(page, ['open']);
+  active = true;
+  await page.clock.runFor(15000);
+  await page.locator(failed === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
+  assert.equal(await page.locator('#board-flow [data-task-id="build"]').count(), 1);
+  await panelTasks(page, ['open']);
+  assert.equal(await page.locator('#board-sign-in').isVisible(), false);
+  active = false;
+  await page.clock.runFor(15000);
+  await page.waitForFunction(() => document.querySelector('#board-error').hidden && document.querySelector('#system-work-error').hidden);
+  assert.deepEqual(errors, []);
+});
+
+for (const empty of [false, true]) test(`automatic refresh keeps keyboard position when a census task is removed (${empty ? 'empty' : 'remaining'} result)`, async t => {
+  const { page, setRows, errors } = await open(t, { path: systemPath, rows: [workRow('remove'), workRow('keep')] });
+  await panelTasks(page, ['remove', 'keep']);
+  await page.locator('#system-work-flow [data-task-id="loop:remove"]').focus();
+  setRows(empty ? [] : [workRow('keep')]);
+  await page.clock.runFor(15000);
+  await panelTasks(page, empty ? [] : ['keep']);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'system-work-title');
   assert.deepEqual(errors, []);
 });

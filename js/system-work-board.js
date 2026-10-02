@@ -5,7 +5,7 @@ import {mountProgressPipeline} from './progress-pipeline.js';
 import {validSystemWork,groupSystemWork,systemPipeline,triageWork} from './system-work-board-model.js';
 const workLabel=value=>String(value||'Work').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 const node=(tag,text,className)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(className)e.className=className;return e;};
-export function mountSystemWorkBoard({client}){
+export function mountSystemWorkBoard({client,onAccessDenied}){
  const panel=document.getElementById('system-work-panel');panel.hidden=false;
  const cards=document.getElementById('system-work-cards'),coverage=document.getElementById('system-work-coverage'),form=document.getElementById('system-work-filters');
  const more=document.getElementById('system-work-more'),library=document.getElementById('live-library'),error=document.getElementById('system-work-error');
@@ -90,6 +90,13 @@ export function mountSystemWorkBoard({client}){
   }
   return span;
  }
+ function clearAccess(cause){
+  ++generation;loading=false;items=[];live=[];cursor=null;cursorQuery=null;pageCount=1;
+  operations.clear();current=null;actionForm.replaceChildren();if(dialog.open)dialog.close();
+  coverage.replaceChildren();render();pipeline.clear();more.disabled=false;
+  error.textContent=cause.status===401?'Sign in to view system work.':'System work access unavailable.';
+  error.hidden=false;retry.hidden=false;
+ }
  async function refresh(append=false,{force=false}={}){
   if(append&&(loading||!cursor||cursorQuery!==JSON.stringify(args())))return;
   if(!force&&!append&&(loading||dialog.open||cards.contains(document.activeElement)))return;
@@ -120,10 +127,11 @@ export function mountSystemWorkBoard({client}){
    }
    render();
    retry.hidden=true;
-   if(!queryArgs.live_library){if(liveRead)live=liveRead.items;pipeline.render(systemPipeline(items,live));}
+   if(liveRead)live=liveRead.items;
+   pipeline.render(systemPipeline(items,queryArgs.live_library?[]:live));
   }catch(cause){if(gen!==generation)return;error.textContent=cause.status===401?'Sign in to view system work.':'System work updates unavailable.';error.hidden=false;
    retry.hidden=false;
-   if(cause.status===401||cause.status===403){items=[];live=[];cursor=null;render();pipeline.clear();}}
+   if(cause.status===401||cause.status===403){if(onAccessDenied)onAccessDenied(cause);else clearAccess(cause);}}
   finally{if(gen===generation){loading=false;more.disabled=false;}}
  }
  form.addEventListener('submit',event=>{event.preventDefault();refresh(false,{force:true});});
@@ -155,5 +163,5 @@ export function mountSystemWorkBoard({client}){
   if(current?.operation===op&&dialog.open)showOperation(current);
  });
  document.getElementById('work-triage-close').addEventListener('click',()=>dialog.close());
- refresh();return {refresh};
+ refresh();return {refresh,clearAccess};
 }

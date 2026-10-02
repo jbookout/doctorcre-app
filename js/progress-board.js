@@ -283,9 +283,10 @@ function readFailure(cause, target) {
   let message;
   if (unauthorized) {
     message = cause.status === 401 ? "Sign-in required" : "You do not have access to this board.";
-    if (cause.status === 401) { ++refreshGeneration; clearBoard(state); clearDirectory(); }
-    else if (target === "board") clearBoard(state);
-    else clearDirectory();
+    ++refreshGeneration;
+    clearBoard(state);
+    clearDirectory();
+    systemWork?.clearAccess(cause);
   } else {
     const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : `Could not load board “${boardId}”. Retry to load its published tasks.`;
     message = label;
@@ -307,7 +308,7 @@ function readFailure(cause, target) {
 async function refresh(force = false) {
   if (!force && questions.contains(document.activeElement)) return;
   const generation = ++refreshGeneration;
-  if (systemWork) systemWork.refresh();
+  if (systemWork) systemWork.refresh(false, { force });
   if (!pathBoardId) client.listProgressBoards().then(read => {
     if (generation === refreshGeneration) renderDirectory(read);
   }).catch(cause => {
@@ -346,7 +347,8 @@ async function refresh(force = false) {
   await loaded;
 }
 
-if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client });
+if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client,
+  onAccessDenied: cause => readFailure(cause, "board") });
 
 retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();
