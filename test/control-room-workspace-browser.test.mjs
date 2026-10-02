@@ -52,8 +52,15 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  await page.locator('#tabConnections').click();await page.locator('[data-connection="claude"] a').waitFor();assert.equal(await page.locator('[data-device]').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(width!==320)await capture(page,`connections-${width}`);
  assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'),calls.join(', '));assert.deepEqual(errors,[]);
 });
+for(const width of [1440,390])test(`W7 Action Items rows open the same wide popup at ${width}px`,async t=>{
+ const {page,errors}=await open(t,{width});await page.locator('#tabAttention').click();
+ const row=page.locator('#incidentGroups [data-incident]').first();await row.waitFor();
+ const title=await row.locator('h3').textContent();await capture(page,`action-items-${width}`);await row.locator('h3').click();
+ await page.waitForFunction(()=>document.querySelector('#jobDialog').open);assert.equal(await page.locator('#jobTitle').textContent(),title);
+ assert.ok((await page.locator('#jobDialog').boundingBox()).width>=Math.min(900,width-40));await page.locator('#jobClose').click();assert.deepEqual(errors,[]);
+});
 test('W7 automatic refresh updates PR, provider spend and open details without losing focus',async t=>{
- const {page,state}=await open(t);const card=page.locator('[data-task-id="work_request:WR-000901"]');await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();
+ const {page,state}=await open(t);const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();
  state.pr=23;state.title='Demo updated dashboard';state.spend=18.50;await page.clock.runFor(16001);
  await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #23'));
  assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody details').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody summary').evaluate(e=>e===document.activeElement),true);
