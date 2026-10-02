@@ -1375,7 +1375,6 @@ async function boot() {
   wireEvents();
   await loadHome();
   const linkedDeal = params.get('deal');
-  if (linkedDeal && state.deals.has(linkedDeal)) await openDeal(linkedDeal);
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one.
@@ -1391,6 +1390,15 @@ async function boot() {
   state.boardRefreshTimer = setInterval(() => {
     state.boardSync.requestRefresh('periodic');
   }, BOARD_REFRESH_MS);
+  if (linkedDeal && state.deals.has(linkedDeal)) {
+    try { await openDeal(linkedDeal); }
+    catch (error) {
+      $('#dealDetail').innerHTML = '<header><h2>Deal details unavailable.</h2><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></header>';
+      $('#dealDialog').dataset.dealId = linkedDeal;
+      $('#dealDialog').showModal();
+      console.error('Linked deal details unavailable', error);
+    }
+  }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }
 

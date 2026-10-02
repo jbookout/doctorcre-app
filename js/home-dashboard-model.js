@@ -36,7 +36,7 @@ export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
 
 export function topNewLeads(payload, { scope = 'team', actor, now = Date.now() } = {}) {
   if (!Array.isArray(payload?.leads) || (scope === 'mine' && !actor)) return [];
-  return payload.leads.filter(lead => typeof lead?.id === 'string'
+  return payload.leads.map(lead => lead && ({ ...lead, score: typeof lead.score === 'string' && /^-?\d+(?:\.\d+)?$/.test(lead.score) ? Number(lead.score) : lead.score })).filter(lead => typeof lead?.id === 'string'
     && typeof lead.score === 'number' && Number.isFinite(lead.score)
     && Number.isFinite(Date.parse(lead.created_at))
     && Date.parse(lead.created_at) >= now - 7 * 86_400_000 && Date.parse(lead.created_at) <= now
@@ -52,10 +52,14 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
   for (const deal of deals) {
     const detail = details.get(deal.id);
     if (!detail || !Array.isArray(detail.critical_dates) || !Array.isArray(detail.next_actions)) { failed.push(deal.id); continue; }
-    const dates = criticalDateEntries(deal, detail);
+    const isRow = row => row && typeof row === 'object' && !Array.isArray(row);
+    const dateRows = detail.critical_dates.filter(isRow);
+    const taskRows = detail.next_actions.filter(row => isRow(row) && typeof row.id === 'string' && typeof row.status === 'string');
+    if (dateRows.length !== detail.critical_dates.length || taskRows.length !== detail.next_actions.length) failed.push(deal.id);
+    const dates = criticalDateEntries(deal, { critical_dates: dateRows });
     undated.push(...dates.undated);
     entries.push(...dates.entries.filter(entry => !entry.settled).map(entry => ({ ...entry, type: 'date' })));
-    for (const task of detail.next_actions) {
+    for (const task of taskRows) {
       const day = toDay(task.due_on);
       if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
       if (!day) { undated.push(task); continue; }
@@ -69,20 +73,25 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
 
 export function controlSnapshot(reads) {
   const { incidents, work, requests, resources, schedule } = reads;
-  if (!validIncidentBoardPayload(incidents)) return null;
-  const complete = validCurrentWorkItemPayload(work) && validCurrentWorkRequestsPayload(requests)
+  if (!Object.keys(reads).length) return null;
+  const incidentCount = validIncidentBoardPayload(incidents) ? incidents.count : 0;
+  const complete = validIncidentBoardPayload(incidents) && validCurrentWorkItemPayload(work) && validCurrentWorkRequestsPayload(requests)
     && validScheduleBoardPayload(schedule) && schedule.sources.every(row => row.state === 'read')
     && schedule.overall_state === 'read'
     && schedule.jobs.every(job => job.freshness === 'fresh' && ['healthy', 'running', 'paused'].includes(job.state))
     && projectResourceDashboard(resources).providers.every(row => row.state === 'ok' && row.observed_at);
   const stalled = validCurrentWorkItemPayload(work) ? work.current.filter(item => item.hours_since_last_change >= STUCK_SILENCE_HOURS || ['blocked', 'needs_joe'].includes(item.state)).length : 0;
-  const waiting = validCurrentWorkRequestsPayload(requests) ? requests.items.filter(item => item.state === 'needs_joe').length : 0;
+  const waiting = validCurrentWorkRequestsPayload(requests) ? requests.items.filter(item => item.state === 'needs_joe'
+    || (['captured', 'triaged', 'ready'].includes(item.state) && item.next_human_action?.trim())).length : 0;
   const scheduledIssues = validScheduleBoardPayload(schedule) ? schedule.jobs.filter(job => ['missed', 'failed'].includes(job.state)).length : 0;
-  const issues = incidents.count + stalled + waiting + scheduledIssues;
+  const wipIssues = validCurrentWorkItemPayload(work) ? Number(work.wip.over_system_limit === true)
+    + (Array.isArray(work.wip.executors_over_limit) ? work.wip.executors_over_limit.length : 0) : 0;
+  const issues = incidentCount + stalled + waiting + scheduledIssues + wipIssues;
   return { attention: issues > 0 || !complete,
-    line: incidents.count ? `${incidents.count} open ${incidents.count === 1 ? 'issue' : 'issues'}`
+    line: incidentCount ? `${incidentCount} open ${incidentCount === 1 ? 'issue' : 'issues'}`
       : stalled ? `${stalled} ${stalled === 1 ? 'item needs' : 'items need'} a decision`
       : waiting ? `${waiting} ${waiting === 1 ? 'request awaits' : 'requests await'} a decision`
+      : wipIssues ? 'Work exceeds its limits'
       : scheduledIssues ? 'Scheduled work needs attention' : !complete ? 'Status checks incomplete' : 'Everything is clear',
     issues, complete };
 }
@@ -90,32 +99,41 @@ export function controlSnapshot(reads) {
 // A single board snapshot supplies flags and agenda. Slow or failed optional
 // data never prevents the deals from arriving. Every read has a deadline.
 export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
-  const result = { board: null, details: new Map(), leads: null, control: {}, unauthorized: false, updatedAt: null };
+  const result = { board: null, details: new Map(), leads: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
+    reads: Object.fromEntries(['board', 'leads', 'incidents', 'work', 'requests', 'resources', 'schedule'].map(key => [key, { state: 'loading' }])) };
   const publish = () => onUpdate(result);
   const take = async (name, read, target = result) => {
     try {
       if (signal?.aborted) return;
       const value = await readWithDeadline(read, { timeoutMs, signal });
       if (target instanceof Map) target.set(name, value); else target[name] = value;
+      result.reads[name] = { state: 'read' };
+      if (name === 'board' && target === result) {
+        for (const deal of scopedDeals(value, 'team') || []) result.reads[deal.id] = { state: 'loading' };
+      }
       result.updatedAt = new Date().toISOString();
     }
-    catch (error) { if (target instanceof Map) target.set(name, null); else target[name] = null; if ([401, 403].includes(error?.status)) result.unauthorized = true; }
+    catch (error) { if (target instanceof Map) target.set(name, null); else target[name] = null;
+      result.reads[name] = { state: 'error', code: error?.code || 'unavailable' };
+      if ([401, 403].includes(error?.status)) result.unauthorized = true; }
     publish();
   };
-  const board = take('board', () => client.getBoard({ workspace: 'all' })).then(async () => {
+  const board = take('board', signal => client.getBoard({ workspace: 'all', signal })).then(async () => {
     const deals = scopedDeals(result.board, 'team') || [];
     let next = 0;
     await Promise.all(Array.from({ length: Math.min(4, deals.length) }, async () => {
       while (next < deals.length && !result.unauthorized && !signal?.aborted) {
         const deal = deals[next++];
-        await take(deal.id, () => client.getDeal(deal.id), result.details);
+        await take(deal.id, signal => client.getDeal(deal.id, { signal }), result.details);
       }
     }));
   });
-  await Promise.all([board, take('leads', () => client.getLeadBoard()),
-    ...[['incidents', () => client.incidentBoard({ state: 'open', limit: 1000 })],
-      ['work', () => client.currentWorkItem()], ['requests', () => client.currentWorkRequests()],
-      ['resources', () => client.readResourceDashboard()], ['schedule', () => client.scheduleBoard()]]
+  await Promise.all([board, take('leads', signal => client.getLeadBoard({ signal })),
+    ...[['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal })],
+      ['work', signal => client.currentWorkItem({ signal })], ['requests', signal => client.currentWorkRequests({ signal })],
+      ['resources', signal => client.readResourceDashboard({ signal })], ['schedule', signal => client.scheduleBoard({ signal })]]
       .map(([key, read]) => take(key, read, result.control))]);
+  result.loading = false;
+  publish();
   return result;
 }

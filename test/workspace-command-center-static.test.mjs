@@ -45,7 +45,7 @@ test("Home ships cinematic visual widgets, wide detail and phone/reduced-motion 
   assert.match(js, /epoch !== sequence/);
   assert.match(js, /innerSignal.aborted/);
   assert.match(html, /<dialog id="homeDetail"/);
-  assert.match(js, /<summary>Details<\/summary>/);
+  assert.match(js, /<summary(?:\s[^>]*)?>Details<\/summary>/);
 });
 
 test("all authenticated surfaces mount the approved shared navigation", async () => {

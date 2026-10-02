@@ -58,7 +58,7 @@ test('control room cannot report No issues with incomplete/absent evidence; posi
   reads.work = { ok: true, count: 0, current: [], wip: { limit_system_wide: 1, in_flight: 0 } };
   reads.requests = { ok: true, items: [] };
   assert.equal(controlSnapshot({ ...reads, resources: null }).attention, true);
-  assert.equal(controlSnapshot({ ...reads, incidents: null }), null);
+  assert.equal(controlSnapshot({ ...reads, incidents: null }).complete, false);
   for (const owner of ['control-plane', 'cron']) reads.schedule.jobs.push({ ...reads.schedule.jobs[0], key: `demo-${owner}`, owner });
   reads.schedule = { ...reads.schedule, overall_state: 'read', sources: reads.schedule.sources.map(row => ({ ...row, state: 'read', count: 1 })), jobs: reads.schedule.jobs.map(job => ({ ...job, freshness: 'fresh', state: 'healthy' })) };
   reads.resources = { ...reads.resources, providers: reads.resources.providers.map(row => ({ ...row, state: 'ok', observed_at: '2026-10-01T15:00:00Z' })) };

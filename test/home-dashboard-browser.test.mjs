@@ -14,19 +14,20 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, leads = true, delayDetails = false } = {}) {
+async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
   await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
-  const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, failBoard = false;
+  const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
+  if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
-    'deal-room-board': async () => { boardReads++; if (failBoard) throw Error('Unavailable'); return client.getBoard(); },
-    'get-deal-room': async args => { if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
-      critical_dates: [{ id: `demo-date-${args.deal}`, label: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
-      next_actions: [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
-    'lead-board': async () => ({ leads: leads ? liveLeads : [] }),
+    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
+    'get-deal-room': async args => { if (detailFailure === '503') throw Error('Unavailable'); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
+      critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, label: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
+      next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
+    'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
     'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
@@ -38,18 +39,25 @@ async function open(t, { width = 1440, leads = true, delayDetails = false } = {}
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params.name);
       try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
-      catch { return route.fulfill({ status: 503, json: { error: 'Unavailable' } }); }
+      catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
+    if (url.pathname === '/pipeline/changes') { feedReads++; return route.fulfill({ json: { changes: [], cursor: null } }); }
     if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
+    if (tasksOnly && url.pathname === '/js/fixture-client.js') {
+      let source = await readFile(new URL('../js/fixture-client.js', import.meta.url), 'utf8');
+      source = source.replace('export async function createFixtureClient', 'async function originalFixtureClient');
+      source += `\nexport async function createFixtureClient(options) { const client = await originalFixtureClient(options); const read = client.getDeal; client.getDeal = async id => ({ ...await read(id), critical_dates: [], next_actions: [{ id: 'demo-task-' + id, description: 'Demo follow-up', status: 'open', due_on: '2026-10-01', owner: 'joe' }] }); return client; }`;
+      return route.fulfill({ body: source, contentType: 'text/javascript' });
+    }
     const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/deals' ? 'index.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto('http://localhost/?mode=live');
   await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
-  return { page, errors, calls, get boardReads() { return boardReads; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('Home desktop and phone show flags, visual agenda, ranked leads and wide entry detail with no overflow', async t => {
@@ -145,4 +153,150 @@ test('an open lead detail updates automatically while preserving expanded Detail
   assert.equal(await page.locator('#homeDetail details').evaluate(node => node.open), true);
   assert.equal(await page.locator('#homeDetail summary').evaluate(node => document.activeElement === node), true);
   assert.deepEqual(state.errors, []);
+});
+
+test('R5 whole refresh deadline preserves completed widgets across multiple hung detail waves', async t => {
+  const { page, calls } = await open(t, { hangDetails: true });
+  await page.locator('.home-lead').first().waitFor();
+  await page.locator('#homeControl:not([hidden])').waitFor();
+  for (const ms of [10_001, 10_001, 5_001]) {
+    await page.clock.runFor(ms);
+    await page.waitForTimeout(20);
+  }
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: 12/);
+  assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  assert.equal(await page.locator('#homeControl').isVisible(), true);
+  assert.equal(calls.filter(name => name === 'get-deal-room').length, 12);
+});
+
+test('R6 settled board failure shows unavailable rather than Updating and automatic recovery clears it', async t => {
+  const state = await open(t); const { page } = state;
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  state.failBoard(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
+  assert.match(await page.locator('#observedAt').textContent(), /unavailable|partial/i);
+  assert.equal(await page.locator('#homeNotice').isVisible(), true);
+  assert.equal(await page.locator('#dealAttention').getAttribute('aria-busy'), 'false');
+  state.failBoard(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
+  assert.equal(await page.locator('#homeNotice').isVisible(), false);
+});
+
+test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
+  for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
+    const state = await open(t); const { page } = state;
+    state.failDetails(failure);
+    await page.goto('http://localhost/deals?mode=live&deal=d01');
+    await page.locator('#rows .deal-link').first().waitFor();
+    await page.clock.runFor(10_001);
+    await page.waitForTimeout(30);
+    await page.getByText('Deal details unavailable.', { exact: true }).waitFor();
+    assert.equal(await page.locator('#dealDialog').getByRole('button', { name: 'Close details' }).isVisible(), true);
+    const before = [state.boardReads, state.feedReads];
+    await page.clock.runFor(65_000);
+    await page.waitForTimeout(30);
+    assert.ok(state.boardReads > before[0], 'board refresh continues');
+    assert.ok(state.feedReads > before[1], 'feed polling continues');
+  });
+});
+
+test('R9 identical refresh retains lead and deal focus; modal repaint retains exact link or button', async t => {
+  const state = await open(t); const { page } = state;
+  const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  await settled();
+  for (const selector of ['.home-lead', '.home-flag']) {
+    await page.locator(selector).first().focus();
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await settled();
+    assert.equal(await page.locator(selector).first().evaluate(node => document.activeElement === node), true, selector);
+  }
+  await page.locator('.home-lead').first().click();
+  for (const selector of ['#homeDetail a', '#homeDetail [data-close-detail]', '#homeDetail summary']) {
+    await page.locator(selector).focus();
+    state.updateLead('demo-lead-0', 97 + selector.length);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await settled();
+    assert.equal(await page.locator(selector).evaluate(node => document.activeElement === node), true, selector);
+  }
+});
+
+test('R10 failed or timed-out leads cannot leave open detail falsely current', async t => {
+  for (const failure of [503, 'timeout']) await t.test(String(failure), async t => {
+    const state = await open(t); const { page } = state;
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+    await page.locator('.home-lead').first().click();
+    state.failLeads(failure);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    if (failure === 'timeout') await page.clock.runFor(10_001);
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+    assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
+    assert.equal(await page.locator('#homeNotice').isVisible(), true);
+    state.failLeads(null);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+    assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  });
+});
+
+test('R11 live lead authorization refusals show Sign in and close prior detail', async t => {
+  for (const status of [401, 403]) await t.test(String(status), async t => {
+    const state = await open(t); const { page } = state;
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+    await page.locator('.home-lead').first().click();
+    state.failLeads(status);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+    assert.equal(await page.getByRole('link', { name: 'Sign in', exact: true }).isVisible(), true);
+    assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
+    assert.equal(await page.locator('#homeLeads').isVisible(), false);
+  });
+});
+
+test('R13 phone lead detail wraps specialty, maximum-length names and metadata within the dialog', async t => {
+  for (const width of [320, 390]) await t.test(String(width), async t => {
+    const { page } = await open(t, { width, longLead: true });
+    await page.locator('.home-lead').first().click();
+    await page.locator('#homeDetail summary').click();
+    assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.scrollWidth <= dialog.clientWidth), true);
+    assert.equal(await page.locator('#homeDetailBody').evaluate(body => body.scrollWidth <= body.clientWidth), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await screenshot(page, `phone-long-detail-${width}`);
+  });
+});
+
+test('R14 a task with no critical dates opens its exact deal and visible task', async t => {
+  const { page } = await open(t, { tasksOnly: true });
+  const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
+  await task.waitFor();
+  assert.equal(await task.getAttribute('href'), '/deals?deal=d01');
+  await task.click();
+  await page.waitForFunction(() => document.querySelector('#dealDialog')?.open);
+  assert.equal(await page.locator('#dealDialog').getAttribute('data-deal-id'), 'd01');
+  assert.match(await page.locator('#dealDetail').textContent(), /Demo follow-up/);
+});
+
+test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {
+  const { page, errors } = await open(t, { malformedTasks: true });
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: \d/);
+  assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  assert.equal(await page.locator('#homeControl').isVisible(), true);
+  assert.match(await page.locator('#homeCalendar').textContent(), /unavailable|missing/i);
+  assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /updating/i);
+  assert.deepEqual(errors, []);
+});
+
+test('R9 agenda focus survives independent responses while the shared board is still loading', async t => {
+  const { page } = await open(t, { delayBoard: true });
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
+  await task.focus();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await task.evaluate(node => document.activeElement === node), true);
 });
