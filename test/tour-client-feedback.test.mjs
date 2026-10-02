@@ -1,3 +1,4 @@
+import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -9,7 +10,7 @@ const share = readFileSync(new URL("../reports/share.js", import.meta.url), "utf
 const html = readFileSync(new URL("../reports/share.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("../reports/share.css", import.meta.url), "utf8");
 const tours = readFileSync(new URL("../tours/app.js", import.meta.url), "utf8");
-const tourHtml = readFileSync(new URL("../tours/index.html", import.meta.url), "utf8");
+const tourHtml = readFileSync(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 
 const propertyRef = "property:public:synthetic_property_01";
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -18,23 +19,25 @@ const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-822
 const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
 const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const tourScript = `${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
+const tourScript = `${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
 }
-async function openBroker(feedbackRead, { stops = [] } = {}) {
+async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) {
   const dom = new JSDOM(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto });
   dom.window.TextEncoder = TextEncoder;
-  const counts = [0, 0];
+  const counts = [0, 0], reads = [];
   dom.window.fetch = async path => {
     const url = new URL(path, dom.window.location.href);
+    reads.push(url.pathname);
     let data;
     if (url.pathname === "/api/tours/library") data = { tours: tourIds.map((id, i) => ({ id, name: `Demo Tour ${i ? "B" : "A"}` })) };
     else if (url.pathname === "/api/tours/detail") {
       const i = tourIds.indexOf(url.searchParams.get("tour_id"));
       data = { id: tourIds[i], name: `Demo Tour ${i ? "B" : "A"}`, projection_id: projectionIds[i], stops };
+      if (detailRead) data = detailRead(data);
     } else if (url.pathname === "/api/tours/selection-cart") {
       return { ok: false, json: async () => ({ error: "not_found" }) };
     } else if (url.pathname === "/api/tours/feedback") {
@@ -45,7 +48,7 @@ async function openBroker(feedbackRead, { stops = [] } = {}) {
   };
   dom.window.eval(tourScript);
   await settle();
-  return { dom, doc: dom.window.document };
+  return { dom, doc: dom.window.document, reads };
 }
 
 test("a late feedback Refresh cannot replace the selected Tour's responses", async t => {
@@ -82,7 +85,7 @@ test("a failed initial feedback read shows unavailable and Refresh can confirm a
   t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
-  assert.match(app.doc.querySelector("#client-feedback").textContent, /Client responses are unavailable.*Refresh/);
+  assert.match(app.doc.querySelector("#client-feedback").textContent, /Client responses temporarily unavailable/);
   assert.notEqual(app.doc.querySelector("#status").textContent, "Tour ready.");
   app.doc.querySelector("#refresh-feedback").click(); await settle();
   assert.equal(app.doc.querySelector("#feedback-empty").hidden, false);
@@ -100,7 +103,7 @@ test("loading and a failed feedback Refresh never claim a successful empty read"
   assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "true");
   held.resolve({ ok: false, json: async () => ({ error: "unavailable" }) }); await settle();
   assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
-  assert.match(app.doc.querySelector("#feedback-state").textContent, /unavailable.*Refresh/);
+  assert.match(app.doc.querySelector("#feedback-state").textContent, /temporarily unavailable/);
   assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
   app.doc.querySelector("#refresh-feedback").click(); await settle();
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
@@ -118,6 +121,26 @@ test("reordering draft stops retains the sealed projection's loaded client respo
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
   assert.equal(app.doc.querySelector("#feedback-list").getAttribute("aria-busy"), "false");
 });
+test("automatic refresh updates selected Tour details and preserves unsaved notes", async t => {
+  let revision = 1;
+  const app = await openBroker(() => feedbackResponse("Updated response"), {
+    detailRead: data => ({ ...data, name: `Demo Tour revision ${revision}` }),
+  });
+  t.after(() => app.dom.window.close());
+  app.doc.querySelector(".tour-button").click(); await settle();
+  revision = 2;
+  app.dom.window.dispatchEvent(new app.dom.window.Event("online")); await settle(); await settle();
+  assert.equal(app.doc.querySelector("#tour-name").textContent, "Demo Tour revision 2");
+  const notes = app.doc.querySelector("#cheat-content"); notes.value = "Synthetic unsaved note";
+  notes.dispatchEvent(new app.dom.window.Event("input", { bubbles: true }));
+  const before = app.reads.filter(path => path === "/api/tours/detail").length;
+  revision = 3;
+  app.dom.window.dispatchEvent(new app.dom.window.Event("online")); await settle(); await settle();
+  assert.equal(app.reads.filter(path => path === "/api/tours/detail").length, before);
+  assert.equal(notes.value, "Synthetic unsaved note");
+  assert.match(app.doc.querySelector("#feedback-list").textContent, /Updated response/);
+});
+
 async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
   const dom = new JSDOM(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto });

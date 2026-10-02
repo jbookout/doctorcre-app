@@ -1,5 +1,6 @@
 import { uuidv4 } from "./uuid.js";
 import { validateHumanRef } from "./system-work-view.js";
+import { readWithDeadline } from "./auto-refresh.mjs";
 
 export function createSystemWorkClient(options = {}) {
   const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
@@ -51,19 +52,25 @@ export function createSystemWorkClient(options = {}) {
     get pendingReport() { return pendingReport ? JSON.parse(JSON.stringify(pendingReport.request)) : null; },
     bootstrap,
     async current() {
-      const response = await fetchImpl("/api/system-work/current", {
-        credentials: "same-origin", headers: { accept: "application/json" },
-      });
-      const envelope = await decode(response);
-      return envelope.data ?? envelope;
+      return readWithDeadline(async signal => {
+        const response = await fetchImpl("/api/system-work/current", {
+          signal,
+          credentials: "same-origin", headers: { accept: "application/json" },
+        });
+        const envelope = await decode(response);
+        return envelope.data ?? envelope;
+      }, { timeoutMs: options.readTimeoutMs || 10_000 });
     },
     async read(humanRef) {
       const ref = validateHumanRef(humanRef);
-      const response = await fetchImpl(`/api/system-work/${encodeURIComponent(ref)}`, {
-        credentials: "same-origin", headers: { accept: "application/json" },
-      });
-      const envelope = await decode(response);
-      return envelope.data ?? envelope;
+      return readWithDeadline(async signal => {
+        const response = await fetchImpl(`/api/system-work/${encodeURIComponent(ref)}`, {
+          signal,
+          credentials: "same-origin", headers: { accept: "application/json" },
+        });
+        const envelope = await decode(response);
+        return envelope.data ?? envelope;
+      }, { timeoutMs: options.readTimeoutMs || 10_000 });
     },
     async report(body) {
       const { idempotency_key, ...intent } = body;

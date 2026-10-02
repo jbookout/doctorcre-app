@@ -17,6 +17,7 @@ const originalPaths = [
 ];
 
 const newHomes = {
+  "/tasks": "/", "/work": "/", "/tasks.html": "/",
   "/progress-board": "/control-room/progress",
   "/workspace": "/",
   "/queue.html": "/control-room/progress/work?view=tasks",
@@ -76,8 +77,8 @@ test("the approved map accounts for every original path with a permanent home", 
 });
 
 test("the shell has seven top sections and grouped secondary destinations", () => {
-  assert.deepEqual(navigationItems.slice(0, 7).map((item) => item.label),
-    ["Home", "Leads", "Tours", "Deals", "People", "Work", "Control Room"]);
+  assert.deepEqual(navigationItems.filter(item => !item.group).map((item) => item.label),
+    ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room"]);
   const shell = appShellMarkup("/tasks");
   for (const group of ["Updates", "Operations", "Reference"]) {
     assert.match(shell, new RegExp(`app-shell-more-group[^>]*>${group}`));

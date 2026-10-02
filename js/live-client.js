@@ -8,6 +8,7 @@
 import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
+import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -32,8 +33,12 @@ export function createLiveClient(opts = {}) {
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   let rpcId = 0;
   const dealCreations = new Map();
+  const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
 
-  async function rpc(verb, args = {}, signal, immediateAuth = false) {
+  const rpc = (verb, args = {}, signal) => readWithDeadline(
+    currentSignal => rawRpc(verb, args, currentSignal), { timeoutMs: opts.readTimeoutMs || 10_000, signal });
+
+  async function rawRpc(verb, args = {}, signal) {
     const res = await fetchImpl('/mcp', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -62,7 +67,7 @@ export function createLiveClient(opts = {}) {
       error.status = res.status;
       // Authentication is decided by the headers; a stalled diagnostic body
       // must never hide that decision behind a generic read timeout.
-      if (immediateAuth && (res.status === 401 || res.status === 403)) throw error;
+      if (res.status === 401 || res.status === 403) throw error;
       const body = await res.text().catch(() => '');
       error.body = body.slice(0, 500);
       throw error;
@@ -79,23 +84,6 @@ export function createLiveClient(opts = {}) {
     return payload;
   }
 
-  // Progress reads must settle before the next 15-second poll. Bound the whole
-  // response (including its body), and cancel the underlying fetch on expiry.
-  async function progressRead(verb, args) {
-    const controller = new AbortController();
-    let timer;
-    const deadline = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        const error = new Error(`live ${verb} timed out`);
-        error.code = 'progress_read_timeout';
-        reject(error);
-        controller.abort();
-      }, 10000);
-    });
-    try { return await Promise.race([rpc(verb, args, controller.signal, true), deadline]); }
-    finally { clearTimeout(timer); }
-  }
-
   async function write(verb, args) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
@@ -104,7 +92,7 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    return rpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
+    return rawRpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -170,13 +158,13 @@ export function createLiveClient(opts = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
         ...(options.account_client_id ? { account_client_id: options.account_client_id } : {}),
-      });
+      }, options.signal);
       selfActor = board.actor || selfActor;
       return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals };
     },
 
-    async getDeal(dealId) {
-      const page = await rpc('get-deal-room', { deal: dealId });
+    async getDeal(dealId, { signal } = {}) {
+      const page = await rpc('get-deal-room', { deal: dealId }, signal);
       const { thread = [], critical_dates = [], events = [], deal_id, ...fields } = page;
       // Canonical action fields win over historical notes. The newest note
       // is only a fallback for older producers without an action field.
@@ -226,7 +214,7 @@ export function createLiveClient(opts = {}) {
     // The app sends only the deal id to CARR. CARR performs the bounded
     // on-demand TypeSafe call authorized by Joe in this task.
     async getJevDealReading(dealId) {
-      const res = await fetchImpl('/api/v1/jev-deal-reading', {
+      const res = await fetchReadImpl('/api/v1/jev-deal-reading', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ deal: dealId }),
@@ -245,7 +233,7 @@ export function createLiveClient(opts = {}) {
     // other live read, so the caller's catch is the one honest place that
     // decides "unavailable".
     async getPartyRecord({ dataset, id }) {
-      const res = await fetchImpl(`/api/v1/business/${dataset}/${id}`, {
+      const res = await fetchReadImpl(`/api/v1/business/${dataset}/${id}`, {
         headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
       });
       if (!res.ok) throw new Error(`live business ${dataset} record -> HTTP ${res.status}`);
@@ -286,7 +274,7 @@ export function createLiveClient(opts = {}) {
 
     async getChanges(cursor) {
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
+      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error(`live changes -> ${res.status}`);
       const data = await res.json();
       for (const e of data.events || []) {
@@ -458,7 +446,7 @@ export function createLiveClient(opts = {}) {
     // path failure the page may retry. A caller that saw only a thrown Error
     // could not tell those apart.
     async commandCenter() {
-      const res = await fetchImpl('/api/v1/command-center', {
+      const res = await fetchReadImpl('/api/v1/command-center', {
         headers: { accept: 'application/json' },
         credentials: 'same-origin',
         cache: 'no-store',
@@ -477,9 +465,9 @@ export function createLiveClient(opts = {}) {
     // payload the command kernel classifies; nothing here turns one into an
     // empty answer, because an empty answer would paint as "no evidence" rather
     // than "unknown".
-    async engineeringPassport(args = {}) { return progressRead('engineering-passport', args); },
+    async engineeringPassport(args = {}, { signal } = {}) { return rpc('engineering-passport', args, signal); },
     async readPortfolio(args = {}) { return rpc('read-portfolio', args); },
-    async workRequestCard(args = {}) { return progressRead('work-request-card', args); },
+    async workRequestCard(args = {}, { signal } = {}) { return rpc('work-request-card', args, signal); },
     async declineWorkRequest(args) { return write('decline-work-request', args); },
     async supersedeWorkRequest(args) { return write('supersede-work-request', args); },
     async setWorkShapeDisposition(args) { return write('set-work-shape-disposition', args); },
@@ -489,12 +477,13 @@ export function createLiveClient(opts = {}) {
     // arguments at all and refuse any field, so nothing is defaulted in here:
     // a tenant, an owner or a filter invented by the browser is exactly what
     // those verbs exist to refuse.
-    async incidentBoard(args = {}) { return rpc('incident-board', args); },
-    async currentWorkItem() { return rpc('current-work-item', {}); },
-    async readResourceDashboard() { return rpc('read-resource-dashboard', {}); },
-    async currentWorkRequests() {
-      const res = await fetchImpl('/api/system-work/current', {
+    async incidentBoard(args = {}, { signal } = {}) { return rpc('incident-board', args, signal); },
+    async currentWorkItem({ signal } = {}) { return rpc('current-work-item', {}, signal); },
+    async readResourceDashboard({ signal } = {}) { return rpc('read-resource-dashboard', {}, signal); },
+    async currentWorkRequests({ signal } = {}) {
+      const res = await fetchReadImpl('/api/system-work/current', {
         credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store',
+        ...(signal ? { signal } : {}),
       });
       if (!res.ok) {
         const error = new Error(`live current work requests -> HTTP ${res.status}`);
@@ -523,7 +512,7 @@ export function createLiveClient(opts = {}) {
     // refuses any field, so none is sent. It grants no authority: the decisions
     // it lists are taken with their own partner verbs, none of which is pinned.
     async governanceQueue() { return rpc('governance-queue', {}); },
-    async scheduleBoard() { return rpc('schedule-board', {}); },
+    async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 
     // ---------------------------------------------------- incident page (C14)
     // One read and one write, passed through untouched. The write's arguments
@@ -560,9 +549,9 @@ export function createLiveClient(opts = {}) {
     // through `rpc` because they carry no idempotency key, and there is no
     // matching write. Open is local navigation for a checkpoint-proved native
     // target; no verb resumes, messages, or takes over a session.
-    async sessionIdentity(args = {}) { return progressRead('read-session-identity', args); },
-    async codexSessions() { return rpc('list-my-codex-sessions', {}); },
-    async dispatchHistory(args) { return progressRead('read-dispatch-history', args); },
+    async sessionIdentity(args = {}, { signal } = {}) { return rpc('read-session-identity', args, signal); },
+    async codexSessions(_args = {}, { signal } = {}) { return rpc('list-my-codex-sessions', {}, signal); },
+    async dispatchHistory(args, { signal } = {}) { return rpc('read-dispatch-history', args, signal); },
 
     // ------------------------------- Model Room assignments and turns (C12)
     // TWO READS, passed through untouched, and neither names an actor either:
@@ -589,7 +578,7 @@ export function createLiveClient(opts = {}) {
     // (actor.human !== true is refused there, with no sponsored-agent route
     // at all); this client passes no actor field of its own.
     async answerWorkRequestForJoe(args) { return write('answer-work-request-for-joe', args); },
-    async unfinishedWork(args = {}) { return progressRead('unfinished-work', args); },
+    async unfinishedWork(args = {}, { signal } = {}) { return rpc('unfinished-work', args, signal); },
     async triageSystemWork(verb, args) {
       const allowed = new Set(['close-loop','update-loop','decline-work-request','review-and-triage',
         'cancel-capability-session','triage-incident','cancel-workflow-cutover-plan',
@@ -598,8 +587,8 @@ export function createLiveClient(opts = {}) {
       if (!allowed.has(verb)) throw new Error('Unsupported system work action.');
       return write(verb, args);
     },
-    async listProgressBoards() { return progressRead('list-progress-boards', {}); },
-    async readProgressBoard(args) { return progressRead('read-progress-board', args); },
+    async listProgressBoards(_args = {}, { signal } = {}) { return rpc('list-progress-boards', {}, signal); },
+    async readProgressBoard(args, { signal } = {}) { return rpc('read-progress-board', args, signal); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
@@ -611,9 +600,9 @@ export function createLiveClient(opts = {}) {
     // idempotency key; the three writes go through `write` because they do. Note
     // that create's key BECOMES the conversation id, so a second key is a second
     // conversation — the kernel's retained request is what keeps that honest.
-    async readDocConversation(args = {}) { return rpc('read-doc-conversation', args); },
-    async listDocConversations(args = {}) { return rpc('list-doc-conversations', args); },
-    async listDocSuggestions(args = {}) { return rpc('list-doc-suggestions', args); },
+    async readDocConversation(args = {}, { signal } = {}) { return rpc('read-doc-conversation', args, signal); },
+    async listDocConversations(args = {}, { signal } = {}) { return rpc('list-doc-conversations', args, signal); },
+    async listDocSuggestions(args = {}, { signal } = {}) { return rpc('list-doc-suggestions', args, signal); },
     async decideDocSuggestion(args) { return write('decide-doc-suggestion', args); },
     async proposeDocCorrection(args) { return write('propose-doc-correction', args); },
     async createDocConversation(args) { return write('create-doc-conversation', args); },
@@ -629,7 +618,7 @@ export function createLiveClient(opts = {}) {
     // because it carries no idempotency key, and there is no matching write:
     // this is a bounded projection that creates no writer, dispatcher, retry,
     // task or native-session authority, and it never launches anything.
-    async docOutcomeCards(args = {}) { return rpc('read-doc-outcome-cards', args); },
+    async docOutcomeCards(args = {}, { signal } = {}) { return rpc('read-doc-outcome-cards', args, signal); },
 
     // ------------------------------------------------ global search (B05)
     // Two READS, passed through untouched. NEITHER names an actor, a tenant or

@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B04 — Ideas and Events: DOM wiring only.
 //
 // Every decision lives in ./ideas-model.js. This file reads the idea board,
@@ -104,10 +105,10 @@ const STATE_COPY = {
 function render() {
   const shown = filterIdeas(view.rows, view.state.q);
   const phase = ideasPhase({ status: view.status, rows: view.rows, shown });
-  if (phase === "loading") setStatus("refreshing", "Reading the record…");
+  if (phase === "loading") setStatus("refreshing", "Updating…");
   else if (phase === "unauthorized") setStatus("unknown", "Session ended");
-  else if (phase === "unavailable") setStatus("urgent", "Record read unavailable");
-  else setStatus("healthy", "Read from the record layer");
+  else if (phase === "unavailable") setStatus("urgent", "Unavailable");
+  else setStatus("healthy", "Current");
 
   const block = $("ideaState");
   if (block) {
@@ -124,9 +125,9 @@ function render() {
     applyStagger(list, ".idea-tile");
   }
   const asOf = $("ideaAsOf");
-  if (asOf && view.status === "ready") asOf.textContent = `${view.rows.length} open idea${view.rows.length === 1 ? "" : "s"} read`;
+  if (asOf && view.status === "ready") asOf.textContent = updatedLabel(view.updatedAt);
   const source = $("ideaSource");
-  if (source) source.textContent = `Source: loop-board · kind idea · status open · ${deploymentIdentity(client?.mode).detail}`;
+  if (source) source.textContent = "";
   if (phase === "ready" || phase === "no_match") {
     announce(`${shown.length} of ${view.rows.length} idea${view.rows.length === 1 ? "" : "s"} shown.`);
   }
@@ -137,7 +138,7 @@ function render() {
 const EVENT_COPY = {
   loading: "Reading industry events…",
   unauthorized: "Your session has ended. Sign in again to read events.",
-  unavailable: "Industry events could not be read. Check again when the connection returns.",
+  unavailable: "Events temporarily unavailable",
   empty: "No industry events are recorded yet.",
   partial: `Showing the first ${EVENT_LIST_LIMIT} events by date. More may be recorded in CARR.`,
 };
@@ -153,7 +154,7 @@ function eventCard(row, index) {
     + `<strong class="event-name">${escapeHtml(row.title)}</strong>`
     + `<span class="event-meta">${escapeHtml(KIND_LABEL[row.kind] || row.kind)} · ${escapeHtml(row.organizer || "Organizer not recorded")}</span>`
     + `<span class="event-meta">${escapeHtml(partnerName(row.owner_partner))} · ${escapeHtml(STATUS_LABEL[row.status] || row.status)} · ${escapeHtml(ATTENDANCE_LABEL[row.attendance_intent] || row.attendance_intent)}</span>`
-    + `<span class="event-source">Source: ${escapeHtml(row.source)}</span>`
+    + ``
     + `</button></li>`;
 }
 
@@ -194,9 +195,9 @@ function renderEvents() {
   drawTimeline(phase === "ready" || phase === "partial" ? rows : []);
   const source = $("eventSource");
   if (source) source.textContent = status === "ready" || status === "partial"
-    ? `${status === "partial" ? "First " : ""}${rows.length} event${rows.length === 1 ? "" : "s"} · Source: industry events · ${deploymentIdentity(client?.mode).detail}`
-    : `Source: industry events · ${deploymentIdentity(client?.mode).detail}`;
-  if (view.state.tab === "events") announce(phase === "ready" ? `${rows.length} industry events read.`
+    ? updatedLabel(view.events.updatedAt)
+    : "Updating…";
+  if (view.state.tab === "events") announce(phase === "ready" ? `${rows.length} events`
     : phase === "partial" ? EVENT_COPY.partial : EVENT_COPY[phase]);
 }
 
@@ -214,6 +215,7 @@ async function loadEvents() {
     view.events.status = error?.status === 401 || error?.status === 403 ? "unauthorized" : "error";
     view.events.rows = [];
   }
+  if (view.events.status === "ready" || view.events.status === "partial") view.events.updatedAt = new Date().toISOString();
   renderEvents();
 }
 
@@ -394,6 +396,7 @@ async function load() {
     view.status = error?.status === 401 || error?.status === 403 ? "unauthorized" : "error";
     view.rows = [];
   }
+  if (view.status === "ready") view.updatedAt = new Date().toISOString();
   render();
 }
 
@@ -528,6 +531,7 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await loadEvents(); } });
   await load();
   await loadEvents();
   if (view.state.idea) openIdea(view.state.idea, { push: false });

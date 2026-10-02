@@ -68,9 +68,28 @@ for(const method of ['engineeringPassport','workRequestCard','sessionIdentity','
   t.mock.timers.enable({apis:['setTimeout']});
   let signal;
   const live=createLiveClient({fetchImpl:async(_path,init)=>{signal=init.signal;return {ok:true,json:()=>new Promise(()=>{})};}});
-  const read=live[method]({});const rejected=assert.rejects(read,error=>error.code==='progress_read_timeout');
+  const read=live[method]({});const rejected=assert.rejects(read,error=>error.code==='read_timeout');
   await Promise.resolve();t.mock.timers.tick(10001);await rejected;
   assert.equal(signal.aborted,true);
+});
+
+for (const method of ['engineeringPassport', 'workRequestCard', 'sessionIdentity', 'dispatchHistory', 'unfinishedWork', 'listProgressBoards', 'readProgressBoard']) test(`${method} uses the shared read deadline and caller cancellation`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let signal;
+  const live = createLiveClient({ readTimeoutMs: 25, fetchImpl: async (_path, init) => {
+    signal = init.signal;
+    return new Promise(() => {});
+  } });
+  const controller = new AbortController();
+  const pending = live[method]({}, { signal: controller.signal });
+  const rejected = assert.rejects(pending, error => error.code === 'read_timeout');
+  controller.abort();
+  assert.equal(signal.aborted, true, 'caller cancellation reaches the transport');
+  await rejected;
+  const expired = assert.rejects(live[method]({}), error => error.code === 'read_timeout');
+  t.mock.timers.tick(26);
+  await expired;
+  assert.equal(signal.aborted, true, 'configured deadline cancels the transport');
 });
 
 test('confirmed authentication denial survives a stalled error body',async t=>{

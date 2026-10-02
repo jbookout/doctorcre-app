@@ -22,15 +22,6 @@
   <header class="topbar">
     <a class="brand" href="/status" aria-label="DoctorCRE Status"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>status</small></span></a>
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </header>
@@ -43,19 +34,19 @@
           <h1 id="pageTitle">Status</h1>
         </div>
         <div class="hero-meta">
-          <button class="btn" type="button" id="retryRead">Read again</button>
+          <button class="btn" type="button" id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </div>
       </div>
-      <p class="headline" id="statusHeadline">Taking the reads…</p>
+      <p class="headline" id="statusHeadline">Updating…</p>
       <p class="caption" id="statusAction">Nothing to do yet.</p>
     </section>
 
-    <p class="sr-only" id="statusLive" aria-live="polite" role="status">Taking the reads…</p>
+    <p class="sr-only" id="statusLive" aria-live="polite" role="status">Updating…</p>
 
     <section class="card glass" data-section="coverage" aria-labelledby="coverageTitle">
-      <div class="card-heading"><div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Reads that answered</h2></div></div>
+      <div class="card-heading"><div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Last updated</h2></div></div>
       <div class="chip-bar" id="statusChips" aria-label="Coverage by read">
-        <span class="chip-label">Each read states its own clock</span>
+        <span class="chip-label">Last updated</span>
       </div>
     </section>
 
@@ -65,7 +56,7 @@
         <span class="as-of" id="lastKnownAsOf">unknown</span>
       </div>
       <div class="chip-bar" id="lastKnownChips" aria-label="Last known coverage"></div>
-      <p class="small">Not current. This is which reads answered the last time this device saw the page, and it carries no business rows.</p>
+      <p class="small">Last known availability</p>
     </section>
 
     <section class="card glass" data-section="providers" aria-labelledby="providersTitle">
@@ -80,7 +71,7 @@
         <label>Workflow<input id="assuranceWorkflow" type="text" maxlength="255" autocomplete="off" spellcheck="false"></label>
         <label>Version<input id="assuranceVersion" type="number" min="1" step="1" inputmode="numeric"></label>
         <label>Work request (optional)<input id="assuranceWorkRequest" type="text" maxlength="15" autocomplete="off" spellcheck="false"></label>
-        <button class="btn" id="readAssurance" type="button">Read scope</button>
+        <button class="btn" id="readAssurance" type="button">Availability</button>
       </div>
       <p id="assuranceLive" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
       <div id="integrationGaps"></div>
@@ -89,7 +80,7 @@
 
   <footer class="shell">
     <p class="small" id="statusIdentity">App build unknown</p>
-    <p class="small">DoctorCRE · Status · A read that did not answer is unknown, never zero.</p>
+    <p class="small">DoctorCRE · Status · </p>
   </footer>
   <script type="module" src="/js/status.js"></script>
 </body>

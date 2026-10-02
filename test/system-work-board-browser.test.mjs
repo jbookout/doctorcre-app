@@ -28,7 +28,7 @@ async function open(t,width,{snapshot=true}={}){
   }
   if(url.pathname==='/app-release'||url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:'{}'});
   let path=url.pathname==='/control-room/progress'?'progress-board.html':url.pathname.slice(1);
-  try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:path.endsWith('.js')?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+  try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:/\.m?js$/.test(path)?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto('http://localhost/control-room/progress');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
  return {page,calls,errors};
@@ -43,7 +43,7 @@ test('all source cards and ten recent Live nodes fit phone and desktop; library 
   await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===1);
   assert.match(await page.locator('.work-card').textContent(),/older completed/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
-  if(width===390){await mkdir('out/system-work',{recursive:true});await page.screenshot({path:'out/system-work/library-phone.png',fullPage:true});}
+  if(width!==320){await mkdir('test-artifacts/w1',{recursive:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`test-artifacts/w1/progress-${width===390?'phone':'desktop'}.png`,fullPage:true});}
  });
 });
 test('card action confirms and calls source verb with freshly read version',async t=>{
@@ -51,7 +51,7 @@ test('card action confirms and calls source verb with freshly read version',asyn
  await page.locator('.work-card[data-work-id="synthetic-2"]').getByRole('button',{name:'cancel'}).click();
  await page.locator('#work-triage textarea').fill('Synthetic concept is stale');page.once('dialog',dialog=>dialog.accept());
  await page.getByRole('button',{name:'Review and confirm'}).click();
- await page.waitForFunction(()=>document.querySelector('.triage-status')?.textContent.includes('Source result:'));
+ await page.waitForFunction(()=>document.querySelector('.triage-status')?.textContent.includes('Result:'));
  const write=calls.find(c=>c.name==='close-loop');assert.equal(write.arguments.base_version,9);assert.equal(write.arguments.loop_id,'synthetic-2');
  assert.equal(write.arguments.resolution,'dropped');assert.ok(write.arguments.idempotency_key);assert.deepEqual(errors,[]);
 });
@@ -63,4 +63,13 @@ test('finding 11: system census remains usable without inventing snapshot public
  assert.equal(await meta.getAttribute('data-read-state'),'unpublished');
  assert.doesNotMatch(await meta.textContent(),/Published|Version null/);
  await page.getByText('This board has not been published yet.',{exact:true}).waitFor();
+});
+
+test('W1: desktop work action uses a wide dialog with human category labels',async t=>{
+ const {page,errors}=await open(t,1440);
+ assert.equal(await page.getByRole('combobox',{name:/^Category/}).count(),1);
+ assert.doesNotMatch(await page.locator('.work-source h3').first().textContent(),/synthetic\.|public\./);
+ await page.locator('.work-card[data-work-id="synthetic-2"]').getByRole('button',{name:'cancel'}).click();
+ assert.ok((await page.locator('#work-triage').boundingBox()).width>=900);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
 });

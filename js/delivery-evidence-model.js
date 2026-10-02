@@ -210,7 +210,7 @@ export function dispositionOptions(card) {
   const state = validWorkRequestCard(card) ? card.state : null;
   const captured = state === "captured";
   const none = (reason) => ({ available: false, verb: null, reason });
-  const missing = "no supported disposition command exists for this; Joe decides it in the record layer";
+  const missing = "Decision unavailable here";
   return [
     { choice: "continue", label: "Continue", available: true, verb: null, reason: "continuing needs no command: the record stays exactly as it is" },
     { choice: "finish_shipping", label: "Finish shipping", ...none(missing) },
@@ -261,7 +261,7 @@ export function dispositionArgs({ card, choice, reason = "", successor = "", fix
   const base_version = card.version;
   if (choice === "decline" || choice === "supersede") {
     if (!WITHDRAWAL_STATES.includes(card.state)) throw new TypeError(`${card.human_ref} is ${card.state}; this withdrawal is admitted from captured only.`);
-    if (text.length < 1 || text.length > 500) throw new TypeError("Say why, in 1 to 500 characters. The record layer refuses a withdrawal without a reason.");
+    if (text.length < 1 || text.length > 500) throw new TypeError("Enter a reason of 1 to 500 characters.");
     if (choice === "decline") return { human_ref: card.human_ref, base_version, exit_reason: text };
     const target = String(successor).trim();
     if (!WORK_REQUEST_REF.test(target)) throw new TypeError("Name the successor as a work request reference, for example WR-000123.");
@@ -271,7 +271,7 @@ export function dispositionArgs({ card, choice, reason = "", successor = "", fix
   if (choice === "shape") {
     if (!PREBUILD_STATES.includes(card.state)) throw new TypeError(`${card.human_ref} is ${card.state}; the shape disposition is frozen after the pre-build states.`);
     if (!["required", "not_required"].includes(disposition)) throw new TypeError("Choose required or not required.");
-    if (text.length < 1) throw new TypeError("Say why. The record layer refuses a shape disposition without a rationale.");
+    if (text.length < 1) throw new TypeError("Enter a reason.");
     const args = { work_request: card.human_ref, base_version, disposition, rationale: text };
     if (disposition === "not_required") {
       const surface = String(fixedSurfaceRef).trim();
@@ -290,9 +290,9 @@ export function refusalMessage(code, { ref = "" } = {}) {
   const name = WORK_REQUEST_REF.test(String(ref)) ? ref : "this record";
   switch (code) {
     case "version_conflict":
-      return `someone else changed this record; read again. ${name} moved since it was read, so nothing was saved and nothing was retried.`;
+      return `${name} changed elsewhere. Changes were not saved.`;
     case "key_reuse":
-      return "the same safety key was already spent on different arguments, so the record layer refused it. Read the record again before deciding.";
+      return "Changes were not saved.";
     case "work_request_not_found":
       return `${name} is not a record this session can read.`;
     case "engineering_work_request_not_found":
@@ -304,9 +304,9 @@ export function refusalMessage(code, { ref = "" } = {}) {
     case "portfolio_readback_unavailable":
       return "the portfolio could not be read, so approval stays unknown.";
     case "unreadable":
-      return "the record layer could not be reached, so nothing here has been inferred.";
+      return "Temporarily unavailable";
     default:
-      return code ? `the record layer refused this: ${String(code).replace(/_/g, " ")}.` : "the record layer refused this without naming a reason.";
+      return code ? `Changes were not saved: ${String(code).replace(/_/g, " ")}.` : "Changes were not saved.";
   }
 }
 

@@ -213,7 +213,7 @@ test("a refused write keeps the draft, a re-read moves the base, and the replay 
   const stale = await run({ human_ref: "WR-000904", base_version: 99, exit_reason: draft });
   assert.equal(stale.status, "conflict");
   assert.equal(stale.reason, "version_conflict");
-  assert.match(refusalMessage("version_conflict", { ref: "WR-000904" }), /read again/);
+  assert.match(refusalMessage("version_conflict", { ref: "WR-000904" }), /changed elsewhere/);
   // The draft is still the caller's; nothing in the kernel consumed or changed it.
   assert.equal(draft, "captured twice by the intake");
 
@@ -276,7 +276,7 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // NO new page and NO new route: this slice lives on the surface that already
   // reads the census, at the route the census already owns.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.16.0", "the Control Room route moved this additive contract on");
+  assert.equal(routes.version, "1.18.0", "the Control Room route moved this additive contract on");
   assert.equal(carr.version, "1.38.0", "the current interface retains the delivery evidence verbs");
   for (const verb of ["engineering-passport", "read-portfolio", "work-request-card", "decline-work-request", "supersede-work-request", "set-work-shape-disposition"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
@@ -287,15 +287,15 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   for (const word of ["combine", "shelve", "investigate", "finish shipping"]) {
     assert.doesNotMatch(html, new RegExp(`<button[^>]*>[^<]*${word}`, "i"), `${word} must not be a control`);
   }
-  assert.match(html, /No supported disposition command exists for combine, shelve, investigate or finish shipping\./);
-  assert.match(html, /Independent review is recorded by the reviewing seat, not from this page\./);
+  assert.doesNotMatch(html, /No supported disposition command exists/);
+  assert.doesNotMatch(html, /Independent review is recorded/);
 
   // Both popups are real dialog elements, and the dock is on the page.
   for (const id of ["evidenceDialog", "dispositionDialog", "receiptDock", "stageRows", "dispositionRows", "stageDenominatorLine"]) {
     assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
   }
   assert.equal((html.match(/<dialog /g) || []).length, 2);
-  assert.match(html, /Counts have a known denominator; N\/A carries a reason\./, "the prototype's caption travels with the table");
+  assert.doesNotMatch(html, /Counts have a known denominator/);
 
   // Titles only under a card title, and the 44px floor on every new control.
   assert.match(css, /#dispositionRows \.btn,\n\.dialog \.row-wrap \.btn \{ min-height: var\(--touch\); \}/);
@@ -320,7 +320,7 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // The disposition row shows the census status before any card is read, and
   // marks it as the census's word rather than the card's.
   assert.match(js, /dispositionState\(item, card\)/);
-  assert.match(js, /from the census read/);
+  assert.doesNotMatch(js, /from the census read/);
 });
 
 test("a disposition row states what it knows, and says which read it came from", () => {

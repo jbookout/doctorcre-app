@@ -42,7 +42,7 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
       : url.pathname === "/control-room" ? "control-room.html" : url.pathname.slice(1);
     try {
       const body = await readFile(new URL("../" + path, import.meta.url));
-      return route.fulfill({ body, contentType: path.endsWith(".js") ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/html" });
+      return route.fulfill({ body, contentType: /\.m?js$/.test(path) ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/html" });
     } catch { return route.fulfill({ status: 404, body: "" }); }
   });
   await page.goto(`http://localhost${path}`);
@@ -57,10 +57,12 @@ test("freshness has an exact 24h boundary and unknown timestamps never look fres
   assert.deepEqual(boardDirectory({ schema: "progress-board-directory.v1", boards }).map(b => b.board_id), ["carr-v5", "demo-project"]);
 });
 
-test("desktop and phone main navigation reach Progress with one tap", async t => {
+test("desktop and phone navigation reach Progress through More", async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, path: "/control-room" });
-    const selector = width <= 900 ? ".app-shell-progress-shortcut" : '[data-app-nav-item][aria-label="Progress"]';
+    if (width <= 900) await page.locator(".app-shell-menu > summary").click();
+    await page.locator(".app-shell-more-toggle").click();
+    const selector = '[data-app-nav-item][aria-label="Progress"]';
     assert.equal(await page.locator(selector).isVisible(), true);
     await page.locator(selector).click();
     await page.waitForURL("**/control-room/progress");
@@ -241,12 +243,14 @@ test("all visible header controls are clickable around the navigation breakpoint
   for (const width of [900, 901, 910, 920, 1000, 1100, 1101, 1440]) await t.test(String(width), async t => {
     const { page } = await open(t, { width, path: "/control-room" });
     const controls = page.locator('.app-shell-header a:visible, .app-shell-header button:visible, .app-shell-menu > summary:visible');
-    for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
+    // Use the same bounded action deadline as the suite. The trial still
+    // requires pointer actionability; a busy CI runner gets no force-click.
+    for (const control of await controls.all()) await control.click({ trial: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (width <= 900) await page.locator(".app-shell-menu > summary").click();
-    else await page.locator(".app-shell-more-toggle").click();
+    await page.locator(".app-shell-more-toggle").click();
     assert.equal(await page.locator(".app-shell-more-list").isVisible(), true);
-    for (const control of await controls.all()) await control.click({ trial: true, timeout: 1000 });
+    for (const control of await controls.all()) await control.click({ trial: true });
   });
 });
 
@@ -282,7 +286,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) assert.match(await page.locator("#board-error").textContent(), /last-known/i);
+    if (fail) assert.match(await page.locator("#board-error").textContent(), /(unavailable|offline)/i);
     assert.deepEqual(errors, []);
   });
 
@@ -376,7 +380,7 @@ test("timeout retains and ages last-known data; Retry preserves the draft and co
   assert.ok(pending.length);
   await page.clock.runFor(10001);
   await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "timeout");
-  assert.match(await page.locator("#board-error").textContent(), /timed out.*last-known/i);
+  assert.match(await page.locator("#board-error").textContent(), /timed out/i);
   assert.equal(await page.locator(".pipeline-node").count(), 1);
   stalled = false;
   await page.locator("#board-retry").click();

@@ -258,7 +258,7 @@ export function evidenceAge(observedAt, now = Date.now()) {
 /** Presentation guard only: never computes an upgraded CARR capability/state. */
 export function assuranceHealthState(answer, scope, now = Date.now()) {
   const unknown = reason => ({ state: 'unknown', green: false, scope: scope ?? null, reason, evidence: [] });
-  if (!scope) return unknown('Choose a workflow and version to read scoped assurance health.');
+  if (!scope) return unknown('Choose a workflow and version');
   if (!answer || answer instanceof Error) return unknown('The scoped assurance read refused, failed or timed out.');
   if (!validProjection(answer, scope)) return unknown('The scoped assurance response was invalid.');
   const evidence = ASSURANCE_LAYERS.map(layer => {

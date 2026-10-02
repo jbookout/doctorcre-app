@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-app-routes.v1",
-  "version": "1.16.0",
+  "version": "1.18.0",
   "routes": {
     "/": "workspace.html",
     "/control-room": "control-room.html",
@@ -17,12 +17,12 @@
     "/share": "reports/share.html",
     "/design-lab": "design.html",
     "/all-work": "work-inventory.html",
-    "/tasks": "tasks.html",
     "/search": "search.html",
     "/status": "status.html",
     "/incidents": "incidents.html",
     "/updates": "notifications.html",
-    "/doc-chats": "conversations.html"
+    "/doc-chats": "conversations.html",
+    "/doc-chats/work": "tasks.html"
   },
   "redirects": {
     "/progress-board": "/control-room/progress",
@@ -40,6 +40,9 @@
     "/work-inventory": "/all-work",
     "/notifications": "/updates",
     "/conversations": "/doc-chats",
-    "/ideas": "/ideas-events"
+    "/ideas": "/ideas-events",
+    "/tasks": "/",
+    "/work": "/",
+    "/tasks.html": "/"
   }
 }

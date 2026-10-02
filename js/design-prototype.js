@@ -234,7 +234,7 @@ function renderHome() {
   const title = $("homeTitle");
   if (title) title.textContent = `${weekdayName(TODAY)} · Priority Items`;
   const asOf = $("homeAsOf");
-  if (asOf) asOf.textContent = `As of ${formatClock(TODAY)} · source CARR`;
+  if (asOf) asOf.textContent = `Updated ${formatClock(TODAY)}`;
   const pipeAsOf = $("pipeAsOf");
   if (pipeAsOf) pipeAsOf.textContent = `as of ${formatClock(TODAY)}`;
 
@@ -815,7 +815,7 @@ function wireOperations() {
     $("approvalNote").textContent = "The target changed since this proposal (Worker 5d81 → 9cab). The old approval is void; a refreshed proposal is required before anything executes.";
     $("approvalApprove").disabled = true;
   });
-  $("approvalApprove")?.addEventListener("click", () => dispatchCommand("approve:census-sixth-source", "Approve: widen the census read", outcomeChoice()));
+  $("approvalApprove")?.addEventListener("click", () => dispatchCommand("approve:census-sixth-source", "Approve: expand work coverage", outcomeChoice()));
   $("ackIncident")?.addEventListener("click", (event) => {
     event.currentTarget.setAttribute("aria-pressed", "true");
     $("ackNote").textContent = "Acknowledged by Joe at 2:03 PM. The incident stays open until recovery is verified.";

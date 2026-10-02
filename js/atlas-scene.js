@@ -248,7 +248,7 @@ export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SC
     const rows = [
       ["Identity", node.id],
       ["Kind", `${singularLabel(node.class)} · ${node.key}`],
-      ["Evidence", `${EVIDENCE_DEPTH[node.evidence]?.plane || node.evidence}. Read from ${node.source_ref}.`],
+      ["Evidence", `${EVIDENCE_DEPTH[node.evidence]?.plane || node.evidence}`],
       ["Status", node.status || "no status recorded"],
     ];
     if (node.retired_at) {
@@ -283,7 +283,7 @@ export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SC
     } else if (node.class === "verb") {
       body.push(el("p", { class: "small", text: VERB_RUN_GAP_SENTENCE }));
     } else {
-      body.push(el("p", { class: "small", text: "This release reads no run for this component. That is a silence in the sources, not a report of nothing happening." }));
+      body.push(el("p", { class: "small", text: "Activity unavailable." }));
     }
     $(ids.componentBody).replaceChildren(...body);
   }
@@ -296,7 +296,7 @@ export function mountAtlasScene(payload, { announce = () => {}, ids = DEFAULT_SC
     const explanation = $(ids.safeExplanation);
     // Printed verbatim. The page never paraphrases the producer's own account of
     // what it could not read.
-    if (explanation) explanation.textContent = payload.source.safe_explanation;
+    if (explanation) explanation.textContent = "";
     const row = (entry) => el("li", { class: "coverage-row" }, [
       el("span", { class: "orb", "data-state": coverageOrbFor(entry) === "healthy" ? "healthy" : coverageOrbFor(entry) === "attention" ? "attention" : "urgent", "aria-hidden": "true" }),
       el("b", { text: entry.source_ref }),

@@ -1,3 +1,4 @@
+import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
 import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
@@ -563,8 +564,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     $("#feedback-empty").hidden = state.feedbackStatus !== "ready" || list.children.length > 0;
     list.setAttribute("aria-busy", String(state.feedbackStatus === "loading"));
     $("#feedback-state").textContent = state.feedbackStatus === "loading" ? "Loading client responses…" :
-      state.feedbackStatus === "unavailable" ? "Client responses are unavailable. Select Refresh to try again." :
-      state.feedbackStatus === "missing" ? "Approve a Tour projection to read client responses." : "";
+      state.feedbackStatus === "unavailable" ? "Client responses temporarily unavailable" :
+      state.feedbackStatus === "missing" ? "Client responses unavailable" : "";
     $("#refresh-feedback").disabled = !id(state.projectionId);
   }
   async function loadFeedback() {
@@ -649,13 +650,15 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       await loadTour(restoredTourId);
     }
     if (!state.tour && !retained?.plan && !createPending) {
+      const requestedTour = new URLSearchParams(window.location.search).get("tour");
+      if (id(requestedTour) && state.tours.some(tour => tour.id === requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
       let saved = null;
       try {
         saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
       } catch { /* Invalid tab pointers do not select a Tour. */ }
-      if (saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
+      if (!state.tour && saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
         try { await loadTour(saved.tour_id, { requireComposerDetail: true }); }
-        catch { status("Saved Tour unavailable. Select it from the library to retry."); }
+        catch { status("Saved Tour temporarily unavailable."); }
       }
     }
     renderCreate();
@@ -836,4 +839,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   $("#render-pdf").addEventListener("click", () => void action(async () => { if (!id(state.projectionId)) throw new Error("projection_required"); const data = await post("/api/tours/pdf/render", { projection_id: state.projectionId, idempotency_key: uuid() }); state.renderJobId = text(data.render_job_id); state.pdfQcRunDigest = text(data.qc_run_digest); await loadTour(state.tour.id); status("PDF rendered and QC checked. Human review is required before download."); }));
   $("#review-pdf").addEventListener("click", () => void action(async () => { if (!id(state.renderJobId) || !digest(state.pdfQcRunDigest)) throw new Error("pdf_review_required"); const reviewedAt = new Date().toISOString(); await post("/api/tours/pdf/review", { render_job_id: state.renderJobId, qc_run_digest: state.pdfQcRunDigest, decision: "accept", reviewed_at: reviewedAt, review_receipt_digest: await sha256(`tour-pdf-human-review:${state.renderJobId}:${state.pdfQcRunDigest}:${reviewedAt}`), reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }); await loadTour(state.tour.id); status("PDF review receipt recorded. Internal download is available."); }));
   $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
+  mountAutoRefresh({ document, window, refresh: async () => {
+    await loadLibrary();
+    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
+    if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id);
+    else if (id(state.projectionId)) await loadFeedback();
+  } });
 })();

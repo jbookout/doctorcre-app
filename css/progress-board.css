@@ -126,18 +126,6 @@ footer { padding-top: 8px; }
 @media(max-width:680px) { .masthead { flex-wrap: wrap; gap: 10px; } .panel-heading { flex-wrap: wrap; } }
 @media(prefers-reduced-motion:reduce) { .board-link { transition: none; } .board-link:hover { transform: none; } .freshness-badge::before { animation: none !important; } }
 
-#task-detail { width: min(500px,calc(100vw - 28px)); max-height: min(80vh,780px); overflow: auto; padding: 28px;
-  border: 1px solid rgba(101,186,255,.42); border-radius: 19px; color: var(--ink);
-  background: linear-gradient(145deg,rgba(15,43,72,.97),rgba(3,11,25,.98)); box-shadow: 0 35px 90px rgba(0,0,0,.7); backdrop-filter: blur(24px); }
-#task-detail::backdrop { background: rgba(0,5,13,.75); backdrop-filter: blur(9px); }
-.dialog-close { position: absolute; top: 12px; right: 14px; }
-.dialog-close button { border: 1px solid var(--line); border-radius: 100%; width: 32px; height: 32px; background: #0b2947; color: var(--ink); font-size: 21px; cursor: pointer; }
-.dialog-close button:hover { border-color: var(--orange); }
-.task-detail-body { margin-top: 23px; }
-.detail-row { display: grid; grid-template-columns: 94px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
-.detail-row dt { color: var(--muted); font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
-.detail-row dd { margin: 0; font-size: .86rem; overflow-wrap: anywhere; white-space: pre-wrap; }
-
 @media (max-width: 680px) {
   .shell { padding: 16px 12px 40px; }
   .edition { display: none; }
@@ -168,6 +156,6 @@ footer { padding-top: 8px; }
 #system-work-panel button:hover,#work-triage button:hover {border-color:var(--orange);}
 #system-work-panel button:focus-visible,#work-triage button:focus-visible {outline:2px solid var(--blue);outline-offset:3px;}
 #system-work-panel {margin-bottom:16px;}.work-source {margin:22px 0;}.work-source h3 {overflow-wrap:anywhere;margin-bottom:12px;}
-#work-triage {box-sizing:border-box;width:min(550px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#06182b;color:var(--ink);border:1px solid var(--blue);border-radius:18px;padding:24px;}
+#work-triage {box-sizing:border-box;width:min(960px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#06182b;color:var(--ink);border:1px solid var(--blue);border-radius:18px;padding:24px;}
 #work-triage::backdrop {background:rgba(0,5,13,.8);backdrop-filter:blur(8px);}#work-triage-form {display:grid;gap:16px;}#work-triage-form h2 {overflow-wrap:anywhere;}#work-triage-form textarea {min-height:110px;}
 @media(prefers-reduced-motion:reduce) {.work-card {transition:none;}.work-card:hover{transform:none;}}
