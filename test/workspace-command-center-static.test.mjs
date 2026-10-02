@@ -71,7 +71,7 @@ test("More keeps Updates, Operations and Reference in stable groups", () => {
   for (const group of ["Updates", "Operations", "Reference"]) {
     assert.match(nav, new RegExp(`app-shell-more-group[^>]*>${group}<`));
   }
-  for (const route of ["/updates", "/doc-chats", "/work-requests", "/all-work", "/incidents", "/agent-room", "/design-lab", "/status"]) {
+  for (const route of ["/updates", "/doc-chats", "/work-requests", "/all-work", "/incidents", "/control-room/progress/work", "/design-lab", "/status"]) {
     assert.match(nav, new RegExp(`href="${route}"`));
   }
   assert.match(nav, /href="\/search" aria-label="Search"/);

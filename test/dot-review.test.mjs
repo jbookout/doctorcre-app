@@ -1,3 +1,4 @@
+import { authGeneration, authReadable } from '../js/progress-auth.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -21,7 +22,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({ console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -352,7 +353,7 @@ test("PR111 #3: successful answer preserves newer edits in the same draft", asyn
 
 function roomHarness(total=6000) {
   const state={cursor:0,latestSeqHint:0,turns:[],byMsgId:new Map(),oldestSeq:null,following:true,pending:new Map(),filters:{},viewer:"joe",missed:0};const reads=[];let displayed=[];
-  const globals={state,PAGE_SIZE:60,DOM_TURN_CAP:300,POLL_BACKOFF_CEILING_MS:60000,POLL_VISIBLE_MS:4000,$:elements(),PARTNER_LABEL:{},seqOf:t=>Number(t.seq),fetchTurns:async(from,limit)=>{reads.push([from,limit]);const turns=Array.from({length:Math.min(limit,Math.max(0,total-from))},(_,i)=>({seq:from+i+1,msg_id:`turn-${from+i+1}`}));return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};},deriveModel:()=>({}),renderStage:noop,renderSeatChips:noop,renderDesks:noop,renderWire:noop,renderAssignments:noop,renderSessions:noop,renderJobPassport:noop,renderHealth:noop,animateArrivals:noop,banner:noop,setState:noop,document:{hidden:false},setTimeout:()=>0,clearTimeout:noop,turnPasses:()=>true,reconcile:(_root,items)=>{displayed=items.filter(i=>i.kind==="turn").map(i=>i.turn.seq);},scrollToBottom:noop};
+  const globals={state,scope:{},scopedTurn:()=>true,onRead:noop,PAGE_SIZE:60,DOM_TURN_CAP:300,POLL_BACKOFF_CEILING_MS:60000,POLL_VISIBLE_MS:4000,$:(()=>{const get=elements();get("roomHealth").dataset={};return get;})(),PARTNER_LABEL:{},seqOf:t=>Number(t.seq),fetchTurns:async(from,limit)=>{reads.push([from,limit]);const turns=Array.from({length:Math.min(limit,Math.max(0,total-from))},(_,i)=>({seq:from+i+1,msg_id:`turn-${from+i+1}`}));return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};},deriveModel:()=>({jobPassports:{enabled:true}}),renderStage:noop,renderSeatChips:noop,renderDesks:noop,renderWire:noop,renderAssignments:noop,renderSessions:noop,renderJobPassport:noop,renderHealth:noop,animateArrivals:noop,banner:noop,setState:noop,document:{hidden:false},setTimeout:()=>0,clearTimeout:noop,turnPasses:()=>true,reconcile:(_root,items)=>{displayed=items.filter(i=>i.kind==="turn").map(i=>i.turn.seq);},scrollToBottom:noop};
   const h=handlers("js/room.js","  function absorb(","  /* ------------------------------------------------------------- wiring up",globals,["poll","loadEarlier","absorb"]);
   const wire=handlers("js/room.js","  function renderWire(","  function turnNode(",globals,["renderWire"]);
   return {h,wire,state,reads,displayed:()=>displayed};
@@ -397,10 +398,11 @@ test("Dot 26: replaying a conflicted version cannot restore verified completion"
 });
 
 test("Dot 27: automatic board refresh preserves an unchanged questions answer draft", async () => {
+  const {workDetailUrl}=await import("../js/progress-work-model.js");
   const {boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange}=await import("../js/progress-board-model.js");
   const dom=new JSDOM(source("progress-board.html"));
   const payload={snapshot:{board_id:"demo-board",version:1,snapshot_json:{title:"Demo board",tasks:{}}},questions:[{question_id:"demo-question",revision:1,prompt:"Demo question",choices:[],allow_free_text:true,status:null}]};
-  const h=handlers("js/progress-board.js","const boardId",null,{document:dom.window.document,location:{search:"?board=demo-board"},matchMedia:()=>({matches:false,addEventListener:noop}),setInterval:()=>0,createLiveClient:()=>({listProgressBoards:async()=>({schema:"progress-board-directory.v1",boards:[]}),readProgressBoard:async()=>payload}),boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange,uuidv4:()=>"key"},["refresh"]);
+  const h=handlers("js/progress-board.js","const boardId",null,{document:dom.window.document,location:{search:"?board=demo-board"},matchMedia:()=>({matches:false,addEventListener:noop}),setInterval:()=>0,createLiveClient:()=>({listProgressBoards:async()=>({schema:"progress-board-directory.v1",boards:[]}),readProgressBoard:async()=>payload}),workDetailUrl,boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange,uuidv4:()=>"key"},["refresh"]);
   await tick();const input=dom.window.document.querySelector("textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await h.refresh();
   assert.equal(dom.window.document.querySelector("textarea").value,"Unsaved answer");dom.window.close();
 });
