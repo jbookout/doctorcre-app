@@ -15,15 +15,15 @@
 <body class="leads-body">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#leadBoard">Skip to lead board</a>
-  <header class="leads-header glass">
+  <div data-layout-slot="status">
 
     <p class="page-kicker">Lead Board <span id="leadCount">Loading</span></p>
 
-  </header>
+  </div>
 
   <main>
     <section class="claim-section glass" aria-labelledby="claimHeading">
-      <div class="claim-heading"><div><p class="eyebrow">Prospect decisions</p><h2 id="claimHeading">Claim Card</h2></div><button id="refreshClaims" type="button" class="control-button">Refresh candidates</button></div>
+      <div class="claim-heading"><div><p class="eyebrow">Prospect decisions</p><h2 id="claimHeading">Claim Card</h2></div><button data-layout-refresh id="refreshClaims" aria-label="Refresh candidates" title="Refresh candidates" type="button" class="control-button">↻</button></div>
       <p id="claimSummary" role="status" aria-live="polite">Loading candidates…</p>
       <p id="claimError" class="board-error" role="alert" hidden></p>
       <div id="claimCards" aria-busy="true"></div>
@@ -35,7 +35,7 @@
       <div id="claimDialogBody"></div>
     </dialog>
     <section class="pipeline glass" aria-labelledby="pipelineHeading">
-      <div><p class="eyebrow">Pipeline field</p><h1 id="pipelineHeading">Every lead, in its current stage.</h1><p class="pipeline-copy">Scores estimate potential. They do not hide people from this board.</p></div>
+      <div><p class="eyebrow">Pipeline field</p><h1 id="pipelineHeading">Leads</h1></div>
       <div class="pipeline-track" tabindex="0" aria-label="Scrollable lead pipeline visualization">
       <svg class="pipeline-svg" viewBox="0 0 840 105" role="img" aria-labelledby="pipelineTitle pipelineDesc">
         <title id="pipelineTitle">Lead pipeline flow</title>
@@ -47,16 +47,16 @@
       </div>
     </section>
 
-    <section class="controls glass" aria-label="Lead Board filters">
+    <section data-layout-slot="sidebar" class="controls glass" aria-label="Lead Board filters">
       <label class="search"><span class="sr-only">Search leads</span><input id="leadSearch" type="search" placeholder="Search name, specialty, place…" autocomplete="off"></label>
       <label>Owner <select id="ownerFilter"><option value="">All owners</option></select></label>
       <label>Lane <select id="laneFilter"><option value="">All lanes</option></select></label>
       <label>Stage <select id="stageFilter"><option value="">All stages</option></select></label>
-      <div class="view-toggle" role="group" aria-label="Lead Board view">
+      <div data-layout-slot="tabs" class="page-views" role="group" aria-label="Lead Board view">
         <button id="boardView" type="button" class="control-button" aria-pressed="true">Board</button>
         <button id="listView" type="button" class="control-button" aria-pressed="false">List</button>
       </div>
-      <button id="refreshBoard" type="button" class="control-button" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+      <button data-layout-refresh id="refreshBoard" type="button" class="control-button" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       <output id="filterSummary" aria-live="polite"></output>
     </section>
 
@@ -66,6 +66,7 @@
       <p class="board-state loading">Loading the complete lead board…</p>
     </div>
   </main>
+  <dialog id="leadDetailDialog" class="claim-dialog" aria-labelledby="leadDetailTitle"><header class="claim-dialog-header"><h2 id="leadDetailTitle">Lead</h2><button type="button" id="leadDetailClose" aria-label="Close lead details">×</button></header><div id="leadDetailBody"></div></dialog>
   <div id="moveAnnouncement" class="sr-only" role="status" aria-live="polite"></div>
   <script type="module" src="js/leads-app.js"></script>
 </body>

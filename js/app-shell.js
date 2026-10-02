@@ -1,3 +1,4 @@
+import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
@@ -7,7 +8,7 @@ export const navigationItems = Object.freeze([
   { label: "Home", href: "/" },
   { label: "Leads", href: "/leads" },
   { label: "Tours", href: "/tours" },
-  { label: "Deals", href: "/deals" },
+  { label: "Local Deals", href: "/deals" },
   { label: "Vendors", href: "/vendors" },
   { label: "Control Room", href: "/control-room" },
   { label: "Clients", href: "/clients", group: "Workspace" },
@@ -49,10 +50,14 @@ export function appOriginForReport(origin) {
   } catch { return ""; }
 }
 
+function groupIcon(label) {
+  return { Home: "⌂", Leads: "◎", Tours: "◇", "Local Deals": "▦", Vendors: "♧", "Control Room": "◈" }[label] || "";
+}
+
 function link({ label, href }, current, base) {
   const active = href === current;
   const badge = label === "Updates" ? '<span class="nav-badge" id="navUnreadBadge" hidden></span>' : "";
-  return `<a data-app-nav-item aria-label="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${label}${badge}</a>`;
+  return `<a data-app-nav-item aria-label="${label}" title="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${!groupIcon(label) ? label : `<span aria-hidden="true">${groupIcon(label)}</span><span class="app-shell-nav-label">${label}</span>`}${badge}</a>`;
 }
 
 export function appShellMarkup(pathname, base = "", search = "") {
@@ -61,15 +66,15 @@ export function appShellMarkup(pathname, base = "", search = "") {
   const more = ["Workspace", "Updates", "Operations", "Reference"].map((group) =>
     `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
   const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
-  return `<header class="app-shell-header">
+  return `<header class="app-shell-header" aria-label="Workspace rail">
     <a class="app-shell-brand" href="${base}/" aria-label="DoctorCRE Home">
       <svg viewBox="0 0 42 42" role="img" aria-label="Work flows from leads through deals to delivery">
         <path class="app-shell-flow" d="M7 21h9l6-9h9M16 21l6 9h9"/>
         <circle cx="7" cy="21" r="3"/><circle cx="22" cy="12" r="3"/><circle cx="31" cy="12" r="3"/><circle cx="22" cy="30" r="3"/><circle cx="31" cy="30" r="3"/>
-      </svg><span>Doctor<span class="app-shell-brand-accent">CRE</span></span>
+      </svg><span class="app-shell-brand-name">Doctor<span class="app-shell-brand-accent">CRE</span></span>
     </a>
     <details class="app-shell-menu"><summary aria-label="Navigation menu"><span class="app-shell-menu-label">Menu</span><span class="app-shell-menu-icon" aria-hidden="true"></span></summary>
-      <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false">More</button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
+      <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false" aria-label="More" title="More"><span aria-hidden="true">•••</span><span class="app-shell-nav-label">More</span></button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
     </details>
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">
@@ -98,11 +103,13 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
+  if (typeof mountAppLayout === "function" && !base && pathname !== "/share") mountAppLayout(root, host, pathname);
+  else root.body.classList.add("report-shell");
   const menu = host.querySelector(".app-shell-menu");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");
   const phone = globalThis.matchMedia?.("(max-width: 900px)");
-  const setMode = () => { menu.open = !phone?.matches; moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); };
+  const setMode = () => { menu.open = true; moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); };
   setMode();
   phone?.addEventListener?.("change", setMode);
   moreButton.addEventListener("click", () => {
@@ -111,8 +118,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   });
   host.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (phone?.matches && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
-    else if (!moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); moreButton.focus(); }
+    if (!moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); moreButton.focus(); }
   });
   root.addEventListener("click", (event) => {
     if (!event.target.closest(".app-shell-more") && !moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); }

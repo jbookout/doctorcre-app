@@ -19,25 +19,25 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the notifications</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass hero-card" aria-labelledby="pageTitle">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="feedOrb" aria-hidden="true"></span> Addressed to you</p>
           <h1 id="pageTitle">Updates</h1>
         </div>
         <div class="hero-meta">
           <span class="as-of" id="feedAsOf">unknown</span>
-          <button class="btn" type="button" id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+          <button class="btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </div>
       </div>
       <p class="headline" id="unreadLine">unknown</p>

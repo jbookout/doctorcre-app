@@ -13,7 +13,7 @@ const helpers = {
 
 test('merged account boot honors saved light and defaults to dark', async () => {
   const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
-  const themeInit = app.match(/async function boot\(\) \{([\s\S]*?)  if \(localStorage.getItem\('dealroom-color-assist'\)/)[1];
+  const themeInit = app.match(/async function boot\(\) \{([\s\S]*?)  if \(colorAssist\)/)[1];
   for (const saved of [null, 'night', 'light']) {
     for (const initialDark of [false, true]) {
       const classes = new Set(initialDark ? ['night'] : []);

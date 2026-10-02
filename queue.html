@@ -12,12 +12,12 @@
 <body class="room-body queue-body">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#queueColumns">Skip to task board</a>
-  <header class="room-header">
+  <div data-layout-slot="status">
 
     <span class="live-badge" id="queueLive">Connecting</span>
     <p class="room-presence" id="queueSync">Updating…</p>
 
-  </header>
+  </div>
   <main class="queue-main">
     <section class="queue-toolbar panel" aria-label="Queue controls">
       <label>Target <select id="queueTarget"><option value="">All targets</option></select></label>

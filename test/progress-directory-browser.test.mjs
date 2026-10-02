@@ -60,7 +60,7 @@ test("freshness has an exact 24h boundary and unknown timestamps never look fres
 test("desktop and phone navigation reach Progress through More", async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, path: "/control-room" });
-    if (width <= 900) await page.locator(".app-shell-menu > summary").click();
+
     await page.locator(".app-shell-more-toggle").click();
     const selector = '[data-app-nav-item][aria-label="Progress"]';
     assert.equal(await page.locator(selector).isVisible(), true);
@@ -248,7 +248,7 @@ test("all visible header controls are clickable around the navigation breakpoint
     // requires pointer actionability; a busy CI runner gets no force-click.
     for (const control of await controls.all()) await control.click({ trial: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    if (width <= 900) await page.locator(".app-shell-menu > summary").click();
+
     await page.locator(".app-shell-more-toggle").click();
     assert.equal(await page.locator(".app-shell-more-list").isVisible(), true);
     for (const control of await controls.all()) await control.click({ trial: true });

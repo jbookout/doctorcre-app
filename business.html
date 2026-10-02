@@ -28,7 +28,7 @@
 
 
   <main id="main" class="shell business-shell">
-    <section class="hero business-hero" aria-labelledby="pageTitle" data-panel-background>
+    <section data-layout-slot="sidebar" class="hero business-hero" aria-labelledby="pageTitle" data-panel-background>
       <div>
         <p class="eyebrow"><a class="back-home" href="/">&larr; Home</a> · <span id="viewerWorkspace">Partner workspace</span></p>
         <h1 id="pageTitle">Clients</h1>
@@ -71,7 +71,7 @@
         </div>
         <div class="filter-row filter-row-actions">
           <div class="scope-switch" id="scopeSwitch" role="group" aria-label="Record scope">
-            <button type="button" class="scope-option on" data-scope="team" aria-pressed="true"><span>Team</span><small>Combined</small></button>
+            <button type="button" class="scope-option on" data-scope="team" aria-pressed="true"><span>Team</span></button>
             <button type="button" class="scope-option" data-scope="mine" aria-pressed="false"><span>My work</span><small>Recorded as mine</small></button>
           </div>
           <p class="scope-note" id="scopeNote">Showing everyone's. Switch to My work for the ones recorded as yours.</p>
