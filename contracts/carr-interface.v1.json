@@ -545,7 +545,7 @@
     "schema_version": "invoice-tracker.v1",
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "20ec9c62947483420210e2f5ff484155ca051db7"
+      "source_commit": "3a41bd685abedd218b504174b6a240499f77ddaf"
     },
     "read": "read-invoice-tracker",
     "write": "record-commission-receipt",
