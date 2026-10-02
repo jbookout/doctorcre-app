@@ -27,7 +27,7 @@
   },
   "subject_read_producer": {
     "repository": "jbookout/carr-system",
-    "revision": "3241e443d9462f4c09438d8e52382a1bd11719e9",
+    "revision": "756dc39e86436ab4ca76142ba2d88801670bf00b",
     "contract": "workspace/contracts/tour-operations-foundation.v1.json",
     "version": "1.8.0",
     "migration": "0768_tour_internal_subject_read.sql",
