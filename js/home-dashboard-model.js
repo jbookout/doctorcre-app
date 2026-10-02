@@ -12,10 +12,17 @@ export const HIDDEN_HOME_WIDGETS = Object.freeze({
   capture: 'Doc task/idea classification and document-now/table workflow',
 });
 
+// A malformed row cannot establish an empty workload. Validate the whole
+// snapshot before applying product filters or marking its read successful.
+function validHomeBoard(board) {
+  return Array.isArray(board?.deals) && board.deals.every(deal => deal
+    && typeof deal === 'object' && !Array.isArray(deal)
+    && typeof deal.id === 'string' && deal.id.trim().length > 0);
+}
+
 export function scopedDeals(board, scope) {
-  if (!Array.isArray(board?.deals) || (scope === 'mine' && !board.actor)) return null;
-  return board.deals.filter(deal => deal && typeof deal.id === 'string'
-    && !['closed', 'Closed'].includes(deal.phase)
+  if (!validHomeBoard(board) || (scope === 'mine' && !board.actor)) return null;
+  return board.deals.filter(deal => !['closed', 'Closed'].includes(deal.phase)
     && (deal.operating_state || 'active') === 'active'
     && (scope !== 'mine' || deal.owner === board.actor));
 }
@@ -106,6 +113,11 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
     try {
       if (signal?.aborted) return;
       const value = await readWithDeadline(read, { timeoutMs, signal });
+      if (name === 'board' && target === result && !validHomeBoard(value)) {
+        const error = new Error('Home board unavailable');
+        error.code = 'invalid_payload';
+        throw error;
+      }
       if (target instanceof Map) target.set(name, value); else target[name] = value;
       result.reads[name] = { state: 'read' };
       if (name === 'board' && target === result) {

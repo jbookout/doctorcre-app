@@ -344,13 +344,18 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
-test('board → project → task uses one tap each and breadcrumbs return to the parent',async t=>{
-  const {page,errors}=await open(t,{path:'/control-room/progress'});
+for (const width of [390, 820, 1440]) test(`board → project → task uses one tap each and breadcrumbs return to the parent at ${width}px`,async t=>{
+  const {page,errors}=await open(t,{width,path:'/control-room/progress'});
   await page.locator('[data-board-id="demo-project"]').click();
   await page.waitForURL('**/control-room/progress?board=demo-project');
   await page.locator(`[data-task-id="${taskId}"]`).first().click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
+  const layout = await page.evaluate(() => ({
+    shellBottom: document.getElementById('appShell').getBoundingClientRect().bottom,
+    breadcrumbTop: document.getElementById('workBreadcrumbs').getBoundingClientRect().top,
+  }));
+  assert.ok(layout.breadcrumbTop >= layout.shellBottom, `shell overlaps breadcrumbs: ${JSON.stringify(layout)}`);
   await page.locator('#workBreadcrumbs a').nth(1).click();
   await page.waitForURL('**/control-room/progress?board=demo-project');assert.deepEqual(errors,[]);
 });

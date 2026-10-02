@@ -97,6 +97,12 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
+  // The control row wraps on phones, and Quill availability adds/removes a row.
+  // Keep fixed-page spacing and scroll targets below the measured shell.
+  const measureShell = () => root.documentElement.style.setProperty("--app-shell-height", `${host.getBoundingClientRect().height}px`);
+  measureShell();
+  const ResizeObserver = root.defaultView?.ResizeObserver;
+  if (ResizeObserver) new ResizeObserver(measureShell).observe(host);
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);

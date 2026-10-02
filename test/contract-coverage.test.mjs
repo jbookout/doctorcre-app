@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -16,13 +17,24 @@ test('every literal browser MCP call is pinned to a producer revision containing
   assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
     'the pinned operations stay unique and sorted');
   assert.equal(contract.producer.source_commit,
-    'f57eef02890e3642042fc5c14d1ce4e6ecf3c82e',
-    'the pinned CARR main source contains Codex sessions, Tour search/cart and client feedback');
+    '2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65',
+    'the pinned CARR revision contains the vendor directory and audited update-vendor fields');
 });
 
 test('Tour client feedback endpoints have an explicit contract newer than the prior search/cart interface', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.version, '1.38.0');
+  assert.equal(contract.version, '1.39.0');
   for (const path of ['/api/share/feedback', '/api/share/shortlist', '/api/share/comment', '/api/tours/feedback'])
     assert.ok(contract.http_surfaces.includes(path), `${path} is missing from the feedback interface`);
+});
+
+test('vendor directory revision, selector and content digest are pinned together', async () => {
+  const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
+  const source = await read(contract.vendor_directory.path);
+  const directory = JSON.parse(source);
+  assert.equal(directory.schema, contract.vendor_directory.schema);
+  assert.equal(directory.version, contract.vendor_directory.version);
+  assert.equal(createHash('sha256').update(source).digest('hex'), contract.vendor_directory.sha256);
+  assert.equal(contract.vendor_directory.request_selector, 'contract=vendor-directory.v1');
+  assert.ok(contract.mcp_operations.includes('update-vendor'));
 });

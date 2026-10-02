@@ -30,7 +30,7 @@ const modelJs = await read("js/search-model.js");
 const css = await read("css/business-workspace.css");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
-const liveCapture = JSON.parse(await read("test/fixtures/search-live-capture.json"));
+const syntheticCapture = JSON.parse(await read("test/fixtures/search-synthetic.json"));
 
 const seedText = await read("data/board-seed.json");
 const fixture = async () => createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(seedText).toString("base64")}` });
@@ -383,8 +383,8 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.18.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.version, "1.38.0", "the current contract retains Search operations");
-  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e", "the producer pin includes the Codex checkpoint read");
+  assert.equal(contract.version, "1.39.0", "the current contract retains Search operations");
+  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");
@@ -401,18 +401,18 @@ test("B05-14 the interface contract still pins both verbs alphabetically and no 
 
 /* ------------------------------ defect 33e8409b: the validator against production */
 
-test("B05-live-capture the validator accepts the REAL captured find payloads, nulls and all", () => {
-  assert.equal(liveCapture.verb, "find");
-  assert.ok(liveCapture.captures.length >= 2, "more than one real answer was captured");
-  for (const capture of liveCapture.captures) {
-    assert.equal(validSearchPayload(capture.payload), true, `the live ${capture.query} payload is accepted`);
+test("B05-synthetic-fixture the validator accepts synthetic find payloads, nulls and all", () => {
+  assert.equal(syntheticCapture.verb, "find");
+  assert.ok(syntheticCapture.captures.length >= 2, "more than one synthetic payload exercises nullability");
+  for (const capture of syntheticCapture.captures) {
+    assert.equal(validSearchPayload(capture.payload), true, `the synthetic ${capture.query} payload is accepted`);
     // And the shape really does carry what the validator was relaxed for.
     const groups = groupSearchResults(capture.payload);
     for (const group of groups) assert.equal(group.count, group.rows.length);
   }
-  const pensacola = liveCapture.captures.find((capture) => capture.query === "Pensacola").payload;
-  const dell = liveCapture.captures.find((capture) => capture.query === "Dell").payload;
-  // The four nullable facts §2.2 enumerates, present in the real answers.
+  const pensacola = syntheticCapture.captures.find((capture) => capture.query === "Pensacola").payload;
+  const dell = syntheticCapture.captures.find((capture) => capture.query === "Dell").payload;
+  // The four nullable facts §2.2 enumerates, present in the synthetic payloads.
   assert.equal(pensacola.parties.some((row) => row.city === null && row.specialty === null && row.org_name === null), true, "null city, specialty and org_name");
   assert.equal(dell.deals.some((row) => row.owner === null), true, "a null owner");
   assert.equal(pensacola.organizations.some((row) => row.refs.includes(null)), true, "a NULL ELEMENT inside refs");

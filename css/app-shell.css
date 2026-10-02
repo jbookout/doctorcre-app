@@ -1,6 +1,7 @@
 #appShell{position:sticky;top:0;z-index:1000;min-height:70px;background:#07101d;color:#f1f6ff;font-family:"DM Sans","Montserrat",Arial,sans-serif}
 body .topbar{position:relative;top:auto}
-body.room-body:not(.queue-body){padding-top:80px}
+html{scroll-padding-top:calc(var(--app-shell-height,70px) + 10px)}
+body.room-body:not(.queue-body):has(#appShell){padding-top:calc(var(--app-shell-height,70px) + 10px)}
 body.room-body:not(.queue-body) #appShell{position:fixed;top:0;left:0;right:0}
 .app-shell-navigation .nav-badge{display:inline-grid;place-items:center;min-width:19px;height:19px;margin-left:6px;border-radius:999px;background:#f69136;color:#07101d;font-size:11px;font-weight:800}
 .app-shell-header,.app-shell-header *{box-sizing:border-box}
