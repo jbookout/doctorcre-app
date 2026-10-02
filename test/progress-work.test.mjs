@@ -6,14 +6,13 @@ import { canonicalPassport } from '../js/progress-work-model.js';
 import { passportProjectionDigest } from '../js/job-passport.js';
 import { canonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 
-test('Progress board preview retains access to the dedicated work-detail page', async () => {
+test('Progress task selection has one owning detail page and no obsolete modal', async () => {
   const board = await readFile(new URL('../progress-board.html', import.meta.url), 'utf8');
   const style = await readFile(new URL('../css/progress-board.css', import.meta.url), 'utf8');
   const script = await readFile(new URL('../js/progress-board.js', import.meta.url), 'utf8');
-  assert.match(board, /id="board-activity"[^>]*href="\/control-room\/progress\/work"/);
-  assert.match(board, /id="task-detail"/);
-  assert.match(style, /#task-detail/);
-  assert.match(script, /"Open work detail", \{ href: workDetailUrl/);
+  assert.doesNotMatch(board, /id="task-detail"/);
+  assert.doesNotMatch(style, /#task-detail|\.task-detail-body|\.detail-row/);
+  assert.match(script, /location\.href = workDetailUrl/);
 });
 
 test('canonical Engineering read accepts current-generation arrays and refuses a broken seal',()=>{

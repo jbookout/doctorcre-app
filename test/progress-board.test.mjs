@@ -7,7 +7,7 @@ import { createLiveClient } from "../js/live-client.js";
 import {
   STAGES, EXECUTORS, PULSES, INDICATORS, LIVE_PREVIEW, LIVE_PREF_KEY, legendEntries, boardView, answerRequest,
   taskStage, taskHealth, taskPulse, blockedDetail, isStale, stageTimer, stageDurations, taskIdentity, taskSummary,
-  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, prLabel,
+  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, prLabel, deliveryDetail,
 } from "../js/progress-board-model.js";
 import { mountBoard } from "../js/progress-board.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
@@ -34,11 +34,13 @@ async function mount(read, { now = REF, storage = memoryStorage(), search = "?bo
     readProgressBoard: async () => structuredClone(read),
     answerBoardQuestion: async args => { writes.push(args); return { ok: true }; },
   };
-  const board = mountBoard({ window, document: window.document, client, storage, search,
+  // A card navigates to its work detail; the stand-in records where it went.
+  const location = { href: "" };
+  const board = mountBoard({ window, document: window.document, client, storage, search, location,
     now: () => clock, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
   await board.refresh(true);
   const doc = window.document;
-  return { board, window, doc, writes, storage, setNow: value => { clock = new Date(value); },
+  return { board, window, doc, writes, storage, location, setNow: value => { clock = new Date(value); },
     $: selector => doc.querySelector(selector), $$: selector => [...doc.querySelectorAll(selector)] };
 }
 
@@ -97,7 +99,7 @@ test("/progress-board?board=all-repos keeps its board through the redirect and i
 });
 
 test("the static page is gone: the app page renders every section from a full fixture", async () => {
-  const { $, $$, doc } = await mount(FULL.project);
+  const { $, $$, doc, location } = await mount(FULL.project);
   assert.equal($("#board-title").textContent, "CARR v5 delivery");
   assert.equal($$("#board-stages .column").length, 6, "pipeline");
   assert.ok($$("#board-blocked .blocked-card").length >= 3, "blocked cards with reason and next action");
@@ -118,7 +120,8 @@ test("the static page is gone: the app page renders every section from a full fi
   assert.ok($$("#legend-body [data-legend-id]").length >= INDICATORS.length, "legend");
   assert.ok($("#board-headline").textContent.includes("blocked"), "headline");
   doc.querySelector('[data-card-id="build-card"]').click();
-  assert.ok($("#task-detail").hasAttribute("open"), "card detail pop-up");
+  assert.equal(location.href, "/control-room/progress/work?board=carr-v5&task=build-card", "a card opens its work detail");
+  assert.equal($("#task-detail"), null, "no pop-up");
 });
 
 test("every indicator the renderer emits has a legend entry, from the same constants", async () => {
@@ -224,12 +227,10 @@ test("stage timer reads stage_entered_at, updates live, and the pop-up shows his
   setNow("2026-09-29T12:10:00Z");
   board.tick();
   assert.equal($('[data-card-id="build-card"] .stage-timer').textContent, "build 2h 24m", "moves without a reload");
-  $('[data-card-id="build-card"]').click();
-  const history = $("#task-detail .stage-history");
-  assert.ok(history);
-  assert.deepEqual([...history.querySelectorAll("li")].map(li => li.dataset.stage), ["queued", "build"]);
-  assert.match(history.textContent, /Queued 46m/);
-  assert.match(history.textContent, /Building 2h 24m/);
+  const card = boardView(FULL.project, REF).cards.find(item => item.id === "build-card");
+  const history = deliveryDetail(card, new Date("2026-09-29T12:10:00Z")).history;
+  assert.deepEqual(history.map(entry => [entry.stage, entry.label, entry.duration]),
+    [["queued", "Queued", "46m"], ["build", "Building", "2h 24m"]], "work detail lists the stage history with durations");
 });
 
 test("stale cards flag their last-update age; live cards never show a leftover blocked flag", async () => {
@@ -264,11 +265,12 @@ test("merged but unreleased cards say they are waiting on release, with the pipe
   const { $ } = await mount(FULL.project);
   const wait = $('[data-card-id="merged-card"] .card-wait');
   assert.equal(wait.textContent, "Waiting on release · release pipeline failed at canary: canary pending");
-  $('[data-card-id="merged-card"]').click();
-  assert.match($("#task-detail").textContent, /Waiting on release.*canary pending/s);
+  const card = boardView(FULL.project, REF).cards.find(item => item.id === "merged-card");
+  assert.deepEqual(deliveryDetail(card, REF).rows.find(([label]) => label === "Waiting on release"),
+    ["Waiting on release", "release pipeline failed at canary: canary pending"]);
 });
 
-test("model line is one line with an ellipsis, full text on hover and in the pop-up", async () => {
+test("model line is one line with an ellipsis, full text on hover and in the work detail", async () => {
   const { $ } = await mount(FULL.project);
   const model = $('[data-card-id="build-card"] .card-model');
   const full = `Codex · ${taskIdentity(boardView(FULL.project, REF).cards.find(c => c.id === "build-card")).model} · xhigh`;
@@ -277,9 +279,8 @@ test("model line is one line with an ellipsis, full text on hover and in the pop
   assert.match(CSS, /\.card-summary, \.card-model, \.card-wait, \.card-meta \{[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
   assert.match(CSS, /\.board-card \{[^}]*min-width: 0;[^}]*overflow: hidden;/);
   assert.match(CSS, /\.column \{ min-width: 0;/);
-  $('[data-card-id="build-card"]').click();
-  const rows = [...$("#task-detail").querySelectorAll(".detail-row")].map(row => [row.querySelector("dt").textContent, row.querySelector("dd").textContent]);
-  assert.ok(rows.some(([label, value]) => label === "Model line" && value === full), "full model text in the pop-up");
+  const rows = deliveryDetail(boardView(FULL.project, REF).cards.find(c => c.id === "build-card"), REF).rows;
+  assert.ok(rows.some(([label, value]) => label === "Model line" && value === full), "full model text in the work detail");
 });
 
 test("all-repos board groups by repo, keys cards per repo, and filters by repo, stage and blocked", async () => {
@@ -416,7 +417,7 @@ test("page keeps motion real and respects reduced motion; phone stacks one colum
   assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/);
   assert.match(CSS, /@media \(max-width: 680px\) \{[^@]*\.columns, \.lower-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(PAGE, /id="legend-toggle"/);
-  assert.match(PAGE, /<dialog id="task-detail"/);
+  assert.doesNotMatch(PAGE, /id="task-detail"/, "cards open the work-detail page, not a pop-up");
 });
 
 
@@ -430,15 +431,17 @@ test("prototype-like and malformed task statuses cannot break the board", () => 
 });
 
 
-test("board activity and task pop-up retain the dedicated work-detail route", async () => {
-  const { window, doc, $ } = await mount({ snapshot: { board_id: "demo-project", version: 1,
+test("board activity and every card open the dedicated work-detail route", async () => {
+  const { window, doc, $, location } = await mount({ snapshot: { board_id: "demo-project", version: 1,
     snapshot_json: { tasks: { "WR-900": { title: "Synthetic work", status: "review", work_request: "WR-900" } } } },
     questions: [] }, { search: "?board=demo-project" });
   assert.equal($("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
   assert.equal($("#board-parent-name").textContent, "Project board");
   doc.querySelector(".board-card").click();
-  assert.ok($("#task-detail").open);
-  assert.equal($("#task-detail a").getAttribute("href"),
-    "/control-room/progress/work?board=demo-project&task=WR-900&work_request=WR-900");
+  assert.equal(location.href, "/control-room/progress/work?board=demo-project&task=WR-900&work_request=WR-900");
+  location.href = "";
+  doc.querySelector(".board-card").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  assert.equal(location.href, "/control-room/progress/work?board=demo-project&task=WR-900&work_request=WR-900",
+    "Enter opens the same page");
   window.close();
 });

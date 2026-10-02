@@ -4,8 +4,8 @@ import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
 import {
   STAGES, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
-  answerRequest, taskSummary, modelLine, relatedQuestions, stageEnteredAt, stageDurations, ageText,
-  executorGlyph, executorPool, prLabel, prUrl, taskRepo, liveView, readLivePreference,
+  answerRequest, taskSummary, modelLine, stageEnteredAt, ageText,
+  executorGlyph, executorPool, prLabel, taskRepo, liveView, readLivePreference,
   writeLivePreference, filterCards, groupByRepo, boardFromSearch, safeHref, sortLive,
   SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange,
 } from "./progress-board-model.js";
@@ -32,6 +32,7 @@ export function mountBoard(deps = {}) {
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const boardId = boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
+  const location = deps.location || win.location;
   byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
   byId("board-parent-name").textContent = boardId === SYSTEM_BOARD_ID ? "System board" : "Project board";
   const pendingRequests = new Map();
@@ -42,7 +43,6 @@ export function mountBoard(deps = {}) {
   const filters = { repo: "", stage: "", blockedOnly: false };
   let liveExpanded = readLivePreference(storage);
   let currentView = null;
-  let openCardId = null;
   let lastRead = null;
   let readSeq = 0;
   let latestRead = null;
@@ -50,7 +50,6 @@ export function mountBoard(deps = {}) {
   // focus, drafts and the dialog's return target survive every poll.
   const cardNodes = new Map();
   let questionCards = new Map();
-  let returnFocus = null;
   let viewSignature = "";
   let directorySignature = "";
   const badgeTimes = new Map();
@@ -249,7 +248,7 @@ export function mountBoard(deps = {}) {
       "data-card-id": card.id, "data-stage": card.stage, "data-pulse": card.pulse,
       "data-indicators": card.indicators.join(" "),
       style: `--stage-accent:${stageColor(card.stage)};--pulse-speed:${pulseSpeed(card.pulse)};--i:${Math.min(index, 12)}`,
-      "aria-label": `${card.title || card.id}, ${STAGES.find(stage => stage.id === card.stage).label}. Open details.`,
+      "aria-label": `${card.title || card.id}, ${STAGES.find(stage => stage.id === card.stage).label}. Open work detail.`,
     });
     if (card.indicators.includes("outline-dashed")) node.classList.add("outline-dashed");
     const previous = fingerprints.get(card.id);
@@ -293,7 +292,7 @@ export function mountBoard(deps = {}) {
       const wait = `Waiting on release · ${card.release_wait}`;
       node.append(el("p", "card-wait", wait, { title: wait }));
     }
-    clickable(node, () => openDetail(card.id));
+    clickable(node, () => openWork(card.id));
     return node;
   }
 
@@ -479,7 +478,7 @@ export function mountBoard(deps = {}) {
         el("span", "card-pr", prLabel(card)));
       item.append(top, el("p", "blocked-why", `Why: ${card.blocked.reason}`),
         el("p", "blocked-next", `Next: ${card.blocked.next}`));
-      clickable(item, () => openDetail(card.id));
+      clickable(item, () => openWork(card.id));
       list.append(item);
     }
   }
@@ -560,96 +559,18 @@ export function mountBoard(deps = {}) {
       item.append(top, el("p", "card-pr", prLabel(card)), el("p", "card-summary", summary, { title: summary }),
         el("p", "completed-evidence", card.evidence || ""),
         el("p", "card-model", model, { title: model }));
-      clickable(item, () => openDetail(card.id));
+      clickable(item, () => openWork(card.id));
       box.append(item);
     }
   }
 
-  // ── detail pop-up ─────────────────────────────────────────────────────────
-  function detailRow(body, label, value) {
-    if (value === undefined || value === null || value === "") return;
-    const row = el("div", "detail-row");
-    const cell = el("dd", "");
-    if (typeof value === "object" && value.nodeType) cell.append(value); else cell.textContent = String(value);
-    row.append(el("dt", "", label), cell);
-    body.append(row);
-  }
-
-  function openDetail(cardId) {
+  // ── work detail ──────────────────────────────────────────────────────────
+  // A card opens its own work-detail page, which carries the delivery facts.
+  function openWork(cardId) {
     const card = findCard(cardId);
     if (!card) return;
-    openCardId = cardId;
-    returnFocus = doc.activeElement;
-    fillDetail(card);
-    const dialog = byId("task-detail");
-    if (!dialog.open) {
-      if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
-    }
-  }
-
-  function fillDetail(card) {
-    const at = currentNow();
-    const stage = STAGES.find(item => item.id === card.stage);
-    byId("task-detail-title").textContent = card.title || card.id;
-    byId("task-detail-eyebrow").textContent = `${stage.label.toUpperCase()} / ${prLabel(card).toUpperCase()}`;
-    const body = byId("task-detail-body");
-    body.replaceChildren();
-    const work = el("a", "", "Open work detail", { href: workDetailUrl({
-      board: boardId || SYSTEM_BOARD_ID, task: card.id,
-      workRequest: card.work_request || card.human_ref || (/^WR-\d+$/.test(card.id) ? card.id : null),
-    }) });
-    detailRow(body, "Activity", work);
-    detailRow(body, "Summary", taskSummary(card));
-    detailRow(body, "Stage", `${stage.label} · ${card.stage} ${ageText(stageEnteredAt(card), at)} in this stage`);
-    detailRow(body, "Status", card.status);
-    if (card.blocked) {
-      detailRow(body, "Blocked because", card.blocked.reason);
-      detailRow(body, "Next action", card.blocked.next);
-    }
-    if (card.stale) detailRow(body, "Stale", `No update for ${ageText(card.updated_at, at)}`);
-    if (card.release_wait && card.stage === "merged") detailRow(body, "Waiting on release", card.release_wait);
-    detailRow(body, "Repository", taskRepo(card));
-    if (card.pr != null) {
-      const url = prUrl(card);
-      detailRow(body, "Pull request", url ? link(url, prLabel(card)) : prLabel(card));
-    }
-    detailRow(body, "Head SHA", card.pr_head);
-    detailRow(body, "Merge commit", card.merge_sha);
-    detailRow(body, "Executor", card.executor);
-    detailRow(body, "Model line", modelLine(card));
-    detailRow(body, "Provider", card.identity.provider);
-    detailRow(body, "Model", card.identity.model);
-    detailRow(body, "Effort", card.identity.effort);
-    detailRow(body, "Author", card.author);
-    detailRow(body, "Branch", card.branch);
-    detailRow(body, "Review", card.review_verdict || card.pr_phase);
-    detailRow(body, "CI", card.pr_checks);
-    detailRow(body, "Created", formatTime(card.created_at));
-    detailRow(body, "Updated", `${formatTime(card.updated_at)} · ${ageText(card.updated_at, at)} ago`);
-    detailRow(body, "Completed", formatTime(card.completed_at));
-    if (typeof card.question === "string") detailRow(body, "Question", card.question);
-    detailRow(body, "Note", card.note);
-    detailRow(body, "Evidence", card.evidence);
-    for (const url of String(card.evidence || "").match(/https?:\/\/[^\s;,]+/g) || []) {
-      const clean = url.replace(/[.)]+$/, "");
-      detailRow(body, "Evidence link", link(clean, clean));
-    }
-    const history = stageDurations(card, at);
-    if (history.length) {
-      const list = el("ol", "stage-history");
-      for (const entry of history) {
-        const label = STAGES.find(item => item.id === entry.stage)?.label || entry.stage;
-        const item = el("li", "", undefined, { "data-stage": entry.stage, style: `--stage-accent:${stageColor(entry.stage)}` });
-        item.append(el("strong", "", label), el("span", "", ` ${entry.duration}`),
-          el("time", "", ` from ${formatTime(entry.entered_at)}`));
-        list.append(item);
-      }
-      detailRow(body, "Stage history", list);
-    }
-    for (const question of relatedQuestions(card, currentView?.questions || [])) {
-      detailRow(body, "Board question", question.prompt);
-      detailRow(body, "Answer", question.answer_text || `Waiting · ${question.default_answer || "No default recorded"}`);
-    }
+    location.href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID, task: card.id,
+      workRequest: card.work_request || card.human_ref || (/^WR-\d+$/.test(card.id) ? card.id : null) });
   }
 
   // ── questions ─────────────────────────────────────────────────────────────
@@ -896,11 +817,6 @@ export function mountBoard(deps = {}) {
     renderDecisions(view);
     renderNotes(view);
     renderCompleted(view);
-    const dialog = byId("task-detail");
-    if (openCardId && dialog.open) {
-      const card = findCard(openCardId);
-      if (card) fillDetail(card);
-    }
   }
 
   // Live time: every time-dependent mark (stage ages, stale, stuck, health,
@@ -920,17 +836,11 @@ export function mountBoard(deps = {}) {
     currentView = null;
     lastRead = null;
     viewSignature = "";
-    openCardId = null;
-    returnFocus = null;
     cardNodes.clear();
     questionCards = new Map();
     fingerprints.clear();
     formState.clear();
     pendingRequests.clear();
-    const dialog = byId("task-detail");
-    if (dialog.open) dialog.close();
-    byId("task-detail-title").textContent = "";
-    byId("task-detail-body").replaceChildren();
     for (const id of BOARD_PANELS) byId(id).replaceChildren();
     for (const id of BOARD_COUNTS) byId(id).textContent = "—";
     byId("repos-panel").hidden = true;
@@ -1043,14 +953,6 @@ export function mountBoard(deps = {}) {
     schedule(tick, TICK_MS);
   }
 
-  // Closing the pop-up returns focus to what opened it, or to the card.
-  byId("task-detail").addEventListener("close", () => {
-    if (!openCardId && !returnFocus) return;
-    const target = returnFocus?.isConnected ? returnFocus : cardNodes.get(openCardId);
-    openCardId = null;
-    returnFocus = null;
-    (target?.isConnected ? target : byId("board-title")).focus();
-  });
   byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
   doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
@@ -1058,7 +960,7 @@ export function mountBoard(deps = {}) {
   wireFilters();
   renderSwitch();
 
-  return { start, refresh, tick, openDetail, toggleLive, filters,
+  return { start, refresh, tick, toggleLive, filters,
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 
