@@ -8,7 +8,7 @@ import { webcrypto, createHash } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { chromium } from "playwright";
 
-const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
+const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
@@ -122,14 +122,26 @@ function domain() {
   };
   return { tours, calls, transitions, fetch, fail(path, kind) { fault = { path, kind }; } };
 }
-async function open(store, storage = {}) {
-  const dom = new JSDOM(html, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
+async function open(store, storage = {}, query = "") {
+  const dom = new JSDOM(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" });
   Object.defineProperty(dom.window, "crypto", { value: webcrypto }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
   if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
   for (const [key, value] of Object.entries(storage)) dom.window.sessionStorage.setItem(key, value);
   dom.window.eval(script); await settle();
   return { dom, doc: dom.window.document };
 }
+test("itinerary detail link opens only a listed Tour and takes precedence over a saved pointer", async () => {
+  const store = domain(), requested = uuid(), saved = uuid();
+  for (const id of [requested, saved]) store.tours.set(id, { id, name: id === requested ? "Synthetic requested Tour" : "Synthetic saved Tour", routes: [{ id: uuid(), route_version: 1, accepted: false, stops: [] }] });
+  const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
+  const app = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: saved }) }, `?tour=${requested}`);
+  try {
+    assert.equal(app.doc.querySelector("#tour-name").textContent, "Synthetic requested Tour");
+    assert.equal(store.calls.filter(call => call.path.startsWith("/api/tours/detail")).length, 1);
+  } finally { app.dom.window.close(); }
+  const next = await open(store, {}, `?tour=${uuid()}`);
+  try { assert.equal(next.doc.querySelector("#tour-panel").hidden, true); } finally { next.dom.window.close(); }
+});
 function fill(doc, selector, value) { const node = doc.querySelector(selector); assert.ok(node, selector); node.value = value; node.dispatchEvent(new doc.defaultView.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })); }
 function deferDetail(store) {
   const fetch = store.fetch; let release;
@@ -571,6 +583,8 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
     await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
+    // Exercise the preserved catalog/cart component independently of its retired UI.
+    await page.evaluate(() => { document.querySelector(".discovery").hidden = false; });
     await page.locator("#create-tour-panel summary").click();
     for (const width of [375, 390]) {
       await page.setViewportSize({ width, height: 900 });

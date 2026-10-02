@@ -154,3 +154,18 @@ test('Leads read and mutation deadlines stop indefinite loading and classify mut
  await assert.rejects(()=>c.getWorkspace(),e=>e.code==='read_timeout');
  await assert.rejects(()=>c.claimLead({id:'synthetic-lead',base_version:1},'same-key'),e=>e.code==='unknown_outcome');
 });
+
+test('Home cancellation aborts the bounded lead transport and preserves HTTP status', async () => {
+  let transportSignal;
+  const client = createLeadBoardClient({ fetchImpl: (_path, init) => {
+    transportSignal = init.signal;
+    return new Promise(() => {});
+  } });
+  const controller = new AbortController();
+  const pending = client.getLeadBoard({ signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { code: 'read_timeout' });
+  assert.equal(transportSignal.aborted, true);
+  const refused = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ error: { code: 'not_authenticated' } }, false, 401) });
+  await assert.rejects(refused.getLeadBoard(), error => error.code === 'not_authenticated' && error.status === 401);
+});

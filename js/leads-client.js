@@ -9,10 +9,11 @@ export function createLeadBoardClient(options = {}) {
   const uuid = options.uuid || uuidv4;
   let rpcId = 0;
 
-  function typedError(payload, fallback = "The lead board request was refused.") {
+  function typedError(payload, fallback = "The lead board request was refused.", status) {
     const error = new Error(payload?.message || payload?.hint || fallback);
     error.code = payload?.error || payload?.code || "tool_error";
     error.payload = payload || {};
+    if (status) error.status = status;
     return error;
   }
 
@@ -23,16 +24,18 @@ export function createLeadBoardClient(options = {}) {
     return error;
   }
 
-  function rpc(name, args = {}, mutation = false) {
-    const promise = readWithDeadline(() => request(name, args, mutation), { timeoutMs: options.timeoutMs || 10_000 });
+  function rpc(name, args = {}, mutation = false, { signal } = {}) {
+    const promise = readWithDeadline(requestSignal => request(name, args, mutation, requestSignal),
+      { timeoutMs: options.timeoutMs || 10_000, signal });
     return mutation ? promise.catch(error => { throw error.code === "read_timeout" ? unknownOutcome(error) : error; }) : promise;
   }
-  async function request(name, args = {}, mutation = false) {
+  async function request(name, args = {}, mutation = false, signal) {
     let response;
     try {
       response = await fetchImpl("/mcp", {
         method: "POST",
         credentials: "same-origin",
+        ...(signal ? { signal } : {}),
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method: "tools/call", params: { name, arguments: args } }),
       });
@@ -45,10 +48,10 @@ export function createLeadBoardClient(options = {}) {
     }
     let envelope;
     try { envelope = await response.json(); }
-    catch (cause) { throw mutation ? unknownOutcome(cause) : typedError(null, "The Lead Board returned an unreadable response."); }
+    catch (cause) { throw mutation ? unknownOutcome(cause) : typedError(null, "The Lead Board returned an unreadable response.", response.status); }
     if (!response.ok || envelope?.error) {
       if (mutation) throw unknownOutcome(envelope);
-      throw typedError(envelope?.error || envelope, `The Lead Board request failed (${response.status}).`);
+      throw typedError(envelope?.error || envelope, `The Lead Board request failed (${response.status}).`, response.status);
     }
     const content = envelope?.result?.content;
     const validContent = Array.isArray(content) && content.every((item) =>
@@ -79,7 +82,7 @@ export function createLeadBoardClient(options = {}) {
       const board = await rpc("deal-room-board", { workspace: "team" });
       return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
     },
-    getLeadBoard: () => rpc("lead-board"),
+    getLeadBoard: (options = {}) => rpc("lead-board", {}, false, options),
     getWorkspace: () => rpc("lead-board", { workspace: "leads" }),
     getLeadDetail: (lead) => rpc("lead-board", { workspace: "leads", lead_id: lead.id }),
     claimLead(lead, key, actor) {

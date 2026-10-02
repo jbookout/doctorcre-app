@@ -650,11 +650,13 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       await loadTour(restoredTourId);
     }
     if (!state.tour && !retained?.plan && !createPending) {
+      const requestedTour = new URLSearchParams(window.location.search).get("tour");
+      if (id(requestedTour) && state.tours.some(tour => tour.id === requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
       let saved = null;
       try {
         saved = JSON.parse(sessionStorage.getItem("doctorcre-itinerary-tour-v1") || "null");
       } catch { /* Invalid tab pointers do not select a Tour. */ }
-      if (saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
+      if (!state.tour && saved?.scope === sessionBinding && state.tours.some(tour => tour.id === saved.tour_id)) {
         try { await loadTour(saved.tour_id, { requireComposerDetail: true }); }
         catch { status("Saved Tour temporarily unavailable."); }
       }
