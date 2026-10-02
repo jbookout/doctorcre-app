@@ -651,6 +651,7 @@ async function loadActivity(id, record) {
  */
 function expireNow() {
   view.loadedRows = []; view.loadedPageCount = 0;
+  view.pendingTrust = null; view.trustStatus = null;
   Object.assign(view, expireSession(view));
   renderControls();
   renderChips();

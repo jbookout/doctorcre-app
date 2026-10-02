@@ -17,8 +17,8 @@ async function open(t,width=1440){
   const page=await browser.newPage({viewport:{width,height:width===390?844:1000}}), errors=[], overrides=new Map(), calls=[];
   page.setDefaultTimeout(5000); page.on('pageerror',e=>errors.push(e.message));
   await page.clock.install({time:new Date('2026-10-01T18:00:00Z')});await page.route('https://**',r=>r.abort());
-  let fail=false,writes=0,writeMode='saved';
-  await page.route('**/api/v1/business/**',r=>{calls.push(r.request().url());return fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fulfill({json:directoryFixture(r.request().url(),{overrides})});});
+  let fail=false,expired=false,writes=0,writeMode='saved';
+  await page.route('**/api/v1/business/**',r=>{calls.push(r.request().url());return expired?r.fulfill({status:401,json:{error:'AUTHENTICATION_REQUIRED'}}):fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fulfill({json:directoryFixture(r.request().url(),{overrides})});});
   await page.route('**/api/system-work/session',r=>r.fulfill({json:{actor:{slug:'joe'}}}));
   await page.route('**/mcp',r=>{
     const {name,arguments:args}=r.request().postDataJSON().params;let payload={ok:true};
@@ -30,7 +30,7 @@ async function open(t,width=1440){
     else if(name==='correspondence-readiness')payload={};
     return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(payload)}]}}});
   });
-  return {page,errors,calls,get writes(){return writes;},setFail:value=>{fail=value;},setWriteMode:value=>{writeMode=value;}};
+  return {page,errors,calls,get writes(){return writes;},setFail:value=>{fail=value;},setExpired:value=>{expired=value;},setWriteMode:value=>{writeMode=value;}};
 }
 for(const width of [1440,390])test(`W5 rendered directories and wide dialog at ${width}px`,async t=>{
   const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
@@ -83,4 +83,10 @@ test('W5 Clients exposes every requested sort and owner without territory contro
  const {page,calls}=await open(t);await page.goto(origin+'/clients');await page.waitForSelector('.record-row');assert.equal(await page.locator('#territoryField').isVisible(),false);
  for(const sort of ['vertical','name','deal_type','last_deal_desc','last_deal_asc']){await page.locator('#sortSelect').selectOption(sort);await page.waitForFunction(s=>document.querySelector('#sortSelect').value===s,sort);await page.waitForTimeout(40);assert.ok(calls.some(url=>new URL(url).searchParams.get('sort')===sort)||sort==='name');}
  await page.locator('[data-owner="joe"]').click();await page.waitForFunction(()=>document.querySelector('#resultSummary').textContent.startsWith('31 '));
+});
+
+test('W5 session expiry erases a pending trust draft and recovery permits a fresh action without replay',async t=>{
+ const h=await open(t),{page}=h;h.setWriteMode('uncertain');await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo pending draft');await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus')?.textContent==='Rating not confirmed');
+ h.setExpired(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle')?.textContent==='Your session has ended');assert.doesNotMatch(await page.locator('#recordBody').innerText(),/Demo pending draft/);
+ h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();assert.equal(await page.locator('[name="reason"]').inputValue(),'');assert.equal(await page.locator('#trustForm button').isDisabled(),false);assert.equal(h.writes,1);assert.deepEqual(h.errors,[]);
 });
