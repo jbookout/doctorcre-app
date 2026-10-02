@@ -310,7 +310,7 @@ test("B06-9 Back restores the selection from the address, and a filtered total i
   assert.equal(filterDeals(board.deals, null, null).length, 74, "no selection filters nothing");
   assert.equal(selectionLabel("segment", "Dental"), "Segment: Dental");
   assert.equal(selectionLabel("segment", NO_VALUE_KEY), "Segment: Not segmented");
-  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due diligence");
+  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due Diligence");
 
   // popstate restores and repaints. It reads nothing.
   assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\)\)/);
@@ -404,7 +404,7 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
-  assert.equal(contract.version, "1.40.0", "the current interface retains the Charts read");
+  assert.equal(contract.version, "1.41.0", "the current interface retains the Charts read");
   assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9");
   assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 

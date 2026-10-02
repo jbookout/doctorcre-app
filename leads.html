@@ -1,73 +1,31 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07090C">
-  <meta name="description" content="DoctorCRE Lead Board — the complete lead pipeline, presented for human qualification.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/leads.css">
-  <title>Lead Board · The Deal Room</title>
-  <link rel="stylesheet" href="/css/app-shell.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#07090c">
+<title>Leads · DoctorCRE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/leads.css"><link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
 </head>
-<body class="leads-body">
-  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-  <a class="skip" href="#leadBoard">Skip to lead board</a>
-  <div data-layout-slot="status">
-
-    <p class="page-kicker">Lead Board <span id="leadCount">Loading</span></p>
-
-  </div>
-
-  <main>
-    <section class="claim-section glass" aria-labelledby="claimHeading">
-      <div class="claim-heading"><div><p class="eyebrow">Prospect decisions</p><h2 id="claimHeading">Claim Card</h2></div><button data-layout-refresh id="refreshClaims" aria-label="Refresh candidates" title="Refresh candidates" type="button" class="control-button">↻</button></div>
-      <p id="claimSummary" role="status" aria-live="polite">Loading candidates…</p>
-      <p id="claimError" class="board-error" role="alert" hidden></p>
-      <div id="claimCards" aria-busy="true"></div>
-    </section>
-    <dialog id="claimDialog" class="claim-dialog" aria-labelledby="claimDialogTitle">
-      <div class="claim-dialog-header"><h3 id="claimDialogTitle">Candidate decision</h3><button id="closeClaimDialog" type="button" aria-label="Close candidate decision">×</button></div>
-      <div id="claimDialogContext"></div>
-      <p id="claimDialogError" class="board-error" role="alert" hidden></p>
-      <div id="claimDialogBody"></div>
-    </dialog>
-    <section class="pipeline glass" aria-labelledby="pipelineHeading">
-      <div><p class="eyebrow">Pipeline field</p><h1 id="pipelineHeading">Leads</h1></div>
-      <div class="pipeline-track" tabindex="0" aria-label="Scrollable lead pipeline visualization">
-      <svg class="pipeline-svg" viewBox="0 0 840 105" role="img" aria-labelledby="pipelineTitle pipelineDesc">
-        <title id="pipelineTitle">Lead pipeline flow</title>
-        <desc id="pipelineDesc">The lead stages appear in order with arrows between them. The board below presents the same stages as text and controls.</desc>
-        <defs><marker id="pipelineArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>
-        <path class="pipeline-line" d="M55 52 H785" marker-end="url(#pipelineArrow)"></path>
-        <g id="pipelineNodes"></g>
-      </svg>
-      </div>
-    </section>
-
-    <section data-layout-slot="sidebar" class="controls glass" aria-label="Lead Board filters">
-      <label class="search"><span class="sr-only">Search leads</span><input id="leadSearch" type="search" placeholder="Search name, specialty, place…" autocomplete="off"></label>
-      <label>Owner <select id="ownerFilter"><option value="">All owners</option></select></label>
-      <label>Lane <select id="laneFilter"><option value="">All lanes</option></select></label>
-      <label>Stage <select id="stageFilter"><option value="">All stages</option></select></label>
-      <div data-layout-slot="tabs" class="page-views" role="group" aria-label="Lead Board view">
-        <button id="boardView" type="button" class="control-button" aria-pressed="true">Board</button>
-        <button id="listView" type="button" class="control-button" aria-pressed="false">List</button>
-      </div>
-      <button data-layout-refresh id="refreshBoard" type="button" class="control-button" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
-      <output id="filterSummary" aria-live="polite"></output>
-    </section>
-
-    <p id="leadBoardNotice" class="board-notice" role="status" aria-live="polite" hidden></p>
-    <p id="leadBoardError" class="board-error" role="alert" hidden></p>
-    <div id="leadBoard" class="lead-board" aria-busy="true" aria-describedby="filterSummary leadBoardNotice">
-      <p class="board-state loading">Loading the complete lead board…</p>
-    </div>
-  </main>
-  <dialog id="leadDetailDialog" class="claim-dialog" aria-labelledby="leadDetailTitle"><header class="claim-dialog-header"><h2 id="leadDetailTitle">Lead</h2><button type="button" id="leadDetailClose" aria-label="Close lead details">×</button></header><div id="leadDetailBody"></div></dialog>
-  <div id="moveAnnouncement" class="sr-only" role="status" aria-live="polite"></div>
-  <script type="module" src="js/leads-app.js"></script>
-</body>
-</html>
+<body class="leads-body"><div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+<a class="skip" href="#leadBoard">Skip to lead board</a>
+<main class="leads-workspace">
+<header class="page-heading"><h1>Leads <span id="leadCount"></span></h1><div data-layout-slot="status" class="freshness"><time id="boardUpdated">Updating…</time><button data-layout-refresh id="refreshBoard" aria-label="Refresh leads" title="Refresh leads">↻</button></div></header>
+<section class="top-grid">
+<div class="hot-section glass"><div class="section-heading"><h2>5 hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><div id="hotLeads" aria-busy="true"></div></div>
+<div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">U.S. Census · 2025</small></div>
+</section>
+<section data-layout-slot="sidebar" class="controls glass" aria-label="Lead filters">
+<label class="search"><span class="sr-only">Search leads</span><input id="leadSearch" type="search" placeholder="Search leads" autocomplete="off"></label>
+<label>Owner<select id="ownerFilter"><option value="">All owners</option></select></label>
+<label>Stage<select id="stageFilter"><option value="">All stages</option></select></label>
+<label>Market<select id="marketFilter"><option value="">All markets</option></select></label>
+<output id="filterSummary" aria-live="polite"></output>
+</section>
+<p id="leadBoardError" role="alert" hidden></p><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
+</main>
+<dialog id="leadDetail" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle"></h2><button id="closeDetail" aria-label="Close lead details">×</button></div><div id="detailBody"></div></dialog>
+<dialog id="stageDialog" class="stage-dialog" aria-labelledby="stageTitle"><div class="dialog-heading"><h2 id="stageTitle">Doc</h2><button id="closeStage" aria-label="Cancel stage change">×</button></div><div id="stageContext"></div><form id="stageForm"><div id="stageQuestions"></div><p id="stageError" role="alert" hidden></p><button id="saveStage" type="submit">Confirm</button></form></dialog>
+<div id="moveAnnouncement" class="sr-only" role="status" aria-live="polite"></div>
+<script type="module" src="/js/leads-workspace-app.js"></script>
+</body></html>
