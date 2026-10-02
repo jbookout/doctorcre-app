@@ -80,7 +80,13 @@ export function mountAcceptedItinerary(root, initial) {
   const grid = make("div", "", "itinerary-grid"), list = make("ol", "", "itinerary-list"), card = make("article", "", "itinerary-property-card");
   list.setAttribute("aria-label", "Accepted stops in visit order"); card.dataset.itineraryCard = "";
   card.setAttribute("aria-label", "Selected itinerary property"); grid.append(list, card);
-  root.replaceChildren(header, notice, stage, legend, grid);
+  const day = initial.presentation === "day";
+  if (day) {
+    placeholder.textContent = "Stop locations · Street map unavailable";
+    placeholder.className = "day-map-state";
+    stage.removeChild(placeholder); notice.className = "day-map-state";
+    root.replaceChildren(stage, placeholder, notice);
+  } else root.replaceChildren(header, notice, stage, legend, grid);
 
   function key() {
     return `doctorcre-current-stop-v1:${JSON.stringify([options.scope, state.tour_id, state.route_version_id, state.route_version, state.projection_id])}`;
@@ -119,17 +125,24 @@ export function mountAcceptedItinerary(root, initial) {
   function renderStatus() {
     const noCoordinates = projection && !projection.markers.some(marker => marker.position);
     canvas.hidden = Boolean(mapFailure || noCoordinates);
+    if (day) {
+      notice.textContent = mapFailure ? "Map unavailable" : noCoordinates ? "Stop locations unavailable" : "";
+      placeholder.hidden = Boolean(mapFailure || noCoordinates);
+      return;
+    }
     notice.textContent = [storageNotice, returnNotice || (mapFailure || noCoordinates
       ? `${mapFailure || "No recorded coordinates are available."} Use the ordered list; visit order and current stop are preserved.`
       : "Pins show recorded locations. The basemap is a configured placeholder; use the ordered list for visit order.")].filter(Boolean).join(" ");
   }
   function select(stopId, feature = false) {
+    if (options.canSelect?.() === false) return;
     const stop = state.route.stops.find(item => item.route_stop_id === stopId);
     if (!stop) return;
     dispatch(state.mode === "tour" ? { type: "route_stop_change", route_stop_id: stopId }
       : { type: feature ? "feature_click" : "selected_record", property_id: stop.property_id });
     if (state.mode === "tour") persist();
     focus();
+    options.onSelect?.(stopId);
   }
   function dispatch(event) {
     if (!state || destroyed) return;
@@ -159,10 +172,11 @@ export function mountAcceptedItinerary(root, initial) {
       marker.setLngLat([item.position.longitude, item.position.latitude]);
       const button = marker.itineraryElement;
       button.className = `itinerary-pin ${item.shape} ${item.display}${item.selected ? " selected" : ""}`;
-      button.replaceChildren(make("span", item.label), make("small", provenance(item.route_stop_id), "itinerary-pin-source"));
+      button.replaceChildren(make("span", item.label));
+      if (!day) button.append(make("small", provenance(item.route_stop_id), "itinerary-pin-source"));
       button.setAttribute("aria-pressed", String(item.selected));
-      button.setAttribute("aria-label", `${item.accessible_name}. ${provenance(item.route_stop_id)}`);
-      button.title = `${item.accessible_name}. ${provenance(item.route_stop_id)}`;
+      button.setAttribute("aria-label", day ? item.accessible_name : `${item.accessible_name}. ${provenance(item.route_stop_id)}`);
+      button.title = day ? item.accessible_name : `${item.accessible_name}. ${provenance(item.route_stop_id)}`;
     }
   }
   function render() {
@@ -252,8 +266,10 @@ export function mountAcceptedItinerary(root, initial) {
   const onMotion = event => { reducedMotion = event.matches; render(); };
   win.addEventListener("offline", offline); motion?.addEventListener("change", onMotion);
   update(initial);
-  const thisGeneration = ++generation;
-  const ready = (async () => {
+  ++generation;
+  let initializing = null;
+  const initialize = () => initializing ||= (async () => {
+    const thisGeneration = generation;
     try {
       if (win.navigator.onLine === false) { offline(); return; }
       gl = await (initial.loadMapLibre || loadVendoredMapLibre)();
@@ -265,9 +281,16 @@ export function mountAcceptedItinerary(root, initial) {
       map.on("load", () => { if (!canvas.hidden && !destroyed) { renderMarkers(); focus(); } });
       renderMarkers(); renderStatus(); focus();
     } catch { fallback("Map could not load."); }
-  })();
+  })().finally(() => { initializing = null; });
+  const online = () => {
+    mapFailure = ""; renderStatus();
+    if (!map) void initialize(); else { map.resize(); renderMarkers(); focus(); }
+  };
+  win.addEventListener("online", online);
+  const ready = initialize();
   return {
     ready, update, dispatch, get projection() { return projection; },
-    destroy() { destroyed = true; ++generation; win.removeEventListener("offline", offline); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); map?.remove(); root.replaceChildren(); },
+    navigationLinks() { return [...card.querySelectorAll(".itinerary-navigation a")]; },
+    destroy() { destroyed = true; ++generation; win.removeEventListener("offline", offline); win.removeEventListener("online", online); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); map?.remove(); root.replaceChildren(); },
   };
 }
