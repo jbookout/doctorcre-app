@@ -59,10 +59,7 @@ export function dealTimeline(detail, now = Date.now()) {
   const seen = new Set();
   const dates = rows.filter(d => { const key = `${d.kind}|${d.day}`; if (seen.has(key)) return false; seen.add(key); return true; }).sort((a,b) => a.day.localeCompare(b.day));
   const missing = DATE_KINDS.filter(d => !dates.some(row => row.kind === d.kind));
-  const entries = noteEntries(detail).map(e => {
-    const activity = (detail.activities || []).find(a => a.id === e.id);
-    return {...e, original:activity ? noteText(activity.detail) : e.original, day:calendarDay(e.when),type:e.kind};
-  });
+  const entries = noteEntries(detail).map(e => ({...e, day:calendarDay(e.when),type:e.kind}));
   for (const doc of detail.documents || []) entries.push({id:`document-${doc.id}`,type:'Document',kind:'Document',
     day:calendarDay(doc.prepared_at),when:doc.prepared_at,summary:concise(doc.note || 'Document prepared',150),original:noteText(doc.note)});
   entries.sort((a,b) => (a.day || '9999').localeCompare(b.day || '9999') || a.id.localeCompare(b.id));
