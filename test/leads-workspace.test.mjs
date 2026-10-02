@@ -322,3 +322,9 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });
+test('a failed first read reconnects within seconds without waiting a full poll',async()=>{
+ let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
+ try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
+  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,14);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
