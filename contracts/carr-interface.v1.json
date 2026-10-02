@@ -450,7 +450,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7d4e81366b75e11b688c0e84acf4966f5aa78686"
+        "source_commit": "7214532128a836a84d3e75a584e56facbf6662ba"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
