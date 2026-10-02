@@ -28,7 +28,7 @@ for (const page of PAGES) {
   test(`${page} nav links Tours`, () => {
     const html = readFileSync(new URL(`../${page}`, import.meta.url), "utf8");
     assert.match(html, /id="appShell"/, `${page} mounts the common navigation`);
-    assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">Tours<\/a>/);
+    assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">[\s\S]*?Tours[\s\S]*?<\/a>/);
   });
 }
 

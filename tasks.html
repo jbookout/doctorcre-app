@@ -19,14 +19,14 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the task list</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">
@@ -84,7 +84,7 @@
         <ul class="work-list" id="systemList"></ul>
       </details>
       <div class="chip-bar">
-        <button class="btn" type="button" id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+        <button class="btn" type="button" data-layout-refresh id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         <p class="small" id="sourceLine"></p>
       </div>
     </section>

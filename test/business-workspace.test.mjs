@@ -116,7 +116,7 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
   assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
   assert.match(html, /<a class="btn btn-primary" id="signInAgain" href="\/auth\/login\?return_to=%2F"/, "an expired session is offered the way back in");
 
-  const tabs = /<div class="tabs" id="businessTabs"[\s\S]*?<\/div>/.exec(html)?.[0] || "";
+  const tabs = /<div data-layout-slot="tabs" class="page-views" id="businessTabs"[\s\S]*?<\/div>/.exec(html)?.[0] || "";
   assert.notEqual(tabs, "", "the page has a tab strip");
   for (const label of ["Home", "Pipeline", "Doc history"]) assert.ok(tabs.includes(`>${label}</`), `tab ${label}`);
   // Work and Pipeline NAVIGATE: they are ordinary links, so Back, a middle
@@ -555,7 +555,7 @@ test("today-triage is pinned in the CARR interface as an additive minor bump", (
   assert.ok(carrInterface.mcp_operations.includes("today-triage"));
   assert.ok(carrInterface.mcp_operations.includes("loop-board"));
   assert.deepEqual([...carrInterface.mcp_operations], [...carrInterface.mcp_operations].sort(), "the list stays alphabetical");
-  assert.equal(carrInterface.version, "1.39.0");
+  assert.equal(carrInterface.version, "1.40.0");
 });
 
 test("Home enters in a stagger under a second, answers hover and press, and draws its ambient life from shared keyframes", () => {

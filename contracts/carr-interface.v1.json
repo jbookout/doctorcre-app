@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.39.0",
+  "version": "1.40.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65"
+    "source_commit": "993f6e630aca20175b92a0475b2dda3dd51bdba9"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -472,5 +472,13 @@
       "limit"
     ],
     "cache": "GitHub comes from published producer cache; no GitHub requests per page load"
+  },
+  "relationship_network": {
+    "schema": "carr-relationship-network.v1",
+    "version": "1.0.0",
+    "path": "contracts/relationship-network.v1.json",
+    "sha256": "7984c3b46ca7292e4b70c3e5b716d2d1724e8912a1b8880f2259cf4fe5bd4644",
+    "request_selector": "contract=relationship-network.v1",
+    "endpoint": "/api/v1/business/relationships"
   }
 }

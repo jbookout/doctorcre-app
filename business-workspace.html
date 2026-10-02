@@ -19,18 +19,18 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to Home</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass hero-card" aria-labelledby="pageTitle">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="homeOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
           <h1 id="pageTitle">Business</h1>
@@ -40,12 +40,12 @@
         </div>
       </div>
       <p class="caption freshness" id="homeFreshness"></p>
-      <div class="row-wrap"><button class="btn" type="button" id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a class="btn btn-primary" id="signInAgain" href="/auth/login?return_to=%2F" hidden>Sign in again</a></div>
+      <div class="row-wrap"><button class="btn" type="button" data-layout-refresh id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a class="btn btn-primary" id="signInAgain" href="/auth/login?return_to=%2F" hidden>Sign in again</a></div>
     </section>
 
     <p class="sr-only" id="homeLive" aria-live="polite" role="status">Updating…</p>
 
-    <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
+    <div data-layout-slot="tabs" class="page-views" id="businessTabs" role="tablist" aria-label="Business sections">
       <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
       <button class="tab" type="button" role="tab" id="tabSearch" aria-controls="panelSearch" aria-selected="false">Search</button>
       <button class="tab" type="button" role="tab" id="tabCharts" aria-controls="panelCharts" aria-selected="false">Charts</button>
