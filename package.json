@@ -19,9 +19,13 @@
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
     "test": "node --test test/*.test.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "privacy:check": "node scripts/privacy/client-data-check.mjs",
+    "privacy:fixtures": "node scripts/privacy/generate-synthetic-fixtures.mjs"
   },
   "devDependencies": {
+    "jsdom": "^26.1.0",
+    "playwright": "1.63.0",
     "wrangler": "4.131.2"
   }
 }

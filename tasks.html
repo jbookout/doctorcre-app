@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE Tasks — the shared record of open task and team loops, with capture, handover and completion">
-  <title>Tasks · DoctorCRE</title>
+  <title>Choose work · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
@@ -24,15 +24,6 @@
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </header>
@@ -41,18 +32,19 @@
     <section class="card glass" aria-labelledby="pageTitle">
       <div>
         <p class="eyebrow"><span class="orb" data-state="still" id="taskOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span> · the shared record, filtered by owner — every partner sees the same rows</p>
-        <h1 id="pageTitle">Tasks</h1>
+        <h1 id="pageTitle">Choose work</h1>
       </div>
       <div class="chip-bar">
-        <span class="status" data-state="unknown" id="taskStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="taskStatusLabel">Reading the record…</span></span>
-        <span class="as-of" id="taskAsOf">Reading the record layer…</span>
+        <span class="status" data-state="unknown" id="taskStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="taskStatusLabel">Updating…</span></span>
+        <span class="as-of" id="taskAsOf">Updating…</span>
       </div>
     </section>
 
-    <p class="sr-only" id="taskLive" aria-live="polite" role="status">Reading the record…</p>
+    <p class="sr-only" id="taskLive" aria-live="polite" role="status">Updating…</p>
 
-    <section class="card glass" aria-labelledby="quickTitle">
-      <div class="card-heading"><div><p class="eyebrow">Capture</p><h2 id="quickTitle">Quick add</h2></div></div>
+    <section class="card glass tasks-quick-add" aria-labelledby="quickTitle">
+      <details class="quick-add" id="quickAddPanel" open>
+      <summary class="quick-add-summary"><span><span class="eyebrow">Capture</span> <span class="quick-add-title" id="quickTitle">Quick add</span></span><span class="quick-add-toggle" aria-hidden="true"></span></summary>
       <form id="quickAddForm" hidden>
         <div class="field">
           <label for="quickAddInput">Sentence</label>
@@ -70,13 +62,14 @@
         <p class="small" id="quickAddQuestion"></p>
         <div class="row-wrap"><button class="btn btn-primary" type="submit">Save</button><button class="btn btn-quiet" type="button" id="quickAddDraft">Keep as draft</button></div>
       </form>
+      </details>
       <div class="chip-bar" id="draftBar" hidden>
         <span class="chip-label">Drafts on this device · select to review</span>
         <span class="chip-list" id="draftList"></span>
       </div>
     </section>
 
-    <section class="card glass" aria-labelledby="listTitle">
+    <section class="card glass tasks-open" aria-labelledby="listTitle">
       <div class="card-heading">
         <div><p class="eyebrow">Open work</p><h2 id="listTitle">Records</h2></div>
         <div class="btn-group" id="scopeSwitch" role="group" aria-label="Scope">
@@ -91,8 +84,8 @@
         <ul class="work-list" id="systemList"></ul>
       </details>
       <div class="chip-bar">
-        <button class="btn" type="button" id="retryRead" hidden>Retry read</button>
-        <p class="small" id="sourceLine">Source pending</p>
+        <button class="btn" type="button" id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+        <p class="small" id="sourceLine"></p>
       </div>
     </section>
   </main>
@@ -114,7 +107,7 @@
           <div class="field">
             <label for="taskOutcome" id="taskOutcomeLabel">What happened</label>
             <input id="taskOutcome" type="text" autocomplete="off" required placeholder="Type the outcome in your own words">
-            <p class="field-hint">The record layer refuses a close without one.</p>
+
           </div>
           <div class="row-wrap"><button class="btn btn-primary" type="submit" id="taskCloseConfirm">Confirm</button><button class="btn btn-quiet" type="button" id="taskCloseCancel">Keep it open</button></div>
         </form>

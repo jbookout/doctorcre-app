@@ -1,3 +1,4 @@
+import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
 //
 // Every decision about a payload, a state or a sentence lives in
@@ -78,10 +79,26 @@ const view = {
   // nothing and never flash; the entrance animation already says "new".
   outcomeCards: { state: "pending", payload: null, rows: [], checkpoints: [], sequence: 0, previousById: new Map() },
   suggestions: { state: "pending", rows: [], coverage: null, sequence: 0, includeParked: false, sentence: null,
-    drafts: new Map(), workNumbers: new Map(), conflicts: new Map() },
+    drafts: new Map(), workNumbers: new Map(), snoozeDates: new Map(), conflicts: new Map() },
 };
 
 let client = null;
+// A cancelled traversal must settle even if its adapter ignores abort. Live
+// reads also forward the signal to the transport, outside the verb arguments.
+const readClient = (method, args, signal) => signal
+  ? readWithDeadline(current => client[method](args, { signal: current }), { signal })
+  : client[method](args);
+const loadedPages = { conversation: 1, list: 1, outcomes: 1 };
+let backgroundReads = 0;
+function suggestionEditorActive() {
+  const list = $("suggestionsList");
+  return list?.contains(document.activeElement)
+    || [...(list?.querySelectorAll("[data-suggestion]") || [])].some(card => {
+      const id = card.dataset.suggestion;
+      return Boolean(view.suggestions.drafts.get(id) || view.suggestions.workNumbers.get(id))
+        || view.suggestions.snoozeDates.has(id);
+    });
+}
 let pendingOutcomeOpen = null;
 const openLinks = createOpenLinkGuard();
 let commandState = createCommandState();
@@ -109,18 +126,22 @@ const payloadOf = () => (view.conversation.state === "read" ? view.conversation.
 
 function renderHero() {
   const payload = payloadOf();
-  $("conversationAsOf").textContent = asOf(view.conversation);
   const header = identityHeader(payload);
   const badge = $("visibilityBadge");
+  // With no thread selected the hero carries only the page title: no
+  // placeholder or unknown-status copy sits above the list.
+  const asOfText = asOf(view.conversation);
+  const heroPieces = [$("conversationId"), $("conversationAsOf"), badge, $("heroFacts"), $("titleHistoryLine")];
+  for (const piece of heroPieces) piece.hidden = !header;
   if (!header) {
     $("pageTitle").textContent = "Conversations";
-    $("conversationId").textContent = view.route.given || "no conversation open";
-    badge.setAttribute("data-visibility", "none");
-    $("visibilityGlyph").textContent = "🔒";
-    $("visibilityWord").textContent = "No conversation is open";
+    $("conversationId").textContent = "";
+    $("conversationAsOf").textContent = "";
+    $("visibilityWord").textContent = "";
     $("heroFacts").innerHTML = "";
     return;
   }
+  $("conversationAsOf").textContent = asOfText;
   $("pageTitle").textContent = header.title;
   $("conversationId").textContent = header.id;
   badge.setAttribute("data-visibility", header.visibility);
@@ -163,7 +184,7 @@ function renderAccess() {
     <div class="work-meta"><span>granted by ${escapeHtml(row.grantedBy)} · ${escapeHtml(row.clock)}</span></div></div>
     <div class="stack-end"></div>
   </li>`).join("") || (payload
-    ? `<li class="work-item" data-priority="ordinary"><div><h3 class="access-row">Nobody else can read this conversation</h3><div class="work-meta"><span>read from the record layer</span></div></div><div class="stack-end"></div></li>`
+    ? `<li class="work-item" data-priority="ordinary"><div><h3 class="access-row">Nobody else can read this conversation</h3><div class="work-meta"><span></span></div></div><div class="stack-end"></div></li>`
     : "");
   $("shareControls").innerHTML = shareCandidates(payload, PARTNER_SLUGS).map((row) => `<button class="btn share-toggle" type="button" data-share="${escapeHtml(row.slug)}" aria-pressed="${row.granted}">${row.granted ? "Shared with" : "Not shared with"} ${escapeHtml(row.slug)}</button>`).join("");
   const header = identityHeader(payload);
@@ -282,7 +303,7 @@ function renderOutcomeCards() {
     list.innerHTML = "";
     block.hidden = false;
     block.dataset.state = "loading";
-    $("outcomeCardsStateTitle").textContent = "Taking the read…";
+    $("outcomeCardsStateTitle").textContent = "Updating…";
     if (paging) paging.hidden = true;
     return;
   }
@@ -291,7 +312,7 @@ function renderOutcomeCards() {
     block.hidden = false;
     block.dataset.state = "unavailable";
     $("outcomeCardsStateTitle").textContent = view.outcomeCards.sentence
-      || "The outcome cards read could not be rendered.";
+      || "Updates temporarily unavailable.";
     if (paging) paging.hidden = true;
     return;
   }
@@ -347,6 +368,7 @@ function suggestionFlowSvg(card) {
 }
 
 function renderSuggestions() {
+  if (backgroundReads && suggestionEditorActive()) return;
   const state = view.suggestions;
   const cards = state.state === "read" ? suggestionCards({ suggestions: state.rows }, { includeParked: state.includeParked }) : [];
   const visibleConflicts = visibleSuggestionConflicts(state.conflicts, cards, view.route);
@@ -363,7 +385,7 @@ function renderSuggestions() {
   today.setDate(today.getDate() + 7);
   const defaultSnooze = today.toISOString().slice(0, 10);
   list.innerHTML = cards.map((card, index) => {
-    const source = card.sourceConversationId ? `/conversations?id=${encodeURIComponent(card.sourceConversationId)}` : null;
+    const source = card.sourceConversationId ? `/doc-chats?id=${encodeURIComponent(card.sourceConversationId)}` : null;
     const draft = state.drafts.get(card.id) || "";
     const workNumber = state.workNumbers.get(card.id) || "";
     const current = state.conflicts.get(card.id);
@@ -375,7 +397,7 @@ function renderSuggestions() {
       <div class="suggestion-content">
         <div class="suggestion-heading"><span class="suggestion-beacon" aria-hidden="true"></span><h3>${escapeHtml(card.polished)}</h3></div>
         <p class="work-meta">${escapeHtml(card.contributor)} · ${escapeHtml(formatClock(card.sourceAt) || "time unavailable")}
-          ${source ? ` · <a href="${source}">Open source conversation</a>` : ""}</p>
+          ${source ? ` · <a href="${source}">Open conversation</a>` : ""}</p>
         ${card.uncertainty ? `<p class="suggestion-uncertainty">${escapeHtml(card.uncertainty)}</p>` : ""}
         ${suggestionFlowSvg(card)}
         <details class="suggestion-original"><summary>Original and contributions</summary>
@@ -388,9 +410,9 @@ function renderSuggestions() {
           <button class="btn btn-quiet" type="button" data-choice="dismiss">Dismiss</button>
         </div>
         <div class="suggestion-fields">
-          <label>Task number for Act <input type="text" data-work-number="${escapeHtml(card.id)}" value="${escapeHtml(workNumber)}" placeholder="Number from Tasks"></label>
-          <a href="/tasks" target="_blank" rel="noopener">Open Tasks</a>
-          <label>Snooze until <input type="date" data-snooze-date="${escapeHtml(card.id)}" value="${defaultSnooze}"></label>
+          <label>Work number for Act <input type="text" data-work-number="${escapeHtml(card.id)}" value="${escapeHtml(workNumber)}" placeholder="Number from Choose work"></label>
+          <a href="/doc-chats/work" target="_blank" rel="noopener">Choose work</a>
+          <label>Snooze until <input type="date" data-snooze-date="${escapeHtml(card.id)}" value="${escapeHtml(state.snoozeDates.get(card.id) ?? defaultSnooze)}"></label>
         </div>
         ${conflictHtml}
         <div class="field suggestion-correction"><label for="correction-${escapeHtml(card.id)}">Correct this suggestion</label>
@@ -405,7 +427,7 @@ function renderSuggestions() {
       <div><strong>This suggestion changed.</strong>
         <p>${conflict.source === "read" ? "Current record" : "Record at refusal"}: ${escapeHtml(conflict.current.polished || conflict.current.original || "unavailable")}</p>
         ${conflict.choice ? `<p>Your ${escapeHtml(conflict.choice)} choice was not saved.</p>` : `<p>Your correction: ${escapeHtml(conflict.draft)}</p>`}
-        <p>Read again to review the current version before acting.</p></div>
+        <p>Updating…</p></div>
     </li>`).join("");
   list.querySelectorAll(".suggestion-card").forEach((node, index) =>
     node.style.setProperty("--suggestion-delay", `${Math.min(index * 75, 600)}ms`));
@@ -427,7 +449,7 @@ function render() {
  * CODE, and a read that lands after a newer one was issued is discarded — the
  * page paints the latest picture it asked for, never the last one that arrived.
  */
-async function takeConversation({ after = null } = {}) {
+async function takeConversation({ after = null, background = false, signal } = {}) {
   if (view.route.state !== "ok") {
     view.conversation = view.route.state === "malformed" ? { state: "malformed" } : { state: "pending" };
     render();
@@ -440,8 +462,15 @@ async function takeConversation({ after = null } = {}) {
   try {
     const args = { conversation_id: view.route.id, limit: LIMIT };
     if (Number.isInteger(after)) args.after_sequence = after;
-    const payload = await client.readDocConversation(args);
-    if (view.sequence !== sequence) return;
+    let payload = await readClient("readDocConversation", args, signal);
+    if (view.sequence !== sequence || signal?.aborted) return;
+    if (background) {
+      for (let page = 1; page < loadedPages.conversation && pagingState(payload).more; page++) {
+        const incoming = await readClient("readDocConversation", { ...args, after_sequence: pagingState(payload).after }, signal);
+        if (view.sequence !== sequence || signal?.aborted) return;
+        payload = { ...incoming, turns: [...payload.turns, ...incoming.turns] };
+      }
+    } else loadedPages.conversation = Number.isInteger(after) ? loadedPages.conversation + 1 : 1;
     // Paging APPENDS; the server's order is kept and nothing is re-sorted.
     const merged = (Number.isInteger(after) && held)
       ? { ...payload, turns: [...held.turns, ...payload.turns] }
@@ -463,14 +492,21 @@ async function takeConversation({ after = null } = {}) {
  * destroy the ordering paging exists to preserve. No cursor means a fresh
  * first page, which is what every write settles into.
  */
-async function takeList({ cursor = null } = {}) {
+async function takeList({ cursor = null, background = false, signal } = {}) {
   const sequence = view.sequence;
   const held = cursor ? view.list.rows : [];
   try {
-    const payload = await client.listDocConversations(
-      listArgs({ cursor, includeArchived: view.includeArchived }),
+    let payload = await readClient("listDocConversations",
+      listArgs({ cursor, includeArchived: view.includeArchived }), signal,
     );
-    if (view.sequence !== sequence) return;
+    if (view.sequence !== sequence || signal?.aborted) return;
+    if (background) {
+      for (let page = 1; page < loadedPages.list && listPagingState(payload).more; page++) {
+        const incoming = await readClient("listDocConversations", listArgs({ cursor: listPagingState(payload).cursor, includeArchived: view.includeArchived }), signal);
+        if (view.sequence !== sequence || signal?.aborted) return;
+        payload = { ...incoming, conversations: [...payload.conversations, ...incoming.conversations] };
+      }
+    } else loadedPages.list = cursor ? loadedPages.list + 1 : 1;
     view.list = { state: "read", payload, rows: [...held, ...listRows(payload)] };
   } catch (error) {
     if (view.sequence !== sequence) return;
@@ -490,20 +526,28 @@ async function takeList({ cursor = null } = {}) {
  * one sequence across pages and re-sorting the union would destroy the
  * `updated_at desc, id desc` ordering paging exists to preserve.
  */
-async function takeOutcomeCards({ cursor = null } = {}) {
+async function takeOutcomeCards({ cursor = null, background = false, signal } = {}) {
   const sequence = ++view.outcomeCards.sequence;
   const held = cursor ? view.outcomeCards.rows : [];
   view.outcomeCards = { ...view.outcomeCards, state: "loading" };
   render();
   try {
-    const [payload, checkpointPayload] = await Promise.all([
-      client.docOutcomeCards(outcomeCardsRequest({ cursor })),
-      client.codexSessions().catch(() => null),
+    let [payload, checkpointPayload] = await Promise.all([
+      readClient("docOutcomeCards", outcomeCardsRequest({ cursor }), signal),
+      readClient("codexSessions", {}, signal).catch(() => null),
     ]);
-    if (view.outcomeCards.sequence !== sequence) return;
+    if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
+    if (background && !refuseDocOutcomeCards(payload)) {
+      for (let page = 1; page < loadedPages.outcomes && outcomeCardsPagingState(payload).more; page++) {
+        const incoming = await readClient("docOutcomeCards", outcomeCardsRequest({ cursor: outcomeCardsPagingState(payload).cursor }), signal);
+        if (view.outcomeCards.sequence !== sequence || signal?.aborted) return;
+        if (refuseDocOutcomeCards(incoming)) throw new Error("Outcome page unavailable");
+        payload = { ...incoming, cards: [...payload.cards, ...incoming.cards] };
+      }
+    } else if (!background) loadedPages.outcomes = cursor ? loadedPages.outcomes + 1 : 1;
     const refusal = refuseDocOutcomeCards(payload);
     if (refusal) {
-      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: `The outcome cards read did not answer: ${refusal}.` };
+      view.outcomeCards = { ...view.outcomeCards, state: "unavailable", payload: null, rows: held, checkpoints: [], sequence, sentence: `Updates temporarily unavailable.` };
     } else {
       view.outcomeCards = { ...view.outcomeCards, state: "read", payload, rows: [...held, ...payload.cards],
         checkpoints: codexCheckpoints(checkpointPayload), sequence };
@@ -522,36 +566,45 @@ async function takeOutcomeCards({ cursor = null } = {}) {
     : `${view.outcomeCards.rows.length} outcome card${view.outcomeCards.rows.length === 1 ? "" : "s"} shown.`);
 }
 
-async function takeSuggestions() {
+async function takeSuggestions({ background = false, signal } = {}) {
   const sequence = ++view.suggestions.sequence;
-  view.suggestions = suggestionReadState(view.suggestions, { state: "loading" });
-  renderSuggestions();
+  if (!background) {
+    view.suggestions = suggestionReadState(view.suggestions, { state: "loading" });
+    renderSuggestions();
+  }
   try {
-    const payload = await client.listDocSuggestions({
+    const payload = await readClient("listDocSuggestions", {
       ...(view.route.state === "ok" ? { conversation_id: view.route.id } : {}),
       include_parked: view.suggestions.includeParked,
-    });
-    if (sequence !== view.suggestions.sequence) return;
+    }, signal);
+    if (sequence !== view.suggestions.sequence || signal?.aborted) return;
+    if (background && suggestionEditorActive()) return;
     if (!Array.isArray(payload?.suggestions)) throw new Error("Invalid suggestion response");
     view.suggestions = suggestionReadState(view.suggestions, { state: "read", payload });
     view.suggestions.conflicts = reconcileSuggestionConflicts(view.suggestions.conflicts, payload.suggestions);
   } catch (error) {
     if (sequence !== view.suggestions.sequence) return;
+    if (background && suggestionEditorActive()) return;
     const failure = classifyReadFailure(error);
     view.suggestions = suggestionReadState(view.suggestions, { state: "unavailable", sentence: failure.sentence });
   }
   renderSuggestions();
   const live = $("suggestionsLive");
   if (live) live.textContent = view.suggestions.state === "read"
-    ? `${view.suggestions.rows.length} suggestions read from the record layer. ${suggestionStatus(view.suggestions, view.suggestions.rows.length).title}`
+    ? `${view.suggestions.rows.length} suggestions · ${suggestionStatus(view.suggestions, view.suggestions.rows.length).title}`
     : view.suggestions.sentence;
 }
 
-async function load() {
-  view.sequence += 1;
-  await Promise.all([takeConversation(), takeList(), takeOutcomeCards(), takeSuggestions()]);
-  const state = conversationState(view.conversation, view.route);
-  announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
+async function load({ background = false, signal } = {}) {
+  if (background && suggestionEditorActive()) return;
+  if (background) backgroundReads++;
+  try {
+    view.sequence += 1;
+    await Promise.all([takeConversation({ background, signal }), takeList({ background, signal }), takeOutcomeCards({ background, signal }), takeSuggestions({ background, signal })]);
+    if (signal?.aborted) return;
+    const state = conversationState(view.conversation, view.route);
+    announce(state.sentence || visibleCountLine(view.list.state === "read" ? view.list.payload : null));
+  } finally { if (background) backgroundReads--; }
 }
 
 /** Opening one sets `?id=` so Back restores the list this page came from. */
@@ -560,7 +613,7 @@ function open(id) {
   view.route = route;
   view.conversation = { state: "pending" };
   try {
-    globalThis.history?.pushState?.({ id }, "", `/conversations?id=${id}`);
+    globalThis.history?.pushState?.({ id }, "", `/doc-chats?id=${id}`);
   } catch {
     // A host that refuses history keeps the page; only the address bar lags.
   }
@@ -578,7 +631,7 @@ async function dispatch(operationKey, args, summary, send) {
     newKey: uuidv4,
     call: (request) => send(request),
   });
-  operations.set(operationKey, { args, summary, send });
+  if (result.started) operations.set(operationKey, { args: result.request || args, summary, send });
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
     retry: result.retry, undo: false, request: result.request,
@@ -644,7 +697,7 @@ async function decideSuggestion(id, choice, card) {
   const date = card.querySelector("[data-snooze-date]")?.value || null;
   const built = decisionArgs(row, choice, undefined, date, workNumber);
   if (!built) {
-    announce(choice === "act" ? "Enter the task number from Tasks before choosing Act." : "Read this suggestion again before deciding.");
+    announce(choice === "act" ? "Choose or create a work record, then enter its number before choosing Act." : "Read this suggestion again before deciding.");
     card.querySelector("[data-work-number]")?.focus();
     return;
   }
@@ -668,6 +721,9 @@ async function decideSuggestion(id, choice, card) {
     renderSuggestions();
   } else if (outcome.status === "ok") {
     view.suggestions.conflicts.delete(id);
+    view.suggestions.drafts.delete(id);
+    view.suggestions.workNumbers.delete(id);
+    view.suggestions.snoozeDates.delete(id);
   }
   if (choice === "discuss" && outcome.status === "ok") $("docFab")?.click();
 }
@@ -693,7 +749,7 @@ async function proposeSuggestionCorrection(id) {
   if (outcome.status === "ok") {
     view.suggestions.drafts.delete(id);
     view.suggestions.conflicts.delete(id);
-    announce("Correction proposed with its source. The suggestion has not been overwritten.");
+    announce("Correction proposed. Original suggestion retained.");
   } else if (outcome.status === "conflict") {
     const current = suggestionRow(id);
     view.suggestions.conflicts.set(id, correctionConflict(draft, current || refusedCurrent,
@@ -778,6 +834,7 @@ async function boot() {
     if (!(target instanceof Element)) return;
     if (target.matches("[data-correction]")) view.suggestions.drafts.set(target.getAttribute("data-correction"), target.value);
     if (target.matches("[data-work-number]")) view.suggestions.workNumbers.set(target.getAttribute("data-work-number"), target.value);
+    if (target.matches("[data-snooze-date]")) view.suggestions.snoozeDates.set(target.getAttribute("data-snooze-date"), target.value);
   });
   $("suggestionsList")?.addEventListener("click", event => {
     const target = event.target instanceof Element ? event.target : null;
@@ -845,6 +902,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, shouldRefresh: () => !suggestionEditorActive(), refresh: ({ signal }) => load({ background: true, signal }) });
 }
 
 boot();

@@ -8,10 +8,11 @@ export function createLeadBoardClient(options = {}) {
   const uuid = options.uuid || uuidv4;
   let rpcId = 0;
 
-  function typedError(payload, fallback = "The lead board request was refused.") {
+  function typedError(payload, fallback = "The lead board request was refused.", status) {
     const error = new Error(payload?.message || payload?.hint || fallback);
     error.code = payload?.error || payload?.code || "tool_error";
     error.payload = payload || {};
+    if (status) error.status = status;
     return error;
   }
 
@@ -22,12 +23,13 @@ export function createLeadBoardClient(options = {}) {
     return error;
   }
 
-  async function rpc(name, args = {}, mutation = false) {
+  async function rpc(name, args = {}, mutation = false, { signal } = {}) {
     let response;
     try {
       response = await fetchImpl("/mcp", {
         method: "POST",
         credentials: "same-origin",
+        ...(signal ? { signal } : {}),
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method: "tools/call", params: { name, arguments: args } }),
       });
@@ -40,10 +42,10 @@ export function createLeadBoardClient(options = {}) {
     }
     let envelope;
     try { envelope = await response.json(); }
-    catch (cause) { throw mutation ? unknownOutcome(cause) : typedError(null, "The Lead Board returned an unreadable response."); }
+    catch (cause) { throw mutation ? unknownOutcome(cause) : typedError(null, "The Lead Board returned an unreadable response.", response.status); }
     if (!response.ok || envelope?.error) {
       if (mutation) throw unknownOutcome(envelope);
-      throw typedError(envelope?.error || envelope, `The Lead Board request failed (${response.status}).`);
+      throw typedError(envelope?.error || envelope, `The Lead Board request failed (${response.status}).`, response.status);
     }
     const content = envelope?.result?.content;
     const validContent = Array.isArray(content) && content.every((item) =>
@@ -74,7 +76,7 @@ export function createLeadBoardClient(options = {}) {
       const board = await rpc("deal-room-board", { workspace: "team" });
       return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
     },
-    getLeadBoard: () => rpc("lead-board"),
+    getLeadBoard: (options = {}) => rpc("lead-board", {}, false, options),
     getClaimCard: () => rpc("claim-card", { limit: 5 }),
     promoteCandidate(candidate, evidence, idempotencyKey) {
       return rpc("promote-pool", {

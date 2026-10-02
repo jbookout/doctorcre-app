@@ -1,24 +1,38 @@
+import { mountSystemWorkBoard } from './system-work-board.js';
+import { workDetailUrl } from './progress-work-model.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, taskPulse, taskIdentity, taskSummary,
-  relatedQuestions } from "./progress-board-model.js";
+import { boardView, answerRequest, taskPulse, taskIdentity, taskSummary, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
-const boardId = new URLSearchParams(location.search).get("board");
+const boardId = new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
+document.getElementById('board-activity').href = workDetailUrl({board:boardId});
+document.getElementById('board-parent-name').textContent = boardId === 'carr-v5' ? 'System board' : 'Project board';
 const client = createLiveClient();
 const pendingRequests = new Map();
+let questionCards = new Map();
 const title = document.getElementById("board-title");
 const meta = document.getElementById("board-meta");
 const error = document.getElementById("board-error");
-const stages = document.getElementById("board-stages");
+const retry = document.getElementById("board-retry");
+const signIn = document.getElementById("board-sign-in");
 const flow = document.getElementById("board-flow");
-const taskDialog = document.getElementById("task-detail");
-const taskDetailTitle = document.getElementById("task-detail-title");
-const taskDetailBody = document.getElementById("task-detail-body");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
 const completedList = document.getElementById("completed-list");
 const completedCount = document.getElementById("completed-count");
+const directory = document.getElementById("board-directory");
+const directoryError = document.getElementById("directory-error");
+const freshness = document.getElementById("board-freshness");
+const live = document.getElementById("board-live");
+let directorySignature = "";
+let viewSignature = "";
+let refreshGeneration = 0;
+const badgeTimes = new Map();
+let ageTimer;
+let taskNodes = new Map();
+let renderedStages = "";
+let systemWork = null;
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -36,7 +50,65 @@ function formatTime(value) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat(undefined,
-    { dateStyle: "medium", timeStyle: "short" }).format(date);
+    { dateStyle: "medium", timeStyle: "short", hour12: true }).format(date);
+}
+
+function updateBadge(badge, updatedAt) {
+  const age = boardFreshness(updatedAt);
+  const label = `${age.label}${age.state === "stale" ? " · Stale · 24h+" : ""}`;
+  if (badge.textContent !== label) badge.textContent = label;
+  badge.setAttribute("data-freshness", age.state);
+}
+
+// This clock only patches badge nodes. It never reads the network or rebuilds
+// controls, and wakes at publication-relative minute boundaries (including 24h).
+function refreshAges() {
+  clearTimeout(ageTimer);
+  let delay = Infinity;
+  for (const [badge, updatedAt] of badgeTimes) {
+    if (badge.isConnected === false) { badgeTimes.delete(badge); continue; }
+    updateBadge(badge, updatedAt);
+    const next = nextFreshnessChange(updatedAt);
+    if (next !== null) delay = Math.min(delay, next);
+  }
+  if (Number.isFinite(delay)) ageTimer = setTimeout(refreshAges, Math.min(delay, 60000));
+}
+
+function freshnessBadge(updatedAt) {
+  const badge = element("span", "freshness-badge");
+  badgeTimes.set(badge, updatedAt);
+  updateBadge(badge, updatedAt);
+  return badge;
+}
+
+document.addEventListener?.("visibilitychange", refreshAges);
+
+function renderDirectory(read) {
+  const boards = boardDirectory(read);
+  directoryError.hidden = true;
+  const signature = JSON.stringify(boards);
+  if (signature === directorySignature || directory.contains(document.activeElement)) return;
+  const changed = directorySignature && JSON.stringify(boards) !== directory.dataset?.boards;
+  directorySignature = signature;
+  directory.replaceChildren();
+  if (directory.dataset) directory.dataset.boards = JSON.stringify(boards);
+  for (const board of boards) {
+    const link = element("a", "board-link");
+    link.href = `/control-room/progress?board=${encodeURIComponent(board.board_id)}`;
+    if (board.board_id === boardId) link.setAttribute("aria-current", "page");
+    link.setAttribute("data-board-id", board.board_id);
+    link.append(element("span", "eyebrow", board.board_id === SYSTEM_BOARD_ID ? "System-wide" : "Project"),
+      element("h3", "", board.title || board.project || board.board_id));
+    const published = element("time", "board-published", formatTime(board.updated_at) || "Publication time unavailable");
+    if (board.updated_at) published.dateTime = board.updated_at;
+    link.append(published, freshnessBadge(board.updated_at));
+    const counts = Object.entries(board.task_counts || {}).map(([status, count]) => `${count} ${status}`).join(" · ");
+    link.append(element("span", "board-counts", counts || "0 tasks"));
+    directory.append(link);
+  }
+  if (!boards.length) directory.append(element("p", "empty", "No published boards."));
+  refreshAges();
+  if (changed) live.textContent = "Published boards updated.";
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -51,73 +123,9 @@ function svg(tag, className, attributes = {}, content) {
   return node;
 }
 
-function detailRow(label, value) {
-  if (value === undefined || value === null || value === "") return;
-  const row = element("div", "detail-row");
-  const detail = element("dd", "", value instanceof Node ? undefined : value);
-  if (value instanceof Node) detail.append(value);
-  row.append(element("dt", "", label), detail);
-  taskDetailBody.append(row);
-}
-
-function safeLink(url, label) {
-  try {
-    const parsed = new URL(url);
-    if (!["https:", "http:"].includes(parsed.protocol)) return null;
-    const link = element("a", "", label);
-    link.href = parsed.href;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    return link;
-  } catch { return null; }
-}
-
 function showTask(task, stage) {
-  const identity = taskIdentity(task);
-  taskDetailTitle.textContent = task.title || task.id;
-  taskDetailBody.replaceChildren();
-  detailRow("Summary", taskSummary(task));
-  detailRow("Stage", stage.label);
-  detailRow("Status", task.status);
-  detailRow("Task", task.id);
-  detailRow("Provider", identity.provider);
-  detailRow("Model", identity.model);
-  detailRow("Effort", identity.effort);
-  detailRow("Repository", task.repo || "jbookout/carr-system");
-  if (task.pr != null) {
-    const repo = task.repo || "jbookout/carr-system";
-    const link = /^[\w.-]+\/[\w.-]+$/.test(repo)
-      ? safeLink(`https://github.com/${repo}/pull/${Number(task.pr)}`,
-        `PR #${task.pr}${task.pr_head ? ` · ${task.pr_head}` : ""}`) : null;
-    detailRow("Pull request", link || `PR #${task.pr}`);
-  }
-  for (const pr of Array.isArray(task.pr_links) ? task.pr_links : []) {
-    const repo = String(pr.repo || "");
-    const number = Number(pr.number);
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !Number.isSafeInteger(number) || number <= 0) continue;
-    const link = safeLink(`https://github.com/${repo}/pull/${number}`,
-      `${repo} · PR #${number}${pr.head_sha ? ` · ${pr.head_sha}` : ""}`);
-    if (link) detailRow("Pull request", link);
-  }
-  detailRow("Review", task.review_verdict || task.pr_phase || "Not recorded");
-  detailRow("CI", task.pr_checks || "Not recorded");
-  detailRow("Created", formatTime(task.created_at));
-  detailRow("Updated", formatTime(task.updated_at));
-  detailRow("Completed", formatTime(task.completed_at));
-  detailRow("Note", task.note);
-  detailRow("Question", task.question);
-  detailRow("Evidence", task.evidence);
-  for (const url of String(task.evidence || "").match(/https?:\/\/[^\s;,]+/g) || []) {
-    const link = safeLink(url.replace(/[.)]+$/, ""), url.replace(/[.)]+$/, ""));
-    if (link) detailRow("Evidence link", link);
-  }
-  for (const question of relatedQuestions(task, currentView?.questions || [])) {
-    detailRow("Board question", question.prompt);
-    detailRow("Answer", question.answer_text || `Waiting · ${question.default_answer || "No default recorded"}`);
-  }
-  for (const event of task.stage_history || [])
-    detailRow("Stage history", `${event.stage || ""} · ${event.status || ""} · ${formatTime(event.at)}`);
-  taskDialog.showModal();
+  location.href = workDetailUrl({ board: boardId, task: task.id,
+    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) });
 }
 
 function titleLines(value, width) {
@@ -155,17 +163,38 @@ function taskNode(task, stage, x, y, width, height, phone) {
   node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 27 }, identity.provider));
   node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 13 },
     `${identity.model} · ${identity.effort}`));
-  node.addEventListener("click", () => showTask(task, stage));
+  const retained = taskNodes.get(task.id);
+  const target = retained?.node || node;
+  if (retained) {
+    target.replaceChildren(...node.childNodes);
+    for (const attribute of node.attributes) target.setAttribute(attribute.name, attribute.value);
+  }
+  const entry = { node: target, task, stage };
+  taskNodes.set(task.id, entry);
+  if (retained) return target;
+  const open = () => {
+    const current = taskNodes.get(task.id);
+    if (current) showTask(current.task, current.stage);
+  };
+  node.addEventListener("click", open);
   node.addEventListener("keydown", event => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task, stage); }
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
   });
   return node;
 }
 
 function renderStages(view) {
   currentView = view;
-  flow.replaceChildren();
+  renderCompleted(view);
   const phone = phoneQuery.matches;
+  const signature = JSON.stringify([view.stages, phone]);
+  if (signature === renderedStages) {
+    for (const { node, task } of taskNodes.values()) node.setAttribute("data-pulse", taskPulse(task));
+    return;
+  }
+  renderedStages = signature;
+  const focusedId = [...taskNodes].find(([, entry]) => entry.node === document.activeElement)?.[0];
+  flow.replaceChildren();
   const total = view.stages.reduce((sum, stage) => sum + stage.tasks.length, 0);
   taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
   const width = phone ? 360 : 1200;
@@ -197,10 +226,16 @@ function renderStages(view) {
     }
     if (phone) offset += wellHeight + 21;
   });
+  const ids = new Set(view.stages.flatMap(stage => stage.tasks.map(task => task.id)));
+  for (const id of taskNodes.keys()) if (!ids.has(id)) taskNodes.delete(id);
+  if (focusedId) (taskNodes.get(focusedId)?.node || title).focus();
 }
 
 function renderCompleted(view) {
   const live = view.stages.find(stage => stage.id === "live");
+  const signature = JSON.stringify(live.tasks);
+  if (completedList.dataset.signature === signature) return;
+  completedList.dataset.signature = signature;
   completedList.replaceChildren();
   completedCount.textContent = `${live.tasks.length} LIVE`;
   if (!live.tasks.length) {
@@ -317,13 +352,22 @@ function answerForm(q, view) {
 }
 
 function renderQuestions(view) {
-  questions.replaceChildren();
+  const priorCards = questionCards;
+  questionCards = new Map();
+  const nextCards = [];
   questionCount.textContent = `${view.questions.filter(q => !q.status).length} WAITING`;
   if (!view.questions.length) {
-    questions.append(element("p", "empty", "No questions on this board."));
+    questions.replaceChildren(element("p", "empty", "No questions on this board."));
     return;
   }
   for (const q of view.questions) {
+    const signature = JSON.stringify([view.board_id, q]);
+    const retained = priorCards.get(q.question_id);
+    if (retained?.signature === signature) {
+      questionCards.set(q.question_id, retained);
+      nextCards.push(retained.card);
+      continue;
+    }
     const card = element("article", "question-card");
     if (q.status) card.dataset.status = q.status;
     const top = element("div", "question-top");
@@ -338,24 +382,124 @@ function renderQuestions(view) {
     } else {
       card.append(answerForm(q, view));
     }
-    questions.append(card);
+    questionCards.set(q.question_id, { signature, card });
+    nextCards.push(card);
   }
+  // Keep unchanged form cards connected even when the board version changes.
+  for (const [index, card] of nextCards.entries()) {
+    if (questions.children[index] !== card) {
+      if (questions.insertBefore) questions.insertBefore(card, questions.children[index] || null);
+      else questions.append(card);
+    }
+  }
+  for (const child of [...questions.children]) if (!nextCards.includes(child)) child.remove?.();
+}
+
+function clearBoard(state) {
+  currentView = null;
+  viewSignature = "";
+  renderedStages = "";
+  taskNodes.clear();
+  questionCards.clear();
+  pendingRequests.clear();
+  flow.replaceChildren();
+  completedList.replaceChildren();
+  delete completedList.dataset.signature;
+  completedCount.textContent = "—";
+  questions.replaceChildren();
+  taskCount.textContent = "—";
+  questionCount.textContent = "—";
+  title.textContent = "Progress";
+  document.title = "Progress · DoctorCRE";
+  meta.textContent = state === "unpublished" ? "No published snapshot" : "Board access unavailable";
+  badgeTimes.delete(freshness);
+  freshness.textContent = "";
+  freshness.removeAttribute?.("data-freshness");
+  meta.setAttribute("data-read-state", state);
+}
+
+function clearDirectory() {
+  directorySignature = "";
+  directory.replaceChildren();
+}
+
+function readFailure(cause, target) {
+  const unauthorized = cause.status === 401 || cause.status === 403;
+  const state = cause.status === 401 ? "signed-out" : cause.status === 403 ? "unauthorized"
+    : cause.code === "read_timeout" ? "timeout"
+      : globalThis.navigator?.onLine === false ? "offline" : "unavailable";
+  let message;
+  if (unauthorized) {
+    message = cause.status === 401 ? "Sign-in required" : "You do not have access to this board.";
+    if (cause.status === 401) { ++refreshGeneration; clearBoard(state); clearDirectory(); }
+    else if (target === "board") clearBoard(state);
+    else clearDirectory();
+  } else {
+    const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "Progress temporarily unavailable.";
+    const retained = target === "board" ? Boolean(currentView) : Boolean(directorySignature);
+    message = label;
+  }
+  if (target === "directory") {
+    directoryError.textContent = message;
+    directoryError.hidden = false;
+    directoryError.setAttribute("data-read-state", state);
+  } else {
+    setError(message);
+    meta.setAttribute("data-read-state", state);
+    if (currentView) meta.textContent = `Updated ${formatTime(currentView.updated_at)} ↻`;
+  }
+  if (cause.status === 401) signIn.hidden = false;
+  retry.hidden = false;
+  refreshAges();
 }
 
 async function refresh(force = false) {
-  if (!boardId) { setError("Open a published board link to choose a project."); meta.textContent = "No board selected"; return; }
   if (!force && questions.contains(document.activeElement)) return;
-  const read = await client.readProgressBoard({ board_id: boardId });
-  const view = boardView(read);
-  if (!view.version) { setError("This board has not been published yet."); return; }
-  setError("");
-  title.textContent = view.title;
-  document.title = `${view.title} · DoctorCRE`;
-  meta.textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
-  renderStages(view);
-  renderCompleted(view);
-  renderQuestions(view);
+  const generation = ++refreshGeneration;
+  if (systemWork) systemWork.refresh();
+  client.listProgressBoards().then(read => {
+    if (generation === refreshGeneration) renderDirectory(read);
+  }).catch(cause => {
+    if (generation === refreshGeneration) readFailure(cause, "directory");
+  });
+  const loaded = client.readProgressBoard({ board_id: boardId }).then(read => {
+    if (generation !== refreshGeneration) return;
+    const view = boardView(read);
+    if (!view.version) {
+      if (!systemWork) clearBoard("unpublished");
+      else {
+        meta.textContent = "No published system snapshot.";
+        meta.setAttribute("data-read-state", "unpublished");
+        badgeTimes.delete(freshness);
+      }
+      setError("This board has not been published yet.");
+      retry.hidden = false;
+      return;
+    }
+    setError("");
+    signIn.hidden = true;
+    title.textContent = view.title;
+    document.title = `${view.title} · DoctorCRE`;
+    meta.textContent = `Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+    meta.setAttribute("data-read-state", "published");
+    badgeTimes.set(freshness, view.updated_at);
+    refreshAges();
+    const signature = JSON.stringify(view);
+    if (signature === viewSignature) { if (!systemWork) renderStages(view); return; }
+    live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
+    viewSignature = signature;
+    if (!systemWork) renderStages(view);
+    renderQuestions(view);
+  }).catch(cause => {
+    if (generation !== refreshGeneration) return;
+    readFailure(cause, "board");
+    if (force) throw cause;
+  });
+  await loaded;
 }
 
-refresh().catch(() => setError("The board could not be loaded. Refresh to try again."));
-setInterval(() => refresh().catch(() => setError("The board could not be refreshed.")), 15000);
+if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client, onPipeline: renderStages });
+
+retry.addEventListener("click", () => refresh(true).catch(() => {}));
+refresh();
+setInterval(() => refresh(), 15000);

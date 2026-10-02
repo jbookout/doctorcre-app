@@ -1,10 +1,12 @@
 import { uuidv4 } from "./uuid.js";
 import { validateHumanRef } from "./system-work-view.js";
+import { readWithDeadline } from "./auto-refresh.mjs";
 
 export function createSystemWorkClient(options = {}) {
   const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
   const uuid = options.uuid || uuidv4;
   let session = null;
+  let pendingReport = null;
 
   async function decode(response) {
     const body = await response.json().catch(() => ({}));
@@ -47,23 +49,42 @@ export function createSystemWorkClient(options = {}) {
 
   return {
     get session() { return session; },
+    get pendingReport() { return pendingReport ? JSON.parse(JSON.stringify(pendingReport.request)) : null; },
     bootstrap,
     async current() {
-      const response = await fetchImpl("/api/system-work/current", {
-        credentials: "same-origin", headers: { accept: "application/json" },
-      });
-      const envelope = await decode(response);
-      return envelope.data ?? envelope;
+      return readWithDeadline(async signal => {
+        const response = await fetchImpl("/api/system-work/current", {
+          signal,
+          credentials: "same-origin", headers: { accept: "application/json" },
+        });
+        const envelope = await decode(response);
+        return envelope.data ?? envelope;
+      }, { timeoutMs: options.readTimeoutMs || 10_000 });
     },
     async read(humanRef) {
       const ref = validateHumanRef(humanRef);
-      const response = await fetchImpl(`/api/system-work/${encodeURIComponent(ref)}`, {
-        credentials: "same-origin", headers: { accept: "application/json" },
-      });
-      const envelope = await decode(response);
-      return envelope.data ?? envelope;
+      return readWithDeadline(async signal => {
+        const response = await fetchImpl(`/api/system-work/${encodeURIComponent(ref)}`, {
+          signal,
+          credentials: "same-origin", headers: { accept: "application/json" },
+        });
+        const envelope = await decode(response);
+        return envelope.data ?? envelope;
+      }, { timeoutMs: options.readTimeoutMs || 10_000 });
     },
-    report: (body) => post("/api/system-work/report", withKey(body)),
+    async report(body) {
+      const { idempotency_key, ...intent } = body;
+      const signature = JSON.stringify(intent);
+      if (pendingReport && pendingReport.signature !== signature)
+        throw new Error("Reconcile the previous report before submitting a different concern.");
+      pendingReport ||= { signature, request: withKey(body) };
+      try { return await post("/api/system-work/report", pendingReport.request); }
+      catch (error) {
+        if (error.status >= 400 && error.status < 500 && error.status !== 408 && typeof error.payload?.error === "string" && error.payload.error) pendingReport = null;
+        throw error;
+      }
+    },
+    finishReport() { pendingReport = null; },
     triage: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/triage`, withKey(body)),
     preparePlan: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/plan`, withKey(body)),
     async acceptPlan(humanRef, body) {

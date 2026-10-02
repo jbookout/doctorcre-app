@@ -2,6 +2,7 @@ import carrContract from "../contracts/carr-interface.v1.json" with { type: "jso
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
+const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
 const PROXY_EXACT = new Set(["/mcp", "/pipeline/changes", "/api/call-context", "/api/post-call"]);
 const PROXY_PREFIXES = ["/auth/", "/api/v1/", "/api/room/", "/api/system-work/", "/api/tours/", "/api/post-call/"];
 const STATIC_EXACT = new Map([
@@ -22,15 +23,19 @@ const UNGATED_PAGES = new Set(["/status"]);
 // an exact list of app page paths that the prototypes are not on, so the app asks
 // the gate about the Control Room page path on their behalf: same session cookie,
 // same refusal or redirect, same 200 for a signed-in partner.
-const DESIGN_PROTOTYPE_PREFIX = "/design";
-const DESIGN_PROTOTYPE_GATE_PATH = "/control-room";
-const SHARED_PAGE_GATE_PATHS = new Set(["/progress-board", "/ideas"]);
+const GATE_PATHS = new Map([
+  ["/control-room/progress", "/control-room"], ["/control-room/progress/work", "/control-room"],
+  ["/ideas-events", "/control-room"], ["/design-lab", "/control-room"],
+  ["/calendar", "/business"], ["/search", "/business"], ["/work-requests", "/system-work.html"],
+  ["/agent-room", "/room.html"], ["/all-work", "/work-inventory"],
+  ["/updates", "/notifications"], ["/doc-chats", "/conversations"],
+]);
 
 function gateRequestFor(request, pathname) {
-  if (!SHARED_PAGE_GATE_PATHS.has(pathname) && pathname !== DESIGN_PROTOTYPE_PREFIX &&
-      !pathname.startsWith(`${DESIGN_PROTOTYPE_PREFIX}/`)) return request;
+  const gatePath = GATE_PATHS.get(pathname);
+  if (!gatePath) return request;
   const url = new URL(request.url);
-  url.pathname = DESIGN_PROTOTYPE_GATE_PATH;
+  url.pathname = gatePath;
   url.search = "";
   return new Request(url, request);
 }
@@ -140,13 +145,25 @@ export async function handleDoctorcreRequest(request, env) {
   const pathname = url.pathname;
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
   if (pathname === "/share") return Response.redirect(`https://reports.doctorcre.com/share${url.search}`, 302);
+  if (REDIRECTS.has(pathname)) {
+    if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
+    const target = pathname === "/business" && url.searchParams.has("q") ? "/search"
+      : pathname === "/business" && url.searchParams.get("charts") === "1" ? "/?view=charts"
+      : REDIRECTS.get(pathname);
+    const destination = new URL(target, url.origin);
+    for (const [key, value] of url.searchParams) if (!destination.searchParams.has(key)) destination.searchParams.append(key, value);
+    destination.hash = url.hash;
+    return Response.redirect(destination, 308);
+  }
 
   if (UNGATED_PAGES.has(pathname)) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     return assetResponse(request, env, `/${APP_ROUTES.get(pathname)}`);
   }
 
-  const routeAsset = APP_ROUTES.get(pathname);
+  const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "board" ? "pipeline.html"
+    : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
+    : APP_ROUTES.get(pathname);
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     const gateRequest = gateRequestFor(request, pathname);

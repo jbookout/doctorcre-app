@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="/css/correspondence.css">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -20,17 +21,9 @@
   <a class="skip" href="#main">Skip to deals</a>
   <header class="topbar">
     <span class="deployment-badge" id="deploymentBadge" data-mode="unknown" role="status" aria-live="polite">Checking environment…</span>
-    <div class="deal-views" role="group" aria-label="Deal views">
-      <button type="button" class="workspace on" data-workspace="team">All deals</button>
-      <button type="button" class="workspace" data-workspace="national_account">National accounts</button>
-    </div>
     <div class="top-actions">
       <span class="sync" id="syncStatus" role="status">Checking connection…</span>
       <span class="capture" id="captureStatus" hidden>Capture inactive</span>
-      <button type="button" class="call-mode-button" id="callModeButton" aria-haspopup="dialog" aria-label="Open Call Mode"><span aria-hidden="true">✦</span> Call Mode</button>
-      <span class="avatar" id="selfAvatar" aria-label="Signed-in partner">?</span>
-      <button type="button" class="icon-button color-assist-toggle" id="colorAssistButton" aria-label="Turn on color-blind-friendly view" aria-pressed="false" title="Color-blind-friendly view"><span aria-hidden="true">◐</span><span class="assist-label">Color assist</span></button>
-      <button type="button" class="icon-button" id="themeButton" aria-label="Toggle dark theme" title="Toggle dark theme">☾</button>
     </div>
   </header>
 
@@ -42,6 +35,10 @@
         <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
         <p class="eyebrow" id="workspaceEyebrow">Shared territory pipeline</p>
         <h1 id="workspaceTitle">Deals</h1>
+        <nav class="app-section-tabs deal-section-tabs" aria-label="Deals pages">
+          <button type="button" class="workspace on" data-workspace="team" aria-current="page">All Deals</button>
+          <button type="button" class="workspace" data-workspace="national_account">National Accounts</button>
+        </nav>
         <p class="subhead" id="workspaceSubtitle"></p>
       </div>
       <div class="hero-actions">
@@ -49,6 +46,11 @@
         <button type="button" class="primary" id="agendaButton">Review deals</button>
       </div>
     </section>
+
+    <div class="deal-page-views" role="group" aria-label="Deal view">
+      <span class="deal-page-view-current" aria-current="page">List</span>
+      <a href="/deals?view=board">Board</a>
+    </div>
 
     <section class="account-grid" id="accountGrid" aria-label="National accounts" hidden></section>
 
@@ -169,7 +171,7 @@
       <section class="post-call" id="postCallPanel" aria-labelledby="postCallTitle" hidden>
         <header class="post-call-heading">
           <div><p class="eyebrow">Weekly call follow-through</p><h3 id="postCallTitle">Post-call report</h3></div>
-          <button type="button" class="text-button post-call-refresh" id="postCallRefresh">Refresh</button>
+          <button type="button" class="text-button post-call-refresh" id="postCallRefresh" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </header>
         <div class="post-call-status" id="postCallStatus" role="status" aria-live="polite"></div>
         <div class="post-call-report" id="postCallReport"></div>

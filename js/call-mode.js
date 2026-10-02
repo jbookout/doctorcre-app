@@ -185,9 +185,6 @@ export function createCallMode(deps) {
       transcribing: 'Quill is processing this call', ready_to_extract: 'Transcript ready for extraction',
       filed: 'Call summary saved', state_unknown: 'Recorder state needs attention',
     }[snapshot.state] || 'Ready to record');
-    $('#callModeDetail').textContent = recording ? 'Quill is recording separate local and other-side audio tracks.'
-      : processing ? 'The recording has stopped. Quill is preparing the local transcript for the review pipeline.'
-        : 'Record the weekly Joe and Dell deal call, or another call. Quill keeps the local and other-side tracks separate.';
     const labels = snapshot.speaker_labels || {};
     const speakers = $('#callModeSpeakers');
     speakers.hidden = !labels.mic;
@@ -197,8 +194,8 @@ export function createCallMode(deps) {
       toolbarButton.classList.toggle('recording', recording);
       toolbarButton.innerHTML = recording
         ? `<span aria-hidden="true">●</span> ${elapsedTime(snapshot.started_at, now)}`
-        : '<span aria-hidden="true">✦</span> Call Mode';
-      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(snapshot.started_at, now)}` : 'Open Call Mode');
+        : '<span aria-hidden="true">☎</span>';
+      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(snapshot.started_at, now)}` : 'Call mode');
     }
     renderPostCall();
   }
@@ -317,28 +314,37 @@ export function createCallMode(deps) {
 
   async function publishWeeklyCallContext(session) {
     if (!session) throw new Error('Quill did not return a recording session.');
-    if (state.contextInFlight) return state.contextInFlight;
+    const generation = state.callGeneration || 0;
+    if (state.postCall.session && state.postCall.session !== session) return false;
+    if (state.contextInFlight?.session === session && state.contextInFlight.generation === generation) return state.contextInFlight.promise;
+    const slot = { session, generation };
+    const current = () => state.postCall.session === session && (state.callGeneration || 0) === generation && state.contextInFlight === slot;
+    state.contextInFlight = slot;
     const run = (async () => {
       state.postCall = { ...state.postCall, status: 'context_loading', session, weekly: true,
         error: null, contextReady: false, contextAttempted: true };
       renderPostCall();
       const deals = await readCallContextIndex(deps.client(), deps.agendaDeals());
+      if (!current()) return false;
       const scope = deps.scope();
       await deps.postCallClient.publishCallContext({ session, workspace_kind: scope.workspace_kind,
         ...(scope.account_client_id ? { account_client_id: scope.account_client_id } : {}),
         generated_at: new Date(now()).toISOString(), deals });
+      if (!current()) return false;
       state.postCall = { ...state.postCall, status: 'context_ready', contextReady: true, error: null };
       renderPostCall();
+      return true;
     })();
-    state.contextInFlight = run;
-    try { await run; } finally { state.contextInFlight = null; }
+    slot.promise = run;
+    try { return await run; } finally { if (state.contextInFlight === slot) state.contextInFlight = null; }
   }
 
   async function publishOrRecord(session) {
+    const generation = state.callGeneration || 0;
     try {
-      await publishWeeklyCallContext(session);
-      return true;
+      return await publishWeeklyCallContext(session);
     } catch (error) {
+      if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return false;
       // Stop polling so the reason stays on screen: the next poll would read
       // awaiting_context again and quietly replace it. Retry resumes.
       stopPolling();
@@ -358,8 +364,13 @@ export function createCallMode(deps) {
   async function refreshPostCall({ quiet = false } = {}) {
     const session = state.postCall.session;
     if (!session) return;
+    if (state.statusInFlight?.session === session) return;
+    const sequence = state.statusSequence = (state.statusSequence || 0) + 1;
+    const read = { session, sequence };
+    state.statusInFlight = read;
     try {
       const payload = await deps.postCallClient.getStatus(session);
+      if (state.postCall.session !== session || state.statusSequence !== sequence) return;
       const rawStatus = (typeof payload.status === 'object' ? payload.status.state : payload.status) || payload.state || 'waiting_for_transcript';
       const status = ({ ready_review: 'review_ready', blocked: 'failed' })[rawStatus] || rawStatus;
       const reason = typeof payload.status === 'object' && rawStatus === 'blocked' ? payload.status.reason : null;
@@ -374,14 +385,18 @@ export function createCallMode(deps) {
         await publishOrRecord(session);
       }
     } catch (error) {
+      if (state.postCall.session !== session || state.statusSequence !== sequence) return;
       state.postCall = { ...state.postCall, error: error.message };
       renderPostCall();
       if (!quiet) toast(error.message);
+    } finally {
+      if (state.statusInFlight === read) state.statusInFlight = null;
     }
   }
 
   function startPolling(session, { weekly = false } = {}) {
     stopPolling();
+    if (state.postCall.session !== session) state.callGeneration = (state.callGeneration || 0) + 1;
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly };
     refreshPostCall({ quiet: true });
     state.pollTimer = timers.setInterval(() => refreshPostCall({ quiet: true }), 1600);
@@ -503,8 +518,10 @@ export function createCallMode(deps) {
         const ok = await publishOrRecord(state.callMode.session || null);
         if (!ok) toast(`Recording started, but the weekly deal context needs attention: ${state.postCall.error}`);
         try {
-          if (deps.startAgenda) await deps.startAgenda();
-          toast('Weekly deal call is recording. The agenda is open.');
+          if (deps.startAgenda) {
+            await deps.startAgenda();
+            toast('Weekly deal call is recording. The agenda is open.');
+          } else toast('Weekly deal call is recording.');
         } catch (error) {
           console.error('Could not start the weekly agenda', error);
           toast('Weekly deal call is recording. The agenda could not open.');

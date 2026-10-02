@@ -94,7 +94,12 @@ export function classifyPriority(item, now) {
     const dueMs = Date.parse(item.due);
     const nowMs = typeof now === "number" ? now : Date.parse(now);
     if (Number.isFinite(dueMs) && Number.isFinite(nowMs)) {
-      const days = (dueMs - nowMs) / DAY_MS;
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(item.due);
+      const calendarNow = new Date(nowMs);
+      calendarNow.setHours(12, 0, 0, 0);
+      const days = dateOnly
+        ? Math.round((Date.parse(`${item.due}T12:00:00`) - calendarNow.getTime()) / DAY_MS)
+        : (dueMs - nowMs) / DAY_MS;
       const plural = (n) => `${n} day${n === 1 ? "" : "s"}`;
       if (days < 0) return { priority: "overdue", reason: `due ${plural(Math.max(1, Math.floor(-days)))} ago` };
       if (days <= 7) return { priority: "deadline", reason: `due in ${plural(Math.ceil(days))}` };

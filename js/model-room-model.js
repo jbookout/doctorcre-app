@@ -88,31 +88,16 @@ export const TURN_LIMIT = 25;
 /* ----------------------------------------------------- the honesty sentences */
 
 /** The context retains a readable fallback beside any verified native link. */
-export const NO_OPEN_SENTENCE = "Open returns to a verified Codex Desktop thread on this Mac. "
-  + "Other hosts keep the canonical session ID for manual resume. Opening sends no message and takes over no session.";
-
-/** Under Participants: room turns and dispatch acknowledgements are different records. */
-export const ACKNOWLEDGEMENT_SENTENCE = "Room participants come from conversation turns. Dispatch receipt and "
-  + "acknowledgment come only from the selected session's dispatch history; this participant list never infers "
-  + "either state from a message.";
-
-/** Beside the dispatch lineage, always. */
-export const DISPATCH_SEARCH_SENTENCE = "Search by a session's friendly name or canonical ID, including closed "
-  + "sessions, then choose one result to read its evidence-bound dispatch trail. Search and history are read-only; "
-  + "historical instructions are displayed as records and never executed.";
-
-/** Beside the dispatch stages, always. */
-export const DISPATCH_STAGES_SENTENCE = "Sent, received, acknowledged and acted remain separate evidence rows. "
-  + "A missing stage stays unavailable: not_acknowledged means a linked dispatch has no receipt for that stage; "
-  + "no_dispatch_spine marks pre-spine history matched only from its room-turn body.";
+export const NO_OPEN_SENTENCE = "";
+export const ACKNOWLEDGEMENT_SENTENCE = "";
+export const DISPATCH_SEARCH_SENTENCE = "";
+export const DISPATCH_STAGES_SENTENCE = "";
 
 /** Beside the assignments board, stating where the cards actually come from. */
-export const QUEUE_ROOM_SENTENCE = `Assignments are read from room ${QUEUE_ROOM}, board ${QUEUE_BOARD}, which is `
-  + `where the projector writes them. The room ${TURN_ROOM} carries this tab's conversation and no queue at all.`;
+export const QUEUE_ROOM_SENTENCE = "";
 
 /** Under the turn list whenever the read says there is more behind it. */
-export const WINDOW_SENTENCE = "This is a window on the room, not the whole of it: the read answered more: true, "
-  + "so the number of turns below is what this page asked for and not a count of what exists.";
+export const WINDOW_SENTENCE = "More activity available";
 
 /* --------------------------------------------------------------- validators */
 
@@ -209,7 +194,7 @@ export function refuseQueueEvent(event) {
  */
 export function queueFreshness(payload, { now = Date.now() } = {}) {
   if (payload === null || payload === undefined) {
-    return { state: "unavailable", ageMs: null, projectedAt: null, text: "The queue could not be read." };
+    return { state: "unavailable", ageMs: null, projectedAt: null, text: "Work temporarily unavailable." };
   }
   const projectedAt = payload.projected_at ?? null;
   if (payload.live === true) {
@@ -487,14 +472,10 @@ export function turnRequest({ afterSeq = null, limit = TURN_LIMIT } = {}) {
 //     Both arrive already in the server's order and are never re-sorted here.
 
 /** Beside a chosen topic, always. The one honest limit on this half of the view. */
-export const TOPIC_HISTORY_SENTENCE = "The queue projector keeps only the latest state per ticket: "
-  + "read-room-queue overwrites by task_id, so it exposes no ticket-level event history. The card below is the "
-  + "entire history this page can show for this topic, not a claim that nothing came before it.";
+export const TOPIC_HISTORY_SENTENCE = "Earlier activity unavailable";
 
 /** Beside a chosen work item, always. */
-export const WORK_ITEM_HISTORY_SENTENCE = "This ledger is work-request-card's own acting-identity and "
-  + "outcome-feedback history, in the order the record layer returned it. Nothing here is re-sorted, merged or "
-  + "inferred, and a delivery state that is not recorded reads as unknown rather than as a guess.";
+export const WORK_ITEM_HISTORY_SENTENCE = "";
 
 /** The topic (Kanban ticket) picker: reuses the same cards the assignments
  * board already renders, so a topic chosen here is never a second list that
@@ -675,9 +656,7 @@ export function workRequestCardRequest(humanRef) {
 // guessing a version. That is a server-side gap in carr-system, not
 // something this app-only slice can fix.
 
-export const ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE = "This move is not supported: no pinned verb changes a "
-  + "projected assignment's status. Source or shipping status can only change at its source, never by dragging "
-  + "this card.";
+export const ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE = "Assignment cannot be moved";
 
 /**
  * V5-UX-C13c: shown instead of the answer form when `work-request-card`
@@ -686,11 +665,7 @@ export const ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE = "This move is not supported:
  * guessed version, never a silent form that would submit base_version: null
  * and let the server's own refusal stand in for this page's own honesty.
  */
-export const ANSWER_VERSION_UNAVAILABLE_SENTENCE = "This item cannot be answered from here yet: the record layer's "
-  + "own work-request-card read does not return a usable version for a needs_joe request, and answer-work-request-"
-  + "for-joe requires the exact current version as a compare-and-swap. Guessing one would risk answering a "
-  + "different version than the one shown above. This is a gap in the record layer, not a missing control on this "
-  + "page.";
+export const ANSWER_VERSION_UNAVAILABLE_SENTENCE = "Answer temporarily unavailable";
 
 /** The one sentence a version_conflict answers as, in place of the server's
  * own error code: the compare-and-swap already told the caller precisely

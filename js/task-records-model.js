@@ -260,7 +260,7 @@ export function loopRefusalMessage(payloadError, { number = null } = {}) {
     case "not_found":
       return "That record is no longer on the board. Reload the list and open it from what the board holds now.";
     case "ambiguous_number":
-      return `Two open records share number ${number ?? "that"}; open the record layer to renumber.`;
+      return `Work number ${number ?? "unknown"} matches multiple items.`;
     case "need_number_or_id":
       return "That row arrived without a number, so the record could not be re-read. Reload the list.";
     default:
@@ -316,3 +316,12 @@ export const operationKeys = Object.freeze({
   due: (row) => `due:${row?.kind}:${row?.number}`,
   quickAdd: (sentence, viewer) => `quickadd:${stableKey(`${String(sentence || "").trim()}|${String(viewer || "")}`)}`,
 });
+
+/**
+ * Whether the Quick add panel starts open. On a phone it starts collapsed so
+ * the open work is the first thing on screen, unless a sentence is already
+ * waiting in it.
+ */
+export function quickAddStartsOpen({ phone = false, hasDraftText = false } = {}) {
+  return !phone || hasDraftText;
+}

@@ -7,6 +7,40 @@ export const STAGES = [
   { id: "live", label: "Live" },
 ];
 
+export const SYSTEM_BOARD_ID = "carr-v5";
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+function publicationTimestamp(updatedAt) {
+  const timestamp = typeof updatedAt === "string" && updatedAt.trim()
+    ? Date.parse(/[zZ]|[+-]\d{2}:\d{2}$/.test(updatedAt) ? updatedAt : `${updatedAt}Z`) : NaN;
+  return timestamp;
+}
+
+export function nextFreshnessChange(updatedAt, now = Date.now()) {
+  const timestamp = publicationTimestamp(updatedAt);
+  if (!Number.isFinite(timestamp)) return null;
+  return now < timestamp ? timestamp - now + 60000 : 60000 - (now - timestamp) % 60000;
+}
+
+export function boardFreshness(updatedAt, at = new Date()) {
+  const timestamp = publicationTimestamp(updatedAt);
+  if (!Number.isFinite(timestamp)) return { state: "unknown", label: "Update time unavailable" };
+  const age = Math.max(0, at.getTime() - timestamp);
+  const minutes = Math.floor(age / 60000);
+  const elapsed = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago`
+    : minutes < 1440 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`
+      : `${Math.floor(minutes / 1440)}d ${Math.floor(minutes % 1440 / 60)}h ago`;
+  return { state: age >= STALE_AFTER_MS ? "stale" : "fresh", label: `Updated ${elapsed}` };
+}
+
+export function boardDirectory(read) {
+  if (read?.schema !== "progress-board-directory.v1" || !Array.isArray(read.boards))
+    throw new Error("Published board directory is unavailable.");
+  return read.boards.filter(board => board && typeof board.board_id === "string")
+    .slice().sort((a, b) => a.board_id === SYSTEM_BOARD_ID ? -1
+      : b.board_id === SYSTEM_BOARD_ID ? 1 : String(a.title).localeCompare(String(b.title)));
+}
+
 const STATUS_STAGE = { queued: "queued", running: "build", review: "review",
   blocked: "review", failed: "ci", done: "build" };
 const STATUSES = new Set(["Sent", "Received", "Applied"]);
@@ -49,7 +83,8 @@ export function taskStage(task) {
   if (STAGES.some(stage => stage.id === requested)) return requested;
   if (task.status === "done") return task.pr != null && task.pr_phase === "Merged" ? "merged" : "build";
   if (task.status === "measured") return typeof evidence === "string" && evidence.trim() ? "live" : "build";
-  return STATUS_STAGE[task.status ?? "queued"] || "queued";
+  return typeof task.status === "string" && Object.hasOwn(STATUS_STAGE, task.status)
+    ? STATUS_STAGE[task.status] : "queued";
 }
 
 export function taskHealth(task, at = new Date()) {
@@ -82,9 +117,9 @@ export function boardView(read) {
     ? Object.entries(data.tasks) : [];
   const stages = STAGES.map(stage => ({ ...stage, tasks: [] }));
   for (const [id, task] of tasks) {
-    if (!task || typeof task !== "object") continue;
+    if (!task || typeof task !== "object" || Array.isArray(task)) continue;
     const stage = taskStage(task);
-    stages.find(item => item.id === stage).tasks.push({ id, ...task });
+    stages.find(item => item.id === stage).tasks.push({ ...task, id });
   }
   return {
     board_id: snapshot?.board_id || data.project || null,

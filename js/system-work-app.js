@@ -1,8 +1,9 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { createSystemWorkClient } from "./system-work-client.js";
 import { actionForCard, renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
 
 const client = createSystemWorkClient();
-const state = { card: null, proposed: null, current: [] };
+const state = { card: null, proposed: null, current: [], selectedRef: null, readEpoch: 0, readReady: false, readAt: null };
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -16,10 +17,10 @@ function alert(message, kind = "error") {
 }
 
 function render() {
-  $("#systemWorkStage").innerHTML = state.card ? renderSystemWorkCard(state.card) : renderCurrentWorkRequests(state.current);
+  $("#systemWorkStage").innerHTML = state.card ? renderSystemWorkCard(state.readReady ? state.card : { ...state.card, source: { ...state.card.source, freshness: "unavailable" } }, { readAt: state.readReady ? state.readAt : null }) : renderCurrentWorkRequests(state.current);
   const ref = state.card?.human_ref;
   if (ref) {
-    history.replaceState(null, "", `/system-work.html?work_request=${encodeURIComponent(ref)}`);
+    history.replaceState(null, "", `/work-requests?work_request=${encodeURIComponent(ref)}`);
     $("#workRequestRef").value = ref;
   }
 }
@@ -35,18 +36,36 @@ function refusal(error) {
   return error.message || "No receipt was confirmed. No success has been shown.";
 }
 
-async function refresh(ref = state.card?.human_ref) {
-  if (!ref) { state.card = null; render(); return; }
-  state.card = await client.read(validateHumanRef(ref));
-  state.proposed = state.card.pending_outcome_feedback || null;
-  render();
+async function refresh(ref = state.selectedRef) {
+  const selected = ref ? validateHumanRef(ref) : null;
+  state.selectedRef = selected;
+  const epoch = ++state.readEpoch;
+  state.readReady = false;
+  try {
+    const result = selected ? await client.read(selected) : await client.current();
+    if (epoch !== state.readEpoch || selected !== state.selectedRef) return;
+    state.card = selected ? result : null;
+    if (!selected) state.current = result.items || [];
+    state.readReady = true;
+    state.readAt = new Date().toISOString();
+    alert("");
+    state.proposed = state.card?.pending_outcome_feedback || null;
+    render();
+  } catch (error) {
+    if (epoch !== state.readEpoch || selected !== state.selectedRef) return;
+    state.readReady = false;
+    if (!selected) state.current = [];
+    alert(error.status === 401 || error.status === 403 ? "Sign in again to read current Work Requests." : "Work Request updates unavailable. Current evidence is required before confirming.");
+    render();
+    throw error;
+  }
 }
 
 function field(label, control, hint = "") {
   return `<label class="system-work-field"><span>${esc(label)}</span>${control}${hint ? `<small>${esc(hint)}</small>` : ""}</label>`;
 }
 
-function openForm({ eyebrow, title, submit, body, onSubmit }) {
+function openForm({ eyebrow, title, submit, body, onSubmit, reviewed = null }) {
   const dialog = $("#systemWorkDialog");
   $("#systemWorkEyebrow").textContent = eyebrow;
   $("#systemWorkTitle").textContent = title;
@@ -58,7 +77,12 @@ function openForm({ eyebrow, title, submit, body, onSubmit }) {
     event.preventDefault();
     const button = $("#systemWorkSubmit");
     button.disabled = true;
-    try { await onSubmit(new FormData(form)); dialog.close(); alert(""); }
+    try {
+      if (reviewed && !state.readReady) throw new Error("Current evidence is unavailable. Read this request again before confirming.");
+      if (reviewed && JSON.stringify(state.card) !== JSON.stringify(reviewed))
+        throw new Error("This request changed. Close this form and review the current card before confirming.");
+      await onSubmit(new FormData(form)); dialog.close(); alert("");
+    }
     catch (error) {
       $("#systemWorkFormError").textContent = refusal(error);
       $("#systemWorkFormError").hidden = false;
@@ -75,49 +99,58 @@ function openForm({ eyebrow, title, submit, body, onSubmit }) {
 }
 
 function reportForm() {
-  openForm({ eyebrow: "Source first", title: "Report a system problem", submit: "Record concern",
-    body: field("Situation", `<textarea name="situation" maxlength="1000" required></textarea>`, "Describe the system concern so current shared doctrine can be matched.") +
-      field("Short name", `<input name="title" maxlength="200" required>`) +
-      field("Desired result", `<textarea name="desired_outcome" maxlength="2000" required></textarea>`) +
-      field("How we’ll know", `<textarea name="criteria" maxlength="2000" required></textarea>`, "One measurable criterion per line; 1–12 lines."),
+  const pending = client.pendingReport;
+  const locked = pending ? " readonly" : "";
+  openForm({ eyebrow: "System problem", title: "Report a system problem", submit: pending ? "Check report outcome" : "Record concern",
+    body: field("Situation", `<textarea name="situation" maxlength="1000" required${locked}>${esc(pending?.situation || "")}</textarea>`, "Describe the system concern so current shared doctrine can be matched.") +
+      field("Short name", `<input name="title" maxlength="200" required${locked} value="${esc(pending?.title || "")}">`) +
+      field("Desired result", `<textarea name="desired_outcome" maxlength="2000" required${locked}>${esc(pending?.desired_outcome || "")}</textarea>`) +
+      field("How we’ll know", `<textarea name="criteria" maxlength="2000" required${locked}>${esc(pending?.acceptance_criteria.map(item => item.text).join("\n") || "")}</textarea>`, pending ? "Check report outcome replays this retained concern." : "One measurable criterion per line; 1–12 lines."),
     onSubmit: async (data) => {
+      const retained = client.pendingReport;
       const criteria = String(data.get("criteria")).split("\n").map((value) => value.trim()).filter(Boolean);
-      if (!criteria.length || criteria.length > 12) throw new Error("Enter between 1 and 12 criteria.");
-      const result = await client.report({ situation: data.get("situation"), title: data.get("title"),
+      if (!retained && (!criteria.length || criteria.length > 12)) throw new Error("Enter between 1 and 12 criteria.");
+      const result = await client.report(retained || { situation: data.get("situation"), title: data.get("title"),
         desired_outcome: data.get("desired_outcome"),
         acceptance_criteria: criteria.map((text, index) => ({ id: `CRITERION-${index + 1}`, text })) });
+      if (typeof result?.human_ref !== "string" || !/^WR-\d+$/.test(result.human_ref)) throw new Error("Report outcome unknown. Reopen Report to check the retained concern.");
       await refresh(result.human_ref);
+      client.finishReport();
     } });
 }
 
 function triageForm() {
-  openForm({ eyebrow: state.card.human_ref, title: "Confirm classification", submit: "Confirm classification",
+  const card = structuredClone(state.card);
+  openForm({ reviewed: card, eyebrow: card.human_ref, title: "Confirm classification", submit: "Confirm classification",
     body: field("Classification", `<select name="classification" required><option value="operational">Routine operations</option><option value="needs_judgment">Needs partner judgment</option><option value="safety_review">Safety review</option></select>`, "This classifies the concern. It does not assign or execute it."),
-    onSubmit: async (data) => { await client.triage(state.card.human_ref,
-      { base_version: state.card.version, classification: data.get("classification") }); await refresh(); } });
+    onSubmit: async (data) => { await client.triage(card.human_ref,
+      { base_version: card.version, classification: data.get("classification") }); await refresh(); } });
 }
 
 function planForm() {
-  openForm({ eyebrow: state.card.human_ref, title: "Prepare bounded plan", submit: "Prepare plan",
+  const card = structuredClone(state.card);
+  openForm({ reviewed: card, eyebrow: card.human_ref, title: "Prepare bounded plan", submit: "Prepare plan",
     body: field("Scope", `<textarea name="scope_summary" maxlength="1000" required></textarea>`,
       "Describe only the bounded observation scope. The server selects the fixed runbook, caps, safe stop, and observability references."),
-    onSubmit: async (data) => { await client.preparePlan(state.card.human_ref,
-      { base_version: state.card.version, scope_summary: data.get("scope_summary") }); await refresh(); } });
+    onSubmit: async (data) => { await client.preparePlan(card.human_ref,
+      { base_version: card.version, scope_summary: data.get("scope_summary") }); await refresh(); } });
 }
 
 function acceptPlanForm() {
-  const plan = state.card.plan;
-  openForm({ eyebrow: "Fresh human confirmation", title: "Accept this exact bounded plan", submit: "Accept this plan",
+  const card = structuredClone(state.card);
+  const plan = card.plan;
+  openForm({ reviewed: card, eyebrow: "Fresh human confirmation", title: "Accept this exact bounded plan", submit: "Accept this plan",
     body: `<div class="system-work-review"><strong>${esc(plan.scope_summary)}</strong><p>${esc(plan.runbook_label || plan.runbook_ref)}</p><small>Acceptance records this exact plan. It does not execute it.</small></div>`,
-    onSubmit: async () => { await client.acceptPlan(state.card.human_ref,
-      { base_version: state.card.version, plan_hash: plan.plan_hash }); await refresh(); } });
+    onSubmit: async () => { await client.acceptPlan(card.human_ref,
+      { base_version: card.version, plan_hash: plan.plan_hash }); await refresh(); } });
 }
 
 function outcomeForm() {
-  const criteria = state.card.acceptance_criteria || [];
+  const card = structuredClone(state.card);
+  const criteria = card.acceptance_criteria || [];
   const criterionFields = criteria.map((item) => field(item.text || item.id,
     `<select name="criterion:${esc(item.id)}" required><option value="met">Met</option><option value="not_met">Not met</option><option value="not_observed">Not observed</option></select>`)).join("");
-  openForm({ eyebrow: state.card.human_ref, title: "Record what happened", submit: "Prepare outcome record",
+  openForm({ reviewed: card, eyebrow: card.human_ref, title: "Record what happened", submit: "Prepare outcome record",
     body: criterionFields +
       field("Safe evidence references", `<textarea name="evidence_refs" required placeholder="safe:workspace:receipt-123"></textarea>`, "One safe: reference per line; no raw client or business payload.") +
       field("Blocker", `<select name="blocker_code"><option value="none">None</option><option value="criterion_not_met">Criterion not met</option><option value="evidence_missing">Evidence missing</option><option value="external_dependency">External dependency</option><option value="system_error">System error</option></select>`) +
@@ -128,8 +161,8 @@ function outcomeForm() {
     onSubmit: async (data) => {
       const criterion_results = criteria.map((item) => ({ id: item.id, result: data.get(`criterion:${item.id}`) }));
       const evidence_refs = String(data.get("evidence_refs")).split("\n").map((v) => v.trim()).filter(Boolean);
-      state.proposed = await client.proposeOutcome(state.card.human_ref, { base_version: state.card.version,
-        plan_hash: state.card.plan.plan_hash, criterion_results, evidence_refs,
+      state.proposed = await client.proposeOutcome(card.human_ref, { base_version: card.version,
+        plan_hash: card.plan.plan_hash, criterion_results, evidence_refs,
         blocker_code: data.get("blocker_code"), result_summary: data.get("result_summary"),
         observed_minutes: Number(data.get("observed_minutes")), interaction_surface: "workspace",
         heavy_session_used: data.get("heavy_session_used") === "true",
@@ -139,11 +172,12 @@ function outcomeForm() {
 }
 
 function acceptOutcomeForm() {
-  const feedback = state.card.pending_outcome_feedback || state.proposed;
-  openForm({ eyebrow: "Fresh human confirmation", title: "Accept this outcome record", submit: "Accept outcome record",
+  const card = structuredClone(state.card);
+  const feedback = card.pending_outcome_feedback || state.proposed;
+  openForm({ reviewed: card, eyebrow: "Fresh human confirmation", title: "Accept this outcome record", submit: "Accept outcome record",
     body: `<div class="system-work-review"><strong>${esc(feedback.proposed_outcome || feedback.outcome)}</strong><p>${esc(feedback.result_summary)}</p><small>This accepts an observation. It does not execute or close work.</small></div>`,
-    onSubmit: async () => { await client.acceptOutcome(state.card.human_ref,
-      { base_version: state.card.version, feedback_hash: feedback.feedback_hash }); await refresh(); } });
+    onSubmit: async () => { await client.acceptOutcome(card.human_ref,
+      { base_version: card.version, feedback_hash: feedback.feedback_hash }); await refresh(); } });
 }
 
 const actionForms = { triage: triageForm, "prepare-plan": planForm, "accept-plan": acceptPlanForm,
@@ -151,6 +185,7 @@ const actionForms = { triage: triageForm, "prepare-plan": planForm, "accept-plan
 
 async function boot() {
   const session = await client.bootstrap();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => refresh() });
   $("#systemWorkActor").textContent = `Signed in as ${session.actor?.display || session.actor?.slug || "partner"}`;
   $("#reportProblemButton").onclick = reportForm;
   $("#openWorkRequest").onsubmit = async (event) => { event.preventDefault();
@@ -160,12 +195,12 @@ async function boot() {
     const open = event.target.closest("[data-open-work-request]");
     if (open) { refresh(open.dataset.openWorkRequest).catch((error) => alert(refusal(error))); return; }
     const button = event.target.closest("[data-system-action]");
-    if (button) actionForms[button.dataset.systemAction]?.();
+    if (button && state.readReady) actionForms[button.dataset.systemAction]?.();
   };
   document.querySelectorAll("[data-system-cancel]").forEach((button) => { button.onclick = () => $("#systemWorkDialog").close(); });
   const requested = new URLSearchParams(location.search).get("work_request");
   if (requested) await refresh(requested);
-  else { state.current = (await client.current()).items || []; render(); }
+  else await refresh();
 }
 
 boot().catch((error) => alert(refusal(error)));

@@ -133,7 +133,7 @@ test("the coverage line states each read's own clock and carries no denominator"
     census: { state: "read", observed_at: "not a time" },
   });
   assert.deepEqual(chips.map((chip) => chip.state), ["read", "unknown", "read", "unknown"]);
-  assert.equal(chips[0].text, "Incidents: read at 2:02 PM");
+  assert.equal(chips[0].text, "Incidents: updated 2:02 PM");
   assert.equal(chips[1].text, "Active work: unknown (the held-work read refused)");
   assert.match(chips[3].text, /unknown \(the read carried no readable time\)/);
   for (const chip of chips) assert.doesNotMatch(chip.text, /\bof \d+ collectors\b/);
@@ -237,7 +237,7 @@ test("an incident resolves to the same canonical identity from the tile and from
   // V5-UX-C14 gave an operational incident its own page, so the queue links to
   // it. Everything that is neither a work request nor an incident still has none.
   assert.equal(canonicalHref(INCIDENTS.incidents[0]), "/incidents?ref=INC-20260915-01");
-  assert.equal(canonicalHref(WORK.current[0]), "/system-work.html");
+  assert.equal(canonicalHref(WORK.current[0]), "/work-requests");
   assert.equal(canonicalHref({ human_ref: "not a ref" }), null);
 });
 
@@ -322,11 +322,13 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
   canonical.advisory.snapshot_digest = `sha256:${[...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
   const client = createLiveClient({ fetchImpl: async (path, init) => {
     paths.push({ path, init });
-    return { ok: true, json: async () => ({ ok: true, data: canonical }) };
+    return new Response(JSON.stringify({ ok: true, data: canonical }));
   } });
   const readback = await client.currentWorkRequests();
   assert.deepEqual(readback.items.map(item => item.human_ref), ["WR-000124", "WR-000123"]);
-  assert.deepEqual(paths[0], { path: "/api/system-work/current", init: {
+  assert.equal(paths[0].init.signal.aborted, false);
+  const { signal, ...readInit } = paths[0].init;
+  assert.deepEqual({ ...paths[0], init: readInit }, { path: "/api/system-work/current", init: {
     credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store",
   } });
   assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate \(uncalibrated\).*priority 20%/);
@@ -348,8 +350,8 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(contract.version, "1.32.0");
+  assert.equal(routes.version, "1.18.0");
+  assert.equal(contract.version, "1.39.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -365,7 +367,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
 test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede, and 44px targets", () => {
   assert.match(html, /<title>Control Room · DoctorCRE<\/title>/);
   assert.match(html, /<div class="tabs" id="controlRoomTabs" role="tablist"/);
-  for (const label of ["Dashboard", "Attention", "Model Room", "Atlas", "Sessions"]) {
+  for (const label of ["Overview", "Attention", "Agents", "System Map", "Sessions"]) {
     assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
   }
   assert.equal([...html.matchAll(/aria-live="polite" role="status"/g)].length, 1, "one status live region");
@@ -539,7 +541,7 @@ test("C07-3 the four structural gaps are rendered on every render, clean payload
   assert.equal(atlasPhase({ status: "ready", payload: searched }), "empty");
   assert.match(html, /id="atlasCoverageGaps"/, "the page has no place for the known gaps");
   assert.match(html, /Known gaps in this release/, "the gaps have no heading of their own");
-  assert.match(html, /Sources that answered/, "the answered sources have no heading of their own");
+  assert.match(html, /Availability/, "the answered sources have no heading of their own");
 });
 
 test("C07-4 an incomplete atlas is never shown as complete", () => {
@@ -550,7 +552,7 @@ test("C07-4 an incomplete atlas is never shown as complete", () => {
   // The four structural gaps alone are not an outage; they are always there.
   assert.equal(atlasDegraded(atlasExample()), false, "the always-present gaps are read as a failed leg");
   assert.equal(INCOMPLETE_HEADING, "This atlas is incomplete, not empty");
-  assert.match(atlasJs, /explanation\.textContent = payload\.source\.safe_explanation/, "safe_explanation is not printed verbatim");
+  assert.match(atlasJs, /explanation\.textContent = updatedLabel\(payload\.observed_at\)/, "safe_explanation is not printed verbatim");
   assert.match(atlasJs, /INCOMPLETE_HEADING/, "the incomplete heading is never shown");
   const live = atlasBody();
   assert.equal(live.source.freshness, "unknown", "a partial fixture claims fresh");
@@ -651,7 +653,7 @@ test("C07-8 the unlinked node survives in the full inventory and the page scope 
   const selection = selectionFor(body, "surface:demo-surface");
   assert.equal(selection.out.length + selection.in.length, 0);
   assert.equal(PAGE_SCOPE_SENTENCE,
-    "Relationships are shown for nodes on this page. A relationship to a node on another page is not drawn here.");
+    "");
   assert.equal(UNLINKED_SENTENCE, "Nothing on this page points at this node.");
   assert.match(atlasJs, /PAGE_SCOPE_SENTENCE/, "the page-scope sentence is never printed");
   assert.match(atlasJs, /UNLINKED_SENTENCE/, "the unlinked sentence is never printed");
@@ -708,14 +710,14 @@ test("C07-9 the selection contract is what V5-UX-C08 consumes", () => {
   const mutation = selectionFor(body, "mutation:demo-add-loop");
   assert.ok(mutation.out.some((edge) => edge.type === "implemented_in"), "the declared chain stops at the mutation");
   assert.equal(verb.observed, null, "a verb carries run evidence the graph cannot give");
-  assert.match(VERB_RUN_GAP_SENTENCE, /public\.tool_call verb name/, "the verb gap is not named");
+  assert.match(VERB_RUN_GAP_SENTENCE, /Run history unavailable/, "the verb gap is not named");
   assert.match(atlasJs, /VERB_RUN_GAP_SENTENCE/, "the verb panel never names the gap");
   assert.match(NO_ENFORCEMENT_SENTENCE, /^No installed enforcement point is recorded/);
-  assert.match(NO_TEST_EVIDENCE_SENTENCE, /No test relation is read by any leg/);
+  assert.match(NO_TEST_EVIDENCE_SENTENCE, /Test history unavailable/);
   assert.equal(selectionFor(body, "service:nothing-here"), null, "an unknown id selects something");
   // The panel is a pure function of the payload in hand: no second request.
   assert.match(atlasJs, /selectionFor\(view\.payload, view\.selected\)/, "the DOM recomputes the selection");
-  assert.equal((atlasJs.match(/await fetch\(/g) || []).length, 1, "the selection panel takes a second request");
+  assert.doesNotMatch(atlasJs.split("function selectNode(")[1].split("\nfunction ")[0], /fetchRead\(/, "selection must use the already-read graph");
   // An unknown edge type is rendered as its own string, never mapped.
   assert.deepEqual(selectionFor(body, "doctrine_section:demo-section").out.map((edge) => edge.type), ["citation"]);
   assert.match(atlasJs, /escapeHtml\(edge\.type\)/, "an edge type is not rendered verbatim");
@@ -727,11 +729,11 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
     assert.equal(classifyAtlasFailure(status), state, `${status} is not ${state}`);
     assert.ok(ATLAS_STATE_COPY[state], `${state} has no copy`);
   }
-  assert.equal(ATLAS_STATE_COPY.no_access.title, "This session cannot read the atlas. Nothing here has been inferred.");
-  assert.equal(ATLAS_STATE_COPY.not_here.title, "The atlas read is not available on this host.");
-  assert.equal(ATLAS_STATE_COPY.freshness_unknown.title, "CARR could not establish the freshness of this atlas, so nothing is shown as current.");
-  assert.equal(ATLAS_STATE_COPY.unavailable.title, "A source CARR depends on is unavailable right now, so no partial atlas is presented as whole.");
-  assert.equal(ATLAS_STATE_COPY.offline.title, "The atlas read failed. Nothing here has been inferred.");
+  assert.equal(ATLAS_STATE_COPY.no_access.title, "Sign-in required");
+  assert.equal(ATLAS_STATE_COPY.not_here.title, "System map unavailable");
+  assert.equal(ATLAS_STATE_COPY.freshness_unknown.title, "Updating…");
+  assert.equal(ATLAS_STATE_COPY.unavailable.title, "System map temporarily unavailable");
+  assert.equal(ATLAS_STATE_COPY.offline.title, "Connection interrupted");
   // The two 404 causes, side by side. They are different errors on the wire and
   // deliberately INDISTINGUISHABLE on the page, which must not guess which.
   const flagOff = atlasCall("?outage=atlas-flag");
@@ -761,7 +763,7 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
 
 test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(html, /<section class="tabpanel" id="panelAtlas"[\s\S]*?id="atlasIndex"/, "the Atlas panel holds no index");
-  assert.match(html, /role="tab"[^>]*>Atlas</, "the Atlas tab is gone");
+  assert.match(html, /role="tab"[^>]*>System Map</, "the System Map tab owns the atlas");
   assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "a second Doc control appeared");
   assert.doesNotMatch(html, /atlas\.css/, "the atlas added its own stylesheet");
   assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 4, "only the shared app shell adds a stylesheet");
@@ -782,12 +784,12 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(pageJs, /export const escapeHtml/, "the one escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.14.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.18.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
-  assert.match(pageJs, /parameters\.get\("tab"\) === "atlas"/, "the deep link is not read on boot");
+  assert.match(pageJs, /parameters\.has\("tab"\)\) restoreTab\(\)/, "the deep link is read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");
   // The read is lazy: it fires on first selection of the tab, not on boot.
-  assert.match(pageJs, /event\.target\.closest\("#tabAtlas"\)/, "the atlas read is not bound to the tab");
+  assert.match(pageJs, /selected\.id === "tabAtlas"\) openAtlas\(\)/, "the atlas read is bound to the tab");
   assert.doesNotMatch(pageJs, /take\("atlas"/, "the atlas joined the dashboard's boot reads");
   assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path is not pinned");
   assert.match(checkJs, /the atlas path must stay pinned in the CARR interface/, "the repository check does not pin it");
@@ -796,8 +798,8 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
     assert.ok(!atlasJs.includes(write), `the Atlas tab must not ${write}`);
   }
   assert.doesNotMatch(atlasJs, /method:\s*"(?:POST|PUT|PATCH|DELETE)"/, "the Atlas tab writes");
-  assert.ok(EXPOSURE_STATEMENT.startsWith("This page lists what this system declares it has"), "the exposure statement was reworded");
-  assert.match(EXPOSURE_STATEMENT, /nothing here is cached offline\.$/);
+  assert.equal(EXPOSURE_STATEMENT, "");
+  assert.equal(EXPOSURE_STATEMENT, "");
   assert.match(atlasJs, /EXPOSURE_STATEMENT/, "the exposure statement is never shown");
 });
 

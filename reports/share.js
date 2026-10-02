@@ -5,19 +5,37 @@
   const summary = document.querySelector("#report-summary");
   const list = document.querySelector("#report-list");
   const openButton = document.querySelector("#open-tour");
+  const feedbackStatus = document.querySelector("#feedback-status");
   let shareToken = typeof globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__ === "function"
     ? globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__() : "";
   let reportProperties = new globalThis.Map();
   let mapInstance = null;
+  let feedback = null;
+  const pending = new globalThis.Map();
+  let contentStatus = "";
+  const retryFeedbackButton = document.createElement("button");
+  retryFeedbackButton.type = "button"; retryFeedbackButton.textContent = "Retry feedback";
+  retryFeedbackButton.hidden = true;
+  feedbackStatus.after(retryFeedbackButton);
 
   function setStatus(message) { status.textContent = message; }
 
   async function request(path, options = {}) {
-    const response = await fetch(path, { credentials: "same-origin", ...options });
-    let data = null;
-    try { data = await response.json(); } catch { /* errors remain generic */ }
-    if (!response.ok) throw new Error(data?.error || "request_failed");
-    return data;
+    const controller = new AbortController(); let timer;
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(path, { credentials: "same-origin", ...options, signal: controller.signal });
+          let data = null;
+          try { data = await response.json(); } catch { /* errors remain generic */ }
+          if (!response.ok) throw new Error(data?.error || "request_failed");
+          return data;
+        })(),
+        new Promise((_, reject) => { timer = setTimeout(() => {
+          reject(new Error("request_timeout")); controller.abort();
+        }, 15000); }),
+      ]);
+    } finally { clearTimeout(timer); }
   }
 
   function text(value, fallback) {
@@ -37,6 +55,98 @@
     return parts.length ? parts.join(" · ") : fallback;
   }
 
+  function feedbackFor(propertyRef) {
+    return feedback?.items?.find(item => item.property_ref === propertyRef) || null;
+  }
+
+  async function sendFeedback(kind, item, value) {
+    const payload = { projection_ref: feedback.projection_ref, property_ref: item.property_ref,
+      ...(kind === "shortlist" ? { shortlisted: value } : { comment: value }) };
+    const slot = `${kind}:${item.property_ref}`;
+    const serialized = JSON.stringify(payload);
+    const prior = pending.get(slot);
+    payload.idempotency_key = prior?.serialized === serialized ? prior.key : crypto.randomUUID();
+    pending.set(slot, { serialized, key: payload.idempotency_key });
+    feedbackStatus.textContent = kind === "shortlist" ? "Saving your shortlist…" : "Saving your comment…";
+    try {
+      await request(`/api/share/${kind}`, { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      pending.delete(slot);
+      let itemFeedback = feedbackFor(item.property_ref);
+      if (!itemFeedback) {
+        itemFeedback = { property_ref: item.property_ref, comments: [] };
+        feedback.items ||= [];
+        feedback.items.push(itemFeedback);
+      }
+      if (kind === "shortlist") itemFeedback.shortlisted = value;
+      else { itemFeedback.comments ||= []; itemFeedback.comments.push({ comment: value }); }
+      feedbackStatus.textContent = kind === "shortlist" ? "Shortlist saved." : "Comment saved.";
+      return true;
+    } catch {
+      feedbackStatus.textContent = "Your change could not be saved. Try again or reopen this Tour.";
+      return false;
+    }
+  }
+
+  function renderFeedbackControls(row, item) {
+    const scopes = Array.isArray(feedback?.permission_scopes) ? feedback.permission_scopes : [];
+    if (!scopes.includes("shortlist") && !scopes.includes("comment")) return;
+    const panel = document.createElement("div"); panel.className = "feedback-controls";
+    const itemFeedback = feedbackFor(item.property_ref);
+    if (scopes.includes("shortlist")) {
+      const choice = document.createElement("p"); choice.className = "shortlist-state";
+      choice.setAttribute("role", "status");
+      choice.textContent = "Previous shortlist choices are not shown.";
+      const actions = document.createElement("div"); actions.setAttribute("role", "group");
+      actions.className = "actions";
+      actions.setAttribute("aria-label", "Shortlist");
+      const buttons = [true, false].map(selected => {
+        const button = document.createElement("button"); button.type = "button";
+        button.textContent = selected ? "Add to shortlist" : "Remove from shortlist";
+        button.addEventListener("click", () => {
+          for (const control of buttons) control.disabled = true;
+          void sendFeedback("shortlist", item, selected).then(saved => {
+            if (saved) choice.textContent = selected ? "Added to shortlist." : "Removed from shortlist.";
+            for (const control of buttons) control.disabled = false;
+          });
+        });
+        return button;
+      });
+      actions.append(...buttons); panel.append(choice, actions);
+    }
+    if (scopes.includes("comment")) {
+      const label = document.createElement("label"); label.textContent = "Your comment";
+      const input = document.createElement("textarea"); input.maxLength = 1000; input.rows = 3;
+      const button = document.createElement("button"); button.type = "button"; button.textContent = "Save comment";
+      button.addEventListener("click", () => {
+        if (!input.value.trim()) { feedbackStatus.textContent = "Write a comment before saving."; return; }
+        const draft = input.value;
+        const comment = draft.trim();
+        button.disabled = true;
+        void sendFeedback("comment", item, comment).then(saved => {
+          if (saved) {
+            if (input.value === draft) input.value = "";
+            appendComment(panel, comment);
+          }
+          button.disabled = false;
+        });
+      });
+      label.append(input); panel.append(label, button);
+    }
+    if (itemFeedback?.comments?.length) {
+      for (const entry of itemFeedback.comments) {
+        appendComment(panel, entry.comment);
+      }
+    }
+    row.append(panel);
+  }
+
+  function appendComment(panel, comment) {
+    let comments = panel.querySelector(".comment-list");
+    if (!comments) { comments = document.createElement("ul"); comments.className = "comment-list"; panel.append(comments); }
+    const line = document.createElement("li"); line.textContent = comment; comments.append(line);
+  }
+
   function render(report) {
     const items = Array.isArray(report?.stops) ? report.stops :
       (Array.isArray(report?.items) ? report.items : (Array.isArray(report?.properties) ? report.properties : []));
@@ -50,6 +160,7 @@
     for (const { item, index } of properties) {
       const row = document.createElement("li");
       row.className = "report-item";
+      row.dataset.propertyRef = item.property_ref;
       const route = document.createElement("p");
       route.className = "route-label";
       route.textContent = text(item.route_label, `Stop ${routeOrder(item, index)}`);
@@ -58,6 +169,7 @@
       const detail = document.createElement("p");
       detail.textContent = text(item.summary, text(item.status, propertyAddress(item, "Details available in the packet.")));
       row.append(route, heading, detail);
+      renderFeedbackControls(row, item);
       list.append(row);
     }
     if (!properties.length) list.textContent = "No properties are available in this report.";
@@ -119,13 +231,45 @@
     return payload.data || {};
   }
 
+  async function fetchFeedback() {
+    const payload = await request("/api/share/feedback");
+    if (!payload?.data || !Array.isArray(payload.data.permission_scopes)) throw new Error("feedback_unavailable");
+    return payload.data;
+  }
+
+  function showFeedbackUnavailable() {
+    feedbackStatus.textContent = "Feedback is unavailable. Retry to load shortlist and comment controls.";
+    retryFeedbackButton.hidden = false;
+    setStatus(`${contentStatus} Feedback unavailable.`);
+  }
+
+  async function retryFeedback() {
+    retryFeedbackButton.disabled = true;
+    feedbackStatus.textContent = "Loading feedback…";
+    try {
+      feedback = await fetchFeedback();
+      for (const row of list.querySelectorAll(".report-item")) {
+        const item = reportProperties.get(row.dataset.propertyRef);
+        if (item && !row.querySelector(".feedback-controls")) renderFeedbackControls(row, item);
+      }
+      feedbackStatus.textContent = "";
+      retryFeedbackButton.hidden = true;
+      setStatus(contentStatus);
+    } catch {
+      showFeedbackUnavailable();
+    } finally {
+      retryFeedbackButton.disabled = false;
+    }
+  }
+
   async function loadTour() {
     try {
       // Packet and map are independently scoped. Fetch both, then render in a
       // stable order so a valid map-only or packet-only grant still opens.
-      const [reportResult, mapResult] = await Promise.allSettled([fetchReport(), fetchMap()]);
+      const [reportResult, mapResult, feedbackResult] = await Promise.allSettled([fetchReport(), fetchMap(), fetchFeedback()]);
       const reportLoaded = reportResult.status === "fulfilled";
       const mapLoaded = mapResult.status === "fulfilled";
+      feedback = feedbackResult.status === "fulfilled" ? feedbackResult.value : null;
       if (!reportLoaded && !mapLoaded) throw new Error("share_scope_unavailable");
       if (reportLoaded) render(reportResult.value);
       else {
@@ -136,9 +280,12 @@
       }
       if (mapLoaded) await renderMap(mapResult.value);
       else document.querySelector("#map-section").hidden = true;
-      setStatus(reportLoaded && mapLoaded ? "Report and map loaded." : reportLoaded ? "Report loaded." : "Map loaded.");
+      contentStatus = reportLoaded && mapLoaded ? "Report and map loaded." : reportLoaded ? "Report loaded." : "Map loaded.";
+      if (feedbackResult.status === "rejected") showFeedbackUnavailable();
+      else setStatus(contentStatus);
     } catch {
       setStatus("This shared report is unavailable.");
+      summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
       list.setAttribute("aria-busy", "false");
     }
   }
@@ -173,5 +320,6 @@
   }
 
   openButton.addEventListener("click", () => { void openTour(); });
+  retryFeedbackButton.addEventListener("click", () => { void retryFeedback(); });
   bootstrap();
 })();

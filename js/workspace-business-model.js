@@ -20,9 +20,9 @@ export const API_PREFIX = "/api/v1/business/";
 export const SCOPES = ["team", "mine"];
 export const DEFAULT_SCOPE = "team";
 export const SCOPE_LABEL = { team: "Team", mine: "My work" };
-export const SORTS = ["name", "recent"];
+export const SORTS = ["name", "recent", "vertical", "deal_type", "last_deal_desc", "last_deal_asc", "territory"];
 export const DEFAULT_SORT = "name";
-export const SORT_LABEL = { name: "Name (A–Z)", recent: "Recently updated" };
+export const SORT_LABEL = { name: "Alphabetical", recent: "Recently updated", vertical: "Vertical", deal_type: "Deal type", last_deal_desc: "Last deal · most recent", last_deal_asc: "Last deal · least recent", territory: "Territory" };
 export const PIPELINE_FILTERS = ["any", "active", "other", "unknown"];
 export const PIPELINE_LABEL = {
   any: "Any status",
@@ -42,7 +42,7 @@ const SLUG = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const FILTER_KEYS = { clients: ["status", "type", "pipeline"], vendors: ["category", "stage", "disposition"] };
 const SOURCE_FOR = { clients: "client", vendors: "vendor" };
 
-const LIST_ROW_KEYS = {
+export const LIST_ROW_KEYS = {
   clients: ["id", "ref", "name", "party_kind", "city", "state", "recorded_status", "recorded_status_label",
     "recorded_status_active_pipeline", "recorded_etl_status", "recorded_client_type", "recorded_client_type_label",
     "vertical", "owner_label", "owned_by_viewer", "updated_at"],
@@ -52,7 +52,7 @@ const LIST_ROW_KEYS = {
     "is_target", "out_of_market", "last_touch", "owner_label", "owned_by_viewer", "updated_at"],
 };
 
-const RECORD_KEYS = {
+export const RECORD_KEYS = {
   clients: ["id", "ref", "name", "party_kind", "city", "state", "county", "title", "specialty", "npi", "phone",
     "cell", "email", "contact_state", "contact_state_reason", "contact_state_until", "contact_state_cadence",
     "recorded_status", "recorded_status_label", "recorded_status_active_pipeline", "recorded_status_note",
@@ -75,7 +75,7 @@ export function datasetForPath(pathname) {
 }
 
 export function defaultQuery(dataset) {
-  const base = { dataset, scope: DEFAULT_SCOPE, q: "", sort: DEFAULT_SORT, page: 1 };
+  const base = { dataset, scope: DEFAULT_SCOPE, owner: "all", territory: "", q: "", sort: DEFAULT_SORT, page: 1 };
   return dataset === "clients"
     ? { ...base, status: "", type: "", pipeline: "any" }
     : { ...base, category: "", stage: "", disposition: "" };
@@ -116,6 +116,8 @@ export function parseViewState(pathname, search) {
     query.stage = readSlug(params, "stage");
     query.disposition = readSlug(params, "disposition");
   }
+  query.owner = ["joe", "dell"].includes(params.get("owner")) ? params.get("owner") : "all";
+  query.territory = dataset === "vendors" ? (params.get("territory") || "").slice(0,80) : "";
   const record = params.get("record");
   return { dataset, query, recordId: record && UUID.test(record) ? record.toLowerCase() : null };
 }
@@ -124,6 +126,8 @@ function queryPairs(query) {
   const pairs = [];
   if (query.scope !== DEFAULT_SCOPE) pairs.push(["scope", query.scope]);
   if (query.q) pairs.push(["q", query.q]);
+  if (query.owner && query.owner !== "all") pairs.push(["owner", query.owner]);
+  if (query.territory) pairs.push(["territory", query.territory]);
   for (const key of FILTER_KEYS[query.dataset]) {
     const value = query[key];
     if (value && !(key === "pipeline" && value === "any")) pairs.push([key, value]);
@@ -144,28 +148,31 @@ export function viewHref(query, recordId = null) {
 /** The read the server answers. `record` is a UI concern and never travels here. */
 export function listRequestUrl(query) {
   const params = new URLSearchParams(queryPairs(query));
+  params.set("contract","vendor-directory.v1");
   const search = params.toString();
   return `${API_PREFIX}${query.dataset}${search ? `?${search}` : ""}`;
 }
 
 export function recordRequestUrl(dataset, id) {
-  return `${API_PREFIX}${dataset}/${id}`;
+  return `${API_PREFIX}${dataset}/${id}?contract=vendor-directory.v1`;
 }
 
 export function sameQuery(left, right) {
   if (!left || !right || left.dataset !== right.dataset) return false;
-  const keys = ["scope", "q", "sort", "page", ...FILTER_KEYS[left.dataset]];
+  const keys = ["scope", "owner", "territory", "q", "sort", "page", ...FILTER_KEYS[left.dataset]];
   return keys.every((key) => left[key] === right[key]);
 }
 
 export function hasActiveFilters(query) {
   const base = defaultQuery(query.dataset);
-  return ["scope", "q", "sort", ...FILTER_KEYS[query.dataset]].some((key) => query[key] !== base[key]);
+  return ["scope", "owner", "territory", "q", "sort", ...FILTER_KEYS[query.dataset]].some((key) => query[key] !== base[key]);
 }
 
 /** Visible chips: every narrowing currently applied, each removable on its own. */
 export function filterChips(query, facets = {}) {
   const chips = [];
+  if (query.owner && query.owner !== 'all') chips.push({ key: 'owner', label: 'Owner', value: query.owner === 'joe' ? 'Joe' : 'Dell', reset: 'all' });
+  if (query.territory) chips.push({ key: 'territory', label: 'Territory', value: query.territory, reset: '' });
   if (query.scope === "mine") chips.push({ key: "scope", label: "Scope", value: SCOPE_LABEL.mine, reset: DEFAULT_SCOPE });
   if (query.q) chips.push({ key: "q", label: "Search", value: query.q, reset: "" });
   const labelFor = (list, slug) => (list || []).find((option) => option.slug === slug)?.label || slug;
@@ -337,6 +344,10 @@ function exactKeys(value, keys) {
     Object.keys(value).sort().join(",") === keys.slice().sort().join(",");
 }
 
+function extendedKeys(value, required, optional) {
+  return value && typeof value === 'object' && required.every(k => k in value) && Object.keys(value).every(k => required.includes(k) || optional.includes(k));
+}
+
 function counted(value) {
   return Number.isInteger(value) && value >= 0;
 }
@@ -354,8 +365,24 @@ function partialValid(value) {
 }
 
 function rowValid(row, dataset) {
-  return exactKeys(row, LIST_ROW_KEYS[dataset]) && typeof row.id === "string" && UUID.test(row.id) &&
-    typeof row.name === "string" && row.name.length > 0;
+  return extendedKeys(row, LIST_ROW_KEYS[dataset], dataset === "vendors" ? ["relationship", "vertical", "deal_type", "last_deal_at", "territory"] : ["deal_type", "last_deal_at"]) && typeof row.id === "string" && UUID.test(row.id) &&
+    typeof row.name === "string" && row.name.length > 0 && relationshipValid(row.relationship);
+}
+
+export function relationshipValid(value) {
+  if (value === undefined) return true; // prior directory contract
+  const text = v => v === null || typeof v === 'string';
+  const date = v => v === null || (typeof v === 'string' && Number.isFinite(Date.parse(v)));
+  const count = v => v === null || counted(v);
+  if (!exactKeys(value, ['coverage_verified_at','deals_referred','deals_worked','won','lost','first_worked_at','last_contacted_at','last_contact_note','override','recent_entries','introductions','win_rate','computed_tier','formula_version'])) return false;
+  if (!['Unrated','Trial','Established','Proven'].includes(value.computed_tier) || value.formula_version !== 'vendor-trust.v1') return false;
+  if (![value.coverage_verified_at,value.first_worked_at,value.last_contacted_at].every(date) || !text(value.last_contact_note)) return false;
+  if (![value.deals_referred,value.deals_worked,value.won,value.lost].every(count)) return false;
+  if (!(value.win_rate === null || (Number.isFinite(value.win_rate) && value.win_rate >= 0 && value.win_rate <= 1))) return false;
+  if (!value.coverage_verified_at && (value.deals_worked !== null || value.deals_referred !== null || value.win_rate !== null || value.computed_tier !== 'Unrated')) return false;
+  if (value.override !== null && (!exactKeys(value.override,['tier','reason','recorded_by','recorded_at']) || !['Trial','Established','Proven'].includes(value.override.tier) || !['joe','dell'].includes(value.override.recorded_by) || typeof value.override.reason !== 'string' || !value.override.reason.trim() || !date(value.override.recorded_at) || !value.override.recorded_at)) return false;
+  return Array.isArray(value.recent_entries) && value.recent_entries.length <= 20 && value.recent_entries.every(entry => exactKeys(entry,['id','kind','when','summary','detail']) && typeof entry.id === 'string' && typeof entry.kind === 'string' && date(entry.when) && typeof entry.summary === 'string' && text(entry.detail)) &&
+    Array.isArray(value.introductions) && value.introductions.every(entry => exactKeys(entry,['id','kind','from_name','to_name','note','occurred_at','via_party']) && typeof entry.id === 'string' && ['introduced','intro','intro_received','can_introduce','intro_requested'].includes(entry.kind) && typeof entry.from_name === 'string' && typeof entry.to_name === 'string' && text(entry.note) && date(entry.occurred_at) && text(entry.via_party));
 }
 
 /** The echoed query must be the query that was asked, or the answer is not this view's answer. */
@@ -364,6 +391,7 @@ export function echoesQuery(payload, query) {
   if (!echo || typeof echo !== "object" || echo.dataset !== query.dataset) return false;
   const searched = query.q ? query.q : null;
   if ((echo.q ?? null) !== searched) return false;
+  if ((echo.owner || "all") !== (query.owner || "all") || (echo.territory || "") !== (query.territory || "")) return false;
   if (echo.scope !== query.scope || echo.sort !== query.sort || echo.page !== query.page || echo.page_size !== PAGE_SIZE) return false;
   return FILTER_KEYS[query.dataset].every((key) => {
     const wanted = query[key];
@@ -396,8 +424,8 @@ export function validListPayload(payload, dataset) {
   if (!facets || typeof facets !== "object") return false;
   return dataset === "clients"
     ? exactKeys(facets, ["statuses", "types"]) && facetList(facets.statuses) && facetList(facets.types)
-    : exactKeys(facets, ["categories", "stages", "dispositions"]) && facetList(facets.categories) &&
-      facetList(facets.stages) && facetList(facets.dispositions);
+    : extendedKeys(facets, ["categories", "stages", "dispositions"], ['territories']) && facetList(facets.categories) &&
+      facetList(facets.stages) && facetList(facets.dispositions) && (facets.territories === undefined || facetList(facets.territories));
 }
 
 export function validRecordPayload(payload, dataset, id = null) {
@@ -408,8 +436,9 @@ export function validRecordPayload(payload, dataset, id = null) {
   // One record is one record: the same bound as the list, at its smallest size.
   if (payload.partial && payload.partial.count > 1) return false;
   const record = payload.record;
-  if (!exactKeys(record, RECORD_KEYS[dataset]) || typeof record.id !== "string" || !UUID.test(record.id)) return false;
+  if (!extendedKeys(record, RECORD_KEYS[dataset], dataset === "vendors" ? ["relationship", "loan_programs"] : ["deal_type", "last_deal_at"]) || typeof record.id !== "string" || !UUID.test(record.id)) return false;
   if (typeof record.name !== "string" || !record.name) return false;
+  if (!relationshipValid(record.relationship) || (record.loan_programs !== undefined && record.loan_programs !== null && (!Array.isArray(record.loan_programs) || !record.loan_programs.every(program => typeof program === 'string')))) return false;
   return id === null || record.id.toLowerCase() === id.toLowerCase();
 }
 
@@ -535,19 +564,19 @@ export const REFUSAL_COPY = {
   AUTHENTICATION_REQUIRED: "Your session has ended. Sign in again to see these records.",
   AUTHORIZATION_REFUSED: "This account is not allowed to see these records.",
   TENANT_SCOPE_REFUSED: "These records are outside this account.",
-  QUERY_INVALID: "That is not a filter this page accepts, so nothing was read.",
-  RECORD_NOT_FOUND: "This record is not here. Merged and deleted records are left out.",
-  VIEWER_OWNER_UNKNOWN: "My work cannot be worked out for this account, so nothing is shown rather than an empty list.",
-  FRESHNESS_UNKNOWN: "The count and the rows did not agree, so nothing is shown as current.",
+  QUERY_INVALID: "Choose another filter.",
+  RECORD_NOT_FOUND: "This entry is no longer available.",
+  VIEWER_OWNER_UNKNOWN: "Your list is temporarily unavailable.",
+  FRESHNESS_UNKNOWN: "Updating…",
   DEPENDENCY_UNAVAILABLE: "These records cannot be reached right now.",
   // Not a failure of the read and not a statement about the records: this
   // deployment has not been given access to them yet.
-  DEPENDENCY_NOT_PROVISIONED: "This workspace has not been given access to these records yet, so nothing was read.",
+  DEPENDENCY_NOT_PROVISIONED: "This list is temporarily unavailable.",
   // The installed service worker answers an unreachable read with this exact
   // code rather than a cached list, so it is a reachable state here.
-  offline: "You are offline, so nothing was read. Nothing here is filled in from an older answer.",
-  METHOD_NOT_ALLOWED: "This page only reads records.",
-  INTERNAL_ERROR: "The read did not finish. Nothing here is filled in from an older answer.",
+  offline: "You are offline.",
+  METHOD_NOT_ALLOWED: "This action is unavailable.",
+  INTERNAL_ERROR: "Temporarily unavailable",
 };
 
 export function refusalCopy(code) {

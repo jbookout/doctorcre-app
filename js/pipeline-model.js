@@ -179,7 +179,7 @@ export const COMPLETION_CAPTIONS = Object.freeze({
   next: 'Recorded as the next step.',
   effective_off: 'Not recorded anywhere; the move is dated by when it is saved.',
   effective_on: 'Recorded as a critical date on the record.',
-  outcome: 'How this ended. The record layer takes won, lost or paused, and nothing else.',
+  outcome: 'Outcome',
   closed_on: 'The date the record closed, written alongside the outcome.',
   won_value: 'Optional. Recorded only on a won outcome.',
 });
@@ -261,7 +261,7 @@ export function completionPlan(intent, form = {}) {
   const source = text(form.dateSource);
   if (form.recordCriticalDate === true) {
     if (!effective) errors.push('Pick the effective date, or clear the critical-date box.');
-    if (!source) errors.push('Say where the date came from; the record layer records a critical date only with its source.');
+    if (!source) errors.push('Enter a date reference.');
     if (effective && source) {
       steps.push({
         verb: 'add-critical-date',
@@ -276,7 +276,7 @@ export function completionPlan(intent, form = {}) {
     if (!outcome) {
       errors.push('Choose the outcome — Won, Lost or Paused — before closing this record.');
     } else if (!isDealOutcome(outcome)) {
-      errors.push('The record layer records an outcome of won, lost or paused, and nothing else.');
+      errors.push('Select won, lost, or paused.');
     } else {
       const fields = { outcome };
       const closedOn = text(form.closedOn);
@@ -383,6 +383,44 @@ export function orderColumn(deals) {
   });
 }
 
+// A note or next step can reach this board as a sentence, an object such as
+// {text, at}, or that object's Python repr printed into a string
+// ("{'text': '...', 'at': '...'}"). Cards and the panel show the sentence only.
+const NOTE_KEYS = ['text', 'note', 'body', 'summary', 'content', 'message'];
+const PY_ESCAPES = { n: '\n', t: '\t', '\\': '\\', "'": "'", '"': '"' };
+
+function dictSentence(raw) {
+  try {
+    return noteText(JSON.parse(raw));
+  } catch { /* not JSON; try the Python repr */ }
+  for (const key of NOTE_KEYS) {
+    const match = new RegExp(`['"]${key}['"]\\s*:\\s*(['"])((?:\\\\.|(?!\\1)[^\\\\])*)\\1`).exec(raw);
+    if (match) return match[2].replace(/\\(.)/g, (_, ch) => PY_ESCAPES[ch] ?? ch).trim();
+  }
+  return '';
+}
+
+/**
+ * The sentence a note value carries, or '' when it carries none. A string
+ * shaped like a dict never paints as raw braces.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function noteText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    for (const key of NOTE_KEYS) {
+      const inner = noteText(value[key]);
+      if (inner) return inner;
+    }
+    return '';
+  }
+  const text = String(value).trim();
+  if (/^\{[\s\S]*\}$/.test(text) && (text === '{}' || /^\{\s*['"]/.test(text))) return dictSentence(text);
+  return text;
+}
+
 /**
  * The sections of the record side panel, in the order Joe's review fixed them.
  *
@@ -406,12 +444,13 @@ export function recordPanelSections(detail, options = {}) {
     deal.attention ? 'flagged for attention' : null,
   ].filter(Boolean).join(' · ');
 
-  const nextAction = deal.next_step
-    ? `${deal.next_step}${deal.next_date ? ` · ${date(deal.next_date)}` : ''}`
+  const nextStep = noteText(deal.next_step);
+  const nextAction = nextStep
+    ? `${nextStep}${deal.next_date ? ` · ${date(deal.next_date)}` : ''}`
     : 'No next step recorded.';
 
   const criticalDates = (detail?.critical_dates || [])
-    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`);
+    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`);
 
   const latest = (detail?.thread || [])[0] || null;
 
@@ -422,7 +461,7 @@ export function recordPanelSections(detail, options = {}) {
     { title: 'Blockers', lines: [deal.attention ? 'Flagged for attention on the record.' : 'None recorded.'] },
     {
       title: 'Latest communication',
-      lines: [latest ? `${label(latest.actor)}: ${latest.text}` : 'Nothing captured on this record.'],
+      lines: [latest ? `${label(latest.actor)}: ${noteText(latest.text)}` : 'Nothing captured on this record.'],
     },
     { title: 'Doc work', lines: ['Not in this release.'], state: 'not_in_release' },
   ];
@@ -531,7 +570,7 @@ export function contextDrawerSections(context, options = {}) {
     : ['No attached parties or vendors recorded on this deal.'];
   const dates = context?.criticalDates || [];
   const dateLines = dates.length
-    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`)
+    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`)
     : ['None recorded.'];
 
   return [

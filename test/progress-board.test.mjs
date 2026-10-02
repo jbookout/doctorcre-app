@@ -52,14 +52,14 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
     } },
     ASSETS: { fetch: async () => { throw Error("signed-out board must not load"); } },
   };
-  const signedOut = await handleDoctorcreRequest(new Request(`${host}/progress-board?board=project-one`), env);
+  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress?board=project-one`), env);
   assert.equal(signedOut.status, 302);
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
   assert.equal(new URL(gated[0].url).search, "");
 
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
   env.ASSETS.fetch = async (request) => new Response(new URL(request.url).pathname);
-  const signedIn = await handleDoctorcreRequest(new Request(`${host}/progress-board`), env);
+  const signedIn = await handleDoctorcreRequest(new Request(`${host}/control-room/progress`), env);
   assert.equal(await signedIn.text(), "/progress-board.html");
 });
 
@@ -135,7 +135,7 @@ test("page offers choice and free-text controls, with reduced-motion styling", a
   assert.match(html, /id="board-stages"/);
   assert.match(html, /id="board-questions"/);
   assert.match(html, /id="board-flow"/);
-  assert.match(html, /<dialog id="task-detail"/);
+  assert.match(html, /id="board-activity"/);
   assert.match(css, /\.pipeline-node\[data-pulse="critical"\]/);
   assert.match(css, /\.pipeline-node\[data-pulse="attention"\]/);
   assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\][^}]*animation/);
@@ -145,4 +145,14 @@ test("page offers choice and free-text controls, with reduced-motion styling", a
   assert.match(css, /\.pipeline-node\[data-pulse="healthy"\] \.node-halo \{ animation: pulse 3\.5s/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/,
     "the reduced-motion fallback stops every pulse");
+});
+
+
+test("prototype-like and malformed task statuses cannot break the board", () => {
+  const tasks = { a: { status: "__proto__" }, b: { status: "constructor" },
+    c: { status: "toString" }, d: { status: "unknown" }, e: { status: [] },
+    f: {}, invalid: [], missing: null, identity: { id: "overridden", status: "queued" } };
+  const view = boardView({ snapshot: { board_id: "synthetic", version: 1, snapshot_json: { tasks } } });
+  assert.deepEqual(view.stages[0].tasks.map(task => task.id), ["a", "b", "c", "d", "e", "f", "identity"]);
+  for (const task of view.stages[0].tasks) assert.equal(taskStage(task), "queued");
 });

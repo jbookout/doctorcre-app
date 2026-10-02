@@ -2,7 +2,7 @@ export const DEAL_ROOM_DESTINATION = "/deals";
 export const TEAM_ACTIVE_DESTINATION = "/deals?workspace=team";
 export const TEAM_FLAGGED_DESTINATION = "/deals?workspace=team&filter=flagged";
 export const MY_FLAGGED_DESTINATION = "/deals?workspace=team&filter=flagged&owner=me";
-export const NEEDS_JOE_DESTINATION = "/system-work.html";
+export const NEEDS_JOE_DESTINATION = "/work-requests";
 // Team is the confirmed default; My work is the secondary view of the same read.
 export const SCOPES = ["team", "mine"];
 export const DEFAULT_SCOPE = "team";
@@ -22,6 +22,7 @@ const CARD_SOURCES = new Set(["v_deal_room_board", "ops.work_request"]);
 const ALL_SOURCES = new Set(["command_center", ...CARD_SOURCES]);
 
 export function safeDestination(value) {
+  if (value === "/system-work.html") return NEEDS_JOE_DESTINATION;
   return KNOWN_DESTINATIONS.has(value) ? value : DEAL_ROOM_DESTINATION;
 }
 
@@ -89,7 +90,7 @@ function needsValid(payload) {
   const needs = payload.needs_you_now;
   if (!Array.isArray(needs)) return false;
   if (!needs.every((item) => exactKeys(item, ["kind", "scope", "count", "destination"]) && NEED_SCOPE[item.kind] &&
-    item.scope === NEED_SCOPE[item.kind] && item.destination === NEED_DESTINATION[item.kind] && count(item.count))) return false;
+    item.scope === NEED_SCOPE[item.kind] && (item.destination === NEED_DESTINATION[item.kind] || (item.kind === "needs_joe_work" && item.destination === "/system-work.html")) && count(item.count))) return false;
   for (const kind of Object.keys(NEED_DESTINATION)) {
     if (needs.filter((item) => item.kind === kind).length > 1) return false;
   }
@@ -139,12 +140,12 @@ export function homeCardCopy(summary) {
   const label = SCOPE_LABEL[summary.scope] || "Workspace";
   const deals = (value) => `${value} ${value === 1 ? "deal" : "deals"}`;
   if (summary.state === "stale") {
-    return { eyebrow: `${label} · stale read`, title: "Read needs verification", count: "—", countLabel: "count withheld",
-      copy: "This canonical read is older than its freshness window. Retry the read or open the owning Deal Room view before acting." };
+    return { eyebrow: `${label} · updating`, title: "Updating…", count: "—", countLabel: "count withheld",
+      copy: "Updates resume automatically" };
   }
   if (summary.state === "unavailable") {
     return { eyebrow: `${label} · unavailable`, title: "Progress could not be checked", count: "—", countLabel: "count withheld",
-      copy: "Home cannot verify the current read, so no count is shown as current." };
+      copy: "Home temporarily unavailable" };
   }
   // Two independent clauses: the personal active count is not a subset of the team flagged total.
   const mineCountLabel = `${deals(summary.active)} active and owned by you · ${summary.teamFlagged} flagged team-wide`;
@@ -188,7 +189,7 @@ export function freshnessSignature(payload, scope = DEFAULT_SCOPE, now = () => D
 }
 
 export function viewerWorkspaceLabel(viewer) {
-  return viewer === "joe" ? "Joe’s workspace" : viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
+  return viewer === "joe" ? "Joe's Workspace" : viewer === "dell" ? "Dell's Workspace" : "Partner workspace";
 }
 
 export function scopeNote(scope) {

@@ -1,35 +1,70 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tour Operations · CARR</title>
-  <link rel="stylesheet" href="/tours/app.css">
-  <script type="module" src="/tours/app.js"></script>
-  <link rel="stylesheet" href="/css/app-shell.css">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tours · DoctorCRE</title>
+  <link rel="stylesheet" href="/tours/app.css"><link rel="stylesheet" href="/tours/planner.css"><link rel="stylesheet" href="/css/app-shell.css">
+  <script type="module" src="/tours/planner.js"></script>
 </head>
-<body>
+<body class="planner-page">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-  <a class="skip-link" href="#tour-detail">Skip to tour workspace</a>
-  <header class="topbar">
-    <div><p class="eyebrow">CARR · Internal</p><h1>Tour Operations</h1></div>
-
-    <p id="status" role="status" aria-live="polite">Loading tours…</p>
-  </header>
-  <main class="layout">
-    <aside class="library" aria-label="Tour library"><div class="section-head"><h2>Tours</h2><button id="refresh" type="button">Refresh</button></div><ul id="tour-list" class="tour-list" aria-busy="true"></ul></aside>
-    <section id="tour-detail" class="workspace" tabindex="-1">
-      <div id="empty-state" class="empty"><h2>Select a tour</h2></div>
-      <div id="tour-panel" hidden>
-        <header class="tour-heading"><div><p id="tour-state" class="badge">Draft</p><h2 id="tour-name">Tour</h2><p id="tour-meta"></p></div><div class="status-grid"><span>Projection <b id="projection-state">Not generated</b></span><span>Share <b id="share-state">Not issued</b></span></div></header>
-        <div class="workspace-grid">
-          <section class="card route-card"><div class="section-head"><div><p class="eyebrow">Route version</p><h3 id="route-version">No route version</h3></div><button id="accept-route" type="button">Accept version</button></div><p class="hint">Internal stop cart only. No map or GIS data is loaded here.</p><ol id="route-stops" class="stop-list"></ol><div class="route-actions"><button id="save-route" type="button">Create route version</button><button id="reorder-route" type="button">Save stop order</button></div></section>
-          <section class="card cheat-card"><div class="section-head"><div><p class="eyebrow">Internal cheat sheet</p><h3>Versioned notes</h3></div><button id="restore-sheet" type="button">Restore selected</button></div><label for="cheat-content">Content</label><textarea id="cheat-content" rows="11" spellcheck="true" placeholder="Internal-only tour notes"></textarea><div class="sheet-footer"><span id="sheet-state">Not saved</span><button id="save-sheet" type="button">Autosave revision</button></div></section>
-          <section class="card projection-card"><div class="section-head"><div><p class="eyebrow">Client projection</p><h3>Generate and share</h3></div><div class="share-actions"><button id="generate-projection" type="button">Generate draft</button><button id="seal-projection" type="button">Approve reviewed facts</button></div></div><p id="projection-note" class="hint">A projection is required before an external link can be issued. Current foundation grants are read-only; PDF download and client feedback require a future governed scope amendment.</p><pre id="projection-preview" class="projection-preview" hidden></pre><form id="share-form" class="share-form"><label>Scopes <span><input type="checkbox" name="scope" value="view_packet" checked> View packet</span><span><input type="checkbox" name="scope" value="view_map"> View map</span></label><label for="share-expiry">Expires <input id="share-expiry" type="datetime-local" required></label><label for="receipt-digest">Receipt digest <input id="receipt-digest" inputmode="text" placeholder="sha256:…" required></label><div class="share-actions"><button type="submit">Issue or rotate confidential link</button><button id="rotate-share" type="button">Rotate current</button><button id="revoke-share" type="button">Revoke current</button></div></form><div id="share-link" class="share-link" hidden><label for="share-url">Copy this link now</label><input id="share-url" readonly><button id="copy-share" type="button">Copy link</button><p>The bearer token remains only in this browser’s memory; only its SHA-256 digest is sent to CARR.</p></div><h4>Manage existing links</h4><ul id="share-grants" class="interaction-list" aria-label="Existing confidential links"></ul></section>
-          <section class="card pdf-card"><div class="section-head"><div><p class="eyebrow">Hard-copy packet</p><h3>Deterministic PDF</h3></div><span id="pdf-state" class="badge">Not rendered</span></div><p class="hint">Exactly one Letter page per property. Deterministic QC and a separate human receipt are required before internal download.</p><div class="route-actions"><button id="render-pdf" type="button">Render packet</button><a id="preview-pdf" class="download-button" target="_blank" rel="noopener" hidden>Open review copy</a><button id="review-pdf" type="button">Accept reviewed PDF</button><a id="download-pdf" class="download-button" hidden>Download PDF</a></div></section>
-        </div>
-      </div>
+  <a class="skip-link" href="#plan-form">Skip to tour planning</a>
+  <header class="planner-header"><h1>Tours</h1><div class="freshness"><time id="planner-updated">Updating…</time><button id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
+  <main class="planner-grid">
+    <section class="card plan-card" aria-labelledby="plan-title">
+      <div class="widget-heading"><span class="widget-icon" aria-hidden="true">↗</span><h2 id="plan-title">Plan a Tour</h2><button id="plan-undo" aria-label="Undo tour edit" title="Undo tour edit" disabled type="button">↶</button></div>
+      <form id="plan-form">
+        <label for="plan-client">For<select id="plan-client"><option value="">Choose a client</option></select></label>
+        <label for="plan-name">Tour name<input id="plan-name" maxlength="240"></label>
+        <div class="form-pair"><label for="plan-date">Date<input id="plan-date" type="date"></label><label for="plan-time">Start time<input id="plan-time" type="time"></label></div>
+        <div class="form-pair"><label for="plan-area">Area<input id="plan-area" maxlength="200"></label><label for="plan-use">Space type<input id="plan-use" maxlength="120"></label></div>
+        <div class="form-pair"><label for="plan-start">Start location<input id="plan-start" maxlength="200"></label><label for="plan-end">Finish location<input id="plan-end" maxlength="200"></label></div>
+        <div class="form-pair"><label for="plan-dwell">Minutes per stop<input id="plan-dwell" type="number" min="1" max="480"></label><label for="plan-buffer">Travel buffer · minutes<input id="plan-buffer" type="number" min="0" max="180"></label></div>
+        <label for="plan-notes">Tour notes<textarea id="plan-notes" rows="2" maxlength="4000"></textarea></label>
+        <div class="drop-heading"><h3>Packet files</h3><span class="pill">Private · this tab</span></div>
+        <label id="packet-drop" class="packet-drop" for="packet-upload"><span class="upload-icon" aria-hidden="true">⇧</span><strong>CoStar reports &amp; files</strong><span id="file-count">0 files</span><input id="packet-upload" type="file" multiple></label>
+        <ul id="packet-files" class="packet-files"></ul><div id="file-message" role="status" class="form-message"></div>
+        <div class="widget-actions"><button class="primary" id="review-packet" type="submit">Review packet draft</button><button disabled type="button" title="Agent file compilation is unavailable">Compile packet</button></div>
+        <div id="plan-message" class="form-message" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+    <section class="card space-card" aria-labelledby="space-title">
+      <div class="widget-heading"><span class="widget-icon" aria-hidden="true">⌕</span><h2 id="space-title">Search for Space</h2><button id="space-undo" aria-label="Undo search edit" title="Undo search edit" disabled type="button">↶</button></div>
+      <form id="space-form">
+        <label for="space-client">For<select id="space-client"><option value="">Research only</option></select></label>
+        <div class="form-pair"><label for="space-area">Area<input id="space-area" maxlength="200" required></label><label for="space-use">Space type<input id="space-use" maxlength="120"></label></div>
+        <div class="form-pair"><label for="space-minSize">Minimum SF<input id="space-minSize" type="number" min="0"></label><label for="space-maxSize">Maximum SF<input id="space-maxSize" type="number" min="0"></label></div>
+        <div class="form-pair"><label for="space-budget">Maximum budget<input id="space-budget" type="number" min="0" step="any"></label><label for="space-rentBasis">Budget basis<select id="space-rentBasis"><option value="">Choose basis</option><option value="sf_year">$/SF/year</option><option value="month">$/month</option><option value="purchase">Purchase price</option></select></label></div>
+        <div class="form-pair"><label for="space-transaction">Transaction<select id="space-transaction"><option value="">Choose transaction</option><option>Lease</option><option>Purchase</option><option>Lease or purchase</option></select></label><label for="space-availableBy">Available by<input id="space-availableBy" type="date"></label></div>
+        <label for="space-parking">Parking<input id="space-parking" maxlength="240"></label>
+        <label for="space-requirements">Must-haves<textarea id="space-requirements" rows="3" maxlength="4000"></textarea></label>
+        <div class="widget-actions"><button id="save-search" type="submit">Save search draft</button><button type="button" disabled title="Licensed MLS query is unavailable">Find spaces</button></div>
+        <div id="space-message" class="form-message" role="status" aria-live="polite"></div>
+      </form>
+      <div class="results-heading"><h3>Options</h3><span class="capability-state">MLS unavailable</span></div>
+      <ul id="space-results" class="space-results"></ul><div id="empty-state" class="empty-options"><h4>No listing results</h4></div>
+    </section>
+    <aside class="card library-card" aria-label="Tours library">
+      <div class="widget-heading"><span class="widget-icon" aria-hidden="true">◷</span><h2>Your tours</h2></div>
+      <label class="library-filter" for="tour-filter">Find a tour<input id="tour-filter" type="search" placeholder="Name or status"></label>
+      <h3>Upcoming</h3><ul id="upcoming-tours" class="tour-list library-scroll"></ul>
+      <h3>History</h3><ul id="history-tours" class="tour-list library-scroll"></ul>
+      <div id="tour-library-state" class="form-message" role="status" aria-live="polite"></div>
+    </aside>
+    <section class="card territory-card" aria-labelledby="territory-heading">
+      <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span></div>
+      <svg class="territory-map" viewBox="0 0 1100 230" role="img" aria-labelledby="map-title map-description">
+        <title id="map-title">Alabama and Florida Panhandle territory</title><desc id="map-description">Schematic coastline with market positions. Use the market buttons to choose an area. This overview has no property or navigation pins.</desc>
+        <defs><linearGradient id="land-light" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#002f6c"/><stop offset="1" stop-color="#142e46"/></linearGradient><pattern id="map-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#7dd3fc" stroke-opacity=".07"/></pattern></defs>
+        <rect width="1100" height="230" fill="url(#map-grid)"/>
+        <path class="territory-land" d="M40 0H1060V132L1010 135 971 146 947 137 920 120 869 127 832 155 802 163 776 154 758 130 732 124 707 131 680 120 633 123 602 134 572 131 545 120 500 127 475 144 462 143 466 112 450 103 435 108 439 144 417 156 391 151 365 144 347 128 308 130 282 140 258 149 231 143 203 153 176 147 163 128 151 101 139 108 148 140 140 167 103 174 89 157 73 135 40 138Z"/>
+        <path class="territory-state-line" d="M310 0V113H560"/><path class="territory-coast" d="M40 138L73 135 103 174 140 167 148 140 176 147 203 153 258 149 308 130 365 144 417 156 439 144 475 144 500 127 545 120 602 134 633 123 680 120 732 124 758 130 802 163 832 155 869 127 920 120 947 137 971 146 1010 135 1060 132"/>
+        <g class="map-market"><circle cx="121" cy="93" r="5"/><text x="103" y="78">Mobile</text><circle cx="310" cy="121" r="5"/><text x="273" y="103">Pensacola</text><circle cx="544" cy="106" r="5"/><text x="498" y="86">Fort Walton / Destin</text><circle cx="795" cy="144" r="5"/><text x="761" y="121">Panama City</text><circle cx="970" cy="84" r="5"/><text x="932" y="65">Tallahassee</text></g>
+        <text class="map-water" x="380" y="205">G U L F  C O A S T</text><text class="map-state" x="126" y="28">ALABAMA</text><text class="map-state" x="690" y="33">FLORIDA</text>
+      </svg>
+      <div class="market-buttons" aria-label="Choose search area"><button type="button" data-market="Mobile, AL" aria-pressed="false">Mobile</button><button type="button" data-market="Pensacola, FL" aria-pressed="false">Pensacola</button><button type="button" data-market="Fort Walton Beach / Destin, FL" aria-pressed="false">Fort Walton / Destin</button><button type="button" data-market="Panama City, FL" aria-pressed="false">Panama City</button><button type="button" data-market="Tallahassee, FL" aria-pressed="false">Tallahassee</button></div>
     </section>
   </main>
+  <dialog id="tour-dialog" class="tour-dialog" aria-labelledby="detail-title"><div class="dialog-heading"><h2 id="detail-title">Tour</h2><button id="detail-close" type="button" aria-label="Close tour details">×</button></div><div id="detail-message" class="form-message" role="status"></div><div id="detail-content"></div></dialog>
 </body>
 </html>

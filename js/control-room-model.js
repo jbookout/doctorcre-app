@@ -170,7 +170,7 @@ export function coverageLine(reads) {
     const read = source[id] || {};
     const name = READ_LABEL[id];
     const clock = read.state === "read" ? formatClock(read.observed_at) : null;
-    if (read.state === "read" && clock) return { id, name, state: "read", text: `${name}: read at ${clock}` };
+    if (read.state === "read" && clock) return { id, name, state: "read", text: `${name}: updated ${clock}` };
     const reason = read.state === "read" && !clock
       ? "the read carried no readable time"
       : read.reason || "this read did not answer";
@@ -188,6 +188,35 @@ export function readPhase({ status, reads }) {
   if (attempted === 0) return "loading";
   if (answered === 0) return "offline";
   return answered === attempted ? "ready" : "partial";
+}
+
+/** The header badge's words, one per phase. */
+export const HEADER_WORDS = Object.freeze({
+  loading: "Updating…",
+  no_access: "Session ended",
+  offline: "Unavailable",
+  partial: "Partly available",
+  incomplete: "Partly available",
+  ready: "Current",
+});
+
+/**
+ * A read can answer and still say it is short. "ready" is claimed only when
+ * no answered read names a source it could not read in full.
+ *
+ * @param {string} phase the page phase from readPhase/resourceRoomPhase
+ * @param {string[]} incomplete source names that answered incompletely
+ */
+export function headerPhase(phase, incomplete = []) {
+  return phase === "ready" && incomplete.length > 0 ? "incomplete" : phase;
+}
+
+/** The census legs that answered short, from a census read that did answer. */
+export function censusIncompleteSources(read) {
+  if (read?.state !== "read" || read.payload?.census_complete !== false) return [];
+  const legs = Array.isArray(read.payload.coverage) ? read.payload.coverage : [];
+  const short = legs.filter((leg) => leg?.state !== "complete").map((leg) => leg.source_ref || leg.kind).filter(Boolean);
+  return short.length ? short : ["the work census"];
 }
 
 /* -------------------------------------------------------------------- tiles */
@@ -277,7 +306,7 @@ export function dashboardTiles({ incidents, work, needsJoe, census, cadence = nu
   tiles.push({
     id: "changed", title: TILE_TITLE.changed, state: "not_in_release", value: null, word: "not in this release",
     reason: "no release feed exists to read",
-    sentence: "Not in this release: no release feed exists to read, so no change is claimed.",
+    sentence: "Release updates unavailable",
     open: null,
   });
 
@@ -381,7 +410,7 @@ export function incidentFilters(incidents) {
 export function canonicalHref(item) {
   const ref = item && typeof item === "object" ? (item.human_ref || item.ref) : item;
   if (typeof ref !== "string") return null;
-  if (WORK_REQUEST_REF.test(ref)) return "/system-work.html";
+  if (WORK_REQUEST_REF.test(ref)) return "/work-requests";
   if (INCIDENT_REF.test(ref)) return `/incidents?ref=${encodeURIComponent(ref)}`;
   return null;
 }

@@ -1,0 +1,46 @@
+.property-evidence-card{grid-column:1/-1;position:relative;overflow:hidden;background:radial-gradient(circle at 84% -15%,rgba(242,138,57,.2),transparent 34%),linear-gradient(140deg,rgba(18,40,65,.86),rgba(6,16,29,.88));border-color:rgba(242,138,57,.27)}
+.property-evidence-card::before{content:"";position:absolute;inset:-45% -10% auto;height:220px;background:linear-gradient(95deg,transparent,rgba(90,157,210,.09),transparent);transform:translateX(-45%);animation:property-ambient 14s ease-in-out infinite alternate;pointer-events:none}
+.property-panel-head{position:relative;display:flex;align-items:end;flex-wrap:wrap;gap:16px;margin-bottom:16px}
+.property-panel-head>div{margin-right:auto}.property-panel-head h3{font:700 clamp(1.5rem,3vw,2.2rem)/1 var(--display);letter-spacing:.01em}
+.property-panel-head label{min-width:160px;margin:0;color:var(--muted)}
+.property-panel-head select,.property-panel-head input{min-height:var(--touch);padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:#0c1b2d;color:var(--text);font:inherit}
+.property-panel-head select{max-width:min(320px,70vw)}
+.property-panel-body{position:relative;animation:property-arrive .55s ease both}
+.property-layer-diagram{display:block;width:100%;height:auto;max-height:250px;margin:0 auto 16px;overflow:visible}
+.property-flow{fill:none;stroke:rgba(125,211,252,.48);stroke-width:2;stroke-dasharray:6 8;animation:property-flow 12s linear infinite}
+.property-layer-node rect{fill:rgba(11,29,49,.86);stroke:rgba(125,211,252,.55);stroke-width:1.5;filter:drop-shadow(0 8px 16px rgba(0,0,0,.27))}
+.property-layer-node circle{fill:var(--cyan);filter:drop-shadow(0 0 5px rgba(125,211,252,.7))}
+.property-layer-node .node-label{fill:var(--muted);font:700 14px var(--display)}
+.property-layer-node .node-value{fill:var(--text);font:700 16px var(--display)}
+.property-layer-node.unavailable rect,.property-layer-node.unknown rect{stroke:rgba(148,171,192,.37);stroke-dasharray:5 4}
+.property-layer-node.unavailable circle,.property-layer-node.unknown circle{fill:var(--quiet);filter:none}
+.property-layer-node.conflicted rect{stroke:var(--orange)}.property-layer-node.conflicted circle{fill:var(--orange)}
+.property-fact-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.property-fact{display:grid;min-height:118px;align-content:start;gap:7px;min-width:0;padding:13px 15px;text-align:left;background:rgba(4,14,27,.56);border:1px solid var(--line);border-radius:12px;transition:transform .22s ease,border-color .22s ease,background .22s ease,box-shadow .22s ease}
+.property-fact:hover,.property-fact:focus-visible{transform:translateY(-3px);background:rgba(20,46,72,.78);border-color:var(--orange);box-shadow:0 14px 25px rgba(0,0,0,.24),0 0 24px rgba(242,138,57,.1)}
+.property-fact.reviewed{animation:property-healthy 3.5s ease-in-out infinite}
+.property-fact.conflicted{border-color:rgba(242,138,57,.6);animation:property-attention 2s ease-in-out infinite}
+.property-fact-title{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:.76rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.property-fact-title span{font-size:.65rem;letter-spacing:0;text-transform:none;color:var(--cyan)}
+.property-fact.unavailable .property-fact-title span,.property-fact.unknown .property-fact-title span{color:var(--quiet)}
+.property-fact.conflicted .property-fact-title span{color:var(--orange)}
+.property-fact strong{overflow-wrap:anywhere;color:var(--text);font:700 1.2rem/1.1 var(--display)}
+.property-fact small{overflow-wrap:anywhere;color:var(--muted);font-size:.7rem;line-height:1.3}
+.property-context-note{margin:16px 0 0;padding:10px 13px;border-left:2px solid var(--orange);background:rgba(242,138,57,.06);color:var(--muted);font-size:.79rem;line-height:1.45}
+.property-context-note b{color:var(--orange)}
+.property-evidence-dialog{width:min(560px,calc(100vw - 32px));max-height:min(80vh,750px);overflow:auto;padding:26px;border:1px solid rgba(242,138,57,.4);border-radius:18px;background:linear-gradient(145deg,#132941,#07111f);color:var(--text);box-shadow:0 25px 75px rgba(0,0,0,.65);backdrop-filter:blur(22px)}
+.property-evidence-dialog::backdrop{background:rgba(1,7,15,.72);backdrop-filter:blur(8px)}
+.property-evidence-dialog h3{font:700 2rem var(--display);margin:0 0 12px}.property-evidence-dialog strong{font:700 1.5rem var(--display)}
+.property-dialog-close{position:absolute;right:16px;top:14px;min-width:var(--touch);font-size:1.5rem;line-height:1}
+.property-provenance{display:grid;gap:0;margin:20px 0 0}.property-provenance div{display:grid;grid-template-columns:130px 1fr;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.property-provenance dt{color:var(--muted);font-size:.78rem}.property-provenance dd{margin:0;overflow-wrap:anywhere;font-size:.84rem}
+.property-provenance a{display:inline-flex;align-items:center;min-width:var(--touch);min-height:var(--touch);max-width:100%;overflow-wrap:anywhere;color:var(--cyan)}.property-conflicts{margin-top:16px;padding:12px;border:1px solid rgba(242,138,57,.35);border-radius:10px}.property-conflicts b{color:var(--orange)}
+.property-conflicts section{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.property-conflicts h4{margin:0;color:var(--text);font:700 1.15rem var(--display)}
+@keyframes property-flow{to{stroke-dashoffset:-140}}
+@keyframes property-ambient{to{transform:translateX(45%)}}
+@keyframes property-arrive{from{opacity:.25;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes property-healthy{50%{border-color:rgba(125,211,252,.44)}}
+@keyframes property-attention{50%{box-shadow:inset 0 0 0 1px rgba(242,138,57,.65),0 0 15px rgba(242,138,57,.18)}}
+@media(max-width:900px){.property-fact-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:580px){.property-fact-grid{grid-template-columns:1fr}.property-layer-diagram{min-width:650px}.property-panel-body{overflow-x:auto}.property-provenance div{grid-template-columns:100px 1fr}}
+@media(prefers-reduced-motion:reduce){.property-evidence-card::before,.property-flow,.property-panel-body,.property-fact{animation:none!important}.property-fact{transition:none!important}.property-fact:hover{transform:none}}

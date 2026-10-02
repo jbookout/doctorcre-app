@@ -26,12 +26,12 @@ import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
-  orderTaskRows, partnerName, quickAddPlan, quickAddRecords, scopeRows, taskDetailRows, closeArgs,
+  orderTaskRows, partnerName, quickAddPlan, quickAddRecords, quickAddStartsOpen, scopeRows, taskDetailRows, closeArgs,
   dueDateArgs, validBoardPayload,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { taskDialogTransition } from "./task-dialog-refresh.mjs";
 import { draftIdentityPlan } from "./task-draft-identity.mjs";
 import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "./task-read-epoch.mjs";
@@ -124,8 +124,8 @@ function rowHtml(row) {
 }
 
 const STATE_COPY = {
-  loading: "Reading the shared record…",
-  offline: "The record layer could not be read",
+  loading: "Loading…",
+  offline: "Work temporarily unavailable",
   no_access: "Your session has ended",
   empty: "Every open record is closed",
   no_match: "No open record is owned by you",
@@ -144,18 +144,18 @@ function render() {
 
   const viewerLabel = $("viewerLabel");
   if (viewerLabel) viewerLabel.textContent = view.status === "unverified" ? "Account unverified"
-    : view.status === "loading" ? "Reading workspace" : `${partnerName(viewer)}’s workspace`;
+    : view.status === "loading" ? "Updating…" : `${partnerName(viewer)}’s workspace`;
 
   if ($("quickAddForm")) {
     if (view.status !== "ready") $("quickAddForm").hidden = true;
     else $("quickAddForm").hidden = false;
   }
 
-  if (view.status === "loading") setBoardStatus("refreshing", "Reading the record…");
+  if (view.status === "loading") setBoardStatus("refreshing", "Updating…");
   else if (view.status === "unauthorized") setBoardStatus("unknown", "Session ended");
   else if (view.status === "unverified") setBoardStatus("unknown", "Account unverified");
-  else if (view.status === "error") setBoardStatus("urgent", "Record read unavailable");
-  else setBoardStatus("healthy", "Read from the record layer");
+  else if (view.status === "error") setBoardStatus("urgent", "Unavailable");
+  else setBoardStatus("healthy", "Current");
 
   const list = $("taskList");
   const systemBlock = $("systemOwned");
@@ -182,9 +182,9 @@ function render() {
   }
   if (retry) retry.hidden = true;
   const source = $("sourceLine");
-  if (source) source.textContent = `Source: loop-board · kinds ${TASK_KINDS.join(" and ")} · status open · ${deploymentIdentity(client?.mode).detail}`;
+  if (source) source.textContent = "";
   const asOf = $("taskAsOf");
-  if (asOf) asOf.textContent = `${view.rows.length} open record(s) read`;
+  if (asOf) asOf.textContent = updatedLabel(view.updatedAt);
   renderState(ordered.length === 0 ? (view.scope === "mine" ? "no_match" : "empty") : "ready");
   announce(`${ordered.length} record(s) shown in the ${view.scope === "mine" ? "Mine" : "Team"} scope.`);
 }
@@ -226,7 +226,7 @@ function settleTaskReadFocus(dialogAction) {
 
 function refuseUnverifiedViewer() {
   // Invalidate every board request started by a previously verified actor.
-  invalidateTaskRead(view, "unverified", "Your account could not be verified. No task records are shown. Retry read.");
+  invalidateTaskRead(view, "unverified", "Sign in to continue.");
   heldDialog = null;
   if (draftViewer) {
     unverifiedPreviousActor = draftViewer;
@@ -276,7 +276,7 @@ async function load() {
       }
     }
     view.rows = rows;
-    view.status = "ready";
+    view.status = "ready"; view.updatedAt = new Date().toISOString();
     view.message = null;
     reconcileTaskDialog();
   } catch (error) {
@@ -531,7 +531,7 @@ function wire() {
     const resolution = view.closing || "done";
     const outcome = $("taskOutcome")?.value || "";
     if (!row || !outcome.trim()) {
-      announce("Type what happened before confirming; the record layer refuses a close without it.");
+      announce("Enter what happened");
       return;
     }
     closeDialog();
@@ -575,6 +575,8 @@ function wire() {
       announce(`Nothing was filed. ${current.plan.questions.join(" ")}`);
       return;
     }
+    const submittedInput = $("quickAddInput")?.value || "";
+    const submittedDate = $("quickAddDate")?.value || "";
     const operationKey = operationKeys.quickAdd(current.sentence, viewer);
     const matchedId = matchingDraftId(localDrafts.list(), restoredDraftId, current.sentence, $("quickAddDate")?.value || "");
     if (matchedId) draftOperations.set(operationKey, matchedId);
@@ -585,8 +587,10 @@ function wire() {
     if (result.status === "ok") {
       const input = $("quickAddInput");
       const date = $("quickAddDate");
-      if (input) input.value = "";
-      if (date) date.value = "";
+      if ((input?.value || "") === submittedInput && (date?.value || "") === submittedDate) {
+        if (input) input.value = "";
+        if (date) date.value = "";
+      }
       renderQuickAdd();
       renderDrafts();
     }
@@ -608,6 +612,7 @@ function wire() {
     const draft = localDrafts?.list().find((item) => item.id === button?.dataset.restoreDraft);
     if (!draft) return;
     restoredDraftId = draft.id;
+    $("quickAddPanel").open = true;
     $("quickAddInput").value = draft.sentence;
     $("quickAddDate").value = draft.dueDate;
     renderQuickAdd();
@@ -710,6 +715,13 @@ async function boot() {
   mountDocDock("Tasks");
   mountDock();
   wire();
+  const quickAddPanel = $("quickAddPanel");
+  if (quickAddPanel) {
+    quickAddPanel.open = quickAddStartsOpen({
+      phone: globalThis.matchMedia?.("(max-width: 640px)").matches === true,
+      hasDraftText: Boolean($("quickAddInput")?.value),
+    });
+  }
   renderQuickAdd();
   renderDrafts();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
@@ -724,7 +736,7 @@ async function boot() {
     if (!client) return;
     await refreshVerified();
   });
-  mountReadOnResume({ document, window, refresh: async () => {
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => {
     await refreshVerified();
     renderQuickAdd();
   } });

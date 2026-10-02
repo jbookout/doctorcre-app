@@ -180,7 +180,7 @@ test("the approvals card says what it is NOT: production-effect approvals still 
   assert.match(APPROVALS_OUT_OF_SCOPE, /no read lists what is pending/);
   const card = approvalsCard({ state: "read", payload: QUEUE }, { now: NOW });
   assert.equal(card.scope, APPROVALS_OUT_OF_SCOPE);
-  assert.match(card.authority, /grants no authority/);
+  assert.equal(card.authority, "");
   assert.match(card.rule, /^Reconcile before retry is already how every command on this app behaves/);
 });
 
