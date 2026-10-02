@@ -109,6 +109,7 @@
     "update-industry-event",
     "update-lead",
     "update-loop",
+    "update-vendor",
     "work-request-card"
   ],
   "http_surfaces": [
@@ -452,6 +453,17 @@
       "schema_version": "doc-activity.v1",
       "producer_module": "mcp-server/src/doc-activity.js",
       "undo_operation": "revert-deal-field"
+    }
+  },
+  "vendor_directory": {
+    "schema": "carr-vendor-directory.v1",
+    "version": "1.1.0",
+    "path": "contracts/vendor-directory.v1.json",
+    "sha256": "af68a55a68eca6cf5bb17b786a33308faa2261cc3cdcf51bce73deafff7b5e5b",
+    "request_selector": "contract=vendor-directory.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65"
     }
   },
   "system_work_inventory": {

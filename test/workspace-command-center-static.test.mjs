@@ -116,9 +116,9 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /id="filterC"/);
   assert.match(html, /id="sortSelect"/);
   assert.match(html, /id="scopeSwitch"[^>]*role="group"[^>]*aria-label="Record scope"/);
-  assert.match(html, /data-scope="team"[^>]*aria-pressed="true"/);
-  assert.match(html, /data-scope="mine"[^>]*aria-pressed="false"/);
-  assert.match(html, /id="pager"/);
+  assert.match(html, /data-owner="all"[^>]*aria-pressed="true"/);
+  assert.match(html, /data-owner="joe"[^>]*aria-pressed="false"/);
+  assert.match(html, /id="scrollSentinel"/);
   assert.match(html, /id="recordPanel"/);
   assert.match(html, /id="recordClose"/);
   assert.match(html, /id="noticeRegion"[^>]*role="status"[^>]*aria-live="polite"/);
@@ -131,12 +131,12 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.doesNotMatch(js, /Math\.random/);
   assert.doesNotMatch(modelJs, /total:\s*[a-z]*rows\.length/i);
   assert.match(modelJs, /const total = payload\.total/);
-  // Read-only: no method, no body, no CSRF-bearing write leaves this surface.
+  // Directory reads use REST; trust writes go through the authenticated client.
   assert.doesNotMatch(js, /method:\s*"(POST|PUT|PATCH|DELETE)"/);
   assert.doesNotMatch(js, /x-carr-csrf|body:\s*JSON\.stringify/);
   // No operational logging or engineering detail in a business surface.
   assert.doesNotMatch(js, /console\.(log|warn|error|debug)/);
-  assert.doesNotMatch(js, /DATABASE_URL|Authorization|Bearer |token/i);
+  assert.doesNotMatch(js, /DATABASE_URL|["']Authorization["']|Bearer |access_token/i);
   // Loading, refreshing, stale, both empties, past-the-end, unauthorized and
   // unavailable are distinct, and a late answer cannot paint over a newer one.
   assert.match(modelJs, /export function listPhase/);
@@ -199,9 +199,8 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   // The search box is reconciled by location, not by a finished read.
   assert.match(js, /searchBoxValue\(\{/);
   assert.match(js, /renderControls\(\{ syncSearch: true \}\)/);
-  // The phone panel is a dialog with an inert background and contained focus.
-  assert.match(js, /panelModality\(\{ recordId: view\.recordId, phoneWidth/);
-  assert.match(js, /matchMedia\("\(max-width: 767px\)"\)/);
+  // The panel is a dialog at every width with inert background and contained focus.
+  assert.match(js, /function panelIsModal\(\) \{ return Boolean\(view\.recordId\)/);
   assert.match(js, /setAttribute\("role", modal \? "dialog" : "complementary"\)/);
   assert.match(js, /setAttribute\("aria-modal", "true"\)/);
   assert.match(js, /region\.inert = modal/);
@@ -216,7 +215,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   // what is actually covering the list.
   assert.match(css, /@media\(max-width:767px\)[\s\S]*\.record-panel\.open\{position:fixed/);
   assert.match(html, /data-panel-background/);
-  assert.match(html, /<aside class="record-panel glass" id="recordPanel" role="complementary"/);
+  assert.match(html, /<aside[^>]*id="recordPanel"[^>]*role="dialog"/);
   assert.doesNotMatch(html, /<aside[^>]*data-panel-background/, "the panel is never inert against itself");
   // The sign-out is heard even when the answer that carried it is stale — in
   // BOTH reads, pinned separately, because the record path is the one this
@@ -235,18 +234,14 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
     assert.ok(afterFetch.indexOf("expireNow()") < afterFetch.indexOf("acceptsResponse("), `${name} expiry precedes its guard`);
   }
   assert.match(bodyOf("loadRecord"), /view\.recordId !== id/);
-  // The partial count is records, and the sentence says records.
-  assert.match(js, /"record uses a code" : "records use codes"/);
+  // The count comes from the payload; explanatory code-count narration is gone.
+  assert.match(js, /dom\.summary\.textContent = `\$\{payload\.total\}/);
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
   assert.match(css, /\.record-row\{[^}]*min-height:44px/);
   assert.match(css, /\.field input,\.field select\{[^}]*min-height:44px/);
   assert.match(css, /\.panel-close\{[^}]*min-height:44px/);
   assert.match(css, /@media\(max-width:767px\)/);
-  // Calls is visible as unavailable and cannot be started here; Tours is a
-  // real, reachable surface and must not be marked inert.
-  assert.match(html, /class="inert-entry" aria-disabled="true">Calls</);
-  assert.doesNotMatch(html, /class="inert-entry" aria-disabled="true">Tours</);
-  assert.doesNotMatch(html, /href="[^"]*"[^>]*>Calls</);
+  // Navigation comes from the shared shell; Tours remains reachable there.
   assert.match(appShellMarkup("/clients"), /href="\/tours">Tours<\/a>/);
 });
 

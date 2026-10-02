@@ -1,3 +1,4 @@
+import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
@@ -435,7 +436,7 @@ export async function createFixtureClient(opts = {}) {
         closure: { work: facet('complete', 'demo-merge-903', 'all planned slices have a bound receipt and independent pass'), proof: unresolved('receipts are executor claims until independently reviewed'), explanation: facet('complete', 'demo-explain-903', 'derived from canonical persisted facts'), release: facet('complete', 'demo-release-903', 'all required slices are verified'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
     ['WR-000904', { ref: 'WR-000904', title: 'Demo captured in error', state: 'captured', version: 1, portfolio_ref: null, passport: null }],
     ['WR-000905', { ref: 'WR-000905', title: 'Demo stale plan', state: 'ready', version: 3, portfolio_ref: 'PF-DEMO-1',
-      passport: passport({ work_request: 'WR-000905', closure_state: 'complete', stale: true, slices: [slice('SL-905-1', 'verified_complete')],
+      passport: passport({ work_request: 'WR-000905', closure_state: 'complete', stale: true, slices: [slice('SC-901-1', 'verified_complete')],
         closure: { work: facet('complete', 'demo-merge-905', 'all planned slices have a bound receipt and independent pass'), proof: facet('complete', 'demo-proof-905', 'all receipts are independently reviewed'), explanation: facet('complete', 'demo-explain-905', 'derived from canonical persisted facts'), release: facet('complete', 'demo-release-905', 'all required slices are verified'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
   ]);
   const portfolios = new Map([
@@ -468,158 +469,10 @@ export async function createFixtureClient(opts = {}) {
    * Every name starts with "Demo " so nothing here can be mistaken for a record.
    */
 
-  /* ------------------------------------------- Sessions tab fixtures (V5-UX-S02)
-   *
-   * The identity corpus is the REAL production answer, captured read-only as Joe
-   * on 2026-09-18 against producer 0f6cb388 and held verbatim in
-   * test/fixtures/session-identity.json. Three numbers in it are the point:
-   * total_seen 603, total_returned 124, and 25 rows. `total_returned` is the
-   * post-permission-filter total BEFORE `limit`, so a fixture whose
-   * total_returned equalled sessions.length would hide the one invariant this
-   * tab exists to render honestly, and is forbidden.
-   *
-   * Every live row carries the same seven constants — harvested surface, derived
-   * alias, unknown state, harvest observation, unsupported host, unknown parent,
-   * one attempt — so they are spelled once in `harvested()` and the 25 rows below
-   * differ only where the production rows differ. Test S02-20 compares the whole
-   * corpus against the captured file, so "verbatim" is checked rather than
-   * asserted.
-   *
-   * FOUR synthetic rows follow, and no more. Each one exists for a branch the
-   * live corpus cannot reach, each is named with the branch it serves, and each
-   * is marked `synthetic: true` in the capture file. That marker is NOT part of
-   * the payload the page sees: the page must not be able to render it.
-   */
-  const harvested = (id, name, affinity, evidence, observedAt) => ({
-    canonical_session_id: id,
-    surface: 'harvested',
-    display_name: name,
-    alias_source: 'derived',
-    parent_session_id: null,
-    parent_known: false,
-    native_host_id: null,
-    native_host_supported: false,
-    work_state: 'unknown',
-    work_state_evidence: evidence,
-    last_observed_at: observedAt,
-    observation_source: 'harvest',
-    project_affinity: affinity,
-    latest_cwd: null,
-    latest_model_id: null,
-    attempt_count: 1,
-    latest_attempt_ref: null,
-  });
+  // Synthetic session pages preserve the three independent counts and lineage cases.
+  const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
 
-  const SESSION_LIVE_ROWS = [
-    harvested("promise:phone-doc-no-claude", "Phone Doc does not spawn Claude", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("promise:loop-455-waits-fable", "Loop 455 waits for Fable", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("promise:codex-trees-stay", "Codex control-plane trees stay", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("promise:bot-mode-parked", "Bot Mode parked", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("kanban:t_deed8d22", "Partner line: cross-Mac relay Joe Claude to Dell Claude", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("kanban:t_93cfd1ee", "STANDING: land or kill \u2014 3 live, local CI, one paid run", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("kanban:t_1d8844ea", "Build the Doc\u2194Claude live bridge (named inject, not claude -p)", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("kanban:t_0834239a", "Post-turn review writes to Neon, not MEMORY.md", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("hermes_session:20260821_164448_e1a4cc", "Create Designer agent prof   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260821_160917_5b69c4", "Industry strategies for AI   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112318_0b157a", "work kanban task t_4d48865   \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112218_4c7b27", "\u2014                            \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112117_f34276", "\u2014                            \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112017_8e5ae8", "work kanban task t_4d48865   \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260819_141911_fd5c46", "Create Dell systems connec   carr-system        2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260819_070417_0cb77a", "Merge Pelham Tire property   carr-system        2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260819_001819_7ab8f5", "Work kanban task t_3c1b692   \u2014                  2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260818_215618_9476d2", "Work kanban task t_bfeef20   \u2014                  2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260818_200318_ec907827", "Friendly greeting            \u2014                  3d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260816_102322_1bf766", "Reply with exactly: defaul   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("worktree:/private/tmp/claude-501/-Users-booko-carr-system/b491f57b-8a8b-4456-967f-5173fe0f5934/scratchpad/carr-mainchk", "carr-mainchk", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-typed-guidance-final-ci.aARZr2/worktree", "worktree", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-system-release-418", "carr-system-release-418", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-system-program6-final2", "carr-system-program6-final2", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-system-program6-final", "carr-system-program6-final", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-  ];
-
-  const SESSION_SYNTHETIC_ROWS = [
-    // retry — attempt_count > 1 with a latest_attempt_ref; rule 1 of the lineage procedure. No live row reaches it.
-    {
-          "canonical_session_id": "11111111-1111-4111-8111-111111111111",
-          "surface": "claude",
-          "display_name": "Synthetic retry seat",
-          "alias_source": "derived",
-          "parent_session_id": null,
-          "parent_known": false,
-          "native_host_id": null,
-          "native_host_supported": false,
-          "work_state": "working",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T12:00:00+00:00",
-          "observation_source": "continuity_event",
-          "project_affinity": "doctorcre-app",
-          "latest_cwd": "/synthetic/doctorcre-app",
-          "latest_model_id": "claude-opus-5[1m]",
-          "attempt_count": 3,
-          "latest_attempt_ref": "WR-000117#3"
-    },
-    // replacement — a non-null parent_session_id; rule 2. No live row reaches it.
-    {
-          "canonical_session_id": "22222222-2222-4222-8222-222222222222",
-          "surface": "codex",
-          "display_name": "Synthetic replacement seat",
-          "alias_source": "derived",
-          "parent_session_id": "11111111-1111-4111-8111-111111111111",
-          "parent_known": true,
-          "native_host_id": null,
-          "native_host_supported": false,
-          "work_state": "idle",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T11:30:00+00:00",
-          "observation_source": "checkpoint",
-          "project_affinity": "doctorcre-app",
-          "latest_cwd": null,
-          "latest_model_id": null,
-          "attempt_count": 1,
-          "latest_attempt_ref": null
-    },
-    // resume — parent_known true with a null parent and attempt_count 1; rule 3. No live row reaches it.
-    {
-          "canonical_session_id": "33333333-3333-4333-8333-333333333333",
-          "surface": "capability",
-          "display_name": "Synthetic resumed root",
-          "alias_source": "derived",
-          "parent_session_id": null,
-          "parent_known": true,
-          "native_host_id": null,
-          "native_host_supported": false,
-          "work_state": "complete_unacknowledged",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T10:00:00+00:00",
-          "observation_source": "server_session",
-          "project_affinity": null,
-          "latest_cwd": null,
-          "latest_model_id": null,
-          "attempt_count": 1,
-          "latest_attempt_ref": null
-    },
-    // host title mismatch — native_host_supported true with a native_host_id the display_name differs from; the third branch of clause 2. No live row reaches it.
-    {
-          "canonical_session_id": "44444444-4444-4444-8444-444444444444",
-          "surface": "claude",
-          "display_name": "Synthetic mismatched title",
-          "alias_source": "derived",
-          "parent_session_id": null,
-          "parent_known": false,
-          "native_host_id": "host-window-7",
-          "native_host_supported": true,
-          "work_state": "disconnected",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T09:00:00+00:00",
-          "observation_source": "continuity_event",
-          "project_affinity": null,
-          "latest_cwd": null,
-          "latest_model_id": "claude-opus-5[1m]",
-          "attempt_count": 1,
-          "latest_attempt_ref": null
-    },
-  ];
+  const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
 
   const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
@@ -1330,7 +1183,7 @@ export async function createFixtureClient(opts = {}) {
 
   const searchParties = [
     { name: 'Demo Pensacola Family Dentistry', city: 'Pensacola', specialty: 'General dentistry', org_name: 'Demo Gulf Coast Dental Group', ref: 'L-901', kind: 'lead', merged: false },
-    { name: 'Demo Pensacola Orthopedic Partners', city: null, specialty: null, org_name: null, ref: 'C-902', kind: 'client', merged: false },
+    { name: 'Demo Pensacola Orthopedic Partners', city: null, specialty: null, org_name: null, ref: 'C-900', kind: 'client', merged: false },
     { name: 'Demo Pensacola Buildout Contractors', city: 'Pensacola', specialty: null, org_name: null, ref: 'V-903', kind: 'vendor', merged: false },
     // A bare party: no kind of its own beyond "party", and no ref at all. The
     // producer selects `ref` as a plain column and guards it with a string test,
@@ -1344,7 +1197,7 @@ export async function createFixtureClient(opts = {}) {
   const searchOrganizations = [
     // The observed shape: a live row whose aggregated ref is a NULL ELEMENT.
     { name: 'Demo Pensacola Imaging Partners', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
-    { name: 'Demo Specialty Center Of Pensacola', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 1, role_refs: ['L-905'], all_retired: false },
+    { name: 'Demo Example Organization 093', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 1, role_refs: ['C-901'], all_retired: false },
     { name: 'Demo Pensacola Surgical Suites', live_rows: 2, refs: ['P-906', 'P-907'], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
     { name: 'Demo Pensacola Retired Holdings', live_rows: 0, refs: [], retired_aliases: 3, retired_refs: ['P-908', 'P-909', 'P-910'], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: true },
     // Twelve retired aliases, ten refs listed: the producer truncates at
@@ -1353,27 +1206,27 @@ export async function createFixtureClient(opts = {}) {
   ];
 
   const searchDeals = [
-    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-902' },
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-900' },
     // TWO deals sharing a name. The producer does NOT deduplicate deals when it
     // derives candidates, and a fixture that did would certify a client that
     // silently drops one of them.
     { name: 'Demo Pensacola medical office building', phase: 'research', owner: 'joe', client_ref: null },
-    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-902' },
+    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-900' },
   ];
 
   const searchConnections = [
     { from_ref: 'P-906', from_name: 'Demo Pensacola Surgical Suites', kind: 'refers_to', to_ref: 'L-901', to_name: 'Demo Pensacola Family Dentistry', note: 'introduced at a demo society meeting' },
-    { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-902', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
+    { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-900', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
   ];
 
   /** Each of the three `link_basis` values the producer can report. */
   const searchLeadClientLinks = [
-    { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
-    { lead_ref: 'L-905', lead_name: 'Demo Specialty Center Of Pensacola', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
-    { lead_ref: 'L-904', lead_name: 'Demo Pensacola Smiles (retired alias)', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_org' },
+    { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
+    { lead_ref: 'C-901', lead_name: 'Demo Example Organization 093', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
+    { lead_ref: 'L-904', lead_name: 'Demo Pensacola Smiles (retired alias)', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_org' },
   ];
   const searchDealsViaLink = [
-    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', client_ref: 'C-902', link_basis: 'conversion' },
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', client_ref: 'C-900', link_basis: 'conversion' },
   ];
 
   /**
@@ -2210,15 +2063,14 @@ export async function createFixtureClient(opts = {}) {
     // the verb declares zero properties under additionalProperties:false.
     // ------------------------------------ session identity and dispatch (S02)
     // Both are READS and neither takes an actor, exactly as the verbs declare.
-    // `total_seen` and `total_returned` are the production numbers and do NOT
+    // `total_seen` and `total_returned` are synthetic scenario totals and do NOT
     // move with `limit` — that is what makes the three-number counts line
     // testable here instead of only against production.
     async sessionIdentity({ query = null, limit = null, include_closed = false } = {}) {
       refuseIfOutage('sessions', 'read-session-identity');
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
       // `include_closed` is passed through to the producer and changes nothing
-      // here: no captured row carries a closed state, so a fixture that made the
-      // toggle move rows would be inventing a corpus production did not return.
+      // here: no example row carries a closed state in this scenario.
       void include_closed;
       // BOTH fields, because clause 1 is "name/ID lookup" and a fixture that
       // matched on the name alone would let an id lookup pass while broken.
@@ -2237,7 +2089,7 @@ export async function createFixtureClient(opts = {}) {
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
       const page = matched.slice(0, capped);
-      // 603 and 124 are production's own numbers for the unfiltered page, and
+      // 603 and 124 exercise separate seen and visible totals, and
       // they do NOT shrink when `limit` does.
       const seen = text.length === 0 ? 603 : matched.length;
       const visible = text.length === 0 ? 124 : matched.length;
