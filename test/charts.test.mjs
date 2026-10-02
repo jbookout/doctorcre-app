@@ -405,7 +405,7 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
   assert.equal(contract.version, "1.40.0", "the current interface retains the Charts read");
-  assert.equal(contract.producer.source_commit, "66d334bad27bacec89b2e6424b2121e0214adde1");
+  assert.equal(contract.producer.source_commit, "e321437a0142d1fe24a62d797b56281a04ec433e");
   assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 
   // No route is added. `/business` already resolves, and the gate does not

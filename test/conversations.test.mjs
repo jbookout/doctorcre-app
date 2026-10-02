@@ -405,7 +405,7 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
   assert.equal(routes.version, "1.19.0");
   assert.equal(contract.version, "1.40.0");
-  assert.equal(contract.producer.source_commit, "66d334bad27bacec89b2e6424b2121e0214adde1");
+  assert.equal(contract.producer.source_commit, "e321437a0142d1fe24a62d797b56281a04ec433e");
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
