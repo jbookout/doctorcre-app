@@ -1,4 +1,4 @@
-import { taskPulse } from "./progress-board-model.js";
+import { taskPulse, taskIdentity, taskSummary } from "./progress-board-model.js";
 
 export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }) {
   const SVG_NS = "http://www.w3.org/2000/svg";
@@ -29,6 +29,7 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
 
   function taskNode(task, stage, x, y, width, height, phone) {
     const pulse = taskPulse(task);
+    const identity = taskIdentity(task);
     const node = svg("g", "pipeline-node", { "data-task-id": task.id, "data-stage": stage.id,
       "data-pulse": pulse, role: "button", tabindex: 0,
       "aria-label": `${task.title || task.id}, ${stage.label}. Open task detail.` });
@@ -42,8 +43,13 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
       label.append(svg("tspan", "", { x: x + 35, dy: index ? 14 : 0 }, line));
     }
     node.append(label);
-    node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 12 },
-      [task.executor || "Unassigned", task.pr != null ? `PR ${task.pr}` : "No PR"].join(" · ")));
+    const summary = taskSummary(task);
+    const summaryLimit = phone ? 46 : 24;
+    node.append(svg("text", "node-summary", { x: x + 12, y: y + height - 42 },
+      summary.length > summaryLimit ? `${summary.slice(0, summaryLimit - 1)}…` : summary));
+    node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 27 }, identity.provider));
+    node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 13 },
+      `${identity.model} · ${identity.effort}`));
     const retained = taskNodes.get(task.id);
     const target = retained?.node || node;
     if (retained) {
@@ -79,8 +85,8 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
     taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
     const width = phone ? 360 : 1200;
     const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
-    const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 88) + 21, 0) - 21
-      : Math.max(270, 93 + maxTasks * 89);
+    const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 115) + 21, 0) - 21
+      : Math.max(270, 93 + maxTasks * 115);
     flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
     flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
     let offset = 0;
@@ -88,7 +94,7 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
       const x = phone ? 8 : 8 + index * 199;
       const y = phone ? offset : 8;
       const wellWidth = phone ? 344 : 186;
-      const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 88) : height - 16;
+      const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 115) : height - 16;
       const group = svg("g", "flow-stage", { "data-stage": stage.id });
       group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
       group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
@@ -97,7 +103,7 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
         String(stage.tasks.length).padStart(2, "0")));
       if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
       stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
-        y + 44 + taskIndex * (phone ? 88 : 89), wellWidth - 18, phone ? 78 : 79, phone)));
+        y + 44 + taskIndex * 115, wellWidth - 18, 106, phone)));
       flow.append(group);
       if (index < view.stages.length - 1) {
         const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`

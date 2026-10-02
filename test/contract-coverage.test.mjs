@@ -17,13 +17,13 @@ test('every literal browser MCP call is pinned to a producer revision containing
   assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
     'the pinned operations stay unique and sorted');
   assert.equal(contract.producer.source_commit,
-    '2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65',
+    '993f6e630aca20175b92a0475b2dda3dd51bdba9',
     'the pinned CARR revision contains the vendor directory and audited update-vendor fields');
 });
 
 test('Tour client feedback endpoints have an explicit contract newer than the prior search/cart interface', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.version, '1.39.0');
+  assert.equal(contract.version, '1.40.0');
   for (const path of ['/api/share/feedback', '/api/share/shortlist', '/api/share/comment', '/api/tours/feedback'])
     assert.ok(contract.http_surfaces.includes(path), `${path} is missing from the feedback interface`);
 });

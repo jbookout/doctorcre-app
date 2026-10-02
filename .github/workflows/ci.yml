@@ -19,9 +19,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - if: github.event_name == 'pull_request'
+        run: node scripts/check-pr-description.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run privacy:check
       - run: npm run check
+      # PRs test the merge candidate under the strict required `test` context.
+      # Main retains build/input checks; tag releases still run the full suite.
       - run: npm test
+        if: github.event_name == 'pull_request'
+      - run: node --test test/artifact.test.mjs test/ci-workflows.test.mjs
+        if: github.event_name == 'push'
       - run: npm run build
       - run: npm run artifact:verify

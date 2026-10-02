@@ -351,7 +351,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.19.0");
-  assert.equal(contract.version, "1.39.0");
+  assert.equal(contract.version, "1.40.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -366,7 +366,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
 
 test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede, and 44px targets", () => {
   assert.match(html, /<title>Control Room · DoctorCRE<\/title>/);
-  assert.match(html, /<div class="tabs" id="controlRoomTabs" role="tablist"/);
+  assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="controlRoomTabs" role="tablist"/);
   for (const label of ["Overview", "Attention", "Agents", "System Map", "Sessions"]) {
     assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
   }

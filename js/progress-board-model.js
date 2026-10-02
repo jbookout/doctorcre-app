@@ -46,6 +46,33 @@ const STATUS_STAGE = { queued: "queued", running: "build", review: "review",
 const STATUSES = new Set(["Sent", "Received", "Applied"]);
 const STUCK_AFTER_MS = 2 * 60 * 60 * 1000;
 
+export function taskIdentity(task) {
+  const executor = String(task.executor || "").trim();
+  const lower = executor.toLowerCase();
+  const effort = lower.match(/\b(low|medium|high|xhigh|max|ultra)\b/)?.[1] || "unknown";
+  let derived;
+  if (/\bgpt-[\w.-]+/i.test(executor))
+    derived = ["Codex", executor.match(/\bgpt-[\w.-]+/i)[0].toLowerCase()];
+  else if (/\bclaude\s+(opus|sonnet|haiku)\s+[\d.]+/i.test(executor))
+    derived = ["Anthropic", executor.match(/\bclaude\s+(?:opus|sonnet|haiku)\s+[\d.]+/i)[0]];
+  else if (lower.includes("grok")) derived = ["xAI", executor || "unknown"];
+  else if (lower.includes("flash")) derived = ["Google", executor || "unknown"];
+  else derived = ["Unknown", "Not recorded"];
+  return { provider: task.provider || derived[0], model: task.model || derived[1],
+    effort: task.effort || effort };
+}
+
+export function taskSummary(task) {
+  const summary = String(task.summary || "").trim();
+  if (summary) return summary;
+  return String(task.title || "This task").trim().replace(/\.+$/, "") + ".";
+}
+
+export function relatedQuestions(task, questions) {
+  const refs = new Set(Array.isArray(task.question_ids) ? task.question_ids : []);
+  return questions.filter(q => refs.has(q.question_id));
+}
+
 // Mirrors task_stage in carr-system tools/progress_board.py at the pinned producer revision.
 export function taskStage(task) {
   let requested = task.stage === "measured" ? "live" : task.stage;

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#07111f" />
+    <title>Relationships · DoctorCRE</title>
+    <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="/css/workspace.css" />
+    <link rel="stylesheet" href="/css/app-shell.css">
+    <link rel="stylesheet" href="/css/relationship-network.css" />
+  </head>
+  <body>
+    <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+    <a class="skip" href="#main">Skip to relationships</a>
+    <section data-layout-slot="sidebar" class="relationship-filters">
+      <label for="networkSearch">Find a relationship</label
+      ><input
+        id="networkSearch"
+        type="search"
+        maxlength="160"
+        placeholder="Name or practice"
+      /><label for="networkTerritory">Territory</label
+      ><select id="networkTerritory">
+        <option value="">All territories</option></select
+      ><label for="networkVertical">Vertical</label
+      ><select id="networkVertical">
+        <option value="">All verticals</option></select
+      ><button type="button" id="networkReset">Clear filters</button
+      ><a href="/vendors">Vendors ↗</a><a href="/clients">Clients ↗</a>
+    </section>
+    <div
+      data-layout-slot="tabs"
+      class="relationship-tabs"
+      role="tablist"
+      aria-label="Relationship views"
+    >
+      <button
+        type="button"
+        role="tab"
+        id="graphTab"
+        aria-selected="true"
+        aria-controls="graphView"
+      >
+        Network</button
+      ><button
+        type="button"
+        role="tab"
+        id="referralsTab"
+        aria-selected="false"
+        aria-controls="referralsView"
+        tabindex="-1"
+      >
+        Referrals
+      </button>
+    </div>
+    <div data-layout-slot="status">
+      <time id="networkUpdated">Updating…</time
+      ><button
+        type="button"
+        id="networkRefresh"
+        data-layout-refresh
+        aria-label="Refresh relationships"
+      >
+        ↻
+      </button>
+    </div>
+    <main id="main" class="relationship-page">
+      <p id="networkNotice" role="status" hidden></p>
+      <section id="graphView" role="tabpanel" aria-labelledby="graphTab">
+        <div class="relationship-graph-panel">
+          <div class="relationship-graph-head">
+            <div id="networkLegend" class="relationship-legend">
+              <span data-kind="vendor">◇ Vendors</span
+              ><span data-kind="client">○ Clients</span
+              ><span data-kind="lead">◎ Leads</span
+              ><span data-kind="deal">▣ Deals</span>
+            </div>
+            <div class="relationship-graph-tools">
+              <button id="networkZoomOut" type="button" aria-label="Zoom out">
+                −</button
+              ><button id="networkZoomIn" type="button" aria-label="Zoom in">
+                +</button
+              ><button id="networkFit" type="button">Fit</button>
+            </div>
+          </div>
+          <div
+            id="networkCanvas"
+            class="relationship-canvas"
+            aria-label="Relationship network"
+          ></div>
+          <button id="networkMore" type="button" hidden>
+            More connections
+          </button>
+        </div>
+        <section class="relationship-intros">
+          <h2>Suggested introductions</h2>
+          <div id="networkIntroductions"></div>
+        </section>
+        <section class="relationship-directory">
+          <h2>Connections <span id="networkCount"></span></h2>
+          <div id="networkNodes"></div>
+        </section>
+      </section>
+      <section
+        id="referralsView"
+        role="tabpanel"
+        aria-labelledby="referralsTab"
+        hidden
+      >
+        <h2>Deals sent</h2>
+        <div id="networkReferrals"></div>
+      </section>
+    </main>
+    <script type="module" src="/js/relationship-network.js"></script>
+  </body>
+</html>

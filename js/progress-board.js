@@ -4,7 +4,7 @@ import { mountSystemWorkBoard } from './system-work-board.js';
 import { workDetailUrl } from './progress-work-model.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
+import { boardView, answerRequest, taskIdentity, taskSummary, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
 const pathBoardId = boardIdFromPath(location.pathname || "");
 const boardId = pathBoardId || new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
@@ -23,6 +23,8 @@ const flow = document.getElementById("board-flow");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
+const completedList = document.getElementById("completed-list");
+const completedCount = document.getElementById("completed-count");
 const directory = document.getElementById("board-directory");
 const directoryError = document.getElementById("directory-error");
 const freshness = document.getElementById("board-freshness");
@@ -114,9 +116,41 @@ function renderDirectory(read) {
 }
 
 let currentView = null;
-const boardPipeline = mountProgressPipeline({ flow, taskCount, focusFallback: title,
-  onTask: task => { location.href = workDetailUrl({ board: boardId, task: task.id,
-    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) }); } });
+function showTask(task) {
+  location.href = workDetailUrl({ board: boardId, task: task.id,
+    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) });
+}
+const boardPipeline = mountProgressPipeline({ flow, taskCount, focusFallback: title, onTask: showTask });
+
+function renderCompleted(view) {
+  const live = view.stages.find(stage => stage.id === "live");
+  const signature = JSON.stringify(live.tasks);
+  if (completedList.dataset.signature === signature) return;
+  completedList.dataset.signature = signature;
+  completedList.replaceChildren();
+  completedCount.textContent = `${live.tasks.length} LIVE`;
+  if (!live.tasks.length) {
+    completedList.append(element("p", "empty", "No live tasks yet."));
+    return;
+  }
+  for (const task of live.tasks) {
+    const identity = taskIdentity(task);
+    const card = element("article", "completed-card");
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `${task.title || task.id}. Open task detail.`);
+    card.append(element("strong", "", task.title || task.id),
+      element("p", "card-summary", taskSummary(task)),
+      element("span", "card-provider", identity.provider),
+      element("span", "card-model", `${identity.model} · ${identity.effort}`));
+    card.addEventListener("click", () => showTask(task));
+    card.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task); }
+    });
+    completedList.append(card);
+  }
+}
+
 
 function answerForm(q, view) {
   const form = element("form", "answer-form");
@@ -258,6 +292,9 @@ function clearBoard(state) {
   questionCards.clear();
   pendingRequests.clear();
   flow.replaceChildren();
+  completedList.replaceChildren();
+  delete completedList.dataset.signature;
+  completedCount.textContent = "—";
   questions.replaceChildren();
   taskCount.textContent = "—";
   questionCount.textContent = "—";
@@ -338,6 +375,7 @@ async function refresh(force = false) {
     live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
     viewSignature = signature;
     boardPipeline.render(view);
+    renderCompleted(view);
     renderQuestions(view);
   }).catch(cause => {
     if (generation !== refreshGeneration) return;

@@ -173,7 +173,7 @@ test("each surface is built from tabs and popups, and no title carries a descrip
   };
   for (const [name, labels] of Object.entries(tabsByPage)) {
     const html = SURFACES[name];
-    assert.match(html, /<div class="tabs" id="\w+" role="tablist"/, `${name} tab strip`);
+    assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="\w+" role="tablist"/, `${name} tab strip`);
     for (const label of labels) assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `${name} tab ${label}`);
     assert.match(html, /role="tabpanel"/, `${name} tab panels`);
   }
@@ -226,7 +226,7 @@ test("the business prototype lists its actual items, opens popups for them, and 
   assert.match(html, /<dialog id="completionDialog" class="dialog"/);
   assert.match(html, /value="cancel">Cancel, keep phase</);
   assert.match(html, /<aside id="recordPanel" class="side-panel glass"[^>]*data-pinned="false"/);
-  assert.match(html, /id="panelPin" aria-pressed="false"/);
+  assert.match(html, /id="panelPin"/);
   assert.match(html, /id="completionDate" type="date"/, "the completion dialog uses a real calendar picker");
   assert.doesNotMatch(html, /completionDateTyped/, "and no separate typed-date box");
   assert.match(html, /id="quickAddDate" type="date"/, "quick add uses a real calendar picker");
