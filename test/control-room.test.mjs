@@ -371,8 +371,8 @@ test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede
     assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
   }
   assert.equal([...html.matchAll(/aria-live="polite" role="status"/g)].length, 1, "one status live region");
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
   assert.doesNotMatch(html, /\bTODO\b/);
   assert.doesNotMatch(html, /draggable="true"/, "nothing here is drag-only");
@@ -764,7 +764,7 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
 test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(html, /<section class="tabpanel" id="panelAtlas"[\s\S]*?id="atlasIndex"/, "the Atlas panel holds no index");
   assert.match(html, /role="tab"[^>]*>System Map</, "the System Map tab owns the atlas");
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "a second Doc control appeared");
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "a second Doc control appeared");
   assert.doesNotMatch(html, /atlas\.css/, "the atlas added its own stylesheet");
   assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 4, "only the shared app shell adds a stylesheet");
   // Mobile first at 360px: no fixed pixel width of three digits or more.

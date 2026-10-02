@@ -22,8 +22,6 @@ export function mountDocPresence({ document: root = document, window: win = wind
   root.body.append(dialog);
   const $ = id => root.getElementById(id);
   let snapshot = context.snapshot(), suggestions = null, suggestionState = 'updating', client = supplied, approval, shown = [], chosen = null, disposed = false, readEpoch = 0, lastScope = '';
-  const old = root.querySelector('.app-shell-doc'); if (old) old.hidden = true;
-  for (const id of ['docFab','docChat']) if ($(id)) $(id).hidden = true;
   const keep = (target, html) => {
     if (target.innerHTML === html) return;
     const focus = target.contains(root.activeElement) ? root.activeElement?.dataset.docKey : null;
@@ -38,16 +36,16 @@ export function mountDocPresence({ document: root = document, window: win = wind
     $('docUpdated').textContent = updatedLabel(snapshot.observedAt);
     if (snapshot.observedAt) $('docUpdated').dateTime = snapshot.observedAt; else $('docUpdated').removeAttribute('datetime');
     shown = contextualSuggestions(snapshot, suggestions, { evaluatedPages: DOC_EVALUATED_PAGES });
-    const state = !snapshot.ready ? snapshot.state === 'updating' ? 'Updating…' : 'Unavailable' : suggestionState === 'unavailable' ? 'Suggestions unavailable' : suggestionState === 'updating' ? 'Updating…' : 'No matching suggestions';
+    const state = !snapshot.ready ? snapshot.state === 'updating' ? 'Updating…' : 'Unavailable' : suggestionState === 'unavailable' ? 'Suggestions unavailable' : suggestionState === 'updating' ? 'Updating…' : 'No suggestions';
     keep($('docSuggestions'), shown.length ? shown.slice(0, 2).map(row => `<button type="button" data-doc-suggestion="${escape(row.id)}" data-doc-key="suggestion:${escape(row.id)}"><span aria-hidden="true">✦</span>${escape(row.polished_text || 'Review suggestion')}<span aria-hidden="true">↗</span></button>`).join('') : `<span class="doc-quiet">${state}</span>`);
     if (!dialog.open) return;
     const records = snapshot.ready ? snapshot.records : [];
     const selected = snapshot.active ? `${snapshot.active.kind}:${snapshot.active.id}` : chosen;
     const selectedRecord = records.find(row => `${row.kind}:${row.id}` === selected);
     // Keep exact selection; a vanished card never silently becomes another one.
-    keep($('docRecord'), '<option value="">Choose a record</option>' + records.map(row => `<option value="${escape(`${row.kind}:${row.id}`)}">${escape(row.title)}</option>`).join(''));
+    keep($('docRecord'), '<option value="">Record</option>' + records.map(row => `<option value="${escape(`${row.kind}:${row.id}`)}">${escape(row.title)}</option>`).join(''));
     $('docRecord').value = selectedRecord ? selected : ''; $('docRecord').disabled = !!snapshot.selected || !snapshot.ready;
-    const facts = selectedRecord ? `<h3>${escape(selectedRecord.title)}</h3><dl>${selectedRecord.fields.map(item => { const answer = docAnswer(snapshot, { kind:selectedRecord.kind, recordId:selectedRecord.id, question:item.label }); return `<div><dt>${escape(item.label)}</dt><dd>${escape(display(answer.value))}</dd></div>`; }).join('')}</dl>` : `<p class="doc-quiet">${snapshot.ready ? 'Choose a record' : state}</p>`;
+    const facts = selectedRecord ? `<h3>${escape(selectedRecord.title)}</h3><dl>${selectedRecord.fields.map(item => { const answer = docAnswer(snapshot, { kind:selectedRecord.kind, recordId:selectedRecord.id, question:item.label }); return `<div><dt>${escape(item.label)}</dt><dd>${escape(display(answer.value))}</dd></div>`; }).join('')}</dl>` : snapshot.ready ? '' : `<p class="doc-quiet">${state}</p>`;
     keep($('docFacts'), facts);
     keep($('docActivity'), selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
     keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);

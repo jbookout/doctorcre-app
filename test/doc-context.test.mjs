@@ -121,3 +121,14 @@ for (const change of [latest => ({...latest,ok:false}), latest => ({...latest,su
  assert.equal((await approval.approve(suggestion,shown)).state,'changed'); assert.equal(writes,0);
 });
 test('system record cannot answer for a different requested work identity',()=>assert.equal(normalizeDocRead('systemRecord',{human_ref:'WR-DEMO-B',title:'Demo B'},['WR-DEMO-A']),null));
+
+test('page selection hooks use recorded IDs for Calendar, Events and Control Room', async () => {
+ const {readFile}=await import('node:fs/promises');
+ const calendar=await readFile(new URL('../js/calendar.js',import.meta.url),'utf8');
+ const ideas=await readFile(new URL('../js/ideas.js',import.meta.url),'utf8');
+ const control=await readFile(new URL('../js/control-room.js',import.meta.url),'utf8');
+ assert.match(calendar,/selectDocRecord\(currentEntry \? "deal" : null, currentEntry\?\.deal_id\)/);
+ assert.match(ideas,/selectDocRecord\(row \? 'event' : null, row\?\.id\)/);
+ assert.match(control,/selectDocRecord\("incident", row\.ref\)/);
+ assert.ok(DOC_PAGES.control.reads.includes('workRequestCard'));
+});

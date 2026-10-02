@@ -74,7 +74,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'today-triage': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'list-doc-suggestions': 1, 'today-triage': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -86,7 +86,6 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#homeDetail dd').first().textContent(), /10\/1\/2026/);
     await screenshot(page, width === 1440 ? 'desktop-detail' : `phone-detail-${width}`);
     await page.keyboard.press('Escape'); assert.equal(await first.evaluate(node => document.activeElement === node), true);
-    if (width <= 760) await page.locator('#appSidebarToggle').click();
     await page.getByRole('button', { name: 'Just Me', exact: true }).click();
     assert.equal(await page.locator('.home-flags .home-flag').count(), 2);
     assert.match(await page.locator('.home-lead').first().textContent(), /Demo New Practice 2/);

@@ -30,11 +30,13 @@ async function setup(t,{width=1440,motion='no-preference'}={}) {
 
 test('shared Doc presence appears on every authenticated route; narrow drawers never hide it',async t=>{
  const{page,goto,errors,calls}=await setup(t);
+ for(const width of [1440,390]) { await page.setViewportSize({width,height:960});
  for(const path of ['/', '/deals', '/leads', '/tours', '/clients','/vendors','/calendar','/ideas-events','/control-room','/control-room/progress','/work-requests','/all-work','/incidents','/agent-room','/control-room/agents/queue','/updates','/doc-chats','/doc-chats/work','/search','/status','/design-lab']){
   try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); } assert.equal(await page.locator('#appMainSlot > #docPresence').count(),1,path);
   assert.equal(await page.locator('#docOpen').isVisible(),true,path);
   assert.equal(await page.locator('#docChat:visible').count(),0,path);
   await page.locator('#docOpen').click();assert.equal(await page.locator('#docDetail').evaluate(n=>n.open),true,path);await page.keyboard.press('Escape');
+ }
  }
  assert.deepEqual(errors,[]);
  assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
@@ -48,9 +50,9 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
  await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
- await page.screenshot({path:new URL('test-artifacts/w8/staged-desktop.png',root).pathname,fullPage:true,animations:'disabled'});
+ await page.screenshot({path:new URL('test-artifacts/w8/staged-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.setViewportSize({width:390,height:844});
- await page.screenshot({path:new URL('test-artifacts/w8/staged-phone.png',root).pathname,fullPage:true,animations:'disabled'});
+ await page.screenshot({path:new URL('test-artifacts/w8/staged-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.setViewportSize({width:1440,height:960});
  await page.locator('[data-doc-approve]').click();await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Discussion approved');
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,1);
@@ -59,13 +61,13 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  assert.ok(await page.locator('#docDetail').evaluate(n=>n.getBoundingClientRect().width)>900);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
- await page.screenshot({path:new URL('test-artifacts/w8/doc-desktop.png',root).pathname,fullPage:true,animations:'disabled'});
- await page.keyboard.press('Escape');await page.screenshot({path:new URL('test-artifacts/w8/presence-desktop.png',root).pathname,fullPage:true,animations:'disabled'});
+ await page.screenshot({path:new URL('test-artifacts/w8/doc-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await page.keyboard.press('Escape');await page.screenshot({path:new URL('test-artifacts/w8/presence-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.locator('#docOpen').click();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
- await page.screenshot({path:new URL('test-artifacts/w8/doc-phone.png',root).pathname,fullPage:true,animations:'disabled'});
- await page.keyboard.press('Escape');await page.screenshot({path:new URL('test-artifacts/w8/presence-phone.png',root).pathname,fullPage:true,animations:'disabled'});
+ await page.screenshot({path:new URL('test-artifacts/w8/doc-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await page.keyboard.press('Escape');await page.screenshot({path:new URL('test-artifacts/w8/presence-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await page.locator('.doc-presence .doc-orb').evaluate(n=>getComputedStyle(n).animationName),'none');
  await page.locator('#docOpen').focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');

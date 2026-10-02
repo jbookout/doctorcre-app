@@ -13,7 +13,7 @@ export const DOC_PAGES = Object.freeze({
   calendar: { label: 'Calendar', reads: ['getBoard', 'getDeal', 'listIndustryEvents'] },
   ideas: { label: 'Ideas', reads: ['loopBoard', 'readLoop'] },
   events: { label: 'Events', reads: ['listIndustryEvents'] },
-  control: { label: 'Control Room', reads: ['currentWorkItem', 'currentWorkRequests', 'incidentBoard'] },
+  control: { label: 'Control Room', reads: ['currentWorkItem', 'currentWorkRequests', 'workRequestCard', 'incidentBoard'] },
   progress: { label: 'Progress', reads: ['readProgressBoard'] },
   work: { label: 'Work Requests', reads: ['currentWorkRequests', 'workRequestCard', 'systemCurrent', 'systemRecord', 'unfinishedWork'] },
   inventory: { label: 'All Work', reads: ['unfinishedWork', 'workInventory'] },

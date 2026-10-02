@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C01 — the Control Room: DOM wiring only.
 //
@@ -249,6 +250,7 @@ function renderNeedsJoeDetail() {
 }
 
 async function openNeedsJoeDetail(humanRef) {
+  selectDocRecord(view.needsJoeDetail.humanRef === humanRef ? null : "work", view.needsJoeDetail.humanRef === humanRef ? null : humanRef);
   if (view.needsJoeDetail.humanRef === humanRef) {
     // A second press of the same row's button closes it, rather than
     // re-reading a card that already answered.
@@ -626,6 +628,7 @@ function openIncident(ref) {
   const row = payload?.incidents?.find((candidate) => candidate.ref === ref);
   const dialog = $("incidentDialog");
   if (!row || !dialog) return;
+  selectDocRecord("incident", row.ref);
   $("incidentDialogTitle").textContent = row.title;
   $("incidentRows").innerHTML = Object.entries(row)
     .filter(([, value]) => value !== null && value !== undefined && typeof value !== "object")
@@ -805,6 +808,7 @@ async function boot() {
     if (key === "agents") openModelRoom();
   };
   globalThis.window?.addEventListener("popstate", restoreTab);
+  $("incidentDialog")?.addEventListener("close", () => selectDocRecord(null,null));
   $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
   $("resourceDetailClose")?.addEventListener("click", () => $("resourceDetailDialog")?.close());
   $("retryRead")?.addEventListener("click", () => load());

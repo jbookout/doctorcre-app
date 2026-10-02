@@ -1,6 +1,6 @@
 .doc-presence { position:sticky; top:0; z-index:8; display:flex; align-items:center; gap:16px; min-width:0; margin:0 0 18px; padding:12px 16px; border:1px solid #8bb6eb24; border-radius:16px; background:linear-gradient(110deg,#002f6c50,#070d17ed 42%,#f2692412); backdrop-filter:blur(22px); box-shadow:0 12px 38px #0005; color:#edf2fc; }
-.doc-presence button,.doc-detail button { cursor:pointer; border:1px solid #7eafff30; border-radius:10px; background:#14213670; color:inherit; min-height:44px; padding:8px 12px; font:inherit; transition:transform 180ms,background 180ms,box-shadow 180ms; }
-.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover { transform:translateY(-2px); background-color:#20345e70; box-shadow:0 7px 20px #0004; }
+.doc-presence button,.doc-detail button { cursor:pointer; border:1px solid #7eafff30; border-radius:10px; background:#14213670; color:inherit; min-height:44px; min-width:44px; padding:8px 12px; font:inherit; transition:transform 180ms,background 180ms,box-shadow 180ms; }
+.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover { transform:translateY(-2px); background-color:#20345e70; box-shadow:0 7px 20px #0004; }
 .doc-presence button:focus-visible,.doc-detail :is(button,select,a,summary):focus-visible { outline:2px solid #ff8a48; outline-offset:3px; }
 .doc-identity { flex:none; display:flex; align-items:center; gap:10px; text-align:left; border:0!important; background:transparent!important; }
 .doc-identity b { font:700 24px/1 'Barlow Condensed','Arial Narrow',sans-serif; letter-spacing:.04em; }
@@ -33,18 +33,17 @@
 .doc-action p,.doc-activity p { font-size:13px; color:#b4c3dc; line-height:1.6; }
 .doc-action>button { margin-top:16px; background:#f2692426; border-color:#f2692460; }
 .doc-detail details { margin-top:12px; font-size:12px; }
-.doc-detail summary { cursor:pointer; color:#93baf4; }
+.doc-detail summary { box-sizing:border-box; min-height:44px; padding:12px 0; cursor:pointer; color:#93baf4; }
 .doc-detail .entry-original { white-space:pre-wrap; }
-.doc-spark { color:#ff9855; }.doc-chats-link { display:inline-block; margin-top:20px; color:#a6c9ff; font-size:13px; }
+.doc-spark { color:#ff9855; }.doc-chats-link { display:inline-flex; align-items:center; min-height:44px; margin-top:20px; color:#a6c9ff; font-size:13px; }
 #docApprovalStatus { min-height:20px; color:#ffb185; font-size:13px; }
 @keyframes doc-breathe { 50% { box-shadow:0 0 24px #f2692450,inset 0 0 16px #87b9ff70; } }
 @keyframes doc-arrive { from { opacity:0; transform:translateY(10px) scale(.99); } }
 @media(max-width:760px) { .doc-presence { gap:8px; padding:8px; flex-wrap:wrap; border-radius:12px; } .doc-identity { flex:1; } .doc-identity>span:nth-child(2) { max-width:180px; } .doc-suggestion-strip { order:3; flex-basis:100%; } .doc-suggestion-strip button { flex:1; } .doc-suggestion-strip button:nth-child(n+2) { display:none; } .doc-detail { padding:18px; width:calc(100vw - 20px); max-height:calc(100dvh - 24px); } .doc-detail-grid { grid-template-columns:minmax(0,1fr); gap:12px; } }
-@media(prefers-reduced-motion:reduce) { .doc-orb,.doc-detail[open] { animation:none; } .doc-presence button,.doc-detail button,.doc-action { transition:none; } .doc-presence button:hover,.doc-detail button:hover,.doc-action:hover { transform:none; } }
-.has-app-layout .doc-fab,.has-app-layout .doc-chat,.has-app-layout .app-shell-doc[hidden] { display:none!important; }
+@media(prefers-reduced-motion:reduce) { .doc-orb,.doc-detail[open] { animation:none; } .doc-presence button,.doc-detail button,.doc-action,.doc-activity { transition:none; } .doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover { transform:none; } }
 :root[data-motion="reduced"] :is(.doc-orb,.doc-detail[open]) { animation:none; }
-:root[data-motion="reduced"] :is(.doc-presence button,.doc-detail button,.doc-action) { transition:none; }
-:root[data-motion="reduced"] :is(.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover) { transform:none; }
+:root[data-motion="reduced"] :is(.doc-presence button,.doc-detail button,.doc-action,.doc-activity) { transition:none; }
+:root[data-motion="reduced"] :is(.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover) { transform:none; }
 @media(max-width:760px) { .doc-detail-grid>section:last-child { order:-1; } }
 
 .doc-presence { top:70px; }

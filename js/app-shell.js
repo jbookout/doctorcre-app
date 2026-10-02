@@ -93,7 +93,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
         </div>
       </div>
     </div>
-  </header><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
+  </header>`;
 }
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
@@ -101,7 +101,6 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
-  if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
   if (!base && pathname !== "/share") { mountAppLayout(root, host, pathname); mountDocPresence({ document:root, window:root.defaultView }); }

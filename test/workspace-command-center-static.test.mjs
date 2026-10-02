@@ -75,7 +75,7 @@ test("More keeps Updates, Operations and Reference in stable groups", () => {
     assert.match(nav, new RegExp(`href="${route}"`));
   }
   assert.match(nav, /href="\/search" aria-label="Search"/);
-  assert.match(nav, /href="\/doc-chats" aria-label="Doc"/);
+  assert.match(nav, /aria-label="Doc Chats"[^>]*href="\/doc-chats"/);
 });
 
 test("no page links to the removed Meeting page and the route is gone", async () => {

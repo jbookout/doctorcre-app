@@ -259,6 +259,7 @@ function showEventConflict(latest) {
 function openEvent(id = null) {
   const row = id ? view.events.rows.find((event) => event.id === id) : null;
   if (id && !row) return;
+  selectDocRecord(row ? 'event' : null, row?.id);
   view.events.current = row ? { id: row.id, version: row.version } : null;
   const key = id || "new";
   const draft = view.events.draft?.key === key ? view.events.draft : null;
@@ -284,6 +285,7 @@ function openEvent(id = null) {
 }
 
 function closeEvent({ discard = false } = {}) {
+  selectDocRecord(null,null);
   if (discard) view.events.draft = null;
   const dialog = $("eventDialog");
   if (dialog?.open) dialog.close();
@@ -504,6 +506,7 @@ function wire() {
     $("eventFormMessage").textContent = "Your draft now uses the latest event version. Review it before saving.";
     $("eventSave").focus();
   });
+  $("eventDialog")?.addEventListener("close", () => selectDocRecord(null,null));
   $("eventDialogClose")?.addEventListener("click", () => closeEvent());
   $("eventCancel")?.addEventListener("click", () => closeEvent({ discard: true }));
   window.addEventListener("resize", () => drawTimeline(["ready", "partial"].includes(view.events.status) ? view.events.rows : []));

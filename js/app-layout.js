@@ -33,7 +33,7 @@ export function mountAppLayout(root, host, pathname) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock')) continue;
+    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .toast, .receipt-dock')) continue;
     if (node.matches('footer')) { node.hidden = true; status.querySelector('#appStatusSlot').append(node); }
     else main.append(node);
   }

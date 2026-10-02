@@ -781,9 +781,9 @@ test("pipeline.html asks for dates with a calendar only, and never claims a gate
 
 test("pipeline.html carries the shared shell exactly once and nothing under its title", async () => {
   const html = await read("pipeline.html");
-  assert.equal((html.match(/id="docFab"/g) || []).length, 1, "one floating Doc");
-  assert.equal((html.match(/id="docChat"/g) || []).length, 1);
-  assert.match(html, /id="docReading">Doc is reading: Deals</);
+  assert.equal((html.match(/id="docFab"/g) || []).length, 0, "legacy dock is absent");
+  assert.equal((html.match(/id="docChat"/g) || []).length, 0);
+  assert.doesNotMatch(html, /id="docReading">Doc is reading: Deals</);
   assert.match(html, /id="receiptDock"/, "the command dock is on the page");
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
