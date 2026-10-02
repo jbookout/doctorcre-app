@@ -4,7 +4,7 @@ import { createLiveClient } from './live-client.js';
 import { boardView, boardFreshness, taskIdentity, taskSummary, relatedQuestions } from './progress-board-model.js';
 import { mountProgressWire } from './room.js';
 import { validEngineeringPassport } from './job-passport.js';
-import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, scopeRefs, exactReference, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
+import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
 import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
@@ -178,7 +178,7 @@ async function readSessions(query = sessionQuery) {
     if (!current()) return;
     if (!Array.isArray(read.sessions)) throw new Error('session shape');
     const unscoped = !scope.task && !scope.workRequest && !scope.session;
-    const rows = read.sessions.filter(row => query || unscoped || sessionIds.has(row.canonical_session_id) || [...sessionIds].some(ref => nativeReference(ref) === nativeReference(row.native_host_id) && row.native_host_id) || exactReference(row.latest_attempt_ref,scopeRefs(scope)));
+    const rows = read.sessions.filter(row => query || unscoped || sessionIds.has(row.canonical_session_id) || [...sessionIds].some(ref => nativeReference(ref) === nativeReference(row.native_host_id) && row.native_host_id));
     patch($('workSessionList'), {rows, query,filtered:read.permission_filtered}, () => {
       const nodes = [node('p',query ? 'Lookup results · selecting a session adds its explicit link to this view.' : 'Recorded sessions linked by exact evidence.','work-empty')];
       if (read.permission_filtered) nodes.push(node('p','CARR omitted sessions outside your permission.'));
@@ -209,7 +209,7 @@ document.addEventListener('progress-auth-lost', () => {
     sessionIds.clear(); ++dispatchSelection; dispatchRows = []; dispatchCursor = null; dispatchPages = 0;
     $('workDispatchMore').hidden = true; signatures.clear();
     for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),'Sign in to read work evidence.');
-    scope.refs = []; scope.sourceSeqs = []; selectedSession = scope.session;
+    scope.refs = []; scope.attempts = []; scope.sourceSeqs = []; selectedSession = scope.session;
     $('workTitle').textContent = 'Work detail'; document.title = 'Work detail · Progress';
     breadcrumbs('Progress', 'Sign in');
 });
@@ -239,7 +239,8 @@ async function refresh() {
         if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value;
         // The canonical projection resolves a human reference into its immutable
         // wr:<uuid> binding. Keep that binding for subsequent exact wire joins.
-        scope.refs = [...new Set([...(scope.refs || []),typeof value.work_request === 'string' ? value.work_request : value.work_request.id,...value.receipts.map(row=>row.attempt_id).filter(Boolean)])];
+        scope.refs = [...new Set([...(scope.refs || []),typeof value.work_request === 'string' ? value.work_request : value.work_request.id])];
+        scope.attempts = passportAttempts(value);
         patch($('workCanonicalBody'),value,()=>[record(`Closure: ${value.closure_state} · ${value.stale_conflict.state}`,value)]); deriveLinks(); renderReviews();
       }).catch(error => authCurrent(epoch) && fail(error,$('workCanonicalBody'),'Engineering Passport')),
     ]);
@@ -274,11 +275,7 @@ empty($('workDotList'),'Waiting for the queue projection.');
 wire = mountProgressWire({scope,onRead:read=>{
   if (!authReadable(authGeneration())) return;
   turns = read.turns;
-  const refs = [...new Set([...(scope.refs || []),...read.model.jobPassports.passports.map(passport=>passport.attempt_lane.attempt_id)])].sort();
-  const changed = JSON.stringify(refs) !== JSON.stringify(scope.refs || []);
-  scope.refs = refs; deriveLinks(); renderReviews(); renderDot();
-  // Attempt-only telemetry joins through the already validated work binding.
-  if (changed) wire?.refreshScope();
+  deriveLinks(); renderReviews(); renderDot();
 }});
 refresh();
 let refreshTimer;

@@ -159,7 +159,7 @@ createServer(async (request, response) => {
     // so a browser's automatic request is not a 404 on every page.
     if (url.pathname.startsWith("/icons/")) url.pathname = `/public-shell${url.pathname}`;
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
-    const requested = url.pathname === "/deals" && url.searchParams.get("view") === "board" ? "pipeline.html"
+    const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
       : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : url.pathname] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");

@@ -7,7 +7,7 @@
     "/control-room/progress": "progress-board.html",
     "/control-room/progress/board/:boardId": "progress-board.html",
     "/control-room/progress/work": "progress-work.html",
-    "/deals": "index.html",
+    "/deals": "pipeline.html",
     "/leads": "leads.html",
     "/clients": "business.html",
     "/vendors": "business.html",
