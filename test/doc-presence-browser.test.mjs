@@ -9,6 +9,11 @@ const contract=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',
 async function setup(t,{width=1440,motion='no-preference',onRoute}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});page.setDefaultTimeout(10000);
+ // Playwright polls synchronous predicates. Import the page store once so
+ // readiness checks return a boolean rather than a truthy Promise.
+ await page.addInitScript(()=>window.addEventListener('DOMContentLoaded',()=>{
+  import('/js/doc-context.js').then(({pageDocContext})=>{window.docContext=pageDocContext;});
+ },{once:true}));
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
@@ -135,8 +140,8 @@ async function escapeRecord(page, selector) {
   document.querySelector(selector).addEventListener('close',()=>queueMicrotask(()=>{window.recordCloseObserved=true;}),{once:true});
  },selector);
  await page.keyboard.press('Escape');
- await page.waitForFunction(async selector=>window.recordCloseObserved&&!document.querySelector(selector).open &&
-  (await import('/js/doc-context.js')).pageDocContext.snapshot().selected===null,selector);
+ await page.waitForFunction(selector=>window.recordCloseObserved&&!document.querySelector(selector).open &&
+  window.docContext?.snapshot().selected===null,selector);
 }
 const rpc=async(route,payload)=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(payload)}]}}});
 const tourId='22222222-2222-4222-8222-222222222222';
@@ -183,7 +188,7 @@ test('initial Queue read uses the mounted Wire filter scope and publishes its fi
   return producerRoute(route,env);
  }});
  await goto('/control-room/progress/work');await entered;
- await page.waitForFunction(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().records.some(r=>r.kind==='room-turn'));
+ await page.waitForFunction(()=>window.docContext?.snapshot().records.some(r=>r.kind==='room-turn'));
  release();await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('running'));
  const c=await readContext(page);assert.equal(c.ready,true);assert.ok(c.records.some(r=>r.kind==='room-task'));
 });
@@ -192,6 +197,16 @@ test('R10 nonempty candidates bind popup identity and native close clears it',as
  await page.locator('[data-claim-open]').first().click();let c=await readContext(page);
  assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'candidate',id:'1'});assert.equal(c.active.title,'Sample candidate');
  await escapeRecord(page,'#claimDialog');assert.equal((await readContext(page)).selected,null);
+});
+test('close readiness waits until queued context cleanup finishes',async t=>{
+ const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
+ await page.locator('[data-claim-open]').first().click();
+ await page.evaluate(async()=>{
+  const c=(await import('/js/doc-context.js')).pageDocContext,select=c.select;
+  c.select=(kind,id)=>id===null?setTimeout(()=>select(kind,id),250):select(kind,id);
+ });
+ await escapeRecord(page,'#claimDialog');
+ assert.equal((await readContext(page)).selected,null);
 });
 test('R14/R15/R16 Ideas searches, Escape and tab return keep correctly scoped observations',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await page.goto('https://app.doctorcre.com/ideas-events',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.querySelector('#ideaList')?.textContent.includes('Sample idea'));
@@ -266,7 +281,7 @@ test('R11/R18 Search completed catch-up supports positive context through live M
   if(url.pathname!=='/mcp')return false;const {name}=route.request().postDataJSON().params;
   if(name==='find'){await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Sample Practice',city:null,specialty:null,org_name:null,merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;}
   if(name==='find-and-catch-up'){await rpc(route,{state:'completed',match:{kind:'client',name:'Sample Practice',target:'C-SAMPLE'},catch_up:{timeline:[{summary:'Sample review',occurred_at:'2026-10-01T12:00:00Z'}]}});return true;}return false;
- }});await page.goto('https://app.doctorcre.com/search',{waitUntil:'domcontentloaded'});await page.locator('#searchQuery').fill('Sample');await page.locator('#searchForm').dispatchEvent('submit');await page.waitForFunction(async()=>{const c=(await import('/js/doc-context.js')).pageDocContext.snapshot();return c.ready&&c.records.some(r=>r.kind==='catch-up'&&r.activity[0]?.text==='Sample review');});
+ }});await page.goto('https://app.doctorcre.com/search',{waitUntil:'domcontentloaded'});await page.locator('#searchQuery').fill('Sample');await page.locator('#searchForm').dispatchEvent('submit');await page.waitForFunction(()=>{const c=window.docContext?.snapshot();return c?.ready&&c.records.some(r=>r.kind==='catch-up'&&r.activity[0]?.text==='Sample review');});
  const c=await readContext(page);assert.equal(c.records.find(r=>r.kind==='catch-up'&&r.id==='C-SAMPLE')?.activity[0].text,'Sample review');
 });
 for(const failure of ['timeout','malformed'])test(`R6 Tour background ${failure} invalidates eligible context`,async t=>{
@@ -319,7 +334,7 @@ test('R13/R18 incomplete conversation reports unknown recent activity in the ans
     {sequence:2,body:'Later sample turn on first page',at:'2026-10-01T11:00:00Z'}]});return true;
  }});
  await goto('/doc-chats?mode=live&id='+id);
- await page.waitForFunction(async()=> {const c=(await import('/js/doc-context.js')).pageDocContext.snapshot();return c.ready&&c.active?.activityComplete===false;});
+ await page.waitForFunction(()=> {const c=window.docContext?.snapshot();return c?.ready&&c.active?.activityComplete===false;});
  await page.locator('#docOpen').click();
  assert.match(await page.locator('#docActivity').innerText(),/Recent activity unknown.*incomplete/i);
  assert.equal(await page.locator('#docActivity article').count(),0);
@@ -332,9 +347,9 @@ test('R13/R18 incomplete conversation reports unknown recent activity in the ans
 });
 test('R18 closed Deal detail cannot survive an empty board projection',async t=>{
  const {page,goto}=await setup(t);await goto('/deals?mode=live&deal=d14');
- await page.waitForFunction(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().active?.id==='d14');
+ await page.waitForFunction(()=>window.docContext?.snapshot().active?.id==='d14');
  await page.locator('[data-close-deal]').click();
- await page.waitForFunction(async()=>!(await import('/js/doc-context.js')).pageDocContext.snapshot().selected);
+ await page.waitForFunction(()=>window.docContext?.snapshot().selected===null);
  await page.locator('[data-workspace="team"]').click();
  await page.locator('#appSidebarToggle').click();
  await page.locator('#search').fill('no matching synthetic record');
