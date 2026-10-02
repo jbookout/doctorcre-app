@@ -15,7 +15,7 @@ test("lead board shell carries accessible controls, status regions, and pipeline
   assert.match(html, /<marker id="pipelineArrow"/);
   assert.match(html, /class="pipeline-track"[^>]+tabindex="0"/);
   assert.match(html, /id="leadSearch"/);
-  assert.match(html, /id="densityToggle"[^>]+aria-pressed=/);
+  assert.doesNotMatch(html, /id="densityToggle"/);
   assert.match(html, /id="boardView"[^>]+aria-pressed="true"/);
   assert.match(html, /id="listView"[^>]+aria-pressed="false"/);
   assert.match(html, /id="refreshBoard"/);

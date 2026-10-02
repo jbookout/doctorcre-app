@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-S02 clauses 1-2 — the Sessions tab: DOM wiring only.
 //
 // Every decision about a payload is in ./sessions-model.js. This file reads,
@@ -96,7 +97,7 @@ function cardHtml(card) {
       ${chip("surface", card.surface)}
       ${chip("work state", card.workStateLabel, card.workState === "unknown" ? "unknown" : "read")}
       ${chip("observed", clock(card.observedAt))}
-      ${chip("source", card.observationSource)}
+
     </div>
     <p class="session-evidence">${escapeHtml(card.evidence ?? "No observation is recorded behind this state.")}</p>
     <p class="session-lineage" data-relation="${escapeHtml(card.lineage.relation)}">${escapeHtml(card.lineage.text)}</p>
@@ -133,7 +134,7 @@ function renderList() {
   if (view.status === "loading") {
     list.innerHTML = "";
     empty.hidden = false;
-    empty.textContent = "Taking the read…";
+    empty.textContent = "Updating…";
     if (summary) summary.hidden = true;
     return;
   }
@@ -179,7 +180,7 @@ function renderList() {
 function historyHtml(id) {
   const entry = view.history.get(id);
   if (!entry) return '<p class="small">Not read yet.</p>';
-  if (entry.state === "loading") return '<p class="small">Taking the read…</p>';
+  if (entry.state === "loading") return '<p class="small">Updating…</p>';
   if (entry.state === "unknown") {
     return `<p class="small">The dispatch read could not be rendered: ${escapeHtml(entry.reason)}.</p>`;
   }
@@ -259,7 +260,7 @@ async function read() {
     view.refusal = String(error?.payload?.error || error?.message || "the session read did not answer");
   }
   render();
-  announce(view.refusal ? "The session read did not answer." : countsLine(view.payload).text);
+  announce(view.refusal ? "Sessions temporarily unavailable." : countsLine(view.payload).text);
 }
 
 function openHistory(id) {
@@ -337,6 +338,7 @@ export function mountSessions({ outage = null } = {}) {
     : createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
   Promise.resolve(boot).then((ready) => {
     client = ready;
+    mountAutoRefresh({ document, window: globalThis.window, refresh: read });
     return read();
   });
 }

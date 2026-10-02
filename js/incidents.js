@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C14 — the incident page: DOM wiring only.
 //
 // Every decision about a payload, a reference or a sentence lives in
@@ -128,21 +129,21 @@ function renderDetail() {
   $("hypothesesEyebrow").textContent = HYPOTHESIS_EYEBROW;
 
   $("factList").innerHTML = factRows(payload.facts).map((fact) => rowHtml({
-    title: fact.statement, meta: `source ${fact.source} · recorded at ${fact.clock}`,
-  })).join("") || rowHtml({ title: "No fact is recorded on this incident yet", meta: "read from the operational ledger" });
+    title: fact.statement, meta: fact.clock,
+  })).join("") || rowHtml({ title: "No fact is recorded on this incident yet", meta: "" });
 
   $("hypothesisList").innerHTML = hypothesisRows(payload.hypotheses).map((row_) => rowHtml({
     title: row_.statement, meta: `${row_.status} · recorded at ${row_.clock}`,
-  })).join("") || rowHtml({ title: "No hypothesis is recorded on this incident yet", meta: "read from the operational ledger" });
+  })).join("") || rowHtml({ title: "No hypothesis is recorded on this incident yet", meta: "" });
 
   $("occurrenceList").innerHTML = occurrenceRows(payload.occurrences).map((row_) => rowHtml({
     title: row_.note, meta: `seen at ${row_.clock}`,
-  })).join("") || rowHtml({ title: "No further occurrence is recorded", meta: "read from the operational ledger" });
+  })).join("") || rowHtml({ title: "No further occurrence is recorded", meta: "" });
 
   $("linkList").innerHTML = linkRows(payload.links).map((link) => rowHtml({
     title: link.label, meta: `${link.ref} · ${link.kind}`,
     end: link.href ? `<a class="btn" href="${escapeHtml(link.href)}">Open</a>` : "",
-  })).join("") || rowHtml({ title: "Nothing is linked to this incident yet", meta: "read from the operational ledger" });
+  })).join("") || rowHtml({ title: "Nothing is linked to this incident yet", meta: "" });
 }
 
 function render() {
@@ -265,6 +266,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
 }
 
 boot();

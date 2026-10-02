@@ -33,7 +33,7 @@ const release = { state: "read", observed_at: CLOCK, payload: { service: "doctor
 test("scenario 1: the app answered and every read answered", () => {
   const model = statusHeadline({ release, reads: allAnswered() });
   assert.equal(model.scenario, 1);
-  assert.equal(model.headline, "DoctorCRE is serving and the record layer answered.");
+  assert.equal(model.headline, "DoctorCRE is available.");
   assert.deepEqual(model.silent, []);
   assert.equal(model.lastKnown, false);
 });
@@ -41,9 +41,9 @@ test("scenario 1: the app answered and every read answered", () => {
 test("scenario 2: the app answered and one collector did not, by name, with the retry action", () => {
   const model = statusHeadline({ release, reads: { ...allAnswered(), incidents: refused() } });
   assert.equal(model.scenario, 2);
-  assert.equal(model.headline, "DoctorCRE is serving; the record layer did not answer for: Incidents.");
+  assert.equal(model.headline, "Unavailable: Incidents");
   assert.deepEqual(model.silent, ["incidents"]);
-  assert.match(model.action, /^Retry in a minute; if it persists, open the incident queue when the record layer returns\.$/);
+  assert.match(model.action, /^Updates resume automatically$/);
 });
 
 test("scenario 3: the app did not answer and a snapshot exists, timestamped and captioned", () => {
@@ -86,13 +86,13 @@ test("one collector outage leaves every other chip untouched and produces no zer
   const chips = statusChips({ release, reads });
   assert.equal(chips.length, 5, "the four record-layer reads plus the app read");
   assert.equal(chips[0].id, APP_READ_ID);
-  assert.match(chips[0].text, /^app: read at \d{1,2}:\d{2} (AM|PM)$/);
+  assert.match(chips[0].text, /^app: updated \d{1,2}:\d{2} (AM|PM)$/);
   const census = chips.find((chip) => chip.id === "census");
   assert.equal(census.state, "unknown");
   assert.equal(census.text, `Work census: unknown (${REFUSAL_SENTENCE})`);
   for (const chip of chips.filter((candidate) => candidate.id !== "census")) {
     assert.equal(chip.state, "read", `${chip.id} was collateral damage`);
-    assert.match(chip.text, /read at \d{1,2}:\d{2} (AM|PM)$/);
+    assert.match(chip.text, /updated \d{1,2}:\d{2} (AM|PM)$/);
   }
   assert.ok(chips.every((chip) => !/\b0\b/.test(chip.text)), "no chip states a zero");
 });
@@ -156,7 +156,8 @@ test("the integration gaps are the literal word unknown with a named reason", ()
   assert.equal(INTEGRATION_GAPS.length, 3);
   for (const gap of INTEGRATION_GAPS) {
     assert.equal(gap.word, "unknown");
-    assert.equal(gap.reason, "no producer yet");
+    assert.ok(gap.reason.length > 0);
+    assert.notEqual(gap.reason, "no producer yet");
   }
   assert.deepEqual(INTEGRATION_GAPS.map((gap) => gap.title), [
     "Truthful health and scoped degradation (V5-A01)",
@@ -180,7 +181,7 @@ test("the provider links are anchors this page never fetches", () => {
 
 test("the route is pinned and the contract moved on additively", () => {
   assert.equal(routes.routes["/status"], "status.html");
-  assert.equal(routes.version, "1.15.0");
+  assert.equal(routes.version, "1.18.0");
 });
 
 test("the page is read-only: no command dock, no Doc mount, no write verb", () => {

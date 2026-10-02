@@ -6,7 +6,7 @@ import { dirname, join, posix } from "node:path";
 const ROOT_FILES = [
   "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "pipeline.html", "progress-board.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
+  "pipeline.html", "progress-board.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_FILES = ["contracts/carr-interface.v1.json", "contracts/app-routes.v1.json"];
@@ -113,7 +113,11 @@ async function assembleArtifact(commit, paths, readSource) {
   for (const path of paths) {
     let content = await readSource(path);
     if (path === "reports/share.js") {
-      const shell = (await readSource("js/app-shell.js")).toString("utf8");
+      const source = (await readSource("js/app-shell.js")).toString("utf8");
+      // Token-authenticated public reports carry navigation back to the app.
+      // Partner controls live on the signed-in app, not the report hostname.
+      const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
+        .replace("  else mountAccount(root, host, pathname);", "") + '\nif (typeof document !== "undefined") mountAppShell();\n';
       const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
       if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
         throw new Error("report shell bundle needs an explicit export update");

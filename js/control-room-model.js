@@ -170,7 +170,7 @@ export function coverageLine(reads) {
     const read = source[id] || {};
     const name = READ_LABEL[id];
     const clock = read.state === "read" ? formatClock(read.observed_at) : null;
-    if (read.state === "read" && clock) return { id, name, state: "read", text: `${name}: read at ${clock}` };
+    if (read.state === "read" && clock) return { id, name, state: "read", text: `${name}: updated ${clock}` };
     const reason = read.state === "read" && !clock
       ? "the read carried no readable time"
       : read.reason || "this read did not answer";
@@ -192,12 +192,12 @@ export function readPhase({ status, reads }) {
 
 /** The header badge's words, one per phase. */
 export const HEADER_WORDS = Object.freeze({
-  loading: "Taking the reads…",
+  loading: "Updating…",
   no_access: "Session ended",
-  offline: "No read answered",
-  partial: "Some reads did not answer",
-  incomplete: "Some reads came back incomplete",
-  ready: "Every read answered",
+  offline: "Unavailable",
+  partial: "Partly available",
+  incomplete: "Partly available",
+  ready: "Current",
 });
 
 /**
@@ -306,7 +306,7 @@ export function dashboardTiles({ incidents, work, needsJoe, census, cadence = nu
   tiles.push({
     id: "changed", title: TILE_TITLE.changed, state: "not_in_release", value: null, word: "not in this release",
     reason: "no release feed exists to read",
-    sentence: "Not in this release: no release feed exists to read, so no change is claimed.",
+    sentence: "Release updates unavailable",
     open: null,
   });
 

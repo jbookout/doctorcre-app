@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run privacy:check
       - run: npm run check
       # PRs test the merge candidate under the strict required `test` context.
       # Main retains build/input checks; tag releases still run the full suite.

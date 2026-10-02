@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.33.0",
+  "version": "1.39.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "c4f1ad45273175c26c074336c0fecbf789718348"
+    "source_commit": "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -14,6 +14,7 @@
     "database_access": "forbidden"
   },
   "mcp_operations": [
+    "accept-ready-plan-amendment",
     "acknowledge-dispatch",
     "acknowledge-notification",
     "add-critical-date",
@@ -21,12 +22,19 @@
     "add-industry-event",
     "add-loop",
     "add-room-turn",
+    "advance-workflow-cutover-stage",
     "answer-board-question",
     "answer-work-request-for-joe",
     "append-tour-selection-cart-version",
+    "approve-retrieval-proposals",
+    "cancel-capability-session",
+    "cancel-workflow-cutover-plan",
     "capture-queue",
     "claim-card",
+    "close-investigation",
     "close-loop",
+    "confirm-slice-completions",
+    "correspondence-readiness",
     "create-doc-conversation",
     "create-national-account",
     "create-national-market-deal",
@@ -51,6 +59,7 @@
     "list-doc-suggestions",
     "list-industry-events",
     "list-my-codex-sessions",
+    "list-progress-boards",
     "loop-board",
     "loop-headers",
     "new-deal",
@@ -59,6 +68,8 @@
     "presence-lease",
     "promote-pool",
     "propose-doc-correction",
+    "read-assurance-health",
+    "read-correspondence-thread",
     "read-dispatch-history",
     "read-doc-conversation",
     "read-doc-outcome-cards",
@@ -77,6 +88,7 @@
     "resolve-conflict",
     "resolve-post-call-candidate",
     "revert-deal-field",
+    "review-and-triage",
     "review-deal",
     "schedule-board",
     "search-tour-properties",
@@ -90,10 +102,13 @@
     "start-deal-review",
     "supersede-work-request",
     "today-triage",
+    "triage-incident",
+    "unfinished-work",
     "update-deal",
     "update-industry-event",
     "update-lead",
     "update-loop",
+    "update-vendor",
     "work-request-card"
   ],
   "http_surfaces": [
@@ -106,8 +121,13 @@
     "/api/room/*",
     "/api/system-work/*",
     "/api/share/*",
+    "/api/share/feedback",
+    "/api/share/shortlist",
+    "/api/share/comment",
     "/api/tours/properties/search",
     "/api/tours/selection-cart",
+    "/api/tours/feedback",
+    "/api/tours/property-evidence/v1",
     "/api/tours/*"
   ],
   "invariants": [
@@ -117,6 +137,340 @@
     "Retries reuse the same idempotency key and reconcile against CARR.",
     "Fixture data is synthetic and cannot become production state.",
     "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
-    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one."
-  ]
+    "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one.",
+    "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
+  ],
+  "mcp_read_contracts": {
+    "correspondence-readiness": {
+      "write": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "response": {
+        "schema_version": "doctorcre-v5-j103-correspondence-store.v1",
+        "required_keys": [
+          "ok",
+          "schema_version",
+          "readiness",
+          "mailbox_reads_possible",
+          "activation",
+          "owed",
+          "kernel_gaps",
+          "policy",
+          "consentable_operations",
+          "never_consentable_operations",
+          "dispatchable",
+          "provider_operation",
+          "send_authority_holder",
+          "send_authority_seam",
+          "automatic_internal_update",
+          "effects"
+        ],
+        "readiness_keys": [
+          "server_instant",
+          "partners",
+          "read_receipt_writer_granted_to_runtime"
+        ],
+        "partner_keys": [
+          "partner_slug",
+          "consents_in_force",
+          "consents_revoked",
+          "read_receipts",
+          "drafts"
+        ],
+        "evidence_coverage": "Installation counts only; no deal or meeting index."
+      }
+    },
+    "read-correspondence-thread": {
+      "write": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_system": {
+            "type": "string"
+          },
+          "native_id": {
+            "type": "string"
+          },
+          "native_id_epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "source_system",
+          "native_id",
+          "native_id_epoch"
+        ]
+      },
+      "response": {
+        "required_keys": [
+          "ok",
+          "decision",
+          "reason_id",
+          "native_identity",
+          "receipts",
+          "dispatchable",
+          "provider_operation",
+          "send_authority_holder",
+          "send_authority_seam",
+          "automatic_internal_update",
+          "effects"
+        ],
+        "decisions": {
+          "unavailable": {
+            "additional_required_keys": [
+              "owed_seam"
+            ],
+            "receipts": []
+          },
+          "receipts_found": {
+            "receipt_keys": [
+              "read_receipt_id",
+              "partner_slug",
+              "adapter_kind",
+              "account_digest",
+              "native_identity",
+              "thread_metadata",
+              "metadata_digest",
+              "consent_in_force",
+              "recorded_at"
+            ]
+          }
+        },
+        "thread_metadata": "Opaque JSON object. Store enforces related relevance, forbids raw content and returns metadata only; no subject/body/attachment bytes.",
+        "identity_source": "Use only native identity already recorded on the deal activity; this verb does not discover threads by deal."
+      }
+    },
+    "read-assurance-health": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "72bac3e9abc09a5a8e908cefeae0e692c9ec73a5",
+        "module": "mcp-server/src/assurance-health-store.v5.js",
+        "projection_source": "migrations/0717_assurance_health_evidence_store.sql"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "workflow_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "workflow_version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "work_request_id": {
+                "type": "string",
+                "pattern": "^WR-[0-9]{1,12}$"
+              }
+            },
+            "required": [
+              "workflow_key",
+              "workflow_version"
+            ]
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "response": {
+        "schema_version": "assurance-health.v1",
+        "required_keys": [
+          "schema_version",
+          "scope",
+          "state",
+          "green",
+          "state_reason",
+          "capability_stage",
+          "capability_stage_attributable_to_findings",
+          "workflow_truth",
+          "owner",
+          "evidence",
+          "failing_layers",
+          "indeterminate_layers",
+          "missing_layers",
+          "unbindable_layers",
+          "reasons",
+          "impact",
+          "recovery"
+        ],
+        "states": [
+          "healthy",
+          "degraded",
+          "failed",
+          "unknown",
+          "disabled",
+          "not-yet-operational"
+        ],
+        "capability_stages": [
+          "act",
+          "draft",
+          "read",
+          "unavailable"
+        ],
+        "owner_keys": [
+          "kind",
+          "ref"
+        ],
+        "workflow_truth": {
+          "unavailable_keys": [
+            "available",
+            "source",
+            "reason"
+          ],
+          "available_keys": [
+            "available",
+            "source",
+            "state",
+            "enabled",
+            "admissible_modes"
+          ],
+          "states": [
+            "unknown",
+            "conflict",
+            "undeclared",
+            "unregistered",
+            "declared_disabled",
+            "enabled_shadow_only",
+            "enabled_canary_eligible",
+            "enabled_live_eligible",
+            "operational"
+          ]
+        },
+        "evidence_states": [
+          "unreadable",
+          "missing",
+          "mismatched",
+          "unbindable",
+          "conflicting",
+          "refused_substitute",
+          "failed",
+          "error",
+          "skipped",
+          "untested",
+          "self_attested",
+          "indistinct",
+          "stale",
+          "passing"
+        ],
+        "evidence_statuses": [
+          "pass",
+          "fail",
+          "skipped",
+          "untested",
+          "error",
+          "conflicting"
+        ],
+        "absent_evidence_keys": [
+          "layer",
+          "state",
+          "present",
+          "scope"
+        ],
+        "present_evidence_keys": [
+          "layer",
+          "state",
+          "present",
+          "status",
+          "basis",
+          "scope",
+          "subject_ref",
+          "evaluator_ref",
+          "evidence_ref",
+          "evidence_digest",
+          "observed_at",
+          "expires_at",
+          "incident_refs",
+          "recovery_refs"
+        ],
+        "layer_details": {
+          "artifact_assessment": [
+            "repository_commit_sha",
+            "repository_tree_sha",
+            "reviewer_fact_id"
+          ],
+          "execution_assessment": [
+            "attempt_id",
+            "envelope_digest",
+            "plan_hash"
+          ],
+          "controller_assessment": [
+            "controller_state",
+            "readback_source",
+            "readback_at"
+          ],
+          "candidate_outcome_oracle": [
+            "governed_data_ref",
+            "environment",
+            "expected_result_ref",
+            "equivalence_comparator",
+            "component_versions"
+          ],
+          "activation_readback": [
+            "activation_id",
+            "readback_source",
+            "readback_at"
+          ],
+          "actual_business_outcome": [
+            "outcome_feedback_ref",
+            "outcome_feedback_hash",
+            "acceptance_receipt_id"
+          ]
+        },
+        "layer_bases": {
+          "artifact_assessment": "independent_artifact_review",
+          "execution_assessment": "attempt_receipt_execution_evidence",
+          "controller_assessment": "controller_readback",
+          "candidate_outcome_oracle": "candidate_outcome_oracle_receipt",
+          "activation_readback": "activation_readback",
+          "actual_business_outcome": "accepted_sourced_outcome_feedback_receipt"
+        },
+        "impact_keys": [
+          "scope_limited_to",
+          "withdrawn_stages"
+        ],
+        "recovery_keys": [
+          "required_evidence"
+        ]
+      },
+      "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
+    }
+  },
+  "vendor_directory": {
+    "schema": "carr-vendor-directory.v1",
+    "version": "1.1.0",
+    "path": "contracts/vendor-directory.v1.json",
+    "sha256": "af68a55a68eca6cf5bb17b786a33308faa2261cc3cdcf51bce73deafff7b5e5b",
+    "request_selector": "contract=vendor-directory.v1"
+  },
+  "system_work_inventory": {
+    "schema": "unfinished-work.v1",
+    "endpoint": "/api/v1/work-inventory?system=true",
+    "ordering": "opened_at ascending, kind and id in C text order; Live library last_activity_at descending",
+    "personal_scope": "server-derived owner only",
+    "live_limit": 10,
+    "filters": [
+      "source",
+      "kinds",
+      "age",
+      "text",
+      "live_library",
+      "cursor",
+      "id",
+      "limit"
+    ],
+    "cache": "GitHub comes from published producer cache; no GitHub requests per page load"
+  }
 }
