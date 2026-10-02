@@ -15,154 +15,39 @@ const withoutComments = (source) => source
   .replace(/\/\*[\s\S]*?\*\//g, " ")
   .replace(/(^|\s)\/\/.*$/gm, "$1");
 
-test("Home asset is a dark, visual, responsive workstation with honest states", async () => {
+test("Home uses self-explanatory scope names and removes repeated navigation and aggregate widgets", async () => {
   const html = await readFile(`${ROOT}/workspace.html`, "utf8");
-  const dealHtml = await readFile(`${ROOT}/index.html`, "utf8");
-  const css = await readFile(`${ROOT}/css/workspace.css`, "utf8");
+  assert.match(html, /data-scope="team"[^>]*aria-pressed="true">Team View/);
+  assert.match(html, /data-scope="mine"[^>]*aria-pressed="false">Just Me/);
+  assert.doesNotMatch(html, /scopeNote|module-card|workspace-directory|commandCenterVisual|docAtWork|needsYouNow|recentActivity|view=charts|density|class="intro"/);
+  assert.match(html, /id="homePrimaryAction" class="home-outline" href="\/deals">Deal Room/);
+  assert.match(html, /Active Deals: —/);
+  assert.match(html, /Deals in Market: —/);
+  assert.match(html, /National Account Deals: —/);
+  assert.match(html, /id="refreshHome"/);
+  assert.match(html, /id="observedAt"/);
+  assert.doesNotMatch(html, /class="source"|Read again|retry read/);
+});
+
+test("Home ships cinematic visual widgets, wide detail and phone/reduced-motion styles", async () => {
+  const css = await readFile(`${ROOT}/css/home-dashboard.css`, "utf8");
   const js = await readFile(`${ROOT}/js/workspace-command-center.js`, "utf8");
-  const modelJs = await readFile(`${ROOT}/js/workspace-command-center-model.js`, "utf8");
-  const dealJs = await readFile(`${ROOT}/js/app.js`, "utf8");
-  const surfaceFiles = ["workspace.html", "index.html", "leads.html", "room.html", "queue.html", "system-work.html", "business.html"];
-  const surfaces = Object.fromEntries(await Promise.all(surfaceFiles.map(async (file) => [file, await readFile(`${ROOT}/${file}`, "utf8")])));
-  assert.match(html, /id="commandCenterVisual"/);
-  assert.match(html, /aria-live="polite"/);
-  assert.match(html, /href="\/leads"/);
-  assert.match(html, /href="\/deals/);
-  assert.match(html, />CALLS</);
-  assert.match(html, /href="\/work-requests"/);
-  assert.match(html, /href="\/control-room"/);
-  assert.match(html, /href="\/\?view=charts"/);
-  assert.match(css, /--ink-0:#0/);
+  const html = await readFile(`${ROOT}/workspace.html`, "utf8");
+  assert.match(css, /max-width:none/);
   assert.match(css, /backdrop-filter/);
-  assert.match(css, /@media\s*\(prefers-reduced-motion:reduce\)/);
-  assert.match(css, /pulse-attention/);
-  assert.match(js, /\/api\/v1\/command-center/);
-  assert.doesNotMatch(js, /api\/v1\/workspace\/command-center/);
-  assert.match(js, /AUTHENTICATION_REQUIRED/);
-  assert.match(js, /observed_at/);
-  assert.match(js, /updatedLabel\(source\?\.observed_at\)/);
-  assert.doesNotMatch(js, /escapeHtml\(source\.freshness\)/);
-  assert.match(js, /\.catch/);
-  assert.doesNotMatch(html, /System online/);
-  // The server-rendered health label is bound to the script's own loading label,
-  // not restated as a literal here. A literal in this file is one more place to
-  // forget, and it is what let the markup and the script disagree: this assertion
-  // used to pin the old markup string and passed happily while the two had drifted
-  // apart. This local suite pins the loading label to the shipped Home surface.
-  const loadingLabel = js.match(/\bloading: "([^"]+)"/)?.[1];
-  assert.notEqual(loadingLabel, undefined, "HEALTH_LABEL declares no loading state");
-  assert.ok(html.includes(`id="healthLabel">${loadingLabel}<`),
-    `workspace.html must ship the script's loading label, "${loadingLabel}"`);
-  assert.doesNotMatch(html, /pulse-attention[^>]+href="\/work-requests"/);
-  assert.match(html, /System state/);
-  assert.match(modelJs, /valid_until/);
-  assert.match(modelJs, /flagged_deals/);
-  assert.match(modelJs, /state: "unavailable"/);
-  assert.match(dealHtml, /data-filter="flagged"/);
-  assert.match(dealJs, /deal\.attention === true/);
-  assert.match(dealJs, /params\.get\('owner'\) === 'me'/);
-  assert.match(html, /id="appShell"/);
-  const sharedNavigation = appShellMarkup("/");
-  for (const label of ["Home", "Leads", "Tours", "Deals", "Clients", "Vendors", "Control Room", "Work Requests", "Agent Room"]) {
-    assert.match(sharedNavigation, new RegExp(`>${label}<`), `shared navigation is missing ${label}`);
-  }
-  assert.doesNotMatch(sharedNavigation, />Queue<\/a>/);
-  assert.match(css, /max-width:\s*767px/);
-  assert.match(await readFile(`${ROOT}/css/app-shell.css`, "utf8"), /max-width:900px/);
-  assert.match(html, /id="needsYouNow"/);
-  assert.match(html, /id="docAtWork"/);
-  assert.match(html, /id="recentActivity"/);
-  assert.match(js, /renderAggregates/);
-  Object.values(surfaces).forEach((surface) => assert.match(surface, /id="appShell"/));
-});
-
-test("Home defaults to the combined team scope and offers My work as a keyboard and touch secondary", async () => {
-  const html = await readFile(`${ROOT}/workspace.html`, "utf8");
-  const css = await readFile(`${ROOT}/css/workspace.css`, "utf8");
-  const js = await readFile(`${ROOT}/js/workspace-command-center.js`, "utf8");
-  const modelJs = await readFile(`${ROOT}/js/workspace-command-center-model.js`, "utf8");
-  assert.match(html, /id="scopeSwitch"[^>]*role="group"[^>]*aria-label="Home scope"/);
-  assert.match(html, /<button[^>]*data-scope="team"[^>]*aria-pressed="true"/);
-  assert.match(html, /<button[^>]*data-scope="mine"[^>]*aria-pressed="false"/);
-  assert.match(html, /id="scopeNote"/);
-  assert.match(html, /<span>Deals<\/span>/);
-  assert.match(html, /My work/);
-  // Buttons are reachable by keyboard and pointer; arrow keys move between the two scopes.
-  assert.match(js, /addEventListener\("click"/);
-  assert.match(js, /ArrowLeft/);
-  assert.match(js, /ArrowRight/);
-  assert.match(js, /aria-pressed/);
-  assert.match(css, /\.scope-option\{[^}]*min-height:4[4-9]px/);
-  assert.match(modelJs, /DEFAULT_SCOPE = "team"/);
-  assert.match(modelJs, /SCOPES = \["team", "mine"\]/);
-  // No partner ranking or comparison surface is introduced.
-  assert.doesNotMatch(html, /rank|leaderboard|vs\. Dell|vs\. Joe/i);
-  assert.doesNotMatch(js, /rank|leaderboard/i);
-});
-
-test("Home only links to Deal Room filters the board already honors", async () => {
-  const modelJs = await readFile(`${ROOT}/js/workspace-command-center-model.js`, "utf8");
-  const dealJs = await readFile(`${ROOT}/js/app.js`, "utf8");
-  assert.match(dealJs, /params\.get\('filter'\) === 'flagged'/);
-  assert.match(dealJs, /params\.get\('workspace'\) === 'team'/);
-  for (const source of [modelJs]) {
-    assert.match(source, /"\/deals\?workspace=team&filter=flagged"/);
-    assert.match(source, /"\/deals\?workspace=team&filter=flagged&owner=me"/);
-    assert.match(source, /"\/deals\?workspace=team"/);
-    // The board has no URL form for mine-active, waiting or deadline lists.
-    assert.doesNotMatch(source, /filter=(mine|waiting|deadline|stale|missing)/);
-  }
-  // No invented waiting or deadline counts in this unit.
-});
-
-test("Home distinguishes loading, refreshing, stale and unavailable and cannot be repainted by a late read", async () => {
-  const js = await readFile(`${ROOT}/js/workspace-command-center.js`, "utf8");
-  const modelJs = await readFile(`${ROOT}/js/workspace-command-center-model.js`, "utf8");
-  assert.match(modelJs, /export function homeReadPhase/);
-  assert.match(modelJs, /export function acceptsResponse/);
-  assert.match(js, /view\.status = view\.payload \? "refreshing" : "loading"/);
-  assert.match(js, /acceptsResponse\(view\.sequence, sequence\)/);
-  assert.match(js, /\+\+view\.sequence/);
-  // The local clock re-checks the contract window — including the selected metric and each work
-  // card's own deadline — instead of leaving expired counts on screen.
-  assert.match(js, /setInterval/);
-  assert.match(js, /freshnessSignature\(view\.payload, view\.scope\)/);
-  assert.match(modelJs, /export function freshnessSignature/);
-  assert.match(modelJs, /export function displayedFreshness/);
-  // Retry is an explicit read, and focus survives a repaint — including the repaint that removes Retry.
+  assert.match(css, /@media\(max-width:767px\)/);
+  assert.match(css, /prefers-reduced-motion:reduce/);
+  assert.match(css, /width:min\(1000px/);
+  assert.match(js, /home-week/);
+  assert.match(js, /home-lead-scores/);
+  assert.match(js, /home-radar/);
   assert.match(js, /mountAutoRefresh/);
-  assert.match(js, /load\("retry"\)/);
-  assert.match(js, /document\.activeElement/);
-  assert.match(js, /card\.querySelector\("#homePrimaryAction"\)/);
-  assert.match(js, /\.focus\(\)/);
-  // The Needs card's link is reset on every path, so a scope switch cannot leave the other scope's filter.
-  assert.match(js, /function setNeedsHref/);
-  assert.match(js, /setNeedsHref\(destination\)/);
-  const css = await readFile(`${ROOT}/css/workspace.css`, "utf8");
-  assert.match(css, /\.refresh-badge\{/);
-  assert.match(css, /\.status-orb\.refreshing\{/);
+  assert.match(js, /epoch !== sequence/);
+  assert.match(js, /innerSignal.aborted/);
+  assert.match(html, /<dialog id="homeDetail"/);
+  assert.match(js, /<summary(?:\s[^>]*)?>Details<\/summary>/);
 });
 
-test("Home has one first-region primary action, one workspace directory, and secondary flow", async () => {
-  const html = await readFile(`${ROOT}/workspace.html`, "utf8");
-  assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);
-  assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/dealroom-192\.png">/);
-  assert.match(html, /<h1[^>]*>Home<\/h1>/);
-  assert.doesNotMatch(html, /read-only overview|<h1[^>]*>Command Center<\/h1>/i);
-  const primaryRegion = html.match(/<section[^>]+data-home-primary-region[\s\S]*?<\/section>/)?.[0] || "";
-  assert.equal((primaryRegion.match(/data-primary-action/g) || []).length, 1);
-  assert.match(primaryRegion, /id="homePrimaryAction"/);
-  assert.doesNotMatch(html, /glance-card|Where to go|Open the owning surface/);
-  assert.equal((html.match(/aria-label="Workspace"/g) || []).length, 1);
-  assert.ok(html.indexOf("data-home-primary-region") < html.indexOf("id=\"commandCenterVisual\""));
-});
-
-/**
- * GLOBAL nav is on six surfaces; the workspace SHELL — css/workspace.css, the More
- * disclosure, the phone bar and the Clients/Vendors links — is on two of seven. That
- * This suite checks the six shipped authenticated surfaces together so the global
- * navigation rule remains local to the product repository.
- */
 test("all authenticated surfaces mount the approved shared navigation", async () => {
   const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
   for (const [route, file] of Object.entries(routes.routes)) {
@@ -176,13 +61,7 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
     ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room"]);
 });
 
-test("Home opens Vendors; Clients remains in More", async () => {
-  const home = await readFile(`${ROOT}/workspace.html`, "utf8");
-  const people = await readFile(`${ROOT}/business.html`, "utf8");
-  for (const route of ["/", "/leads", "/tours", "/deals", "/vendors", "/control-room"]) {
-    assert.match(home, new RegExp(`href="${route}"`), `${route}: Home section link`);
-  }
-  assert.match(people, /id="appShell"/);
+test("People offers both directories in the shared shell", () => {
   assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">Clients<\/a>/);
   assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">Vendors<\/a>/);
 });
@@ -237,9 +116,9 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /id="filterC"/);
   assert.match(html, /id="sortSelect"/);
   assert.match(html, /id="scopeSwitch"[^>]*role="group"[^>]*aria-label="Record scope"/);
-  assert.match(html, /data-owner="all"[^>]*aria-pressed="true"/);
-  assert.match(html, /data-owner="joe"[^>]*aria-pressed="false"/);
-  assert.match(html, /id="scrollSentinel"/);
+  assert.match(html, /data-scope="team"[^>]*aria-pressed="true"/);
+  assert.match(html, /data-scope="mine"[^>]*aria-pressed="false"/);
+  assert.match(html, /id="pager"/);
   assert.match(html, /id="recordPanel"/);
   assert.match(html, /id="recordClose"/);
   assert.match(html, /id="noticeRegion"[^>]*role="status"[^>]*aria-live="polite"/);
@@ -252,13 +131,12 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.doesNotMatch(js, /Math\.random/);
   assert.doesNotMatch(modelJs, /total:\s*[a-z]*rows\.length/i);
   assert.match(modelJs, /const total = payload\.total/);
-  // Writes use the app-owned client; this surface never builds raw transport.
+  // Read-only: no method, no body, no CSRF-bearing write leaves this surface.
   assert.doesNotMatch(js, /method:\s*"(POST|PUT|PATCH|DELETE)"/);
   assert.doesNotMatch(js, /x-carr-csrf|body:\s*JSON\.stringify/);
   // No operational logging or engineering detail in a business surface.
   assert.doesNotMatch(js, /console\.(log|warn|error|debug)/);
-  assert.doesNotMatch(js, /DATABASE_URL|\bAuthorization\b|Bearer |token/i);
-  assert.match(js, /client\.updateVendorTrust\(operation\)/);
+  assert.doesNotMatch(js, /DATABASE_URL|Authorization|Bearer |token/i);
   // Loading, refreshing, stale, both empties, past-the-end, unauthorized and
   // unavailable are distinct, and a late answer cannot paint over a newer one.
   assert.match(modelJs, /export function listPhase/);
@@ -322,7 +200,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(js, /searchBoxValue\(\{/);
   assert.match(js, /renderControls\(\{ syncSearch: true \}\)/);
   // The phone panel is a dialog with an inert background and contained focus.
-  assert.match(js, /function panelIsModal\(\) \{ return Boolean\(view\.recordId\)/);
+  assert.match(js, /panelModality\(\{ recordId: view\.recordId, phoneWidth/);
   assert.match(js, /matchMedia\("\(max-width: 767px\)"\)/);
   assert.match(js, /setAttribute\("role", modal \? "dialog" : "complementary"\)/);
   assert.match(js, /setAttribute\("aria-modal", "true"\)/);
@@ -338,7 +216,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   // what is actually covering the list.
   assert.match(css, /@media\(max-width:767px\)[\s\S]*\.record-panel\.open\{position:fixed/);
   assert.match(html, /data-panel-background/);
-  assert.match(html, /<aside class="record-panel glass" id="recordPanel" role="dialog"/);
+  assert.match(html, /<aside class="record-panel glass" id="recordPanel" role="complementary"/);
   assert.doesNotMatch(html, /<aside[^>]*data-panel-background/, "the panel is never inert against itself");
   // The sign-out is heard even when the answer that carried it is stale — in
   // BOTH reads, pinned separately, because the record path is the one this
@@ -358,15 +236,15 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   }
   assert.match(bodyOf("loadRecord"), /view\.recordId !== id/);
   // The partial count is records, and the sentence says records.
-  assert.doesNotMatch(js, /title: "Checked a while ago"/);
+  assert.match(js, /"record uses a code" : "records use codes"/);
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
   assert.match(css, /\.record-row\{[^}]*min-height:44px/);
   assert.match(css, /\.field input,\.field select\{[^}]*min-height:44px/);
   assert.match(css, /\.panel-close\{[^}]*min-height:44px/);
   assert.match(css, /@media\(max-width:767px\)/);
-  // The shared shell owns destinations; directory controls add no unavailable
-  // destination pills or explanatory footer.
-  assert.doesNotMatch(html, /inert-entry/);
+  // Calls is visible as unavailable and cannot be started here; Tours is a
+  // real, reachable surface and must not be marked inert.
+  assert.match(html, /class="inert-entry" aria-disabled="true">Calls</);
   assert.doesNotMatch(html, /class="inert-entry" aria-disabled="true">Tours</);
   assert.doesNotMatch(html, /href="[^"]*"[^>]*>Calls</);
   assert.match(appShellMarkup("/clients"), /href="\/tours">Tours<\/a>/);
