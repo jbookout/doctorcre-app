@@ -771,7 +771,7 @@ function fullRecordHtml(detail) {
     ${section('Open next actions',(detail.next_actions || []).filter(a => a.status === 'open'), a => `${a.description} · ${actorName(a.owner)} · ${dateWords(a.due_on)}`)}
     ${section('Premises',detail.premises || [], p => [p.label,p.address,p.suite,p.city,p.state,p.area_amount ? `${p.area_amount} ${p.area_basis || 'SF'}` : null].filter(Boolean).join(' · '))}
     ${section('Negotiation rounds',detail.negotiation_rounds || [], n => `Round ${n.round_no} · ${n.side} · ${n.rate_amount ?? 'Rate not captured'} ${n.rate_basis || ''} · ${n.term_months ? `${n.term_months} months` : 'Term not captured'}`)}
-    ${section('Documents',detail.documents || [], d => `${d.sent_status || 'Prepared'} · ${dateWords(d.prepared_at)}`)}
+    ${section('Documents',detail.documents || [], d => `${String(d.sent_status || 'Prepared').replaceAll('_',' ')} · ${dateWords(d.prepared_at)}`)}
     ${section('Change history',detail.history || [], e => `${e.summary || `${fieldLabel(e.field)} changed`} · ${actorName(e.actor)} · ${dateWords(e.recorded_at)}`)}
   </details>`;
 }

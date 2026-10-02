@@ -75,3 +75,11 @@ test('missing activity originals never masquerade as original email bodies',()=>
  const root=new JSDOM(html).window.document;
  assert.equal(root.querySelector('.note-original').textContent,'Original unavailable');
 });
+
+test('timeline labels use words while retaining exact wire kinds for identity',()=>{
+ const value={deal:{phase:'Legal'},activities:[{id:'demo-email',kind:'email_in',summary:'Demo incoming email',detail:'Original demo message',occurred_at:'2026-10-02'}],critical_dates:[{kind:'tenant_notice',due_on:'2026-10-12'}]};
+ const cards=new JSDOM(renderDealTimeline(value,now)).window.document;
+ assert.equal(cards.querySelector('.timeline-entry b').textContent,'email in');
+ assert.equal(cards.querySelector('.timeline-entry').dataset.kind,'email_in');
+ assert.match(new JSDOM(renderCriticalDates(value,now)).window.document.body.textContent,/tenant notice/);
+});

@@ -50,7 +50,7 @@ export function dealTimeline(detail, now = Date.now()) {
   const lease = detail.lease?.status === 'current' ? detail.lease : null;
   const rows = (detail.critical_dates || []).filter(row => calendarDay(row.due_on || row.date)).map((row,i) => {
     const definition = DATE_KINDS.find(d => d.kinds.includes(row.kind));
-    return {id:row.id || `date-${i}`,kind:definition?.kind || row.kind,label:definition?.label || row.label || row.kind || 'Date',
+    return {id:row.id || `date-${i}`,kind:definition?.kind || row.kind,label:definition?.label || row.label || row.kind?.replace(/[_-]+/g,' ') || 'Date',
       day:calendarDay(row.due_on || row.date),original:noteText(row.note),evidence:row.source || '',status:row.status,deadline:Boolean(definition?.deadline)};
   });
   if (lease && calendarDay(lease.commencement_on)) rows.unshift({id:`lease-${lease.id}-commencement`,kind:'lease_commencement',label:'Lease commencement',day:calendarDay(lease.commencement_on),original:lease.evidence_ref,evidence:lease.source});
@@ -106,7 +106,7 @@ export function renderDealTimeline(detail, now = Date.now(), full = false) {
     const cx = x(cluster[0]);
     return `<g><title>${esc(cluster.map(dateCaption).join(', '))}</title>${dates ? `<path class="timeline-point" d="M${cx} 48 l10 10 l-10 10 l-10 -10z"/><text class="timeline-count" x="${cx}" y="62" text-anchor="middle">${dates}</text>`:''}${activity ? `<circle class="timeline-point" cx="${cx}" cy="98" r="11"/><text class="timeline-count" x="${cx}" y="102" text-anchor="middle">${activity}</text>`:''}</g>`;
   }).join('')}</svg></div>`;
-  const card = e => `<article class="deal-note timeline-entry" data-id="${esc(e.id)}" data-kind="${esc(e.type)}" tabindex="0"><div class="timeline-entry-top"><b>${esc(e.type)}</b>${e.day ? `<time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time>` : '<span>Undated</span>'}</div><p>${esc(e.summary)}</p>${e.actor ? `<span class="timeline-actor">${esc(ACTOR_LABEL[e.actor] || e.actor)}</span>` : ''}<details><summary>Details</summary><p class="note-original">${esc(e.original || 'Original unavailable')}</p></details></article>`;
+  const card = e => `<article class="deal-note timeline-entry" data-id="${esc(e.id)}" data-kind="${esc(e.type)}" tabindex="0"><div class="timeline-entry-top"><b>${esc(e.type.replace(/[_-]+/g,' '))}</b>${e.day ? `<time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time>` : '<span>Undated</span>'}</div><p>${esc(e.summary)}</p>${e.actor ? `<span class="timeline-actor">${esc(ACTOR_LABEL[e.actor] || e.actor)}</span>` : ''}<details><summary>Details</summary><p class="note-original">${esc(e.original || 'Original unavailable')}</p></details></article>`;
   return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal timeline"><div class="timeline-heading"><h3>Timeline</h3><label><span class="sr-only">Timeline range</span><select id="timelineRange"><option value="recent"${!full ? ' selected':''}>Recent &amp; upcoming</option><option value="full"${full ? ' selected':''}>Full timeline</option></select></label></div>${chart}<div class="timeline-date-links">${days.map(day => `<button type="button" data-timeline-day="${esc(day)}">${esc(dateCaption(day))}</button>`).join('')}</div><div class="timeline-entries">${view.entries.filter(e => !e.day || full || Date.parse(e.day)>=start && Date.parse(e.day)<=end).map(card).join('') || '<p>No entries</p>'}</div></section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
