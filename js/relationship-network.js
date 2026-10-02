@@ -33,22 +33,17 @@ export function mountRelationshipNetwork({
     positions = new Map(),
     returnId = null;
   const params = new URLSearchParams(window.location.search);
-  for (const [id, key] of [
-    ["networkSearch", "q"],
-    ["networkTerritory", "territory"],
-    ["networkVertical", "vertical"],
-  ])
-    $(id).value = params.get(key) || "";
+  const currentFilters = {
+    q: params.get("q") || "",
+    territory: params.get("territory") || "",
+    vertical: params.get("vertical") || "",
+  };
+  $("networkSearch").value = currentFilters.q;
   focus = params.get("node");
-  const filters = () => ({
-    q: $("networkSearch").value,
-    territory: $("networkTerritory").value,
-    vertical: $("networkVertical").value,
-  });
   const address = () => {
     const url = new URL(window.location.href);
     for (const [key, value] of Object.entries({
-      ...filters(),
+      ...currentFilters,
       view:
         $("referralsTab").getAttribute("aria-selected") === "true"
           ? "referrals"
@@ -87,18 +82,22 @@ export function mountRelationshipNetwork({
       .querySelectorAll("[data-node]")
       .forEach((b) => (b.onclick = () => open(b.dataset.node, b)));
   const render = () => {
+    for (const id of ["networkZoomIn", "networkZoomOut", "networkFit"])
+      $(id).disabled = !snapshot;
     if (!snapshot) {
+      $("networkCount").textContent = "";
+      $("networkMore").hidden = true;
       for (const id of [
         "networkCanvas",
         "networkNodes",
         "networkIntroductions",
         "networkReferrals",
       ])
-        $(id).innerHTML = '<p class="relationship-empty">Updating…</p>';
+        $(id).replaceChildren();
       return;
     }
     const focusedNode = document.activeElement?.dataset.node;
-    const view = filterNetwork(snapshot, filters()),
+    const view = filterNetwork(snapshot, currentFilters),
       phone = window.matchMedia("(max-width:760px)").matches;
     const selected = view.nodes.some((n) => n.id === focus)
       ? focus
@@ -241,13 +240,10 @@ export function mountRelationshipNetwork({
       ["networkVertical", "verticals", "All verticals"],
     ]) {
       const select = $(id),
-        value =
-          select.value ||
-          params.get(field === "verticals" ? "vertical" : field) ||
-          "";
+        value = currentFilters[field === "verticals" ? "vertical" : field];
       const values = [
         ...new Set(
-          snapshot.nodes
+          (snapshot?.nodes || [])
             .flatMap((n) => (field === "verticals" ? n.verticals : [n[field]]))
             .filter(Boolean),
         ),
@@ -255,10 +251,20 @@ export function mountRelationshipNetwork({
       select.innerHTML =
         `<option value="">${label}</option>` +
         values.map((v) => `<option value="${E(v)}">${E(v)}</option>`).join("");
-      if (value && !values.includes(value))
+      if (snapshot && value && !values.includes(value))
         select.add(new window.Option(value, value));
       select.value = value;
     }
+  };
+  const invalidate = () => {
+    snapshot = null;
+    focus = null;
+    returnId = null;
+    positions.clear();
+    dialog.clear();
+    facets();
+    render();
+    $("networkUpdated").textContent = "Updating…";
   };
   const refresh = async ({ signal } = {}) => {
     const seq = ++epoch;
@@ -285,16 +291,7 @@ export function mountRelationshipNetwork({
         !snapshot ||
         Date.parse(snapshot.valid_until) <= Date.now()
       ) {
-        snapshot = null;
-        dialog.clear();
-        for (const id of [
-          "networkCanvas",
-          "networkNodes",
-          "networkIntroductions",
-          "networkReferrals",
-        ])
-          $(id).innerHTML = "";
-        $("networkCount").textContent = "";
+        invalidate();
       }
       $("networkNotice").hidden = false;
       $("networkNotice").innerHTML = expired
@@ -337,6 +334,9 @@ export function mountRelationshipNetwork({
   });
   for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
     $(id).addEventListener(id === "networkSearch" ? "input" : "change", () => {
+      currentFilters.q = $("networkSearch").value;
+      currentFilters.territory = $("networkTerritory").value;
+      currentFilters.vertical = $("networkVertical").value;
       address();
       limit = 12;
       positions.clear();
@@ -345,6 +345,7 @@ export function mountRelationshipNetwork({
   $("networkReset").onclick = () => {
     for (const id of ["networkSearch", "networkTerritory", "networkVertical"])
       $(id).value = "";
+    Object.assign(currentFilters, { q: "", territory: "", vertical: "" });
     address();
     render();
   };
@@ -370,9 +371,7 @@ export function mountRelationshipNetwork({
   window.addEventListener("resize", resize);
   const expiry = window.setInterval(() => {
     if (!snapshot || Date.parse(snapshot.valid_until) > Date.now()) return;
-    snapshot = null;
-    dialog.clear();
-    render();
+    invalidate();
     auto.refresh();
   }, 1000);
   selectTab(params.get("view"));

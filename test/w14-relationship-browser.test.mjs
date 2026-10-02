@@ -36,6 +36,7 @@ async function open(t, width = 1440) {
       );
       if (version) payload.nodes[0].summary = "Demo refreshed summary";
       if (mode === "malformed") payload.edges[0].from = "missing";
+      if (mode === "territory") payload.nodes[0].territory = 123;
       return r.fulfill({ json: payload });
     }
     if (url.pathname === "/api/system-work/session")
@@ -45,7 +46,7 @@ async function open(t, width = 1440) {
       verbs.push(verb);
       let payload = { ok: true };
       if (verb === "deal-room-board") payload = { deals: [], actor: "joe" };
-      if (verb === "today-triage") payload = { balls: [] };
+      if (verb === "today-triage") payload = { items: [] };
       if (verb === "deal-room-changes") payload = { events: [], cursor: null };
       return r.fulfill({
         json: {
@@ -298,3 +299,24 @@ for (const width of [1440, 390])
     await page.waitForSelector('#homeIntroductions [data-intro-node]');
     assert.deepEqual(h.errors, []);
   });
+
+test('R2 relationship URL filters survive boot and intentional reset survives polling and reload',async t=>{
+ const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live&territory=Demo+Coast&vertical=dental');await page.waitForSelector('.relationship-node');
+ assert.equal(new URL(page.url()).searchParams.get('territory'),'Demo Coast');assert.equal(new URL(page.url()).searchParams.get('vertical'),'dental');
+ assert.equal(await page.locator('#networkTerritory').inputValue(),'Demo Coast');const polled=page.waitForResponse('**/api/v1/business/relationships*');await page.locator('#networkReset').click();await page.clock.fastForward(31000);
+ await polled;await page.waitForFunction(()=>document.querySelector('#networkRefresh').getAttribute('aria-busy')==='false');
+ assert.equal(await page.locator('#networkTerritory').inputValue(),'');assert.equal(await page.locator('#networkVertical').inputValue(),'');assert.equal(new URL(page.url()).searchParams.has('territory'),false);
+ await page.reload();await page.waitForSelector('.relationship-node');assert.equal(await page.locator('#networkTerritory').inputValue(),'');assert.equal(await page.locator('.relationship-node').count(),8);assert.deepEqual(h.errors,[]);
+});
+for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relationship detail DOM facets counts and controls`,async t=>{
+ const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');await page.locator('.relationship-node').first().click();
+ h.setMode(failure==='auth'?'auth':'fail');await page.clock.fastForward(failure==='auth'?31000:61000);await page.waitForFunction(()=>document.querySelector('#networkNotice').textContent.includes('Sign in')||document.querySelector('#networkNotice').textContent.includes('unavailable'));
+ assert.equal(await page.locator('.relationship-dialog').textContent(),'');assert.equal(await page.locator('#networkTerritory option').count(),1);assert.equal(await page.locator('#networkVertical option').count(),1);
+ assert.equal(await page.locator('#networkCount').textContent(),'');assert.equal(await page.locator('#networkMore').isVisible(),false);assert.equal(await page.locator('#networkZoomIn').isDisabled(),true);assert.deepEqual(h.errors,[]);
+});
+test('R7 malformed optional field is rejected without poisoning retained snapshot or later interactions',async t=>{
+ const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');
+ const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await page.clock.fastForward(31000);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
+ assert.equal(await page.locator('#networkCanvas').textContent(),before);await page.locator('#networkReset').click();await page.setViewportSize({width:1000,height:900});await page.locator('#networkZoomIn').click();assert.deepEqual(h.errors,[]);
+ assert.equal(await page.locator('.relationship-node').count(),8);assert.equal(await page.locator('#networkUpdated').isVisible(),true);
+});

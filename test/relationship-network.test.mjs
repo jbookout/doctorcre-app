@@ -93,3 +93,10 @@ test("live read pins selector, abort and authenticated transport; auth status su
     (e) => e.status === 401,
   );
 });
+
+test('R7 rejects malformed optional text fields and null relationship rows before typed rendering',()=>{
+ for(const [section,field] of [['nodes','territory'],['nodes','summary'],['nodes','owner'],['nodes','contact_state'],['edges','summary'],['edges','detail'],['edges','when']]) {
+  const s=relationshipNetworkFixture();s[section][0][field]=123;assert.equal(validNetwork(s),false,`${section}.${field}`);
+ }
+ for(const section of ['referrals','suggestions']) {const s=relationshipNetworkFixture();s[section][0]=null;assert.equal(validNetwork(s),false);}
+});

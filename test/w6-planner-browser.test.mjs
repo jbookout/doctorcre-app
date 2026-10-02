@@ -73,7 +73,12 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: new URL(`test-artifacts/w6/${name}-detail.png`, root).pathname, fullPage: false, animations: "disabled" });
     await page.keyboard.press("Escape");
-    if (width <= 760) await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#tour-dialog").evaluate(n => n.open), false, "R5 one Escape closes the top modal");
+    if (width <= 760) {
+      assert.equal(await page.locator("#appLayout").getAttribute("data-drawer"), "sidebar");
+      assert.equal(await page.locator("#upcoming-tours").evaluate(n => n.contains(document.activeElement)), true);
+      await page.keyboard.press("Escape");
+    }
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await page.locator(".planner-grid").evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     await page.locator(".plan-card").hover(); assert.equal(await page.locator(".plan-card").evaluate(el => getComputedStyle(el).transform), "none");

@@ -96,7 +96,9 @@ export function mountRelationshipDialog({ document }) {
     clear() {
       snapshot = null;
       selected = null;
+      returnFocus = null;
       dialog.close();
+      dialog.replaceChildren();
     },
     dispose() {
       dialog.close();

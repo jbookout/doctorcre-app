@@ -45,7 +45,7 @@
       <div data-layout-slot="tabs" class="page-views" role="group" aria-label="Deal view"><a href="/deals">List</a><span class="deal-page-view-current" aria-current="page">Board</span></div>
       <div class="chip-bar">
         <div class="chip-bar" id="boardChips" aria-label="Deal type filters"></div>
-        <button class="btn" type="button" id="receiptsOpen" aria-haspopup="dialog">Recent changes <span id="receiptsCount">0</span></button>
+        <button class="btn" type="button" id="receiptsOpen" aria-controls="appToday">Recent changes <span id="receiptsCount">0</span></button>
         <button class="btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       </div>
     </section>
@@ -176,18 +176,7 @@
     </form>
   </dialog>
 
-  <dialog id="receiptsDialog" class="dialog" aria-labelledby="receiptsTitle">
-    <article>
-      <header>
-        <div><p class="eyebrow">This session</p><h2 id="receiptsTitle">Recent changes</h2></div>
-        <button class="btn icon-btn" type="button" id="receiptsClose" aria-label="Close">×</button>
-      </header>
-      <div class="dialog-body">
-        <ul data-layout-slot="moves" class="receipt-list" id="receiptsList"></ul>
-
-      </div>
-    </article>
-  </dialog>
+  <ul data-layout-slot="moves" class="receipt-list" id="receiptsList"></ul>
 
   <dialog id="contextDrawer" class="dialog" aria-labelledby="contextDrawerTitle">
     <article>

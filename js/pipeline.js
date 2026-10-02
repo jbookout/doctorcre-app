@@ -875,7 +875,6 @@ function wire() {
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
     if (openDeal) {
-      $('receiptsDialog')?.close();
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
@@ -895,11 +894,8 @@ function wire() {
 
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();
-    const dialog = $('receiptsDialog');
-    if (document.getElementById('appToday')) document.dispatchEvent(new Event('doctorcre:open-today'));
-    else if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+    document.dispatchEvent(new Event('doctorcre:open-today'));
   });
-  $('receiptsClose')?.addEventListener('click', () => $('receiptsDialog')?.close());
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());

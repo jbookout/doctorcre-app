@@ -7,10 +7,10 @@ import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 const leads = ['New','Contacted','Qualified','Tour ready'].map((stage,i) => ({ id:`synthetic-lead-${i}`,name:`Demo Practice ${i+1}`,stage:stage.toLowerCase().replaceAll(' ','_'),stage_label:stage,owner:'joe',owner_label:'Joe',city:'Demo City',specialty:'Dental',score:80-i,notes:'Review the practice plan. Original synthetic entry with additional context.',updated_at:'2026-10-01T14:00:00Z',version:1 }));
-async function open(t,{width=1440,motion='no-preference',clock=false,deniedStorage=false,events=[]}={}) {
+async function open(t,{width=1440,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});page.setDefaultTimeout(5000);
-  if(clock) await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
+  const page=await browser.newPage({viewport:{width,height:960},timezoneId,reducedMotion:motion});page.setDefaultTimeout(5000);
+  if(clock) await page.clock.install({time:new Date(now)});
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
   const errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
@@ -154,4 +154,61 @@ test('Home, Leads and Local Deals fit desktop and phone; capture the six review 
   await goto(path);if(name==='leads')await page.waitForSelector('.lead-card');if(name==='local-deals')await page.waitForSelector('.kanban-card');
   await fits(page,`${name} ${width}`);await page.screenshot({timeout:15000,animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
  }}assert.deepEqual(errors,[]);
+});
+
+for (const status of [401,403]) test(`R1 Lead detail is invalidated on ${status} and repaints after recovery`,async t=>{
+ const {page,goto}=await open(t,{clock:true});let denied=false;
+ await page.route('**/mcp',route=>denied && route.request().postDataJSON().params.name==='lead-board' ? route.fulfill({status,body:'Denied'}) : route.fallback());
+ await goto('/leads?mode=live');await page.locator('.lead-card').first().click();
+ denied=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#leadBoardError').hidden);
+ assert.equal(await page.locator('#leadDetailDialog').evaluate(n=>n.open),false);
+ assert.equal(await page.locator('#leadDetailTitle').textContent(),'');assert.equal(await page.locator('#leadDetailBody').textContent(),'');
+ denied=false;await page.clock.fastForward(31_000);await page.locator('.lead-card').first().click();assert.match(await page.locator('#leadDetailBody').textContent(),/Original synthetic entry/);
+});
+test('R1 Lead detail clears immediately while resume revalidation is delayed',async t=>{
+ const {page,goto}=await open(t);await goto('/leads');await page.locator('.lead-card').first().click();
+ let release;const pending=new Promise(resolve=>release=resolve);t.after(()=>release());
+ const requested=page.waitForRequest(r=>r.url().endsWith('/mcp') && r.postDataJSON().params.name==='deal-room-board' && r.postDataJSON().params.arguments.workspace==='team');
+ await page.route('**/mcp',async route=>{const {name,arguments:args}=route.request().postDataJSON().params;if(name!=='deal-room-board'||args.workspace!=='team')return route.fallback();await pending;await route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'dell',deals:[]})}]}}});});
+ await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ await page.waitForFunction(()=>document.querySelector('#leadCount').textContent==='Refreshing…');
+ assert.equal(await page.locator('#leadDetailDialog').evaluate(n=>n.open),false);assert.equal(await page.locator('#leadDetailBody').textContent(),'');await requested;release();
+});
+test('R3 Today excludes normalized Closed deals and uses the local calendar day',async t=>{
+ const {page,goto,errors}=await open(t,{clock:true,now:'2026-10-02T00:30:00Z'});
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board' ? route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'joe',deals:[{id:'closed',name:'Closed Demo',phase:'closed',owner:'joe',attention:true},{id:'tomorrow',name:'Tomorrow Demo',phase:'research',owner:'joe',attention:false,next_date:'2026-10-02'},{id:'due',name:'Due Demo',phase:'research',owner:'joe',next_date:'2026-10-01'}]})}]}}}) : route.fallback());
+ await goto('/leads?mode=live');assert.deepEqual(await page.locator('#appTodayNeeds [data-layout-deal]').evaluateAll(ns=>ns.map(n=>n.dataset.layoutDeal)),['due']);
+ assert.equal(await page.locator('#appWorkingList [data-layout-deal]').count(),0);assert.deepEqual(errors,[]);
+});
+for (const section of ['board','triage']) test(`R4 malformed ${section} rows clear stale records and report unavailable`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true});let malformed=false;
+ await page.route('**/mcp',route=>{
+  const name=route.request().postDataJSON().params.name;
+  if(malformed && name===(section==='board'?'deal-room-board':'today-triage')) return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(section==='board'?{actor:'joe',deals:[{owner:'joe',attention:true}]}:{items:[null]})}]}}});
+  return route.fallback();
+ });
+ await goto('/leads?mode=live');const before=await page.locator('#appSyncTime').getAttribute('datetime');
+ malformed=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
+ const target=section==='board'?'#appTodayNeeds':'#appTodayNext';assert.equal(await page.locator(target).textContent(),'Unavailable');assert.equal(await page.locator(target+' [data-layout-deal]').count(),0);
+ assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);assert.deepEqual(errors,[]);
+});
+test('R8 page environment capture and freshness feedback stays visible in the status surface',async t=>{
+ const {page,goto}=await open(t);
+ for(const width of [1440,390]) {
+  await page.setViewportSize({width,height:960});await goto('/deals?mode=fixture');await page.waitForFunction(()=>document.querySelector('#deploymentBadge').dataset.mode==='fixture');
+  assert.equal(await page.locator('#deploymentBadge').isVisible(),true);assert.equal(await page.locator('#syncStatus').isVisible(),true);
+  await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture active';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
+  const badge=await page.locator('#deploymentBadge').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(badge.y>=bar.y && badge.y+badge.height<=bar.y+bar.height);
+  await page.screenshot({animations:'disabled',path:new URL(`test-artifacts/w1b/environment-${width}.png`,root).pathname});
+  await goto('/');assert.equal(await page.locator('#observedAt').isVisible(),true);
+ }
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
+ await page.goto('http://localhost/?mode=live');await page.waitForFunction(()=>/Partial|Unavailable/.test(document.querySelector('#observedAt').textContent));
+ assert.equal(await page.locator('#observedAt').isVisible(),true);
+});
+test('R9 Recent changes transfers phone focus into Today and keeps its keyboard trap',async t=>{
+ const {page,goto}=await open(t,{width:390});await goto('/deals?view=board');await page.locator('#appSidebarToggle').click();await page.locator('#receiptsOpen').click();
+ assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
+ await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#appTodayToggle').evaluate(n=>n===document.activeElement),true);
 });

@@ -43,7 +43,9 @@ export function validNetwork(value) {
       !node.name.trim() ||
       !["vendor", "client", "lead", "deal", "contact"].includes(node.kind) ||
       !Array.isArray(node.verticals) ||
-      node.verticals.some((v) => typeof v !== "string")
+      node.verticals.some((v) => typeof v !== "string") ||
+      !["territory", "owner", "summary", "contact_state"].every(
+        key => node[key] == null || typeof node[key] === "string")
     )
       return false;
     ids.add(node.id);
@@ -58,7 +60,9 @@ export function validNetwork(value) {
       !ids.has(edge.to) ||
       edge.from === edge.to ||
       (edge.via && !ids.has(edge.via)) ||
-      !EDGE_LABELS[edge.kind]
+      !Object.hasOwn(EDGE_LABELS, edge.kind) ||
+      !["summary", "detail", "when"].every(
+        key => edge[key] == null || typeof edge[key] === "string")
     )
       return false;
     edges.add(edge.id);
@@ -67,7 +71,7 @@ export function validNetwork(value) {
   if (
     !value.referrals.every((row) => {
       if (
-        !ids.has(row.node_id) ||
+        !row || !ids.has(row.node_id) ||
         referrers.has(row.node_id) ||
         !["deals", "won", "lost"].every(
           (k) => Number.isInteger(row[k]) && row[k] >= 0,
@@ -84,7 +88,7 @@ export function validNetwork(value) {
     return false;
   return value.suggestions.every(
     (row) =>
-      edges.has(row.id) &&
+      row && edges.has(row.id) &&
       ids.has(row.from) &&
       ids.has(row.to) &&
       (!row.via || ids.has(row.via)) &&
