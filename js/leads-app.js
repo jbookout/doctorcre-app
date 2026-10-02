@@ -91,10 +91,16 @@ function leadCard(lead) {
     <div class="lead-move"><label class="sr-only" for="stage-${esc(lead.id)}">Move ${esc(lead.name || identity)} to stage</label><select id="stage-${esc(lead.id)}" data-stage-select="${esc(lead.id)}"${locked ? " disabled" : ""}>${stageOptions}</select><button type="button" data-move-lead="${esc(lead.id)}" aria-label="Move ${esc(lead.name || identity)} to selected stage"${locked ? " disabled" : ""}>Move</button></div>${locked ? '<p class="stage-locked">Stage locked by suppression instruction. Review the record before changing it.</p>' : ""}
   </article>`;
 }
+function clearLeadDetail() {
+  state.detailId = null; state.detailPainted = null; state.detailReturn = null;
+  $("leadDetailDialog").close();
+  $("leadDetailTitle").textContent = "";
+  $("leadDetailBody").replaceChildren();
+}
 function renderLeadDetail() {
   if (!state.detailId) return;
   const lead = state.board?.leads?.find(item => item.id === state.detailId);
-  if (!lead) { $("leadDetailBody").textContent = "Unavailable"; return; }
+  if (!lead) { clearLeadDetail(); return; }
   const signature = JSON.stringify(lead);
   if (state.detailPainted === signature) return;
   state.detailPainted = signature;
@@ -164,6 +170,7 @@ function openClaim(button) {
   const pending = state.pendingClaims.get(pendingId(state.actor, action, poolId));
   const candidate = pending?.candidate || state.claims?.candidates?.find(item => String(item.pool_id) === poolId);
   if (!candidate) return;
+  selectDocRecord('candidate',candidate.pool_id);
   state.activeClaim = { candidate, action, trigger: button, actor: state.actor };
   const id = esc(candidate.pool_id);
   const sourceFields = researchFields.map(field => `<label>${title(field)} source URL <input type="url" name="${field}" placeholder="https://…" required pattern="https://.*" autocomplete="off"></label>`).join("");
@@ -303,12 +310,14 @@ async function refresh() {
   } catch (error) {
     if (readEpoch !== state.boardReadEpoch) return;
     state.board = null;
+    clearLeadDetail();
     $("leadBoardError").textContent = errorMessage(error); $("leadBoardError").hidden = false;
     board.innerHTML = '<p class="board-state empty">The board is unavailable. Existing lead records were not changed.</p>';
   } finally { if (readEpoch === state.boardReadEpoch) board.setAttribute("aria-busy", "false"); }
 }
 async function refreshAfterReturn() {
   const resumeEpoch = ++state.resumeReadEpoch;
+  const previousActor = state.actor;
   state.actor = null; // Reverify before another decision can use the current cookie.
   const dialog = $("claimDialog");
   if (dialog.open) {
@@ -341,6 +350,7 @@ async function refreshAfterReturn() {
   try { actor = await client.getActor(); } catch { actor = null; }
   if (resumeEpoch !== state.resumeReadEpoch || actorRead !== state.actorReadEpoch) return;
   if (!actor) {
+    clearLeadDetail();
     state.actor = null;
     state.resumeChecking = false;
     $("leadBoardError").textContent = "Sign-in required";
@@ -349,6 +359,7 @@ async function refreshAfterReturn() {
     $("claimError").hidden = false;
     return;
   }
+  if (previousActor !== actor) clearLeadDetail();
   state.actor = actor;
   await Promise.all([refresh(), refreshClaims({ allowPending: true })]);
   if (resumeEpoch !== state.resumeReadEpoch) return;
@@ -440,12 +451,13 @@ if (typeof document !== "undefined") {
   $("claimDialog").addEventListener("submit", (event) => { const form = event.target.closest("form[data-claim-action]"); if (!form) return; event.preventDefault(); submitClaim(form); });
   $("closeClaimDialog").addEventListener("click", () => $("claimDialog").close());
   $("claimDialog").addEventListener("close", () => {
+    selectDocRecord(null,null);
     if (state.suspending) return;
     state.activeClaim?.trigger?.focus?.(); state.activeClaim = null;
     if (state.resumeDeferred && !state.pendingClaims.size) refreshAfterReturn();
   });
   if (typeof window !== "undefined" && typeof document.addEventListener === "function") {
-    mountAutoRefresh({ document, window: globalThis.window, refresh: refreshAfterReturn });
+    mountAutoRefresh({ document, window: globalThis.window, refresh: refreshAfterReturn, onResume: clearLeadDetail });
   }
   const actorRead = ++state.actorReadEpoch;
   client.getActor().then((actor) => {

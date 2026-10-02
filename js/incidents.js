@@ -25,7 +25,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import { groupedIncidents, validIncidentBoardPayload } from "./control-room-model.js";
 import {
@@ -249,7 +249,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Incident");
+
   mountDock();
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = refFromSearch(location.search || "");

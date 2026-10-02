@@ -35,7 +35,7 @@ import { createLiveClient } from './live-client.js';
 import { mountEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
-import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
+import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
   createBoardSync, batchTouchesBoard, SYNC_STATES,
@@ -875,7 +875,6 @@ function wire() {
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
     if (openDeal) {
-      $('receiptsDialog')?.close();
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
@@ -895,11 +894,8 @@ function wire() {
 
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();
-    const dialog = $('receiptsDialog');
-    if (document.getElementById('appToday')) document.dispatchEvent(new Event('doctorcre:open-today'));
-    else if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
+    document.dispatchEvent(new Event('doctorcre:open-today'));
   });
-  $('receiptsClose')?.addEventListener('click', () => $('receiptsDialog')?.close());
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());
@@ -974,7 +970,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock('Deals');
+
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });

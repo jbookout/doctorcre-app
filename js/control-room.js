@@ -37,7 +37,7 @@ import { mountAtlas } from "./atlas.js";
 import { atlasIncompleteSources } from "./atlas-model.js";
 import { mountSessions } from "./sessions.js";
 import { mountModelRoom } from "./model-room.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import { projectResourceDashboard, resourceFacts, resourceRoomPhase } from "./resource-dashboard-model.js";
 
@@ -780,7 +780,7 @@ function openModelRoom() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Control Room");
+
   tabs = wireTabs("controlRoomTabs");
   // V5-UX-C07: the atlas read is LAZY. It fires on the first selection of the
   // Atlas tab, never on page boot, so the four dashboard reads above keep the

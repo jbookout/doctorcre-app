@@ -23,7 +23,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
@@ -174,7 +174,7 @@ function render() {
 
   const { visible, systemOwned } = scopeRows(view.rows, { scope: view.scope, viewer });
   setDocFilters({scope:view.scope,viewer});
-  publishDocRead("loopBoard", {loops:[...visible,...systemOwned]}, [], {observedAt:Date.parse(view.updatedAt)});
+  publishDocRead("loopBoard", {loops:[...visible,...systemOwned]}, []);
   const ordered = orderTaskRows(visible, Date.now());
   if (list) list.innerHTML = ordered.map(rowHtml).join("");
   if (systemBlock && systemList) {
@@ -718,7 +718,7 @@ async function refreshVerified() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Tasks");
+
   mountDock();
   wire();
   const quickAddPanel = $("quickAddPanel");

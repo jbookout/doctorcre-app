@@ -14,6 +14,7 @@ export function createDocApproval({ client, context, evaluatedPages, uuid }) {
       if (busy || !eligible(row, shown, shownPayload)) return { state: 'changed' };
       const signature = `${row.id}:${row.version}`;
       const pending = intents.get(signature);
+      if (pending?.state === 'approved') return { state:'approved', receipt:pending.receipt };
       if (pending?.state === 'unknown') return { state: 'unknown' }; // no blind replay
       const intent = pending || { key: uuid(), state: 'pending' };
       intents.set(signature, intent); busy = true; let writing = false;
@@ -30,7 +31,7 @@ export function createDocApproval({ client, context, evaluatedPages, uuid }) {
           choice: 'discuss', idempotency_key: intent.key }));
         if (result?.ok !== true || result.suggestion_id !== row.id || result.choice !== 'discuss'
           || result.version !== row.version + 1) { intent.state = 'unknown'; return { state: 'unknown' }; }
-        intent.state = 'approved'; return { state: 'approved', receipt: result };
+        intent.state = 'approved'; intent.receipt = result; return { state: 'approved', receipt: result };
       } catch (error) {
         if ([401,403].includes(error.status)) context.clear();
         if (!writing) { intents.delete(signature); return { state:'unavailable' }; }

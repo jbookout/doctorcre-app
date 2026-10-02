@@ -17,7 +17,7 @@ import { selectDocRecord, pageDocContext } from './doc-context.js';
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatCalendarDate } from "./visual-system.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import {
@@ -398,7 +398,7 @@ async function load({ failClosed = false } = {}) {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Calendar");
+
   view.state = parseCalendarState(location.search, view.today);
   history.replaceState({ calendar: true }, "", calendarHref(view.state));
   wire();

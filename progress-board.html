@@ -17,6 +17,7 @@
       <span class="edition">PROGRESS</span>
     </header>
     <main>
+      <nav aria-label="Breadcrumb"><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
       <section class="intro" aria-labelledby="board-title">
         <p class="eyebrow">DELIVERY / PROGRESS BOARD</p>
         <h1 id="board-title" tabindex="-1">Progress</h1>
@@ -37,6 +38,10 @@
           <svg id="board-flow" class="pipeline-diagram" role="group" aria-label="Tasks positioned along the six delivery stages"></svg>
         </div>
       </section>
+      <section class="panel" aria-labelledby="completed-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / COMPLETED</p><h2 id="completed-title">Live work</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div id="completed-list" class="completed-list"></div>
+      </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
         <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
         <form id="system-work-filters" class="work-filters">
@@ -51,19 +56,12 @@
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
-        <div class="panel-heading"><div><p class="eyebrow">02 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">03 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
 
         <div id="board-questions" class="questions" aria-live="polite"></div>
       </section>
     </main>
     <dialog id="work-triage" aria-label="Review system work action"><button id="work-triage-close" type="button" aria-label="Close">×</button><form id="work-triage-form"></form></dialog>
-    <dialog id="task-detail" aria-labelledby="task-detail-title">
-      <form method="dialog" class="dialog-close"><button aria-label="Close task detail" title="Close">×</button></form>
-      <p class="eyebrow">DELIVERY / TASK</p>
-      <h2 id="task-detail-title"></h2>
-      <div id="task-detail-body" class="task-detail-body"></div>
-    </dialog>
-
   </div>
 </body>
 </html>

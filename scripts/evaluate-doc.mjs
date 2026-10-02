@@ -19,4 +19,4 @@ const report={schema:'doctorcre-doc-factual-evaluation.v1',method:'Deterministic
 if(pages.some(page=>page.percent!==100)) throw new Error('Doc context evaluation failed');
 await mkdir(new URL('../test-artifacts/w8/',import.meta.url),{recursive:true});
 await writeFile(new URL('../test-artifacts/w8/context-accuracy.json',import.meta.url),JSON.stringify(report,null,2)+'\n');
-console.log(`${report.passed}/${report.total} (${100*report.passed/report.total}%) across ${pages.length} supported page families`);
+console.log(`${report.passed}/${report.total} (${100*report.passed/report.total}%) in ${pages.length} producer-shaped cases across ${new Set(pages.map(p=>p.page)).size} supported page families`);

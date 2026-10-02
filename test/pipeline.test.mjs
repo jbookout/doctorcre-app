@@ -788,7 +788,8 @@ test("pipeline.html carries the shared shell exactly once and nothing under its 
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
   assert.match(html, /<dialog id="conflictDialog"/);
-  assert.match(html, /<dialog id="receiptsDialog"/, "recent changes are a popup, not an inline panel");
+  assert.doesNotMatch(html, /receiptsDialog|receiptsClose|receiptsTitle/, "R10 Recent changes belongs to Today without a legacy modal");
+  assert.match(html, /<ul data-layout-slot="moves" class="receipt-list" id="receiptsList"/);
   assert.match(html, /<dialog id="recordPanel" class="record-popup glass"/);
   assert.doesNotMatch(html, /id="panelPin"/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
@@ -932,7 +933,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.38.0");
+  assert.equal(contract.version, "1.40.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

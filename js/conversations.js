@@ -35,7 +35,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
   COMPOSER_ABSENT, DOC_REPLY_PENDING, EXPOSURE_STATEMENT, LIST_EMPTY, LIST_SCOPE,
@@ -787,7 +787,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Conversations");
+
   mountDock();
   $("listScope").textContent = LIST_SCOPE;
   $("sharingCaveat").textContent = SHARING_CAVEAT;

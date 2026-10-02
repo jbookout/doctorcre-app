@@ -32,6 +32,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!refused && api.scope === scope) return;
     const first = !scopeEstablished && !refused; scope = api.scope; scopeEstablished = true;
     if (!first) {
+      pageDocContext?.clear();
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
       savedDraft = null; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
       $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
@@ -107,7 +108,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   function renderLibrary() {
     const focusedId = document.activeElement?.dataset?.tourId;
     const openerId = opener?.dataset?.tourId;
-    const groups = tourGroups(tours, $("#tour-filter").value);
+    const query = $("#tour-filter").value;
+    const groups = tourGroups(tours, query);
+    setDocFilters({query});
+    publishDocRead('tourLibrary',{tours:[...groups.upcoming,...groups.history]});
     for (const group of ["upcoming", "history"]) {
       const list = $(`#${group}-tours`), scroll = list.scrollTop; list.replaceChildren();
       for (const tour of groups[group]) {
@@ -130,7 +134,6 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   }
   function closeDialog() { selectDocRecord(null, null); ++dialogEpoch; currentTour = null; $("#tour-dialog").close(); opener?.focus?.(); }
   function renderTour(tour) {
-    publishDocRead('tourDetail', tour, [tour.id]);
     const signature = JSON.stringify(tour);
     if (signature === renderedTour) return;
     const body = $("#detail-content"), dialog = $("#tour-dialog"), scroll = dialog.scrollTop;
@@ -212,7 +215,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     restoreOrClear();
     if (!active()) return;
     if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); }
-    else { pageDocContext?.fail(docTicket); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
+    else { pageDocContext?.fail(docTicket,results[0].reason); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
     if (results[1].status === "fulfilled") {
       clients = results[1].value; fillClients();
       for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === "Clients temporarily unavailable.") message(target, "");
@@ -240,8 +243,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     const id = currentTour, epoch = currentTour ? ++dialogEpoch : dialogEpoch;
     if (id && $("#tour-dialog").open) {
-      try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { renderTour(detail); message("#detail-message", ""); } }
-      catch { if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", "Tour temporarily unavailable."); }
+      const detailTicket=pageDocContext?.begin('tourDetail',[id]);
+      try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { pageDocContext?.finish(detailTicket,detail); renderTour(detail); message("#detail-message", ""); } }
+      catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
     }
     if (!active()) return;
     if (current) message("#planner-updated", updatedLabel(new Date().toISOString()));
@@ -259,6 +263,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
   drop.addEventListener("drop", event => { event.preventDefault(); drop.classList.remove("dragging"); acceptFiles([...event.dataTransfer.files]); });
   $("#detail-close").addEventListener("click", closeDialog);
+  $("#tour-dialog").addEventListener("close", () => { selectDocRecord(null,null); pageDocContext?.release('tourDetail'); ++dialogEpoch; currentTour=null; });
   $("#tour-dialog").addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
   for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
     search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");

@@ -1,10 +1,13 @@
 import { selectDocRecord } from './doc-context.js';
 import { mountSystemWorkBoard } from './system-work-board.js';
+import { workDetailUrl } from './progress-work-model.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
+import { boardView, answerRequest, taskPulse, taskIdentity, taskSummary, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
 const boardId = new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
+document.getElementById('board-activity').href = workDetailUrl({board:boardId});
+document.getElementById('board-parent-name').textContent = boardId === 'carr-v5' ? 'System board' : 'Project board';
 const client = createLiveClient();
 const pendingRequests = new Map();
 let questionCards = new Map();
@@ -14,12 +17,11 @@ const error = document.getElementById("board-error");
 const retry = document.getElementById("board-retry");
 const signIn = document.getElementById("board-sign-in");
 const flow = document.getElementById("board-flow");
-const taskDialog = document.getElementById("task-detail");
-const taskDetailTitle = document.getElementById("task-detail-title");
-const taskDetailBody = document.getElementById("task-detail-body");
 const questions = document.getElementById("board-questions");
 const taskCount = document.getElementById("task-count");
 const questionCount = document.getElementById("question-count");
+const completedList = document.getElementById("completed-list");
+const completedCount = document.getElementById("completed-count");
 const directory = document.getElementById("board-directory");
 const directoryError = document.getElementById("directory-error");
 const freshness = document.getElementById("board-freshness");
@@ -31,7 +33,6 @@ const badgeTimes = new Map();
 let ageTimer;
 let taskNodes = new Map();
 let renderedStages = "";
-let detailTaskId = null;
 let systemWork = null;
 
 function element(tag, className, content) {
@@ -123,28 +124,9 @@ function svg(tag, className, attributes = {}, content) {
   return node;
 }
 
-function detailRow(label, value) {
-  if (value === undefined || value === null || value === "") return;
-  const row = element("div", "detail-row");
-  row.append(element("dt", "", label), element("dd", "", value));
-  taskDetailBody.append(row);
-}
-
 function showTask(task, stage) {
-  selectDocRecord('task', task.id);
-  detailTaskId = task.id;
-  taskDetailTitle.textContent = task.title || task.id;
-  taskDetailBody.replaceChildren();
-  detailRow("Stage", stage.label);
-  detailRow("Status", task.status);
-  detailRow("Task", task.id);
-  detailRow("Executor", task.executor);
-  detailRow("PR", task.pr != null ? `#${task.pr}${task.pr_phase ? ` · ${task.pr_phase}` : ""}` : "No PR");
-  detailRow("Updated", formatTime(task.updated_at));
-  detailRow("Note", task.note);
-  detailRow("Question", task.question);
-  detailRow("Evidence", task.evidence);
-  taskDialog.showModal();
+  location.href = workDetailUrl({ board: boardId, task: task.id,
+    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) });
 }
 
 function titleLines(value, width) {
@@ -161,6 +143,7 @@ function titleLines(value, width) {
 
 function taskNode(task, stage, x, y, width, height, phone) {
   const pulse = taskPulse(task);
+  const identity = taskIdentity(task);
   const node = svg("g", "pipeline-node", { "data-task-id": task.id, "data-stage": stage.id,
     "data-pulse": pulse, role: "button", tabindex: 0,
     "aria-label": `${task.title || task.id}, ${stage.label}. Open task detail.` });
@@ -174,8 +157,13 @@ function taskNode(task, stage, x, y, width, height, phone) {
     label.append(svg("tspan", "", { x: x + 35, dy: index ? 14 : 0 }, line));
   }
   node.append(label);
-  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 12 },
-    [task.executor || "Unassigned", task.pr != null ? `PR ${task.pr}` : "No PR"].join(" · ")));
+  const summary = taskSummary(task);
+  const summaryLimit = phone ? 46 : 24;
+  node.append(svg("text", "node-summary", { x: x + 12, y: y + height - 42 },
+    summary.length > summaryLimit ? `${summary.slice(0, summaryLimit - 1)}…` : summary));
+  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 27 }, identity.provider));
+  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 13 },
+    `${identity.model} · ${identity.effort}`));
   const retained = taskNodes.get(task.id);
   const target = retained?.node || node;
   if (retained) {
@@ -198,6 +186,7 @@ function taskNode(task, stage, x, y, width, height, phone) {
 
 function renderStages(view) {
   currentView = view;
+  renderCompleted(view);
   const phone = phoneQuery.matches;
   const signature = JSON.stringify([view.stages, phone]);
   if (signature === renderedStages) {
@@ -211,8 +200,8 @@ function renderStages(view) {
   taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
   const width = phone ? 360 : 1200;
   const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
-  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 88) + 21, 0) - 21
-    : Math.max(270, 93 + maxTasks * 89);
+  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 115) + 21, 0) - 21
+    : Math.max(270, 93 + maxTasks * 115);
   flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
   flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
   let offset = 0;
@@ -220,7 +209,7 @@ function renderStages(view) {
     const x = phone ? 8 : 8 + index * 199;
     const y = phone ? offset : 8;
     const wellWidth = phone ? 344 : 186;
-    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 88) : height - 16;
+    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 115) : height - 16;
     const group = svg("g", "flow-stage", { "data-stage": stage.id });
     group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
     group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
@@ -229,7 +218,7 @@ function renderStages(view) {
       String(stage.tasks.length).padStart(2, "0")));
     if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
     stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
-      y + 44 + taskIndex * (phone ? 88 : 89), wellWidth - 18, phone ? 78 : 79, phone)));
+      y + 44 + taskIndex * 115, wellWidth - 18, 106, phone)));
     flow.append(group);
     if (index < view.stages.length - 1) {
       const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`
@@ -243,10 +232,34 @@ function renderStages(view) {
   if (focusedId) (taskNodes.get(focusedId)?.node || title).focus();
 }
 
-taskDialog.addEventListener("close", () => {
-  if (detailTaskId) (taskNodes.get(detailTaskId)?.node || title).focus();
-  detailTaskId = null;
-});
+function renderCompleted(view) {
+  const live = view.stages.find(stage => stage.id === "live");
+  const signature = JSON.stringify(live.tasks);
+  if (completedList.dataset.signature === signature) return;
+  completedList.dataset.signature = signature;
+  completedList.replaceChildren();
+  completedCount.textContent = `${live.tasks.length} LIVE`;
+  if (!live.tasks.length) {
+    completedList.append(element("p", "empty", "No live tasks yet."));
+    return;
+  }
+  for (const task of live.tasks) {
+    const identity = taskIdentity(task);
+    const card = element("article", "completed-card");
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `${task.title || task.id}. Open task detail.`);
+    card.append(element("strong", "", task.title || task.id),
+      element("p", "card-summary", taskSummary(task)),
+      element("span", "card-provider", identity.provider),
+      element("span", "card-model", `${identity.model} · ${identity.effort}`));
+    card.addEventListener("click", () => showTask(task, live));
+    card.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task, live); }
+    });
+    completedList.append(card);
+  }
+}
 
 phoneQuery.addEventListener("change", () => { if (currentView) renderStages(currentView); });
 
@@ -390,11 +403,10 @@ function clearBoard(state) {
   taskNodes.clear();
   questionCards.clear();
   pendingRequests.clear();
-  detailTaskId = null;
-  if (taskDialog.open) taskDialog.close();
-  taskDetailTitle.textContent = "";
-  taskDetailBody.replaceChildren();
   flow.replaceChildren();
+  completedList.replaceChildren();
+  delete completedList.dataset.signature;
+  completedCount.textContent = "—";
   questions.replaceChildren();
   taskCount.textContent = "—";
   questionCount.textContent = "—";
@@ -415,7 +427,7 @@ function clearDirectory() {
 function readFailure(cause, target) {
   const unauthorized = cause.status === 401 || cause.status === 403;
   const state = cause.status === 401 ? "signed-out" : cause.status === 403 ? "unauthorized"
-    : cause.code === "progress_read_timeout" ? "timeout"
+    : cause.code === "read_timeout" ? "timeout"
       : globalThis.navigator?.onLine === false ? "offline" : "unavailable";
   let message;
   if (unauthorized) {
@@ -492,5 +504,3 @@ if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client, onP
 retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();
 setInterval(() => refresh(), 15000);
-
-taskDialog?.addEventListener('close', () => selectDocRecord(null, null));

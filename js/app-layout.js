@@ -1,3 +1,5 @@
+import { scopedDeals } from './home-dashboard-model.js';
+import { localToday, toDay } from './calendar-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
@@ -23,8 +25,10 @@ export function mountAppLayout(root, host, pathname) {
     <button class="app-layout-scrim" id="appDrawerScrim" type="button" aria-label="Close sidebar" hidden></button>`;
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
-  status.innerHTML = '<span><time id="appSyncTime" title="Last sync">—</time><button type="button" id="appSyncRefresh" aria-label="Refresh workspace" title="Refresh">↻</button></span><span title="Last new-lead search">⌕ <time id="appLeadSearchTime">—</time></span><span id="appConnection" class="app-layout-health" data-state="unknown" role="img" aria-label="Connection unknown" title="Connection unknown"></span><div id="appStatusSlot" hidden></div>';
+  status.innerHTML = '<span><time id="appSyncTime" title="Last sync">—</time><button type="button" id="appSyncRefresh" aria-label="Refresh workspace" title="Refresh">↻</button></span><span title="Last new-lead search">⌕ <time id="appLeadSearchTime">—</time></span><span id="appConnection" class="app-layout-health" data-state="unknown" role="img" aria-label="Connection unknown" title="Connection unknown"></span><div id="appStatusSlot"></div>';
   const main = layout.querySelector('#appMainSlot');
+  // Modals and fixed feedback belong to the viewport, outside page regions.
+  root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
   // Lift declarative page slots before putting the remaining page into main.
   for (const node of [...root.querySelectorAll('[data-layout-slot]')]) {
     const slot = node.dataset.layoutSlot;
@@ -33,8 +37,8 @@ export function mountAppLayout(root, host, pathname) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .toast, .receipt-dock')) continue;
-    if (node.matches('footer')) { node.hidden = true; status.querySelector('#appStatusSlot').append(node); }
+    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
+    if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }
   host.after(layout, status);
@@ -53,19 +57,23 @@ export function mountAppLayout(root, host, pathname) {
     sidebarToggle.setAttribute('aria-expanded', String(leftOpen)); todayToggle.setAttribute('aria-expanded', String(rightOpen));
     layout.querySelector('#appDrawerScrim').hidden = !phone.matches || !drawer;
   };
+  const openDrawer = region => {
+    drawer = region;
+    paint();
+    layout.querySelector(`#${region === 'sidebar' ? 'appSidebar' : 'appToday'} button`).focus();
+  };
   const toggle = region => {
-    if (phone.matches) drawer = drawer === region ? null : region;
+    if (phone.matches) { if (drawer === region) closeDrawer(); else openDrawer(region); return; }
     else if (region === 'sidebar') { sidebar = !sidebar; try { win.localStorage.setItem(`doctorcre:sidebar:${pageKey}`, sidebar ? 'open' : 'closed'); } catch {} }
     else { today = !today; try { win.localStorage.setItem('doctorcre:today', today ? 'open' : 'closed'); } catch {} }
     paint();
-    if (phone.matches && drawer) layout.querySelector(`#${drawer === 'sidebar' ? 'appSidebar' : 'appToday'} button`).focus();
   };
   const closeDrawer = () => { const previous = drawer; drawer = null; paint(); if (previous) (previous === 'sidebar' ? sidebarToggle : todayToggle).focus(); };
   sidebarToggle.onclick = () => toggle('sidebar'); todayToggle.onclick = () => toggle('today');
   layout.querySelector('#appDrawerScrim').onclick = closeDrawer;
   layout.querySelectorAll('[data-layout-close]').forEach(button => button.onclick = () => phone.matches ? closeDrawer() : toggle(button.dataset.layoutClose));
   root.addEventListener('keydown', event => {
-    if (!phone.matches || !drawer) return;
+    if (!phone.matches || !drawer || root.querySelector('dialog:modal')) return;
     if (event.key === 'Escape') { event.preventDefault(); closeDrawer(); }
     if (event.key === 'Tab') {
       const panel = layout.querySelector(drawer === 'sidebar' ? '#appSidebar' : '#appToday');
@@ -77,7 +85,7 @@ export function mountAppLayout(root, host, pathname) {
   });
   phone.addEventListener('change', () => { drawer = null; paint(); });
   paint();
-  root.addEventListener('doctorcre:open-today', () => { if (phone.matches) drawer = 'today'; else today = true; paint(); });
+  root.addEventListener('doctorcre:open-today', () => { if (phone.matches) openDrawer('today'); else { today = true; paint(); } });
   // Page tab controllers retain selection and lazy reads. Give groups without
   // their own roving focus the same left/right keyboard affordance.
   const tabs = layout.querySelector('#appTabsSlot');
@@ -103,25 +111,42 @@ export function mountAppLayout(root, host, pathname) {
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
+  const text = value => typeof value === 'string' && value.trim().length > 0;
+  const optionalText = value => value == null || typeof value === 'string';
+  const validBoard = value => scopedDeals(value, 'team') !== null
+    && text(value.actor) && value.deals.every(d => text(d.name)
+      && ['phase','operating_state','owner','next_step','next_date'].every(k => optionalText(d[k]))
+      && (d.attention == null || typeof d.attention === 'boolean')
+      && (!d.next_date || toDay(d.next_date)));
+  const validTriage = value => Array.isArray(value?.items) && value.items.every(i => i
+    && text(i.subject_type) && text(i.subject_id) && text(i.subject_name)
+    && optionalText(i.what) && optionalText(i.due_on) && (!i.due_on || toDay(i.due_on)));
+  const connection = connected => {
+    const dot = status.querySelector('#appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
+    dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
+  };
   const refresh = async ({ signal } = {}) => {
-    try { client ||= await createClient(boot.mode, { ...boot.options, docContext: false }); }
-    catch { render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
+    try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
+    catch { connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(() => client.todayTriage(), { signal }),
     ]);
     if (signal?.aborted) return;
-    const connected = board.status === 'fulfilled' && Array.isArray(board.value?.deals);
-    const dot = status.querySelector('#appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
-    dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
-    const items = triage.status === 'fulfilled' && Array.isArray(triage.value?.items) ? triage.value.items : null;
+    const connected = board.status === 'fulfilled' && validBoard(board.value);
+    const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
+    connection(connected && triageValid);
+    const items = triageValid ? triage.value.items : null;
     render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${i.due_on || ''}`)).join('') || empty : unavailable);
     if (connected) {
       const value = board.value;
-      status.querySelector('#appSyncTime').textContent = time(new Date().toISOString());
-      status.querySelector('#appSyncTime').dateTime = new Date().toISOString();
-      const active = value.deals.filter(d => d.operating_state !== 'parked' && d.phase !== 'closed');
-      const needs = active.filter(d => d.owner === value.actor && (d.attention || d.next_date && d.next_date <= new Date().toISOString().slice(0,10)));
+      if (triageValid) {
+        const observed = new Date().toISOString();
+        status.querySelector('#appSyncTime').textContent = time(observed);
+        status.querySelector('#appSyncTime').dateTime = observed;
+      }
+      const active = scopedDeals(value, 'team');
+      const needs = scopedDeals(value, 'mine').filter(d => d.attention || d.next_date && toDay(d.next_date) <= localToday());
       render('#appTodayNeeds', needs.slice(0,6).map(d => row(d,d.next_step)).join('') || empty);
       render('#appWorkingList', active.filter(d => d.attention).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       if (!pageOwnsMoves) {

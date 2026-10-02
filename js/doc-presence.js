@@ -84,7 +84,9 @@ export function mountDocPresence({ document: root = document, window: win = wind
     const button = event.target.closest('[data-doc-approve]'); if (!button || !approval || approval.busy || DOC_PAGES[snapshot.page].approvals === false) return;
     const row = shown.find(item => item.id === button.dataset.docApprove); if (!row) return;
     button.disabled = true; $('docApprovalStatus').textContent = 'Confirming…';
+    const originScope=lastScope, originRecord=chosen;
     const result = await approval.approve(row, suggestions);
+    if (disposed || originScope !== lastScope || originRecord !== chosen) return;
     $('docApprovalStatus').textContent = result.state === 'approved' ? 'Discussion approved' : result.state === 'changed' ? 'Suggestion changed' : 'Confirmation unavailable';
     await auto.refresh(); render();
   });

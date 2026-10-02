@@ -1,0 +1,44 @@
+body.room-body.progress-work-body { display:block; height:auto; padding:80px 0 110px; overflow:auto; overflow-wrap:anywhere; background:radial-gradient(ellipse at 10% 0%, #12233b 0%, transparent 45%),#07090c; }
+.progress-work-shell [id] { scroll-margin-top:90px; }
+.progress-wire-layout>* { grid-area:auto; }
+.progress-work-shell { max-width:1440px; margin:0 auto; padding:20px; min-width:0; }
+.work-heading h1 { font-family:Oswald,'Arial Narrow',sans-serif; font-size:clamp(28px,4vw,48px); margin:12px 0; }
+#workBreadcrumbs ol { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:0; list-style:none; }
+#workBreadcrumbs li+li:before { content:'›'; padding-right:10px; color:#f08a2d; }
+.progress-work-shell a { color:#bfe3ff; }
+.work-sections { display:flex; flex-wrap:wrap; gap:12px; margin:20px 0; }
+.work-panel { margin:16px 0; padding:20px; backdrop-filter:blur(18px); background:rgba(13,20,32,.76); }
+.work-panel h2 { font:500 23px Oswald,'Arial Narrow',sans-serif; }
+.work-panel h3 { font-size:16px; }
+.progress-work-shell label { display:flex; flex-direction:column; gap:6px; }
+.progress-work-shell button,.progress-work-shell input,.progress-work-shell select,.progress-work-shell textarea { max-width:100%; min-width:0; font:inherit; }
+.progress-work-shell button { cursor:pointer; transition:background .2s,box-shadow .2s; }
+.progress-work-shell button:hover { box-shadow:0 0 18px #f08a2d33; }
+.progress-work-shell input,.progress-work-shell select { background:#0d1624; color:#e8eef7; padding:8px; border:1px solid #3a4f6a; border-radius:8px; }
+.progress-wire-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr); gap:16px; }
+.progress-wire-layout .room-header,.progress-wire-layout .room-stage,.progress-wire-layout .job-passport,.progress-wire-layout .room-health { grid-column:1/-1; }
+.progress-wire-layout .room-desks,.progress-wire-layout .room-wire,.progress-wire-layout .room-rail { grid-row:auto; min-width:0; }
+.progress-wire-layout .room-wire { grid-column:auto; }
+.progress-wire-layout .room-stage { height:var(--stage-h); }
+.progress-wire-layout .wire-feed { max-height:640px; min-height:220px; }
+.progress-work-shell .room-header { flex-wrap:wrap; }
+.progress-work-shell .room-composer { left:0; width:100%; min-width:0; padding-right:96px; }
+.progress-work-shell pre { white-space:pre-wrap; overflow-wrap:anywhere; max-width:100%; }
+.work-record { padding:12px; border:1px solid #34445b; border-radius:10px; margin:10px 0; min-width:0; }
+.work-record p { white-space:pre-wrap; }
+.work-detail-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); gap:12px; }
+.work-detail-fields dt { color:#a6b7d1; font-size:12px; }
+.work-detail-fields dd { margin:4px 0 12px; }
+.work-flow { width:100%; height:auto; max-height:200px; }
+.work-flow line { stroke:#f08a2d; stroke-width:2; stroke-dasharray:4 8; }
+.work-flow[data-pulse=healthy] line { animation:work-flow 3.5s linear infinite; }
+.work-flow[data-pulse=attention] line { animation:work-flow 2s linear infinite; }
+.work-flow[data-pulse=critical] line { animation:work-flow 1s linear infinite; stroke:#ff7968; }
+.work-flow rect { fill:#12233b; stroke:#42618a; }
+.work-flow text { fill:#e8eef7; font:14px Oswald,sans-serif; }
+.work-state[data-state=stale],#roomHealth[data-stale] { border-color:#f08a2d; }
+.work-empty { color:#a6b7d1; }
+@keyframes work-flow { to { stroke-dashoffset:-48; } }
+@media(max-width:900px) { .progress-wire-layout { grid-template-columns:minmax(0,1fr); } .progress-wire-layout>* { grid-column:1!important; } }
+@media(max-width:680px) { .progress-work-shell { padding:12px; } .work-panel { padding:12px; } .progress-work-shell .queue-columns { display:grid; grid-template-columns:minmax(0,1fr); overflow:visible; } .progress-work-shell .queue-column { min-width:0; } .progress-work-shell .queue-toolbar,.progress-work-shell .queue-compose { flex-wrap:wrap; } .progress-work-shell .room-figures { flex-wrap:wrap; } }
+@media(prefers-reduced-motion:reduce) { .progress-work-shell *, .progress-work-shell *:before,.progress-work-shell *:after { animation:none!important; transition:none!important; } }

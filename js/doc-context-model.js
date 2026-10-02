@@ -1,3 +1,4 @@
+import { validCatchUpPayload } from './search-model.js';
 // App-owned, ephemeral context. Values come from the same authorized responses
 // as the page; names and screen text never resolve an identity or authorize work.
 const text = value => typeof value === 'string' && value.trim() ? value : null;
@@ -36,7 +37,7 @@ const routes = { '/': 'home', '/workspace': 'home', '/workspace.html': 'home', '
   '/clients': 'clients', '/vendors': 'vendors', '/business.html': 'clients',
   '/calendar': 'calendar', '/calendar.html': 'calendar', '/ideas-events': 'ideas', '/ideas.html': 'ideas',
   '/control-room': 'control', '/control-room.html': 'control',
-  '/control-room/progress': 'progress', '/progress-board.html': 'progress',
+  '/control-room/progress/work':'room', '/progress-work.html':'room', '/control-room/progress': 'progress', '/progress-board.html': 'progress',
   '/work-requests': 'work', '/system-work.html': 'work', '/all-work': 'inventory', '/work-inventory.html': 'inventory',
   '/incidents': 'incidents', '/incidents.html': 'incidents', '/agent-room': 'room', '/room.html': 'room',
   '/control-room/agents/queue': 'queue', '/queue.html': 'queue', '/updates': 'updates', '/notifications.html': 'updates',
@@ -64,7 +65,7 @@ const deal = (row = {}) => record('deal', row, row.id, row.name, [field('Owner',
 const work = (row = {}) => record('work', row, row.human_ref || row.id, row.title || row.requested_outcome,
   [field('Owner', row.owner), field('Status', row.state || row.status || row.controlled_phase),
     field('Next step', row.next_human_action || row.next_action), field('Due', row.due_on)]);
-const loop = (row = {}) => record('loop', row, row.loop_id || row.number, row.title,
+const loop = (row = {}) => record('loop', row, row.loop_id || row.number, row.title || row.label,
   [field('Owner', row.owner), field('Status', row.status), field('Due', row.due_on), field('Next step', row.blocker_detail), field('Number', row.number)]);
 const incident = (row = {}) => record('incident', row, row.ref, row.title,
   [field('Owner', row.owner_actor), field('Status', row.state), field('Priority', row.severity), field('Next step', row.next_action)]);
@@ -86,11 +87,12 @@ export function normalizeDocRead(method, payload, args = []) {
       row.activity = [...(payload.activities || []), ...(payload.thread || []), ...(payload.history || [])]
         .map(item => ({ text: item.summary || item.text || item.description, at: item.occurred_at || item.recorded_at }))
         .filter(item => text(item.text));
+      sortActivity(row);
       return [row];
     }
     case 'getLeadBoard': rows = payload.leads; map = row => record('lead', row, row.id, row.name,
       [field('Owner', row.owner), field('Stage', row.stage), field('Score', row.score), field('Next step', row.next_action), field('Market', row.city || row.market)]); break;
-    case 'getClaimCard': rows = payload.candidates; map = row => record('candidate', row, row.pool_id, row.name,
+    case 'getClaimCard': rows = payload.candidates; map = row => record('candidate', row, row.pool_id, row.display_name,
       [field('Score', row.score), field('Market', row.city), field('Status', row.stage)]); break;
     case 'todayTriage': rows = payload.items; map = row => record(row.subject_type || 'task', row, row.id || row.subject_id,
       row.subject_name || row.what, [field('Owner', row.owner), field('Next step', row.what), field('Due', row.due_on)]); break;
@@ -118,11 +120,13 @@ export function normalizeDocRead(method, payload, args = []) {
       const row = conversation(payload.identity || payload.conversation);
       if (!row || row.id !== args[0]?.conversation_id) return null;
       row.latestSequence = payload.latest_sequence ?? null;
+      row.activityComplete = payload.more !== true;
       row.activity = (payload.turns || []).map(item => ({ text: item.body, at: item.at || item.created_at })).filter(item => text(item.text));
+      sortActivity(row);
       return [row];
     }
     case 'docOutcomeCards': rows = payload.cards; map = row => work({ ...row, id: row.card_id }); break;
-    case 'roomQueue': rows = payload.events; map = row => record('room-task', row.card || {}, row.task_id, row.card?.title,
+    case 'roomQueue': rows = payload.events; map = row => record('room-task', { ...row.card, revision:row.card?.updated_at }, row.task_id, row.card?.title,
       [field('Status', row.card?.status), field('Priority', row.card?.priority)], [{ text: row.summary, at: row.projected_at }]); break;
     case 'roomTurns': rows = payload.turns; map = row => record('room-turn', row, row.msg_id || row.seq, row.body || row.text,
       [field('Date', row.at), field('Owner', row.origin_actor || row.seat)]); break;
@@ -133,13 +137,14 @@ export function normalizeDocRead(method, payload, args = []) {
       [field('Owner', row.owner), field('Status', row.status || row.stage), field('Next step', row.next_action)]); break;
     }
     case 'businessList': rows = payload.rows; map = row => record(args[0]?.dataset || 'party', row, row.id, row.name,
-      [field('Owner', row.owner), field('Status', row.stage || row.status), field('Market', row.city)]); break;
+      [field('Owner', row.owner_label), field('Status', args[0]?.dataset === 'vendors' ? row.recorded_stage_label || row.recorded_stage : row.recorded_status_label || row.recorded_status), field('Market', row.city)]); break;
     case 'businessRecord': if (payload.record?.id !== args[0]?.id) return null; rows = payload.record ? [payload.record] : null; map = row => record(args[0]?.dataset || 'party', row, row.id, row.name,
-      [field('Owner', row.owner), field('Status', row.stage || row.status), field('Market', row.city), field('Last activity', row.last_touch)]); break;
+      [field('Owner', row.owner_label), field('Status', args[0]?.dataset === 'vendors' ? row.recorded_stage_label || row.recorded_stage : row.recorded_status_label || row.recorded_status), field('Market', row.city), field('Last activity', row.last_touch)]); break;
     case 'businessActivity': {
       const base = normalizeDocRead('businessRecord', payload, args);
       if (!base || !Array.isArray(payload.activities)) return null;
       base[0].activity = payload.activities.map(item => ({ text:item.what, at:item.when })).filter(item => text(item.text));
+      sortActivity(base[0]);
       return base;
     }
     case 'tourLibrary': rows = payload.tours || (Array.isArray(payload) ? payload : null); map = row => record('tour', row, row.id, row.name || row.title,
@@ -150,34 +155,54 @@ export function normalizeDocRead(method, payload, args = []) {
       [field('Size', row.area_sf), field('Rent', row.asking_rent), field('Address', row.address)]); break;
     case 'find': rows = payload.parties; map = row => record('party', row, row.ref, row.name,
       [field('Market', row.city), field('Specialty', row.specialty)]); break;
-    case 'findAndCatchUp': rows = payload.activities; map = row => record('activity', row, row.id, row.summary || row.description,
-      [field('Date', row.occurred_at)]); break;
+    case 'findAndCatchUp': {
+      if (!validCatchUpPayload(payload)) return null;
+      if (payload.state !== 'completed') return [];
+      if (!Array.isArray(payload.catch_up.timeline)) return null;
+      const activity = payload.catch_up.timeline.map(item => ({text:item.what || item.summary || item.description, at:item.when || item.occurred_at}));
+      const row = record('catch-up', payload.catch_up, payload.match.target, payload.match.name || payload.match.target,
+        [field('Kind', payload.match.kind)], activity);
+      if (!row) return null;
+      sortActivity(row); return [row];
+    }
     case 'readAssuranceHealth': rows = [payload]; map = row => record('workflow', row, row.scope?.workflow_key, row.scope?.workflow_key,
       [field('Status', row.state), field('Capability', row.capability_stage)]); break;
     default: return null;
   }
   if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== 'object')) return null;
   const normalized = rows.map(map);
-  for (const item of normalized.filter(Boolean)) { item.activity.sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0)); }
+  for (const item of normalized.filter(Boolean)) { sortActivity(item); }
   // Identity-less search matches cannot safely become the active record.
   if (method === 'find') return normalized.filter(Boolean);
   if (normalized.some(row => !row)) return null;
   return normalized;
 }
 
+function sortActivity(row) { row.activity.sort((a,b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0)); }
+function compareRevision(a,b) {
+  if (a === b) return 0;
+  if (a == null || b == null) return a == null ? -1 : 1;
+  const numeric = value => typeof value === 'number' || /^\d+$/.test(value);
+  if (numeric(a) && numeric(b)) return Math.sign(Number(a)-Number(b));
+  if (numeric(a) !== numeric(b)) return null;
+  const left=Date.parse(a), right=Date.parse(b);
+  if (Number.isFinite(left) && Number.isFinite(right)) return Math.sign(left-right);
+  return String(a).localeCompare(String(b), 'en', {numeric:true});
+}
+
 export function createDocContext({ page = 'home', now = () => Date.now() } = {}) {
+  let needsProjection = false;
   let epoch = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map();
   const listeners = new Set();
   const emit = () => listeners.forEach(listener => listener(snapshot()));
   function snapshot() {
     const current = [...reads.values()];
-    const valid = current.filter(read => read.state === 'ready' && now() - read.at < DOC_CONTEXT_TTL_MS);
+    const valid = current.filter(read => read.state === 'ready' && !needsProjection && now() - read.at < DOC_CONTEXT_TTL_MS);
     const unique = new Map();
     for (const read of valid.sort((a, b) => a.at - b.at)) for (const row of read.records) {
       const key = `${row.kind}:${row.id}`; const previous = unique.get(key);
-      if (!previous || (typeof previous.version === 'number' && typeof row.version === 'number'
-        ? row.version > previous.version || row.version === previous.version && (row.activity.length || !previous.activity.length)
-        : row.activity.length || !previous.activity.length)) unique.set(key, row);
+      const order = previous ? compareRevision(row.version,previous.version) : 1;
+      if (order === null || order > 0 || order === 0 && (row.activity.length || !previous.activity.length)) unique.set(key, row);
     }
     const records = [...unique.values()];
     const active = selected ? records.find(row => row.kind === selected.kind && row.id === selected.id) || null : null;
@@ -190,8 +215,19 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
   return {
     snapshot,
     subscribe(listener) { listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener); },
-    navigate(next, nextFilters = {}) { page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
-    filter(next) { epoch++; selected = null; filters = { ...next }; reads = new Map(); tickets = new Map(); emit(); },
+    navigate(next, nextFilters = {}) { needsProjection = false; page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
+    filter(next) {
+      epoch++; selected = null; filters = { ...next };
+      needsProjection = true; emit();
+    },
+    project(method, payload, args = []) {
+      const source = reads.get(method);
+      if (!source || source.state !== 'ready') return false;
+      let records; try { records=normalizeDocRead(method,payload,args); } catch { records=null; }
+      if (!records) return false;
+      needsProjection = false; reads.set(method,{...source,records}); emit(); return true;
+    },
+    release(method) { reads.delete(method); tickets.delete(method); emit(); },
     select(kind, id) { selected = id ? { kind, id: String(id) } : null; emit(); },
     begin(method, args = []) {
       if (!DOC_PAGES[page].reads.includes(method)) return null;
@@ -200,18 +236,19 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       tickets.set(key, ticket); reads.set(key, { state: 'pending', records: [], at: now() }); emit(); return ticket;
     },
     finish(ticket, payload, { at = now() } = {}) {
-      if (!ticket || ticket.epoch !== epoch || tickets.get(ticket.key) !== ticket) return false;
+      if (!ticket || tickets.get(ticket.key) !== ticket) return false;
       let records;
       try { records = normalizeDocRead(ticket.method, payload, ticket.args); } catch { records = null; }
+      needsProjection = false;
       reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at }); emit(); return records !== null;
     },
     fail(ticket, error = {}) {
-      if ([401, 403].includes(error.status)) { epoch++; selected = null; reads.clear(); tickets.clear(); emit(); return; }
-      if (!ticket || ticket.epoch !== epoch || tickets.get(ticket.key) !== ticket) return;
+      if ([401, 403].includes(error.status) || error.code === 'authentication_required') { epoch++; selected = null; reads.clear(); tickets.clear(); emit(); return; }
+      if (!ticket || tickets.get(ticket.key) !== ticket) return;
       reads.set(ticket.key, { state: 'unavailable', records: [], at: now() });
       emit();
     },
-    clear() { epoch++; selected = null; reads.clear(); tickets.clear(); emit(); },
+    clear() { needsProjection = false; epoch++; selected = null; reads.clear(); tickets.clear(); emit(); },
     tick: emit,
   };
 }
@@ -222,7 +259,7 @@ export function docAnswer(context, { recordId, kind, question }) {
   const matches = context.records.filter(row => row.id === recordId && (!kind || row.kind === kind));
   if (matches.length !== 1) return { state: 'unknown', value: null };
   const row = matches[0];
-  if (question === 'Recent activity') return { state: row.activity.length ? 'answered' : 'unknown', value: row.activity[0]?.text ?? null, recordId: row.id, version: row.version };
+  if (question === 'Recent activity') return { state: row.activityComplete !== false && row.activity.length ? 'answered' : 'unknown', value: row.activity[0]?.text ?? null, recordId: row.id, version: row.version };
   const value = question === 'Name' ? row.title : row.fields.find(item => item.label === question)?.value ?? null;
   return { state: value === null || value === '' ? 'unknown' : 'answered', value: value === '' ? null : value, recordId: row.id, version: row.version };
 }
@@ -237,7 +274,7 @@ export function contextualSuggestions(context, payload, { evaluatedPages = [], n
     // obligation-key parsing, or undocumented page inference is accepted.
     if (context.page === 'chats' && context.selected?.kind === 'conversation')
       return (row.source_conversation_id || row.conversation_id) === context.selected.id
-        && payload.coverage?.state === 'complete' && context.active?.latestSequence !== null
+        && context.active?.activityComplete !== false && payload.coverage?.state === 'complete' && context.active?.latestSequence !== null
         && payload.coverage?.latest_sequence === context.active?.latestSequence
         && payload.coverage?.scanned_through >= context.active?.latestSequence;
     if (!facts || !text(facts.record_kind) || !text(facts.record_id) || facts.record_version === undefined) return false;

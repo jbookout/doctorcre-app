@@ -18,10 +18,10 @@ for (const item of docEvaluationSet) test(`Doc accuracy: ${item.page} — ${item
   assert.equal(docAnswer(snapshot,{...item,recordId:'not-this-record'}).state,'unknown');
   assert.equal(docAnswer(snapshot,{...item,question:'Unrecorded rent'}).state,'unknown');
   const suggestion = { id:'demo-suggestion-a', version:3, disposition:'open', conversation_id:item.page === 'chats' ? item.recordId : null, material_facts:{ page:item.page, record_kind:item.kind, record_id:item.recordId, record_version:snapshot.active.version } };
-  if(snapshot.active.version!==null) assert.equal(contextualSuggestions(snapshot,{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:1,scanned_through:1}}, {evaluatedPages:DOC_EVALUATED_PAGES,now}).length,1);
+  if(snapshot.active.version!==null) assert.equal(contextualSuggestions(snapshot,{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:2,scanned_through:2}}, {evaluatedPages:DOC_EVALUATED_PAGES,now}).length,1);
   now+=DOC_CONTEXT_TTL_MS;
   assert.equal(docAnswer(context.snapshot(),item).state,'unavailable');
-  assert.equal(contextualSuggestions(context.snapshot(),{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:1,scanned_through:1}},{evaluatedPages:DOC_EVALUATED_PAGES,now}).length,0);
+  assert.equal(contextualSuggestions(context.snapshot(),{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:2,scanned_through:2}},{evaluatedPages:DOC_EVALUATED_PAGES,now}).length,0);
 });
 
 test('evaluation gate covers every supported page and excludes pages without record contracts',()=>{
@@ -49,7 +49,7 @@ test('newer read, navigation, filter changes, sign-out, malformed success and un
  const c=context(),old=c.begin('getBoard'),latest=c.begin('getBoard');
  assert.equal(c.finish(latest,{deals:[deal('new')]}),true);assert.equal(c.finish(old,{deals:[deal('old')]}),false);
  assert.deepEqual(c.snapshot().records.map(r=>r.id),['new']);
- const stale=c.begin('getBoard');c.filter({owner:'demo'});assert.equal(c.finish(stale,{deals:[deal()]}),false);
+ const stale=c.begin('getBoard');c.navigate('deals',{owner:'demo'});assert.equal(c.finish(stale,{deals:[deal()]}),false);
  assert.equal(c.snapshot().ready,false);
  const page=c.begin('getBoard');c.navigate('vendors');assert.equal(c.finish(page,{deals:[deal()]}),false);
  assert.equal(c.begin('getBoard'),null);
@@ -131,4 +131,11 @@ test('page selection hooks use recorded IDs for Calendar, Events and Control Roo
  assert.match(ideas,/selectDocRecord\(row \? 'event' : null, row\?\.id\)/);
  assert.match(control,/selectDocRecord\("incident", row\.ref\)/);
  assert.ok(DOC_PAGES.control.reads.includes('workRequestCard'));
+});
+
+test('R8 a known approval receipt stays associated with its intent and is never replayed',async()=>{
+ const c=context(),shown={ok:true,suggestions:[row()]}; let writes=0;
+ const approval=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'sample-key',client:{listDocSuggestions:async()=>shown,decideDocSuggestion:async args=>{writes++;return{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:3};}}});
+ const first=await approval.approve(row(),shown); const second=await approval.approve(row(),shown);
+ assert.deepEqual(second,first); assert.equal(writes,1);
 });

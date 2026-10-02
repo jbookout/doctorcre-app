@@ -231,10 +231,10 @@
         {
           "prompt": "What is the status of Demo Vendor A?",
           "query": "Status",
-          "expected": "active",
+          "expected": "Active",
           "recordId": "demo-party-a",
           "expectedState": "answered",
-          "actual": "active",
+          "actual": "Active",
           "actualState": "answered"
         },
         {
@@ -320,7 +320,7 @@
           "prompt": "Who owns Demo Review?",
           "query": "Owner",
           "expected": "demo-partner",
-          "recordId": "demo-loop-a",
+          "recordId": "201",
           "expectedState": "answered",
           "actual": "demo-partner",
           "actualState": "answered"
@@ -329,7 +329,7 @@
           "prompt": "What is the name of this exact record?",
           "query": "Name",
           "expected": "Demo Review",
-          "recordId": "demo-loop-a",
+          "recordId": "201",
           "expectedState": "answered",
           "actual": "Demo Review",
           "actualState": "answered"
@@ -338,7 +338,7 @@
           "prompt": "What is its unrecorded cost?",
           "query": "Unrecorded cost",
           "expected": null,
-          "recordId": "demo-loop-a",
+          "recordId": "201",
           "expectedState": "unknown",
           "actual": null,
           "actualState": "unknown"
@@ -969,10 +969,142 @@
           "actualState": "unknown"
         }
       ]
+    },
+    {
+      "page": "leads",
+      "passed": 4,
+      "total": 4,
+      "percent": 100,
+      "questions": [
+        {
+          "prompt": "Where is the open Demo candidate?",
+          "query": "Market",
+          "expected": "Demo City",
+          "recordId": "1",
+          "expectedState": "answered",
+          "actual": "Demo City",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is the name of this exact record?",
+          "query": "Name",
+          "expected": "Demo candidate",
+          "recordId": "1",
+          "expectedState": "answered",
+          "actual": "Demo candidate",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is its unrecorded cost?",
+          "query": "Unrecorded cost",
+          "expected": null,
+          "recordId": "1",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        },
+        {
+          "prompt": "What is the next step for an unavailable record?",
+          "query": "Next step",
+          "expected": null,
+          "recordId": "demo-absent",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        }
+      ]
+    },
+    {
+      "page": "search",
+      "passed": 4,
+      "total": 4,
+      "percent": 100,
+      "questions": [
+        {
+          "prompt": "What is the latest Demo Practice A activity?",
+          "query": "Recent activity",
+          "expected": "Latest review",
+          "recordId": "C-DEMO",
+          "expectedState": "answered",
+          "actual": "Latest review",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is the name of this exact record?",
+          "query": "Name",
+          "expected": "Demo Practice A",
+          "recordId": "C-DEMO",
+          "expectedState": "answered",
+          "actual": "Demo Practice A",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is its unrecorded cost?",
+          "query": "Unrecorded cost",
+          "expected": null,
+          "recordId": "C-DEMO",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        },
+        {
+          "prompt": "What is the next step for an unavailable record?",
+          "query": "Next step",
+          "expected": null,
+          "recordId": "demo-absent",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        }
+      ]
+    },
+    {
+      "page": "clients",
+      "passed": 4,
+      "total": 4,
+      "percent": 100,
+      "questions": [
+        {
+          "prompt": "Who owns the recorded client?",
+          "query": "Owner",
+          "expected": "Demo partner",
+          "recordId": "demo-party-a",
+          "expectedState": "answered",
+          "actual": "Demo partner",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is the name of this exact record?",
+          "query": "Name",
+          "expected": "Demo Practice A",
+          "recordId": "demo-party-a",
+          "expectedState": "answered",
+          "actual": "Demo Practice A",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is its unrecorded cost?",
+          "query": "Unrecorded cost",
+          "expected": null,
+          "recordId": "demo-party-a",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        },
+        {
+          "prompt": "What is the next step for an unavailable record?",
+          "query": "Next step",
+          "expected": null,
+          "recordId": "demo-absent",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        }
+      ]
     }
   ],
-  "total": 88,
-  "passed": 88,
+  "total": 100,
+  "passed": 100,
   "unsupportedPages": [
     "design",
     "share"
