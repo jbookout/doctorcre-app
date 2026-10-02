@@ -55,9 +55,17 @@ export function dealTimeline(detail, now = Date.now()) {
   });
   if (lease && calendarDay(lease.commencement_on)) rows.unshift({id:`lease-${lease.id}-commencement`,kind:'lease_commencement',label:'Lease commencement',day:calendarDay(lease.commencement_on),original:lease.evidence_ref,evidence:lease.source});
   if (lease && calendarDay(lease.expiration_on)) rows.push({id:`lease-${lease.id}-expiration`,kind:'lease_expiration',label:'Lease expiration',day:calendarDay(lease.expiration_on),original:lease.evidence_ref,evidence:lease.source,deadline:true});
-  // Equal days represent one obligation; conflicting recorded days remain visible.
-  const seen = new Set();
-  const dates = rows.filter(d => { const key = `${d.kind}|${d.day}`; if (seen.has(key)) return false; seen.add(key); return true; }).sort((a,b) => a.day.localeCompare(b.day));
+  // Co-located dates share a card, preserving every original and status.
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = `${row.kind}|${row.day}|${row.status || ''}`;
+    const existing = grouped.get(key);
+    const references = [row.original,row.evidence].filter(Boolean);
+    if (existing) existing.references.push(...references);
+    else grouped.set(key,{...row,references});
+  }
+  const dates = [...grouped.values()].map(({references,...row}) => ({...row,
+    original:[...new Set(references)].join('\n\n')})).sort((a,b) => a.day.localeCompare(b.day));
   const missing = DATE_KINDS.filter(d => !dates.some(row => row.kind === d.kind));
   const entries = noteEntries(detail).map(e => ({...e, day:calendarDay(e.when),type:e.kind}));
   for (const doc of detail.documents || []) entries.push({id:`document-${doc.id}`,type:'Document',kind:'Document',

@@ -22,10 +22,14 @@ test('phases use recorded entries; lease dates are exact and no rent/option date
  assert.equal(dealTimeline({...detail,lease:{...detail.lease,status:'superseded'}}).dates.some(d=>d.kind==='lease_commencement'),false);
  assert.equal(calendarDay('2026-02-30'),null);
 });
-test('conflicting contract dates remain visible; equal obligations collapse; kind is never inferred from prose',()=>{
- const view=dealTimeline({...detail,critical_dates:[{kind:'lease_commencement',due_on:'2026-11-01'}, {kind:'commencement',due_on:'2026-11-02'}, {label:'Rent start',due_on:'2026-11-30'}]},now);
+test('conflicting contract dates remain visible; co-located originals survive; kind is never inferred from prose',()=>{
+ const view=dealTimeline({...detail,critical_dates:[{kind:'lease_commencement',due_on:'2026-11-01',note:'Demo signed contract date',source:'Demo contract clause'}, {kind:'commencement',due_on:'2026-11-02'}, {label:'Rent start',due_on:'2026-11-30'}]},now);
  assert.deepEqual(view.dates.filter(d=>d.kind==='lease_commencement').map(d=>d.day),['2026-11-01','2026-11-02']);
  assert.ok(view.missing.some(d=>d.kind==='rent_start'));
+ assert.match(view.dates.find(d=>d.day==='2026-11-01').original,/Demo signed contract date/);
+ assert.match(view.dates.find(d=>d.day==='2026-11-01').original,/Demo clause 3/);
+ const statuses=dealTimeline({...detail,critical_dates:[{kind:'loi_expiry',due_on:'2026-10-03',status:'done'},{kind:'loi_expiry',due_on:'2026-10-03',status:'open'}]},now);
+ assert.equal(statuses.dates.filter(d=>d.kind==='loi_expiry').length,2);
 });
 test('countdowns cross midnight and distinguish deadlines, completed dates and past commencement',()=>{
  assert.deepEqual(countdown({day:'2026-10-04',deadline:true},now),{state:'today',text:'Due today'});
