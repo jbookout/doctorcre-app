@@ -12,12 +12,14 @@ export const HIDDEN_HOME_WIDGETS = Object.freeze({
   capture: 'Doc task/idea classification and document-now/table workflow',
 });
 
-// A malformed row cannot establish an empty workload. Validate the whole
-// snapshot before applying product filters or marking its read successful.
+// Validate the shape Home consumes as a whole. Dropping an invalid member
+// would turn an incomplete read into authoritative counts and missing flags.
 function validHomeBoard(board) {
-  return Array.isArray(board?.deals) && board.deals.every(deal => deal
-    && typeof deal === 'object' && !Array.isArray(deal)
-    && typeof deal.id === 'string' && deal.id.trim().length > 0);
+  const row = value => value && typeof value === 'object' && !Array.isArray(value);
+  return row(board) && Array.isArray(board.deals) && board.deals.every(deal => row(deal)
+    && typeof deal.id === 'string' && deal.id.trim().length > 0
+    && ['name', 'owner', 'phase', 'operating_state', 'workspace_kind', 'account_client_id'].every(key => deal[key] == null || typeof deal[key] === 'string')
+    && ['attention', 'in_market'].every(key => deal[key] == null || typeof deal[key] === 'boolean'));
 }
 
 export function scopedDeals(board, scope) {

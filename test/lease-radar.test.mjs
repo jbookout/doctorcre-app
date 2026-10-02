@@ -81,3 +81,12 @@ test('HTTP seam is credentialed no-store read only; malformed/refused data canno
   assert.equal(called.path,'/api/v1/business/leases');assert.equal(called.init.credentials,'same-origin');assert.equal(called.init.cache,'no-store');assert.equal(called.init.method,undefined);
   for(const response of [new Response('{}'),new Response('{}',{status:403})]) await assert.rejects(createLeaseRadarClient({fetchImpl:async()=>response}).readLeaseRadar());
 });
+
+test('merged route contract adds leases beside relationships and Progress under a new minor version', async () => {
+  const routes = JSON.parse(await readFile(new URL('../contracts/app-routes.v1.json', import.meta.url)));
+  assert.equal(routes.version, '1.20.0');
+  assert.equal(routes.routes['/leases'], 'lease-radar.html');
+  assert.equal(routes.routes['/relationships'], 'relationships.html');
+  assert.equal(routes.routes['/control-room/progress/work'], 'progress-work.html');
+  assert.equal(routes.routes['/deals'], 'pipeline.html');
+});

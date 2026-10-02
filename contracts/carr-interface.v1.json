@@ -445,6 +445,34 @@
         ]
       },
       "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
+    },
+    "deal-room-board": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "7214532128a836a84d3e75a584e56facbf6662ba"
+      },
+      "response": {
+        "schema_version": "local-deals-board.v1",
+        "deal_keys": [
+          "operating_state",
+          "parking_note",
+          "invoiced_on",
+          "phase_change",
+          "field_base"
+        ],
+        "phase_change_keys": [
+          "event_id",
+          "prior_phase",
+          "phase",
+          "automatic",
+          "reason",
+          "evidence_date",
+          "recorded_at"
+        ],
+        "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
+        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
+      }
     }
   },
   "vendor_directory": {
