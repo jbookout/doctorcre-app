@@ -11,14 +11,15 @@ const shown = value => value === null || value === undefined ? '—' : String(va
 
 export function mountDocActivity({ document: root, window, client, intervalMs = 30_000 }) {
   const $ = id => root.getElementById(id), form = $('activityFilters'), dialog = $('activityDetail');
-  const view = { rows: [], sequence: 0, pages: 1, next: null, selected: null, opener: null, attempts: new Map(), fingerprint: '' };
+  const view = { rows: [], sequence: 0, pages: 1, next: null, selected: null, opener: null, attempts: new Map(), feedback: new Map(), fingerprint: '', filters: '' };
   const message = text => { $('activityStatus').textContent = text; };
   const attemptLabel = row => {
     const attempt = view.attempts.get(row.id);
     return attempt?.state === 'pending' ? 'Undoing…' : attempt?.state === 'unknown' ? 'Check undo'
-      : attempt?.state === 'done' ? 'Undone' : undoLabel(row.undo?.state);
+      : attempt?.state === 'done' ? 'Undone' : undoLabel(row.undo?.state === 'available' && !undoArgs(row, 'eligibility')
+        ? 'unavailable' : row.undo?.state);
   };
-  const canUndo = row => row.undo?.state === 'available' || view.attempts.get(row.id)?.state === 'unknown';
+  const canUndo = row => Boolean(undoArgs(row, 'eligibility')) || view.attempts.get(row.id)?.state === 'unknown';
   function paintDetail() {
     const row = view.rows.find(row => row.id === view.selected);
     if (!row) return;
@@ -35,6 +36,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs = 
     $('detailQuote').textContent = row.evidence?.quote || '';
     $('detailUndo').textContent = attemptLabel(row);
     $('detailUndo').disabled = !canUndo(row) || view.attempts.get(row.id)?.state === 'pending' || view.attempts.get(row.id)?.state === 'done';
+    $('detailResult').textContent = view.feedback.get(row.id) || '';
   }
   function paint() {
     // Unchanged polling preserves keyboard focus, reading position and motion.
@@ -63,15 +65,22 @@ export function mountDocActivity({ document: root, window, client, intervalMs = 
     try {
       const values = Object.fromEntries(new window.FormData(form)), args = activityFilters(values);
       if (args.since && args.until && Date.parse(args.since) >= Date.parse(args.until)) { message('Invalid date range'); return; }
-      const entries = [], cursors = new Set(); let answer, cursor = null;
-      for (let page = 0; page < view.pages; page++) {
+      const filters = JSON.stringify(args), boundary = filters === view.filters ? view.rows.at(-1) : null;
+      const entries = [], cursors = new Set(); let answer, cursor = null, pages = 0;
+      while (true) {
         answer = await readWithDeadline(current => client.readDocActivity({ ...args, ...(cursor ? { cursor } : {}) }, { signal: current }), { signal });
-        entries.push(...activityRows(answer)); cursor = answer.next_cursor;
+        if (seq !== view.sequence) return;
+        const rows = activityRows(answer);
+        entries.push(...rows); cursor = answer.next_cursor; pages++;
         if (!cursor) break;
         const key = JSON.stringify(cursor); if (cursors.has(key)) throw new Error('activity_paging'); cursors.add(key);
+        const last = rows.at(-1);
+        const reached = !boundary || (last && (Date.parse(last.at) < Date.parse(boundary.at)
+          || (Date.parse(last.at) === Date.parse(boundary.at) && last.id <= boundary.id)));
+        if (pages >= view.pages && reached) break;
       }
       if (seq !== view.sequence) return;
-      view.rows = activityRows({ ...answer, entries }); view.next = cursor;
+      view.rows = activityRows({ ...answer, entries }); view.next = cursor; view.pages = pages; view.filters = filters;
       const select = form.elements.record_type, selected = select.value;
       const types = [...new Set([...(answer.record_types || []), ...(selected ? [selected] : [])])].sort();
       const options = `<option value="">All records</option>${types.map(type => `<option value="${esc(type)}">${esc(typeLabel(type))}</option>`).join('')}`;
@@ -90,18 +99,18 @@ export function mountDocActivity({ document: root, window, client, intervalMs = 
       const args = undoArgs(row, uuidv4()); if (!args) return;
       attempt = { args, state: 'pending' }; view.attempts.set(id, attempt);
     }
-    attempt.state = 'pending'; paint(); $('detailResult').textContent = '';
+    attempt.state = 'pending'; view.feedback.delete(id); paint();
     try {
       const result = await readWithDeadline(() => client.revertDealField(attempt.args), { timeoutMs: 10_000 });
       if (result?.ok !== true || result.reverted_event_id !== id) throw new Error('undo_unconfirmed');
-      attempt.state = 'done'; message('Change undone'); $('detailResult').textContent = 'Change undone'; paint();
+      attempt.state = 'done'; view.feedback.set(id, 'Change undone'); message(`Change undone: ${row.record.name}`); paint();
       await refresh();
     } catch (error) {
       if (['newer_change_exists','event_not_revertible'].includes(error.payload?.error) || [401,403].includes(error.status)) {
-        view.attempts.delete(id); message('Undo unavailable'); $('detailResult').textContent = 'Undo unavailable';
+        view.attempts.delete(id); view.feedback.set(id, 'Undo unavailable'); message(`Undo unavailable: ${row.record.name}`);
         await refresh();
       } else {
-        attempt.state = 'unknown'; message('Undo not confirmed'); $('detailResult').textContent = 'Undo not confirmed';
+        attempt.state = 'unknown'; view.feedback.set(id, 'Undo not confirmed'); message(`Undo not confirmed: ${row.record.name}`);
       }
       paint();
     }
@@ -112,7 +121,7 @@ export function mountDocActivity({ document: root, window, client, intervalMs = 
     if (undoButton) { void undo(undoButton.dataset.undo); return; }
     const button = event.target.closest('[data-open]'); if (!button) return;
     view.selected = button.dataset.open; view.opener = button; $('detailOriginal').open = false;
-    $('detailResult').textContent = ''; paintDetail(); dialog.showModal(); $('detailClose').focus();
+    paintDetail(); dialog.showModal(); $('detailClose').focus();
   });
   $('detailClose').addEventListener('click', close);
   dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });

@@ -29,6 +29,7 @@ const GATE_PATHS = new Map([
   ["/calendar", "/business"], ["/search", "/business"], ["/work-requests", "/system-work.html"],
   ["/agent-room", "/room.html"], ["/all-work", "/work-inventory"],
   ["/updates", "/notifications"], ["/doc-chats", "/conversations"],
+  ["/doc-activity", "/control-room"],
 ]);
 
 function gateRequestFor(request, pathname) {

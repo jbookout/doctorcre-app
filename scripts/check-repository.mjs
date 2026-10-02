@@ -33,11 +33,13 @@ assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 for (const verb of ["list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(contract.mcp_operations.includes(verb), `the Events tab needs ${verb} pinned`);
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["control-room.html", "progress-board.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
+for (const path of ["activity.html", "control-room.html", "progress-board.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
 const routes = await json("contracts/app-routes.v1.json");
+for (const path of new Set(Object.values(routes.routes))) await read(path);
+assert.equal(routes.routes["/doc-activity"], "activity.html");
 assert.equal(routes.routes["/all-work"], "work-inventory.html", "All Work must stay in the route contract");
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
 assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path must stay pinned in the CARR interface");

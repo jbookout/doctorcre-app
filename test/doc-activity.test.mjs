@@ -60,3 +60,14 @@ test('Doc popup exposes one activity destination when mounted repeatedly', t => 
   assert.equal(links.length, 1); assert.equal(links[0].getAttribute('href'), '/doc-activity');
   assert.equal(dom.window.document.getElementById('docChat').hidden, false);
 });
+
+test('malformed or partial feed rows are unavailable rather than verified empty; incompatible inverses cannot execute',async()=>{
+  const answer=await createDocActivityFixture().read(),row=answer.entries[0];
+  for(const broken of [{...row,id:null},{...row,record:{...row.record,name:null}},{...row,what:null},{...row,before:{}},{...row,undo:null},{...row,evidence:{kind:'entry',summary:[]}}]){
+    assert.throws(()=>activityRows({...answer,entries:[broken]}),'a wholly malformed feed must not be empty success');
+    assert.throws(()=>activityRows({...answer,entries:[row,broken]}),'a partial feed must not count as complete');
+  }
+  for(const response of [{...answer,as_of:'bad'},{...answer,next_cursor:{at:'bad',id:row.id}},{...answer,record_types:[null]}])assert.throws(()=>activityRows(response));
+  assert.deepEqual(activityRows({...answer,entries:[]}),[]);
+  for(const undo of [{...row.undo,verb:'future-verb'},{...row.undo,event_id:'other'}])assert.equal(undoArgs({...row,undo},'key'),null);
+});

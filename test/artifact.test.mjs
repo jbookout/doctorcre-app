@@ -53,3 +53,14 @@ test("verification binds every payload file and rejects changed bytes", async ()
   badTrailer[badTrailer.length - 1] = 1;
   assert.throws(() => verifyArtifact(badTrailer), /archive trailer/);
 });
+
+test("every contracted page including Doc activity is present in the deployment and archive", async () => {
+  const routes = JSON.parse(await readFile(join(ROOT, "contracts/app-routes.v1.json")));
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-route-artifact-"));
+  const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  const verified = verifyArtifact(built.archive, built.archiveSha256);
+  for (const path of new Set(Object.values(routes.routes))) {
+    assert.ok(verified.manifest.files.some(file => file.path === path), `missing deployed route: ${path}`);
+    assert.deepEqual(await readFile(join(outDir, "site", path)), await readFile(join(ROOT, path)));
+  }
+});
