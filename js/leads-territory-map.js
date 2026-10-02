@@ -2,14 +2,15 @@
 // eligible lead projection as the board. Census points represent places only.
 export function marketFeatures(groups, places) {
   return { type: "FeatureCollection", features: groups.flatMap(group => {
-    const place = places.find(item => item.name.toLowerCase() === String(group.city || "").toLowerCase() && item.state === group.state);
+    const matches = places.filter(item => item.name.toLowerCase() === String(group.city || "").toLowerCase() && item.state === group.state);
+    const place = matches.length === 1 ? matches[0] : null;
     return place ? [{ type: "Feature", id: place.id, properties: { key: group.key, count: group.count },
       geometry: { type: "Point", coordinates: place.position } }] : [];
   }) };
 }
 export async function mountTerritoryMap(root, selectMarket) {
   const [gl, geometry, places] = await Promise.all([
-    import("../reports/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"),
+    import("../tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"),
     fetch("/data/leads-territory.geojson").then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
     fetch("/data/leads-market-locations.json").then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
   ]);

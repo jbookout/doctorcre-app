@@ -2,8 +2,8 @@ export const BOARD_STAGES = Object.freeze([
   ["new", "New"], ["qualified", "Qualified"], ["outreach_active", "Outreach Active"],
   ["engaged", "Engaged"], ["nurture_drip", "Nurture"], ["opportunity", "Opportunity"],
 ]);
-export const FILTER_STAGES = [...BOARD_STAGES, ["do_not_contact", "Do Not Contact"], ["archived", "Archived"]];
-export const stageLabel = stage => FILTER_STAGES.find(([key]) => key === stage)?.[1] || ({ closed_lost: "Nurture", closed_won: "Converted to deal", active_deal: "Deal" }[stage]) || "Unassigned";
+export const FILTER_STAGES = [...BOARD_STAGES, ["archived", "Archived"]];
+export const stageLabel = stage => FILTER_STAGES.find(([key]) => key === stage)?.[1] || ({ do_not_contact: "Do Not Contact", closed_lost: "Nurture", closed_won: "Converted to deal", active_deal: "Deal" }[stage]) || "Unassigned";
 export const normalizedStage = lead => lead.do_not_contact ? "do_not_contact" :
   ["nurture", "closed_lost"].includes(lead.stage) ? "nurture_drip" : lead.stage;
 
@@ -64,6 +64,6 @@ export function automaticMove(lead) {
 }
 export function undoReview(lead) {
   const move = automaticMove(lead);
-  if (!move || !FILTER_STAGES.some(([key]) => key === move.from && key !== "do_not_contact")) return null;
+  if (!move || !(move.from === "closed_lost" || FILTER_STAGES.some(([key]) => key === move.from))) return null;
   return { stage: move.from, stage_review: { reason: "Undo automatic stage move", evidence_ids: [], undo_event_id: move.event_id } };
 }

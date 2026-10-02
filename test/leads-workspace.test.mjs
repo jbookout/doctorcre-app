@@ -90,7 +90,149 @@ test('new correspondence preserves the expanded original by identity, not positi
  let rows=detail(s.board.leads[0]).correspondence;
  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:rows}});
  await s.app.readDetail(id(1));const original=s.d.querySelector('.correspondence details');original.open=true;const key=original.dataset.entryKey;
- rows=[{id:id(999),occurred_at:'2026-10-01',summary:'Synthetic new entry',detail:'Synthetic original'},...rows];await s.app.refresh();
+ rows=[{id:id(999),kind:'email_in',occurred_at:'2026-10-01',summary:'Synthetic new entry',detail:'Synthetic original'},...rows];await s.app.refresh();
  assert.equal(s.d.querySelector('.correspondence details').open,false);assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
+ }finally{s.close()}
+});
+
+test('blocking 2: detail, review and HTTP authorization denial invalidate every private view',async()=>{
+ for(const surface of ['detail','review','actor']){
+  const s=await setup();try{
+   await s.app.readDetail(id(1));
+   const denied=async()=>{throw Object.assign(new Error('denied'),{code:surface==='actor'?'tool_error':'not_authenticated',status:401})};
+   if(surface==='actor')s.client.getActor=denied;else s.client.getLeadDetail=denied;
+   if(surface==='review')await s.app.openReview(id(1),'qualified');else await s.app.refresh();
+   assert.equal(s.d.querySelectorAll('.lead-card').length,0,surface);
+   assert.equal(s.d.getElementById('leadDetail').open,false,surface);
+   assert.equal(s.d.getElementById('stageDialog').open,false,surface);
+   assert.equal(s.d.getElementById('detailBody').textContent,'');
+   assert.equal(s.app.state.proposal,null);assert.equal(s.app.state.identityReady,false);
+  }finally{s.close()}
+ }
+});
+
+test('blocking 3: uncertain claim and closed stage review retain visible recovery through every poll',async()=>{
+ for(const kind of ['claim','stage']){
+ const s=await setup();try{
+  const fail=async()=>{throw Object.assign(new Error('uncertain'),{code:'unknown_outcome'})};
+  if(kind==='claim'){s.client.claimLead=fail;s.d.querySelector('[data-claim]').click()}
+  else{s.client.recordStage=fail;await s.app.openReview(id(1),'engaged');s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}))}
+  await tick();s.d.getElementById('stageDialog').close();await s.app.refresh();
+  assert.ok(s.app.state.pending);assert.equal(s.d.getElementById('leadBoardError').hidden,false);
+  assert.ok(s.d.getElementById('checkPending'));await s.app.refresh();assert.ok(s.d.getElementById('checkPending'));
+ }finally{s.close()}
+ }
+});
+test('blocking 3: authoritative refusal feedback survives successful readback',async()=>{
+ const s=await setup({claimLead:async()=>{throw Object.assign(new Error('refused'),{code:'version_conflict'})}});try{
+ s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.app.state.pending,null);
+ assert.equal(s.d.getElementById('leadBoardError').hidden,false);assert.match(s.d.getElementById('leadBoardError').textContent,/Lead updated/);
+ }finally{s.close()}
+});
+
+test('blocking 4: a failed recovery identity read retains the unresolved exact key and payload',async()=>{
+ const writes=[];const s=await setup({recordStage:async(...args)=>{writes.push(args);throw Object.assign(new Error('uncertain'),{code:'unknown_outcome'})}});try{
+ await s.app.openReview(id(1),'engaged');s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+ const pending=s.app.state.pending;s.client.getActor=async()=>{throw Object.assign(new Error('offline'),{code:'network_error'})};
+ s.d.getElementById('checkPending').click();await tick();assert.equal(writes.length,1);assert.equal(s.app.state.pending,pending);
+ s.client.getActor=async()=>pending.actor;await s.app.refresh();s.d.getElementById('checkPending').click();await tick();assert.equal(writes.length,2);assert.equal(writes[1][3],writes[0][3]);assert.deepEqual(writes[1][2],writes[0][2]);
+ }finally{s.close()}
+});
+
+test('blocking 5: unknown then conflict restores the preserved question draft and permits a fresh confirmation',async()=>{
+ const s=await setup();let calls=0;try{
+ s.client.recordStage=async(l,stage,review)=>{calls++;if(calls===1)throw Object.assign(new Error(),{code:'unknown_outcome'});if(calls===2){s.board.leads[0].base_version++;throw Object.assign(new Error(),{code:'version_conflict'})}assert.equal(l.base_version,2);assert.equal(review.human_quote,'Synthetic qualification')};
+ await s.app.openReview(id(1),'qualified');s.d.querySelector('textarea').value='Synthetic qualification';
+ const submit=()=>s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));
+ submit();await tick();assert.equal(s.d.querySelector('textarea').disabled,true);submit();await tick();
+ assert.equal(s.d.querySelector('textarea').disabled,false);assert.equal(s.d.querySelector('textarea').value,'Synthetic qualification');submit();await tick();assert.equal(calls,3);
+ }finally{s.close()}
+});
+
+test('blocking 6: initial detail cannot resurrect a lead excluded by the latest board',async()=>{
+ for(const change of ['linked','removed','suppressed']){
+ const s=await setup();let release;try{
+ const stale=detail(s.board.leads[0]);s.client.getLeadDetail=()=>new Promise(r=>release=r);const reading=s.app.readDetail(id(1));
+ if(change==='removed')s.board.leads.shift();else if(change==='linked')s.board.leads[0].client_id=id(900);else s.board.leads[0].suppressed=true;
+ await s.app.refresh();release({detail:stale});await reading;
+ assert.equal(s.d.getElementById('leadDetail').open,false,change);assert.equal(s.app.state.detail,null);
+ }finally{s.close()}
+ }
+});
+
+test('blocking 7: fresh detail already at the requested stage closes review without a redundant write',async()=>{
+ const s=await setup();try{
+ s.client.getLeadDetail=async()=>({detail:detail({...s.board.leads[0],stage:'engaged',base_version:2})});
+ await s.app.openReview(id(1),'engaged');assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.app.state.proposal,null);
+ s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+
+test('blocking 8: initial and loaded detail failures recover read-only through polling',async()=>{
+ const s=await setup();let calls=0,offline=true;try{
+ s.client.getLeadDetail=async()=>{calls++;if(offline)throw Object.assign(new Error('offline'),{code:'network_error'});return{detail:detail(s.board.leads[0])}};
+ await s.app.readDetail(id(1));assert.match(s.d.getElementById('detailBody').textContent,/reconnecting/);
+ offline=false;await s.app.refresh();assert.equal(calls,2);assert.match(s.d.getElementById('detailBody').textContent,/example@example.test/);
+ offline=true;await s.app.refresh();assert.match(s.d.getElementById('detailBody').textContent,/reconnecting/);assert.equal(s.d.querySelector('#detailStage'),null);
+ offline=false;await s.app.refresh();assert.ok(s.d.querySelector('#detailStage'));assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+test('blocking 8: visibility interruption of initial detail preserves its subject for recovery',async()=>{
+ const s=await setup();let release;try{
+ const original=s.client.getLeadDetail;s.client.getLeadDetail=()=>new Promise(r=>release=r);
+ const reading=s.app.readDetail(id(1));Object.defineProperty(s.d,'visibilityState',{value:'hidden',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+ release({detail:detail(s.board.leads[0])});await reading;s.client.getLeadDetail=original;
+ Object.defineProperty(s.d,'visibilityState',{value:'visible',configurable:true});await s.app.refresh();assert.ok(s.d.querySelector('#detailStage'));assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+
+test('blocking 9: polling preserves focused lead/action identity and resolves the dialog return target',async()=>{
+ const s=await setup();try{
+ let card=s.d.querySelector('.lead-card');card.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.leadId,id(1));
+ const claim=s.d.querySelector('[data-claim]');claim.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.claim,claim.dataset.claim);
+ card=s.d.querySelector('.lead-card');card.focus();await s.app.readDetail(id(1));await s.app.refresh();s.d.getElementById('leadDetail').close();assert.equal(s.d.activeElement.dataset.leadId,id(1));
+ }finally{s.close()}
+});
+
+test('blocking 11: removed owner and market selections normalize before filtering the next board',async()=>{
+ for(const [filter,key,value] of [['ownerFilter','owner','example-partner'],['marketFilter','market','Mobile, AL']]){
+ const s=await setup();try{
+ const select=s.d.getElementById(filter);select.value=value;select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('.lead-card').length,1);
+ if(key==='owner')s.board.leads.find(l=>l.owner===value).owner=null;else{const l=s.board.leads.find(l=>l.city==='Mobile');l.city='Pensacola';l.state='FL'}
+ await s.app.refresh();assert.equal(select.value,'');assert.equal(s.app.state.filters[key],'');assert.equal(s.d.querySelectorAll('.lead-card').length,14);
+ }finally{s.close()}
+ }
+});
+
+test('blocking 12: account transitions clear private queries, filters and closed record text',async()=>{
+ const s=await setup();try{
+ await s.app.readDetail(id(1));s.d.getElementById('leadDetail').close();await s.app.openReview(id(1),'qualified');s.d.getElementById('stageDialog').close();
+ const search=s.d.getElementById('leadSearch');search.value='Distinctive synthetic private query';search.dispatchEvent(new s.w.Event('input'));
+ s.setActor('new-example-actor');await s.app.refresh();assert.equal(search.value,'');assert.deepEqual(s.app.state.filters,{search:'',owner:'',stage:'',market:''});
+ assert.equal(s.d.getElementById('detailTitle').textContent,'');assert.equal(s.d.getElementById('stageTitle').textContent,'');assert.equal(s.app.state.trigger,null);
+ }finally{s.close()}
+});
+
+test('blocking 13: malformed board never replaces known-good state or poisons filtering; valid polling recovers',async()=>{
+ const s=await setup();try{
+ const prior=s.app.state.board;s.client.getWorkspace=async()=>({schema_version:'lead-workspace.v1',leads:[null]});await s.app.refresh();assert.equal(s.app.state.board,prior);
+ const search=s.d.getElementById('leadSearch');search.value='Example 1';search.dispatchEvent(new s.w.Event('input'));assert.ok(s.d.querySelectorAll('.lead-card').length>0);
+ s.client.getWorkspace=async()=>structuredClone(s.board);await s.app.refresh();assert.equal(s.d.getElementById('leadBoardError').hidden,true);
+ }finally{s.close()}
+});
+test('blocking 13: partial or malformed detail never enables a versioned proposal or leaves an old proposal usable',async()=>{
+ const s=await setup();try{
+ await s.app.openReview(id(1),'qualified');
+ for(const malformed of [{id:id(1)}, {...detail(s.board.leads[0]),correspondence:[null]}, {...detail(s.board.leads[0]),stage_history:[null]}]){
+ s.client.getLeadDetail=async()=>({detail:malformed});await s.app.openReview(id(1),'qualified',{updating:true});
+ assert.equal(s.app.state.proposal,null);assert.equal(s.d.getElementById('saveStage').disabled,true);assert.equal(s.writes.length,0);
+ }
+ }finally{s.close()}
+});
+
+test('blocking 3: confirmed readback clears pending feedback and recovery once reconciliation succeeds',async()=>{
+ const s=await setup({claimLead:async()=>{throw Object.assign(new Error(),{code:'unknown_outcome'})}});try{
+ s.d.querySelector('[data-claim]').click();await tick();assert.ok(s.app.state.pending);
+ s.board.leads[0].owner='example-partner';await s.app.refresh();assert.equal(s.app.state.pending,null);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.d.getElementById('checkPending'),null);
  }finally{s.close()}
 });
