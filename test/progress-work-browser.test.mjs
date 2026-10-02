@@ -80,6 +80,79 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   return {page,state,errors,calls,posts};
 }
 
+function reboundPassport() {
+  let value = JSON.parse(JSON.stringify(canonicalFixture()).replaceAll('wr-synthetic-read-only','wr:next').replaceAll('attempt:a','attempt:b').replaceAll('session:fresh','session:next'));
+  const plan = structuredClone(value.slice_plan); delete plan.plan_digest;
+  value = JSON.parse(JSON.stringify(value).replaceAll(value.plan_digest,passportProjectionDigest(plan)));
+  value.receipts[0].envelope_digest = passportProjectionDigest(value.execution_envelopes[0]);
+  value.current_receipts = structuredClone(value.receipts);
+  value.projection_digest = passportProjectionDigest(value);
+  assert.equal(canonicalPassport(value),true);
+  return value;
+}
+
+test('fresh publication reconciles derived request evidence and removes obsolete references',async t=>{
+  let request = 'WR-900';
+  const next = reboundPassport();
+  const {page,calls,state,errors} = await open(t,{sessions:[
+    {canonical_session_id:'session:fresh',latest_attempt_ref:'attempt:a',display_name:'Prior builder'},
+    {canonical_session_id:'session:next',latest_attempt_ref:'attempt:b',display_name:'Current builder'},
+  ],rpcReply:(rpc,payload)=>{
+    if(rpc.name==='read-progress-board') payload.snapshot.snapshot_json.tasks[taskId] = {title:`Published ${request || 'unbound'}`,status:'review',...(request?{work_request:request}:{})};
+    if(rpc.name==='work-request-card') return {...payload,human_ref:rpc.arguments.work_request,title:`Card ${rpc.arguments.work_request}`};
+    if(rpc.name==='engineering-passport') return rpc.arguments.work_request==='WR-901'?next:payload;
+    return payload;
+  }});
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Prior builder'));
+  await page.locator('[data-session-id="session:fresh"]').click();
+  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('synthetic dispatch'));
+  request='WR-901'; await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published WR-901');
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Card WR-901'));
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Current builder'));
+  for(const id of ['workMetadata','workCanonicalBody','workSessionList','workDispatchHistory'])
+    assert.doesNotMatch(await page.locator('#'+id).textContent(),/Card WR-900|wr-synthetic-read-only|attempt:a|Prior builder|synthetic dispatch/);
+  state.turns.push({seq:100,msg_id:'old-attempt-review',seat:'human',kind:'turn',at:NOW.toISOString(),body:JSON.stringify({attempt_id:'attempt:a',review:'Obsolete attempt review'})});
+  await page.clock.runFor(5100);
+  assert.doesNotMatch(await page.locator('#workReviewList').textContent(),/Obsolete attempt review/);
+  assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-901');
+  request=null; await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published unbound');
+  assert.match(await page.locator('#workCanonicalBody').textContent(),/No canonical work-request/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Card WR-/);
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Prior builder|Current builder/);
+  assert.deepEqual(errors,[]);
+});
+
+for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{
+  const {page,state} = await open(t);
+  await page.waitForSelector('[data-session-id="session:fresh"]');
+  let release,started=false; const gate=new Promise(resolve=>release=resolve);
+  state.rpcReply=async(rpc,payload)=>{
+    if(rpc.name===late&&!started){started=true;await gate;return late==='read-session-identity'?{sessions:[{canonical_session_id:'session:fresh',display_name:'Obsolete held session'}]}:{events:[{event_id:99,session_id:'session:fresh',stage:'Obsolete held dispatch'}],more:false};}
+    if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Unbound publication',status:'review'};
+    return payload;
+  };
+  if(late==='read-session-identity')await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
+  else await page.locator('[data-session-id="session:fresh"]').click();
+  await assertEventually(()=>started);
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Unbound publication');
+  release(); await new Promise(resolve=>setTimeout(resolve,100));
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Obsolete held session/);
+  assert.doesNotMatch(await page.locator('#workDispatchHistory').textContent(),/Obsolete held dispatch/);
+});
+
+test('explicit URL request remains pinned when the published task changes binding',async t=>{
+  const {page,state,calls}=await open(t,{path:taskPath+'&work_request=WR-900'});
+  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+  state.rpcReply=(rpc,payload)=>{if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Rebound task',status:'review',work_request:'WR-901'};return payload;};
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Rebound task');
+  assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-900');
+  assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
+});
+
 test('exact work references never join similar titles or shared seats',()=>{
   const scope=workScope('?task=t_demo');
   assert.equal(scopedTurn({body:'t_demo-more',seat:'codex'},scope),false);
