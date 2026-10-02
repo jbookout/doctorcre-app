@@ -46,3 +46,12 @@ static module behind a small app-owned edge Worker. `DealRoomClient` is its CARR
 seam, with live HTTP/MCP and in-memory fixture adapters. The repository contains
 synthetic fixtures only; real deal records remain in CARR. Source isolation did
 not change CARR runtime or deployment.
+
+## Before every PR: design and debt pass
+
+Before opening or updating any pull request, apply both skills to the diff:
+
+1. `codebase-design`: deep modules, real seams, design the interface twice when it matters.
+2. `zero-tech-debt`: rework the change from its intended end state; delete dead compatibility paths and duplicated rules.
+
+Both are installed at `~/.agents/skills/` (sources: github.com/mattpocock/skills `skills/engineering/codebase-design`, github.com/jnsahaj/skills `skills/zero-tech-debt`). The PR reviewer checks both, so all two are required.
