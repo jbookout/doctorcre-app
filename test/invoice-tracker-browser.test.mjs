@@ -79,7 +79,9 @@ test('pending receipt confirmations remain attached to each invoice across popup
   await page.waitForFunction(() => /confirmation pending/.test(document.querySelector('#invoicePaymentNotice').textContent));
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(0).click();
   assert.equal(await page.locator('#markInvoicePaid').isDisabled(), true);
-  await page.clock.runFor(31000); assert.equal(h.writes, 2);
+  h.update(data => { data.entries.find(row => row.commission_id === first).gross_amount = '9401'; });
+  await page.clock.runFor(31000); await page.waitForFunction(() => /9,401/.test(document.querySelector('#invoiceDetailFacts').textContent));
+  assert.equal(h.writes, 2);
   h.update(data => { const row = data.entries.find(row => row.commission_id === first); row.status = 'received'; row.received_on = today; });
   await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
   await page.locator('#closeInvoiceDetail').click(); await page.locator('[data-invoice]').filter({ hasText: 'Demo Bay' }).click();
