@@ -194,14 +194,45 @@ test("new same-tour background detail supersedes delayed popup detail", async ()
     assert.equal(app.doc.querySelector("#detail-title").textContent, "New detail");
   } finally { app.close(); }
 });
-test("new same-client background record supersedes delayed prefill", async () => {
+for (const prefix of ["plan", "space"]) test(`new same-client background record settles ${prefix} status and supersedes delayed prefill`, async () => {
   const old = deferred(); const app = harness({ client: () => old.promise });
   try {
-    await app.view.ready; app.change("#plan-client", clientA);
+    await app.view.ready; app.change(`#${prefix}-client`, clientA);
+    assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "Updating…");
     app.service.client = async id => ({ ...record(id), notes: "Newest record notes" }); await app.view.refresh();
+    assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "");
+    assert.equal(app.doc.querySelector(".freshness").classList.contains("current"), true);
     old.resolve({ ...record(clientA), notes: "Stale record notes" }); await settle();
-    app.doc.querySelector("#review-packet").click();
-    assert.match(app.doc.querySelector("#detail-content details").textContent, /Newest record notes/);
+    await app.view.refresh();
+    assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "");
+    assert.equal(app.doc.querySelector(`#${prefix}-area`).value, "Demo City, FL");
+    if (prefix === "plan") {
+      assert.equal(app.doc.querySelector("#plan-notes").value, "Newest record notes");
+      app.doc.querySelector("#review-packet").click();
+      assert.match(app.doc.querySelector("#detail-content details").textContent, /Newest record notes/);
+    }
+  } finally { app.close(); }
+});
+for (const prefix of ["plan", "space"]) test(`settled ${prefix} client refresh preserves an undo message`, async () => {
+  const old = deferred(); const app = harness({ client: () => old.promise });
+  try {
+    await app.view.ready; app.change(`#${prefix}-client`, clientA);
+    app.change(`#${prefix}-area`, "Typed area"); app.doc.querySelector(`#${prefix}-undo`).click();
+    assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "Change undone.");
+    app.service.client = async id => record(id); await app.view.refresh();
+    old.resolve(record(clientA)); await settle();
+    assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "Change undone.");
+  } finally { app.close(); }
+});
+test("settled search client refresh preserves a save message", async () => {
+  const old = deferred(); const app = harness({ client: () => old.promise });
+  try {
+    await app.view.ready; app.change("#space-client", clientA); app.change("#space-area", "Typed area");
+    app.doc.querySelector("#space-form").dispatchEvent(new app.dom.window.Event("submit", { cancelable: true }));
+    assert.equal(app.doc.querySelector("#space-message").textContent, "Search draft saved.");
+    app.service.client = async id => record(id); await app.view.refresh();
+    old.resolve(record(clientA)); await settle();
+    assert.equal(app.doc.querySelector("#space-message").textContent, "Search draft saved.");
   } finally { app.close(); }
 });
 test("cancelled refresh cannot publish its late data or freshness", async () => {

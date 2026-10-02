@@ -53,6 +53,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     finally { restoreOrClear(); }
   }
   const unavailable = error => error?.code === "authentication_required" ? "Sign in to continue." : null;
+  function settleClientMessage(prefix) {
+    const target = `#${prefix}-message`;
+    if (["Updating…", "Client details temporarily unavailable."].includes($(target).textContent)) message(target, "");
+  }
   function syncForm(prefix, draft) {
     for (const [field, value] of Object.entries(draft.values)) {
       const control = $(`#${prefix}-${field}`);
@@ -217,9 +221,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
         const record = await read(async () => validateClientRecord(await api.client(id, { signal }), id));
         if (!active()) return;
         if (record.id === id && [planClient, searchClient].includes(id)) {
-          if (planClient === id && planEpoch === planRevision) { selectedRecord = record; plan.refreshSuggestions(clientSuggestions(record)); syncForm("plan", plan); }
-          if (searchClient === id && searchEpoch === searchRevision) { search.refreshSuggestions(clientSuggestions(record)); syncForm("space", search); }
-          for (const [selected, target] of [[planClient, "#plan-message"], [searchClient, "#space-message"]]) if (selected === id && $(target).textContent === "Client details temporarily unavailable.") message(target, "");
+          if (planClient === id && planEpoch === planRevision) { selectedRecord = record; plan.refreshSuggestions(clientSuggestions(record)); syncForm("plan", plan); settleClientMessage("plan"); }
+          if (searchClient === id && searchEpoch === searchRevision) { search.refreshSuggestions(clientSuggestions(record)); syncForm("space", search); settleClientMessage("space"); }
           save();
         }
       } catch {
