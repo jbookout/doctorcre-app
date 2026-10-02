@@ -109,12 +109,13 @@ test('W5 late successful save cannot repaint another selected vendor',async t=>{
  await ack(held[0]);await page.waitForTimeout(150);
  assert.equal(await page.locator('#recordTitle').textContent(),'Demo Partner 02');assert.equal(await page.locator('#trustForm').count(),1);assert.equal(await page.locator('#trustForm button').isDisabled(),false);
 });
-test('W5 pre-expiry acknowledgement cannot release a recovered session save',async t=>{
+for (const status of [200,502]) test(`W5 pre-expiry save response ${status} cannot release a recovered session save`,async t=>{
  const h=await open(t),{page}=h;const held=await holdWrites(page);
  await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await page.waitForTimeout(50);
  h.setExpired(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Your session has ended');
  h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await page.waitForTimeout(50);assert.equal(held.length,2);
- await ack(held[0]);await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
+ if (status===200) await ack(held[0]); else await held[0].fulfill({status,body:'Synthetic lost response'});
+ await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
 });
 test('W5 a read dispatched before a new save cannot reconcile that save',async t=>{
  const {page}=await open(t);const writes=await holdWrites(page), reads=[];

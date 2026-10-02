@@ -19,11 +19,8 @@
 </head>
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-  <!-- data-panel-background marks everything the record panel COVERS when the
-       phone layout takes it full screen. The script makes exactly these regions
-       inert while it is a dialog, so keyboard and screen-reader focus cannot
-       walk underneath it; on a desktop the panel sits beside them and none of
-       this applies. -->
+  <!-- The open record is a dialog at every width. Its covered background is
+       inert so keyboard and screen-reader focus remain inside the dialog. -->
   <a class="skip" href="#main" data-panel-background>Skip to records</a>
 
 
