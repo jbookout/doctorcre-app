@@ -13,10 +13,10 @@ async function shot(page, name) {
   await page.clock.runFor(300);
   await page.screenshot({ path: join(process.env.W13_SCREENSHOT_DIR, `${name}.png`), animations: 'disabled' });
 }
-async function open(t, { width = 1440, home = false, long = false } = {}) {
+async function open(t, { width = 1440, home = false, long = false, motion = 'reduce' } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'America/Chicago' });
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'America/Chicago', reducedMotion: motion });
   await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
   const payload = leaseRadarFixture('2026-10-01'), errors = [], calls = [];
   let failure = null, reads = 0;
@@ -157,7 +157,7 @@ test('timeout clears stale details and automatically recovers', async t => {
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
 });
 test('reduced motion stops urgency and hover motion without hiding leases', async t => {
-  const { page } = await open(t);
+  const { page } = await open(t, { motion: 'no-preference' });
   assert.notEqual(await page.locator('.lease-light').first().evaluate(n => getComputedStyle(n).animationName), 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await page.locator('.lease-light').first().evaluate(n => getComputedStyle(n).animationName), 'none');
