@@ -20,7 +20,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
-  assert.equal(contract.producer.source_commit, "61952fc7c41e26f168276449312b5dad0239d3a0");
+  assert.equal(contract.producer.source_commit, "f3f57f42a881c103bf3eca14bd69b23bec2b41a1");
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
