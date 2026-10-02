@@ -1,6 +1,7 @@
 import { createLiveClient } from "./live-client.js";
 import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
+import { workDetailUrl } from "./progress-work-model.js";
 import {
   STAGES, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
   answerRequest, taskSummary, modelLine, relatedQuestions, stageEnteredAt, stageDurations, ageText,
@@ -31,6 +32,8 @@ export function mountBoard(deps = {}) {
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const boardId = boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
+  byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
+  byId("board-parent-name").textContent = boardId === SYSTEM_BOARD_ID ? "System board" : "Project board";
   const pendingRequests = new Map();
   // Per question: the form's message, whether a write or read is in flight,
   // and whether the form is obsolete and must be reloaded before any write.
@@ -589,6 +592,11 @@ export function mountBoard(deps = {}) {
     byId("task-detail-eyebrow").textContent = `${stage.label.toUpperCase()} / ${prLabel(card).toUpperCase()}`;
     const body = byId("task-detail-body");
     body.replaceChildren();
+    const work = el("a", "", "Open work detail", { href: workDetailUrl({
+      board: boardId || SYSTEM_BOARD_ID, task: card.id,
+      workRequest: card.work_request || card.human_ref || (/^WR-\d+$/.test(card.id) ? card.id : null),
+    }) });
+    detailRow(body, "Activity", work);
     detailRow(body, "Summary", taskSummary(card));
     detailRow(body, "Stage", `${stage.label} · ${card.stage} ${ageText(stageEnteredAt(card), at)} in this stage`);
     detailRow(body, "Status", card.status);
@@ -939,7 +947,7 @@ export function mountBoard(deps = {}) {
   function readFailure(cause, target) {
     const status = cause?.status;
     const state = status === 401 ? "signed-out" : status === 403 ? "unauthorized"
-      : cause?.code === "progress_read_timeout" ? "timeout"
+      : cause?.code === "read_timeout" ? "timeout"
         : win.navigator?.onLine === false ? "offline" : "unavailable";
     let message;
     if (status === 401 || status === 403) {

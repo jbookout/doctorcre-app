@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import { JSDOM } from "jsdom";
 
-const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
+const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 // Inline the app's module dependencies for the classic-script browser harness.
 const tourFormat = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const propertyPanel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^export /gm, "");
@@ -20,7 +20,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
-  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e");
+  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65");
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])

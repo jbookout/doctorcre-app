@@ -113,6 +113,9 @@ test("normal motion flows; reduced motion stops animation while preserving stale
   await page.locator(".board-card").click();
   assert.equal(await page.locator("#task-detail").isVisible(), true);
   assert.match(await page.locator("#task-detail-title").textContent(), /Synthetic build/);
+  assert.equal(await page.locator("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
+  assert.equal(await page.getByRole("link", { name: "Open work detail" }).getAttribute("href"),
+    "/control-room/progress/work?board=demo-project&task=build");
 });
 
 function holdRequests(t, name) {
@@ -314,6 +317,8 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   version = 3;
   await page.clock.runFor(15000);
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 3");
+  assert.equal(await page.getByRole("link", { name: "Open work detail" }).getAttribute("href"),
+    "/control-room/progress/work?board=demo-project&task=build");
   await page.getByRole("button", { name: "Close task detail" }).click();
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   assert.match(await task.getAttribute("aria-label"), /Synthetic task 3/);

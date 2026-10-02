@@ -398,3 +398,17 @@ test("prototype-like and malformed task statuses cannot break the board", () => 
   assert.deepEqual(view.stages[0].tasks.map(task => task.id), ["a", "b", "c", "d", "e", "f", "identity"]);
   for (const task of view.stages[0].tasks) assert.equal(taskStage(task), "queued");
 });
+
+
+test("board activity and task pop-up retain the dedicated work-detail route", async () => {
+  const { window, doc, $ } = await mount({ snapshot: { board_id: "demo-project", version: 1,
+    snapshot_json: { tasks: { "WR-900": { title: "Synthetic work", status: "review", work_request: "WR-900" } } } },
+    questions: [] }, { search: "?board=demo-project" });
+  assert.equal($("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
+  assert.equal($("#board-parent-name").textContent, "Project board");
+  doc.querySelector(".board-card").click();
+  assert.ok($("#task-detail").open);
+  assert.equal($("#task-detail a").getAttribute("href"),
+    "/control-room/progress/work?board=demo-project&task=WR-900&work_request=WR-900");
+  window.close();
+});

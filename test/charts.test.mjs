@@ -5,8 +5,8 @@
 // because a page that paints the right words from the wrong decision is the
 // failure this suite exists to catch.
 //
-// Every test that needs a payload uses the REAL captured `deal-room-board`
-// answer (test/fixtures/charts-live-capture.json, 74 deals / 3 accounts), fed
+// Every test that needs a payload uses a synthetic `deal-room-board`
+// fixture (test/fixtures/charts-synthetic.json), fed
 // through the REAL live client adapter over an injected fetch — so the phase
 // vocabulary has exactly one owner and the fixture cannot drift from the wire.
 import test from "node:test";
@@ -37,8 +37,8 @@ const checkScript = await read("scripts/check-repository.mjs");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
 
-/** The real capture, unchanged, exactly as the verb answered it. */
-const capture = JSON.parse(await read("test/fixtures/charts-live-capture.json"));
+/** The synthetic fixture, generated from contract-shaped examples. */
+const capture = JSON.parse(await read("test/fixtures/charts-synthetic.json"));
 
 /** A live client over the captured payload: one call recorded per read. */
 function captureClient(payload = capture, { status = 200, throwStatus = null } = {}) {
@@ -65,7 +65,7 @@ const board = await (async () => {
 
 test("B06-1 the phase chart's rows sum to the board's own row count, and pending is 31", () => {
   const rows = phaseRows(board.deals);
-  assert.equal(board.deals.length, 74, "the capture is the real 74-row board");
+  assert.equal(board.deals.length, 74, "the capture is the synthetic 74-row board");
   assert.equal(rowTotal(rows), board.deals.length, "the eight columns plus unplaced account for every row");
   assert.equal(rows.find((row) => row.key === "pending").count, 31);
   assert.equal(rows.find((row) => row.key === "research").count, 17);
@@ -144,10 +144,10 @@ test("B06-4 the account counts arrive as strings and are narrowed to numbers, wi
     assert.equal(typeof capture.accounts[0][key], "string", `${key} arrives as a string`);
   }
   const rows = accountRows(capture.accounts);
-  const musicologie = rows.find((row) => row.name === "Musicologie");
-  assert.equal(musicologie.counts.find((count) => count.id === "open_deals").value, 15);
-  assert.equal(musicologie.counts.find((count) => count.id === "stale_deals").value, 15);
-  assert.equal(typeof musicologie.counts[0].value, "number", "a count is a number by the time it is rendered");
+  const exampleAccount = rows.find((row) => row.name === "Example Network 1");
+  assert.equal(exampleAccount.counts.find((count) => count.id === "open_deals").value, 15);
+  assert.equal(exampleAccount.counts.find((count) => count.id === "stale_deals").value, 15);
+  assert.equal(typeof exampleAccount.counts[0].value, "number", "a count is a number by the time it is rendered");
 
   // "0" is TRUTHY as a string. Narrowed it is a real zero, and it is still known.
   const zero = countValue("0");
@@ -259,8 +259,8 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   assert.equal(new Set(CHARTS_STATES.map((state) => CHARTS_STATE_COPY[state].title)).size, CHARTS_STATES.length - 1,
     "loading and stale deliberately share one heading; every other state has its own");
 
-  // No refusal body ever reaches a rendered string.
-  assert.equal(refused.body, "a body no surface may render");
+  // Authentication is decided by the status without waiting for a diagnostic body.
+  assert.equal(refused.body, undefined);
   assert.ok(!pageJs.includes(".body"), "the page never reads an error body");
 
   // The empty and unavailable branches draw no chart at all: a chart of zeros
@@ -365,7 +365,7 @@ test("B06-10 one read per paint: getBoard once, and no other verb at all", async
 /* ----------------------------------------------------------------------- B06-11 */
 
 test("B06-11 the live capture validates, and a payload missing a key is rejected (defect 33e8409b)", () => {
-  // Accepts the REAL production payload, in both the wire and adapted shapes.
+  // Accepts the synthetic contract payload, in both the wire and adapted shapes.
   assert.equal(validBoardPayload(capture), true);
   assert.equal(validBoardPayload(board), true);
   assert.deepEqual(Object.keys(capture).toSorted(), ["accounts", "actor", "deals", "open_session"]);
@@ -404,8 +404,8 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
-  assert.equal(contract.version, "1.38.0", "the current interface retains the Charts read");
-  assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e");
+  assert.equal(contract.version, "1.39.0", "the current interface retains the Charts read");
+  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65");
   assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 
   // No route is added. `/business` already resolves, and the gate does not
