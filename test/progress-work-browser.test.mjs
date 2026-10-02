@@ -80,6 +80,39 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   return {page,state,errors,calls,posts};
 }
 
+test('published task without a repository shows its PR as plain text', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {pr:100, executor:'orchestrator'});
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})});
+  await task.waitFor();
+  assert.equal(await task.locator('a[href*="/pull/100"]').count(), 0);
+  const repo = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^repo$/})});
+  assert.equal(await repo.locator('dd').textContent(), 'Not recorded');
+  assert.equal(await task.locator('p').filter({hasText:/^PR #100$/}).count(), 1);
+  const provider = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^provider$/})});
+  const model = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^model$/})});
+  assert.equal(await provider.locator('dd').textContent(), 'Unknown');
+  assert.equal(await model.locator('dd').textContent(), 'Not recorded');
+  assert.deepEqual(errors, []);
+});
+
+test('published task PR links retain the recorded repository and head', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {pr:100, repo:'jbookout/doctorcre-app', pr_head:'synthetic-head'});
+    return payload;
+  }});
+  const anchor = page.locator('#workMetadata a[href="https://github.com/jbookout/doctorcre-app/pull/100"]');
+  await anchor.waitFor();
+  assert.equal(await anchor.textContent(), 'jbookout/doctorcre-app · PR #100 · synthetic-head');
+  assert.equal(await anchor.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(await anchor.getAttribute('target'), '_blank');
+  assert.deepEqual(errors, []);
+});
+
 test('exact work references never join similar titles or shared seats',()=>{
   const scope=workScope('?task=t_demo');
   assert.equal(scopedTurn({body:'t_demo-more',seat:'codex'},scope),false);
@@ -307,10 +340,15 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
   let release, pending=0;const gate=new Promise(resolve=>release=resolve);
   state.rpcReply=async(rpc,payload)=>{if(rpc.name==='read-dispatch-history'&&rpc.arguments.cursor){pending++;await gate;return {...payload,events:[...payload.events,...payload.events]};}return payload;};
   await page.locator('#workDispatchMore').evaluate(button=>{button.click();button.click();});
-  await assertEventually(()=>pending>0);release();
-  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
+  await assertEventually(()=>pending>0);
+  t.after(()=>release());
+  const actedEvent=page.locator('#workDispatchHistory .work-record > h3').filter({hasText:/^acted$/});
+  assert.equal(await actedEvent.count(),0);
+  assert.equal(await page.locator('#workDispatchMore').isDisabled(),true);
   assert.equal(calls.filter(call=>call.name==='read-dispatch-history'&&call.arguments.cursor==='synthetic-cursor').length,1);
-  assert.equal(await page.locator('#workDispatchHistory .work-record > h3').filter({hasText:'acted'}).count(),1);
+  release();
+  await actedEvent.waitFor({state:'visible'});
+  assert.equal(await actedEvent.count(),1);
   assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
 });
 
@@ -511,4 +549,25 @@ test('confirmed authentication loss clears protected queue and work evidence',as
 
 for(const [old,view] of [['/room.html','wire'],['/queue.html','tasks'],['/control-room/agents/queue','tasks'],['/agent-room','wire']])test(`legacy deep link ${old} opens matching Progress view`,async t=>{
   const {page}=await open(t,{path:`${old}?board=demo-project&task=${taskId}#jobPassport`});const url=new URL(page.url());assert.equal(url.pathname,'/control-room/progress/work');assert.equal(url.searchParams.get('view'),view);assert.equal(url.searchParams.get('task'),taskId);assert.equal(url.hash,'#jobPassport');
+});
+
+
+test('published task detail retains summary, model, safe PR links and related answers', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=>{
+    if(rpc.name !== 'read-progress-board')return payload;
+    payload.snapshot.snapshot_json.tasks[taskId] = {title:'Synthetic detail',status:'running',work_request:'WR-900',summary:'Synthetic task summary.',executor:'Codex gpt-6-sol high',
+      repo:'demo/example',pr:12,pr_head:'a'.repeat(40),pr_links:[{repo:'demo/other',number:3,head_sha:'b'.repeat(40)},{repo:'invalid',number:4}],
+      evidence:'https://example.com/synthetic-evidence',question_ids:['synthetic-choice'],stage_history:[{stage:'build',status:'running',at:NOW.toISOString()}]};
+    payload.questions=[{question_id:'synthetic-choice',prompt:'Synthetic choice?',answer_text:'Proceed with synthetic fixture',status:'Applied'},
+      {question_id:'unrelated',prompt:'Unrelated question',answer_text:'Unrelated answer'}];return payload;
+  }});
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  const detail=page.locator('#workMetadata');
+  assert.match(await detail.textContent(),/Codex.*gpt-6-sol.*high/s);
+  assert.equal(await detail.locator('a[href="https://github.com/demo/example/pull/12"]').count(),1);
+  assert.equal(await detail.locator('a[href="https://github.com/demo/other/pull/3"]').count(),1);
+  assert.equal(await detail.locator('a[href="https://example.com/synthetic-evidence"]').count(),1);
+  assert.match(await detail.textContent(),/Synthetic choice.*Proceed with synthetic fixture.*Stage history/s);
+  assert.doesNotMatch(await detail.textContent(),/Unrelated answer/);
+  assert.deepEqual(errors,[]);
 });

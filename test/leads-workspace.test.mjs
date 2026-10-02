@@ -300,3 +300,25 @@ test('blocking 3: confirmed readback clears pending feedback and recovery once r
  s.board.leads[0].owner='example-partner';await s.app.refresh();assert.equal(s.app.state.pending,null);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.d.getElementById('checkPending'),null);
  }finally{s.close()}
 });
+
+test('resume clears private views before identity responds, restores the same unsigned question, and never replays a pending command',async()=>{
+ const s=await setup();let release;try{
+  await s.app.openReview(id(1),'qualified');s.d.querySelector('#stageQuestions textarea').value='Synthetic unsigned qualification';
+  s.client.getActor=()=>new Promise(resolve=>release=resolve);
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.d.getElementById('stageContext').textContent,'');
+  s.client.getActor=async()=> 'example-partner';release('example-partner');await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic unsigned qualification');assert.equal(s.writes.length,0);
+  let attempts=0;s.client.recordStage=async()=>{attempts++;throw Object.assign(new Error('unknown'),{code:'unknown_outcome'})};
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();const pending=s.app.state.pending;
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.app.state.pending,pending);assert.equal(attempts,1);assert.equal(s.writes.length,0);
+ }finally{release?.('example-partner');s.close()}
+});
+
+test('detail polling keeps keyboard focus on the same expanded original entry',async()=>{
+ const s=await setup();try{
+  await s.app.readDetail(id(1));const original=s.d.querySelector('#detailBody details');original.open=true;original.querySelector('summary').focus();const key=original.dataset.entryKey;s.board.leads[0].score++;
+  await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
+ }finally{s.close()}
+});

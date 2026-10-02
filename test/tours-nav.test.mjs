@@ -19,7 +19,7 @@ test("tours/index.html carries a primary nav with links to Home, Leads, Deals", 
 });
 
 test("the primary nav marks Tours as the active/current page", () => {
-  assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">Tours<\/a>/);
+  assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">[\s\S]*?Tours[\s\S]*?<\/a>/);
 });
 
 test("tours/index.html does not link the workspace app's global stylesheet", () => {

@@ -76,8 +76,19 @@ h3 { font-size: 1.08rem; }
 .pipeline-node[data-pulse="critical"] .node-shape { stroke-dasharray: 5 3; stroke-width: 2; }
 .node-label { fill: var(--ink); font: 700 12px 'DM Sans', sans-serif; }
 .node-meta { fill: #a6bfd2; font: 600 9px 'DM Sans', sans-serif; }
+.node-summary { fill: #afc4d5; font: 500 9px 'DM Sans', sans-serif; }
 @keyframes pulse { 50% { opacity: .35; transform: scale(.72); } }
 @keyframes flow { to { stroke-dashoffset: -20; } }
+
+.completed-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 16px; }
+.completed-card { min-width: 0; padding: 13px 15px; border: 1px solid rgba(125,221,192,.38); border-radius: 12px;
+  background: rgba(2,17,31,.73); cursor: pointer; transition: border-color .18s, transform .18s; }
+.completed-card:hover, .completed-card:focus-visible { border-color: var(--green); transform: translateY(-2px); }
+.completed-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.completed-card strong { display: block; font-size: .84rem; }
+.card-summary { margin: 3px 0 7px; color: #b0c6d8; font-size: .72rem; line-height: 1.35; }
+.card-provider, .card-model { display: block; color: #a6bfd2; font-size: .68rem; }
+.card-model { margin-top: 2px; }
 
 .questions { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,340px),1fr)); gap: 12px; }
 .question-card { border: 1px solid rgba(191,156,255,.38); border-radius: 14px; padding: 18px; background: rgba(6,18,35,.7); }
@@ -132,6 +143,7 @@ footer { padding-top: 8px; }
   .intro { padding: 27px 0 18px; }
   .panel { padding: 16px 13px; }
   .questions { grid-template-columns: 1fr; }
+  .completed-list { grid-template-columns: 1fr; }
   .stage-label { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {

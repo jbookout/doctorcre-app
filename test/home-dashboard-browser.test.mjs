@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const NOW = new Date('2026-10-01T15:00:00Z');
@@ -22,11 +23,12 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
+  let malformedBoard = false;
   t.after(() => releaseInitialFeed());
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
-    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
+    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (malformedBoard) return { ...board, deals: [{}] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
     'get-deal-room': async args => { if (detailFailure === '503') throw Error('Unavailable'); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, label: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
@@ -44,6 +46,7 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
       try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
+    if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
     if (url.pathname === '/pipeline/changes') {
       feedReads++;
@@ -64,8 +67,30 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   });
   await page.goto('http://localhost/?mode=live');
   await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
-  return { page, errors, calls, releaseInitialFeed, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialFeed, malformedBoard(value) { malformedBoard = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
+
+test('malformed Home board shows unavailable counts and recovers on the next valid read', async t => {
+  const state = await open(t); const { page } = state;
+  const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  await settled();
+  const initialCounts = await page.locator('#dealCounts').textContent();
+  state.malformedBoard(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settled();
+  assert.equal(await page.locator('#homeNotice').isVisible(), true);
+  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: —.*Deals in Market: —.*National Account Deals: —/);
+  assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
+  assert.doesNotMatch(await page.locator('#observedAt').textContent(), /^Updated /);
+  assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  assert.equal(await page.locator('#homeCalendar').isVisible(), false);
+  state.malformedBoard(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settled();
+  assert.equal(await page.locator('#homeNotice').isVisible(), false);
+  assert.equal(await page.locator('#dealCounts').textContent(), initialCounts);
+  assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
+});
 
 test('Home desktop and phone show flags, visual agenda, ranked leads and wide entry detail with no overflow', async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
@@ -81,7 +106,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'today-triage': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -197,13 +222,17 @@ test('R6 settled board failure shows unavailable rather than Updating and automa
 test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
   for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
+    // Finish Home's detail wave before observing the receiving Deals request.
+    // Otherwise a late Home request can advance the clock before Deals starts its deadline.
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
+    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
+      && request.postDataJSON()?.params?.name === 'get-deal-room'
+      && new URL(request.frame().url()).pathname === '/deals');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
     await page.locator('#rows .deal-link').first().waitFor();
     await firstFeed;
-    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
-      && request.postDataJSON()?.params?.name === 'get-deal-room');
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);

@@ -14,7 +14,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
   const state = { board: null, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
-    detail: null, detailId: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
+    detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   function card(lead) {
     const move = automaticMove(lead), undo = undoReview(lead);
@@ -46,8 +46,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const leads = state.board?.leads || [];
     const owners = [...new Set(leads.filter(eligibleLead).map(l => l.owner).filter(Boolean))].sort();
     const markets = [...new Set(leads.filter(eligibleLead).map(marketKey))].sort();
-    if (!owners.includes(state.filters.owner)) state.filters.owner = "";
-    if (!markets.includes(state.filters.market)) state.filters.market = "";
+    if (state.board && !owners.includes(state.filters.owner)) state.filters.owner = "";
+    if (state.board && !markets.includes(state.filters.market)) state.filters.market = "";
     const shown = visibleLeads(leads, state.filters);
     const active = visibleLeads(leads);
     $("leadCount").textContent = `${active.length}`;
@@ -86,7 +86,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     }
   }
   function clearPrivateView() {
-    state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.pending = null;
+    state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.pending = null;
     state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
@@ -128,7 +128,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         }
       }
       paintCommandFeedback();
-      if (state.reviewTarget && $("stageDialog").open && !state.writing && !state.pending) {
+      const resumeReview = state.resumeReview;
+      state.resumeReview = null;
+      if (resumeReview?.actor === state.actor && !state.pending) {
+        await openReview(resumeReview.id, resumeReview.target);
+        if (state.proposal?.review.question === resumeReview.question) {
+          const input = $("stageQuestions").querySelector("textarea");
+          if (input) input.value = resumeReview.answer;
+        }
+      }
+      if (!resumeReview && state.reviewTarget && $("stageDialog").open && !state.writing && !state.pending) {
         const { id, target } = state.reviewTarget, current = leadById(id);
         if (!current || target === normalizedStage(current)) $("stageDialog").close();
         else await openReview(id, target, { updating: true });
@@ -145,6 +154,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } finally { if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false"); }
   }
   function paintDetail(detail) {
+    const active = doc.activeElement;
+    const focusedEntry = active?.matches("summary") ? active.closest("#detailBody details")?.dataset.entryKey : null;
+    const focusedId = $("detailBody").contains(active) ? active.id : null;
     const expanded = new Set([...$("detailBody").querySelectorAll("details[open]")].map(node => node.dataset.entryKey));
     const scroll = $("leadDetail").scrollTop;
     $("detailTitle").textContent = leadTitle(detail);
@@ -155,6 +167,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       <div class="detail-columns"><section class="detail-panel"><h3>Correspondence</h3><ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No correspondence yet</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3><ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
     $("detailStage").addEventListener("change", event => openReview(detail.id, event.target.value));
     for (const node of $("detailBody").querySelectorAll("details")) node.open = expanded.has(node.dataset.entryKey);
+    const focused = focusedId ? $(focusedId) : [...$("detailBody").querySelectorAll("details")]
+      .find(node => node.dataset.entryKey === focusedEntry)?.querySelector("summary");
+    focused?.focus({ preventScroll: true });
     $("leadDetail").scrollTop = scroll;
   }
   async function readDetail(id, open = true) {
@@ -166,7 +181,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.detailEpoch || actor !== state.actor) return;
       if (!leadById(id) || !response.detail || response.detail.id !== id || !eligibleLead(response.detail)) { $("leadDetail").close(); state.detail = null; return; }
       validateLeadDetail(response.detail, id);
-      state.detail = response.detail; paintDetail(response.detail);
+      const unchanged = JSON.stringify(state.detail) === JSON.stringify(response.detail);
+      state.detail = response.detail; if (!unchanged) paintDetail(response.detail);
     } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; state.detail = null; $("detailBody").innerHTML = '<p class="empty">Connection interrupted · reconnecting…</p>'; }
   }
   async function openReview(id, target, { updating = false } = {}) {
@@ -326,7 +342,19 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   board.addEventListener("pointercancel", stopTouch);
   board.addEventListener("lostpointercapture", stopTouch);
   mapFactory($("territoryMap"), selectMarket).then(map => { state.map = map; render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
-  const auto = mountAutoRefresh({ document: doc, window: win, refresh: () => refresh(), shouldRefresh: () => !state.writing && !touch && !state.drag });
+  function suspendPrivateView() {
+    if (state.proposal && $("stageDialog").open) state.resumeReview = {
+      id: state.proposal.lead.id, target: state.proposal.target, actor: state.actor,
+      question: state.proposal.review.question, answer: $("stageQuestions").querySelector("textarea")?.value || "",
+    };
+    stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;
+    state.identityReady = false; state.board = null; state.detail = null; state.detailId = null;
+    state.proposal = null; state.reviewTarget = null; state.trigger = null; state.drag = null;
+    $("leadDetail").close(); $("stageDialog").close();
+    for (const id of ["detailTitle", "detailBody", "stageTitle", "stageContext", "stageQuestions", "stageError", "moveAnnouncement"]) $(id).replaceChildren();
+    render();
+  }
+  const auto = mountAutoRefresh({ document: doc, window: win, refresh: () => refresh(), onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
   const resume = () => { if (doc.visibilityState === "hidden") { stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
   refresh();
