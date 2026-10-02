@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { createAppLayout } from '../js/app-layout.js';
 import ownership from '../contracts/slice-ownership.v1.json' with { type: 'json' };
-import { registerSlices, NAVIGATION_GROUPS } from '../js/slice-registration.js';
+import { registerSlices, NAVIGATION_GROUPS, createSliceSection } from '../js/slice-registration.js';
 
 export const GENERATED_PATHS = ['contracts/app-routes.v1.json', 'js/slices.generated.js'];
 const safePath = path => typeof path === 'string' && path.length > 0 && !path.startsWith('/') && !path.split('/').includes('..') && posix.normalize(path) === path;
@@ -110,11 +110,7 @@ export async function sliceOutputs(names, readSource) {
     let target;
     try { target = page.querySelector(section.slot); } catch { throw new Error(`invalid section slot: ${section.slot}`); }
     assert.ok(target && !target.closest('#appShell') && !['SCRIPT', 'STYLE'].includes(target.tagName), `missing or unsupported section slot: ${section.slot}`);
-    const markup = page.createElement('template'); markup.innerHTML = section.html;
-    const ids = [...markup.content.querySelectorAll('[id]')].map(node => node.id);
-    assert.ok(ids.includes(section.id), `section markup needs its id: ${section.id}`);
-    assert.ok(new Set(ids).size === ids.length && ids.every(id => !page.getElementById(id)), `section id collision: ${section.id}`);
-    target.append(markup.content);
+    target.append(createSliceSection(page, section));
   }
   const registry = `${names.map((name, i) => `import slice${i} from "./slices/${name}.js";`).join('\n')}\nexport const slices = Object.freeze([${names.map((_, i) => `slice${i}`).join(', ')}]);\nexport const routeContract = ${JSON.stringify(result.contract)};\n`;
   return { ...result, shared, outputs: new Map([

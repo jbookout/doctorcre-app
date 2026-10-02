@@ -11,6 +11,19 @@ export function registerSlices(slices) {
 
 const mountedSections = new WeakMap();
 
+// The browser and build validator enforce the same section markup contract.
+export function createSliceSection(root, section) {
+  const template = root.createElement('template'); template.innerHTML = section.html;
+  const node = template.content.firstElementChild;
+  if (template.content.children.length !== 1 || node.id !== section.id
+    || [...template.content.childNodes].some(child => child.nodeType === 3 && child.textContent.trim())) {
+    throw new Error(`slice section needs one root with its id: ${section.id}`);
+  }
+  const ids = [node.id, ...[...node.querySelectorAll('[id]')].map(child => child.id)];
+  if (new Set(ids).size !== ids.length || ids.some(id => root.getElementById(id))) throw new Error(`slice section id collision: ${section.id}`);
+  return node;
+}
+
 function loadControls(root, section, state) {
   state.node.inert = true;
   state.node.dataset.sliceState = 'loading';
@@ -55,12 +68,8 @@ export function mountSliceSections(root, pathname, slices) {
       }
       const slot = root.querySelector(section.slot);
       if (!slot) throw new Error(`missing slice section slot: ${slice.id} ${section.slot}`);
-      const template = root.createElement('template'); template.innerHTML = section.html;
-      const ids = [...template.content.querySelectorAll('[id]')].map(node => node.id);
-      if (new Set(ids).size !== ids.length || ids.some(id => root.getElementById(id))) throw new Error(`slice section id collision: ${section.id}`);
-      const node = [...template.content.querySelectorAll('[id]')].find(node => node.id === section.id);
-      if (!node) throw new Error(`slice section markup needs its id: ${slice.id} ${section.id}`);
-      slot.append(template.content);
+      const node = createSliceSection(root, section);
+      slot.append(node);
       const notice = root.createElement('div'); notice.className = 'slice-controls-status'; notice.setAttribute('role', 'status');
       const state = { node, notice, attempt: 0 };
       mounted.set(section.id, state);

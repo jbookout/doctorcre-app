@@ -93,6 +93,12 @@ test('finding 5: page IDs cannot silently swallow a registered section', async t
   await assert.rejects(prepareSlices(root), /section.*id.*collision|duplicate.*id/);
 });
 
+test('finding 6: contributed actions must be contained by the section whose controls state is tracked', async t => {
+  const root = await fixture(t);
+  await addSlice(root, { html: '<section id="alpha-panel"></section><button id="alpha-action">Run demo</button>' });
+  await assert.rejects(prepareSlices(root), /section.*root/);
+});
+
 async function open(t, root, { failControls = false, runtimeOnly = false } = {}) {
   const registration = await prepareSlices(root);
   const browser = await chromium.launch(); t.after(() => browser.close());

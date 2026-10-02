@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +60,7 @@ async function committedFixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
+  await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   // Exercise the code under test, including edits not yet committed by the maker.
   for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
   git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs"]);
@@ -80,6 +81,7 @@ test("one contract path declaration drives both assembly and committed-source ve
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
+  await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
@@ -139,6 +141,11 @@ test("changed contract source bytes are rejected even when payload bytes are unc
 test("an untracked artifact input cannot be smuggled into a source-bound build", async (t) => {
   const { root, outDir, commit } = await committedFixture(t);
   await writeFile(join(root, "js", "synthetic-extra.js"), "// synthetic extra input\n");
+  await assert.rejects(buildArtifact({ root, outDir, commit }), /file needs a slice owner or shared declaration/);
+  const ownershipPath = join(root, 'contracts/slice-ownership.v1.json');
+  const ownership = JSON.parse(await readFile(ownershipPath));
+  ownership.shared.push('js/synthetic-extra.js');
+  await writeFile(ownershipPath, JSON.stringify(ownership));
   await buildArtifact({ root, outDir, commit });
   await assert.rejects(runCli(root, ["verify"]), /source input set mismatch/);
 });
