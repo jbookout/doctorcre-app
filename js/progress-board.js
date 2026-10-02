@@ -37,6 +37,8 @@ let renderedStages = "";
 let systemWork = null;
 let pipeline = null;
 let governanceRead = governance;
+let governanceState = 'pending';
+const governanceStatus = document.getElementById('governanceState');
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -184,7 +186,9 @@ function taskNode(task, stage, x, y, width, height, phone) {
 
 function renderStages(view) {
   pipeline = view;
-  view = withGovernance(view, governanceTasks(governanceRead));
+  const approvals = governanceTasks(governanceRead);
+  view = withGovernance(view, approvals?.map(task => ({ ...task, source_state: governanceState })));
+  if (boardId !== SYSTEM_BOARD_ID) view = { ...view, stages: view.stages.map(stage => ({ ...stage, tasks: stage.tasks.map(task => ({ ...task, task_id: task.id })) })) };
   currentView = view;
   onTasks?.(view.stages.flatMap(stage => stage.tasks));
   const phone = phoneQuery.matches;
@@ -475,5 +479,13 @@ if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client, onP
 retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();
 const auto = mountAutoRefresh({ document, window: globalThis.window, intervalMs: 15000, refresh: () => refresh() });
-return { refresh, setGovernance(read) { governanceRead = read; if (pipeline) renderStages(pipeline); }, dispose: () => auto.dispose() };
+return { refresh, setGovernance(read, observation = {}) {
+  const tasks = governanceTasks(read);
+  governanceState = tasks ? 'read' : 'unknown';
+  if (tasks) governanceRead = read;
+  else if (observation.reason === 'Sign in required') governanceRead = null;
+  governanceStatus.hidden = governanceState === 'read';
+  governanceStatus.textContent = governanceState === 'read' ? '' : `Approvals unavailable${governanceRead ? ' · last-known cards' : ''}`;
+  if (pipeline) renderStages(pipeline);
+}, dispose: () => auto.dispose() };
 }

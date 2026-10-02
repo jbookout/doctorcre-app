@@ -748,7 +748,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   // escapeHtml is imported, not copied for the Nth time (B07 advisory A2).
   assert.match(atlasJs, /import \{ escapeHtml \} from "\.\/control-room\.js"/, "escapeHtml is not imported");
   assert.doesNotMatch(atlasJs, /const escapeHtml =/, "escapeHtml was copied again");
-  assert.match(pageJs, /export const escapeHtml/, "the one escaper is not exported");
+  assert.match(pageJs, /export \{ escapeHtml \}/, "the shared escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.19.0", "the route contract moved for a slice that adds no route");
@@ -756,7 +756,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(pageJs, /parameters\.has\("tab"\)\) restoreTab\(\)/, "the deep link is read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");
   // The read is lazy: it fires on first selection of the tab, not on boot.
-  assert.match(pageJs, /selected.id==='tabAtlas'\)openAtlas\(\)/, "the atlas read is bound to the tab");
+  assert.match(pageJs, /selected.id==='tabAtlas'\)openAtlas\(new URLSearchParams\(location.search\).get\('node'\)\)/, "the atlas read restores the selected node on the tab");
   assert.doesNotMatch(pageJs, /take\("atlas"/, "the atlas joined the dashboard's boot reads");
   assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path is not pinned");
   assert.match(checkJs, /the atlas path must stay pinned in the CARR interface/, "the repository check does not pin it");

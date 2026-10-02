@@ -20,7 +20,7 @@ test('all governance lanes become review cards with original entries and exact d
  const board={stages:[{id:'review',tasks:[]},{id:'build',tasks:[]}]};
  const merged=withGovernance(board,tasks);assert.equal(merged.stages[0].tasks.length,queue.counts.total);
  assert.equal(withGovernance(merged,tasks).stages[0].tasks.length,queue.counts.total);
- assert.deepEqual(governanceTasks({ok:true}),[]);
+ assert.equal(governanceTasks({ok:true}),null);
 });
 test('calendar uses next due dates in the selected month; unscheduled jobs stay visible',async()=>{
  const schedule=await (await fixture()).scheduleBoard();
@@ -44,4 +44,28 @@ test('live Connections uses the pinned read-only MCP contract',async()=>{
  const calls=[];const client=createLiveClient({fetchImpl:async(url,options)=>{calls.push(JSON.parse(options.body));return new Response(JSON.stringify({result:{content:[{text:JSON.stringify({ok:true,connections})}]}}));}});
  assert.deepEqual(await client.readConnections(),connections);assert.equal(calls[0].params.name,'read-resource-dashboard');assert.deepEqual(calls[0].params.arguments,{});
  const contract=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url)));assert.ok(contract.mcp_operations.includes('read-resource-dashboard'));
+});
+
+test('finding 4: exact census governance identity is enriched once and moved to Review',async()=>{
+ const queue=await(await fixture()).governanceQueue(),tasks=governanceTasks(queue),ref=tasks[0].governance.ref;
+ const original={id:`governance_item:${ref}`,kind:'governance_item',title:'Generic census',status:'proposed',work_request:'WR-1'};
+ const board={stages:[{id:'queued',tasks:[original]},{id:'review',tasks:[]}]};const merged=withGovernance(board,tasks);
+ assert.equal(merged.stages[0].tasks.length,0);const matches=merged.stages[1].tasks.filter(t=>t.governance?.ref===ref);assert.equal(matches.length,1);assert.deepEqual(matches[0].governance.entry,tasks[0].governance.entry);assert.equal(matches[0].work_request,'WR-1');
+});
+test('finding 5: invalid governance is distinct from validated empty governance',()=>{
+ assert.equal(governanceTasks({ok:true}),null);
+ assert.deepEqual(governanceTasks({ok:true,counts:{total:0,pending_rule_approvals:0,pending_guidance_import_batches:0,pending_retrieval_proposals:0},pending_rule_approvals:[],pending_guidance_import_batches:[],pending_retrieval_proposals:[]}),[]);
+});
+test('finding 7: malformed provider and device members project unavailable observations',()=>{
+ const provider={id:'claude',status:'connected',checked_at:stamp};
+ for(const bad of [null,17,'bad',[]]){
+  const result=connectionView({ok:true,schema:'doctorcre-connections.v1',providers:[provider,bad],devices:{state:'read',observed_at:stamp,items:[{id:'demo',connected:true},bad]}});
+  assert.equal(result.providers[0].status,'unknown');assert.equal(result.providers[0].spend,null);assert.equal(result.devices,null);
+ }
+});
+test('finding 13: escaping and connection roster have one shared definition',async()=>{
+ for(const file of ['app-layout.js','job-detail.js']){
+  const text=await readFile(new URL(`../js/${file}`,import.meta.url),'utf8');assert.match(text,/escapeText.*change-receipts|change-receipts.*escapeText/s);assert.doesNotMatch(text,/replace\(\/\[&<>/);
+ }
+ const text=await readFile(new URL('../js/fixture-client.js',import.meta.url),'utf8');assert.match(text,/CONNECTION_NAMES.*connections-model|connections-model.*CONNECTION_NAMES/s);assert.doesNotMatch(text,/const names=\{claude:/);
 });

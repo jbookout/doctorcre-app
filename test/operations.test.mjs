@@ -337,7 +337,7 @@ test("the motion reuses the shared tokens and keyframes rather than inventing ne
 
 test("governance feeds board cards and schedules feed the calendar", () => {
   assert.match(pageJs, /take\('approvals',\(\)=>client\.governanceQueue\(\)\)/);
-  assert.match(pageJs, /board\?\.setGovernance\(payloadOf\(id\)\)/);
+  assert.match(pageJs, /board\?\.setGovernance\(payloadOf\(id\),view\.reads\[id\]\)/);
   assert.match(pageJs, /automationMonth\(payloadOf\('schedule'\)/);
   assert.doesNotMatch(html, /id="operationsBlocks"/);
 });

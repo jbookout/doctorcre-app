@@ -3,31 +3,38 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {createFixtureClient} from '../js/fixture-client.js';
+import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 const root=new URL('../',import.meta.url);
 const reads={'read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','list-notifications':'listNotifications'};
-async function open(t,{width=1440}={}){
+async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});page.setDefaultTimeout(5000);
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false};page.on('pageerror',e=>errors.push(e.message));
+ const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false};page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/mcp'){
    const rpc=request.postDataJSON().params;calls.push(rpc.name);if(state.denied)return route.fulfill({status:401,body:'{}'});
+   if(rpc.name==='governance-queue'&&state.approvalFailure==='http')return route.fulfill({status:503,body:'{}'});
    let payload={};if(reads[rpc.name]&&fixture[reads[rpc.name]])payload=await fixture[reads[rpc.name]](rpc.arguments);
+   if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
+   if(rpc.name==='incident-board')payload.incidents[0].state=state.incidentState;
+   if(rpc.name==='schedule-board'&&state.removeJobs){payload.jobs=[];payload.sources=payload.sources.map(source=>({...source,state:'unknown',count:null}));}
+   if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
    if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;}
-   if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;}
+   if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;if(state.connectionsBad){payload.connections.providers.push(null);payload.connections.devices.items.push(null);}}
    if(rpc.name==='work-request-card')payload.desired_outcome='Demo acceptance summary';
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
+  if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
   const file=routes.routes[url.pathname]||url.pathname.slice(1);
   try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto('http://localhost/control-room?mode=live');
+ await page.goto(`http://localhost${path}`);
  await page.waitForFunction(()=>document.querySelector('#selfAvatar')?.textContent==='J');
  return {page,state,calls,errors};
 }
@@ -82,4 +89,47 @@ test('W7 retains distinct before and after renders at desktop and phone width',a
   const after=await readFile(new URL(`test-artifacts/w7/board-${width}.png`,root));
   assert.equal(before.readUInt32BE(16),width);assert.equal(after.readUInt32BE(16),width);assert.notDeepEqual(before,after);
  }
+});
+
+for(const failure of ['http','invalid'])test(`finding 5: ${failure} governance read retains labeled last-known approvals`,async t=>{
+ const {page,state}=await open(t);await page.waitForFunction(()=>document.querySelectorAll('.pipeline-node[data-task-id^="governance:"]').length===4);
+ state.approvalFailure=failure;await page.clock.runFor(16001);
+ await page.waitForFunction(()=>document.querySelector('#roomLive').textContent.includes('unavailable'));
+ assert.equal(await page.locator('.pipeline-node[data-task-id^="governance:"]').count(),4);assert.match(await page.locator('#governanceState').textContent(),/unavailable.*last.known/i);
+ state.approvalFailure=null;await page.clock.runFor(15001);await page.waitForFunction(()=>document.querySelector('#governanceState').hidden);
+});
+test('finding 6: open incident reconciles with its source while unrelated reads leave it open',async t=>{
+ const {page,state}=await open(t);await page.locator('#tabAttention').click();await page.locator('#incidentGroups [data-incident-open]').first().click();await page.locator('#jobBody summary').click();
+ state.incidentState='monitoring';await page.clock.runFor(16001);await page.waitForFunction(()=>document.querySelector('.job-summary').textContent.includes('monitoring'));
+ assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);
+ await page.locator('#jobClose').click();await page.locator('#tabAutomations').click();await page.locator('.calendar-day .automation-job').first().click();state.removeJobs=true;await page.clock.runFor(15001);
+ await page.waitForFunction(()=>/no longer|removed/.test(document.querySelector('#jobBody').textContent));
+});
+for(const initial of [false,true])test(`finding 7: malformed Connections ${initial?'initial':'poll'} render unavailable and polling continues`,async t=>{
+ const {page,state,errors}=await open(t,{connectionsBad:initial});await page.locator('#tabConnections').click();await page.waitForSelector('[data-connection="claude"]');
+ if(!initial){await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='connected');state.connectionsBad=true;await page.clock.runFor(16001);}
+ await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='unknown');assert.equal(await page.locator('[data-device]').count(),0);assert.match(await page.locator('[data-connection="claude"]').textContent(),/Spend unavailable/);
+ state.connectionsBad=false;await page.clock.runFor(16001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='connected');assert.deepEqual(errors,[]);
+});
+test('finding 8: poll preserves calendar, management and popup activity focus plus current card return',async t=>{
+ const {page,state}=await open(t);await page.locator('#tabAutomations').click();const job=page.locator('.calendar-day .automation-job').first();await job.focus();state.spend=20;await page.clock.runFor(16001);assert.equal(await job.evaluate(e=>e===document.activeElement),true);
+ await page.locator('#tabConnections').click();const manage=page.locator('[data-connection="claude"] a');await manage.focus();state.spend=30;await page.clock.runFor(15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').textContent.includes('$30.00'));assert.equal(await page.evaluate(()=>document.querySelector('[data-connection="claude"] a')===document.activeElement),true);
+ await page.locator('#tabDashboard').click();const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();const activity=page.locator('#jobBody details a');await activity.focus();state.pr=77;await page.clock.runFor(15001);await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #77'));assert.equal(await activity.evaluate(e=>e===document.activeElement),true);
+ await page.locator('#jobClose').click();await page.waitForFunction(()=>document.querySelector('.work-card h4 a')===document.activeElement);
+});
+test('finding 9: persisted pagehide/pageshow continues Control Room polling',async t=>{
+ const {page,state}=await open(t);await page.locator('#tabAttention').click();await page.waitForSelector('#incidentGroups [data-incident]');
+ await page.evaluate(()=>{dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));});state.incidentState='monitoring';await page.clock.runFor(30001);
+ await page.waitForFunction(()=>document.querySelector('#incidentGroups [data-incident] .work-meta').textContent.includes('monitoring'));
+});
+test('finding 10: System Map restores selected node on initial load and history navigation',async t=>{
+ const {page}=await open(t,{path:'/control-room?mode=live&tab=system-map&node=service%3Ademo-worker'});
+ await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.status==='ready');assert.equal(await page.evaluate(async()=> (await import('/js/atlas.js')).view.selected),'service:demo-worker');
+ await page.evaluate(()=>{history.pushState({},'', '/control-room?mode=live&tab=system-map&node=service%3Ademo-exporter');dispatchEvent(new PopStateEvent('popstate'));});
+ await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.selected==='service:demo-exporter');
+});
+test('finding 11: sidebar shares active-deal scope including adapter-normalized Closed and inactive states',async t=>{
+ const {page,state}=await open(t);state.dealStates=true;await page.locator('#appSyncRefresh').click();
+ await page.waitForFunction(()=>document.querySelector('#appTodayNeeds').textContent.includes('Demo active'));
+ for(const id of ['appTodayNeeds','appWorkingList']){assert.deepEqual(await page.locator(`#${id} [data-layout-deal]`).allTextContents(),['Demo active']);}
 });

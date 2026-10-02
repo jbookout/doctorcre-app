@@ -1,9 +1,9 @@
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
-import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews } from './change-receipts.mjs';
+import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
-const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import { scopedDeals } from './home-dashboard-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
 // Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
@@ -120,7 +120,7 @@ export function mountAppLayout(root, host, pathname) {
       const value = board.value;
       status.querySelector('#appSyncTime').textContent = time(new Date().toISOString());
       status.querySelector('#appSyncTime').dateTime = new Date().toISOString();
-      const active = value.deals.filter(d => d.operating_state !== 'parked' && d.phase !== 'closed');
+      const active = scopedDeals(value, 'team') || [];
       const needs = active.filter(d => d.owner === value.actor && (d.attention || d.next_date && d.next_date <= new Date().toISOString().slice(0,10)));
       render('#appTodayNeeds', needs.slice(0,6).map(d => row(d,d.next_step)).join('') || empty);
       render('#appWorkingList', active.filter(d => d.attention).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);

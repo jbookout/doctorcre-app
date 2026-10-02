@@ -2,6 +2,7 @@
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
  */
+import { CONNECTION_NAMES } from './connections-model.js';
 import { uuidv4 } from './uuid.js';
 import { PHASES } from './client.js';
 import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
@@ -2818,8 +2819,7 @@ export async function createFixtureClient(opts = {}) {
     // three tempos (under a day, a day or more, past the 48-hour cadence).
     async readConnections() {
       const checked_at=nowIso();
-      const names={claude:'Claude',codex:'Codex',grok:'Grok',jev:'Jev',tailscale:'Tailscale',neon:'Neon',github:'GitHub',cloudflare:'Cloudflare',local_compute:'Local compute',model_route:'Model tools'};
-      return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(names).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
+      return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
     },
     async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
     async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},

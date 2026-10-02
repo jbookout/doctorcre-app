@@ -13,7 +13,7 @@ export function jobLinks(task) {
 }
 
 export function governanceTasks(payload) {
-  if (!validGovernanceQueuePayload(payload)) return [];
+  if (!validGovernanceQueuePayload(payload)) return null;
   return GOVERNANCE_LANES.flatMap(lane => payload[lane.id].map(row => ({
     ...row, id: `governance:${lane.id}:${row[lane.idField]}`, kind: 'governance_item',
     governance: { lane: lane.id, ref: row[lane.idField], entry: row },
@@ -24,10 +24,22 @@ export function governanceTasks(payload) {
 }
 
 export function withGovernance(board, tasks) {
-  // Join by exact governance reference only. Similar titles never establish identity.
-  const existing = new Set(board.stages.flatMap(s => s.tasks).flatMap(t => [t.id, t.governance?.ref, t.kind === 'governance_item' ? t.id.replace(/^governance_item:/, '') : null]));
-  return { ...board, stages: board.stages.map(stage => ({ ...stage, tasks: [...stage.tasks,
-    ...(stage.id === 'review' ? tasks.filter(t => !existing.has(t.id) && !existing.has(t.governance.ref)) : [])] })) };
+  if (!tasks) return board;
+  // An exact census reference carries bindings; the queue carries the original
+  // approval entry and Review placement. Keep both on one card.
+  const remaining = new Map(tasks.map(task => [task.governance.ref, task]));
+  const reviews = [];
+  const stages = board.stages.map(stage => ({ ...stage, tasks: stage.tasks.filter(task => {
+    const ref = task.governance?.ref || (task.kind === 'governance_item' ? task.id.replace(/^governance_item:/, '') : null);
+    const entry = remaining.get(ref);
+    if (!entry) return !tasks.some(row => row.governance.ref === ref);
+    reviews.push({ ...task, ...entry, ...Object.fromEntries(['work_request','work_request_ref','human_ref','related','pr','pr_url'].filter(key => entry[key] == null && task[key] != null).map(key => [key, task[key]])) });
+    remaining.delete(ref);
+    return false;
+  }) }));
+  const review = stages.find(stage => stage.id === 'review');
+  if (review) review.tasks.push(...reviews, ...remaining.values());
+  return { ...board, stages };
 }
 
 export function automationMonth(payload, year, month) {
