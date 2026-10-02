@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
-import { canonicalFixture, multiEnvelopeCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
+import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 import { scopedTurn, scopedQueueCard, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
 import { passportProjectionDigest, validEngineeringPassport } from '../js/job-passport.js';
 
@@ -153,6 +153,42 @@ test('canonical Passport refuses duplicate, unbound and self-reviewed receipt li
     change(value);
     assert.equal(canonicalPassport(reseal(value)), false);
   }
+});
+
+test('canonical Passport preserves equal public reviews from distinct receipt generations',()=>{
+  const value = equalReviewCanonicalFixture();
+  assert.equal(value.receipts.length, 2);
+  assert.notEqual(value.receipts[0].envelope_digest, value.receipts[1].envelope_digest);
+  assert.deepEqual(value.reviewer_facts[0], value.reviewer_facts[1]);
+  assert.equal(value.current_reviewer_facts.length, 1);
+  assert.equal(value.closure_state, 'complete');
+  assert.equal(canonicalPassport(value), true);
+  for (const change of [
+    projection => { projection.current_reviewer_facts = []; },
+    projection => projection.current_reviewer_facts.push(structuredClone(projection.current_reviewer_facts[0])),
+    projection => { projection.reviewer_facts[0].state = 'invented'; },
+    projection => {
+      // This fact can review the historical receipt, but cannot review its own
+      // current execution even when it also appears in historical facts.
+      projection.current_reviewer_facts[0].session_ref = projection.current_receipts[0].attribution.session_ref;
+      projection.reviewer_facts[0] = structuredClone(projection.current_reviewer_facts[0]);
+    },
+  ]) {
+    const malformed = structuredClone(value);
+    change(malformed);
+    malformed.projection_digest = passportProjectionDigest(malformed);
+    assert.equal(canonicalPassport(malformed), false);
+  }
+});
+
+test('equal public historical reviews keep complete canonical work available',async t=>{
+  const {page,errors} = await open(t,{sessions:[
+    {canonical_session_id:'session:second',display_name:'Second-generation builder'},
+  ],rpcReply:(rpc,payload)=>rpc.name==='engineering-passport'?equalReviewCanonicalFixture():payload});
+  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: complete'));
+  assert.doesNotMatch(await page.locator('#workCanonicalBody').textContent(),/unavailable/i);
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Second-generation builder'));
+  assert.deepEqual(errors, []);
 });
 
 test('multi-envelope canonical Passport remains available and links its current session',async t=>{

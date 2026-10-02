@@ -422,11 +422,12 @@ export function validCanonicalEngineeringPassport(value) {
   }
   const reviews = new Set();
   for (const fact of value.reviewer_facts) {
-    // Historical facts omit their ledger receipt_id. Check the matching
-    // slice/attempt candidates without selecting a generation by array order.
+    // Historical facts omit their ledger receipt_id, so distinct generations
+    // may have equal public payloads. Validate each against matching
+    // slice/attempt candidates; digests only establish current fact membership.
     // Current facts below must still validate against the selected receipt.
     const candidates = value.receipts.filter(receipt => receipt.slice_ref === fact?.slice_ref && receipt.attempt_id === fact?.attempt_id);
-    if (!candidates.some(receipt => validReviewerFacts([fact],[receipt])) || reviews.has(canonicalDigest(fact))) return false;
+    if (!candidates.some(receipt => validReviewerFacts([fact],[receipt]))) return false;
     reviews.add(canonicalDigest(fact));
   }
   if (!validReviewerFacts(value.current_reviewer_facts,[...current.values()]) || !value.current_reviewer_facts.every(fact => reviews.has(canonicalDigest(fact)))

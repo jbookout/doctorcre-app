@@ -58,3 +58,12 @@ export function multiEnvelopeCanonicalFixture({ reviewed = false } = {}) {
   value.projection_digest = passportProjectionDigest(value);
   return value;
 }
+
+// The producer binds each review to a separate receipt ledger ID, then omits
+// those IDs from the projection. Independent reviews can have equal payloads.
+export function equalReviewCanonicalFixture() {
+  const value = multiEnvelopeCanonicalFixture({ reviewed: true });
+  value.reviewer_facts[0] = structuredClone(value.current_reviewer_facts[0]);
+  value.projection_digest = passportProjectionDigest(value);
+  return value;
+}
