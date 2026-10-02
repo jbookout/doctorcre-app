@@ -26,7 +26,7 @@ async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=
  });
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false};page.on('pageerror',e=>errors.push(e.message));
+ const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[]};page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/mcp'){
@@ -38,6 +38,7 @@ async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=
    if(rpc.name==='schedule-board'&&state.removeJobs){payload.jobs=[];payload.sources=payload.sources.map(source=>({...source,state:'unknown',count:null}));}
    if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
    if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;}
+   if(rpc.name==='unfinished-work'&&rpc.arguments.live_library)payload.items=state.liveItems;
    if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;if(state.connectionsBad){payload.connections.providers.push(null);payload.connections.devices.items.push(null);}}
    if(rpc.name==='work-request-card')payload.desired_outcome='Demo acceptance summary';
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
@@ -78,6 +79,28 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  await page.locator('.work-card').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobClose').click();
  await page.locator('#tabConnections').click();await page.locator('[data-connection="claude"] a').waitFor();assert.equal(await page.locator('[data-device]').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(width!==320)await capture(page,`connections-${width}`);
  assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'),calls.join(', '));assert.deepEqual(errors,[]);
+});
+
+for(const width of [1440,390])test(`Live work refresh preserves task focus and handles removal at ${width}px`,async t=>{
+ const {page,state,errors}=await open(t,{width});
+ const refresh=()=>page.locator('#system-work-coverage button').evaluate(button=>button.click());
+ state.liveItems=[{id:'demo-live',kind:'progress_task',source:'demo',title:'Demo live task',summary:'First summary',completed:true,state:'measured',evidence:'Synthetic verification',age:0,last_activity_at:'2026-10-02T12:00:00Z',available_triage_actions:[]}];
+ await page.locator('#system-work-coverage button').waitFor();await refresh();
+ const card=page.locator('#completed-list [data-task-id="progress_task:demo-live"]');
+ await card.waitFor();await card.focus();
+ state.liveItems[0].summary='Updated summary';await refresh();
+ await page.waitForFunction(()=>document.querySelector('#completed-list .card-summary')?.textContent==='Updated summary');
+ assert.equal(await card.evaluate(node=>node===document.activeElement),true);
+ // A separate control must keep focus when Live work changes in the background.
+ const outside=page.locator('#board-retry');await outside.focus();
+ state.liveItems[0].summary='Another summary';await refresh();
+ await page.waitForFunction(()=>document.querySelector('#completed-list .card-summary')?.textContent==='Another summary');
+ assert.equal(await outside.evaluate(node=>node===document.activeElement),true);
+ await card.focus();state.liveItems=[];await refresh();
+ await page.waitForFunction(()=>document.querySelector('#completed-count').textContent==='0 LIVE');
+ assert.equal(await page.locator('#board-title').evaluate(node=>node===document.activeElement),true);
+ assert.match(await page.locator('#completed-list').textContent(),/No live tasks yet/);
+ assert.deepEqual(errors,[]);
 });
 for(const width of [1440,390])test(`W7 Action Items rows open the same wide popup at ${width}px`,async t=>{
  const {page,errors}=await open(t,{width});await page.locator('#tabAttention').click();

@@ -250,12 +250,13 @@ function renderCompleted(view) {
   const live = view.stages.find(stage => stage.id === "live");
   const signature = JSON.stringify(live.tasks);
   if (completedList.dataset.signature === signature) return;
+  const focusedId = completedList.contains(document.activeElement)
+    ? document.activeElement.closest('[data-task-id]')?.dataset.taskId : null;
   completedList.dataset.signature = signature;
   completedList.replaceChildren();
   completedCount.textContent = `${live.tasks.length} LIVE`;
   if (!live.tasks.length) {
     completedList.append(element("p", "empty", "No live tasks yet."));
-    return;
   }
   for (const task of live.tasks) {
     const identity = taskIdentity(task);
@@ -275,6 +276,7 @@ function renderCompleted(view) {
     });
     completedList.append(card);
   }
+  if (focusedId) ([...completedList.children].find(card => card.dataset.taskId === focusedId) || title).focus();
 }
 
 function taskReferences(task) {
