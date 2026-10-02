@@ -12,10 +12,16 @@ export const HIDDEN_HOME_WIDGETS = Object.freeze({
   capture: 'Doc task/idea classification and document-now/table workflow',
 });
 
+// Validate the fields Home needs to identify complete feeds. Missing ranking
+// evidence can leave an identified lead unranked; missing rows or identities
+// cannot establish an empty feed or a count.
+const validHomeRows = (payload, key) => payload && typeof payload === 'object' && !Array.isArray(payload)
+  && Array.isArray(payload[key]) && payload[key].every(row => row && typeof row === 'object' && !Array.isArray(row)
+    && typeof row.id === 'string' && row.id.trim().length > 0);
+
 export function scopedDeals(board, scope) {
-  if (!Array.isArray(board?.deals) || (scope === 'mine' && !board.actor)) return null;
-  return board.deals.filter(deal => deal && typeof deal.id === 'string'
-    && !['closed', 'Closed'].includes(deal.phase)
+  if (!validHomeRows(board, 'deals') || (scope === 'mine' && !board.actor)) return null;
+  return board.deals.filter(deal => !['closed', 'Closed'].includes(deal.phase)
     && (deal.operating_state || 'active') === 'active'
     && (scope !== 'mine' || deal.owner === board.actor));
 }
@@ -106,6 +112,9 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
     try {
       if (signal?.aborted) return;
       const value = await readWithDeadline(read, { timeoutMs, signal });
+      if (target === result && !validHomeRows(value, name === 'board' ? 'deals' : 'leads')) {
+        throw Object.assign(new Error('Home returned an incomplete feed.'), { code: 'malformed_response' });
+      }
       if (target instanceof Map) target.set(name, value); else target[name] = value;
       result.reads[name] = { state: 'read' };
       if (name === 'board' && target === result) {

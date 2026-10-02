@@ -7,7 +7,7 @@ import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root)));
 const primary = ['Home','Leads','Tours','Deals','Vendors','Control Room'];
-const secondary = ['Clients','Ideas','Events','Updates','Doc Chats','Progress','Work Requests','All Work','Incidents','Agent Room','Agent Queue','Design Lab','Status'];
+const secondary = ['Clients','Ideas','Events','Updates','Doc Chats','Progress','Work Requests','All Work','Incidents','Project activity','Design Lab','Status'];
 
 async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
@@ -61,7 +61,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     if (width <= 900) await page.getByLabel('Navigation menu', {exact:true}).click();
     assert.deepEqual(await page.locator('.app-shell-navigation > a').allTextContents(), primary);
     await page.getByText('More', {exact:true}).click(); assert.deepEqual(await page.locator('.app-shell-more-list a').allTextContents(), secondary);
-    assert.equal(await page.locator('[data-app-nav-item]').count(), 19);
+    assert.equal(await page.locator('[data-app-nav-item]').count(), primary.length + secondary.length);
     assert.equal(await page.locator('[data-app-nav-item][href="/calendar"], [data-app-nav-item][href="/tasks"]').count(), 0);
     const controls = await page.locator('.app-shell-controls').evaluate(el => [...el.querySelectorAll('button')].filter(e => e.offsetParent).map(e => ({ width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height, transition: getComputedStyle(e).transitionDuration })));
     assert.ok(controls.every(e => e.width >= 44 && e.height >= 44)); assert.ok(controls.every(e => e.transition === '0s'));

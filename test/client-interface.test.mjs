@@ -63,3 +63,38 @@ test("Jev reading sends one deal id to the same-origin CARR API", async () => {
   assert.equal(calls[0].init.credentials, "same-origin");
   assert.deepEqual(JSON.parse(calls[0].init.body), { deal: "00000000-0000-4000-8000-000000000001" });
 });
+
+for(const method of ['engineeringPassport','workRequestCard','sessionIdentity','dispatchHistory'])test(`${method} bounds the response body and aborts on expiry`,async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  let signal;
+  const live=createLiveClient({fetchImpl:async(_path,init)=>{signal=init.signal;return {ok:true,json:()=>new Promise(()=>{})};}});
+  const read=live[method]({});const rejected=assert.rejects(read,error=>error.code==='read_timeout');
+  await Promise.resolve();t.mock.timers.tick(10001);await rejected;
+  assert.equal(signal.aborted,true);
+});
+
+for (const method of ['engineeringPassport', 'workRequestCard', 'sessionIdentity', 'dispatchHistory', 'unfinishedWork', 'listProgressBoards', 'readProgressBoard']) test(`${method} uses the shared read deadline and caller cancellation`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let signal;
+  const live = createLiveClient({ readTimeoutMs: 25, fetchImpl: async (_path, init) => {
+    signal = init.signal;
+    return new Promise(() => {});
+  } });
+  const controller = new AbortController();
+  const pending = live[method]({}, { signal: controller.signal });
+  const rejected = assert.rejects(pending, error => error.code === 'read_timeout');
+  controller.abort();
+  assert.equal(signal.aborted, true, 'caller cancellation reaches the transport');
+  await rejected;
+  const expired = assert.rejects(live[method]({}), error => error.code === 'read_timeout');
+  t.mock.timers.tick(26);
+  await expired;
+  assert.equal(signal.aborted, true, 'configured deadline cancels the transport');
+});
+
+test('confirmed authentication denial survives a stalled error body',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const live=createLiveClient({fetchImpl:async()=>({ok:false,status:401,text:()=>new Promise(()=>{})})});
+  const read=live.engineeringPassport({});const rejected=assert.rejects(read,error=>error.status===401);
+  await Promise.resolve();t.mock.timers.tick(10001);await rejected;
+});

@@ -24,7 +24,7 @@ const UNGATED_PAGES = new Set(["/status"]);
 // the gate about the Control Room page path on their behalf: same session cookie,
 // same refusal or redirect, same 200 for a signed-in partner.
 const GATE_PATHS = new Map([
-  ["/control-room/progress", "/control-room"], ["/control-room/agents/queue", "/control-room"],
+  ["/control-room/progress", "/control-room"], ["/control-room/progress/work", "/control-room"],
   ["/ideas-events", "/control-room"], ["/design-lab", "/control-room"],
   ["/calendar", "/business"], ["/search", "/business"], ["/work-requests", "/system-work.html"],
   ["/agent-room", "/room.html"], ["/all-work", "/work-inventory"],
@@ -153,6 +153,7 @@ export async function handleDoctorcreRequest(request, env) {
       : REDIRECTS.get(pathname);
     const destination = new URL(target, url.origin);
     for (const [key, value] of url.searchParams) if (!destination.searchParams.has(key)) destination.searchParams.append(key, value);
+    destination.hash = url.hash;
     return Response.redirect(destination, 308);
   }
 

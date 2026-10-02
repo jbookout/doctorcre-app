@@ -14,12 +14,16 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false } = {}) {
+async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
   await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
+  const responses = new Map();
+  let releaseInitialFeed;
+  const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
+  t.after(() => releaseInitialFeed());
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
@@ -38,11 +42,16 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params.name);
-      try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
+      if (!handlers[rpc.params.name]) { errors.push(`Unexpected MCP operation: ${rpc.params.name}`); return route.fulfill({ status: 500, json: { error: 'unexpected_operation' } }); }
+      try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(responses.has(rpc.params.name) ? responses.get(rpc.params.name) : await handlers[rpc.params.name](rpc.params.arguments)) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
-    if (url.pathname === '/pipeline/changes') { feedReads++; return route.fulfill({ json: { changes: [], cursor: null } }); }
+    if (url.pathname === '/pipeline/changes') {
+      feedReads++;
+      if (delayInitialFeed && feedReads === 1) await initialFeed;
+      return route.fulfill({ json: { changes: [], cursor: null } });
+    }
     if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     if (tasksOnly && url.pathname === '/js/fixture-client.js') {
@@ -57,8 +66,46 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   });
   await page.goto('http://localhost/?mode=live');
   await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
-  return { page, errors, calls, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
+
+test('PR123 finding 8: malformed and mixed live reads settle unavailable and recover', async t => {
+  const state = await open(t); const { page, responses } = state;
+  const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const refresh = async () => {
+    const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
+      && response.request().postDataJSON()?.params?.name === 'lead-board');
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await read; await settled();
+  };
+  await settled();
+  for (const [name, payloads] of [
+    ['deal-room-board', [{}, { deals: [{ name: 'Missing identity' }] }, { deals: [{ id: 'demo-valid', name: 'Demo valid' }, { name: 'Missing identity' }] }]],
+    ['lead-board', [{}, { leads: [{ score: 99, created_at: NOW.toISOString() }] }, { leads: [leadRows[0], null] }]],
+  ]) for (const payload of payloads) await t.test(`${name}: ${JSON.stringify(payload)}`, async () => {
+    if (name === 'lead-board') await page.locator('.home-lead').first().click();
+    responses.set(name, payload);
+    try {
+      await refresh();
+      assert.equal(await page.locator('#homeNotice').isVisible(), true);
+      assert.match(await page.locator('#observedAt').textContent(), /unavailable|partial/i);
+      assert.equal(await page.locator('#dealAttention').getAttribute('aria-busy'), 'false');
+      if (name === 'deal-room-board') {
+        assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: —/);
+        assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
+        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags/);
+        assert.equal(await page.locator('#homeLeads').isVisible(), true);
+      } else {
+        assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: \d/);
+        assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
+      }
+    } finally { responses.delete(name); await refresh(); }
+    assert.equal(await page.locator('#homeNotice').isVisible(), false);
+    assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
+    assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  });
+  assert.deepEqual(state.errors, []);
+});
 
 test('Home desktop and phone show flags, visual agenda, ranked leads and wide entry detail with no overflow', async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
@@ -189,17 +236,25 @@ test('R6 settled board failure shows unavailable rather than Updating and automa
 
 test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
   for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
-    const state = await open(t); const { page } = state;
+    const state = await open(t, { delayInitialFeed: true }); const { page } = state;
     state.failDetails(failure);
+    const firstFeed = page.waitForRequest('**/pipeline/changes');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
     await page.locator('#rows .deal-link').first().waitFor();
+    await firstFeed;
+    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
+      && request.postDataJSON()?.params?.name === 'get-deal-room');
+    state.releaseInitialFeed();
+    await detailRead;
     await page.clock.runFor(10_001);
-    await page.waitForTimeout(30);
     await page.getByText('Deal details unavailable.', { exact: true }).waitFor();
     assert.equal(await page.locator('#dealDialog').getByRole('button', { name: 'Close details' }).isVisible(), true);
     const before = [state.boardReads, state.feedReads];
+    const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
+      && response.request().postDataJSON()?.params?.name === 'deal-room-board');
+    const nextFeed = page.waitForResponse(response => new URL(response.url()).pathname === '/pipeline/changes');
     await page.clock.runFor(65_000);
-    await page.waitForTimeout(30);
+    await Promise.all([nextBoard, nextFeed]);
     assert.ok(state.boardReads > before[0], 'board refresh continues');
     assert.ok(state.feedReads > before[1], 'feed polling continues');
   });
