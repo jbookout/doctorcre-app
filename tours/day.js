@@ -17,7 +17,7 @@ export function safePhone(value) {
   return /^\+?\d{7,15}$/.test(clean) ? `tel:${clean}` : null;
 }
 export function boundClientId(tour) {
-  const id = tour?.subject_type === "client" ? tour.subject_id : tour?.subject_type ? null : tour?.client_id;
+  const id = tour?.subject_type === "client" ? tour.subject_id : null;
   return typeof id === "string" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 

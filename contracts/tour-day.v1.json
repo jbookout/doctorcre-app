@@ -10,8 +10,31 @@
   "producer_requirements": {
     "submitNote": "Authenticated versioned audio upload, exact note/tour/client/property/route/stop IDs, captured_at, supported MIME; note ID is immutable idempotency key. Server derives tenant, author and client binding from the tour. Bounded audio limits, consent policy, server audio digest and retention policy required.",
     "lookupNote": "Authenticated authoritative absent/processing/filed result for exact immutable note ID; unknown outcome must be read before resend.",
-    "filed_receipt": ["id", "tour_id", "client_id", "property_id", "route_version_id", "route_stop_id", "summary", "transcript", "tour_feedback_ref", "client_activity_ref"],
+    "filed_receipt": [
+      "id",
+      "tour_id",
+      "client_id",
+      "property_id",
+      "route_version_id",
+      "route_stop_id",
+      "summary",
+      "transcript",
+      "tour_feedback_ref",
+      "client_activity_ref"
+    ],
     "filing": "CARR transcribes and summarizes once, preserves original audio/transcript and atomically links one note to tour feedback and client activity. The application must not infer filed from an upload acknowledgement.",
     "activation": "Implement, review, deploy and pin an exact producer revision plus versioned HTTP contract before enabling the live adapter. Test real phone microphone, background/lock behavior, encrypted offline storage policy and native navigation before promotion."
+  },
+  "subject_read_producer": {
+    "repository": "jbookout/carr-system",
+    "revision": "3241e443d9462f4c09438d8e52382a1bd11719e9",
+    "contract": "workspace/contracts/tour-operations-foundation.v1.json",
+    "version": "1.8.0",
+    "migration": "0768_tour_internal_subject_read.sql",
+    "fields": [
+      "subject_type",
+      "subject_id"
+    ],
+    "activation": "Pending review, merge and deployment; consumer refuses unbound tours. This pin adds no audio write capability."
   }
 }

@@ -20,6 +20,7 @@ test("accepted route order, stable property identity, safe call links and honest
   assert.equal(safePhone("+1 (202) 555-0100"), "tel:+12025550100");
   const clientId = "11111111-1111-4111-8111-111111111111";
   assert.equal(boundClientId({ subject_type: "client", subject_id: clientId }), clientId);
+  assert.equal(boundClientId({ client_id: clientId }), null);
   assert.equal(boundClientId({ subject_type: "work", subject_id: clientId, client_id: clientId }), null);
   assert.equal(boundClientId({ subject_type: "client", subject_id: "invalid", client_id: clientId }), null);
   for (const value of ["javascript:alert(1)", "+1+2025550100", "1", null]) assert.equal(safePhone(value), null);
