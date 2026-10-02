@@ -7,9 +7,23 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 const root=new URL('../',import.meta.url);
 const reads={'read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','list-notifications':'listNotifications'};
-async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false}={}){
+async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false,countIncidentClicks=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});page.setDefaultTimeout(5000);
+ if(countIncidentClicks)await page.addInitScript(()=>{
+  window.incidentClickCallbacks={filters:0,incidents:0};
+  const add=EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener=function(type,listener,options){
+   const kind=type==='click'&&this instanceof Element
+    ?this.matches('#severityChips, #severityChips [data-severity]')?'filters'
+     :this.matches('#incidentGroups, #incidentGroups [data-incident]')?'incidents':null
+    :null;
+   return add.call(this,type,kind&&typeof listener==='function'?function(event){
+    window.incidentClickCallbacks[kind]++;
+    return listener.call(this,event);
+   }:listener,options);
+  };
+ });
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false};page.on('pageerror',e=>errors.push(e.message));
@@ -132,4 +146,36 @@ test('finding 11: sidebar shares active-deal scope including adapter-normalized 
  const {page,state}=await open(t);state.dealStates=true;await page.locator('#appSyncRefresh').click();
  await page.waitForFunction(()=>document.querySelector('#appTodayNeeds').textContent.includes('Demo active'));
  for(const id of ['appTodayNeeds','appWorkingList']){assert.deepEqual(await page.locator(`#${id} [data-layout-deal]`).allTextContents(),['Demo active']);}
+});
+test('incident filters and details dispatch once per click after retained and replaced renders',async t=>{
+ const {page,state,errors}=await open(t,{countIncidentClicks:true});await page.locator('#tabAttention').click();
+ const all=page.locator('#severityChips [data-severity="all"]');await all.waitFor();await all.focus();
+ for(const sequence of [2,3]){
+  await page.clock.runFor(15001);
+  await page.waitForFunction(async sequence=>{const {view}=await import('/js/control-room.js');return view.sequence===sequence&&view.reads.incidents.state==='read';},sequence);
+ }
+ assert.equal(await all.evaluate(node=>node===document.activeElement),true);
+ for(let click=1;click<=3;click++){
+  await all.click();
+  assert.equal(await page.evaluate(()=>window.incidentClickCallbacks.filters),click);
+ }
+ const incident=page.locator('#incidentGroups [data-incident]').first();
+ await incident.locator('h3').click();
+ assert.equal(await page.evaluate(()=>window.incidentClickCallbacks.incidents),1);
+ assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),true);
+ await page.locator('#jobClose').click();
+ // A changed poll and severity selection replace rows; the same handlers must
+ // still serve the new nodes, including clicks on children and keyboard clicks.
+ state.incidentState='monitoring';await page.clock.runFor(15001);
+ await page.waitForFunction(()=>document.querySelector('#incidentGroups .work-meta').textContent.includes('monitoring'));
+ const severity=await incident.evaluate(node=>node.closest('[data-group]').dataset.group);
+ await page.locator(`#severityChips [data-severity="${severity}"]`).click();
+ assert.equal(await page.evaluate(()=>window.incidentClickCallbacks.filters),4);
+ await incident.locator('[data-incident-open]').focus();await page.keyboard.press('Enter');
+ assert.equal(await page.evaluate(()=>window.incidentClickCallbacks.incidents),2);
+ assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),true);
+ await page.locator('#jobClose').click();
+ assert.equal(await incident.locator('[data-incident-open]').evaluate(node=>node===document.activeElement),true);
+ await all.click();assert.equal(await page.evaluate(()=>window.incidentClickCallbacks.filters),5);
+ assert.deepEqual(errors,[]);
 });

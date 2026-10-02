@@ -45,10 +45,6 @@ function renderIncidents() {
   replaceHtml(chips, `<span class="chip-label">Severity</span>${incidentFilters(payload.incidents)
     .map((filter) => `<button class="chip" type="button" data-room-control="${escapeHtml(filter.id)}" data-severity="${escapeHtml(filter.id)}" aria-pressed="${filter.id === view.severity}">${escapeHtml(filter.label)} · ${filter.count}</button>`)
     .join("")}`);
-  for (const chip of chips.querySelectorAll("button[data-severity]")) {
-    chip.addEventListener("click", () => { view.severity = chip.dataset.severity; renderIncidents(); });
-  }
-
   const grouped = groupedIncidents(payload.incidents, { severity: view.severity });
   replaceHtml(groups, grouped.map((group) => `
     <section class="card" data-group="${escapeHtml(group.severity)}" aria-label="${escapeHtml(group.severity)}">
@@ -65,10 +61,6 @@ function renderIncidents() {
         </li>`).join("")}
       </ul>
     </section>`).join("") || `<div class="state-block" data-state="empty"><h3>No incident matches this severity</h3></div>`);
-
-  for (const row of groups.querySelectorAll("[data-incident]")) {
-    row.addEventListener("click", () => openIncident(row.dataset.incident));
-  }
 }
 
 function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(item=>item.ref===ref);if(row)details.open({...row,id:row.ref},{source:'incidents'}); }
@@ -127,6 +119,14 @@ function openModelRoom(){mountModelRoom({});}
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  details=mountJobDetail({client,document});board=mountProgressBoard({client,openTask:task=>details.open(task),onTasks:tasks=>details.update(tasks)});
+ $('severityChips').addEventListener('click',event=>{
+  const chip=event.target.closest('button[data-severity]');
+  if(chip){view.severity=chip.dataset.severity;renderIncidents();}
+ });
+ $('incidentGroups').addEventListener('click',event=>{
+  const row=event.target.closest('[data-incident]');
+  if(row)openIncident(row.dataset.incident);
+ });
  mountDocDock('Control Room');mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
  const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')openSessions();if(selected.id==='tabModelRoom')openModelRoom();};
  document.getElementById('controlRoomTabs')?.addEventListener('click',event=>{const selected=event.target.closest('[data-tab-key]');if(!selected)return;const next=new URL(location.href);next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);activate(selected);},true);
