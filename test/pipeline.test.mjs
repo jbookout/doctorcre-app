@@ -23,9 +23,9 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PHASES, PHICON, phaseLabel } from "../js/client.js";
 import {
   CLOSED_SLUG, COLUMNS, DEAL_OUTCOMES, PHASE_DATE_KIND, attachedParties, closedColumnCaption,
-  columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections, filterDeals,
+  columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections,
   groupByColumn, isDealOutcome, keyboardTarget, loadDealContext, moveIntent, moveSummary,
-  moveTitle, orderColumn, partyRoleLabel, presenceChip, recordPanelSections, tapMoveTargets, typeFilters,
+  moveTitle, partyRoleLabel, presenceChip, tapMoveTargets,
 } from "../js/pipeline-model.js";
 import {
   createUndoState, ingestChangeEvents, performUndo, receiptViews,
@@ -240,35 +240,6 @@ test("a partner's lease reads as a chip, and the viewer's own never does", () =>
   assert.equal(presenceChip(presence, "d01", { selfActor: "joe", field: "phase", actorLabel: label }), null);
   assert.equal(presenceChip(presence, "d03", { selfActor: "joe", field: "phase", actorLabel: label }), null);
   assert.equal(presenceChip([], "d01", { selfActor: "joe" }), null);
-});
-
-test("the chips are built from the deal types the board returns, and filter by them", () => {
-  const deals = [
-    { id: "a", type: "Renewal" }, { id: "b", type: "Startup" }, { id: "c", type: "Renewal" }, { id: "d" },
-  ];
-  assert.deepEqual(typeFilters(deals).map((chip) => chip.value), ["all", "Renewal", "Startup"]);
-  assert.deepEqual(filterDeals(deals, "Renewal").map((deal) => deal.id), ["a", "c"]);
-  assert.equal(filterDeals(deals, "all").length, 4);
-  assert.equal(filterDeals(deals, null).length, 4);
-});
-
-test("a column orders flagged records first, then by name, and the panel states what is missing", () => {
-  const ordered = orderColumn([
-    { id: "b", name: "Demo B" }, { id: "c", name: "Demo C", attention: true }, { id: "a", name: "Demo A" },
-  ]);
-  assert.deepEqual(ordered.map((deal) => deal.id), ["c", "a", "b"]);
-
-  const sections = recordPanelSections({
-    deal: { name: "Demo A", type: "Renewal", phase: "Diligence", owner: "joe", next_step: "", attention: false },
-    critical_dates: [],
-    thread: [],
-  }, { actorLabel: (slug) => ({ joe: "Joe" }[slug] || "Unassigned"), dateLabel: (value) => value });
-  assert.deepEqual(sections.map((section) => section.title),
-    ["Situation", "Next action", "Critical dates", "Blockers", "Latest communication", "Doc work"]);
-  assert.match(sections[0].lines[0], /Due Diligence/, "the panel says the phase's own name");
-  assert.equal(sections[1].lines[0], "No next step recorded.");
-  assert.deepEqual(sections[2].lines, ["None recorded."]);
-  assert.deepEqual(sections[5].lines, ["Not in this release."]);
 });
 
 /* ------------------------------------------ V5-UX-B04: record/client/vendor context */

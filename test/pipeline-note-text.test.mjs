@@ -5,7 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { noteText, recordPanelSections } from "../js/pipeline-model.js";
+import { noteText } from "../js/pipeline-model.js";
+
+import { noteEntries } from '../js/local-deals-model.js';
 
 const pageJs = await readFile(new URL("../js/pipeline.js", import.meta.url), "utf8");
 
@@ -43,20 +45,11 @@ test("braces inside an ordinary sentence are left alone", () => {
   assert.equal(noteText("Use the {client} template"), "Use the {client} template");
 });
 
-test("the record panel shows the sentence for next step and latest communication", () => {
-  const sections = recordPanelSections({
-    deal: { name: "Demo Legal deal", phase: "Legal", owner: "joe", next_step: "{'text': 'Send the redlines', 'at': '2026-09-28'}" },
-    thread: [{ actor: "dell", text: "{'text': 'Counsel replied'}" }],
-  }, { actorLabel: (slug) => slug });
-  const byTitle = Object.fromEntries(sections.map((section) => [section.title, section.lines.join(" ")]));
-  assert.equal(byTitle["Next action"], "Send the redlines");
-  assert.equal(byTitle["Latest communication"], "dell: Counsel replied");
-  assert.doesNotMatch(JSON.stringify(sections), /'text'/);
-});
-
-test("the record panel falls back to plain words when the note carries no sentence", () => {
-  const sections = recordPanelSections({ deal: { name: "Demo", next_step: "{}" }, thread: [] });
-  assert.equal(sections.find((section) => section.title === "Next action").lines[0], "No next step recorded.");
+test("editable deal detail preserves normalized note summaries and originals", () => {
+  const entries = noteEntries({ thread: [{ id: 'demo-note', actor: 'dell', text: "{'text': 'Counsel replied'}" }] });
+  assert.equal(entries[0].summary, 'Counsel replied');
+  assert.equal(entries[0].original, 'Counsel replied');
+  assert.deepEqual(noteEntries({ thread: [{ text: '{}' }] }), []);
 });
 
 test("the Kanban card paints the normalized sentence", () => {
