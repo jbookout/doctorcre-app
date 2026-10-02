@@ -176,8 +176,8 @@ test('R1 Lead detail clears immediately while resume revalidation is delayed',as
  await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);
  assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.equal(await page.locator('#detailBody').textContent(),'');await requested;release();
 });
-test('R3 Today excludes normalized Closed deals and uses the local calendar day',async t=>{
- const {page,goto,errors}=await open(t,{clock:true,now:'2026-10-02T00:30:00Z'});
+for(const timezoneId of ['America/Chicago','Europe/Paris']) test(`R3 Today excludes normalized Closed deals and uses the Chicago business day in ${timezoneId}`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true,timezoneId,now:'2026-10-02T00:30:00Z'});
  await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board' ? route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'joe',deals:[{id:'closed',name:'Closed Demo',phase:'closed',owner:'joe',attention:true},{id:'tomorrow',name:'Tomorrow Demo',phase:'research',owner:'joe',attention:false,next_date:'2026-10-02'},{id:'due',name:'Due Demo',phase:'research',owner:'joe',next_date:'2026-10-01'}]})}]}}}) : route.fallback());
  await goto('/leads?mode=live');assert.deepEqual(await page.locator('#appTodayNeeds [data-layout-deal]').evaluateAll(ns=>ns.map(n=>n.dataset.layoutDeal)),['due']);
  assert.equal(await page.locator('#appWorkingList [data-layout-deal]').count(),0);assert.deepEqual(errors,[]);
@@ -213,4 +213,46 @@ test('R9 Recent changes transfers phone focus into Today and keeps its keyboard 
  assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#appTodayToggle').evaluate(n=>n===document.activeElement),true);
+});
+
+for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP ${status} from authorization refusal`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true});let failure=false,failedReads=0;
+ await page.route('**/mcp',route=>{
+  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
+  if(failure) {failedReads++;return route.fulfill({status,body:'Unavailable'});}
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',next_step:'Synthetic recorded next step',thread:[{id:'synthetic-note',kind:'note',text:'Synthetic protected note',actor:'joe',recorded_at:'2026-10-01T12:00:00Z'}],events:[],critical_dates:[]})}]}}});
+ });
+ await goto('/deals?view=board&mode=live');
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.includes('could not be read'));
+ assert.equal(await page.locator('#detailPhase').count(),1,await page.locator('#panelBody').textContent());
+ const title=await page.locator('#panelTitle').textContent();
+ await page.locator('#detailNextForm textarea').fill('Synthetic unsaved draft');
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>document.querySelector('#contextDrawerBody h3')?.textContent!=='Updating…');
+ failure=true;
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'authorization-regression'});});
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('could not be read'));
+ assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
+ if(status===503) {
+  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#panelTitle').textContent(),title);
+  assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Synthetic unsaved draft');
+  assert.match(await page.locator('#detailReadStatus').textContent(),/stale/);
+  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
+ } else {
+  assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
+  assert.equal(await page.locator('#panelBody .detail-grid').count(),0);
+  assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
+  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  assert.equal(await page.locator('#contextDrawerBody').textContent(),'');
+ }
+ if(status===503) await page.locator('#contextDrawerClose').click();
+ failure=false;await page.locator('[data-retry-detail]').click();
+ await page.locator('#detailPhase').waitFor();
+ assert.equal(await page.locator('#panelTitle').textContent(),title);
+ assert.equal(await page.locator('#detailNextForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
+ assert.deepEqual(errors,[]);
 });

@@ -839,9 +839,17 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
-  } catch {
+  } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     setContextOpenVisible(false);
+    if (error.status === 401 || error.status === 403) {
+      state.panelDetail = null; nextDraft = null;
+      disposeEvidence?.(); disposeEvidence = null;
+      $('panelTitle').textContent = 'Unavailable';
+      $('panelBody').replaceChildren();
+      $('contextDrawer')?.close();
+      $('contextDrawerBody')?.replaceChildren();
+    }
     const message = 'Deal details could not be read. <button class="btn" type="button" data-retry-detail>Retry</button>';
     const status = $('detailReadStatus');
     if (status) status.innerHTML = `Details are stale. ${message}`;
