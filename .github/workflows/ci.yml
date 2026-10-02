@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - if: github.event_name == 'pull_request'
+        run: node scripts/check-pr-description.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run privacy:check
       - run: npm run check

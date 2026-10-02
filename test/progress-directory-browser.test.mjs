@@ -414,3 +414,45 @@ test("an in-flight poll preserves a refocused unchanged answer card when tasks c
   assert.equal(await page.evaluate(() => window.focusedAnswer === document.activeElement), true);
   assert.equal(await page.locator("textarea").inputValue(), "Synthetic retained focus");
 });
+
+
+test("summary and model cards retain routed detail on desktop and phone", async t => {
+  for (const width of [1440, 390]) await t.test(String(width), async t => {
+    let unauthorized = false;
+    const { page, errors } = await open(t, { width, onRpc: async (route, rpc) => {
+      if (rpc.name !== 'read-progress-board') return false;
+      if (unauthorized) { await route.fulfill({status:401,body:'{}'}); return true; }
+      const payload = {ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',
+        tasks:{build:{title:'Synthetic build',status:'running',summary:'Show synthetic model details.',provider:'Synthetic provider',model:'Synthetic model',effort:'high'},
+          released:{title:'Synthetic completed task',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery',summary:'Synthetic delivery is verified.',executor:'Codex gpt-6-sol high'}}}},questions:[]};
+      await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})}); return true;
+    }});
+    await page.waitForFunction(() => document.querySelector('#completed-count').textContent === '1 LIVE');
+    const active = page.locator('.board-card[data-card-id="build"]');
+    assert.match(await active.textContent(), /Synthetic provider.*Synthetic model · high/);
+    assert.match(await active.textContent(), /Show synthetic/);
+    const completed = page.locator('.completed-card');
+    assert.match(await completed.textContent(), /Synthetic delivery is verified.*Codex.*gpt-6-sol · high/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    unauthorized = true;
+    await page.locator('#board-retry').evaluate(button => button.click());
+    await page.waitForFunction(() => document.querySelector('#board-completed').childElementCount === 0);
+    assert.equal(await page.locator('#completed-count').textContent(), '—');
+    assert.deepEqual(errors, []);
+  });
+});
+
+test("completed card keyboard opens the current routed task detail", async t => {
+  const {page,errors} = await open(t, {onRpc: async(route,rpc) => {
+    if(rpc.name !== 'read-progress-board') return false;
+    const payload={ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',tasks:{released:{title:'Synthetic completed',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery'}}}},questions:[]};
+    await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});return true;
+  }});
+  // Board v2 keeps the task pop-up; its work-detail link carries the routed task.
+  await page.locator('.completed-card').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#task-detail[open]').waitFor();
+  assert.equal(await page.locator('#task-detail a', {hasText:'Open work detail'}).getAttribute('href'),
+    '/control-room/progress/work?board=demo-project&task=released');
+  assert.deepEqual(errors,[]);
+});

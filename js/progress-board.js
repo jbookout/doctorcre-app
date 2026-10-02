@@ -556,7 +556,9 @@ export function mountBoard(deps = {}) {
       top.append(el("strong", "card-title", card.title || card.id, { title: card.title || card.id }),
         el("time", "", formatTime(card.completed_at || card.updated_at)));
       const model = modelLine(card);
-      item.append(top, el("p", "card-pr", prLabel(card)), el("p", "completed-evidence", card.evidence || ""),
+      const summary = taskSummary(card);
+      item.append(top, el("p", "card-pr", prLabel(card)), el("p", "card-summary", summary, { title: summary }),
+        el("p", "completed-evidence", card.evidence || ""),
         el("p", "card-model", model, { title: model }));
       clickable(item, () => openDetail(card.id));
       box.append(item);
