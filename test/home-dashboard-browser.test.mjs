@@ -22,11 +22,12 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
+  let malformedBoard = false;
   t.after(() => releaseInitialFeed());
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
-    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
+    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (malformedBoard) return { ...board, deals: [{}] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
     'get-deal-room': async args => { if (detailFailure === '503') throw Error('Unavailable'); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, label: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
@@ -64,8 +65,30 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   });
   await page.goto('http://localhost/?mode=live');
   await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
-  return { page, errors, calls, releaseInitialFeed, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialFeed, malformedBoard(value) { malformedBoard = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
+
+test('malformed Home board shows unavailable counts and recovers on the next valid read', async t => {
+  const state = await open(t); const { page } = state;
+  const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  await settled();
+  const initialCounts = await page.locator('#dealCounts').textContent();
+  state.malformedBoard(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settled();
+  assert.equal(await page.locator('#homeNotice').isVisible(), true);
+  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: —.*Deals in Market: —.*National Account Deals: —/);
+  assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
+  assert.doesNotMatch(await page.locator('#observedAt').textContent(), /^Updated /);
+  assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  assert.equal(await page.locator('#homeCalendar').isVisible(), false);
+  state.malformedBoard(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await settled();
+  assert.equal(await page.locator('#homeNotice').isVisible(), false);
+  assert.equal(await page.locator('#dealCounts').textContent(), initialCounts);
+  assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
+});
 
 test('Home desktop and phone show flags, visual agenda, ranked leads and wide entry detail with no overflow', async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
