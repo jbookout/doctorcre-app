@@ -161,8 +161,8 @@ test("Doc is one floating icon and one chat on every surface, and never a per-ti
     assert.doesNotMatch(mobileNav, />Doc</, `${name} duplicates Doc in the mobile navigation`);
   }
   assert.doesNotMatch(prototypeJs, /"data-doc"/, "no per-tile Ask Doc wiring remains");
-  assert.match(docDockJs, /Prototype reply/, "Doc's prototype answers are marked as prototype answers");
-  assert.doesNotMatch(docDockJs, /fetch\(|getUserMedia|SpeechRecognition|MediaRecorder/, "dictation is a prototype toggle: no audio and no network");
+  assert.match(docDockJs, /Doc cannot answer here yet/, "Doc states its unavailable capability");
+  assert.doesNotMatch(docDockJs, /fetch\(|getUserMedia|SpeechRecognition|MediaRecorder/, "the unavailable dock makes no network or capture request");
 });
 
 test("each surface is built from tabs and popups, and no title carries a description paragraph", () => {

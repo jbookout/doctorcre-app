@@ -154,10 +154,52 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
     clearInterval: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
     now: () => Date.parse("2026-09-23T15:01:05Z"),
   });
+  // These baseline recorder/review tests run against a reachable companion.
+  // Unknown, failed and pending eligibility are exercised in app-honest-controls.
+  controller.state.eligibility = 'available';
   return { doc, controller, requests, timers, calls, client, postCallClient };
 }
 
 const agendaOf = (count) => Array.from({ length: count }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: `Deal ${i}` }));
+
+test('opening an active weekly call restores its session and publishes exact agenda context', async () => {
+  const h = harness({ agenda: agendaOf(2), state: {
+    state: 'recording', mode: 'weekly_deal_call', session: 'synthetic-active-call', started_at: '2026-09-23T15:00:00Z',
+  } });
+  try {
+    await h.controller.open();
+    assert.equal(h.controller.state.postCall.session, 'synthetic-active-call');
+    assert.equal(h.calls.publishCallContext.length, 1);
+    assert.equal(h.calls.publishCallContext[0].session, 'synthetic-active-call');
+    assert.equal(h.calls.publishCallContext[0].deals.length, 2);
+    assert.equal(h.doc.getElementById('callModeStop').hidden, false);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
+test('opening a completed weekly call restores status and displays the review panel', async () => {
+  const h = harness({ state: { state: 'ready_to_extract', mode: 'weekly_deal_call', session: 'synthetic-completed-call' },
+    statuses: [{ status: { state: 'ready_review' }, report: { report: { summary: 'Synthetic call summary' } } }],
+  });
+  try {
+    await h.controller.open();
+    assert.deepEqual(h.calls.getStatus, ['synthetic-completed-call']);
+    assert.equal(h.doc.getElementById('postCallPanel').hidden, false);
+    assert.match(h.doc.getElementById('postCallReport').innerHTML, /Synthetic call summary/);
+    assert.equal(h.calls.publishCallContext.length, 0);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
+test('refresh without a supplied snapshot reads and recovers the companion session', async () => {
+  const h = harness({ state: { state: 'ready_to_extract', mode: 'weekly_deal_call', session: 'synthetic-refresh-call' } });
+  try {
+    await h.controller.refresh();
+    assert.equal(h.requests.length, 1);
+    assert.deepEqual(h.calls.getStatus, ['synthetic-refresh-call']);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
 
 // ---------------------------------------------- 1. nothing before a click
 
@@ -423,7 +465,7 @@ test("the context index is shaped to the companion's exact contract and never in
 
 test("the shipped Deal Room carries Call Mode: button, consent, both call kinds, Stop and the review panel", async () => {
   const html = await file("index.html");
-  assert.match(await file("js/app-shell.js"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"/);
+  assert.match(await file("js/app-shell.js"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"[^>]*hidden/);
   assert.match(html, /<dialog id="callModeDialog"[^>]*aria-labelledby="callModeTitle"/);
   assert.match(html, /<input type="checkbox" id="callModeConsent">/, "consent is an unticked checkbox");
   assert.match(html, /I have told everyone on this call that it will be recorded\./);

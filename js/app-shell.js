@@ -73,7 +73,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">
       <button class="app-shell-control" type="button" data-pref="theme" data-on="dark" data-off="light" aria-pressed="true" aria-label="Dark mode" title="Dark mode"><span aria-hidden="true">☾</span></button>
-      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog"><span aria-hidden="true">☎</span></button>
+      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog" hidden><span aria-hidden="true">☎</span></button>
       <button class="app-shell-control" id="colorAssistButton" type="button" aria-pressed="false" aria-label="Color assist" title="Color assist"><span aria-hidden="true">◐</span></button>
       <div class="app-shell-account"><button class="app-shell-avatar" id="selfAvatar" type="button" aria-label="Account and settings" aria-expanded="false" aria-controls="accountMenu">…</button>
         <div class="app-shell-account-menu" id="accountMenu" hidden>
@@ -86,7 +86,10 @@ export function appShellMarkup(pathname, base = "", search = "") {
         </div>
       </div>
     </div>
-  </header><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
+  </header><div class="app-shell-call-availability"${base ? ' hidden' : ''}>
+    <span id="callModeAvailability" role="status">Checking Quill on this device…</span>
+    <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Recheck Quill</button>
+  </div><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
 }
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
@@ -94,6 +97,12 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
+  // The control row wraps on phones, and Quill availability adds/removes a row.
+  // Keep fixed-page spacing and scroll targets below the measured shell.
+  const measureShell = () => root.documentElement.style.setProperty("--app-shell-height", `${host.getBoundingClientRect().height}px`);
+  measureShell();
+  const ResizeObserver = root.defaultView?.ResizeObserver;
+  if (ResizeObserver) new ResizeObserver(measureShell).observe(host);
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
@@ -182,13 +191,11 @@ function mountAccount(root, host, pathname) {
     } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };
   if (!root.getElementById("callModeDialog")) {
-    let opening = false;
-    host.querySelector("#callModeButton").onclick = async () => {
-      if (opening) return;
-      opening = true;
-      try { const { mountGlobalCallMode } = await import("./global-call-mode.js"); const call = await mountGlobalCallMode(root); await call.open(); }
-      finally { opening = false; }
-    };
+    import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
+      const call = await mountGlobalCallMode(root);
+      host.querySelector("#callModeButton").onclick = () => call.open();
+      host.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
+    });
   }
 }
 
