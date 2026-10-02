@@ -66,6 +66,7 @@ export function mountAppLayout(root, host, pathname) {
   layout.querySelectorAll('[data-layout-close]').forEach(button => button.onclick = () => phone.matches ? closeDrawer() : toggle(button.dataset.layoutClose));
   root.addEventListener('keydown', event => {
     if (!phone.matches || !drawer) return;
+    if (root.querySelector('dialog[open]')) return;
     if (event.key === 'Escape') { event.preventDefault(); closeDrawer(); }
     if (event.key === 'Tab') {
       const panel = layout.querySelector(drawer === 'sidebar' ? '#appSidebar' : '#appToday');

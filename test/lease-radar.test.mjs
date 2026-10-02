@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { addMonths, projectLeaseRadar, validLeaseRadar, pastClientTouches, radarToday } from '../js/lease-radar-model.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { createLeaseRadarClient } from '../js/lease-radar-client.js';
 const today='2026-10-01';
+test('published lease contract binds the exact authenticated producer revision and horizon', async () => {
+  const contract = JSON.parse(await readFile(new URL('../contracts/lease-radar.v1.json', import.meta.url)));
+  assert.equal(contract.producer.source_commit, '84955cdb72d64bb7e712f7dd3b696c20b38710a1');
+  assert.equal(contract.read.path, '/api/v1/business/leases');
+  assert.equal(contract.read.response_schema, 'lease-radar.v1');
+  assert.equal(contract.read.horizon_calendar_months, 24);
+  assert.deepEqual(contract.read.query_parameters, []);
+});
 test('calendar horizon clamps leap day and month end; business day stays in Chicago on travelling devices',()=>{
   assert.equal(addMonths('2024-02-29',24),'2026-02-28');
   assert.equal(addMonths('2026-01-31',1),'2026-02-28');

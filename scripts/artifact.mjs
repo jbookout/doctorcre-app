@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
+  "contracts/lease-radar.v1.json",
   "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "lease-radar.html", "manifest.webmanifest", "notifications.html",
   "pipeline.html", "progress-board.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",

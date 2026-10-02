@@ -66,12 +66,15 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     assert.match(await page.locator("#detail-content").textContent(), /demo-report/);
     const box = await page.locator("#tour-dialog").boundingBox(); assert.ok(box.width >= Math.min(1000, width - 32));
     await page.getByLabel("Close tour details").click(); assert.equal(await page.locator("#review-packet").evaluate(el => document.activeElement === el), true);
+    if (width < 761) await page.locator("#appSidebarToggle").click();
     await page.locator("#upcoming-tours .tour-button").first().click(); await page.waitForFunction(() => document.querySelector("#detail-title").textContent.includes("Demo Gulf"));
     assert.ok((await page.locator("#detail-content > p").first().textContent()).length <= 180);
     await page.locator("#detail-content details summary").click(); assert.equal(await page.locator("#detail-content details p").textContent(), original);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: new URL(`test-artifacts/w6/${name}-detail.png`, root).pathname, fullPage: false, animations: "disabled" });
     await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#tour-dialog").evaluate(n => n.open), false);
+    if (width < 761 && await page.locator("#appSidebarToggle").getAttribute("aria-expanded") === "true") await page.locator('#appSidebar [data-layout-close="sidebar"]').click();
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await page.locator(".planner-grid").evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     await page.locator(".plan-card").hover(); assert.equal(await page.locator(".plan-card").evaluate(el => getComputedStyle(el).transform), "none");

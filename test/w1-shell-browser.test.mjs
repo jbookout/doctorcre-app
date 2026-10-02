@@ -7,7 +7,7 @@ import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root)));
 const primary = ['Home','Leads','Tours','Local Deals','Vendors','Control Room'];
-const secondary = ['Clients','Ideas','Events','Updates','Doc Chats','Progress','Work Requests','All Work','Incidents','Agent Room','Agent Queue','Design Lab','Status'];
+const secondary = ['Clients','Lease radar','Ideas','Events','Updates','Doc Chats','Progress','Work Requests','All Work','Incidents','Agent Room','Agent Queue','Design Lab','Status'];
 
 async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
@@ -60,7 +60,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     const { page, errors, calls } = await open(t, { width, minimal: true, reducedMotion: 'reduce' });
     assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), primary);
     await page.getByLabel('More', {exact:true}).click(); assert.deepEqual(await page.locator('.app-shell-more-list a').allTextContents(), secondary);
-    assert.equal(await page.locator('[data-app-nav-item]').count(), 19);
+    assert.equal(await page.locator('[data-app-nav-item]').count(), 20);
     assert.equal(await page.locator('[data-app-nav-item][href="/calendar"], [data-app-nav-item][href="/tasks"]').count(), 0);
     const controls = await page.locator('.app-shell-controls').evaluate(el => [...el.querySelectorAll('button')].filter(e => e.offsetParent).map(e => ({ width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height, transition: getComputedStyle(e).transitionDuration })));
     assert.ok(controls.every(e => e.width >= 44 && e.height >= 44)); assert.ok(controls.every(e => e.transition === '0s'));
@@ -82,7 +82,7 @@ test('all authenticated pages have global controls and fit desktop and phone', a
   for (const width of [1440,390]) {
     await page.setViewportSize({width,height:960});
     for (const path of Object.keys(contract.routes).filter(path => path !== '/share')) {
-      await page.goto(`http://localhost${path}`); await page.waitForFunction(() => document.querySelector('#selfAvatar')?.textContent === 'J');
+      await page.goto(`http://localhost${path}`, { waitUntil: 'domcontentloaded' }); await page.waitForFunction(() => document.querySelector('#selfAvatar')?.textContent === 'J');
       assert.equal(await page.getByLabel('Dark mode',{exact:true}).count(),1,path); assert.equal(await page.locator('#callModeButton').count(),1,path); assert.equal(await page.locator('#colorAssistButton').count(),1,path);
       assert.equal(await page.locator('[data-pref="density"], [data-pref="motion"]').count(),0,path);
       const layout = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, textOverflow: [...document.querySelectorAll("body *")].flatMap(e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => { const r = document.createRange(); r.selectNodeContents(n); return { text:n.textContent, right:r.getBoundingClientRect().right, id:e.id, class:e.className }; })).filter(n=>n.right>innerWidth+1), offenders: [...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => ({ id: e.id, class: e.className, right: e.getBoundingClientRect().right })).slice(0,8) }));

@@ -37,7 +37,7 @@ async function open(t,{width=1440,motion='no-preference',clock=false,deniedStora
     const file=url.pathname==='/deals'&&url.searchParams.get('view')==='board'?'pipeline.html':url.pathname==='/'&&url.searchParams.get('view')==='charts'?'charts.html':contract.routes[url.pathname]||url.pathname.slice(1);
     try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
-  const goto=async path=>{await page.goto('http://localhost'+path);await page.waitForFunction(()=>document.querySelector('#appSyncTime')?.textContent!=='—');};
+  const goto=async path=>{await page.goto('http://localhost'+path);await page.waitForFunction(()=>Boolean(document.querySelector('#appSyncTime')) && document.querySelector('#appSyncTime').textContent!=='—');};
   return{page,goto,errors,writes};
 }
 const fits=async(page,label)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,label);
@@ -52,7 +52,7 @@ test('five regions, rail destinations, original tab controls and per-page sideba
  await goto('/deals?view=board');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
  await goto('/');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
- await page.locator('#appSidebarToggle').click();await page.reload();assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
+ await page.locator('#appSidebarToggle').click();await page.reload();await page.locator('#appLayout').waitFor();assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
  await page.locator('#boardView').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#listView').evaluate(n=>n===document.activeElement),true);
  assert.deepEqual(errors,[]);

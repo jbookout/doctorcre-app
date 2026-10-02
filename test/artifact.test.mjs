@@ -22,6 +22,7 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
   assert.deepEqual(await readFile(join(first, "site", "workspace.html")), await readFile(join(ROOT, "workspace.html")));
   assert.deepEqual(await readFile(join(first, "site", "progress-board.html")), await readFile(join(ROOT, "progress-board.html")));
+  assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
   assert.equal(a.manifest.files.some((file) => file.path === "progress-board.html"), true);
   assert.equal(verifyArtifact(a.archive, a.archiveSha256).manifest.files.some((file) => file.path === "progress-board.html"), true);
 });

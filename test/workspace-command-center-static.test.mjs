@@ -63,7 +63,7 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
 
 test("People offers both directories in the shared shell", () => {
   assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">Clients<\/a>/);
-  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">Vendors<\/a>/);
+  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">.*Vendors<\/span><\/a>/);
 });
 
 test("More keeps Updates, Operations and Reference in stable groups", () => {
@@ -247,7 +247,7 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /class="inert-entry" aria-disabled="true">Calls</);
   assert.doesNotMatch(html, /class="inert-entry" aria-disabled="true">Tours</);
   assert.doesNotMatch(html, /href="[^"]*"[^>]*>Calls</);
-  assert.match(appShellMarkup("/clients"), /href="\/tours">Tours<\/a>/);
+  assert.match(appShellMarkup("/clients"), /href="\/tours">.*Tours<\/span><\/a>/);
 });
 
 test("mobile Home navigation replaces desktop navigation without occluding content", async () => {
