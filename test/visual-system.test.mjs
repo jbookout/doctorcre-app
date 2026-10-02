@@ -173,7 +173,7 @@ test("each surface is built from tabs and popups, and no title carries a descrip
   };
   for (const [name, labels] of Object.entries(tabsByPage)) {
     const html = SURFACES[name];
-    assert.match(html, /<div class="tabs" id="\w+" role="tablist"/, `${name} tab strip`);
+    assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="\w+" role="tablist"/, `${name} tab strip`);
     for (const label of labels) assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `${name} tab ${label}`);
     assert.match(html, /role="tabpanel"/, `${name} tab panels`);
   }

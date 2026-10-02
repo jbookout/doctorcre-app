@@ -14,7 +14,7 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to search</a>
   <main id="main" class="shell">
-    <div class="hero"><div><p class="eyebrow">Across authorized records</p><h1>Search</h1></div></div>
+    <div data-layout-slot="sidebar" class="hero"><div><p class="eyebrow">Across authorized records</p><h1>Search</h1></div></div>
     <section class="card glass" data-search="ask" aria-labelledby="searchTitle">
       <div class="card-heading"><h2 id="searchTitle">Find a record</h2></div>
       <form id="searchForm"><div class="field"><label for="searchQuery">Name to search</label><input id="searchQuery" type="search" maxlength="200" autocomplete="off" placeholder="Person, practice, building, deal, lead or vendor"></div><div class="row-wrap"><button class="btn btn-primary" type="submit">Search</button><span class="small" id="searchCount"></span></div></form>

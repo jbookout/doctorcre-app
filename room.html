@@ -17,7 +17,7 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#wireFeed">Skip to the wire</a>
 
-  <header class="room-header">
+  <div data-layout-slot="status">
     <span class="room-wordmark">Agent <span>Room</span></span>
     <span class="live-badge" aria-hidden="true">Live</span>
     <p class="room-presence" id="roomPresence">
@@ -30,7 +30,7 @@
       <span class="figure"><span class="figure-label">Desks</span><span class="figure-value" id="figDesks">—</span></span>
     </div>
     <button type="button" id="openTaskBoard" class="room-task-board-open">Task board</button>
-  </header>
+  </div>
 
   <!-- THE ORBITAL STAGE. The shared wire at dead centre, both partners'
        constellations around it, and every delivery drawn as a comet on the

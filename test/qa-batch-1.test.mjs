@@ -42,7 +42,7 @@ test("no page or script points Home or sign-in at /business", async () => {
   const markup = shell.appShellMarkup("/search");
   assert.match(markup, /aria-label="DoctorCRE Home"/);
   assert.match(markup, /class="app-shell-brand" href="\/"/);
-  assert.match(markup, /aria-label="Home" href="\/"/);
+  assert.match(markup, /aria-label="Home"[^>]*href="\/"/);
   assert.doesNotMatch(markup, /\/business/);
   assert.match(await read("js/business-workspace.js"), /SIGN_IN_HREF = "\/auth\/login\?return_to=%2F"/);
 });

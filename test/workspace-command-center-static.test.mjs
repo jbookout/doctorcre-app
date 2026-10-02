@@ -58,7 +58,7 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
     assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length, `${route}: same destinations`);
   }
   assert.deepEqual(navigationItems.filter(item => !item.group).map(({ label }) => label),
-    ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room"]);
+    ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room"]);
 });
 
 test("People offers both directories in the shared shell", () => {
