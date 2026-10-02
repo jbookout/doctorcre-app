@@ -29,9 +29,10 @@ test('drag opens short evidence prompt, does not write before confirmation, comm
  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();assert.equal(s.writes[0].stage,'engaged');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review.evidence_ids,[id(600),id(601)]);
  }finally{s.close()}
 });
-test('missing evidence asks one question; stale proposal cannot write',async()=>{
+test('missing evidence asks one question; changed record refreshes the unsigned prompt without writing',async()=>{
  const s=await setup();try{await s.app.openReview(id(1),'qualified');assert.equal(s.d.querySelectorAll('#stageQuestions textarea').length,1);s.d.querySelector('textarea').value='Synthetic timing and space need confirmed';
- s.board.leads[0].base_version++;await s.app.refresh();assert.equal(s.d.getElementById('saveStage').disabled,true);s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes.length,0);
+ s.board.leads[0].base_version++;await s.app.refresh();assert.equal(s.d.getElementById('saveStage').disabled,false);assert.equal(s.app.state.proposal.lead.base_version,2);assert.equal(s.d.querySelector('textarea').value,'Synthetic timing and space need confirmed');assert.equal(s.writes.length,0);
+ s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes[0].l.base_version,2);
  }finally{s.close()}
 });
 test('Undo, Link, and Claim are one-tap record operations; link removes card, claim preserves New stage',async()=>{
@@ -42,9 +43,30 @@ test('Undo, Link, and Claim are one-tap record operations; link removes card, cl
 });
 test('unknown write retains exact key and payload, never automatically resends; actor change clears it',async()=>{
  const writes=[];const s=await setup({recordStage:async(...args)=>{writes.push(args);throw Object.assign(new Error('network'),{code:'unknown_outcome'})}});
- try{await s.app.openReview(id(1),'engaged');s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();const pending=s.app.state.pending;assert.ok(pending);await s.app.refresh();assert.equal(writes.length,1);
+ try{await s.app.openReview(id(1),'engaged');s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();const pending=s.app.state.pending;assert.ok(pending);s.board.leads[0].base_version++;await s.app.refresh();assert.equal(writes.length,1);assert.equal(s.app.state.pending,pending);
  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(writes[1][3],writes[0][3]);assert.deepEqual(writes[1][2],writes[0][2]);
  s.setActor('another-example');await s.app.refresh();assert.equal(s.app.state.pending,null);assert.equal(s.d.getElementById('stageDialog').open,false);
+ }finally{s.close()}
+});
+test('authoritative version conflict refreshes the prompt and requires a new confirmation',async()=>{
+ const s=await setup();let calls=0;try{
+ s.client.recordStage=async(l)=>{calls++;if(calls===1){s.board.leads[0].base_version++;throw Object.assign(new Error('changed'),{code:'version_conflict'})}assert.equal(l.base_version,2);return{ok:true}};
+ await s.app.openReview(id(1),'qualified');s.d.querySelector('textarea').value='Synthetic qualification';s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+ assert.equal(calls,1);assert.equal(s.app.state.pending,null);assert.equal(s.app.state.proposal.lead.base_version,2);assert.equal(s.d.querySelector('textarea').value,'Synthetic qualification');assert.equal(s.d.getElementById('saveStage').disabled,false);
+ s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(calls,2);
+ }finally{s.close()}
+});
+test('a prompt closes without writing when its move is complete or the lead becomes a client',async()=>{
+ const s=await setup();try{
+ await s.app.openReview(id(1),'engaged');s.board.leads[0].stage='engaged';s.board.leads[0].base_version++;await s.app.refresh();assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.writes.length,0);
+ s.board.leads[0].stage='new';await s.app.refresh();await s.app.openReview(id(1),'engaged');s.board.leads[0].client_id=id(888);s.board.leads[0].base_version++;await s.app.refresh();assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.app.state.proposal,null);assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+test('prompt polls new correspondence without a version change and preserves the same question input',async()=>{
+ const s=await setup();let rows=[];try{
+ s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:rows}});
+ await s.app.openReview(id(1),'outreach_active');const input=s.d.querySelector('textarea');input.value='Synthetic outreach draft';await s.app.refresh();assert.equal(s.d.querySelector('textarea'),input);assert.equal(input.value,'Synthetic outreach draft');
+ rows=[{id:id(701),kind:'email_out',occurred_at:'2026-10-01T10:00:00Z',summary:'Synthetic outreach sent'}];await s.app.refresh();assert.equal(s.d.querySelector('textarea'),null);assert.equal(s.app.state.proposal.review.evidence[0].id,id(701));assert.equal(s.app.state.proposal.lead.base_version,1);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('late detail from card A cannot replace card B; private view clears after auth denial',async()=>{

@@ -26,5 +26,9 @@ for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fi
  await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();const box=await page.locator('#leadDetail').boundingBox();assert.ok(box.width>=Math.min(1100,width-32));
  await page.locator('#detailBody details').first().locator('summary').click();assert.match(await page.locator('#detailBody').innerText(),/Original synthetic entry/);
  if(process.env.W3_SCREENSHOT_DIR)await page.screenshot({path:`${process.env.W3_SCREENSHOT_DIR}/lead-detail-${width}.png`});
+ await page.locator('#detailStage').selectOption('engaged');await page.locator('.stage-proposal').waitFor();
+ const prompt=await page.locator('#stageDialog').boundingBox();assert.ok(prompt.width>=Math.min(680,width-32));assert.equal(await page.locator('#stageQuestions textarea').count(),0);assert.equal(await page.locator('.stage-evidence li').count(),2);
+ assert.equal(writes.length,0,'opening a stage prompt never records a move');
+ if(process.env.W3_SCREENSHOT_DIR)await page.screenshot({path:`${process.env.W3_SCREENSHOT_DIR}/stage-prompt-${width}.png`});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
  });

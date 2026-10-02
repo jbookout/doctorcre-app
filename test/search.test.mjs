@@ -384,7 +384,7 @@ test("B05-14 the interface contract still pins both verbs alphabetically and no 
   assert.equal(routes.version, "1.17.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
   assert.equal(contract.version, "1.39.0", "the current contract retains Search operations");
-  assert.equal(contract.producer.source_commit, "741bd3141b8b183d7c102120de8b329a57336c85", "the producer pin includes the Codex checkpoint read");
+  assert.equal(contract.producer.source_commit, "6d739deb1a31de8f257f4e1e11695d71ec3a74bf", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");
