@@ -1,24 +1,8 @@
 // V5-UX-S02 clauses 1-2 — one named test per clause, one named mutation each.
 //
-// THE PROOF SPLIT, stated because it is a real limit on what these tests close:
-//
-//   * CLAUSE 1 is proven against the CAPTURED PRODUCTION PAYLOADS in
-//     test/fixtures/session-identity.json — six reads taken read-only as Joe on
-//     2026-09-18 against producer 0f6cb388. The counts, the filtered-empty and
-//     genuinely-empty answers and the no-spine dispatch answer are production's
-//     own, not this repository's inventions.
-//   * CLAUSE 2 is proven against FOUR SYNTHETIC ROWS, because the live corpus
-//     cannot reach retry, replacement, resume or a host title mismatch: every
-//     one of the 603 sessions the record layer holds today lands on rule 4.
-//     Each synthetic row carries the producer's exact field set, passes the same
-//     validator the live captures pass, and is marked `synthetic: true` with a
-//     one-line reason in the fixture file. The page never renders that marker.
-//
-// Every payload below is the record layer's own shape, keyed as
-// mcp-server/src/session-identity.js keys it at 0f6cb388: `canonical_session_id`,
-// `work_state_evidence`, `parent_known`, `native_host_supported`,
-// `latest_attempt_ref`, `stage_unavailable_reason`. A test written against
-// friendlier names would pass here and fail against CARR.
+// Contract-shaped synthetic fixtures exercise permission totals, absent lineage,
+// retry, replacement, resume, unavailable native hosts and dispatch stages.
+// The pinned contract supplies the field names; no live session data is stored.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -79,11 +63,11 @@ test("S02-01 name lookup passes query through and renders the producer's order",
 // MUTATION: match on `display_name` only in the fixture client's sessionIdentity.
 test("S02-02 ID lookup finds a row by canonical_session_id", async () => {
   const client = await fixture();
-  const answer = await client.sessionIdentity(identityRequest({ query: "kanban:t_0834239a" }));
+  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-000" }));
   assert.equal(answer.sessions.length, 1);
-  assert.equal(answer.sessions[0].canonical_session_id, "kanban:t_0834239a");
+  assert.equal(answer.sessions[0].canonical_session_id, "example-session-000");
   assert.equal(
-    answer.sessions[0].display_name.toLowerCase().includes("kanban:t_0834239a"), false,
+    answer.sessions[0].display_name.toLowerCase().includes("example-session-000"), false,
     "the id matched on the id, not by accident through the name",
   );
 });
@@ -169,9 +153,9 @@ test("S02-09 retry, replacement, resume and not-recorded are four distinct label
 });
 
 // MUTATION: let rule 3 fire for `parent_known: false`.
-test("S02-10 the live corpus lands on not-recorded and the tab says so", () => {
+test("S02-10 the synthetic corpus lands on not-recorded and the tab says so", () => {
   const relations = new Set(DEFAULT_PAGE.sessions.map((row) => lineage(row).relation));
-  assert.deepEqual([...relations], ["not_recorded"], "all 25 captured rows land on rule 4");
+  assert.deepEqual([...relations], ["not_recorded"], "all 25 example rows land on rule 4");
   const summary = lineageSummary(DEFAULT_PAGE.sessions);
   assert.equal(summary.allUnrecorded, true);
   assert.equal(summary.count, 25);
@@ -253,7 +237,7 @@ test("S02-15 pre-spine null stages stay unavailable and name their reason", () =
   assert.equal(drawer.stageSentence, STAGE_UNAVAILABLE_SENTENCE);
   assert.match(drawer.stageSentence, /A missing stage is not a failed stage/);
   assert.match(drawer.stageSentence, /pre-spine history/);
-  // The historic capture predates the spine, while the current contract can
+  // The no-spine fixture exercises unavailable stages, while the current contract can
   // also carry received and acknowledged evidence.
   const withEvents = dispatchView(WITH_EVENTS);
   assert.equal(withEvents.receivedState, "unavailable");
@@ -276,7 +260,7 @@ test('S02-16 an empty events list says "for this id", not "this session has none
 
 // MUTATION: make the `page_exceeds_total_returned` rule return true.
 test("S02-17 the validator refuses sessions.length > total_returned by name", () => {
-  assert.equal(refuseSessionIdentity(DEFAULT_PAGE), null, "production's own answer is refused");
+  assert.equal(refuseSessionIdentity(DEFAULT_PAGE), null, "synthetic contract answer is refused");
   const broken = { ...DEFAULT_PAGE, total_returned: 3 };
   assert.equal(refuseSessionIdentity(broken), "page_exceeds_total_returned");
   assert.equal(refuseSessionIdentity({ ...DEFAULT_PAGE, total_seen: 1, total_returned: 124 }), "total_returned_exceeds_total_seen");
@@ -336,7 +320,7 @@ test("S02-20 every fixture payload passes the validator and matches the captured
   for (const entry of capture.synthetic_sessions) {
     assert.equal(entry.synthetic, true, "a synthetic row must say so");
     assert.ok(entry.reason.length > 0, "a synthetic row must carry its reason");
-    // The SAME validator the live captures pass, so a synthetic row cannot
+    // The SAME validator the synthetic fixtures pass, so a synthetic row cannot
     // carry a field set the producer would never emit.
     assert.equal(
       refuseSessionIdentity({ ok: true, permission_filtered: false, total_seen: 1, total_returned: 1, sessions: [entry.row] }),
@@ -352,8 +336,8 @@ test("S02-20 every fixture payload passes the validator and matches the captured
   // checked rather than asserted.
   const client = await fixture();
   assert.deepEqual(await client.sessionIdentity({}), DEFAULT_PAGE);
-  // `work_state_evidence` embeds an age computed at READ time, so the two live
-  // captures of the same rows differ in that clause and nowhere else. The page
+  // `work_state_evidence` embeds an age computed at READ time, so the two synthetic
+  // fixtures of the same rows differ in that clause and nowhere else. The page
   // is compared structurally rather than byte-for-byte: a byte comparison here
   // would be asserting a clock.
   const three = await client.sessionIdentity({ limit: 3 });
@@ -414,7 +398,7 @@ test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
   assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
-  assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the capture names the producer it came from");
+  assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");
 });
 
 /* -------------------------------------------------------------------- scope */

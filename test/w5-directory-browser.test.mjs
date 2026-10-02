@@ -23,7 +23,7 @@ async function open(t,width=1440){
   await page.route('**/mcp',r=>{
     const {name,arguments:args}=r.request().postDataJSON().params;let payload={ok:true};
     if(name==='update-vendor'){
-      writes++;payload={ok:true,updated:['trust_override']};if(writeMode==='rejected')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'AUTHORIZATION_REFUSED'})}]}}});if(writeMode==='unknownAck')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify({ok:true,updated:[]})}]}}});if(writeMode==='unknownTool')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'DEPENDENCY_UNAVAILABLE'})}]}}});if(writeMode==='unknown200')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:'{}'}]}}});if(writeMode==='uncertain')return r.fulfill({status:502,body:'Synthetic lost response'});const n=Number(args.vendor.split('-').at(-1));const id=`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+      assert.match(args.vendor,/^V-DEMO-\d+$/);assert.equal(args.base_version,1);assert.deepEqual(Object.keys(args.fields),['trust_override']);assert.match(args.idempotency_key,/^[a-f0-9-]{36}$/);if(args.fields.trust_override){assert.ok(['Trial','Established','Proven'].includes(args.fields.trust_override.tier));assert.ok(args.fields.trust_override.reason);}writes++;payload={ok:true,updated:['trust_override']};if(writeMode==='rejected')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'AUTHORIZATION_REFUSED'})}]}}});if(writeMode==='unknownAck')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify({ok:true,updated:[]})}]}}});if(writeMode==='unknownTool')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'DEPENDENCY_UNAVAILABLE'})}]}}});if(writeMode==='unknown200')return r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:'{}'}]}}});if(writeMode==='uncertain')return r.fulfill({status:502,body:'Synthetic lost response'});const n=Number(args.vendor.split('-').at(-1));const id=`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
       overrides.set(id,args.fields.trust_override?{...args.fields.trust_override,recorded_by:'joe',recorded_at:'2026-10-01T18:00:00Z'}:null);
     if(writeMode==='lost')return r.fulfill({status:502,body:'Synthetic lost response'});
     }else if(name==='find-and-catch-up')payload={state:'not_found',candidates:[]};
@@ -89,4 +89,68 @@ test('W5 session expiry erases a pending trust draft and recovery permits a fres
  const h=await open(t),{page}=h;h.setWriteMode('uncertain');await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo pending draft');await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus')?.textContent==='Rating not confirmed');
  h.setExpired(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle')?.textContent==='Your session has ended');assert.doesNotMatch(await page.locator('#recordBody').innerText(),/Demo pending draft/);
  h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();assert.equal(await page.locator('[name="reason"]').inputValue(),'');assert.equal(await page.locator('#trustForm button').isDisabled(),false);assert.equal(h.writes,1);assert.deepEqual(h.errors,[]);
+});
+
+async function beginRating(page, reason='Synthetic pending rating') {
+ await page.locator('[data-details-key="trust"] summary').click();
+ await page.locator('[name="tier"]').selectOption('Trial');
+ await page.locator('[name="reason"]').fill(reason);
+}
+const ack = r => r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify({ok:true,updated:['trust_override']})}]}}});
+async function holdWrites(page) {
+ const held=[];
+ await page.route('**/mcp', r => r.request().postDataJSON().params.name==='update-vendor' ? held.push(r) : r.fallback());
+ return held;
+}
+test('W5 late successful save cannot repaint another selected vendor',async t=>{
+ const {page}=await open(t);const held=await holdWrites(page);
+ await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus').textContent==='Saving…');
+ await page.locator('#recordClose').click();await page.locator('.record-row').nth(1).click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 02');
+ await ack(held[0]);await page.waitForTimeout(150);
+ assert.equal(await page.locator('#recordTitle').textContent(),'Demo Partner 02');assert.equal(await page.locator('#trustForm').count(),1);assert.equal(await page.locator('#trustForm button').isDisabled(),false);
+});
+test('W5 pre-expiry acknowledgement cannot release a recovered session save',async t=>{
+ const h=await open(t),{page}=h;const held=await holdWrites(page);
+ await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await page.waitForTimeout(50);
+ h.setExpired(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Your session has ended');
+ h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await page.waitForTimeout(50);assert.equal(held.length,2);
+ await ack(held[0]);await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
+});
+test('W5 keyboard reaches disclosures and skips closed controls',async t=>{
+ const {page}=await open(t);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});
+ await page.locator('[data-details-key="trust"] summary').focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.tagName),'SUMMARY');
+ await page.locator('[data-details-key="trust"] summary').focus();await page.keyboard.press('Enter');await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.name),'tier');
+ await page.keyboard.press('Shift+Tab');assert.equal(await page.evaluate(()=>document.activeElement.tagName),'SUMMARY');
+ await page.locator('[data-details-key="entry-demo-entry"] summary').focus();await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>document.activeElement.closest('details')?.dataset.detailsKey),'entry-demo-entry');
+});
+test('W5 Back restores cached query rows while its read is pending',async t=>{
+ const {page}=await open(t);await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row');await page.locator('[data-owner="joe"]').click();await page.waitForFunction(()=>document.querySelector('#resultSummary').textContent.startsWith('31 '));
+ await page.locator('[data-owner="dell"]').click();await page.waitForFunction(()=>document.querySelector('.row-owner')?.textContent.includes('Dell'));
+ const held=[];await page.route('**/api/v1/business/vendors?**',r=>new URL(r.request().url()).searchParams.get('owner')==='joe'?held.push(r):r.fallback());
+ await page.goBack();await page.waitForTimeout(100);assert.equal(await page.locator('[data-owner="joe"]').getAttribute('aria-pressed'),'true');assert.equal(await page.locator('.row-owner').evaluateAll(rows=>rows.every(row=>row.textContent.includes('Joe'))),true);
+ for(const r of held)await r.fulfill({json:directoryFixture(r.request().url())});
+});
+test('W5 ordinary record read failure preserves the unsaved rating draft',async t=>{
+ const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page,'Synthetic draft survives');
+ h.setFail(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='This did not load');
+ h.setFail(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});
+ assert.equal(await page.locator('[name="reason"]').inputValue(),'Synthetic draft survives');assert.equal(await page.locator('[name="tier"]').inputValue(),'Trial');
+});
+test('W5 failed continuous page is visible and polling retries without scroll',async t=>{
+ const {page}=await open(t);let fail=true;
+ await page.route('**/api/v1/business/vendors?**',r=>new URL(r.request().url()).searchParams.get('page')==='2'&&fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fallback());
+ await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row');await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForTimeout(150);
+ assert.match(await page.locator('#noticeRegion').innerText(),/Could not load more/);assert.equal(await page.locator('.record-row').count(),25);
+ fail=false;await page.clock.fastForward(31000);await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>=50);
+});
+test('W5 missing original details never displays summary as original',async t=>{
+ const {page}=await open(t);await page.route('**/api/v1/business/vendors/*',r=>{const p=directoryFixture(r.request().url());p.record.relationship.recent_entries[0].detail=null;return r.fulfill({json:p});});
+ await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});assert.equal(await page.locator('[data-details-key="entry-demo-entry"]').count(),0);
+});
+test('W5 vendor business facts remain visible in the modal',async t=>{
+ const {page}=await open(t);await page.route('**/api/v1/business/vendors/*',r=>{const p=directoryFixture(r.request().url());p.record.verticals=['Synthetic specialist vertical'];return r.fulfill({json:p});});
+ await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});const body=await page.locator('#recordBody').innerText();for(const value of ['Synthetic specialist vertical','Banking','Warm','Active'])assert.ok(body.includes(value),value);
+});
+test('W5 fixture adapter withholds unsupported rating action',async t=>{
+ const h=await open(t),{page}=h;await page.goto(origin+'/vendors');await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 01');assert.equal(await page.locator('#trustForm').count(),0);assert.equal(h.writes,0);
 });
