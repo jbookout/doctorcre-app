@@ -1374,6 +1374,8 @@ async function boot() {
   installCallMode();
   wireEvents();
   await loadHome();
+  const linkedDeal = params.get('deal');
+  if (linkedDeal && state.deals.has(linkedDeal)) await openDeal(linkedDeal);
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one.
