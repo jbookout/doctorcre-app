@@ -89,3 +89,13 @@ test("release retains full tests and source verification before publication", as
     assert.ok(success.trace.indexOf(command) >= 0 && success.trace.indexOf(command) < publish);
   }
 });
+
+// The production release reruns this suite on a shared host. Node's default
+// runs one test file per core at once (17 on the Studio, 3 on CI's runner), and
+// that many concurrent browser files time out when the host is busy, so the
+// release fails on a different set of browser tests each time.
+test("the full suite caps concurrent test files for busy release hosts", async () => {
+  const { scripts } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const limit = Number(scripts.test.match(/--test-concurrency=(\d+)/)?.[1]);
+  assert.ok(limit >= 1 && limit <= 3, `npm test must bound file concurrency: ${scripts.test}`);
+});
