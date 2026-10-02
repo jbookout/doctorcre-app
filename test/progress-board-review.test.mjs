@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 
-import { boardView } from "../js/progress-board-model.js";
+import { boardView, deliveryDetail } from "../js/progress-board-model.js";
 import { mountBoard } from "../js/progress-board.js";
 
 const PAGE = await readFile(new URL("../progress-board.html", import.meta.url), "utf8");
@@ -58,14 +58,14 @@ test("an answered question published as a snapshot decision is shown and counted
   assert.equal(page.$("#board-decisions .decision").dataset.status, "Received", "the typed status is authoritative");
 });
 
-test("a legacy inline task question shows in the task pop-up", async () => {
+test("a legacy inline task question shows in the work detail", async () => {
   const read = snapshotRead({ project: "carr-v5", title: "Legacy", tasks: {
     ask: { title: "Synthetic task", status: "running", updated_at: "2026-09-30T11:55:00", question: "SYNTHETIC INLINE QUESTION" } } });
   const page = mount({ reads: async () => structuredClone(read) });
   await page.board.refresh(true);
   assert.ok(page.$('[data-card-id="ask"] .badge-question'));
-  page.board.openDetail("ask");
-  assert.match(page.$("#task-detail-body").textContent, /SYNTHETIC INLINE QUESTION/);
+  const card = boardView(read, new Date("2026-09-30T12:00:00Z")).cards.find(item => item.id === "ask");
+  assert.deepEqual(deliveryDetail(card).rows.find(([label]) => label === "Question"), ["Question", "SYNTHETIC INLINE QUESTION"]);
 });
 
 test("live ticking crosses the stale and stuck thresholds, even while a question is being edited", async () => {

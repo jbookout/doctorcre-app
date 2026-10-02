@@ -110,12 +110,9 @@ test("normal motion flows; reduced motion stops animation while preserving stale
   for (const selector of [".rail-line", ".halo", ".freshness-badge"])
     assert.equal(await page.locator(selector).first().evaluate(node => getComputedStyle(node, node.classList.contains("freshness-badge") ? "::before" : null).animationName), "none");
   assert.equal(await page.locator('[data-freshness="stale"]').first().evaluate(node => getComputedStyle(node, "::before").borderRadius), "1px");
-  await page.locator(".board-card").click();
-  assert.equal(await page.locator("#task-detail").isVisible(), true);
-  assert.match(await page.locator("#task-detail-title").textContent(), /Synthetic build/);
   assert.equal(await page.locator("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
-  assert.equal(await page.getByRole("link", { name: "Open work detail" }).getAttribute("href"),
-    "/control-room/progress/work?board=demo-project&task=build");
+  await page.locator(".board-card").click();
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
 });
 
 function holdRequests(t, name) {
@@ -313,15 +310,9 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   await page.clock.runFor(15000);
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
+  assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);
   await task.press("Enter");
-  version = 3;
-  await page.clock.runFor(15000);
-  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 3");
-  assert.equal(await page.getByRole("link", { name: "Open work detail" }).getAttribute("href"),
-    "/control-room/progress/work?board=demo-project&task=build");
-  await page.getByRole("button", { name: "Close task detail" }).click();
-  assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
-  assert.match(await task.getAttribute("aria-label"), /Synthetic task 3/);
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
   assert.deepEqual(errors, []);
 });
 
@@ -448,11 +439,8 @@ test("completed card keyboard opens the current routed task detail", async t => 
     const payload={ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',tasks:{released:{title:'Synthetic completed',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery'}}}},questions:[]};
     await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});return true;
   }});
-  // Board v2 keeps the task pop-up; its work-detail link carries the routed task.
   await page.locator('.completed-card').focus();
   await page.keyboard.press('Enter');
-  await page.locator('#task-detail[open]').waitFor();
-  assert.equal(await page.locator('#task-detail a', {hasText:'Open work detail'}).getAttribute('href'),
-    '/control-room/progress/work?board=demo-project&task=released');
+  await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released');
   assert.deepEqual(errors,[]);
 });

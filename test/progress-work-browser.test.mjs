@@ -100,6 +100,30 @@ test('published task without a repository shows its PR as plain text', async t =
   assert.deepEqual(errors, []);
 });
 
+test('work detail carries the delivery facts the board card no longer pops up', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {status:'blocked', stage:'build', executor:'Codex gpt-6-sol high',
+        stage_entered_at:'2026-08-24T10:20:00Z', updated_at:'2026-08-24T10:20:00Z',
+        stage_history:[{stage:'queued',entered_at:'2026-08-24T09:50:00Z'},{stage:'build',entered_at:'2026-08-24T10:20:00Z'}],
+        blocked_reason:'Synthetic dependency is missing', next_action:'Synthetic owner supplies it', question:'SYNTHETIC INLINE QUESTION'});
+    return payload;
+  }});
+  const delivery = page.locator('#workMetadata article.work-delivery');
+  await delivery.waitFor();
+  const row = label => delivery.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:new RegExp(`^${label}$`)})}).locator('dd');
+  assert.equal(await row('Stage').textContent(), 'Building · 2h 0m in this stage');
+  assert.equal(await row('Blocked because').textContent(), 'Synthetic dependency is missing');
+  assert.equal(await row('Next action').textContent(), 'Synthetic owner supplies it');
+  assert.equal(await row('Model line').textContent(), 'Codex · gpt-6-sol · high');
+  assert.equal(await row('Question').textContent(), 'SYNTHETIC INLINE QUESTION');
+  const history = delivery.locator('ol.work-stage-history li');
+  assert.deepEqual(await history.evaluateAll(items => items.map(item => item.dataset.stage)), ['queued','build']);
+  assert.match(await history.nth(0).textContent(), /^Queued 30m/);
+  assert.match(await history.nth(1).textContent(), /^Building 2h 0m/);
+  assert.deepEqual(errors, []);
+});
+
 test('published task PR links retain the recorded repository and head', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
     if (rpc.name === 'read-progress-board')
@@ -431,12 +455,11 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
-test('board → project → task preview → work detail retains breadcrumbs to the parent',async t=>{
+test('board → project → task uses one tap each and breadcrumbs return to the parent',async t=>{
   const {page,errors}=await open(t,{path:'/control-room/progress'});
   await page.locator('[data-board-id="demo-project"]').click();
   await page.waitForURL('**/control-room/progress?board=demo-project');
   await page.locator(`.board-card[data-card-id="${taskId}"]`).first().click();
-  await page.getByRole('link',{name:'Open work detail'}).click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
   await page.locator('#workBreadcrumbs a').nth(1).click();

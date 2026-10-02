@@ -245,6 +245,30 @@ export function modelLine(task) {
   return `${identity.provider} · ${identity.model} · ${identity.effort}`;
 }
 
+// What a card carries onto its work-detail page: the derived delivery facts the
+// raw task record does not show, plus the stage history with durations.
+export function deliveryDetail(card, at = new Date()) {
+  const rows = [];
+  const add = (label, value) => {
+    if (value !== undefined && value !== null && String(value).trim() !== "") rows.push([label, String(value)]);
+  };
+  const stageId = card.stage || taskStage(card);
+  const stage = STAGES.find(item => item.id === stageId);
+  if (stage) add("Stage", `${stage.label} · ${ageText(stageEnteredAt(card), at)} in this stage`);
+  const blocked = card.blocked === undefined ? blockedDetail(card, at) : card.blocked;
+  if (blocked) {
+    add("Blocked because", blocked.reason);
+    add("Next action", blocked.next);
+  }
+  if (card.stale ?? isStale(card, at)) add("Stale", `No update for ${ageText(card.updated_at, at)}`);
+  if (card.release_wait && stageId === "merged") add("Waiting on release", card.release_wait);
+  add("Model line", modelLine(card));
+  if (typeof card.question === "string") add("Question", card.question);
+  const history = stageDurations(card, at).map(entry => ({
+    ...entry, label: STAGES.find(item => item.id === entry.stage)?.label || entry.stage }));
+  return { rows, history };
+}
+
 export function taskRepo(task) {
   return typeof task.repo === "string" && /^[\w.-]+\/[\w.-]+$/.test(task.repo) ? task.repo : DEFAULT_REPO;
 }
