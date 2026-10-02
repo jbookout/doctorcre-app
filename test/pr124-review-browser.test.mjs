@@ -61,6 +61,29 @@ test('R1 pristine fields follow reads; dirty draft reconciles its original read 
  assert.match(await page.locator('#detailNextStatus').textContent(),/changed/);
 });
 
+test('R1 draft approval stays bound to the comparison shown before a newer poll', async t => {
+ const {page}=await open(t); await detail(page);
+ await page.locator('#detailNextForm textarea').fill('My draft');
+ const record = (text,key) => page.evaluate(async ({text,key}) => {
+   const {state}=await import('/js/pipeline.js');
+   await state.client.setNextStep({deal:'d14',text,next_date:'2026-11-01',idempotency_key:key});
+ },{text,key});
+ await record('First partner step','partner-1');
+ await page.locator('#detailNextForm button').click();
+ await page.locator('[data-next-keep]').waitFor();
+ assert.match(await page.locator('#detailNextStatus').textContent(),/First partner step/);
+ await record('Later partner step','partner-2'); await readPanel(page);
+ // The comparison still displays the first step when the next read arrives.
+ assert.match(await page.locator('#detailNextStatus').textContent(),/First partner step/);
+ await page.locator('[data-next-keep]').click();
+ await page.locator('#detailNextForm button').click();
+ await page.waitForTimeout(30);
+ assert.equal(await page.evaluate(async () => {
+   const {state}=await import('/js/pipeline.js'); return (await state.client.getDeal('d14')).deal.next_step;
+ }),'Later partner step');
+ assert.match(await page.locator('#detailNextStatus').textContent(),/Later partner step/);
+});
+
 test('R2 unknown next step replays exact key and intent; reopened pending form remains guarded', async t=>{
  const {page}=await open(t);await detail(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const send=state.client.setNextStep.bind(state.client);window.calls=[];state.client.setNextStep=async r=>{calls.push(r);const result=await send(r);if(calls.length===1)throw Error('lost reply');return result;};});

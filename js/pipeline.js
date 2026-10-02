@@ -693,8 +693,7 @@ function syncNextForm(deal = null) {
   const pending = pendingCommand(commandState, nextStepKey(state.panelDeal));
   if (deal) {
     const values = stepValues(deal);
-    if (!nextDraft || nextDraft.id !== deal.id) nextDraft = {id:deal.id,base:{...values},dirty:new Set(),current:values};
-    nextDraft.current = values;
+    if (!nextDraft || nextDraft.id !== deal.id) nextDraft = {id:deal.id,base:{...values},dirty:new Set(),comparison:null};
     for (const name of ['text','date']) {
       if (!nextDraft.dirty.has(name)) {
         nextDraft.base[name] = values[name];
@@ -736,7 +735,9 @@ async function saveNextStep(id) {
       const recorded = stepValues(fresh.deal);
       const crossed = ['text','date'].some(name => draft.dirty.has(name) && recorded[name] !== draft.base[name]);
       if (crossed) {
-        draft.current = recorded;
+        // Choice buttons apply the comparison they display, even if a poll
+        // reads another value before the person makes that choice.
+        draft.comparison = recorded;
         $('detailNextStatus').innerHTML = `Next step changed since you began editing. Recorded: ${esc(recorded.text)} · ${esc(dateWords(recorded.date))}. Your draft: ${esc(proposed.text)} · ${esc(dateWords(proposed.date))}. <button type="button" class="btn" data-next-keep>Keep my draft</button> <button type="button" class="btn" data-next-recorded>Use recorded value</button>`;
         return;
       }
@@ -1144,13 +1145,16 @@ function wire() {
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
   $('panelBody').addEventListener('click', e => {
     if (e.target.closest('[data-retry-detail]')) refreshPanel();
-    if (e.target.closest('[data-next-keep]') && nextDraft) {
-      nextDraft.base = {...nextDraft.current};
+    if (e.target.closest('[data-next-keep]') && nextDraft?.comparison) {
+      nextDraft.base = {...nextDraft.comparison};
+      nextDraft.comparison = null;
       $('detailNextStatus').textContent = 'Draft reviewed against the recorded value. Save to apply it.';
     }
-    if (e.target.closest('[data-next-recorded]') && nextDraft) {
+    if (e.target.closest('[data-next-recorded]') && nextDraft?.comparison) {
+      const recorded = nextDraft.comparison;
+      nextDraft.comparison = null;
       nextDraft.dirty.clear();
-      syncNextForm({id:nextDraft.id,next_step:nextDraft.current.text,next_date:nextDraft.current.date});
+      syncNextForm({id:nextDraft.id,next_step:recorded.text,next_date:recorded.date});
       $('detailNextStatus').textContent = 'Recorded next step restored';
     }
   });
