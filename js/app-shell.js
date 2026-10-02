@@ -12,6 +12,7 @@ export const navigationItems = Object.freeze([
   { label: "Vendors", href: "/vendors" },
   { label: "Control Room", href: "/control-room" },
   { label: "Relationships", href: "/relationships", group: "Workspace" },
+  { label: "Invoices", href: "/invoices", group: "Workspace" },
   { label: "Clients", href: "/clients", group: "Workspace" },
   { label: "Ideas", href: "/ideas-events?tab=ideas", group: "Workspace" },
   { label: "Events", href: "/ideas-events?tab=events", group: "Workspace" },

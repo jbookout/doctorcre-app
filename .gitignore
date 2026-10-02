@@ -10,3 +10,6 @@ coverage/
 __pycache__/
 *.pyc
 
+
+/out/
+/_to_delete/

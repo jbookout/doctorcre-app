@@ -160,6 +160,8 @@ export function createLiveClient(opts = {}) {
     // to. It passes through untouched: it is the record layer's own identity for
     // an event, in the record layer's own field vocabulary, and translating or
     // rebuilding it would be inventing one.
+    async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
+    async markInvoicePaid(args) { return write('record-commission-receipt', args); },
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',

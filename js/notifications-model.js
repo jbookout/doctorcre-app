@@ -107,7 +107,7 @@ export const ACKNOWLEDGE_SCOPE =
 export const APP_ROUTE_PATHS = Object.freeze([
   "/", "/control-room", "/control-room/progress", "/control-room/progress/work", "/deals", "/leads", "/clients", "/vendors",
   "/calendar", "/ideas-events", "/work-requests", "/tours", "/share", "/design-lab",
-  "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work", "/relationships",
+  "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work", "/relationships", "/invoices",
 ]);
 
 const LEGACY_ROUTE_HOMES = Object.freeze({
