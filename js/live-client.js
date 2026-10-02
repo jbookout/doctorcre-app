@@ -214,6 +214,8 @@ export function createLiveClient(opts = {}) {
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
+        lease: page.lease ?? null,
+        schema_version: page.schema_version,
       };
     },
 

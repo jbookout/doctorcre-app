@@ -473,6 +473,33 @@
         "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
         "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
       }
+    },
+    "get-deal-room": {
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+      },
+      "response": {
+        "schema_version": "deal-timeline.v1",
+        "lease_keys": [
+          "id",
+          "version",
+          "status",
+          "executed_on",
+          "commencement_on",
+          "expiration_on",
+          "options_note",
+          "evidence_kind",
+          "evidence_ref",
+          "source"
+        ],
+        "lease_absence": null
+      },
+      "critical_date_write": "add-critical-date",
+      "never_derive": [
+        "rent_start",
+        "option_window"
+      ]
     }
   },
   "vendor_directory": {

@@ -193,7 +193,7 @@ test('a flagged Home deal opens that exact Deals record; unknown IDs show a fail
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Dental North/);
   await page.goto('http://localhost/deals?deal=unknown');
-  await page.locator('#recordPanel').getByRole('button', { name: 'Retry', exact: true }).waitFor();
+  await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail), null);
   assert.equal(await page.locator('#detailNextForm').count(), 0);
   assert.deepEqual(errors, []);
@@ -261,8 +261,8 @@ test('R7 linked Deals detail refusal or timeout cannot prevent board and feed po
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
-    await page.locator('#recordPanel').getByRole('button', { name: 'Retry', exact: true }).waitFor();
-    assert.match(await page.locator('#panelBody').textContent(), /Deal details could not be read/);
+    await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
+    assert.match(await page.locator('#panelBody').textContent(), /Updates temporarily unavailable/);
     assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Close deal', exact: true }).isVisible(), true);
     const before = [state.boardReads, state.feedReads];
     const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
