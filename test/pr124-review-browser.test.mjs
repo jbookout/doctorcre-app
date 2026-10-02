@@ -156,7 +156,9 @@ test('R2 a move follow-up cannot replace an unanswered next-step intent or its r
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.calls=[];const send=state.client.setNextStep.bind(state.client);state.client.setNextStep=async r=>{calls.push(r);const result=await send(r);if(calls.length===1)throw Error('lost reply');return result;};});
  await page.locator('#detailNextForm textarea').fill('Original intent');await page.locator('#detailNextForm button').click();await page.waitForTimeout(30);
  await page.getByLabel('Close deal',{exact:true}).click();
- await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'));await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
+ await page.locator('.kanban-column [data-id="d14"]').focus();
+ await page.keyboard.press('Enter');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
  await page.locator('#completionNextStep').fill('Different move follow-up');await page.locator('#completionConfirm').click();await page.waitForFunction(()=>!document.querySelector('#completionDialog').open);
  assert.equal(await page.evaluate(()=>calls.length),1);
  await page.locator('#receiptDock [data-event="reconcile"]').click();await page.waitForTimeout(30);
