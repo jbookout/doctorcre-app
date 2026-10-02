@@ -3,7 +3,7 @@
   "version": "1.41.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+    "source_commit": "993f6e630aca20175b92a0475b2dda3dd51bdba9"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -481,6 +481,10 @@
     "endpoint": "/api/v1/business/relationships"
   },
   "lead_workspace": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+    },
     "schema_version": "lead-workspace.v1",
     "board": {
       "verb": "lead-board",
