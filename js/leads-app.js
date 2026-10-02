@@ -420,7 +420,7 @@ if (typeof document !== "undefined") {
   $("leadDetailDialog").addEventListener("close", () => {
     const id = state.detailReturn?.dataset.openLead;
     const card = [...document.querySelectorAll('[data-open-lead]')].find(node => node.dataset.openLead === id);
-    const fallback = $("refreshBoard");
+    const fallback = $(state.view + "View");
     state.detailId = null; state.detailPainted = null; state.detailReturn = null;
     (card?.getClientRects().length ? card : fallback).focus();
   });

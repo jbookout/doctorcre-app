@@ -109,6 +109,24 @@ test('finding 8: closing refreshed lead details restores current card focus',asy
   await page.waitForFunction(id=>document.activeElement.id===id,id);
   assert.equal(await page.evaluate(()=>document.activeElement.id),id);
 });
+for (const width of [1440,390]) for (const view of ['board','list']) {
+  test(`finding 8: closing removed lead details restores visible ${view} focus at ${width}px`,async t=>{
+    const {page,goto,leadRead}=await open(t,{width});await goto('/leads');
+    if (view==='list') await page.locator('#listView').click();
+    const card=page.locator('.lead-card').first();const id=await card.getAttribute('id');await card.click();
+    leadRead.rows=leadRead.rows.slice(1);
+    await page.evaluate(()=>document.querySelector('#refreshBoard').click());
+    await page.waitForFunction(id=>!document.getElementById(id),id);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(()=>!document.querySelector('#leadDetailDialog').open);
+    await page.waitForFunction(view=>document.activeElement.id===view+'View',view);
+    const fallback=page.locator(`#${view}View`);
+    assert.equal(await fallback.isVisible(),true);
+    assert.equal(await fallback.evaluate(n=>Boolean(n.closest('[inert]'))),false);
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.locator(`#${view==='board'?'list':'board'}View`).evaluate(n=>n===document.activeElement),true);
+  });
+}
 test('finding 9: programmatic phone Today opening transfers and contains focus',async t=>{
   const {page,goto}=await open(t,{width:390});await goto('/deals?view=board');
   await page.locator('#receiptsOpen').click();
