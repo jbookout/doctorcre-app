@@ -433,8 +433,8 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
   const {completionPlan,moveIntent}=await import("../js/pipeline-model.js");const {cellKey,pendingFieldWrite}=await import("../js/field-write-reconciliation.mjs");
   const operations=new Map(),followUps=[];let phaseCalls=0;
   const state={fieldWrites:{},deals:new Map([["demo",{name:"Demo"}]]),boardSync:{requestRefresh:noop}};
-  const request={deal:"demo",value:"Legal"};
-  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingFieldWrite,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
+  const request={deal:"demo",field:"phase",value:"Legal"};
+  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingFieldWrite,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,refreshPanel:noop,fieldPatch:(field,value)=>({[field]:value}),sendFieldWrite:async()=>({status:"ok",request}),uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
   const intent=moveIntent({id:"demo",name:"Demo",phase:"On Deck"},"legal");
   await h.runMove(intent,{evidence:"Demo note",nextStep:"Demo follow-up",nextWhen:"2026-10-01",effectiveDate:"2026-09-30",recordCriticalDate:true,dateSource:"Demo source"});
   assert.equal(followUps.length,0);await h.retryFieldWrite(cellKey("demo","phase"));
@@ -442,8 +442,9 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 });
 
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
+  const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
