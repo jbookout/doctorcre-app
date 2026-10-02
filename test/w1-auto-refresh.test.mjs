@@ -14,6 +14,21 @@ function clock() {
 }
 const settle = async () => { for (let i = 0; i < 8; ++i) await Promise.resolve(); };
 
+test('finding 5: routine polling preserves detail while resume and reconnect reverify the session', async () => {
+  const c=clock();let polls=0,resumes=0;
+  const handle=mountAutoRefresh({...c,refresh:()=>{polls++;},resumeRefresh:()=>{resumes++;}});
+  c.tick();await settle();assert.equal(polls,1);assert.equal(resumes,0);
+  c.hide();c.show();await settle();assert.equal(polls,1);assert.equal(resumes,1);
+  c.window.dispatchEvent(new Event('online'));await settle();assert.equal(resumes,2);
+  handle.dispose();c.window.dispatchEvent(new Event('online'));await settle();assert.equal(resumes,2);
+});
+test('finding 5: resume cancels a hanging routine read before rechecking the session', async () => {
+  const c=clock();let signal,resumes=0;
+  const handle=mountAutoRefresh({...c,refresh:args=>{signal=args.signal;return new Promise(()=>{});},resumeRefresh:()=>{resumes++;}});
+  c.tick();await settle();c.hide();c.show();await settle();await settle();
+  assert.equal(signal.aborted,true);assert.equal(resumes,1);handle.dispose();
+});
+
 test('background refresh recovers after failure, does not overlap, sleeps hidden and disposes', async () => {
   const c = clock(); let reads = 0, release;
   const refresh = mountAutoRefresh({ ...c, refresh: () => { reads++; if (reads === 1) throw Error('synthetic outage'); return new Promise(resolve => { release = resolve; }); } });

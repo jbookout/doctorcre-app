@@ -177,18 +177,7 @@
     </form>
   </dialog>
 
-  <dialog id="receiptsDialog" class="dialog" aria-labelledby="receiptsTitle">
-    <article>
-      <header>
-        <div><p class="eyebrow">This session</p><h2 id="receiptsTitle">Recent changes</h2></div>
-        <button class="btn icon-btn" type="button" id="receiptsClose" aria-label="Close">×</button>
-      </header>
-      <div class="dialog-body">
-        <ul data-layout-slot="moves" class="receipt-list" id="receiptsList"></ul>
-
-      </div>
-    </article>
-  </dialog>
+  <ul data-layout-slot="moves" class="receipt-list" id="receiptsList"></ul>
 
   <dialog id="contextDrawer" class="dialog" aria-labelledby="contextDrawerTitle">
     <article>

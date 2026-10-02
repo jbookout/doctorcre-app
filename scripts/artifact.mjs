@@ -119,7 +119,7 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
       // Partner controls live on the signed-in app, not the report hostname.
       const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
         .replace("  else mountAccount(root, host, pathname);", "")
-        .replace('  if (typeof mountAppLayout === "function" && !base && pathname !== "/share") mountAppLayout(root, host, pathname);', "") + '\nif (typeof document !== "undefined") mountAppShell();\n';
+        .replace('  if (typeof mountAppLayout === "function" && !base && pathname !== "/share") mountAppLayout(root, host, pathname);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
       const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
       if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
         throw new Error("report shell bundle needs an explicit export update");

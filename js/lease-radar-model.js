@@ -1,4 +1,5 @@
-import { toDay } from './calendar-model.js';
+import { toDay, addMonths } from './calendar-model.js';
+export { addMonths } from './calendar-model.js';
 
 export function radarToday(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
@@ -6,14 +7,6 @@ export function radarToday(date = new Date()) {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 export const LEASE_RADAR_SCHEMA = 'lease-radar.v1';
-export function addMonths(day, months) {
-  const date = new Date(`${day}T12:00:00Z`);
-  const original = date.getUTCDate();
-  date.setUTCDate(1); date.setUTCMonth(date.getUTCMonth() + months);
-  const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-  date.setUTCDate(Math.min(original, end));
-  return date.toISOString().slice(0, 10);
-}
 const quarterKey = day => `${day.slice(0, 4)}-Q${Math.ceil(Number(day.slice(5, 7)) / 3)}`;
 function leaseUrgency(day, today) {
   return day <= addMonths(today, 6) ? { tone: 'urgent', label: 'Within 6 months' }
@@ -21,17 +14,23 @@ function leaseUrgency(day, today) {
       : { tone: 'later', label: '12–24 months' };
 }
 export function validLeaseRadar(payload) {
-  const nullableDay = value => value === null || toDay(value) === value;
-  return payload?.schema_version === LEASE_RADAR_SCHEMA && typeof payload.actor === 'string'
-    && Number.isFinite(Date.parse(payload.observed_at))
+  const text = value => typeof value === 'string' && value.length > 0;
+  const nullableText = value => value === null || typeof value === 'string';
+  const nullableDay = value => value === null || typeof value === 'string' && toDay(value) === value;
+  return payload?.schema_version === LEASE_RADAR_SCHEMA && text(payload.actor)
+    && typeof payload.observed_at === 'string' && Number.isFinite(Date.parse(payload.observed_at))
     && toDay(payload.window?.starts_on) === payload.window?.starts_on && !!payload.window?.starts_on
     && payload.window.ends_on === addMonths(payload.window.starts_on, 24)
     && Array.isArray(payload.leases) && new Set(payload.leases.map(row => row?.id)).size === payload.leases.length
-    && payload.leases.every(row => row && typeof row.id === 'string' && row.id && typeof row.client_id === 'string'
+    && payload.leases.every(row => row && text(row.id) && text(row.client_id)
       && typeof row.client_name === 'string' && nullableDay(row.expiration_on)
       && (row.expiration_on === null || row.expiration_on >= payload.window.starts_on && row.expiration_on <= payload.window.ends_on)
       && ['current', 'legacy_unverified'].includes(row.lease_status)
-      && nullableDay(row.touch_due_on) && nullableDay(row.notice_on));
+      && ['deal_id','client_status','client_status_label','city','state','vertical','owner','owner_label','contact_state','options_note','evidence_ref','touch_id','touch_summary','touch_owner','notice_note'].every(field => nullableText(row[field]))
+      && ['commencement_on','executed_on','touch_due_on','notice_on'].every(field => nullableDay(row[field]))
+      // The producer's SQL expression is nullable when no action exists.
+      && (row.touch_eligible === null || typeof row.touch_eligible === 'boolean')
+      && (row.touch_eligible !== true || text(row.touch_id) && text(row.touch_owner) && row.touch_due_on !== null));
 }
 
 export function projectLeaseRadar(payload, { scope = 'team', today = radarToday() } = {}) {
@@ -52,7 +51,7 @@ export function projectLeaseRadar(payload, { scope = 'team', today = radarToday(
 }
 
 export function pastClientTouches(payload, { scope = 'team', today = radarToday(), limit = 4 } = {}) {
-  const model = projectLeaseRadar(payload, {scope, today});
+  const model = projectLeaseRadar(payload, {today});
   if (!model) return null;
   const touches = new Map();
   for (const row of [...model.dated, ...model.gaps]) {

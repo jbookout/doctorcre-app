@@ -15,7 +15,7 @@ function mountLeaseDetail({document, dialog, rows, fallback}) {
   let selected = null, opener = null;
   const paint = () => {
     const row = rows().find(r => r.id === selected);
-    if (!row) { if (dialog.open) dialog.close(); return; }
+    if (!row) { dialog.replaceChildren(); if (dialog.open) dialog.close(); return; }
     const expanded = dialog.querySelector('details')?.open;
     const focused = dialog.contains(document.activeElement) ? document.activeElement.dataset.radarKey : null;
     const html = `<div class="lease-detail-heading"><div><span>${E(row.client_status_label || 'Client')}</span><h2 id="${E(dialog.id)}Title">${E(row.client_name)}</h2></div><button type="button" data-radar-key="close" data-close-lease aria-label="Close lease details">×</button></div><div class="lease-detail-grid"><section><h3>Client</h3><dl><dt>Market</dt><dd>${E([row.city,row.state].filter(Boolean).join(' · ') || '—')}</dd><dt>Specialty</dt><dd>${E(row.vertical || '—')}</dd><dt>Broker</dt><dd>${E(row.owner_label || 'Unassigned')}</dd><dt>Contact</dt><dd>${E(({active:'Active',nurture:'Nurture',paused:'Paused',do_not_contact:'Do not contact'})[row.contact_state] || '—')}</dd></dl></section><section><h3>Lease</h3><div class="lease-expiry-value">${date(row.expiration_on)}</div><dl><dt>Commencement</dt><dd>${date(row.commencement_on).replace('Missing expiry','—')}</dd><dt>Option notice</dt><dd>${row.notice_on ? date(row.notice_on) : '—'}</dd><dt>Review</dt><dd>${row.lease_status === 'current' ? 'Current lease' : 'Needs review'}</dd><dt>Next touch</dt><dd>${row.touch_due_on ? `${date(row.touch_due_on)} · ${E(row.touch_summary || 'Follow up')}` : 'Not scheduled'}</dd></dl></section></div>${row.options_note ? '<p class="lease-note-summary">Lease options</p>' : ''}<details><summary data-radar-key="details">Details</summary><dl><dt>Signed</dt><dd>${row.executed_on ? date(row.executed_on) : '—'}</dd><dt>Agreement</dt><dd>${E(row.evidence_ref || '—')}</dd></dl>${row.options_note ? `<h3>Lease entry</h3><p class="lease-original">${E(row.options_note)}</p>` : ''}${row.notice_note ? `<h3>Notice entry</h3><p class="lease-original">${E(row.notice_note)}</p>` : ''}</details><div class="lease-detail-links"><a data-radar-key="client" href="/clients?record=${encodeURIComponent(row.client_id)}">Client ↗</a>${row.deal_id ? `<a data-radar-key="deal" href="/deals?deal=${encodeURIComponent(row.deal_id)}">Deal ↗</a>` : ''}</div>`;
@@ -30,7 +30,7 @@ function mountLeaseDetail({document, dialog, rows, fallback}) {
     const current = opener?.dataset.radarKey && [...document.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === opener.dataset.radarKey);
     (opener?.isConnected ? opener : current || fallback)?.focus();
   });
-  return { paint, open(id, target) { selected=id; opener=target; paint(); if (selected) dialog.showModal(); }, close(){dialog.close();} };
+  return { paint, open(id, target) { selected=id; opener=target; paint(); if (selected) dialog.showModal(); }, close(){selected=null;dialog.replaceChildren();if(dialog.open)dialog.close();} };
 }
 export function mountLeaseRadar({document, window, client, now = () => new Date(), intervalMs = 30_000}) {
   const $ = id => document.getElementById(id);
@@ -89,7 +89,18 @@ export function mountPastClientWidget({document,window,client,host,now=()=>new D
     const html=`<div class="home-panel-head"><h2>Past clients</h2><div class="lease-updated"><span>${rows===null ? 'Unavailable' : updatedLabel(payload.observed_at)}</span><button type="button" data-refresh-past-leases data-radar-key="refresh-past-leases" aria-label="Refresh past-client touches" title="Refresh">↻</button><a class="home-icon-link" href="/leases" aria-label="Lease expiry radar">↗</a></div></div>${rows===null ? '<p class="home-empty">Follow-ups unavailable</p>' : rows.length ? rows.map(row=>`<button type="button" class="lease-card soon" data-lease="${E(row.id)}" data-radar-key="touch:${E(row.touch_id)}"><span class="lease-light" aria-hidden="true"></span><span class="lease-card-copy"><strong>${E(row.client_name)}</strong><span>${E(row.touch_summary)}</span></span><time datetime="${row.touch_due_on}">${date(row.touch_due_on)}</time></button>`).join('') : '<p class="home-empty">No touches due</p>'}`;
     keyedPaint(host,html,document.getElementById('homePrimaryAction'));host.hidden=false;detail.paint();
   };
-  const refresh=async({signal}={})=>{const epoch=++sequence;try{const next=await readWithDeadline(signal=>client.readLeaseRadar({signal}),{signal});if(disposed || epoch!==sequence)return;if(!projectLeaseRadar(next,{today:radarToday(now())}))throw Error('Unavailable');payload=next;}catch{if(disposed || epoch!==sequence)return;payload=null;detail.close();}render();};
+  const refresh=async({signal}={})=>{
+    const epoch=++sequence;
+    try {
+      const next=await readWithDeadline(signal=>client.readLeaseRadar({signal}),{signal});
+      if(disposed || epoch!==sequence)return;
+      if(!projectLeaseRadar(next,{today:radarToday(now())}))throw Error('Unavailable');
+      payload=next;render();
+    } catch {
+      if(disposed || epoch!==sequence)return;
+      payload=null;detail.close();host.replaceChildren();render();
+    }
+  };
   host.addEventListener('click',e=>{const card=e.target.closest('[data-lease]');if(card)detail.open(card.dataset.lease,card);if(e.target.closest('[data-refresh-past-leases]'))auto.refresh();});
   const auto=mountAutoRefresh({document,window,refresh});auto.refresh();
   return {render,dispose(){disposed=true;sequence++;auto.dispose();dialog.remove();}};

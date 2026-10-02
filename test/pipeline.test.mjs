@@ -788,7 +788,8 @@ test("pipeline.html carries the shared shell exactly once and nothing under its 
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
   assert.match(html, /<dialog id="conflictDialog"/);
-  assert.match(html, /<dialog id="receiptsDialog"/, "recent changes are a popup, not an inline panel");
+  assert.match(html, /<ul data-layout-slot="moves" class="receipt-list" id="receiptsList"/, "recent changes belong to shared Today");
+  assert.doesNotMatch(html, /receiptsDialog|receiptsClose/, "no empty compatibility popup remains");
   assert.match(html, /<dialog id="recordPanel" class="side-panel glass"[^>]*data-pinned="false"/);
   assert.match(html, /id="panelPin" aria-pressed="false"/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);

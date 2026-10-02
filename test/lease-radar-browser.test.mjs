@@ -58,6 +58,34 @@ async function open(t, { width = 1440, home = false, long = false } = {}) {
 const settled = page => page.waitForFunction(() => document.querySelector('#refreshLeases').getAttribute('aria-busy') === 'false');
 const online = page => page.evaluate(() => window.dispatchEvent(new Event('online')));
 
+test('finding 4: malformed Home touch read clears cards and open details', async t => {
+  const state = await open(t, {home:true}); const {page} = state;
+  await page.locator('#homePastClients .lease-card').first().click();
+  state.payload.leases[0].touch_id = 42;
+  await online(page);
+  await page.getByText('Follow-ups unavailable',{exact:true}).waitFor();
+  assert.equal(await page.locator('#homePastClients .lease-card').count(),0);
+  assert.equal(await page.locator('#pastLeaseDetail').evaluate(n=>n.open),false);
+  assert.deepEqual(state.errors,[]);
+});
+test('finding 4: Home projection exceptions enter unavailable and recover', async t => {
+  const {page,errors} = await open(t,{home:true});
+  await page.locator('#homePastClients .lease-card').first().click();
+  await page.evaluate(() => {
+    const original = String.prototype.localeCompare;
+    String.prototype.localeCompare = function (...args) {
+      if (String(this).startsWith('demo-touch-')) throw Error('Synthetic projection failure');
+      return original.apply(this,args);
+    };
+    window.restoreCompare = () => {String.prototype.localeCompare = original;};
+  });
+  await online(page); await page.getByText('Follow-ups unavailable',{exact:true}).waitFor();
+  assert.equal(await page.locator('#pastLeaseDetail').evaluate(n=>n.open),false);
+  await page.evaluate(()=>window.restoreCompare()); await online(page);
+  await page.locator('#homePastClients .lease-card').first().waitFor();
+  assert.deepEqual(errors,[]);
+});
+
 test('radar uses shared slots, quarter timeline, wide details and gaps at desktop and phone widths', async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width });

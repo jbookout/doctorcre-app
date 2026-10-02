@@ -4,7 +4,32 @@ import { readFile } from 'node:fs/promises';
 import { addMonths, projectLeaseRadar, validLeaseRadar, pastClientTouches, radarToday } from '../js/lease-radar-model.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { createLeaseRadarClient } from '../js/lease-radar-client.js';
+import { addMonths as calendarAddMonths } from '../js/calendar-model.js';
 const today='2026-10-01';
+test('finding 3: mine follows touch ownership even when the lease has another owner', () => {
+  const payload = leaseRadarFixture(today);
+  payload.leases = [{...payload.leases[0], owner:'dell', touch_owner:payload.actor}];
+  assert.equal(pastClientTouches(payload,{today,scope:'mine'}).length,1);
+});
+test('finding 4: every consumed field rejects missing and malformed values', () => {
+  const payload = leaseRadarFixture(today);
+  for (const [field,value] of Object.entries({touch_id:42,touch_eligible:'yes',owner:3,touch_owner:false,commencement_on:'bad',client_status:{},options_note:[]})) {
+    const bad = structuredClone(payload); bad.leases[0][field] = value;
+    assert.equal(validLeaseRadar(bad),false,field);
+  }
+  for (const field of ['touch_id','touch_eligible','owner','touch_owner']) {
+    const bad = structuredClone(payload); delete bad.leases[0][field];
+    assert.equal(validLeaseRadar(bad),false,`missing ${field}`);
+  }
+  const unassigned=structuredClone(payload);
+  Object.assign(unassigned.leases[0],{owner:null,touch_id:null,touch_due_on:null,touch_owner:null,touch_summary:null,touch_eligible:null});
+  assert.equal(validLeaseRadar(unassigned),true,'nullable SQL fields remain valid');
+});
+test('finding 10: radar uses the shared calendar month implementation', () => {
+  assert.equal(addMonths,calendarAddMonths);
+  for (const day of ['2026-01-31','2024-02-29','2026-03-31'])
+    for (const offset of [-24,-1,0,1,24]) assert.equal(addMonths(day,offset),calendarAddMonths(day,offset));
+});
 test('published lease contract binds the exact authenticated producer revision and horizon', async () => {
   const contract = JSON.parse(await readFile(new URL('../contracts/lease-radar.v1.json', import.meta.url)));
   assert.equal(contract.producer.source_commit, '84955cdb72d64bb7e712f7dd3b696c20b38710a1');

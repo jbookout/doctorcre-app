@@ -93,7 +93,7 @@ function leadCard(lead) {
 function renderLeadDetail() {
   if (!state.detailId) return;
   const lead = state.board?.leads?.find(item => item.id === state.detailId);
-  if (!lead) { $("leadDetailBody").textContent = "Unavailable"; return; }
+  if (!lead) { state.detailPainted = null; $("leadDetailTitle").textContent = "Lead"; $("leadDetailBody").textContent = "Unavailable"; return; }
   const signature = JSON.stringify(lead);
   if (state.detailPainted === signature) return;
   state.detailPainted = signature;
@@ -109,6 +109,11 @@ function openLeadDetail(id, trigger) {
   state.detailId = id; state.detailPainted = null; state.detailReturn = trigger;
   renderLeadDetail();
   const dialog = $("leadDetailDialog"); if (!dialog.open) dialog.showModal();
+}
+function invalidateLeadDetail() {
+  state.detailId = null; state.detailPainted = null;
+  $("leadDetailTitle").textContent = "Lead"; $("leadDetailBody").replaceChildren();
+  if ($("leadDetailDialog").open) $("leadDetailDialog").close();
 }
 
 function renderBoard() {
@@ -299,6 +304,7 @@ async function refresh() {
   } catch (error) {
     if (readEpoch !== state.boardReadEpoch) return;
     state.board = null;
+    invalidateLeadDetail();
     $("leadBoardError").textContent = errorMessage(error); $("leadBoardError").hidden = false;
     board.innerHTML = '<p class="board-state empty">The board is unavailable. Existing lead records were not changed.</p>';
   } finally { if (readEpoch === state.boardReadEpoch) board.setAttribute("aria-busy", "false"); }
@@ -306,6 +312,7 @@ async function refresh() {
 async function refreshAfterReturn() {
   const resumeEpoch = ++state.resumeReadEpoch;
   state.actor = null; // Reverify before another decision can use the current cookie.
+  invalidateLeadDetail();
   const dialog = $("claimDialog");
   if (dialog.open) {
     state.suspendedClaim = state.activeClaim;
@@ -410,7 +417,13 @@ if (typeof document !== "undefined") {
   });
   $("leadBoard").addEventListener("keydown", event => { if (["Enter", " "].includes(event.key) && event.target.matches?.("[data-open-lead]")) { event.preventDefault(); openLeadDetail(event.target.dataset.openLead,event.target); } });
   $("leadDetailClose").addEventListener("click", () => $("leadDetailDialog").close());
-  $("leadDetailDialog").addEventListener("close", () => { state.detailId = null; state.detailReturn?.focus?.(); });
+  $("leadDetailDialog").addEventListener("close", () => {
+    const id = state.detailReturn?.dataset.openLead;
+    const card = [...document.querySelectorAll('[data-open-lead]')].find(node => node.dataset.openLead === id);
+    const fallback = $("refreshBoard");
+    state.detailId = null; state.detailPainted = null; state.detailReturn = null;
+    (card?.getClientRects().length ? card : fallback).focus();
+  });
   $("refreshClaims").addEventListener("click", refreshClaims);
   $("claimCards").addEventListener("click", (event) => {
     const retry = event.target.closest("[data-retry-pending]");
@@ -425,7 +438,9 @@ if (typeof document !== "undefined") {
     if (state.resumeDeferred && !state.pendingClaims.size) refreshAfterReturn();
   });
   if (typeof window !== "undefined" && typeof document.addEventListener === "function") {
-    mountAutoRefresh({ document, window: globalThis.window, refresh: refreshAfterReturn });
+    mountAutoRefresh({ document, window: globalThis.window,
+      refresh: async () => { await Promise.all([refresh(), refreshClaims()]); },
+      resumeRefresh: refreshAfterReturn });
   }
   const actorRead = ++state.actorReadEpoch;
   client.getActor().then((actor) => {

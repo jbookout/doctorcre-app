@@ -4,11 +4,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { chromium } from 'playwright';
 
 import { buildArtifact, verifyArtifact } from "../scripts/artifact.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const COMMIT = "1".repeat(40);
+
+test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
+  const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
+  await buildArtifact({root:ROOT,outDir,commit:COMMIT});
+  const browser=await chromium.launch();t.after(()=>browser.close());
+  const page=await browser.newPage({viewport:{width:820,height:900}});
+  await page.route('**/*',async route=>{
+    const url=new URL(route.request().url());
+    const name=url.pathname==='/'?'share.html':url.pathname.slice(1);
+    try{await route.fulfill({body:await readFile(join(outDir,'site','reports',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}
+    catch{await route.fulfill({status:404,body:''});}
+  });
+  await page.goto('https://reports.doctorcre.com/');await page.locator('.app-shell-header').waitFor();
+  assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('report-shell')),true);
+  const rail=await page.locator('.app-shell-header').boundingBox(), main=await page.locator('main').boundingBox();
+  assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
+});
 
 test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   const first = await mkdtemp(join(tmpdir(), "doctorcre-artifact-a-"));
