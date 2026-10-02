@@ -80,6 +80,39 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   return {page,state,errors,calls,posts};
 }
 
+test('published task without a repository shows its PR as plain text', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {pr:100, executor:'orchestrator'});
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})});
+  await task.waitFor();
+  assert.equal(await task.locator('a[href*="/pull/100"]').count(), 0);
+  const repo = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^repo$/})});
+  assert.equal(await repo.locator('dd').textContent(), 'Not recorded');
+  assert.equal(await task.locator('p').filter({hasText:/^PR #100$/}).count(), 1);
+  const provider = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^provider$/})});
+  const model = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^model$/})});
+  assert.equal(await provider.locator('dd').textContent(), 'Unknown');
+  assert.equal(await model.locator('dd').textContent(), 'Not recorded');
+  assert.deepEqual(errors, []);
+});
+
+test('published task PR links retain the recorded repository and head', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {pr:100, repo:'jbookout/doctorcre-app', pr_head:'synthetic-head'});
+    return payload;
+  }});
+  const anchor = page.locator('#workMetadata a[href="https://github.com/jbookout/doctorcre-app/pull/100"]');
+  await anchor.waitFor();
+  assert.equal(await anchor.textContent(), 'jbookout/doctorcre-app · PR #100 · synthetic-head');
+  assert.equal(await anchor.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(await anchor.getAttribute('target'), '_blank');
+  assert.deepEqual(errors, []);
+});
+
 test('exact work references never join similar titles or shared seats',()=>{
   const scope=workScope('?task=t_demo');
   assert.equal(scopedTurn({body:'t_demo-more',seat:'codex'},scope),false);

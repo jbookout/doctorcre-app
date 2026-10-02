@@ -51,14 +51,13 @@ export function taskIdentity(task) {
   const lower = executor.toLowerCase();
   const effort = lower.match(/\b(low|medium|high|xhigh|max|ultra)\b/)?.[1] || "unknown";
   let derived;
-  if (lower.includes("orchestrator")) derived = ["Anthropic", "Claude Opus 5.5"];
-  else if (/\bgpt-[\w.-]+/i.test(executor))
+  if (/\bgpt-[\w.-]+/i.test(executor))
     derived = ["Codex", executor.match(/\bgpt-[\w.-]+/i)[0].toLowerCase()];
   else if (/\bclaude\s+(opus|sonnet|haiku)\s+[\d.]+/i.test(executor))
     derived = ["Anthropic", executor.match(/\bclaude\s+(?:opus|sonnet|haiku)\s+[\d.]+/i)[0]];
   else if (lower.includes("grok")) derived = ["xAI", executor || "unknown"];
   else if (lower.includes("flash")) derived = ["Google", executor || "unknown"];
-  else derived = ["Unknown", executor || "unknown"];
+  else derived = ["Unknown", "Not recorded"];
   return { provider: task.provider || derived[0], model: task.model || derived[1],
     effort: task.effort || effort };
 }
@@ -71,8 +70,7 @@ export function taskSummary(task) {
 
 export function relatedQuestions(task, questions) {
   const refs = new Set(Array.isArray(task.question_ids) ? task.question_ids : []);
-  return questions.filter(q => refs.has(q.question_id) ||
-    (String(task.id || "").length > 5 && q.question_id?.includes(task.id)));
+  return questions.filter(q => refs.has(q.question_id));
 }
 
 // Mirrors task_stage in carr-system tools/progress_board.py at the pinned producer revision.

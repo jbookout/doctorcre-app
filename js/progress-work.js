@@ -42,7 +42,7 @@ function record(title, value) {
 function taskRecord(task, questions) {
   const identity = taskIdentity(task);
   const article = record(task === queueTask ? 'Projected task' : 'Published task',
-    { ...task, summary: taskSummary(task), ...identity });
+    { ...task, repo: task.repo || 'Not recorded', summary: taskSummary(task), ...identity });
   const link = (url, label) => {
     try {
       const parsed = new URL(url);
@@ -52,12 +52,15 @@ function taskRecord(task, questions) {
       const row = node('p'); row.append(anchor); article.append(row);
     } catch { /* Only valid web links are rendered. */ }
   };
-  const prs = [...(task.pr != null ? [{repo: task.repo || 'jbookout/carr-system', number: task.pr, head_sha: task.pr_head}] : []),
+  const prs = [...(task.pr != null ? [{repo: task.repo, number: task.pr, head_sha: task.pr_head}] : []),
     ...(Array.isArray(task.pr_links) ? task.pr_links : [])];
   for (const pr of prs) {
     const number = Number(pr.number);
-    if (!/^[\w.-]+\/[\w.-]+$/.test(pr.repo) || !Number.isSafeInteger(number) || number <= 0) continue;
-    link(`https://github.com/${pr.repo}/pull/${number}`, `${pr.repo} · PR #${number}${pr.head_sha ? ` · ${pr.head_sha}` : ''}`);
+    if (!Number.isSafeInteger(number) || number <= 0) continue;
+    const label = `PR #${number}${pr.head_sha ? ` · ${pr.head_sha}` : ''}`;
+    if (!pr.repo) article.append(node('p', label));
+    else if (/^[\w.-]+\/[\w.-]+$/.test(pr.repo))
+      link(`https://github.com/${pr.repo}/pull/${number}`, `${pr.repo} · ${label}`);
   }
   for (const url of String(task.evidence || '').match(/https?:\/\/[^\s;,]+/g) || []) {
     const clean = url.replace(/[.)]+$/, ''); link(clean, clean);
