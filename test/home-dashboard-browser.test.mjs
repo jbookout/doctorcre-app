@@ -81,7 +81,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'today-triage': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -199,11 +199,11 @@ test('R7 linked Deals detail refusal or timeout cannot prevent board and feed po
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
+    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
+      && request.postDataJSON()?.params?.name === 'get-deal-room');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
     await page.locator('#rows .deal-link').first().waitFor();
     await firstFeed;
-    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
-      && request.postDataJSON()?.params?.name === 'get-deal-room');
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);

@@ -52,10 +52,8 @@ test("every read answered but one incomplete is not 'Every read answered'", () =
   assert.doesNotMatch(HEADER_WORDS.incomplete, /every read answered/i);
 });
 
-test("the page feeds the atlas coverage and the census into the header", () => {
-  assert.match(pageJs, /headerPhase\(/);
-  assert.match(pageJs, /atlasIncompleteSources\(/);
-  assert.match(pageJs, /censusIncompleteSources\(/);
-  assert.match(pageJs, /onChange: /);
-  assert.match(atlasJs, /onChange\(/);
+test("the shared room uses timestamps without a competing read-health headline",()=>{
+ assert.doesNotMatch(pageJs,/headerPhase\(|censusIncompleteSources\(/);
+ assert.match(pageJs,/updatedLabel\(/);
+ assert.match(atlasJs,/onChange\(/);
 });

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="DoctorCRE Control Room">
+  <title>Control Room · DoctorCRE</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
+  <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/control-room.css">
+  <link rel="stylesheet" href="/css/progress-board.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
+  <link rel="stylesheet" href="/css/control-room-workspace.css">
+</head>
+<body><div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+<div data-layout-slot="sidebar"><h2>Control Room</h2><a href="/control-room">System Job Board</a></div>
+<div data-layout-slot="tabs"><a href="/control-room">System Job Board</a><a href="/control-room?tab=connections">Connections</a><a href="/control-room?tab=automations">Calendar</a><a href="/control-room/automations" aria-current="page">List</a></div>
+<main class="shell control-room-workspace"><section class="panel"><div class="panel-heading"><h2>Automations</h2><time id="listUpdated">Updating…</time></div><div id="automationList" class="automation-list"></div></section><p id="automationListState" role="status"></p></main>
+<dialog id="jobDialog" class="job-dialog" aria-labelledby="jobTitle"><header><h2 id="jobTitle"></h2><button id="jobClose" type="button" aria-label="Close job details">×</button></header><div id="jobBody"></div></dialog>
+<script type="module" src="/js/automations-list.js"></script></body></html>

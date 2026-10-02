@@ -22,7 +22,7 @@ test('every literal browser MCP call is pinned to a producer revision containing
 
 test('Tour client feedback endpoints have an explicit contract newer than the prior search/cart interface', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.version, '1.38.0');
+  assert.equal(contract.version, '1.39.0');
   for (const path of ['/api/share/feedback', '/api/share/shortlist', '/api/share/comment', '/api/tours/feedback'])
     assert.ok(contract.http_surfaces.includes(path), `${path} is missing from the feedback interface`);
 });

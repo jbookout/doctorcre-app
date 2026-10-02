@@ -4,9 +4,9 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
-  "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
+  "business.html", "calendar.html", "charts.html", "automations.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "pipeline.html", "progress-board.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
+  "pipeline.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const SHA = /^[0-9a-f]{64}$/;
@@ -117,7 +117,8 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
       // Token-authenticated public reports carry navigation back to the app.
       // Partner controls live on the signed-in app, not the report hostname.
       const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
-        .replace("  else mountAccount(root, host, pathname);", "") + '\nif (typeof document !== "undefined") mountAppShell();\n';
+        .replace("  else mountAccount(root, host, pathname);", "")
+        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
       const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
       if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
         throw new Error("report shell bundle needs an explicit export update");

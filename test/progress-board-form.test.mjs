@@ -55,7 +55,8 @@ async function board(answers = []) {
     writes.push(args);
     return answers.length ? answers.shift() : tool({ ok: true });
   };
-  await import(`../js/progress-board.js?form-test=${++loadNumber}`);
+  const {mountProgressBoard}=await import(`../js/progress-board.js?form-test=${++loadNumber}`);
+  mountProgressBoard();
   await tick();
   const question = nodes.get("board-questions");
   const form = descendants(question).find(node => node.tagName === "FORM");

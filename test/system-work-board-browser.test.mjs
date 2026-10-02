@@ -27,10 +27,10 @@ async function open(t,width,{snapshot=true}={}){
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
   if(url.pathname==='/app-release'||url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:'{}'});
-  let path=url.pathname==='/control-room/progress'?'progress-board.html':url.pathname.slice(1);
+  let path=url.pathname==='/control-room/progress'?'control-room.html':url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:/\.m?js$/.test(path)?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto('http://localhost/control-room/progress');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
+ await page.goto('http://localhost/control-room/progress?mode=live');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
  return {page,calls,errors};
 }
 test('all source cards and ten recent Live nodes fit phone and desktop; library finds old completion',async t=>{
@@ -39,7 +39,8 @@ test('all source cards and ten recent Live nodes fit phone and desktop; library 
   assert.equal(await page.locator('.flow-stage[data-stage="live"] .pipeline-node').count(),10);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Live Library',exact:true}).click();
-  await page.locator('[name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
+  if(width<=760)await page.getByLabel('Workspace sidebar',{exact:true}).click();
+  await page.locator('#system-work-filters [name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
   await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===1);
   assert.match(await page.locator('.work-card').textContent(),/older completed/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);

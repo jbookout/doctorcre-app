@@ -108,6 +108,7 @@ export const APP_ROUTE_PATHS = Object.freeze([
   "/", "/control-room", "/control-room/progress", "/control-room/progress/work", "/deals", "/leads", "/clients", "/vendors",
   "/calendar", "/ideas-events", "/work-requests", "/tours", "/share", "/design-lab",
   "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work",
+  "/control-room/automations",
 ]);
 
 const LEGACY_ROUTE_HOMES = Object.freeze({

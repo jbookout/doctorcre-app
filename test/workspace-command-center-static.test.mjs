@@ -58,12 +58,12 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
     assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length, `${route}: same destinations`);
   }
   assert.deepEqual(navigationItems.filter(item => !item.group).map(({ label }) => label),
-    ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room"]);
+    ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room"]);
 });
 
 test("People offers both directories in the shared shell", () => {
   assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">Clients<\/a>/);
-  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">Vendors<\/a>/);
+  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">.*?Vendors<\/span><\/a>/);
 });
 
 test("More keeps Updates, Operations and Reference in stable groups", () => {
@@ -247,12 +247,12 @@ test("Clients and Vendors is a real read journey with distinguishable states", a
   assert.match(html, /class="inert-entry" aria-disabled="true">Calls</);
   assert.doesNotMatch(html, /class="inert-entry" aria-disabled="true">Tours</);
   assert.doesNotMatch(html, /href="[^"]*"[^>]*>Calls</);
-  assert.match(appShellMarkup("/clients"), /href="\/tours">Tours<\/a>/);
+  assert.match(appShellMarkup("/clients"), /href="\/tours">.*?Tours<\/span><\/a>/);
 });
 
 test("mobile Home navigation replaces desktop navigation without occluding content", async () => {
   const css = await readFile(`${ROOT}/css/app-shell.css`, "utf8");
-  assert.match(css, /@media\(max-width:900px\)/);
-  assert.match(css, /app-shell-menu:not\(\[open\]\) \.app-shell-navigation\{display:none\}/);
-  assert.match(css, /max-height:calc\(100vh - 82px\)/);
+  assert.match(css, /@media\(max-width:760px\)/);
+  assert.match(css, /\.app-shell-navigation\{flex-direction:row;justify-content:space-around/);
+  assert.match(css, /max-height:calc\(100dvh - 125px\)/);
 });

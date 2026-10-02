@@ -511,6 +511,7 @@ export function createLiveClient(opts = {}) {
     // One read-only verb, passed through untouched. It takes NO arguments and
     // refuses any field, so none is sent. It grants no authority: the decisions
     // it lists are taken with their own partner verbs, none of which is pinned.
+    async readConnections({ signal } = {}) { return (await rpc('read-resource-dashboard', {}, signal)).connections; },
     async governanceQueue() { return rpc('governance-queue', {}); },
     async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 
