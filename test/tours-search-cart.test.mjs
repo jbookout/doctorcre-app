@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import { JSDOM } from "jsdom";
 
-const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
+const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 // Inline the app's module dependencies for the classic-script browser harness.
 const tourFormat = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const propertyPanel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^export /gm, "");
