@@ -42,6 +42,8 @@ for(const width of [1440,390])test(`W5 rendered directories and wide dialog at $
   const box=await page.locator('#recordPanel').boundingBox();assert.ok(box.width>width*.7);await page.screenshot({path:`test-artifacts/w5/vendor-overview-${width}.png`});
   const head=await page.locator('#recordTitle').boundingBox();assert.ok(head.y>=box.y && head.y+head.height<box.y+box.height);
   assert.match(await page.locator('#recordBody').innerText(),/Loan programs|Introductions made|Suggested introductions/);
+  assert.equal(await page.locator('[data-details-key="intro-demo-intro"] .entry-detail').isVisible(),false);
+  await page.locator('[data-details-key="intro-demo-intro"] summary').click();assert.match(await page.locator('[data-details-key="intro-demo-intro"]').innerText(),/Original synthetic introduction entry/);
   await page.locator('[data-details-key="entry-demo-entry"] summary').click();assert.match(await page.locator('[data-details-key="entry-demo-entry"]').innerText(),/Original synthetic email/);
   await page.screenshot({path:`test-artifacts/w5/vendor-detail-${width}.png`});
   await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="reason"]').fill('Synthetic reviewed exception');await page.locator('[name="tier"]').selectOption('Trial');

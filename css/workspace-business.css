@@ -195,7 +195,7 @@
 .trust-tier[data-tier="Proven"]{border-color:rgba(121,221,160,.45);color:#b9f2cd;background:rgba(121,221,160,.08)}
 .trust-tier[data-tier="Trial"]{color:#ffd1ab;border-color:rgba(242,138,57,.4);background:rgba(242,138,57,.08)}
 .refresh-icon{border:0;background:transparent;color:var(--orange);font-size:22px;min-width:44px;min-height:44px;cursor:pointer;border-radius:50%}.refresh-icon:hover{background:rgba(242,138,57,.12)}
-.business-hero .observed::after{content:none}
+.business-hero .observed::after,.record-panel .observed::after{content:none}
 .hero-meta{display:flex;flex-direction:row;align-items:center;justify-content:flex-end}.observed{font-size:11px}
 #scrollSentinel{height:2px;margin-top:32px}
 body.record-open{overflow:hidden}
