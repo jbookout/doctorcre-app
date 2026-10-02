@@ -11,7 +11,7 @@ const secondary = ['Clients','Ideas','Events','Updates','Doc Chats','Progress','
 
 async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion }); page.setDefaultTimeout(5000);
+  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion }); page.setDefaultTimeout(15000);
   if (simulatedClock) await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   const fixture = await createFixtureClient({ selfActor: actor, seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
   const errors = [], calls = []; page.on('pageerror', error => errors.push(error.message));

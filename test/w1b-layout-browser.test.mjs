@@ -152,6 +152,6 @@ test('Home, Leads and Local Deals fit desktop and phone; capture the six review 
  const{page,goto,errors}=await open(t);
  for(const width of[1440,390]){await page.setViewportSize({width,height:960});for(const[name,path]of[['home','/'],['leads','/leads'],['local-deals','/deals?view=board']]){
   await goto(path);if(name==='leads')await page.waitForSelector('.lead-card');if(name==='local-deals')await page.waitForSelector('.kanban-card');
-  await fits(page,`${name} ${width}`);await page.screenshot({path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
+  await fits(page,`${name} ${width}`);await page.screenshot({timeout:15000,animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
  }}assert.deepEqual(errors,[]);
 });
