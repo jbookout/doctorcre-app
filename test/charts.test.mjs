@@ -310,7 +310,7 @@ test("B06-9 Back restores the selection from the address, and a filtered total i
   assert.equal(filterDeals(board.deals, null, null).length, 74, "no selection filters nothing");
   assert.equal(selectionLabel("segment", "Dental"), "Segment: Dental");
   assert.equal(selectionLabel("segment", NO_VALUE_KEY), "Segment: Not segmented");
-  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due diligence");
+  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due Diligence");
 
   // popstate restores and repaints. It reads nothing.
   assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\)\)/);

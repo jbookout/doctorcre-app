@@ -101,16 +101,18 @@ test('recent moves catch up through history and update read-only on pages withou
 
 test('Local Deals opens a wide popup, refreshes its original note, and retains one-tap Undo in Today',async t=>{
  const{page,goto,errors}=await open(t,{clock:true});await goto('/deals?view=board');
- await page.locator('.kanban-card[data-id="d05"]').click({position:{x:8,y:8}});await page.waitForFunction(()=>document.querySelector('#panelBody details'));
- assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);await page.locator('#panelBody summary').click();
- await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d05',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
+ await page.locator('.kanban-card[data-id="d14"]').click({position:{x:8,y:8}});await page.waitForFunction(()=>document.querySelector('.deal-note details'));
+ assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
+ const entry=await page.locator('.deal-note').first().getAttribute('data-id');
+ const original=page.locator(`.deal-note[data-id="${entry}"] details`);await original.locator('summary').click();
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
  await page.clock.fastForward(16_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
- assert.equal(await page.locator('#panelBody details').evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+ assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),false);
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
- const original=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
+ const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
- await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,original);
+ await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
  assert.deepEqual(errors,[]);
 });
 
@@ -118,9 +120,9 @@ test('blocked localStorage, automatic Today refresh, and wide item details stay 
  const{page,goto,errors}=await open(t,{deniedStorage:true,clock:true});await goto('/deals');
  await page.locator('#appSidebarToggle').click();
  const first=page.locator('#appTodayNeeds [data-layout-deal]').first();await first.click();
- await page.waitForFunction(()=>document.querySelector('#dealDialog')?.open);assert.ok((await page.locator('#dealDialog').boundingBox()).width>=900);
+ await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
  const before=await page.locator('#appSyncTime').getAttribute('datetime');await page.clock.fastForward(31_000);await page.waitForFunction(before=>document.querySelector('#appSyncTime').getAttribute('datetime')!==before,before);
- assert.equal(await page.locator('#dealDialog').evaluate(n=>n.open),true);await page.getByLabel('Close details',{exact:true}).click();
+ assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);await page.getByLabel('Close deal',{exact:true}).click();
  await goto('/leads');await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),true);assert.ok((await page.locator('#leadDetail').boundingBox()).width>=900);
  await page.locator('#detailBody summary').first().click();assert.equal(await page.locator('#detailBody details').first().evaluate(n=>n.open),true);await page.locator('#detailBody summary').first().focus();await page.clock.fastForward(31_000);assert.equal(await page.locator('#detailBody summary').first().evaluate(n=>n===document.activeElement),true);assert.equal(await page.locator('#detailBody details').first().evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.deepEqual(errors,[]);
