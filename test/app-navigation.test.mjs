@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "Progress", "Work Requests", "All Work", "Incidents", "Agent Room", "Agent Queue", "Design Lab", "Status"];
+const expected = ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "Progress", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {
@@ -51,7 +51,8 @@ test("the shared navigation has one stable set of destinations, including every 
     const html = appShellMarkup(route);
     const labels = [...html.matchAll(/data-app-nav-item[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]);
     assert.deepEqual(labels, expected, `${route}: same order and items`);
-    assert.match(html, />Agent Queue<\/a>/);
+    assert.match(html, />Project activity<\/a>/);
+    assert.doesNotMatch(html, />Agent (?:Room|Queue)<\/a>/);
     assert.equal((html.match(/aria-current="page"/g) || []).length, route === "/calendar" ? 0 : 1, `${route}: one active destination or utility`);
   }
 });
@@ -65,10 +66,10 @@ test("Deals has one global Deals link and local views are labelled as views", ()
   assert.match(html, /href="\/deals\?view=board">Board<\/a>/);
 });
 
-test("the task board belongs to Observatory rather than global navigation", () => {
-  const room = readFileSync(new URL("room.html", root), "utf8");
-  assert.match(room, /<button[^>]*id="openTaskBoard"[^>]*>Task board<\/button>/);
-  assert.match(room, /<dialog id="taskBoardDialog"[\s\S]*?<h2 id="taskBoardTitle">Task board<\/h2>/);
+test("the task board belongs to Progress work detail", () => {
+  const room = readFileSync(new URL("progress-work.html", root), "utf8");
+  assert.match(room, /id="workTasks"/);
+  assert.match(room, /id="queueColumns"/);
   assert.match(room, /src="\/js\/queue\.js"/);
 });
 

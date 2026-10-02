@@ -1,0 +1,2276 @@
+{
+  "projection": {
+    "schema_version": "observatory-attempt-projection.v1",
+    "generated_at": "2026-08-24T12:00:05Z",
+    "work_request_id": "wr-synthetic-read-only",
+    "source_state": {
+      "state_version": 1,
+      "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "plan_revision_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "declared_intent": {
+      "plan_step_refs": [
+        "step:synthetic-read"
+      ],
+      "component_refs": [
+        "component:execution-fabric"
+      ],
+      "resource_refs": [
+        "resource:worktree-a"
+      ],
+      "component_dependencies": []
+    },
+    "component_map": [
+      {
+        "component_ref": "component:execution-fabric",
+        "depends_on_component_refs": [],
+        "current": true
+      }
+    ],
+    "attempt_lane": {
+      "attempt_id": "attempt-synthetic-codex",
+      "persistent_profile": {
+        "profile_id": "profile:doc",
+        "display_label": "Doc"
+      },
+      "actual_staffing": {
+        "surface": "codex_desktop",
+        "adapter_id": "adapter:codex-desktop",
+        "adapter_version": "v1",
+        "harness_id": "harness:codex",
+        "harness_version": "v1",
+        "provider_id": "provider:openai",
+        "model_id": "model:codex-synthetic",
+        "native_session_ref": "native:codex-thread-1",
+        "configuration_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    "state": {
+      "lifecycle": "succeeded",
+      "progress": "verified_complete",
+      "verification": "verified_success"
+    },
+    "observed_movement": {
+      "progress_state": "verified_complete",
+      "coverage_state": "covered",
+      "activity_fidelity": "native_hook",
+      "declared_refs_observed": [
+        "step:synthetic-read"
+      ],
+      "unmapped_activity_refs": [],
+      "deviation_candidates": [],
+      "uncertainty": "none"
+    },
+    "timeline": [
+      {
+        "sequence": 1,
+        "occurred_at": "2026-08-24T12:00:01Z",
+        "event_type": "observed_tool",
+        "declared_step_ref": "step:synthetic-read",
+        "observed_resource_ref": "resource:worktree-a",
+        "observed_component_ref": "component:execution-fabric",
+        "tool_class": "tool:codex-event",
+        "state": "active",
+        "evidence_refs": [
+          "evidence:synthetic-check"
+        ],
+        "retention": "ephemeral"
+      }
+    ],
+    "evidence_refs": [
+      "evidence:synthetic-check"
+    ],
+    "projection_digest": "sha256:7ef1df546040c0aa000a437902fdc4d83decaf1960f63001790b11a422b5dfb9"
+  },
+  "envelope": {
+    "schema_version": "execution-envelope.v1",
+    "envelope_id": "env-synthetic-codex",
+    "work_request_id": "wr-synthetic-read-only",
+    "plan_revision": {
+      "id": "plan-synthetic-read",
+      "revision": 1,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "agent_session": {
+      "id": "session-synthetic-codex",
+      "lease_expires_at": "2026-08-24T13:00:00Z"
+    },
+    "issued_at": "2026-08-24T12:00:00Z",
+    "expires_at": "2026-08-24T13:00:00Z",
+    "request": {
+      "job_ref": "job:synthetic-read-only",
+      "input_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "data_class": "synthetic_only",
+      "allowed_actions": [],
+      "declared_expectations": {
+        "plan_step_refs": [
+          "step:synthetic-read"
+        ],
+        "component_refs": [
+          "component:execution-fabric"
+        ],
+        "resource_refs": [
+          "resource:worktree-a"
+        ],
+        "component_dependencies": []
+      }
+    },
+    "server_binding": {
+      "identity": {
+        "organization_tenant_id": "tenant:carr-internal",
+        "sponsoring_human_id": "human:joe",
+        "agent_principal_id": "agent:synthetic",
+        "runtime_principal": "runtime:synthetic",
+        "personal_brain_scope": "brain:joe-personal",
+        "personal_brain_version": "brainver:synthetic-1",
+        "personal_rule_count": 33,
+        "derived_by": "server_identity_resolution",
+        "client_mutable": false
+      },
+      "authority": {
+        "environment": "rehearsal",
+        "risk_class": "R0",
+        "capability_profile": "capability:read-only",
+        "capability_grant_ref": "grant:synthetic-codex",
+        "read_only": true,
+        "derived_by": "server_capability_resolution",
+        "client_mutable": false
+      },
+      "adapter": {
+        "surface": "codex_desktop",
+        "adapter_id": "adapter:codex-desktop",
+        "adapter_version": "v1",
+        "harness_id": "harness:codex",
+        "harness_version": "v1",
+        "provider_id": "provider:openai",
+        "model_id": "model:codex-synthetic",
+        "native_session_ref": "native:codex-thread-1",
+        "configuration_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    "handoff": {
+      "mode": "original",
+      "replaces_agent_session_id": null,
+      "capability_inherited": false,
+      "checkpoint_ref": null,
+      "native_session_transfer": "semantic_state_only"
+    },
+    "state_binding": {
+      "state_version": 1,
+      "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "accepted_resource_revisions": [
+        {
+          "resource_ref": "resource:worktree-a",
+          "revision_ref": "revision:synthetic-1",
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ],
+      "compare_and_swap_required": true
+    },
+    "phase_binding": {
+      "phase_id": "phase:execution",
+      "session_affinity": "same_native_session_preferred",
+      "switch_conditions": [
+        "verified_checkpoint",
+        "phase_boundary"
+      ],
+      "native_session_transfer": "semantic_state_only"
+    },
+    "evaluation_context": {
+      "experiment_arm": "same_pair_audited_state",
+      "auditor_mode": "same_pair_auditor",
+      "evaluation_kernel_ref": "kernel:carr-evaluation-v1",
+      "workflow_rubric_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "case_set_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  },
+  "portfolio": {
+    "schema_version": "carr-evaluation-kernel.v1",
+    "portfolio_id": "portfolio:carr-synthetic-read-only",
+    "data_class": "synthetic_only",
+    "generated_at": "2026-08-24T12:00:06Z",
+    "workflow": {
+      "workflow_id": "workflow:job-passport",
+      "rubric_id": "rubric:job-passport-visual",
+      "rubric_version": "rubricver:01",
+      "rubric_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "case_set_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "policy": {
+      "policy_id": "policy:shared-evaluation",
+      "policy_version": "policyver:01",
+      "policy_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "default_effect": "deny",
+      "risk_requirements": [
+        {
+          "risk_class": "R0",
+          "lifecycle": "rehearsal",
+          "required_rungs": [
+            "smoke"
+          ],
+          "required_evaluator_kinds": [
+            "deterministic"
+          ],
+          "min_held_out_cases": 1,
+          "max_critical_failure_count": 0,
+          "max_critical_failure_rate": 0,
+          "confidence_posture": "descriptive",
+          "drift_tolerance": 0,
+          "independent_review_required": false,
+          "human_acceptance_required": false,
+          "outcome_horizon_maturity": "not_required"
+        },
+        {
+          "risk_class": "R1",
+          "lifecycle": "change",
+          "required_rungs": [
+            "smoke",
+            "regression"
+          ],
+          "required_evaluator_kinds": [
+            "deterministic",
+            "judge"
+          ],
+          "min_held_out_cases": 2,
+          "max_critical_failure_count": 0,
+          "max_critical_failure_rate": 0,
+          "confidence_posture": "descriptive",
+          "drift_tolerance": 0.1,
+          "independent_review_required": false,
+          "human_acceptance_required": false,
+          "outcome_horizon_maturity": "not_required"
+        },
+        {
+          "risk_class": "R2",
+          "lifecycle": "experiment",
+          "required_rungs": [
+            "smoke",
+            "regression",
+            "hill_climb"
+          ],
+          "required_evaluator_kinds": [
+            "deterministic",
+            "judge"
+          ],
+          "min_held_out_cases": 3,
+          "max_critical_failure_count": 0,
+          "max_critical_failure_rate": 0,
+          "confidence_posture": "lower_bound_required",
+          "drift_tolerance": 0.05,
+          "independent_review_required": false,
+          "human_acceptance_required": false,
+          "outcome_horizon_maturity": "not_required"
+        },
+        {
+          "risk_class": "R3",
+          "lifecycle": "launch",
+          "required_rungs": [
+            "smoke",
+            "regression",
+            "launch"
+          ],
+          "required_evaluator_kinds": [
+            "deterministic",
+            "judge",
+            "human_acceptance"
+          ],
+          "min_held_out_cases": 4,
+          "max_critical_failure_count": 0,
+          "max_critical_failure_rate": 0,
+          "confidence_posture": "lower_bound_required",
+          "drift_tolerance": 0,
+          "independent_review_required": true,
+          "human_acceptance_required": true,
+          "outcome_horizon_maturity": "required"
+        }
+      ]
+    },
+    "provenance": {
+      "source_class": "synthetic_only",
+      "production_trace_review": "unavailable_no_production_traces",
+      "expires_at": "2026-09-01T12:00:00Z"
+    },
+    "outcome_horizon": {
+      "status": "immature",
+      "matures_at": "2026-09-01T12:00:00Z",
+      "evidence_refs": [
+        "evidence:synthetic-outcome-horizon"
+      ]
+    },
+    "drift": {
+      "status": "available",
+      "observed_delta": 0,
+      "baseline_ref": "baseline:synthetic-v1",
+      "evidence_refs": [
+        "evidence:synthetic-drift"
+      ]
+    },
+    "migration": {
+      "canonical_contract": "contract:carr-evaluation-kernel-v1",
+      "legacy_aliases": [
+        "job-passport-eval-portfolio.v1"
+      ]
+    },
+    "binding": {
+      "work_request_id": "wr-synthetic-read-only",
+      "plan_revision_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "state_version": 1,
+      "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "accepted_resource_revisions": [
+        {
+          "resource_ref": "resource:worktree-a",
+          "revision_ref": "revision:synthetic-1",
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ],
+      "projection_digest": "sha256:7ef1df546040c0aa000a437902fdc4d83decaf1960f63001790b11a422b5dfb9",
+      "risk_class": "R0",
+      "lifecycle": "rehearsal"
+    },
+    "case_set": {
+      "case_set_id": "case-set:job-passport",
+      "version": "ver:01",
+      "refresh_state": "current_synthetic",
+      "production_trace_review": "unavailable_no_production_traces",
+      "golden_sets": [
+        {
+          "golden_set_ref": "golden:job-passport-r0-heldout",
+          "workflow_lane": "workflow:job-passport",
+          "risk_class": "R0",
+          "split": "held_out",
+          "case_ids": [
+            "case:identity-doc-grok"
+          ]
+        },
+        {
+          "golden_set_ref": "golden:job-passport-r1-heldout",
+          "workflow_lane": "workflow:job-passport",
+          "risk_class": "R1",
+          "split": "held_out",
+          "case_ids": [
+            "case:claude-regression",
+            "case:hermes-regression",
+            "case:grok-regression"
+          ]
+        },
+        {
+          "golden_set_ref": "golden:job-passport-r2-heldout",
+          "workflow_lane": "workflow:job-passport",
+          "risk_class": "R2",
+          "split": "held_out",
+          "case_ids": [
+            "case:codex-regression",
+            "case:cheaper-candidate"
+          ]
+        },
+        {
+          "golden_set_ref": "golden:job-passport-r3-heldout",
+          "workflow_lane": "workflow:job-passport",
+          "risk_class": "R3",
+          "split": "held_out",
+          "case_ids": [
+            "case:launch-representation"
+          ]
+        }
+      ]
+    },
+    "taxonomy": {
+      "taxonomy_version": "failure-taxonomy:job-passport-v1",
+      "refresh_state": "current_synthetic",
+      "production_trace_review": "unavailable_no_production_traces",
+      "unknown_posture": "unclassified_requires_triage",
+      "failure_modes": [
+        {
+          "failure_mode_id": "failure:wire-contract",
+          "parent_id": null,
+          "class_name": "wire_contract",
+          "status": "active",
+          "affected_stages": [
+            "typed_receipt_ingestion"
+          ],
+          "affected_dimensions": [
+            "receipt_integrity"
+          ],
+          "evidence_refs": [
+            "evidence:synthetic-wire"
+          ],
+          "provenance": "synthetic_fixture",
+          "refresh_state": "current_synthetic"
+        },
+        {
+          "failure_mode_id": "failure:cas-conflict",
+          "parent_id": "failure:wire-contract",
+          "class_name": "cas_projection_conflict",
+          "status": "active",
+          "affected_stages": [
+            "freshness_cas_selection",
+            "projection"
+          ],
+          "affected_dimensions": [
+            "freshness_integrity"
+          ],
+          "evidence_refs": [
+            "evidence:synthetic-cas"
+          ],
+          "provenance": "synthetic_fixture",
+          "refresh_state": "current_synthetic"
+        },
+        {
+          "failure_mode_id": "failure:mobile-overflow",
+          "parent_id": null,
+          "class_name": "narrow_width_layout_overflow",
+          "status": "active",
+          "affected_stages": [
+            "visual_interaction_accessibility"
+          ],
+          "affected_dimensions": [
+            "visual_accessibility"
+          ],
+          "evidence_refs": [
+            "browser_live:model-room-mobile-grid"
+          ],
+          "provenance": "behavior_audit",
+          "refresh_state": "current_synthetic"
+        }
+      ]
+    },
+    "cases": [
+      {
+        "case_id": "case:identity-doc-grok",
+        "rung": "smoke",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "projection"
+        ],
+        "adapter_configuration": {
+          "surface": "grok_x_native",
+          "adapter_id": "adapter:grok-x",
+          "adapter_version": "v1",
+          "harness_id": "harness:grok",
+          "harness_version": "v1",
+          "provider_id": "provider:xai",
+          "model_id": "model:grok-4.6",
+          "native_session_ref": "native:grok-thread-1",
+          "configuration_fingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "evidence:profile-doc-staffing-grok"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": false,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R0",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r0-heldout",
+        "case_provenance": "accepted_outcome",
+        "case_kind": "evaluator_quality",
+        "human_label_ref": "evidence:human-label-identity",
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r0-heldout"
+      },
+      {
+        "case_id": "case:claude-regression",
+        "rung": "regression",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "typed_receipt_ingestion",
+          "projection"
+        ],
+        "adapter_configuration": {
+          "surface": "claude_desktop",
+          "adapter_id": "adapter:claude-desktop",
+          "adapter_version": "v1",
+          "harness_id": "harness:claude",
+          "harness_version": "v1",
+          "provider_id": "provider:anthropic",
+          "model_id": "model:claude-synthetic",
+          "native_session_ref": "native:claude-thread-1",
+          "configuration_fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "evidence:claude-fixture"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": true,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R1",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r1-heldout",
+        "case_provenance": "synthetic_fixture",
+        "case_kind": "task",
+        "human_label_ref": null,
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r1-heldout"
+      },
+      {
+        "case_id": "case:codex-regression",
+        "rung": "regression",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "typed_receipt_ingestion",
+          "freshness_cas_selection",
+          "projection",
+          "visual_interaction_accessibility",
+          "evidence_promotion_display"
+        ],
+        "adapter_configuration": {
+          "surface": "codex_desktop",
+          "adapter_id": "adapter:codex-desktop",
+          "adapter_version": "v1",
+          "harness_id": "harness:codex",
+          "harness_version": "v1",
+          "provider_id": "provider:openai",
+          "model_id": "model:codex-synthetic",
+          "native_session_ref": "native:codex-thread-1",
+          "configuration_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "browser_live:model-room-preview-full-typed-rehearsal"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": true,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R2",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r2-heldout",
+        "case_provenance": "synthetic_fixture",
+        "case_kind": "task",
+        "human_label_ref": null,
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r2-heldout"
+      },
+      {
+        "case_id": "case:hermes-regression",
+        "rung": "regression",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "typed_receipt_ingestion",
+          "projection"
+        ],
+        "adapter_configuration": {
+          "surface": "hermes_desktop",
+          "adapter_id": "adapter:hermes-desktop",
+          "adapter_version": "v1",
+          "harness_id": "harness:hermes",
+          "harness_version": "v1",
+          "provider_id": "provider:carr",
+          "model_id": "model:orchestrator",
+          "native_session_ref": "native:hermes-job-1",
+          "configuration_fingerprint": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "evidence:hermes-fixture"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": true,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R1",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r1-heldout",
+        "case_provenance": "synthetic_fixture",
+        "case_kind": "task",
+        "human_label_ref": null,
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r1-heldout"
+      },
+      {
+        "case_id": "case:grok-regression",
+        "rung": "regression",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "typed_receipt_ingestion",
+          "projection"
+        ],
+        "adapter_configuration": {
+          "surface": "grok_x_native",
+          "adapter_id": "adapter:grok-x",
+          "adapter_version": "v1",
+          "harness_id": "harness:grok",
+          "harness_version": "v1",
+          "provider_id": "provider:xai",
+          "model_id": "model:grok-4.6",
+          "native_session_ref": "native:grok-thread-1",
+          "configuration_fingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "evidence:grok-fixture"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": true,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R1",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r1-heldout",
+        "case_provenance": "synthetic_fixture",
+        "case_kind": "task",
+        "human_label_ref": null,
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r1-heldout"
+      },
+      {
+        "case_id": "case:cheaper-candidate",
+        "rung": "hill_climb",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "projection",
+          "visual_interaction_accessibility"
+        ],
+        "adapter_configuration": {
+          "surface": "grok_x_native",
+          "adapter_id": "adapter:grok-x",
+          "adapter_version": "v1",
+          "harness_id": "harness:grok",
+          "harness_version": "v1",
+          "provider_id": "provider:xai",
+          "model_id": "model:grok-4.6",
+          "native_session_ref": "native:grok-thread-1",
+          "configuration_fingerprint": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "evidence:synthetic-cheaper-candidate"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": true,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R2",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r2-heldout",
+        "case_provenance": "synthetic_fixture",
+        "case_kind": "task",
+        "human_label_ref": null,
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r2-heldout"
+      },
+      {
+        "case_id": "case:launch-representation",
+        "rung": "launch",
+        "phase_id": "phase:synthetic-read",
+        "job_stages": [
+          "typed_receipt_ingestion",
+          "projection"
+        ],
+        "adapter_configuration": {
+          "surface": "codex_desktop",
+          "adapter_id": "adapter:codex-desktop",
+          "adapter_version": "v1",
+          "harness_id": "harness:codex",
+          "harness_version": "v1",
+          "provider_id": "provider:openai",
+          "model_id": "model:codex-synthetic",
+          "native_session_ref": "native:codex-thread-1",
+          "configuration_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "evaluator_version": "evaluator:job-passport-v1",
+        "evidence_refs": [
+          "evidence:launch-offline-representation"
+        ],
+        "refresh_state": "current_synthetic",
+        "diagnosis_required": true,
+        "workflow_lane": "workflow:job-passport",
+        "risk_class": "R3",
+        "split": "held_out",
+        "golden_set_ref": "golden:job-passport-r3-heldout",
+        "case_provenance": "synthetic_fixture",
+        "case_kind": "task",
+        "human_label_ref": null,
+        "lifecycle": "accepted",
+        "lifecycle_history": [
+          {
+            "from": "proposed",
+            "to": "triaged",
+            "evidence_ref": "evidence:case-triage"
+          },
+          {
+            "from": "triaged",
+            "to": "accepted",
+            "evidence_ref": "evidence:case-acceptance"
+          }
+        ],
+        "target_golden_set_ref": "golden:job-passport-r3-heldout"
+      }
+    ],
+    "results": [
+      {
+        "result_id": "result:identity-doc-grok",
+        "case_id": "case:identity-doc-grok",
+        "rung": "smoke",
+        "attempt_id": "attempt-synthetic-grok",
+        "status": "passed",
+        "confidence": "high",
+        "evidence_refs": [
+          "evidence:profile-doc-staffing-grok"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "profile_model_separation",
+            "status": "passed",
+            "direction_vs_baseline": "not_compared",
+            "evidence_refs": [
+              "evidence:profile-doc-staffing-grok"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "projection",
+            "status": "passed",
+            "dimension_ids": [
+              "profile_model_separation"
+            ],
+            "evidence_refs": [
+              "evidence:profile-doc-staffing-grok"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 90,
+          "cost_usd": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 0,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "passed",
+            "confidence": "high",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "evidence:profile-doc-staffing-grok"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      },
+      {
+        "result_id": "result:claude-regression",
+        "case_id": "case:claude-regression",
+        "rung": "regression",
+        "attempt_id": "attempt-synthetic-claude",
+        "status": "passed",
+        "confidence": "high",
+        "evidence_refs": [
+          "evidence:claude-fixture"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "receipt_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "equivalent",
+            "evidence_refs": [
+              "evidence:claude-fixture"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "typed_receipt_ingestion",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:claude-fixture"
+            ]
+          },
+          {
+            "stage_id": "projection",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:claude-fixture"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 100,
+          "cost_usd": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 0,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "passed",
+            "confidence": "high",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "evidence:claude-fixture"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      },
+      {
+        "result_id": "result:codex-baseline",
+        "case_id": "case:codex-regression",
+        "rung": "regression",
+        "attempt_id": "attempt-synthetic-codex",
+        "status": "passed",
+        "confidence": "high",
+        "evidence_refs": [
+          "browser_live:model-room-preview-full-typed-rehearsal"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "receipt_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "not_compared",
+            "evidence_refs": [
+              "evidence:synthetic-wire"
+            ],
+            "critical": true
+          },
+          {
+            "dimension_id": "freshness_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "not_compared",
+            "evidence_refs": [
+              "evidence:synthetic-cas"
+            ],
+            "critical": true
+          },
+          {
+            "dimension_id": "visual_accessibility",
+            "status": "passed",
+            "direction_vs_baseline": "not_compared",
+            "evidence_refs": [
+              "browser_live:model-room-preview-full-typed-rehearsal"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "typed_receipt_ingestion",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:synthetic-wire"
+            ]
+          },
+          {
+            "stage_id": "freshness_cas_selection",
+            "status": "passed",
+            "dimension_ids": [
+              "freshness_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:synthetic-cas"
+            ]
+          },
+          {
+            "stage_id": "projection",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:synthetic-wire"
+            ]
+          },
+          {
+            "stage_id": "visual_interaction_accessibility",
+            "status": "passed",
+            "dimension_ids": [
+              "visual_accessibility"
+            ],
+            "evidence_refs": [
+              "browser_live:model-room-preview-full-typed-rehearsal"
+            ]
+          },
+          {
+            "stage_id": "evidence_promotion_display",
+            "status": "passed",
+            "dimension_ids": [
+              "freshness_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:synthetic-cas"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 120,
+          "cost_usd": 0.02,
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 1,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "passed",
+            "confidence": "high",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "browser_live:model-room-preview-full-typed-rehearsal"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      },
+      {
+        "result_id": "result:hermes-regression",
+        "case_id": "case:hermes-regression",
+        "rung": "regression",
+        "attempt_id": "attempt-synthetic-hermes",
+        "status": "passed",
+        "confidence": "high",
+        "evidence_refs": [
+          "evidence:hermes-fixture"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "receipt_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "equivalent",
+            "evidence_refs": [
+              "evidence:hermes-fixture"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "typed_receipt_ingestion",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:hermes-fixture"
+            ]
+          },
+          {
+            "stage_id": "projection",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:hermes-fixture"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 80,
+          "cost_usd": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 0,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "passed",
+            "confidence": "high",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "evidence:hermes-fixture"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      },
+      {
+        "result_id": "result:grok-regression",
+        "case_id": "case:grok-regression",
+        "rung": "regression",
+        "attempt_id": "attempt-synthetic-grok",
+        "status": "passed",
+        "confidence": "high",
+        "evidence_refs": [
+          "evidence:grok-fixture"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "receipt_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "equivalent",
+            "evidence_refs": [
+              "evidence:grok-fixture"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "typed_receipt_ingestion",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:grok-fixture"
+            ]
+          },
+          {
+            "stage_id": "projection",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:grok-fixture"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 70,
+          "cost_usd": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 0,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "passed",
+            "confidence": "high",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "evidence:grok-fixture"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      },
+      {
+        "result_id": "result:cheaper-candidate",
+        "case_id": "case:cheaper-candidate",
+        "rung": "hill_climb",
+        "attempt_id": "attempt-synthetic-grok",
+        "status": "failed",
+        "confidence": "high",
+        "evidence_refs": [
+          "evidence:synthetic-cheaper-candidate"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "receipt_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "improved",
+            "evidence_refs": [
+              "evidence:synthetic-cheaper-candidate"
+            ],
+            "critical": true
+          },
+          {
+            "dimension_id": "freshness_integrity",
+            "status": "passed",
+            "direction_vs_baseline": "improved",
+            "evidence_refs": [
+              "evidence:synthetic-cheaper-candidate"
+            ],
+            "critical": true
+          },
+          {
+            "dimension_id": "visual_accessibility",
+            "status": "failed",
+            "direction_vs_baseline": "regressed",
+            "evidence_refs": [
+              "browser_live:model-room-mobile-grid"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "projection",
+            "status": "passed",
+            "dimension_ids": [
+              "receipt_integrity",
+              "freshness_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:synthetic-cheaper-candidate"
+            ]
+          },
+          {
+            "stage_id": "visual_interaction_accessibility",
+            "status": "failed",
+            "dimension_ids": [
+              "visual_accessibility"
+            ],
+            "evidence_refs": [
+              "browser_live:model-room-mobile-grid"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 60,
+          "cost_usd": 0.005,
+          "usage": {
+            "input_tokens": 80,
+            "output_tokens": 15,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 0,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [
+          "failure:mobile-overflow"
+        ],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "failed",
+            "confidence": "high",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "evidence:synthetic-cheaper-candidate"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      },
+      {
+        "result_id": "result:launch-representation",
+        "case_id": "case:launch-representation",
+        "rung": "launch",
+        "attempt_id": "attempt-synthetic-codex",
+        "status": "blocked",
+        "confidence": "unknown",
+        "evidence_refs": [
+          "evidence:launch-offline-representation"
+        ],
+        "dimension_results": [
+          {
+            "dimension_id": "receipt_integrity",
+            "status": "blocked",
+            "direction_vs_baseline": "not_compared",
+            "evidence_refs": [
+              "evidence:launch-offline-representation"
+            ],
+            "critical": true
+          }
+        ],
+        "stage_results": [
+          {
+            "stage_id": "typed_receipt_ingestion",
+            "status": "blocked",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:launch-offline-representation"
+            ]
+          },
+          {
+            "stage_id": "projection",
+            "status": "blocked",
+            "dimension_ids": [
+              "receipt_integrity"
+            ],
+            "evidence_refs": [
+              "evidence:launch-offline-representation"
+            ]
+          }
+        ],
+        "telemetry": {
+          "latency_ms": 0,
+          "cost_usd": 0,
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cached_input_tokens": 0
+          },
+          "recovery_count": 0,
+          "intervention_count": 0,
+          "reset_tax": {
+            "context_reconstruction_ms": 0,
+            "duplicated_tool_calls": 0,
+            "repeated_failed_approach_count": 0,
+            "human_correction_count": 0,
+            "switch_overhead_ms": 0
+          }
+        },
+        "failure_mode_ids": [],
+        "evaluator_results": [
+          {
+            "kind": "deterministic",
+            "evaluator_ref": "evaluator:deterministic-v1",
+            "rubric_ref": "rubric:job-passport-visual",
+            "provenance": "synthetic_fixture",
+            "calibration": {
+              "status": "not_applicable",
+              "calibration_ref": null,
+              "sample_count": 0
+            },
+            "status": "blocked",
+            "confidence": "unknown",
+            "critical": true,
+            "independence_state": "independent",
+            "evidence_refs": [
+              "evidence:launch-offline-representation"
+            ],
+            "human_accepted": false,
+            "lower_bound_evidence_ref": null
+          }
+        ]
+      }
+    ],
+    "frontier_comparisons": [
+      {
+        "comparison_id": "comparison:average-cannot-mask-critical-regression",
+        "baseline_result_id": "result:codex-baseline",
+        "candidate_result_id": "result:cheaper-candidate",
+        "required_dimensions": [
+          "receipt_integrity",
+          "freshness_integrity",
+          "visual_accessibility"
+        ],
+        "dimension_tolerances": [
+          {
+            "dimension_id": "receipt_integrity",
+            "required_status": "passed",
+            "accepted_directions": [
+              "improved",
+              "equivalent"
+            ]
+          },
+          {
+            "dimension_id": "freshness_integrity",
+            "required_status": "passed",
+            "accepted_directions": [
+              "improved",
+              "equivalent"
+            ]
+          },
+          {
+            "dimension_id": "visual_accessibility",
+            "required_status": "passed",
+            "accepted_directions": [
+              "improved",
+              "equivalent"
+            ]
+          }
+        ],
+        "evidence_required": true,
+        "promotion_state": "not_eligible"
+      },
+      {
+        "comparison_id": "comparison:launch-needs-equivalence-evidence",
+        "baseline_result_id": "result:codex-baseline",
+        "candidate_result_id": "result:launch-representation",
+        "required_dimensions": [
+          "receipt_integrity"
+        ],
+        "dimension_tolerances": [
+          {
+            "dimension_id": "receipt_integrity",
+            "required_status": "passed",
+            "accepted_directions": [
+              "equivalent",
+              "improved"
+            ]
+          }
+        ],
+        "evidence_required": true,
+        "promotion_state": "blocked"
+      }
+    ],
+    "experiments": [
+      {
+        "experiment_id": "experiment:spatial-visual-comprehension",
+        "primary_dimension": "visual_comprehension",
+        "baseline_result_id": "result:codex-baseline",
+        "hypothesis": "Expose deterministic spatial facts and a Home Zone without expanding routing or authority.",
+        "non_regression_dimensions": [
+          "receipt_integrity",
+          "freshness_integrity",
+          "visual_accessibility",
+          "telemetry_truth",
+          "layout_authority_separation"
+        ],
+        "phase_id": "phase:synthetic-read",
+        "session_affinity": "required",
+        "switch_condition": "verified_checkpoint",
+        "tool_context": {
+          "eligible_count": 5,
+          "exposed_count": 3,
+          "selected_count": 2,
+          "used_count": 2,
+          "provenance": "evidence:synthetic-tool-context"
+        },
+        "result": "failed"
+      }
+    ],
+    "behavior_findings": [
+      {
+        "finding_id": "finding:mobile-overflow",
+        "root_cause_key": "root:job-passport-mobile-wire-overflow",
+        "failure_mode_id": "failure:mobile-overflow",
+        "evidence_refs": [
+          "browser_live:model-room-mobile-grid"
+        ]
+      }
+    ],
+    "notes": "Synthetic/offline portfolio only. No production traces, live traffic, routing change, or aggregate score is represented."
+  },
+  "spatial": {
+    "canonical_binding": {
+      "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "source_projection_digest": "sha256:7ef1df546040c0aa000a437902fdc4d83decaf1960f63001790b11a422b5dfb9",
+      "state_version": 1,
+      "work_request_id": "wr-synthetic-read-only"
+    },
+    "edges": [
+      {
+        "edge_id": "edge:contains:node:attempt-lane",
+        "evidence_refs": [
+          "evidence:synthetic-check"
+        ],
+        "from_node_id": "node:work-request",
+        "relationship": "contains",
+        "to_node_id": "node:attempt-lane"
+      },
+      {
+        "edge_id": "edge:contains:node:component:2",
+        "evidence_refs": [
+          "evidence:synthetic-check"
+        ],
+        "from_node_id": "node:work-request",
+        "relationship": "contains",
+        "to_node_id": "node:component:2"
+      }
+    ],
+    "generated_at": "2026-08-24T12:00:05Z",
+    "home_zone": {
+      "attention_node_ids": [],
+      "home_node_id": "node:work-request",
+      "return_label": "Return to Job Passport Home"
+    },
+    "list_order": [
+      "node:work-request",
+      "node:attempt-lane",
+      "node:component:2"
+    ],
+    "nodes": [
+      {
+        "accessibility": {
+          "label": "Work Request wr-synthetic-read-only",
+          "list_order": 0,
+          "non_color_status_token": "verified"
+        },
+        "entity_ref": "wr-synthetic-read-only",
+        "geometry": {
+          "declared_bounds": {
+            "height": 72,
+            "width": 150,
+            "x": 0,
+            "y": 0
+          },
+          "derived_bounds": {
+            "height": 72,
+            "width": 150,
+            "x": 0,
+            "y": 0
+          },
+          "user_layout_preference": null
+        },
+        "group_ref": "wr-synthetic-read-only",
+        "node_id": "node:work-request",
+        "node_type": "work_request",
+        "parent_node_id": null,
+        "presentation": {
+          "focusable": true,
+          "home_zone_member": true,
+          "needs_attention_reason": null,
+          "selected": false,
+          "visual_priority": "normal"
+        },
+        "resource_refs": [],
+        "status": {
+          "evidence_refs": [
+            "evidence:synthetic-check"
+          ],
+          "freshness": "fresh",
+          "state": "verified"
+        }
+      },
+      {
+        "accessibility": {
+          "label": "Attempt attempt-synthetic-codex staffed by model:codex-synthetic",
+          "list_order": 1,
+          "non_color_status_token": "verified"
+        },
+        "entity_ref": "attempt-synthetic-codex",
+        "geometry": {
+          "declared_bounds": {
+            "height": 72,
+            "width": 150,
+            "x": 180,
+            "y": 100
+          },
+          "derived_bounds": {
+            "height": 72,
+            "width": 150,
+            "x": 180,
+            "y": 100
+          },
+          "user_layout_preference": null
+        },
+        "group_ref": "wr-synthetic-read-only",
+        "node_id": "node:attempt-lane",
+        "node_type": "attempt_lane",
+        "parent_node_id": "node:work-request",
+        "presentation": {
+          "focusable": true,
+          "home_zone_member": true,
+          "needs_attention_reason": null,
+          "selected": false,
+          "visual_priority": "normal"
+        },
+        "resource_refs": [
+          "native:codex-thread-1"
+        ],
+        "status": {
+          "evidence_refs": [
+            "evidence:synthetic-check"
+          ],
+          "freshness": "fresh",
+          "state": "verified"
+        }
+      },
+      {
+        "accessibility": {
+          "label": "Component component:execution-fabric",
+          "list_order": 2,
+          "non_color_status_token": "verified"
+        },
+        "entity_ref": "component:execution-fabric",
+        "geometry": {
+          "declared_bounds": {
+            "height": 72,
+            "width": 150,
+            "x": 360,
+            "y": 100
+          },
+          "derived_bounds": {
+            "height": 72,
+            "width": 150,
+            "x": 360,
+            "y": 100
+          },
+          "user_layout_preference": null
+        },
+        "group_ref": "wr-synthetic-read-only",
+        "node_id": "node:component:2",
+        "node_type": "component",
+        "parent_node_id": "node:work-request",
+        "presentation": {
+          "focusable": true,
+          "home_zone_member": false,
+          "needs_attention_reason": null,
+          "selected": true,
+          "visual_priority": "normal"
+        },
+        "resource_refs": [],
+        "status": {
+          "evidence_refs": [
+            "evidence:synthetic-check"
+          ],
+          "freshness": "fresh",
+          "state": "verified"
+        }
+      }
+    ],
+    "projection_digest": "sha256:00e080db9dd5f1b80965ea5e41feb0d09f8b72a3e50e0d7be036ba0da675dd00",
+    "schema_version": "spatial-surface-projection.v1",
+    "semantic_zoom": {
+      "detail": {
+        "min_scale": 0.75,
+        "summary": "Current component component:execution-fabric · persistent profile Doc"
+      },
+      "overview": {
+        "max_scale": 0.75,
+        "summary": "3 nodes · 2 relationships · verified"
+      }
+    },
+    "surface": {
+      "surface_id": "surface:model-room",
+      "version": "v1",
+      "view_id": "view:job-passport",
+      "workspace_id": "workspace:control-room"
+    }
+  },
+  "elapsed": {
+    "schema_version": "telemetry-measurement.v1",
+    "measurement_id": "measurement:codex-elapsed-synthetic",
+    "metric_kind": "elapsed_time",
+    "unit": "ms",
+    "scope": "attempt",
+    "attribution": {
+      "provider_id": "provider:openai",
+      "model_id": "model:codex-synthetic",
+      "harness_id": "harness:codex",
+      "adapter_id": "adapter:codex-desktop",
+      "attempt_id": "attempt-synthetic-codex",
+      "native_session_ref": "native:codex-thread-1"
+    },
+    "source": {
+      "type": "deterministic_local_clock",
+      "priority": 4,
+      "provenance_ref": "evidence:synthetic-local-clock"
+    },
+    "observed_at": "2026-08-24T12:00:05Z",
+    "source_window": {
+      "started_at": "2026-08-24T12:00:00Z",
+      "ended_at": "2026-08-24T12:00:05Z"
+    },
+    "freshness": "fresh",
+    "value": {
+      "kind": "actual",
+      "amount": 5000,
+      "estimate_method": null,
+      "uncertainty": null,
+      "unavailable_reason": null
+    }
+  },
+  "cost": {
+    "schema_version": "telemetry-measurement.v1",
+    "measurement_id": "measurement:codex-billed-cost-unavailable",
+    "metric_kind": "billed_cost",
+    "unit": "USD",
+    "scope": "attempt",
+    "attribution": {
+      "provider_id": "provider:openai",
+      "model_id": "model:codex-synthetic",
+      "harness_id": "harness:codex",
+      "adapter_id": "adapter:codex-desktop",
+      "attempt_id": "attempt-synthetic-codex",
+      "native_session_ref": "native:codex-thread-1"
+    },
+    "source": {
+      "type": "unavailable",
+      "priority": 5,
+      "provenance_ref": "evidence:synthetic-provider-cost-unavailable"
+    },
+    "observed_at": "2026-08-24T12:00:05Z",
+    "source_window": {
+      "started_at": "2026-08-24T12:00:00Z",
+      "ended_at": "2026-08-24T12:00:05Z"
+    },
+    "freshness": "unknown",
+    "value": {
+      "kind": "unavailable",
+      "amount": null,
+      "estimate_method": null,
+      "uncertainty": null,
+      "unavailable_reason": "no approved provider billing source"
+    }
+  },
+  "engineering": {
+    "schema_version": "engineering-passport.v1",
+    "work_request": {
+      "id": "wr-synthetic-read-only",
+      "state_version": 1,
+      "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "accepted_plan_revision": {
+      "id": "plan-synthetic-read",
+      "revision": 1,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "plan_digest": "sha256:bbd6fa6de7ffba22cce9c6a33dfd1f1de26700a12483408b9a9d52f0941a6776",
+    "slice_plan": {
+      "schema_version": "engineering-slice-plan.v1",
+      "work_request": {
+        "id": "wr-synthetic-read-only",
+        "state_version": 1,
+        "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "accepted_plan_revision": {
+        "id": "plan-synthetic-read",
+        "revision": 1,
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "slices": [
+        {
+          "slice_ref": "slice:a",
+          "ordinal": 1,
+          "objective": "Blocked synthetic slice",
+          "definition_of_done": "A typed receipt arrives",
+          "dependency_refs": [],
+          "declared_resource_refs": [
+            "resource:worktree-a"
+          ],
+          "declared_component_refs": [
+            "component:execution-fabric"
+          ],
+          "declared_plan_step_refs": [
+            "step:synthetic-read"
+          ],
+          "baseline_evidence_refs": [
+            {
+              "ref": "evidence:baseline",
+              "redaction_class": "redacted_evidence",
+              "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "planned_checks": [
+            {
+              "check_ref": "check:synthetic",
+              "failure_condition": "missing evidence",
+              "evidence_requirement": "redacted_evidence_required"
+            }
+          ],
+          "scope_boundary": "synthetic fixture",
+          "forbidden_change_refs": [
+            "forbidden:authority"
+          ],
+          "concurrency_posture": "parallel_safe",
+          "manual_qa_required": false,
+          "risk_class": "R1",
+          "release_requirement": "required"
+        }
+      ],
+      "plan_digest": "sha256:bbd6fa6de7ffba22cce9c6a33dfd1f1de26700a12483408b9a9d52f0941a6776"
+    },
+    "execution_envelopes": [
+      {
+        "schema_version": "execution-envelope.v1",
+        "envelope_id": "env-synthetic-codex",
+        "work_request_id": "wr-synthetic-read-only",
+        "plan_revision": {
+          "id": "plan-synthetic-read",
+          "revision": 1,
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "agent_session": {
+          "id": "session-synthetic-codex",
+          "lease_expires_at": "2026-08-24T13:00:00Z"
+        },
+        "issued_at": "2026-08-24T12:00:00Z",
+        "expires_at": "2026-08-24T13:00:00Z",
+        "request": {
+          "job_ref": "job:synthetic-read-only",
+          "input_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "data_class": "synthetic_only",
+          "allowed_actions": [],
+          "declared_expectations": {
+            "plan_step_refs": [
+              "step:synthetic-read"
+            ],
+            "component_refs": [
+              "component:execution-fabric"
+            ],
+            "resource_refs": [
+              "resource:worktree-a"
+            ],
+            "component_dependencies": []
+          }
+        },
+        "server_binding": {
+          "identity": {
+            "organization_tenant_id": "tenant:carr-internal",
+            "sponsoring_human_id": "human:joe",
+            "agent_principal_id": "agent:synthetic",
+            "runtime_principal": "runtime:synthetic",
+            "personal_brain_scope": "brain:joe-personal",
+            "personal_brain_version": "brainver:synthetic-1",
+            "personal_rule_count": 33,
+            "derived_by": "server_identity_resolution",
+            "client_mutable": false
+          },
+          "authority": {
+            "environment": "rehearsal",
+            "risk_class": "R0",
+            "capability_profile": "capability:read-only",
+            "capability_grant_ref": "grant:synthetic-codex",
+            "read_only": true,
+            "derived_by": "server_capability_resolution",
+            "client_mutable": false
+          },
+          "adapter": {
+            "surface": "codex_desktop",
+            "adapter_id": "adapter:codex-desktop",
+            "adapter_version": "v1",
+            "harness_id": "harness:codex",
+            "harness_version": "v1",
+            "provider_id": "provider:openai",
+            "model_id": "model:codex-synthetic",
+            "native_session_ref": "native:codex-thread-1",
+            "configuration_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        },
+        "handoff": {
+          "mode": "original",
+          "replaces_agent_session_id": null,
+          "capability_inherited": false,
+          "checkpoint_ref": null,
+          "native_session_transfer": "semantic_state_only"
+        },
+        "state_binding": {
+          "state_version": 1,
+          "canonical_record_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "accepted_resource_revisions": [
+            {
+              "resource_ref": "resource:worktree-a",
+              "revision_ref": "revision:synthetic-1",
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          ],
+          "compare_and_swap_required": true
+        },
+        "phase_binding": {
+          "phase_id": "phase:execution",
+          "session_affinity": "same_native_session_preferred",
+          "switch_conditions": [
+            "verified_checkpoint",
+            "phase_boundary"
+          ],
+          "native_session_transfer": "semantic_state_only"
+        },
+        "evaluation_context": {
+          "experiment_arm": "same_pair_audited_state",
+          "auditor_mode": "same_pair_auditor",
+          "evaluation_kernel_ref": "kernel:carr-evaluation-v1",
+          "workflow_rubric_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "case_set_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      }
+    ],
+    "receipts": [
+      {
+        "schema_version": "engineering-slice-receipt.v1",
+        "envelope_digest": "sha256:e6a25d7b2e6f935abfd8474aedc6a72528e5a713b04d1b5c66091d99dd020d9d",
+        "attempt_id": "attempt:a",
+        "slice_ref": "slice:a",
+        "plan_digest": "sha256:bbd6fa6de7ffba22cce9c6a33dfd1f1de26700a12483408b9a9d52f0941a6776",
+        "attribution": {
+          "actor_ref": "actor:codex",
+          "session_ref": "session:fresh",
+          "adapter_ref": "adapter:codex"
+        },
+        "planned_resource_refs": [
+          "resource:worktree-a"
+        ],
+        "actual_resource_refs": [
+          "resource:worktree-a"
+        ],
+        "planned_component_refs": [
+          "component:execution-fabric"
+        ],
+        "actual_component_refs": [
+          "component:execution-fabric"
+        ],
+        "checks": [
+          {
+            "check_ref": "check:synthetic",
+            "state": "passed",
+            "evidence_refs": [
+              {
+                "ref": "evidence:receipt",
+                "redaction_class": "redacted_evidence",
+                "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        ],
+        "outcome": "claimed_complete",
+        "artifact_refs": [
+          "artifact:a"
+        ],
+        "evidence_refs": [
+          {
+            "ref": "evidence:receipt",
+            "redaction_class": "redacted_evidence",
+            "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "deviations": [],
+        "source_evidence": {
+          "worktree_ref": "worktree:isolated",
+          "branch_ref": "branch:engineering-passport",
+          "source_sha": "0e7279b4",
+          "evidence_refs": [
+            {
+              "ref": "evidence:receipt",
+              "redaction_class": "redacted_evidence",
+              "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        "reset_reconstruction": {
+          "fresh_session": true,
+          "inherited_transcript_used": false,
+          "reconstruction_free": true,
+          "remediation_action": null
+        },
+        "executor_claim": {
+          "claim_state": "executor_claim",
+          "claimed_by": "actor:codex",
+          "claimed_at": "2026-08-24T12:15:00Z"
+        },
+        "independent_verification_required": true
+      }
+    ],
+    "reviewer_facts": [],
+    "qa_facts": [],
+    "slices": [
+      {
+        "slice_ref": "slice:a",
+        "ordinal": 1,
+        "dependency_refs": [],
+        "state": "claimed",
+        "planned_check_refs": [
+          "check:synthetic"
+        ],
+        "deviation_refs": [],
+        "manual_qa_required": false,
+        "release_requirement": "required"
+      }
+    ],
+    "operator_receipt": {
+      "what_changed": [],
+      "why": "derived from accepted plan and typed receipts",
+      "evidence_refs": [
+        {
+          "ref": "evidence:receipt",
+          "redaction_class": "redacted_evidence",
+          "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "deviations": [],
+      "remaining_risk": [
+        "slice:a"
+      ],
+      "manual_qa_items": []
+    },
+    "closure": {
+      "work": {
+        "state": "unresolved",
+        "evidence_refs": [],
+        "note": "pending"
+      },
+      "proof": {
+        "state": "unresolved",
+        "evidence_refs": [],
+        "note": "pending"
+      },
+      "explanation": {
+        "state": "unresolved",
+        "evidence_refs": [],
+        "note": "pending"
+      },
+      "release": {
+        "state": "unresolved",
+        "evidence_refs": [],
+        "note": "pending"
+      },
+      "learning": {
+        "state": "unresolved",
+        "route": null,
+        "evidence_refs": [],
+        "note": "pending"
+      }
+    },
+    "closure_state": "blocked",
+    "stale_conflict": {
+      "state": "none",
+      "reason": null
+    },
+    "projection_digest": "sha256:fbfd3bff1461f4fb6dd208fe87ea8867777977be176d159cf59a2b0fd9c253aa"
+  },
+  "activation": {
+    "schema_version": "attempt-receipt.v1",
+    "attempt_id": "attempt-synthetic-codex",
+    "result": {
+      "job_ref": "job:wr-synthetic-read-only"
+    },
+    "knowledge_activation": {
+      "bundle_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "mode": "canary",
+      "canonical_binding": {
+        "work_request_id": "wr-synthetic-read-only",
+        "work_request_version": 1,
+        "accepted_plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "envelope_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "activation_binding_ref": "ctx:synthetic"
+      },
+      "item_dispositions": [
+        {
+          "item_ref": "rule:scope",
+          "disposition": "applied",
+          "evidence_refs": [
+            "evidence:rule"
+          ],
+          "stage_ref": "stage:retrieve",
+          "tool_ref": "tool:context",
+          "reason_ref": "reason:bound"
+        }
+      ],
+      "closure": {
+        "state": "closed",
+        "unresolved_required_item_refs": [],
+        "derived_by": "server"
+      }
+    },
+    "reliability": {
+      "route_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "topology_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "evaluation_plan_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "environment_binding_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "environment_evidence": {
+        "binding_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "session_ref": "environment-session:one",
+        "lease_state": "released",
+        "operation_count": 1,
+        "policy_refusal_refs": [],
+        "security_event_refs": [],
+        "cleanup_state": "verified",
+        "cleanup_evidence_refs": [
+          "evidence:cleanup"
+        ],
+        "side_effect_state": "none",
+        "resource_usage": {
+          "cpu_ms": 1,
+          "memory_peak_mb": 1,
+          "disk_peak_mb": 0,
+          "network_egress_bytes": 0
+        },
+        "evidence_refs": [
+          "evidence:environment"
+        ]
+      },
+      "grounding_sufficiency": {
+        "state": "sufficient",
+        "evidence_refs": [
+          "evidence:grounding"
+        ],
+        "required_supplied": [
+          "rule:scope"
+        ],
+        "required_used": [
+          "rule:scope"
+        ],
+        "required_missing": [],
+        "advisory_supplied": [],
+        "advisory_used": [],
+        "freshness_failures": [],
+        "retrieval_failures": []
+      },
+      "deterministic_checks": [
+        {
+          "check_id": "check:one",
+          "state": "passed",
+          "critical": true,
+          "evidence_refs": [
+            "evidence:one"
+          ]
+        }
+      ],
+      "model_judgement": {
+        "state": "pass",
+        "judge_ref": "actor:judge",
+        "evidence_refs": [
+          "evidence:judge"
+        ]
+      },
+      "human_acceptance": {
+        "state": "absent",
+        "actor_ref": "actor:human",
+        "evidence_refs": [],
+        "outcome_feedback_ref": null,
+        "outcome_feedback_hash": null
+      },
+      "trajectory": [
+        {
+          "sequence": 1,
+          "stage_ref": "stage:one",
+          "parent_event_ref": null,
+          "decision_class": "decision:one",
+          "tool_class": "tool:one",
+          "result_state": "succeeded",
+          "fallback_state": "not_used",
+          "guardrail_state": "clear",
+          "latency_ms": 1,
+          "evidence_refs": [
+            "evidence:trace"
+          ]
+        }
+      ],
+      "evaluator_results": [
+        {
+          "kind": "deterministic",
+          "evaluator_ref": "evaluator:deterministic",
+          "rubric_ref": "rubric:one",
+          "evaluator_version": "v1",
+          "evaluator_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "status": "passed",
+          "confidence": "high",
+          "critical": true,
+          "independence_state": "not_independent",
+          "held_out_case_count": 1,
+          "check_refs": [
+            "check:one"
+          ],
+          "dimension_refs": [
+            "dimension:correctness"
+          ],
+          "evidence_refs": [
+            "evidence:one"
+          ],
+          "judge_provenance": "provenance:deterministic",
+          "calibration_evidence_refs": []
+        }
+      ],
+      "corrections": [],
+      "defects": [],
+      "incidents": [],
+      "downstream_outcome": {
+        "state": "unknown",
+        "brokerage_ref": "deal:pending",
+        "evidence_refs": [],
+        "outcome_feedback_ref": null,
+        "outcome_feedback_hash": null
+      },
+      "outcome_horizon": {
+        "state": "immature",
+        "ends_at": "2026-08-24T12:00:00Z",
+        "as_of": "2026-08-24T12:00:00Z",
+        "evidence_refs": []
+      },
+      "process_metrics": {
+        "latency_ms": 1,
+        "cost_usd": 0,
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cached_input_tokens": 0,
+        "retry_count": 0,
+        "recovery_count": 0,
+        "context_reconstruction_ms": 0,
+        "human_intervention_count": 0,
+        "security_event_refs": []
+      },
+      "eval_candidates": [],
+      "shadow_comparisons": [],
+      "learning_disposition": "none",
+      "telemetry": [],
+      "closure": {
+        "state": "insufficient_evidence",
+        "reasons": [
+          "reason:authority-evidence"
+        ],
+        "derived_by": "server"
+      }
+    }
+  },
+  "synthetic": true,
+  "source_commit": "1ca9040449bd65018ddd96ca1fc9b495527e2d97"
+}
