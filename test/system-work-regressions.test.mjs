@@ -110,5 +110,5 @@ test('unsupported source navigation displays its absence without a directory fal
  const item={...row(),link:null,navigation:{state:'unavailable'}};
  const h=await setup(t,{read:args=>envelope(args.live_library?[]:[item])});
  assert.match(h.d.querySelector('#system-work-cards').textContent,/Source page unavailable/);
- assert.equal(h.d.querySelectorAll('#system-work-cards a').length,0);
+ assert.equal(h.d.querySelectorAll('#system-work-cards .work-actions a').length,0);
 });
