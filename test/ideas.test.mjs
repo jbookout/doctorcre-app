@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 // V5-UX-B04 — Ideas and Events browse/detail.
 //
 // Ideas are real records: a loop of kind `idea` (add-loop parks one), read with
@@ -182,7 +183,7 @@ test("the Ideas page is routed and uses the pinned idea and event verbs", async 
   assert.equal(carr.version, "1.40.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
-  assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);
+  assert.equal(await hasArtifactPage("ideas.html"), true, "the page ships in the verified artifact");
   assert.match(await read("scripts/check-repository.mjs"), /"ideas\.html"/);
   assert.match(await read("SUMMARY.md"), /ideas\.html/);
   const js = await read("js/ideas.js");
