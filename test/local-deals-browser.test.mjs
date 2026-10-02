@@ -58,7 +58,9 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.ok((await page.locator('.deal-note p').first().textContent()).length <= 150);
     await page.locator('.deal-note summary').first().click();
     assert.match(await page.locator('.note-original').first().textContent(), /Full original demo entry/);
-    await page.screenshot({ path: new URL(`test-artifacts/w4/detail-${width}.png`, root).pathname, fullPage: true });
+    await page.locator('#recordPanel').evaluate(e => { e.scrollTop = 0; });
+    assert.equal(await page.locator('#recordPanel').evaluate(e => e.scrollWidth <= e.clientWidth), true);
+    await page.screenshot({ path: new URL(`test-artifacts/w4/detail-${width}.png`, root).pathname });
     await page.getByLabel('Close deal', { exact: true }).click(); assert.deepEqual(errors, []);
   });
 });
