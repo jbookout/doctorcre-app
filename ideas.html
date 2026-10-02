@@ -19,14 +19,14 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the ideas</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">
@@ -42,7 +42,7 @@
 
     <p class="sr-only" id="ideaLive" aria-live="polite" role="status">Updating…</p>
 
-    <div class="tabs" id="ideaTabs" role="tablist" aria-label="Ideas and events">
+    <div data-layout-slot="tabs" class="page-views" id="ideaTabs" role="tablist" aria-label="Ideas and events">
       <button class="tab" type="button" role="tab" id="tabIdeas" data-tab-key="ideas" aria-controls="ideasPanel" aria-selected="true">Ideas</button>
       <button class="tab" type="button" role="tab" id="tabEvents" data-tab-key="events" aria-controls="eventsPanel" aria-selected="false">Events</button>
     </div>

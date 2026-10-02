@@ -2,7 +2,7 @@
 // Page callbacks own request epochs and preserve their local drafts.
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
-export function mountAutoRefresh({ document, window, refresh, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
+export function mountAutoRefresh({ document, window, refresh, onResume = () => {}, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
@@ -24,7 +24,7 @@ export function mountAutoRefresh({ document, window, refresh, intervalMs = 30_00
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
   document.addEventListener("visibilitychange", visibility);
-  const resume = mountReadOnResume({ document, window, refresh: read });
+  const resume = mountReadOnResume({ document, window, refresh: () => { onResume(); return read(); } });
   window.addEventListener("online", read);
   schedule();
   return { refresh: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", read); resume?.dispose?.(); } };
