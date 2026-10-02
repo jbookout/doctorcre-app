@@ -23,16 +23,16 @@
 
 
   <main id="main" class="shell home-shell">
-    <header class="hero home-hero">
+    <section data-layout-slot="sidebar" class="hero home-hero">
       <div><p class="eyebrow">Your day, in focus</p><h1 id="pageTitle">Home</h1></div>
       <div class="home-tools">
-        <div class="scope-switch" id="scopeSwitch" role="group" aria-label="Home scope">
+        <div data-layout-slot="tabs" class="scope-switch" id="scopeSwitch" role="group" aria-label="Home scope">
           <button type="button" class="scope-option on" data-scope="team" aria-pressed="true">Team View</button>
           <button type="button" class="scope-option" data-scope="mine" aria-pressed="false">Just Me</button>
         </div>
-        <div class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
+        <div data-layout-slot="status" class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button data-layout-refresh id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
       </div>
-    </header>
+    </section>
     <p id="homeNotice" class="home-notice" role="status" hidden></p>
     <section id="dealAttention" class="home-panel home-deals glass" aria-label="Deal flags" aria-live="polite" aria-busy="true">
       <header class="home-panel-head"><h2 id="dealCounts">Active Deals: — <span>Deals in Market: —</span> <span>National Account Deals: —</span></h2><a id="homePrimaryAction" class="home-outline" href="/deals">Deal Room <span aria-hidden="true">↗</span></a></header>

@@ -1,4 +1,5 @@
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
+import { entryDetailsHtml } from './entry-details.mjs';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
 import { createPostCallClient } from './post-call-client.js';
@@ -646,7 +647,8 @@ function focusReceipt(eventId) {
 function goToReceipts() {
   const panel = $('#receiptsPanel');
   if (panel.hidden) return;
-  panel.scrollIntoView({ block: 'start' });
+  document.dispatchEvent(new Event('doctorcre:open-today'));
+  if (!document.getElementById('appToday')) panel.scrollIntoView({ block: 'start' });
   $('#receiptsTitle').focus({ preventScroll: true });
 }
 
@@ -1147,7 +1149,7 @@ async function openDeal(dealId, { background = false } = {}) {
       <section class="detail-section"><h3>Negotiation rounds</h3><div class="detail-list">${detailRows(detail.negotiation_rounds, (n) => `<div class="detail-row"><b>Round ${esc(n.round_no)} · ${esc(n.side)}</b><small>${esc(n.rate_amount ? `${n.rate_amount} ${n.rate_basis || ''}` : 'Rate not captured')} · ${esc(n.term_months ? `${n.term_months} months` : 'Term not captured')}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Participants</h3><div class="detail-list">${detailRows(detail.participants, (p) => `<div class="detail-row"><b>${esc(p.name)}</b><small>${esc(String(p.role).replaceAll('_',' '))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Recent activity</h3><div class="detail-list">${detailRows(detail.activities, (a) => `<div class="detail-row"><b>${esc(a.summary)}</b><small>${esc(actorName(a.actor))} · ${esc(relative(a.occurred_at))} · ${esc(a.kind)}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${esc(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
+      <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${entryDetailsHtml(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
     </div>`;
@@ -1338,8 +1340,10 @@ function wireEvents() {
 }
 
 async function boot() {
-  document.body.classList.toggle('night', localStorage.getItem('dealroom-theme') !== 'light');
-  if (localStorage.getItem('dealroom-color-assist') === 'on') {
+  let savedTheme = 'dark', colorAssist = false;
+  try { savedTheme = localStorage.getItem('dealroom-theme') || 'dark'; colorAssist = localStorage.getItem('dealroom-color-assist') === 'on'; } catch {}
+  document.body.classList.toggle('night', savedTheme !== 'light');
+  if (colorAssist) {
     document.body.classList.add('color-assist');
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');
     $('#colorAssistButton').setAttribute('aria-label', 'Color assist');
