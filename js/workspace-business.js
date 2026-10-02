@@ -793,6 +793,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
 
 async function loadRecord(id, { focusOnOpen = false } = {}) {
   if (view.recordId !== id) return;
+  const pending = view.pendingTrust;
   const evidenceSequence = ++view.evidence.sequence;
   view.evidence.id = id;
   view.evidence.result = null;
@@ -824,9 +825,9 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     const payload = await response.json().catch(() => null);
     if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
-    if (view.pendingTrust?.vendor === payload.record.ref) {
-      const expected = view.pendingTrust.fields.trust_override, saved = payload.record.relationship?.override;
-      if (payload.record.record_version > view.pendingTrust.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }
+    if (pending && view.pendingTrust === pending && view.trustOperation === pending && pending.vendor === payload.record.ref) {
+      const expected = pending.fields.trust_override, saved = payload.record.relationship?.override;
+      if (payload.record.record_version > pending.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }
     }
     settle("ready", null, payload);
     // The party record read supplies no deal activity/native thread index. This

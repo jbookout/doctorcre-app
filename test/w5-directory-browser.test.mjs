@@ -116,6 +116,20 @@ test('W5 pre-expiry acknowledgement cannot release a recovered session save',asy
  h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await page.waitForTimeout(50);assert.equal(held.length,2);
  await ack(held[0]);await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
 });
+test('W5 a read dispatched before a new save cannot reconcile that save',async t=>{
+ const {page}=await open(t);const writes=await holdWrites(page), reads=[];
+ const reason='Synthetic repeated rating';
+ await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page,reason);
+ await page.route('**/api/v1/business/vendors/*',r=>reads.push(r));
+ await page.locator('#trustForm button').click();await page.waitForTimeout(50);await ack(writes[0]);
+ await page.waitForFunction(()=>!document.querySelector('#trustForm button').disabled);await page.waitForTimeout(50);assert.equal(reads.length,1);
+ await page.locator('#trustForm button').click();await page.waitForTimeout(50);assert.equal(writes.length,2);
+ const id='00000000-0000-4000-8000-000000000001';
+ const payload=directoryFixture(reads[0].request().url(),{overrides:new Map([[id,{tier:'Trial',reason,recorded_by:'joe',recorded_at:'2026-10-01T18:00:00Z'}]])});
+ await reads[0].fulfill({json:payload});await page.waitForTimeout(150);
+ assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');
+ await page.unroute('**/api/v1/business/vendors/*');await ack(writes[1]);
+});
 test('W5 keyboard reaches disclosures and skips closed controls',async t=>{
  const {page}=await open(t);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});
  await page.locator('[data-details-key="trust"] summary').focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.tagName),'SUMMARY');
