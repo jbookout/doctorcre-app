@@ -36,22 +36,22 @@ for(const width of [1440,390])test(`W5 rendered directories and wide dialog at $
   const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
   assert.equal(await page.locator('#pager').count(),0);assert.doesNotMatch(await page.locator('main').innerText(),/Checked a while ago|About this list|source|No filters|read again/i);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  await page.screenshot({path:`test-artifacts/w5/vendors-${width}.png`});
+  await page.screenshot({animations:'disabled',path:`test-artifacts/w5/vendors-${width}.png`});
   await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});
   assert.equal(await page.locator('#recordPanel').getAttribute('role'),'dialog');assert.equal(await page.locator('#appShell').evaluate(el=>el.inert),true);
-  const box=await page.locator('#recordPanel').boundingBox();assert.ok(box.width>width*.7);await page.screenshot({path:`test-artifacts/w5/vendor-overview-${width}.png`});
+  const box=await page.locator('#recordPanel').boundingBox();assert.ok(box.width>width*.7);await page.screenshot({animations:'disabled',path:`test-artifacts/w5/vendor-overview-${width}.png`});
   const head=await page.locator('#recordTitle').boundingBox();assert.ok(head.y>=box.y && head.y+head.height<box.y+box.height);
   assert.match(await page.locator('#recordBody').innerText(),/Loan programs|Introductions made|Suggested introductions/);
   assert.equal(await page.locator('[data-details-key="intro-demo-intro"] .entry-detail').isVisible(),false);
   await page.locator('[data-details-key="intro-demo-intro"] summary').click();assert.match(await page.locator('[data-details-key="intro-demo-intro"]').innerText(),/Original synthetic introduction entry/);
   await page.locator('[data-details-key="entry-demo-entry"] summary').click();assert.match(await page.locator('[data-details-key="entry-demo-entry"]').innerText(),/Original synthetic email/);
-  await page.screenshot({path:`test-artifacts/w5/vendor-detail-${width}.png`});
+  await page.screenshot({animations:'disabled',path:`test-artifacts/w5/vendor-detail-${width}.png`});
   await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="reason"]').fill('Synthetic reviewed exception');await page.locator('[name="tier"]').selectOption('Trial');
   await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForTimeout(80);assert.equal(await page.locator('[name="reason"]').inputValue(),'Synthetic reviewed exception');
   await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('.relationship-section').textContent.includes('Computed:'));
   assert.equal(h.writes,1);assert.match(await page.locator('.relationship-section').innerText(),/Trial.*Computed: Proven/s);
   await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').isVisible(),false);assert.equal(await page.locator('#appShell').evaluate(el=>el.inert),false);
-  await page.goto(origin+'/clients');await page.waitForSelector('.record-row');await page.screenshot({path:`test-artifacts/w5/clients-${width}.png`});assert.deepEqual(h.errors,[]);
+  await page.goto(origin+'/clients');await page.waitForSelector('.record-row');await page.screenshot({animations:'disabled',path:`test-artifacts/w5/clients-${width}.png`});assert.deepEqual(h.errors,[]);
 });
 test('W5 filters, traversal and autonomous refresh recover without losing search',async t=>{
   const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row');
@@ -68,7 +68,7 @@ test('W5 filters, traversal and autonomous refresh recover without losing search
 test('W5 reduced motion stops hover travel and pulse while keeping content visible',async t=>{
   const {page}=await open(t);await page.emulateMedia({reducedMotion:'reduce'});await page.goto(origin+'/vendors');await page.waitForSelector('.record-row');await page.locator('.record-row').first().hover();
   const style=await page.locator('.record-row').first().evaluate(el=>({animation:getComputedStyle(el).animationName,transform:getComputedStyle(el).transform,opacity:getComputedStyle(el).opacity}));assert.deepEqual(style,{animation:'none',transform:'none',opacity:'1'});
-  assert.equal(await page.locator('.business-hero').evaluate(el=>getComputedStyle(el,'::before').animationName),'none');await page.screenshot({path:'test-artifacts/w5/reduced-motion.png'});
+  assert.equal(await page.locator('.business-hero').evaluate(el=>getComputedStyle(el,'::before').animationName),'none');await page.screenshot({animations:'disabled',path:'test-artifacts/w5/reduced-motion.png'});
 });
 
 for(const mode of ['lost','rejected','uncertain','unknown200','unknownAck','unknownTool'])test(`W5 ${mode} override response is reconciled without replay`,async t=>{
