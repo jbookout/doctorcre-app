@@ -16,10 +16,10 @@ export function preserveBoardFocus({ board, document, paint, announce = () => {}
   const current = [...board.querySelectorAll('.kanban-card')]
     .find((item) => item.dataset.id === id);
   if (!current) {
-    board.focus();
+    board.focus({ preventScroll: true });
     announce('That deal is no longer in this board view. Focus moved to the board.');
     return;
   }
   const target = control === 'card' ? current : current.querySelector(`[data-${control}]`);
-  (target || current).focus();
+  (target || current).focus({ preventScroll: true });
 }

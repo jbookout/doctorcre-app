@@ -42,12 +42,12 @@
  * @type {readonly PipelineColumn[]}
  */
 export const COLUMNS = Object.freeze([
-  { slug: 'pending', value: 'On Deck', label: 'Pending' },
+  { slug: 'pending', value: 'On Deck', label: 'Prospective Client' },
   { slug: 'research', value: 'Research', label: 'Research' },
-  { slug: 'site_selection', value: 'Site selection', label: 'Site selection' },
-  { slug: 'negotiation', value: 'Negotiation', label: 'Negotiation' },
+  { slug: 'site_selection', value: 'Site selection', label: 'Site Selection' },
+  { slug: 'negotiation', value: 'Negotiation', label: 'Negotiating' },
   { slug: 'legal', value: 'Legal', label: 'Legal' },
-  { slug: 'due_diligence', value: 'Diligence', label: 'Due diligence' },
+  { slug: 'due_diligence', value: 'Diligence', label: 'Due Diligence' },
   { slug: 'closing', value: 'Closing', label: 'Closing' },
   { slug: 'closed', value: 'Closed', label: 'Closed' },
 ].map((column) => Object.freeze(column)));

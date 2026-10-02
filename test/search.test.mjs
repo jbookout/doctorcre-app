@@ -381,7 +381,7 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 /* ----------------------------------------------------------------------- B05-14 */
 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
-  assert.equal(routes.version, "1.17.0", "no new route: the Search tab lives on /business");
+  assert.equal(routes.version, "1.18.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
   assert.equal(contract.version, "1.38.0", "the current contract retains Search operations");
   assert.equal(contract.producer.source_commit, "f57eef02890e3642042fc5c14d1ce4e6ecf3c82e", "the producer pin includes the Codex checkpoint read");

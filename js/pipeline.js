@@ -30,7 +30,7 @@ import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
-import { mountEvidence } from './correspondence.js';
+import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
 import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
@@ -53,6 +53,7 @@ import {
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, orderColumn, presenceChip,
   recordPanelSections, tapMoveTargets, typeFilters,
 } from './pipeline-model.js';
+import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS, noteEntries } from './local-deals-model.js';
 import { uuidv4 } from './uuid.js';
 
 const POLL_MS = 1400;
@@ -80,6 +81,8 @@ const state = {
   feed: createFeedProgress(),
   receiptSignature: null,
   filter: 'all',
+  view: new URLSearchParams(globalThis.location?.search).get('view') === 'list' ? 'list' : 'board',
+  parkedOpen: false,
   /** Ids, never rows: a lifted card, a chosen column, an open panel, a move in hand. */
   lifted: null,
   target: null,
@@ -120,49 +123,53 @@ const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no d
 
 /* ------------------------------------------------------------------ painting */
 
+function autoHtml(deal) {
+  const move = automaticMove(deal);
+  return move ? `<div class="auto-move"><span>${esc(move.text)}</span><button class="btn btn-quiet" type="button" data-undo="${esc(move.eventId)}" aria-label="Undo phase change on ${esc(deal.name)}">Undo</button></div>` : '';
+}
 function cardHtml(deal) {
-  const label = columnLabel(deal.phase);
-  const chip = presenceChip(state.presence, deal.id, {
-    selfActor: state.selfActor, field: 'phase', actorLabel: actorName,
-  });
+  const attention = needsAttention(deal);
   const pending = pendingFieldWrite(state.fieldWrites, cellKey(deal.id, 'phase'));
-  return `<article class="kanban-card" data-id="${esc(deal.id)}" data-type="${esc(deal.type || 'other')}"
-    draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''}
-    aria-label="${esc(deal.name)}, ${esc(label)}. Press Enter to lift and move.">
+  return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(deal.name)}, ${esc(columnLabel(deal.phase))}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(deal.name)}</button></h4>
-    <div class="work-meta">
-      <span class="kanban-lane-label">${esc(deal.type || 'Deal')}</span>
-      <span class="owner"><span class="avatar" data-partner="${esc(deal.owner || '')}" aria-hidden="true">${esc(actorName(deal.owner).slice(0, 1))}</span><span>${esc(actorName(deal.owner))}</span></span>
-      ${deal.attention ? '<span class="pin" aria-label="Flagged for attention">★</span>' : ''}
-    </div>
-    <p class="small">${esc(noteText(deal.next_step) || 'No next step recorded')}</p>
-    ${chip ? `<p class="presence-chip">${esc(chip)}</p>` : ''}
-    <button class="btn card-move" type="button" data-move="${esc(deal.id)}" aria-label="Move ${esc(deal.name)} to another phase">Move</button>
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" aria-label="Needs attention"></span>' : ''}</div>
+    <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p>
+    ${autoHtml(deal)}
   </article>`;
+}
+function rowHtml(deal) {
+  return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
+    <h4>${esc(deal.name)}</h4><span>${esc(columnLabel(deal.phase))}</span>
+    <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p><span>${esc(actorName(deal.owner))}</span>${autoHtml(deal)}</article>`;
+}
+function parkedHtml(deal) {
+  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(deal.name)}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p><button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
 function renderBoard() {
   const board = $('kanban');
   if (!board) return;
-  const rows = filterDeals([...state.deals.values()], state.filter);
-  const grouped = groupByColumn(rows);
+  const rows = localDeals([...state.deals.values()], state.filter);
+  const active = rows.filter(d => d.operating_state !== 'parked');
+  const parked = rows.filter(d => d.operating_state === 'parked');
+  const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
   preserveBoardFocus({ board, document, announce, paint() {
-    board.innerHTML = grouped.columns.map((column) => {
-      const cards = orderColumn(column.deals);
+    board.innerHTML = state.view === 'list' ? `<div class="deal-list">${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
+      const cards = urgencyOrder(column.deals);
       const chosen = state.lifted && state.target === column.slug;
       return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
         aria-label="${esc(column.label)}, ${cards.length} cards">
-        <h3>${esc(column.label)}<small>${cards.length}</small></h3>
+        <h3 title="${esc(PHASE_TRIGGERS[column.slug])}">${esc(column.label)}<small>${cards.length}</small></h3>
         ${cards.map(cardHtml).join('')}
       </section>`;
-    }).join('');
+    }).join('') + `<details class="parked-lane"${state.parkedOpen ? ' open' : ''}><summary>Parked · ${parked.length}</summary><div class="parked-cards">${parked.map(parkedHtml).join('')}</div></details>`;
   } });
   const note = $('boardNote');
   if (note) {
     note.hidden = state.unplaced === 0;
     note.textContent = state.unplaced
-      ? `${state.unplaced} record(s) hold a phase this board has no column for; they are not shown and nothing was guessed about them.`
+      ? `${state.unplaced} deals need a phase`
       : '';
   }
   renderPendingWrites();
@@ -171,7 +178,7 @@ function renderBoard() {
 function renderChips() {
   const bar = $('boardChips');
   if (!bar) return;
-  const filters = typeFilters([...state.deals.values()]);
+  const filters = OWNER_FILTERS;
   if (!filters.some((entry) => entry.value === state.filter)) state.filter = 'all';
   bar.innerHTML = filters.map((entry) => `<button class="chip" type="button" data-filter="${esc(entry.value)}"
     aria-pressed="${String(entry.value === state.filter)}">${esc(entry.label)}</button>`).join('');
@@ -182,8 +189,8 @@ function renderStatus(status) {
   const live = state.mode === 'live';
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
-    : status.state === SYNC_STATES.RECONNECTING ? (live ? 'Reconnecting' : 'Fixture unavailable')
-    : status.state === SYNC_STATES.READY ? (live ? 'Current' : 'Fixture ready')
+    : status.state === SYNC_STATES.RECONNECTING ? 'Reconnecting'
+    : status.state === SYNC_STATES.READY ? 'Current'
     : 'Updating…';
   const orbState = status.state === SYNC_STATES.READY ? 'healthy'
     : status.state === SYNC_STATES.ERROR || status.state === SYNC_STATES.OFFLINE ? 'urgent'
@@ -196,8 +203,8 @@ function renderStatus(status) {
   const asOf = $('boardAsOf');
   if (asOf) {
     asOf.textContent = status.last_read_at
-      ? `${state.deals.size} record(s) from the last board read · ${deploymentIdentity(state.mode).detail}`
-      : `Updating… · ${deploymentIdentity(state.mode).detail}`;
+      ? `Updated ${new Date(status.last_read_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true})}`
+      : 'Updating…';
   }
 }
 
@@ -309,13 +316,14 @@ function confirmLocalWrite(dealId, patch) {
  * makes a retry a replay at the server rather than a second write colliding
  * with the first.
  */
-async function sendPhaseWrite(dealId, value, extra = null) {
-  const cell = cellKey(dealId, 'phase');
+async function sendPhaseWrite(dealId, value, extra = null) { return sendFieldWrite(dealId, 'phase', value, extra); }
+async function sendFieldWrite(dealId, field, value, extra = null) {
+  const cell = cellKey(dealId, field);
   const result = await performFieldWrite({
     deal: dealId,
-    field: 'phase',
+    field,
     value,
-    extra,
+    extra: {intent_origin:'manual_ui', ...(extra || {})},
     base: state.fieldBase.get(cell)?.id || null,
     baseNow: () => state.fieldBase.get(cell)?.id || null,
     getState: () => state.fieldWrites,
@@ -485,18 +493,19 @@ async function resumeMoveFollowUps(cell) {
 async function retryFieldWrite(cell) {
   const entry = pendingFieldWrite(state.fieldWrites, cell);
   if (!entry) { renderBoard(); return; }
-  const { deal, value } = entry.request;
+  const { deal, field, value } = entry.request;
   const row = state.deals.get(deal);
-  const result = await sendPhaseWrite(deal, value);
-  const subject = `${fieldLabel('phase')} on ${row?.name || 'this record'}`;
+  const result = await sendFieldWrite(deal, field, value);
+  const subject = `${fieldLabel(field)} on ${row?.name || 'this deal'}`;
   dock.record(cell, {
-    summary: `${row?.name || 'This record'} → ${columnLabel(value)}`,
+    summary: `${row?.name || 'Deal'} · ${fieldLabel(field)}`,
     status: result.status, reason: fieldWriteMessage(result, subject) || null,
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.status === 'ok' && !result.superseded) {
-    confirmLocalWrite(deal, { phase: value });
-    await resumeMoveFollowUps(cell);
+    confirmLocalWrite(deal, fieldPatch(field, value));
+    if (field === 'phase') await resumeMoveFollowUps(cell);
+    await refreshPanel();
   }
   renderBoard();
   const message = fieldWriteMessage(result, subject);
@@ -514,6 +523,7 @@ async function runUndo(eventId) {
   if (!result.started) return;
   if (result.outcome.status === 'succeeded') {
     state.boardSync.requestRefresh('after-undo');
+    await refreshPanel();
     showToast('Change undone');
     return;
   }
@@ -527,7 +537,7 @@ function openCompletion(intent) {
   const dialog = $('completionDialog');
   if (!dialog) return;
   $('completionTitle').textContent = moveTitle(intent);
-  $('completionFrom').textContent = `Cancel leaves it in ${intent.from_label}.`;
+
   const isClosed = intent.to === CLOSED_SLUG;
   const closed = $('completionClosedNote');
   if (closed) {
@@ -626,56 +636,103 @@ async function resolveConflictChoice() {
 
 let disposeEvidence = null;
 let panelReadSequence = 0;
-async function openPanel(dealId, trigger) {
-  const sequence = ++panelReadSequence;
-  disposeEvidence?.();
-  const panel = $('recordPanel');
-  if (!panel) return;
-  state.panelDeal = dealId;
-  state.panelDetail = null;
-  state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
-  panel.hidden = false;
-  $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Record';
-  $('panelBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
-  setContextOpenVisible(false);
-  $('panelClose')?.focus();
-  let detail = null;
-  try {
-    detail = await state.client.getDeal(dealId);
-  } catch {
-    if (sequence !== panelReadSequence || state.panelDeal !== dealId) return;
-    $('panelBody').innerHTML = '<div class="state-block" data-state="offline"><h3>This record could not be read. Nothing here has been inferred.</h3></div>';
-    return;
-  }
-  // The panel may have moved on while the read was open; a late answer never
-  // paints over a record the person has since opened.
-  if (state.panelDeal !== dealId) return;
-  if (sequence !== panelReadSequence) return;
-  state.panelDetail = detail;
-  $('panelTitle').textContent = detail.deal?.name || 'Record';
-  $('panelBody').innerHTML = recordPanelSections(detail, { actorLabel: actorName, dateLabel: dateWords })
-    .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('') + '<div id="panelEvidence"></div>';
-  disposeEvidence = mountEvidence($('panelEvidence'), { client: state.client, detail });
-  // V5-UX-B04: the context drawer reuses this same read, so it opens only
-  // once there is a detail to open it on.
-  setContextOpenVisible(true);
+function detailHtml(detail) {
+  const d = detail.deal;
+  const entries = noteEntries(detail);
+  const parked = d.operating_state === 'parked';
+  return `<div class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${COLUMNS.map(c => `<span${c.value === d.phase ? ' aria-current="step"' : ''} title="${esc(PHASE_TRIGGERS[c.slug])}">${esc(c.label)}</span>`).join('')}</div>
+    <div class="detail-grid"><section>
+      <div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div>
+      <h3>Next step</h3><p class="detail-next">${esc(noteText(d.next_step) || 'Next step pending')}</p>
+      <form id="detailNextForm" class="detail-controls"><label>Next step<textarea name="text" rows="3">${esc(noteText(d.next_step))}</textarea></label><label>Due date<input name="date" type="date" value="${esc(d.next_date || '')}"></label><button class="btn" type="submit">Save next step</button></form>
+      <div data-detail-read="dates"><h3>Dates</h3>${(detail.critical_dates || []).map(e => `<p>${esc(e.label || e.kind)} · ${esc(dateWords(e.date || e.due_on))}</p>`).join('') || '<p>None scheduled</p>'}</div>
+      <button class="btn" type="button" data-jev-deal="${esc(d.id)}">Deal outlook</button><p data-jev-result></p><div data-detail-read="people"><h3>People</h3>${(detail.participants || []).map(p => `<p>${esc(p.name || actorName(p.actor))}</p>`).join('')}</div>
+      <div data-detail-read="automatic">${autoHtml(d)}</div>
+      <div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(d.parking_note || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div>
+    </section><section><h3>Notes &amp; activity</h3>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}"><b>${esc(e.kind)}</b>${e.when ? `<time> · ${esc(dateWords(e.when))}</time>` : ''}<p>${esc(e.summary)}</p><details><summary>Details</summary><p class="note-original">${esc(e.original)}</p></details></article>`).join('') || '<p>No notes yet</p>'}</section></div><div id="panelEvidence"></div>`;
 }
-
-function closePanel() {
-  const panel = $('recordPanel');
-  if (!panel || panel.hidden) return;
-  if (state.panelPinned) return;
-  ++panelReadSequence;
+async function refreshPanel() {
+  const id = state.panelDeal;
+  if (!id) return;
+  const seq = ++panelReadSequence;
+  try {
+    const detail = await state.client.getDeal(id);
+    if (state.panelDeal !== id || seq !== panelReadSequence) return;
+    state.panelDetail = detail;
+    $('recordPanel').dataset.updated = new Date().toISOString();
+    // A poll preserves drafts, expanded entries and the dialog scroll position.
+    if (!$('panelBody').querySelector('.detail-grid')) paintPanel(detail);
+    else {
+      if (document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
+      if (document.activeElement !== $('detailOwner')) $('detailOwner').value = detail.deal.owner || '';
+      const next = $('panelBody').querySelector('.detail-next');
+      if (next) next.textContent = noteText(detail.deal.next_step) || 'Next step pending';
+      $('panelTitle').textContent = detail.deal.name;
+      const template = document.createElement('div'); template.innerHTML = detailHtml(detail);
+      for (const fresh of template.querySelectorAll('[data-detail-read]')) {
+        const current = $('panelBody').querySelector(`[data-detail-read="${fresh.dataset.detailRead}"]`);
+        if (!current) continue;
+        if (fresh.dataset.detailRead === 'parking' && current.dataset.parked === 'false' && fresh.dataset.parked === 'false') continue;
+        if (current.innerHTML !== fresh.innerHTML) current.replaceWith(fresh);
+      }
+      const notes = $('panelBody').querySelectorAll('.detail-grid > section')[1];
+      const signature = JSON.stringify(noteEntries(detail));
+      if (notes && notes.dataset.signature !== signature) {
+        const expanded = new Set([...notes.querySelectorAll('details[open]')].map(n => n.closest('.deal-note')?.dataset.id));
+        const replacement = template.querySelectorAll('.detail-grid > section')[1];
+        notes.innerHTML = replacement.innerHTML; notes.dataset.signature = signature;
+        notes.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
+      }
+      const evidence = await loadEvidence(state.client, detail);
+      if (state.panelDeal !== id || seq !== panelReadSequence) return;
+      const root = $('panelEvidence');
+      const html = renderEvidence(evidence);
+      const evidenceTemplate = document.createElement('div'); evidenceTemplate.innerHTML = html;
+      if (root.innerHTML !== evidenceTemplate.innerHTML) {
+        const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
+        disposeEvidence?.(); disposeEvidence = null;
+        root.innerHTML = html;
+        root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
+      }
+    }
+  } catch { $('boardStatusLabel').textContent = 'Reconnecting'; }
+}
+function paintPanel(detail) {
+  $('panelTitle').textContent = detail.deal.name;
+  $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.();
-  disposeEvidence = null;
-  panel.hidden = true;
-  const returnTo = state.panelReturnTo;
-  state.panelDeal = null;
-  state.panelDetail = null;
-  state.panelReturnTo = null;
-  setContextOpenVisible(false);
-  if (returnTo) document.querySelector(`.kanban-card[data-id="${CSS.escape(returnTo)}"]`)?.focus();
+  disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
+  $('recordPanel').dataset.updated = new Date().toISOString();
+  $('panelBody').querySelectorAll('.detail-grid > section')[1].dataset.signature = JSON.stringify(noteEntries(detail));
+}
+async function openPanel(dealId, trigger) {
+  const panel = $('recordPanel');
+  state.panelDeal = dealId; state.panelDetail = null;
+  state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
+  $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
+  $('panelBody').innerHTML = '<p>Updating…</p>';
+  if (!panel.open) panel.showModal();
+  await refreshPanel();
+}
+function closePanel() {
+  ++panelReadSequence;
+  const id = state.panelReturnTo;
+  disposeEvidence?.(); disposeEvidence=null;
+  $('recordPanel').close(); state.panelDeal = null; state.panelDetail = null;
+  if (id) document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus({preventScroll:true});
+}
+function fieldPatch(field, value) {
+  return field === 'operating_state' ? {operating_state:value.state, parking_note:value.note || null, parking_reason:value.reason || null} : {[field]:value};
+}
+async function setOperatingState(id, value) {
+  const result = await sendFieldWrite(id, 'operating_state', value);
+  if (result.status === 'ok') {
+    confirmLocalWrite(id, fieldPatch('operating_state', value));
+    showToast(value.state === 'active' ? 'Deal revived' : 'Deal parked');
+    if (state.panelDeal === id) closePanel();
+  } else if (result.conflict) showConflict(result.conflict);
+  else showToast('Change not confirmed');
+  renderPendingWrites();
 }
 
 function setContextOpenVisible(visible) {
@@ -789,6 +846,7 @@ function wireBoard() {
     // Buttons own their Enter/Space action; the card's lift keys apply only to
     // the card itself, even while a keyboard move is already lifted.
     if (event.target.closest('button')) return;
+    if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPanel(card.dataset.id, card); } return; }
     const id = card.dataset.id;
     const deal = state.deals.get(id);
     if (!deal) return;
@@ -845,9 +903,11 @@ function wire() {
     say(`Showing ${state.filter === 'all' ? 'every deal type' : state.filter} on the board.`);
   });
 
-  document.addEventListener('click', (event) => {
-    const move = event.target.closest('button[data-move]');
-    if (move) { openMoveChooser(move.dataset.move); return; }
+  document.addEventListener('click', async (event) => {
+    const outlook = event.target.closest('[data-jev-deal]');
+    if(outlook) { const id=state.panelDeal; outlook.disabled=true; try { const answer=await state.client.getJevDealReading(id); if(state.panelDeal===id && outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=answer.movement_label || 'Outlook unavailable'; } catch { if(outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent='Outlook unavailable'; } finally { if(outlook.isConnected) outlook.disabled=false; } return; }
+    const revive = event.target.closest('button[data-revive]');
+    if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
     if (open) { openPanel(open.dataset.open, open); return; }
     const retry = event.target.closest('button[data-retry-write]');
@@ -855,6 +915,8 @@ function wire() {
     const undo = event.target.closest('button[data-undo]');
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
+    const card = event.target.closest('.kanban-card');
+    if (card && !event.target.closest('button')) { openPanel(card.dataset.id, card); return; }
     if (openDeal) {
       $('receiptsDialog')?.close();
       openPanel(openDeal.dataset.openDeal, null);
@@ -871,6 +933,7 @@ function wire() {
   });
   $('moveCancel')?.addEventListener('click', () => $('moveDialog')?.close());
 
+  $('recordPanel')?.addEventListener('cancel', event => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', () => { state.panelPinned = false; closePanel(); });
   $('panelPin')?.addEventListener('click', () => {
     state.panelPinned = !state.panelPinned;
@@ -925,8 +988,38 @@ function wire() {
   $('conflictForm')?.addEventListener('submit', (event) => { event.preventDefault(); resolveConflictChoice(); });
 
   $('retryRead')?.addEventListener('click', () => loadBoard());
+  const changeView = view => {
+    state.view = view;
+    const url = new URL(location.href); url.searchParams.set('view',view); history.replaceState({},'',url);
+    $('boardView').setAttribute('aria-pressed', String(view === 'board'));
+    $('listView').setAttribute('aria-pressed', String(view === 'list')); renderBoard();
+  };
+  $('boardView').addEventListener('click', () => changeView('board'));
+  $('listView').addEventListener('click', () => changeView('list'));
+  $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
+  $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
+  $('panelBody').addEventListener('change', async e => {
+    const id = state.panelDeal;
+    if (e.target.id === 'detailPhase') {
+      const intent = moveIntent(state.deals.get(id), e.target.value);
+      if (intent) { const result = await sendPhaseWrite(id,intent.value); if(result.status === 'ok' && !result.superseded) { confirmLocalWrite(id,{phase:result.request?.value ?? intent.value}); await refreshPanel(); } else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Phase') || 'Change not confirmed'); renderPendingWrites(); }
+    }
+    if (e.target.id === 'detailOwner') { const result = await sendFieldWrite(id,'owner',e.target.value || null); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request?.value ?? (e.target.value || null)}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed'); renderPendingWrites(); }
+  });
+  $('panelBody').addEventListener('submit', async e => {
+    e.preventDefault(); const id=state.panelDeal; const form = new FormData(e.target);
+    if (e.target.id === 'detailParkForm') await setOperatingState(id,{state:'parked',reason:'other',note:String(form.get('reason'))});
+    if (e.target.id === 'detailNextForm') {
+      const step = {verb:'set-next-step', args:{deal:id,text:String(form.get('text')),next_date:form.get('date') || null},summary:'Next step saved'};
+      const button = e.target.querySelector('button');
+      if (button.disabled) return;
+      button.disabled = true;
+      const result = await runFollowUp('detail-next-'+id+'-'+uuidv4(),step);
+      button.disabled = false; state.boardSync.requestRefresh('next-step'); await refreshPanel();
+    }
+  });
 
-  globalThis.addEventListener?.('online', () => state.boardSync.setOnline(true));
+  globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); refreshPanel(); });
   globalThis.addEventListener?.('offline', () => state.boardSync.setOnline(false));
 }
 
@@ -958,7 +1051,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock('Deals');
+  mountDocDock('Local Deals');
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
@@ -967,14 +1060,17 @@ async function boot() {
   state.mode = state.client.mode;
   state.selfActor = state.client.selfActor || null;
   state.boardSync = createBoardSync({
-    readBoard: () => state.client.getBoard({ workspace: 'all' }),
+    readBoard: () => state.client.getBoard({ workspace: 'team' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
     // Only a snapshot that is still current reaches this callback, and it
     // already carries any value a confirmed local write is holding.
     applyBoard: (board) => { applyBoardSnapshot(board); },
     onStatus: renderStatus,
   });
+  $('boardView').setAttribute('aria-pressed',String(state.view === 'board'));
+  $('listView').setAttribute('aria-pressed',String(state.view === 'list'));
   await loadBoard();
+  setInterval(() => { refreshPanel(); }, BOARD_REFRESH_MS);
   setInterval(() => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); }, POLL_MS);
   setInterval(() => state.boardSync.requestRefresh('periodic'), BOARD_REFRESH_MS);
 }

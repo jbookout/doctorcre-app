@@ -327,11 +327,12 @@ export const PHASES = [
 
 // The display word for each wire phase. The wire words above are what the
 // record layer, the fixture validation and the change feed all speak, so they
-// never move; these are the words a human reads. Six are identical; two are
-// not, and those two are the reason this map exists.
+// never move; this map owns the words a human reads.
 export const PHASE_LABEL = {
-  'On Deck': 'Pending',
-  Diligence: 'Due diligence',
+  'On Deck': 'Prospective Client',
+  Diligence: 'Due Diligence',
+  'Site selection': 'Site Selection',
+  Negotiation: 'Negotiating',
 };
 
 /** The display word for a phase wire value; the value itself when unmapped. */

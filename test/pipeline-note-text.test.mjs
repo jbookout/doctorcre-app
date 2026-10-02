@@ -60,5 +60,5 @@ test("the record panel falls back to plain words when the note carries no senten
 });
 
 test("the Kanban card paints the normalized sentence", () => {
-  assert.match(pageJs, /esc\(noteText\(deal\.next_step\) \|\| 'No next step recorded'\)/);
+  assert.match(pageJs, /esc\(concise\(deal\.next_step\) \|\| 'Next step pending'\)/);
 });
