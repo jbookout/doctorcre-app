@@ -25,6 +25,8 @@ export function mountAppLayout(root, host, pathname) {
   status.className = 'app-layout-status';
   status.innerHTML = '<span><time id="appSyncTime" title="Last sync">—</time><button type="button" id="appSyncRefresh" aria-label="Refresh workspace" title="Refresh">↻</button></span><span title="Last new-lead search">⌕ <time id="appLeadSearchTime">—</time></span><span id="appConnection" class="app-layout-health" data-state="unknown" role="img" aria-label="Connection unknown" title="Connection unknown"></span><div id="appStatusSlot" hidden></div>';
   const main = layout.querySelector('#appMainSlot');
+  // Modals and fixed feedback belong to the viewport, outside page regions.
+  root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
   // Lift declarative page slots before putting the remaining page into main.
   for (const node of [...root.querySelectorAll('[data-layout-slot]')]) {
     const slot = node.dataset.layoutSlot;
@@ -33,7 +35,7 @@ export function mountAppLayout(root, host, pathname) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock')) continue;
+    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) { node.hidden = true; status.querySelector('#appStatusSlot').append(node); }
     else main.append(node);
   }

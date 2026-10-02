@@ -1,3 +1,4 @@
+import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
@@ -1308,6 +1309,7 @@ export async function createFixtureClient(opts = {}) {
   }
 
   const client = {
+    async getRelationshipNetwork() { return relationshipNetworkFixture(); },
     mode: /** @type {const} */ ('fixture'),
     selfActor,
 

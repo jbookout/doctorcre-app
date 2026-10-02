@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const NOW = new Date('2026-10-01T15:00:00Z');
@@ -45,6 +46,7 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
       try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
+    if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
     if (url.pathname === '/pipeline/changes') {
       feedReads++;
@@ -222,11 +224,11 @@ test('R7 linked Deals detail refusal or timeout cannot prevent board and feed po
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
+    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
+      && request.postDataJSON()?.params?.name === 'get-deal-room');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
     await page.locator('#rows .deal-link').first().waitFor();
     await firstFeed;
-    const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
-      && request.postDataJSON()?.params?.name === 'get-deal-room');
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
