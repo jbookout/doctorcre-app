@@ -63,9 +63,12 @@ export function createLiveClient(opts = {}) {
       // written for whoever maintains the verb — it is not a statement about this
       // deal, and this page prints `error.message` at partners. It travels on the
       // error for the console and for a bug report, and no surface renders it.
-      const body = await res.text().catch(() => '');
       const error = new Error(`live ${verb} -> HTTP ${res.status}`);
       error.status = res.status;
+      // Authentication is decided by the headers; a stalled diagnostic body
+      // must never hide that decision behind a generic read timeout.
+      if (res.status === 401 || res.status === 403) throw error;
+      const body = await res.text().catch(() => '');
       error.body = body.slice(0, 500);
       throw error;
     }
@@ -79,23 +82,6 @@ export function createLiveClient(opts = {}) {
       throw err;
     }
     return payload;
-  }
-
-  // Progress reads must settle before the next 15-second poll. Bound the whole
-  // response (including its body), and cancel the underlying fetch on expiry.
-  async function progressRead(verb, args) {
-    const controller = new AbortController();
-    let timer;
-    const deadline = new Promise((_, reject) => {
-      timer = setTimeout(() => {
-        const error = new Error(`live ${verb} timed out`);
-        error.code = 'progress_read_timeout';
-        reject(error);
-        controller.abort();
-      }, 10000);
-    });
-    try { return await Promise.race([rpc(verb, args, controller.signal), deadline]); }
-    finally { clearTimeout(timer); }
   }
 
   async function write(verb, args) {
@@ -160,6 +146,12 @@ export function createLiveClient(opts = {}) {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
     async readAssuranceHealth(args) { return rpc('read-assurance-health', assuranceHealthRequest(args)); },
+    async getRelationshipNetwork({ signal } = {}) {
+      const response = await fetchReadImpl('/api/v1/business/relationships?contract=relationship-network.v1', {signal,credentials:'same-origin',cache:'no-store',headers:{accept:'application/json'}});
+      if (!response.ok) throw Object.assign(new Error('Relationships unavailable'), {status:response.status});
+      return response.json();
+    },
+    async updateVendorTrust(args) { return write("update-vendor", args); },
     async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
     async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
 
@@ -479,7 +471,7 @@ export function createLiveClient(opts = {}) {
     // payload the command kernel classifies; nothing here turns one into an
     // empty answer, because an empty answer would paint as "no evidence" rather
     // than "unknown".
-    async engineeringPassport(args = {}) { return rpc('engineering-passport', args); },
+    async engineeringPassport(args = {}, { signal } = {}) { return rpc('engineering-passport', args, signal); },
     async readPortfolio(args = {}) { return rpc('read-portfolio', args); },
     async workRequestCard(args = {}, { signal } = {}) { return rpc('work-request-card', args, signal); },
     async declineWorkRequest(args) { return write('decline-work-request', args); },
@@ -563,9 +555,9 @@ export function createLiveClient(opts = {}) {
     // through `rpc` because they carry no idempotency key, and there is no
     // matching write. Open is local navigation for a checkpoint-proved native
     // target; no verb resumes, messages, or takes over a session.
-    async sessionIdentity(args = {}) { return rpc('read-session-identity', args); },
+    async sessionIdentity(args = {}, { signal } = {}) { return rpc('read-session-identity', args, signal); },
     async codexSessions(_args = {}, { signal } = {}) { return rpc('list-my-codex-sessions', {}, signal); },
-    async dispatchHistory(args) { return rpc('read-dispatch-history', args); },
+    async dispatchHistory(args, { signal } = {}) { return rpc('read-dispatch-history', args, signal); },
 
     // ------------------------------- Model Room assignments and turns (C12)
     // TWO READS, passed through untouched, and neither names an actor either:
@@ -592,7 +584,7 @@ export function createLiveClient(opts = {}) {
     // (actor.human !== true is refused there, with no sponsored-agent route
     // at all); this client passes no actor field of its own.
     async answerWorkRequestForJoe(args) { return write('answer-work-request-for-joe', args); },
-    async unfinishedWork(args = {}) { return progressRead('unfinished-work', args); },
+    async unfinishedWork(args = {}, { signal } = {}) { return rpc('unfinished-work', args, signal); },
     async triageSystemWork(verb, args) {
       const allowed = new Set(['close-loop','update-loop','decline-work-request','review-and-triage',
         'cancel-capability-session','triage-incident','cancel-workflow-cutover-plan',
@@ -601,8 +593,8 @@ export function createLiveClient(opts = {}) {
       if (!allowed.has(verb)) throw new Error('Unsupported system work action.');
       return write(verb, args);
     },
-    async listProgressBoards() { return progressRead('list-progress-boards', {}); },
-    async readProgressBoard(args) { return progressRead('read-progress-board', args); },
+    async listProgressBoards(_args = {}, { signal } = {}) { return rpc('list-progress-boards', {}, signal); },
+    async readProgressBoard(args, { signal } = {}) { return rpc('read-progress-board', args, signal); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 

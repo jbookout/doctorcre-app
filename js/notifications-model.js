@@ -105,16 +105,17 @@ export const ACKNOWLEDGE_SCOPE =
  * which is what stops the two drifting apart.
  */
 export const APP_ROUTE_PATHS = Object.freeze([
-  "/", "/control-room", "/control-room/progress", "/control-room/agents/queue", "/deals", "/leads", "/clients", "/vendors",
-  "/calendar", "/ideas-events", "/work-requests", "/agent-room", "/tours", "/share", "/design-lab",
-  "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work", "/leases",
+  "/", "/control-room", "/control-room/progress", "/control-room/progress/work", "/deals", "/leads", "/clients", "/vendors",
+  "/calendar", "/ideas-events", "/work-requests", "/tours", "/share", "/design-lab",
+  "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work", "/leases", "/relationships",
 ]);
 
 const LEGACY_ROUTE_HOMES = Object.freeze({
   "/tasks": "/", "/work": "/", "/tasks.html": "/",
-  "/progress-board": "/control-room/progress", "/workspace": "/", "/queue.html": "/control-room/agents/queue",
+  "/progress-board": "/control-room/progress", "/workspace": "/", "/queue.html": "/control-room/progress/work?view=tasks",
+  "/control-room/agents/queue": "/control-room/progress/work?view=tasks", "/agent-room": "/control-room/progress/work?view=wire",
   "/pipeline": "/deals?view=board", "/business": "/", "/ideas": "/ideas-events",
-  "/system-work.html": "/work-requests", "/room.html": "/agent-room", "/design": "/design-lab",
+  "/system-work.html": "/work-requests", "/room.html": "/control-room/progress/work?view=wire", "/design": "/design-lab",
   "/design/business": "/design-lab?reference=business", "/design/operations": "/design-lab?reference=operations",
   "/work-inventory": "/all-work", "/notifications": "/updates", "/conversations": "/doc-chats",
 });

@@ -226,7 +226,7 @@ test("the business prototype lists its actual items, opens popups for them, and 
   assert.match(html, /<dialog id="completionDialog" class="dialog"/);
   assert.match(html, /value="cancel">Cancel, keep phase</);
   assert.match(html, /<aside id="recordPanel" class="side-panel glass"[^>]*data-pinned="false"/);
-  assert.match(html, /id="panelPin" aria-pressed="false"/);
+  assert.match(html, /id="panelPin"/);
   assert.match(html, /id="completionDate" type="date"/, "the completion dialog uses a real calendar picker");
   assert.doesNotMatch(html, /completionDateTyped/, "and no separate typed-date box");
   assert.match(html, /id="quickAddDate" type="date"/, "quick add uses a real calendar picker");

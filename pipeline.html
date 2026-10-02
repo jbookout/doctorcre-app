@@ -30,8 +30,8 @@
   </div>
 
   <main id="main" class="shell">
-    <section class="card glass" aria-labelledby="pageTitle">
-      <div data-layout-slot="sidebar" class="hero">
+    <section data-layout-slot="sidebar" class="card glass" aria-labelledby="pageTitle">
+      <div class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="boardOrb" aria-hidden="true"></span> Pipeline</p>
           <h1 id="pageTitle">Deals</h1>
@@ -45,7 +45,7 @@
       <div data-layout-slot="tabs" class="page-views" role="group" aria-label="Deal view"><a href="/deals">List</a><span class="deal-page-view-current" aria-current="page">Board</span></div>
       <div class="chip-bar">
         <div class="chip-bar" id="boardChips" aria-label="Deal type filters"></div>
-        <button class="btn" type="button" id="receiptsOpen" aria-haspopup="dialog">Recent changes <span id="receiptsCount">0</span></button>
+        <button class="btn" type="button" id="receiptsOpen" aria-controls="appToday">Recent changes <span id="receiptsCount">0</span></button>
         <button class="btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       </div>
     </section>
@@ -60,11 +60,10 @@
 
     <div class="pipeline-layout">
       <div class="kanban" id="kanban" aria-label="Deals by phase" tabindex="-1"></div>
-      <dialog id="recordPanel" class="side-panel glass" aria-labelledby="panelTitle" data-pinned="false" hidden>
+      <dialog id="recordPanel" class="record-popup glass" aria-labelledby="panelTitle" hidden>
         <div class="panel-head">
           <div><p class="eyebrow">Record</p><h2 id="panelTitle">Record</h2></div>
           <div class="row-wrap">
-            <button class="btn icon-btn" type="button" id="panelPin" aria-pressed="false" aria-label="Pin this panel">📌</button>
             <button class="btn icon-btn" type="button" id="panelClose" aria-label="Close record panel">×</button>
           </div>
         </div>

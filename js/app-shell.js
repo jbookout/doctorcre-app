@@ -3,7 +3,7 @@ import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 // One navigation source for every DoctorCRE route. Page scripts own their local
-// controls; this component owns only the app-wide destinations and phone menu.
+// controls; this module owns the shared rail and layout.
 export const navigationItems = Object.freeze([
   { label: "Home", href: "/" },
   { label: "Leads", href: "/leads" },
@@ -11,6 +11,7 @@ export const navigationItems = Object.freeze([
   { label: "Local Deals", href: "/deals" },
   { label: "Vendors", href: "/vendors" },
   { label: "Control Room", href: "/control-room" },
+  { label: "Relationships", href: "/relationships", group: "Workspace" },
   { label: "Clients", href: "/clients", group: "Workspace" },
   { label: "Lease radar", href: "/leases", group: "Workspace" },
   { label: "Ideas", href: "/ideas-events?tab=ideas", group: "Workspace" },
@@ -21,8 +22,7 @@ export const navigationItems = Object.freeze([
   { label: "Work Requests", href: "/work-requests", group: "Operations" },
   { label: "All Work", href: "/all-work", group: "Operations" },
   { label: "Incidents", href: "/incidents", group: "Operations" },
-  { label: "Agent Room", href: "/agent-room", group: "Operations" },
-  { label: "Agent Queue", href: "/control-room/agents/queue", group: "Operations" },
+  { label: "Project activity", href: "/control-room/progress/work", group: "Operations" },
   { label: "Design Lab", href: "/design-lab", group: "Reference" },
   { label: "Status", href: "/status", group: "Reference" },
 ]);
@@ -30,9 +30,9 @@ export const navigationItems = Object.freeze([
 const sectionForRoute = {
   "/tasks": "/", "/work": "/", "/doc-chats/work": "/doc-chats",
   "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
-  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room",
-  "/control-room/agents/queue": "/control-room",
-  "/ideas": "/ideas-events?tab=ideas", "/system-work.html": "/work-requests", "/room.html": "/agent-room",
+  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room/progress/work",
+  "/control-room/agents/queue": "/control-room/progress/work", "/agent-room": "/control-room/progress/work",
+  "/ideas": "/ideas-events?tab=ideas", "/system-work.html": "/work-requests", "/room.html": "/control-room/progress/work",
   "/work-inventory": "/all-work", "/design": "/design-lab",
   "/design/business": "/design-lab", "/design/operations": "/design-lab",
   "/notifications": "/updates", "/conversations": "/doc-chats",
@@ -74,9 +74,9 @@ export function appShellMarkup(pathname, base = "", search = "") {
         <circle cx="7" cy="21" r="3"/><circle cx="22" cy="12" r="3"/><circle cx="31" cy="12" r="3"/><circle cx="22" cy="30" r="3"/><circle cx="31" cy="30" r="3"/>
       </svg><span class="app-shell-brand-name">Doctor<span class="app-shell-brand-accent">CRE</span></span>
     </a>
-    <details class="app-shell-menu"><summary aria-label="Navigation menu"><span class="app-shell-menu-label">Menu</span><span class="app-shell-menu-icon" aria-hidden="true"></span></summary>
+    <div class="app-shell-menu">
       <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false" aria-label="More" title="More"><span aria-hidden="true">•••</span><span class="app-shell-nav-label">More</span></button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
-    </details>
+    </div>
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">
       <button class="app-shell-control" type="button" data-pref="theme" data-on="dark" data-off="light" aria-pressed="true" aria-label="Dark mode" title="Dark mode"><span aria-hidden="true">☾</span></button>
@@ -104,15 +104,10 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (typeof mountAppLayout === "function" && !base && pathname !== "/share") mountAppLayout(root, host, pathname);
+  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);
   else root.body.classList.add("report-shell");
-  const menu = host.querySelector(".app-shell-menu");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");
-  const phone = globalThis.matchMedia?.("(max-width: 900px)");
-  const setMode = () => { menu.open = true; moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); };
-  setMode();
-  phone?.addEventListener?.("change", setMode);
   moreButton.addEventListener("click", () => {
     moreList.hidden = !moreList.hidden;
     moreButton.setAttribute("aria-expanded", String(!moreList.hidden));

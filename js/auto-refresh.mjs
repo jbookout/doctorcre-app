@@ -2,11 +2,11 @@
 // Page callbacks own request epochs and preserve their local drafts.
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
-export function mountAutoRefresh({ document, window, refresh, resumeRefresh = refresh, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
+export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
-  let activeOperation = null, queuedResume = null;
+  let queuedResume = null;
   let disposed = false;
   let controller = null;
   const schedule = () => {
@@ -18,18 +18,18 @@ export function mountAutoRefresh({ document, window, refresh, resumeRefresh = re
     if (running) return running;
     window.clearTimeout?.(timer);
     controller = new AbortController();
-    activeOperation = operation;
     running = readWithDeadline(signal => operation({ signal }), { signal: controller.signal, timeoutMs, clock: window }).catch(() => {
       // Failure stays in the page's own state; the next scheduled read recovers.
-    }).finally(() => { running = null; controller = null; activeOperation = null; schedule(); });
+    }).finally(() => { running = null; controller = null; schedule(); });
     return running;
   };
   const read = () => run(refresh);
   const resumeRead = () => {
+    onResume?.();
+    if (!onResume || !running) return read();
     if (queuedResume) return queuedResume;
-    if (!running || resumeRefresh === refresh || activeOperation === resumeRefresh) return run(resumeRefresh);
     controller?.abort();
-    queuedResume = running.then(() => run(resumeRefresh)).finally(() => { queuedResume = null; });
+    queuedResume = running.then(read).finally(() => { queuedResume = null; });
     return queuedResume;
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };

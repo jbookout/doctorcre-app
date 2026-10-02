@@ -14,19 +14,19 @@ function clock() {
 }
 const settle = async () => { for (let i = 0; i < 8; ++i) await Promise.resolve(); };
 
-test('finding 5: routine polling preserves detail while resume and reconnect reverify the session', async () => {
+test('polling preserves detail; resume and reconnect invalidate before reading', async () => {
   const c=clock();let polls=0,resumes=0;
-  const handle=mountAutoRefresh({...c,refresh:()=>{polls++;},resumeRefresh:()=>{resumes++;}});
+  const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:()=>{polls++;}});
   c.tick();await settle();assert.equal(polls,1);assert.equal(resumes,0);
-  c.hide();c.show();await settle();assert.equal(polls,1);assert.equal(resumes,1);
-  c.window.dispatchEvent(new Event('online'));await settle();assert.equal(resumes,2);
+  c.hide();c.show();await settle();assert.equal(polls,2);assert.equal(resumes,1);
+  c.window.dispatchEvent(new Event('online'));await settle();assert.equal(polls,3);assert.equal(resumes,2);
   handle.dispose();c.window.dispatchEvent(new Event('online'));await settle();assert.equal(resumes,2);
 });
-test('finding 5: resume cancels a hanging routine read before rechecking the session', async () => {
-  const c=clock();let signal,resumes=0;
-  const handle=mountAutoRefresh({...c,refresh:args=>{signal=args.signal;return new Promise(()=>{});},resumeRefresh:()=>{resumes++;}});
+test('resume invalidation cancels a hanging read and starts a fresh authorized read', async () => {
+  const c=clock();let firstSignal,resumes=0,reads=0;
+  const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:({signal})=>{reads++;if(reads===1){firstSignal=signal;return new Promise(()=>{});}}});
   c.tick();await settle();c.hide();c.show();await settle();await settle();
-  assert.equal(signal.aborted,true);assert.equal(resumes,1);handle.dispose();
+  assert.equal(firstSignal.aborted,true);assert.equal(resumes,1);assert.equal(reads,2);handle.dispose();
 });
 
 test('background refresh recovers after failure, does not overlap, sleeps hidden and disposes', async () => {
@@ -85,9 +85,16 @@ for(const method of ['readDocConversation','listDocConversations','listDocSugges
  await rejected;
 });
 test('every data surface mounts background refresh or the existing board coordinator', async () => {
-  for (const name of ['workspace-command-center','workspace-business','leads-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','business-workspace','charts','search','status']) {
+  for (const name of ['workspace-command-center','workspace-business','leads-workspace-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','business-workspace','charts','search','status']) {
     assert.match(await readFile(new URL(`../js/${name}.js`, import.meta.url), 'utf8'), /mountAutoRefresh\(/, name);
   }
   assert.match(await readFile(new URL('../tours/app.js', import.meta.url), 'utf8'), /mountAutoRefresh\(/);
   assert.match(await readFile(new URL('../js/app.js', import.meta.url), 'utf8'), /refreshBoard/);
+});
+
+test('R1 resume invalidation fires before a coalesced in-flight read and never for polling',async()=>{
+ const c=clock();let release,invalidated=0;
+ const handle=mountAutoRefresh({...c,onResume:()=>{invalidated++;},refresh:()=>new Promise(resolve=>{release=resolve;})});
+ handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
+ release();await settle();handle.dispose();
 });
