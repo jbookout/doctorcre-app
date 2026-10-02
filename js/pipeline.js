@@ -86,7 +86,6 @@ const state = {
   lifted: null,
   target: null,
   panelDeal: null,
-  panelPinned: false,
   panelReturnTo: null,
   intent: null,
   boardStatus: 'starting',
@@ -665,7 +664,7 @@ async function openPanel(dealId, trigger, { background = false } = {}) {
   state.panelDetail = detail;
   $('panelTitle').textContent = detail.deal?.name || 'Record';
   $('panelBody').innerHTML = recordPanelSections(detail, { actorLabel: actorName, dateLabel: dateWords })
-    .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
+    .filter(section => section.state !== 'not_in_release').map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
       <h3>${esc(section.title)}</h3>${section.title === 'Latest communication' && detail.thread?.[0]?.text ? entryDetailsHtml(detail.thread[0].text) : section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('') + '<div id="panelEvidence"></div>';
   if (expanded) { const disclosure = $('panelBody').querySelector('details'); if (disclosure) disclosure.open = true; }
   if (restoreSummary) $('panelBody').querySelector('summary')?.focus();
@@ -679,7 +678,6 @@ async function openPanel(dealId, trigger, { background = false } = {}) {
 function closePanel() {
   const panel = $('recordPanel');
   if (!panel || panel.hidden) return;
-  if (state.panelPinned) return;
   ++panelReadSequence;
   disposeEvidence?.();
   disposeEvidence = null;
@@ -766,6 +764,12 @@ function openMoveChooser(dealId) {
 function wireBoard() {
   const board = $('kanban');
   if (!board) return;
+
+  board.addEventListener('click', (event) => {
+    if (event.target.closest('button,input,select,a')) return;
+    const card = event.target.closest('.kanban-card');
+    if (card && card.dataset.dragging !== 'true') openPanel(card.dataset.id, card);
+  });
 
   board.addEventListener('dragstart', (event) => {
     const card = event.target.closest('.kanban-card');
@@ -886,13 +890,8 @@ function wire() {
   });
   $('moveCancel')?.addEventListener('click', () => $('moveDialog')?.close());
 
-  $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); state.panelPinned = false; closePanel(); });
-  $('panelClose')?.addEventListener('click', () => { state.panelPinned = false; closePanel(); });
-  $('panelPin')?.addEventListener('click', () => {
-    state.panelPinned = !state.panelPinned;
-    $('panelPin').setAttribute('aria-pressed', String(state.panelPinned));
-    $('recordPanel')?.setAttribute('data-pinned', String(state.panelPinned));
-  });
+  $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
+  $('panelClose')?.addEventListener('click', closePanel);
 
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();

@@ -82,8 +82,8 @@ function leadCard(lead) {
   const confidence = confidenceInfo(lead.event_confidence);
   const locked = isStageLocked(lead);
   const stageOptions = stageChoices(boardStages(), lead).map((stage) => `<option value="${esc(stageKey(stage))}"${lead.stage === stageKey(stage) ? " selected" : ""}>${esc(stage.label || title(stageKey(stage)))}</option>`).join("");
-  const identity = lead.registry_ref || lead.id;
-  return `<article class="lead-card" id="lead-${esc(lead.id)}" data-freshness="${fresh.key}" tabindex="0" data-open-lead="${esc(lead.id)}" aria-label="${esc(lead.name || "Lead")} details">
+  const identity = lead.registry_ref || '';
+  return `<article class="lead-card" id="lead-${esc(lead.id)}" data-freshness="${fresh.key}" draggable="${!locked}" tabindex="0" data-open-lead="${esc(lead.id)}" aria-label="${esc(lead.name || "Lead")} details">
     <div class="lead-card-head"><div><h2 class="lead-name">${label(lead.name, "Unnamed lead")}</h2><p class="lead-place">${label(lead.specialty, "Specialty not captured")} · ${label([lead.city, lead.state].filter(Boolean).join(", "), "Place not captured")}</p></div><span class="lead-ref">${esc(identity)}</span></div>
     <div class="lead-signals"><span class="signal freshness"><i class="freshness-dot" aria-hidden="true"></i><strong>${esc(fresh.text)}</strong></span><span class="signal"><strong>Score ${label(lead.score, "—")}</strong></span><span class="signal${confidence.verify ? " verify" : ""}"><strong>${esc(confidence.text)}</strong></span><span class="signal stage-label"><strong>${esc(lead.stage_label || title(lead.stage))}</strong></span>${lead.suppressed ? '<span class="signal suppressed"><strong>Suppressed</strong></span>' : ""}${confidence.verify ? '<span class="signal verify"><strong>Verify</strong></span>' : ""}</div>
     <div class="lead-meta"><span>Lane<b>${label(lead.lane)}</b></span><span>Owner<b>${label(lead.owner_label || lead.owner)}</b></span><span>Lease event<b>${label(lead.est_lease_event)}</b></span><span>Last touch<b>${dateLabel(lead.last_touch)}</b></span><span>Next action<b>${dateLabel(lead.next_action_date)}</b></span><span>Segment<b>${label(lead.segment)}</b></span></div>
@@ -409,6 +409,22 @@ if (typeof document !== "undefined") {
     const card = event.target.closest("[data-open-lead]"); if (card) openLeadDetail(card.dataset.openLead, card);
   });
   $("leadBoard").addEventListener("keydown", event => { if (["Enter", " "].includes(event.key) && event.target.matches?.("[data-open-lead]")) { event.preventDefault(); openLeadDetail(event.target.dataset.openLead,event.target); } });
+  $("leadBoard").addEventListener("dragstart", event => {
+    const card = event.target.closest('[data-open-lead]');
+    if (!card || card.draggable === false || state.moving) { event.preventDefault(); return; }
+    event.dataTransfer.setData('text/x-doctorcre-lead', card.dataset.openLead);
+    event.dataTransfer.effectAllowed = 'move';
+  });
+  $("leadBoard").addEventListener("dragover", event => { if (event.target.closest('[data-stage]') && event.dataTransfer.types.includes('text/x-doctorcre-lead')) event.preventDefault(); });
+  $("leadBoard").addEventListener("drop", event => {
+    const column = event.target.closest('[data-stage]');
+    const id = event.dataTransfer.getData('text/x-doctorcre-lead');
+    if (!column || !id || state.moving) return;
+    event.preventDefault();
+    const select = document.querySelector(`[data-stage-select="${CSS.escape(id)}"]`);
+    const button = document.querySelector(`[data-move-lead="${CSS.escape(id)}"]`);
+    if (select && button) { select.value = column.dataset.stage; if (select.value) moveLead(button); }
+  });
   $("leadDetailClose").addEventListener("click", () => $("leadDetailDialog").close());
   $("leadDetailDialog").addEventListener("close", () => { state.detailId = null; state.detailReturn?.focus?.(); });
   $("refreshClaims").addEventListener("click", refreshClaims);
