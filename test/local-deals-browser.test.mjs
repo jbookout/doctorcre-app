@@ -65,6 +65,36 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
   });
 });
 
+test('board refresh preserves a native drag until its drop is reviewed', async t => {
+  const {page,errors}=await open(t);
+  const card=page.locator('.kanban-column [data-id="d14"]');
+  await card.evaluate(node=>{
+    window.draggedCard=node;
+    node.addEventListener('dragstart',()=>window.dragStarted=true,{once:true});
+  });
+  const box=await card.boundingBox();
+  await page.mouse.move(box.x+10,box.y+10);await page.mouse.down();
+  await page.mouse.move(box.x+30,box.y+30,{steps:5});
+  await page.waitForFunction(()=>window.dragStarted);
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
+    state.client.getBoard=async (...args)=>{
+      const result=await get(...args);
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during drag'}:d)};
+    };
+  });
+  await refresh(page);
+  assert.equal(await page.evaluate(()=>window.draggedCard.isConnected),true);
+  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').next_step),'Demo fresh action during drag');
+  assert.doesNotMatch(await card.textContent(),/Demo fresh action during drag/);
+  const target=await page.locator('[data-column="legal"] > h3').boundingBox();
+  await page.mouse.move(target.x+10,target.y+10,{steps:5});await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
+  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').phase),'Negotiation');
+  assert.match(await card.textContent(),/Demo fresh action during drag/);
+  assert.deepEqual(errors,[]);
+});
+
 test('W4 drag and keyboard phase writes, manual phase, park, revive and undo record history', async t => {
   const { page, errors } = await open(t);
   await page.locator('.kanban-column [data-id="d14"] [data-undo]').click();

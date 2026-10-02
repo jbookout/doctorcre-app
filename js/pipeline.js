@@ -153,7 +153,8 @@ function parkedHtml(deal) {
 
 function renderBoard() {
   const board = $('kanban');
-  if (!board) return;
+  // Fresh snapshots still enter state; dragend paints them without detaching the drag origin.
+  if (!board || board.querySelector('[data-dragging="true"]')) return;
   const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
     .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
   const active = rows.filter(d => d.operating_state !== 'parked');
