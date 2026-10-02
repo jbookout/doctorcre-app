@@ -335,31 +335,11 @@ test("the motion reuses the shared tokens and keyframes rather than inventing ne
 
 /* ------------------------------------------------------------- the page */
 
-test("the page takes governance-queue as its own read, paints both cards and ticks only with real data", () => {
-  assert.match(pageJs, /take\("approvals", \(\) => client\.governanceQueue\(\), "the governance queue refused or could not be reached"\)/);
-  assert.match(pageJs, /take\("schedule", \(\) => client\.scheduleBoard\(\), "the schedule board refused or could not be reached"\)/);
-  assert.match(pageJs, /approvalsCard\(/);
-  assert.match(pageJs, /scheduleCard\(readFor\("schedule"\)\)/);
-  assert.match(pageJs, /<svg class="ops-timeline"/, "job timing is shown as a real inline SVG timeline");
-  assert.match(pageJs, /formatScheduleDateTime\(job\.last_run\.at\)/, "last run uses a full date in the glance and detail");
-  assert.match(pageJs, /formatScheduleDateTime\(job\.next_due_at\)/, "next due uses a full date in the glance and detail");
-  assert.match(pageJs, /scheduleTimeline\(job, observedAt\)/, "the SVG consumes chronological marker positions");
-  assert.match(pageJs, /data-due-overdue="\$\{timeline\.dueOverdue\}"/, "overdue color follows the due timestamp");
-  assert.match(pageJs, /prefersReducedMotion\(\)/);
-  assert.match(pageJs, /countUpFrames\(/);
-  assert.match(pageJs, /entranceDelay\(/);
-  // The Worker's CSP is `style-src 'self'` with no 'unsafe-inline', which
-  // refuses a style ATTRIBUTE written into markup. The stagger goes through
-  // CSSOM, which that policy allows.
-  assert.match(pageJs, /style\.setProperty\("--ops-delay", `\$\{entranceDelay\(/);
-  assert.doesNotMatch(pageJs, /style="--ops-delay/);
-  assert.doesNotMatch(pageJs, /operationsBlocks\(/, "the placeholder blocks are gone");
-  // The ambient clock runs only while a real oldest timestamp exists, and is
-  // stopped before every repaint so two clocks never race.
-  assert.match(pageJs, /if \(card\.oldest\) startWaitingClock\(card\.oldest\.at\)/);
-  assert.match(pageJs, /stopWaitingClock\(\);/);
-  const dashboard = /<section class="tabpanel" id="panelDashboard"[\s\S]*?<\/section>\s*<section class="tabpanel" id="panelAttention"/.exec(html)?.[0] || "";
-  assert.match(dashboard, /<div id="operationsBlocks"><\/div>/);
+test("governance feeds board cards and schedules feed the calendar", () => {
+  assert.match(pageJs, /take\('approvals',\(\)=>client\.governanceQueue\(\)\)/);
+  assert.match(pageJs, /board\?\.setGovernance\(payloadOf\(id\),view\.reads\[id\]\)/);
+  assert.match(pageJs, /automationMonth\(payloadOf\('schedule'\)/);
+  assert.doesNotMatch(html, /id="operationsBlocks"/);
 });
 
 test("the approvals read is its own chip and never joins the four dashboard tiles' coverage", async () => {

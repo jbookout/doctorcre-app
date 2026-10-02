@@ -4,9 +4,9 @@ import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises
 import { dirname, join, posix } from "node:path";
 
 const ROOT_FILES = [
-  "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
+  "business.html", "calendar.html", "charts.html", "automations.html", "control-room.html", "conversations.html", "design.html",
   "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "relationships.html", "pipeline.html", "progress-board.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
+  "relationships.html", "pipeline.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {

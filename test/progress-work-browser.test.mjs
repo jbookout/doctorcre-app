@@ -39,7 +39,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     for(let i=0;i<history;i++)add('turn',`Unrelated synthetic historical turn ${i}`,'human');
   }
   await page.route('**/*',async route=>{
-    const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
+    const url=new URL(route.request().url());if(url.origin!=='https://app.doctorcre.com')return route.abort();
     if(url.pathname==='/mcp'){
       const rpc=route.request().postDataJSON().params;calls.push(rpc);
       if(state.authLost)return route.fulfill({status:401,body:'{}'});
@@ -76,7 +76,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     const file=legacy ? (url.pathname.includes('queue')?'queue.html':'room.html') : routes.routes[url.pathname]||url.pathname.slice(1);
     try{const body=await readFile(new URL('../'+file,import.meta.url));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
-  await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
+  await page.goto(`https://app.doctorcre.com${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
 
@@ -382,11 +382,14 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
-test('board → project → task uses one tap each and breadcrumbs return to the parent',async t=>{
-  const {page,errors}=await open(t,{path:'/control-room/progress'});
+test('board → project → task opens popup, and Details links project activity',async t=>{
+  const {page,errors}=await open(t,{width:1440,path:'/control-room/progress'});
   await page.locator('[data-board-id="demo-project"]').click();
   await page.waitForURL('**/control-room/progress?board=demo-project');
   await page.locator(`[data-task-id="${taskId}"]`).first().click();
+  await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
+  await page.locator('#jobBody summary').click();
+  await page.locator('#jobBody').getByRole('link',{name:'Project activity'}).click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
   await page.locator('#workBreadcrumbs a').nth(1).click();
@@ -431,7 +434,12 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#queueStatus').selectOption('');await page.locator('#queueTarget').selectOption('dot');assert.equal(await page.locator('.queue-card').count(),1);
   for(const id of ['stageSvg','roomDesks','roomPresence','roomHealth','sessionList','assignmentList','wireFeed','viewConversation','viewEverything','kindTurns','kindSystem','kindReceipts','kindHeartbeats','wireSearch','wireResume','roomComposer','queueColumns','queueTarget','queueStatus','queueComposer'])assert.equal(await page.locator(`#${id}`).count(),1,id);
   await page.locator('#desksToggle').click();await page.locator('#desksToggle').click();
-  await page.locator('#desksToggle').click();await page.locator('.desk-card .assignment-badge').click();
+  await page.locator('#desksToggle').click();
+  const deskLogin = page.waitForRequest(request => new URL(request.url()).pathname === '/api/room/turn'
+    && request.postDataJSON()?.control?.action === 'login');
+  await page.locator('.desk-card .assignment-badge').click();
+  await deskLogin;
+  await assertEventually(()=>posts.some(post=>post.body.control?.action==='login'));
   assert.equal(posts[0].body.control.action,'login');assert.equal(posts[0].body.control.desk,'Synthetic desk');
   await page.locator('#viewEverything').click();await page.locator('#kindReceipts').click();assert.equal(await page.locator('#kindReceipts').getAttribute('aria-pressed'),'false');await page.locator('#kindReceipts').click();
   await page.locator('#wireSearch').fill('Unrelated');assert.match(await page.locator('#wireFeed').textContent(),/Unrelated synthetic task/);await page.locator('#wireSearch').fill('');

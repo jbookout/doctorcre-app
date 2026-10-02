@@ -10,7 +10,7 @@ const envelope=(items=[row()],extra={})=>({schema:'unfinished-work.v1',items,cov
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
 async function setup(t,{read,write}={}){
- const dom=new JSDOM(readFileSync(new URL('../progress-board.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm};
+ const dom=new JSDOM(readFileSync(new URL('../control-room.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm};
  Object.assign(globalThis,{document:dom.window.document,FormData:dom.window.FormData,confirm:()=>true});t.after(()=>{Object.assign(globalThis,previous);dom.window.close();});
  const d=dom.window.document,dialog=d.querySelector('#work-triage');let restore;
  dialog.showModal=()=>{restore=d.activeElement;dialog.open=true;};dialog.close=()=>{dialog.open=false;restore?.focus();};

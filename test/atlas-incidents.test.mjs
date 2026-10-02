@@ -253,7 +253,7 @@ test("atlas.js writes nothing: the same guard the C07/C08 suite already checks, 
 
 test("control-room.js hands atlas.js its OWN incident-board read and client, not a second construction", () => {
   assert.match(controlRoomJs, /getIncidentsRead:\s*\(\)\s*=>\s*view\.reads\.incidents/);
-  assert.match(controlRoomJs, /mountAtlas\(\{[^}]*client[^}]*\}\)/s);
+  assert.match(controlRoomJs, /mountAtlas\(\{client,getIncidentsRead:/);
 });
 
 test("every element id atlas.js's C09 additions look up by getElementById exists in control-room.html", () => {

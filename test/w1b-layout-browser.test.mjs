@@ -82,7 +82,7 @@ test('phone rail is a bottom bar; drawers close by Escape and scrim with focus r
  await page.keyboard.press('Escape');assert.equal(await page.locator('#appSidebarToggle').evaluate(n=>n===document.activeElement),true);
  await page.locator('#appTodayToggle').click();assert.equal(await page.locator('#appTodayToggle').getAttribute('aria-expanded'),'true');
  await page.locator('#appDrawerScrim').click({position:{x:5,y:5}});assert.equal(await page.locator('#appLayout').getAttribute('data-drawer'),'');
- await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('Progress',{exact:true}).isVisible(),true);await page.keyboard.press('Escape');
+ await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('System Job Board',{exact:true}).isVisible(),true);await page.keyboard.press('Escape');
  assert.equal(await page.getByLabel('More',{exact:true}).getAttribute('aria-expanded'),'false');
  await fits(page,'phone drawers and menus');
  const reduced=await page.locator('#appToday,.app-layout-item,.app-shell-flow').evaluateAll(nodes=>nodes.map(n=>({transition:getComputedStyle(n).transitionDuration,animation:getComputedStyle(n).animationName})));

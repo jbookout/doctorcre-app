@@ -9,7 +9,7 @@ import { Script } from "node:vm";
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room", "Relationships", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "Progress", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"];
+const expected = ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room", "Relationships", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "System Job Board", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {

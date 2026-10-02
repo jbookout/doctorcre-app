@@ -60,7 +60,7 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
   env.ASSETS.fetch = async (request) => new Response(new URL(request.url).pathname);
   const signedIn = await handleDoctorcreRequest(new Request(`${host}/control-room/progress`), env);
-  assert.equal(await signedIn.text(), "/progress-board.html");
+  assert.equal(await signedIn.text(), "/control-room.html");
 });
 
 test("board view reads current typed questions and keeps status from CARR only", () => {
@@ -151,7 +151,7 @@ test("live client sends answer through same-origin MCP with the retained key", a
 });
 
 test("page offers choice and free-text controls, with reduced-motion styling", async () => {
-  const html = await readFile(new URL("../progress-board.html", import.meta.url), "utf8");
+  const html = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
   const css = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
   assert.match(html, /id="board-stages"/);
   assert.match(html, /id="board-questions"/);

@@ -92,15 +92,7 @@ test("the live client calls the pinned read with no arguments", async () => {
   assert.deepEqual(calls[0].body.params.arguments, {});
 });
 
-test("the page binds a dashboard card, a keyboard dialog and a reduced motion visual", async () => {
-  const [html, js, css, contract] = await Promise.all([
-    read("control-room.html"), read("js/control-room.js"), read("css/control-room.css"), read("contracts/carr-interface.v1.json"),
-  ]);
-  assert.match(html, /id="resourceDashboard"/);
-  assert.match(html, /id="resourceDetailDialog"[^>]*aria-labelledby/);
-  assert.match(html, /id="resourceCoverageVisual"/);
-  assert.match(js, /client\.readResourceDashboard\(\)/);
-  assert.match(js, /resourceDetailDialog.*showModal\(\)/s);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.ok(JSON.parse(contract).mcp_operations.includes("read-resource-dashboard"));
+test("Connections replaces the resource card inside the shared room",async()=>{
+ const html=await readFile(new URL('../control-room.html',import.meta.url),'utf8');
+ assert.match(html,/id="connectionsProviders"/);assert.doesNotMatch(html,/id="resourceDashboard"/);
 });

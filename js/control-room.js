@@ -1,583 +1,32 @@
-import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
-// V5-UX-C01 — the Control Room: DOM wiring only.
-//
-// Every decision about a payload lives in ./control-room-model.js, and the
-// census keeps the models it already has (stageDenominator, renderCount). This
-// file reads, paints, and does nothing else. It writes nothing: there is no
-// write verb on this surface.
-//
-// Reads are taken INDEPENDENTLY and settled independently, which is the
-// whole point of the slice: one collector failing makes its own areas unknown
-// and leaves every other area exactly as verified as it was. The freshness of
-// each read is the clock at the moment its answer landed, stated per section,
-// and an answer that arrives after a newer read has started is dropped rather
-// than painted over the newer one.
-import {
-  canonicalHref, censusIncompleteSources, coverageLine, dashboardTiles, groupedIncidents, headerPhase, incidentFilters, notInReleaseBlocks,
-  HEADER_WORDS,
-  needsJoeAdvisoryLabel, readPhase, sinceChangeLabel, stallCandidates, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload,
-  validIncidentBoardPayload, workInProgressLine, NO_CANONICAL_PAGE, STUCK_SILENCE_HOURS,
-} from "./control-room-model.js";
-import {
-  approvalsCard, countUpFrames, entranceDelay, formatScheduleDateTime, prefersReducedMotion, scheduleCard, scheduleTimeline, waitingAge,
-} from "./operations-model.js";
-// V5-UX-C13a: the enriched "Waiting for Joe" detail extends the row above
-// rather than replacing it, and reuses the same pure card projection the
-// Model Room tab's work-item history uses — one shape, read once each place.
-import { needsJoeCardFields, refuseWorkRequestCard, workRequestCardRequest } from "./model-room-model.js";
-import { snapshotFromReads, writeSnapshot } from "./status-model.js";
-import { renderCount, stageDenominator } from "./delivery-evidence-model.js";
-import { validWorkInventoryPayload, WORK_INVENTORY_ENDPOINT } from "./work-inventory-model.js";
-import { acceptsResponse } from "./workspace-command-center-model.js";
-import { createFixtureClient } from "./fixture-client.js";
-import { createLiveClient } from "./live-client.js";
-import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountAtlas } from "./atlas.js";
-import { atlasIncompleteSources } from "./atlas-model.js";
-import { mountSessions } from "./sessions.js";
-import { mountModelRoom } from "./model-room.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
-import { formatClock } from "./visual-system.js";
-import { projectResourceDashboard, resourceFacts, resourceRoomPhase } from "./resource-dashboard-model.js";
-
-const $ = (id) => document.getElementById(id);
-export const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
-  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-}[char]));
-
-/** One place holds what this page believes; nothing else keeps a copy. */
-const view = {
-  status: "loading",
-  sequence: 0,
-  severity: "all",
-  outage: null,
-  // The Atlas tab's latest read, handed back by atlas.js so the header can
-  // say when an answered read was short. Idle until the tab is first opened.
-  atlas: { status: "idle", payload: null },
-  reads: {
-    incidents: { state: "pending" },
-    work: { state: "pending" },
-    needs_joe: { state: "pending" },
-    census: { state: "pending" },
-    // V5-UX-C14: governance-queue, settled on its own like the four above. It
-    // is not in READS, so it never joins the coverage line, the page phase or
-    // the /status snapshot; the approvals card states its own clock instead.
-    approvals: { state: "pending" },
-    schedule: { state: "pending" },
-    resources: { state: "pending" },
-  },
-  // V5-UX-C13a: the "Waiting for Joe" detail is fetched ONLY when a row's own
-  // button is pressed — never for every row on dashboard load, which would
-  // turn one lazy read into N eager ones and blur this page's time-to-glance.
-  needsJoeDetail: { humanRef: null, state: "idle", payload: null, refusal: null },
-};
-
-let client = null;
-let tabs = null;
-
-function announce(text) {
-  const live = $("roomLive");
-  if (live && live.textContent !== text) live.textContent = text;
+import { mountAutoRefresh, updatedLabel, readWithDeadline } from './auto-refresh.mjs';
+import { createFixtureClient } from './fixture-client.js';
+import { createLiveClient } from './live-client.js';
+import { resolveDealroomBoot } from './boot-mode.js';
+import { mountAtlas } from './atlas.js';
+import { mountSessions } from './sessions.js';
+import { mountModelRoom } from './model-room.js';
+import { mountDocDock, mountNotificationBadge, wireTabs } from './shell.js';
+import { validIncidentBoardPayload, incidentFilters, groupedIncidents } from './control-room-model.js';
+import { mountProgressBoard } from './progress-board.js';
+import { automationMonth } from './control-room-workspace-model.js';
+import { connectionView, meteredSpend } from './connections-model.js';
+import { mountJobDetail } from './job-detail.js';
+import { escapeText as escapeHtml } from './change-receipts.mjs';
+import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
+const $=id=>document.getElementById(id);
+export { escapeHtml };
+export const view={status:'loading',sequence:0,severity:'all',reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
+let client,tabs,board,details;
+const now=new Date();let year=now.getFullYear(),month=now.getMonth();
+const payloadOf=id=>view.reads[id]?.state==='read'?view.reads[id].payload:null;
+const asOf=read=>updatedLabel(read?.observed_at);
+const announce=text=>{if($('roomLive').textContent!==text)$('roomLive').textContent=text;};
+function replaceHtml(node,html){
+ if(node.innerHTML===html)return;
+ const key=node.contains(document.activeElement)?document.activeElement.dataset.roomControl:null;
+ node.innerHTML=html;
+ if(key)[...node.querySelectorAll('[data-room-control]')].find(control=>control.dataset.roomControl===key)?.focus();
 }
-
-const asOf = (read) => (read?.state === "read" && formatClock(read.observed_at)
-  ? `As of ${formatClock(read.observed_at)}`
-  : `unknown${read?.reason ? ` · ${read.reason}` : ""}`);
-
-const payloadOf = (id) => (view.reads[id]?.state === "read" ? view.reads[id].payload : null);
-
-/** What a tile or a section is handed: an answer, or the reason there is none. */
-function readFor(id) {
-  const read = view.reads[id] || {};
-  if (read.state === "read") return { state: "read", payload: read.payload };
-  return { state: "unknown", reason: read.reason || "Updating…" };
-}
-
-/* -------------------------------------------------------------------- painting */
-
-function renderCoverage() {
-  const strip = $("coverageChips");
-  if (!strip) return;
-  const attempted = Object.fromEntries(Object.entries(view.reads).filter(([, read]) => read.state !== "pending"));
-  const chips = coverageLine(attempted);
-  const resource = attempted.resources;
-  if (resource) {
-    const clock = resource.state === "read" && projectResourceDashboard(resource.payload).schema
-      ? formatClock(resource.observed_at) : null;
-    chips.push(clock
-      ? { state: "read", text: `Resources: updated ${clock}` }
-      : { state: "unknown", text: `Resources: unknown (${resource.reason || "the response could not be verified"})` });
-  }
-  strip.innerHTML = `<span class="chip-label">Last updated</span>${chips
-    .map((chip) => `<span class="chip" data-state="${escapeHtml(chip.state)}">${escapeHtml(chip.text)}</span>`)
-    .join("")}`;
-}
-
-function renderTiles() {
-  const grid = $("questionTiles");
-  if (!grid) return;
-  const tiles = dashboardTiles({
-    incidents: readFor("incidents"), work: readFor("work"),
-    needsJoe: readFor("needs_joe"), census: readFor("census"),
-    cadence: STUCK_SILENCE_HOURS,
-  });
-  grid.innerHTML = tiles.map((tile) => `<section class="card glass" data-tile="${escapeHtml(tile.id)}" data-state="${escapeHtml(tile.state)}">
-    <p class="eyebrow">Question</p>
-    <h2>${escapeHtml(tile.title)}</h2>
-    <p class="tile-value" data-state="${escapeHtml(tile.state)}">${escapeHtml(tile.word)}</p>
-    <p class="tile-sentence">${escapeHtml(tile.sentence)}</p>
-    ${tile.open ? `<div class="row-wrap"><button class="btn" type="button" data-open="${escapeHtml(tile.id)}">${escapeHtml(tile.open.label)}</button></div>` : ""}
-  </section>`).join("");
-  for (const button of grid.querySelectorAll("button[data-open]")) {
-    const tile = tiles.find((candidate) => candidate.id === button.dataset.open);
-    button.addEventListener("click", () => openTile(tile));
-  }
-}
-
-/** A tile's Open switches tabs or moves to the section that lists the rows. */
-function openTile(tile) {
-  if (!tile?.open) return;
-  if (tile.open.tab === "attention") {
-    tabs?.select("tabAttention");
-    announce("The incident queue is open.");
-    return;
-  }
-  tabs?.select("tabDashboard");
-  const section = $(tile.open.section);
-  if (section) {
-    section.setAttribute("tabindex", "-1");
-    section.focus();
-  }
-  announce(`${tile.title}: the rows behind it are open.`);
-}
-
-function rowHtml({ title, meta, end = "" }) {
-  return `<li class="work-item" data-priority="ordinary">
-    <div><h3>${escapeHtml(title)}</h3><div class="work-meta"><span>${escapeHtml(meta)}</span></div></div>
-    <div class="stack-end">${end}</div>
-  </li>`;
-}
-
-function renderActiveWork() {
-  const read = view.reads.work;
-  const list = $("activeWorkList");
-  const state = $("activeWorkState");
-  const wip = $("wipLine");
-  $("activeWorkAsOf").textContent = asOf(read);
-  $("longestAsOf").textContent = asOf(read);
-  const payload = payloadOf("work");
-  const verified = Boolean(payload) && validCurrentWorkItemPayload(payload);
-  const longestList = $("longestList");
-  const longestState = $("longestState");
-
-  if (!verified) {
-    list.innerHTML = "";
-    longestList.innerHTML = "";
-    state.hidden = false;
-    longestState.hidden = false;
-    wip.textContent = "unknown";
-    wip.setAttribute("data-state", "unavailable");
-    return;
-  }
-  state.hidden = true;
-  longestState.hidden = true;
-  const line = workInProgressLine(payload.wip);
-  wip.textContent = line.text;
-  wip.setAttribute("data-state", line.known ? "read" : "unavailable");
-
-  list.innerHTML = payload.current.map((item) => rowHtml({
-    title: item.title,
-    meta: [
-      `${item.human_ref} · ${item.state}`,
-      `run by ${item.executor || item.owner || "nobody named"}`,
-      sinceChangeLabel(item.hours_since_last_change),
-      item.blocker ? `blocked: ${item.blocker.code}${item.blocker.detail ? ` — ${item.blocker.detail}` : ""}` : "no blocker recorded",
-    ].join(" · "),
-    end: canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : "",
-  })).join("") || rowHtml({ title: "Nothing is held right now", meta: "" });
-
-  const stalls = stallCandidates(payload.current, { cadence: STUCK_SILENCE_HOURS });
-  longestList.innerHTML = stalls.items.map((item) => rowHtml({
-    title: item.title,
-    meta: `${item.human_ref} · ${sinceChangeLabel(item.hours_since_last_change)}`,
-  })).join("") || rowHtml({ title: "No held work to order", meta: `nothing has been held without a change for ${STUCK_SILENCE_HOURS} hours or more` });
-}
-
-function needsJoeDetailFieldsHtml(fields) {
-  if (!fields.available) return `<p class="small">Details temporarily unavailable.</p>`;
-  const row = (label, field) => `<dt>${escapeHtml(label)}</dt><dd>${
-    field.present ? escapeHtml(field.value) : `Unavailable${field.reason ? ` (${escapeHtml(field.reason)})` : ""}`
-  }</dd>`;
-  const evidenceRow = fields.evidence.present
-    ? `<dt>evidence links</dt><dd>${
-      fields.evidence.items.length
-        ? fields.evidence.items.map((entry) => escapeHtml(typeof entry === "string" ? entry : JSON.stringify(entry))).join("; ")
-        : escapeHtml(fields.evidence.emptyText)
-    }</dd>`
-    : `<dt>evidence links</dt><dd>Unavailable (${escapeHtml(fields.evidence.reason)})</dd>`;
-  return `<dl class="detail-rows">
-    <dt>original request</dt><dd>${fields.originalRequest.present ? escapeHtml(fields.originalRequest.value) : `Unavailable (${escapeHtml(fields.originalRequest.reason)})`}</dd>
-    ${row("recommended answer", fields.recommendedAnswer)}
-    ${row("business impact", fields.businessImpact)}
-    ${evidenceRow}
-  </dl>
-  ${fields.originalRequest.present ? `<p class="caption">${escapeHtml(fields.originalRequest.label)}</p>` : ""}`;
-}
-
-function renderNeedsJoeDetail() {
-  const panel = $("needsJoeDetail");
-  const title = $("needsJoeDetailTitle");
-  const asOfLine = $("needsJoeDetailAsOf");
-  const rows = $("needsJoeDetailRows");
-  if (!panel || !title || !rows) return;
-  const detail = view.needsJoeDetail;
-  if (!detail.humanRef) { panel.hidden = true; return; }
-  panel.hidden = false;
-  title.textContent = `${detail.humanRef}, in full`;
-  if (detail.state === "loading") {
-    asOfLine.textContent = "Updating…";
-    rows.innerHTML = "";
-    return;
-  }
-  if (detail.refusal) {
-    asOfLine.textContent = `Details temporarily unavailable.`;
-    rows.innerHTML = "";
-    return;
-  }
-  asOfLine.textContent = updatedLabel(detail.payload?.updated_at || detail.payload?.updatedAt);
-  rows.innerHTML = needsJoeDetailFieldsHtml(needsJoeCardFields(detail.payload));
-}
-
-async function openNeedsJoeDetail(humanRef) {
-  if (view.needsJoeDetail.humanRef === humanRef) {
-    // A second press of the same row's button closes it, rather than
-    // re-reading a card that already answered.
-    view.needsJoeDetail = { humanRef: null, state: "idle", payload: null, refusal: null };
-    renderNeedsJoeDetail();
-    return;
-  }
-  view.needsJoeDetail = { humanRef, state: "loading", payload: null, refusal: null };
-  renderNeedsJoeDetail();
-  const args = workRequestCardRequest(humanRef);
-  if (!args) {
-    view.needsJoeDetail = { humanRef, state: "ready", payload: null, refusal: "work_request_ref_invalid" };
-    renderNeedsJoeDetail();
-    return;
-  }
-  try {
-    const payload = await client.workRequestCard(args);
-    if (view.needsJoeDetail.humanRef !== humanRef) return;
-    const refusal = refuseWorkRequestCard(payload);
-    view.needsJoeDetail = { humanRef, state: "ready", payload: refusal ? null : payload, refusal };
-  } catch (error) {
-    if (view.needsJoeDetail.humanRef !== humanRef) return;
-    view.needsJoeDetail = {
-      humanRef, state: "ready", payload: null,
-      refusal: String(error?.payload?.error || error?.message || "the read did not answer"),
-    };
-  }
-  renderNeedsJoeDetail();
-}
-
-function renderNeedsJoe() {
-  const read = view.reads.needs_joe;
-  $("needsJoeAsOf").textContent = asOf(read);
-  const list = $("needsJoeList");
-  const state = $("needsJoeState");
-  const payload = payloadOf("needs_joe");
-  if (!payload || !validCurrentWorkRequestsPayload(payload)) {
-    list.innerHTML = "";
-    state.hidden = false;
-    renderNeedsJoeDetail();
-    return;
-  }
-  state.hidden = true;
-  list.innerHTML = payload.items.map((item, index) => rowHtml({
-    title: item.title,
-    meta: [
-      `${item.human_ref} · ${item.state}`,
-
-      item.next_human_action || "no next action recorded",
-      needsJoeAdvisoryLabel(payload, index),
-    ].join(" · "),
-    // V5-UX-C13a: extends this row with the original request, the recommended
-    // answer, the business impact and evidence links — each shown only where
-    // work-request-card actually carries it. The existing Open link, when the
-    // item has a canonical page, is untouched.
-    end: `${canonicalHref(item) ? `<a class="btn" href="${escapeHtml(canonicalHref(item))}">Open</a>` : ""}<button class="btn" type="button" data-needs-joe-detail="${escapeHtml(item.human_ref)}" aria-expanded="${view.needsJoeDetail.humanRef === item.human_ref}">${view.needsJoeDetail.humanRef === item.human_ref ? "Hide detail" : "Show more detail"}</button>`,
-  })).join("") || rowHtml({ title: "No shared request carries a bounded next action", meta: "" });
-  for (const button of list.querySelectorAll("button[data-needs-joe-detail]")) {
-    button.addEventListener("click", () => openNeedsJoeDetail(button.dataset.needsJoeDetail));
-  }
-  renderNeedsJoeDetail();
-}
-
-function renderDelivery() {
-  const read = view.reads.census;
-  $("deliveryAsOf").textContent = asOf(read);
-  const payload = payloadOf("census");
-  const value = $("deliveryValue");
-  const reason = $("deliveryReason");
-  const state = $("deliveryState");
-  if (!payload || !validWorkInventoryPayload(payload)) {
-    value.textContent = "unknown";
-    value.setAttribute("data-state", "unavailable");
-    reason.textContent = view.reads.census?.reason || "Work temporarily unavailable.";
-    state.hidden = false;
-    return;
-  }
-  state.hidden = true;
-  const denominator = stageDenominator(payload.coverage);
-  const returned = payload.items.filter((item) => item.kind === "work_request").length;
-  value.textContent = renderCount(returned, denominator);
-  value.setAttribute("data-state", denominator.known ? "read" : "unavailable");
-  reason.textContent = denominator.known
-    ? "Work requests shown"
-    : `No denominator: ${denominator.reason}.`;
-}
-
-function renderScopeBlocks() {
-  const root = $("dashboardScopeBlocks");
-  if (!root) return;
-  const dashboardBlocks = new Set(["changed", "accomplishments", "detected_and_repaired"]);
-  root.innerHTML = notInReleaseBlocks().filter((block) => dashboardBlocks.has(block.id)).map((block) => `
-    <div class="state-block" data-state="not_in_release" data-block="${escapeHtml(block.id)}">
-      <h3>${escapeHtml(block.title)}</h3><p>${escapeHtml(block.reason)} · ${escapeHtml(block.slice)}</p>
-    </div>`).join("");
-}
-
-const RESOURCE_STATE_LABEL = Object.freeze({
-  ok: "Measured", partial: "Partial evidence", stale: "Stale evidence",
-  unconfigured: "Unconfigured", collector_absent: "No collector observation",
-  host_offline: "Host offline", unknown: "Unknown",
-});
-let paintedResourceRead = null;
-
-function resourceTime(value) {
-  if (!value) return "unknown";
-  const date = new Date(value);
-  return Number.isFinite(date.getTime())
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date)
-    : value;
-}
-
-function resourceValue(value) {
-  if (typeof value !== "object" || value === null) return escapeHtml(value);
-  return `<dl class="resource-object">${Object.entries(value).map(([key, fact]) =>
-    `<dt>${escapeHtml(key.replaceAll("_", " "))}</dt><dd>${escapeHtml(typeof fact === "object" ? JSON.stringify(fact) : fact)}</dd>`).join("")}</dl>`;
-}
-
-function openResourceDetail(row) {
-  $("resourceDetailTitle").textContent = row.name;
-  const state = $("resourceDetailState");
-  state.dataset.state = row.state;
-  state.textContent = `${RESOURCE_STATE_LABEL[row.state]}${row.reason ? ` · ${row.reason}` : ""}`;
-  const fields = [
-    ["Provider", row.name], ["Account", row.account], ["Project", row.project],
-    ["Product", row.product], ["Period", row.period],
-    ["As of", resourceTime(row.as_of)], ["Observed", resourceTime(row.observed_at)],
-    ["Reason", row.reason],
-    ...resourceFacts(row).map((fact) => [fact.label, fact.value]),
-  ];
-  $("resourceDetailRows").innerHTML = fields.map(([label, value]) =>
-    `<dt>${escapeHtml(label)}</dt><dd>${resourceValue(value ?? "unknown")}</dd>`).join("");
-  $("resourceDetailDialog").showModal();
-}
-
-function renderResources() {
-  const read = view.reads.resources;
-  if (read === paintedResourceRead) return;
-  paintedResourceRead = read;
-  const model = projectResourceDashboard(read?.state === "read" ? read.payload : null);
-  const reason = read?.state === "unknown" ? read.reason : read?.state === "pending" ? "Updating…" : null;
-  $("resourceAsOf").textContent = model.generated_at ? updatedLabel(model.generated_at) : "Updating…";
-  $("resourceSummary").textContent = model.schema
-    ? `${model.evidenceCount} measured · ${model.unconfiguredCount} unconfigured · ${model.collectorAbsentCount} awaiting first observation`
-    : read?.state === "pending" ? "Updating…" : "Provider coverage unknown";
-  $("resourceReadState").textContent = reason || (model.schema ? "" : "The resource response could not be verified.");
-  const visual = $("resourceCoverageVisual");
-  visual.setAttribute("aria-label", `Provider evidence: ${model.providers.map((row) => `${row.name} ${RESOURCE_STATE_LABEL[row.state]}`).join(", ")}`);
-  visual.innerHTML = `<svg viewBox="0 0 740 120" role="presentation" focusable="false" aria-hidden="true">
-    <path class="resource-spine" d="M74 44 H666" />
-    ${model.providers.map((row, index) => {
-      const x = 74 + index * 148;
-      return `<g class="resource-node" data-state="${escapeHtml(row.state)}" transform="translate(${x} 44)">
-        <circle class="resource-halo" r="25"/><circle class="resource-core" r="11"/>
-        <text y="51" text-anchor="middle">${escapeHtml(row.name)}</text>
-        <text class="resource-node-state" y="68" text-anchor="middle">${escapeHtml(RESOURCE_STATE_LABEL[row.state])}</text>
-      </g>`;
-    }).join("")}
-  </svg>`;
-  const list = $("resourceProviders");
-  list.innerHTML = model.providers.map((row) => `<button class="resource-provider" type="button" data-resource="${escapeHtml(row.provider)}" data-state="${escapeHtml(row.state)}" aria-label="${escapeHtml(row.name)}: ${escapeHtml(RESOURCE_STATE_LABEL[row.state])}; show resource detail">
-    <span class="resource-provider-name">${escapeHtml(row.name)}</span>
-    <span class="resource-provider-state">${escapeHtml(RESOURCE_STATE_LABEL[row.state])}</span>
-    <span class="resource-provider-meta">${escapeHtml(row.period || "Period unknown")}</span>
-  </button>`).join("");
-  for (const button of list.querySelectorAll("button[data-resource]")) {
-    button.addEventListener("click", () => openResourceDetail(model.providers.find((row) => row.provider === button.dataset.resource)));
-    button.addEventListener("pointerenter", () => visual.querySelectorAll(".resource-node")[model.providers.findIndex((row) => row.provider === button.dataset.resource)]?.classList.add("highlight"));
-    button.addEventListener("pointerleave", () => visual.querySelectorAll(".resource-node").forEach((node) => node.classList.remove("highlight")));
-    button.addEventListener("focus", () => visual.querySelectorAll(".resource-node")[model.providers.findIndex((row) => row.provider === button.dataset.resource)]?.classList.add("highlight"));
-    button.addEventListener("blur", () => visual.querySelectorAll(".resource-node").forEach((node) => node.classList.remove("highlight")));
-  }
-}
-
-/* ------------------------------------------------------ V5-UX-C14 operations */
-
-// The only ambient clock on this section: the real age of the oldest waiting
-// governance decision. It runs only while that timestamp exists and is stopped
-// before every repaint, so two clocks never race.
-let waitingClock = null;
-// What the approvals count last showed, so a new answer climbs from it.
-let shownApprovals = null;
-// The approvals read the section was last painted from. render() runs on
-// every settled read; repainting Operations for another read's answer would
-// replay its entrance each time.
-let paintedApprovals = null;
-
-function stopWaitingClock() {
-  if (waitingClock !== null) clearInterval(waitingClock);
-  waitingClock = null;
-}
-
-function startWaitingClock(at) {
-  const reduced = prefersReducedMotion();
-  const paint = () => {
-    const line = $("opsWaiting");
-    if (!line) { stopWaitingClock(); return; }
-    const age = waitingAge(at, Date.now(), { seconds: !reduced });
-    line.textContent = `Oldest decision ${age.text}`;
-    $("opsOrb")?.setAttribute("data-tempo", age.tempo || "none");
-  };
-  paint();
-  // Reduced motion drops the ticking seconds, so a minute is the finest change.
-  waitingClock = setInterval(paint, reduced ? 60_000 : 1_000);
-}
-
-function countUp(node, from, to) {
-  const frames = countUpFrames(from ?? 0, to, { reduced: prefersReducedMotion() });
-  let index = 0;
-  const step = () => {
-    node.textContent = String(frames[index]);
-    index += 1;
-    if (index < frames.length) requestAnimationFrame(step);
-  };
-  step();
-}
-
-function laneHtml(lane) {
-  const items = lane.items.map((item) => `<li><details class="ops-item" data-key="${escapeHtml(item.key)}">
-      <summary>${escapeHtml(item.title)}</summary>
-      <dl class="detail-rows">${item.detail.map((row) => `<dt>${escapeHtml(row.label)}</dt><dd>${escapeHtml(row.value)}</dd>`).join("")}</dl>
-      <p class="caption">${escapeHtml(item.since ? waitingAge(item.since, Date.now(), { seconds: false }).text : "waiting since an unrecorded time")}</p>
-    </details></li>`).join("");
-  return `<section class="ops-lane" data-lane="${escapeHtml(lane.id)}" aria-label="${escapeHtml(lane.label)}">
-    <div class="ops-lane-head"><h4>${escapeHtml(lane.label)}</h4><span class="chip" data-state="read">${lane.count}</span></div>
-    <p class="caption"></p>
-    ${items ? `<ul class="ops-items">${items}</ul>` : `<p class="small">Nothing is waiting in this lane.</p>`}
-  </section>`;
-}
-
-function approvalsHtml(card, read) {
-  return `<article class="ops-card" data-ops="approvals" data-state="${escapeHtml(card.state)}">
-    <div class="ops-head">
-      <span class="ops-orb" id="opsOrb" data-tempo="none" aria-hidden="true"></span>
-      <div><p class="eyebrow">Decisions</p><h3>${escapeHtml(card.title)}</h3></div>
-      <span class="as-of">${escapeHtml(asOf(read))}</span>
-    </div>
-    <p class="ops-value tile-value" id="opsApprovalsValue" data-state="${escapeHtml(card.state)}" aria-hidden="true">${escapeHtml(card.state === "read" ? String(shownApprovals ?? 0) : card.word)}</p>
-    <p class="tile-sentence">${escapeHtml(card.sentence)}</p>
-    ${card.oldest ? `<button class="btn ops-oldest" type="button" data-ops-oldest="${escapeHtml(card.oldest.key)}"><span id="opsWaiting">Oldest decision waiting</span></button>` : ""}
-    ${card.lanes.length ? `<div class="ops-lanes">${card.lanes.map(laneHtml).join("")}</div>` : ""}
-
-
-
-  </article>`;
-}
-
-function scheduleJobHtml(job, observedAt) {
-  const timeline = scheduleTimeline(job, observedAt);
-  const lastClock = job.last_run ? formatScheduleDateTime(job.last_run.at) || "unknown" : "unknown";
-  const nextClock = job.next_due_at ? formatScheduleDateTime(job.next_due_at) || "unknown" : "unknown";
-  return `<li class="ops-schedule-job" data-state="${escapeHtml(job.state)}" data-due-overdue="${timeline.dueOverdue}">
-    <details class="ops-item">
-      <summary><span class="ops-schedule-glance"><strong>${escapeHtml(job.name)}</strong><span>Last ${escapeHtml(lastClock)} · ${escapeHtml(job.nextLabel)} ${escapeHtml(nextClock)}</span></span><span class="chip" data-state="${escapeHtml(job.state)}">${escapeHtml(job.state)}</span></summary>
-      <svg class="ops-timeline" viewBox="0 0 300 60" role="img" aria-label="${escapeHtml(`Run timeline for ${job.name}: last run, ${job.nextLabel.toLowerCase()}, now`)}">
-        <title>${escapeHtml(`Run timeline for ${job.name}`)}</title>
-        <path class="ops-timeline-track" d="M32 30 H266" />
-        ${timeline.lastX !== null && timeline.dueX !== null ? `<path class="ops-timeline-flow" d="M${timeline.lastX} 30 H${timeline.dueX}" />` : ""}
-        ${timeline.lastX !== null ? `<circle class="ops-timeline-last" cx="${timeline.lastX}" cy="30" r="6" />` : ""}
-        ${timeline.dueX !== null ? `<circle class="ops-timeline-due" cx="${timeline.dueX}" cy="30" r="7" />` : ""}
-        <circle class="ops-timeline-now" cx="${timeline.nowX}" cy="30" r="4" />
-      </svg>
-      <dl class="detail-rows">
-        <dt>Schedule</dt><dd>${escapeHtml(job.schedule)}</dd>
-        <dt>Last run</dt><dd>${escapeHtml(job.last_run ? `${lastClock} · ${job.last_run.state}` : "Unknown — no verified run receipt")}</dd>
-        <dt>Run receipt</dt><dd>${escapeHtml(job.last_run?.receipt_ref || "Unknown")}</dd>
-        <dt>${escapeHtml(job.nextLabel)}</dt><dd>${escapeHtml(job.next_due_at ? nextClock : "Unknown")}</dd>
-        <dt>Freshness</dt><dd>${escapeHtml(job.freshness)}</dd>
-      </dl>
-      <p class="small">Pause unavailable · Run unavailable · Stop unavailable</p>
-    </details>
-  </li>`;
-}
-
-function scheduleHtml(card) {
-  return `<article class="ops-card" data-ops="${escapeHtml(card.id)}" data-state="${escapeHtml(card.state)}">
-    <div class="ops-head">
-      <span class="ops-orb" data-tempo="${card.state === "attention" ? "urgent" : card.state === "read" ? "calm" : "none"}" aria-hidden="true"></span>
-      <div><p class="eyebrow">Schedule</p><h3>${escapeHtml(card.title)}</h3></div>
-      <span class="as-of">${escapeHtml(card.observed_at ? `As of ${formatClock(card.observed_at)}` : "unknown")}</span>
-    </div>
-    <p class="ops-value tile-value" data-state="${escapeHtml(card.state)}">${escapeHtml(card.word)}</p>
-    ${card.sources.length ? `<div class="ops-sources" aria-label="Schedule sources">${card.sources.map((source) =>
-      `<span class="chip" data-state="${escapeHtml(source.state)}">${escapeHtml(source.owner)} · ${escapeHtml(source.state === "read" ? String(source.count) : "unknown")}</span>`).join("")}</div>` : ""}
-    ${card.jobs.length ? `<ul class="ops-schedule-list">${card.jobs.map((job) => scheduleJobHtml(job, card.observed_at)).join("")}</ul>` : ""}
-    <p>${escapeHtml(card.body)}</p>
-  </article>`;
-}
-
-/** The oldest-decision control opens that decision and moves focus to it. */
-function openOldest(key) {
-  const item = [...($("operationsBlocks")?.querySelectorAll("details.ops-item") || [])].find((node) => node.dataset.key === key);
-  if (!item) return;
-  item.open = true;
-  item.querySelector("summary")?.focus();
-  announce("The oldest waiting decision is open.");
-}
-
-/**
- * Approvals and schedule each settle independently; either answer repaints.
- */
-function renderOperations() {
-  const root = $("operationsBlocks");
-  if (!root) return;
-  const read = view.reads.approvals;
-  const scheduleRead = view.reads.schedule;
-  const signature = `${read?.state}|${read?.observed_at || ""}|${read?.reason || ""}|${scheduleRead?.state}|${scheduleRead?.observed_at || ""}|${scheduleRead?.reason || ""}`;
-  if (paintedApprovals === signature) return;
-  paintedApprovals = signature;
-  stopWaitingClock();
-  const card = approvalsCard(readFor("approvals"));
-  root.innerHTML = approvalsHtml(card, read) + scheduleHtml(scheduleCard(readFor("schedule")));
-
-  // A staggered entrance, set through CSSOM: the Worker's CSP refuses a style
-  // attribute written into markup.
-  const entering = root.querySelectorAll(".ops-card, .ops-lane, .ops-item");
-  entering.forEach((node, index) => node.style.setProperty("--ops-delay", `${entranceDelay(index)}ms`));
-
-  const value = $("opsApprovalsValue");
-  if (card.state === "read" && value) {
-    const previous = shownApprovals;
-    countUp(value, previous, card.value);
-    if (previous !== null && previous !== card.value) value.classList.add("motion-pulse");
-    shownApprovals = card.value;
-  }
-  root.querySelector("button[data-ops-oldest]")?.addEventListener("click", (event) => openOldest(event.currentTarget.dataset.opsOldest));
-  if (card.oldest) startWaitingClock(card.oldest.at);
-}
-
 function renderIncidents() {
   const read = view.reads.incidents;
   $("attentionAsOf").textContent = asOf(read);
@@ -585,6 +34,7 @@ function renderIncidents() {
   const groups = $("incidentGroups");
   const state = $("attentionState");
   const payload = payloadOf("incidents");
+  details?.update((payload?.incidents||[]).map(row=>({...row,id:row.ref})),{source:'incidents',state:read.state});
   if (!payload || !validIncidentBoardPayload(payload)) {
     chips.innerHTML = `<span class="chip-label">Severity</span>`;
     groups.innerHTML = "";
@@ -592,15 +42,11 @@ function renderIncidents() {
     return;
   }
   state.hidden = true;
-  chips.innerHTML = `<span class="chip-label">Severity</span>${incidentFilters(payload.incidents)
-    .map((filter) => `<button class="chip" type="button" data-severity="${escapeHtml(filter.id)}" aria-pressed="${filter.id === view.severity}">${escapeHtml(filter.label)} · ${filter.count}</button>`)
-    .join("")}`;
-  for (const chip of chips.querySelectorAll("button[data-severity]")) {
-    chip.addEventListener("click", () => { view.severity = chip.dataset.severity; renderIncidents(); });
-  }
-
+  replaceHtml(chips, `<span class="chip-label">Severity</span>${incidentFilters(payload.incidents)
+    .map((filter) => `<button class="chip" type="button" data-room-control="${escapeHtml(filter.id)}" data-severity="${escapeHtml(filter.id)}" aria-pressed="${filter.id === view.severity}">${escapeHtml(filter.label)} · ${filter.count}</button>`)
+    .join("")}`);
   const grouped = groupedIncidents(payload.incidents, { severity: view.severity });
-  groups.innerHTML = grouped.map((group) => `
+  replaceHtml(groups, grouped.map((group) => `
     <section class="card" data-group="${escapeHtml(group.severity)}" aria-label="${escapeHtml(group.severity)}">
       <div class="card-heading"><div><p class="eyebrow">${escapeHtml(group.severity)}</p><h3>${group.count} ${group.count === 1 ? "incident" : "incidents"}</h3></div></div>
       <ul class="work-list">
@@ -608,226 +54,85 @@ function renderIncidents() {
           <div>
             <h3>${escapeHtml(card.title)}</h3>
             <div class="work-meta"><span>${escapeHtml(`${card.ref} · ${card.severity} · ${card.state} · ${card.age} · ${card.owner} · seen ${card.occurrences === null ? "unknown" : card.occurrences} times`)}</span></div>
-            <div class="work-meta"><span>${escapeHtml(card.recommendedNext ? `Recommended next: ${card.recommendedNext}` : "Recommended next: the ledger recorded none")}</span></div>
-            ${card.readyToClose ? `<div class="work-meta"><span>Ready to close, by this read</span></div>` : ""}
+            <div class="work-meta"><span>${escapeHtml(card.recommendedNext ? `Recommended next: ${card.recommendedNext}` : "Next action unavailable")}</span></div>
+            ${card.readyToClose ? `<div class="work-meta"><span>Ready to close</span></div>` : ""}
           </div>
-          <div class="stack-end"><button class="btn" type="button" data-incident-open="${escapeHtml(card.ref)}">Open the card</button></div>
+          <div class="stack-end"><button class="btn" type="button" data-room-control="${escapeHtml(card.ref)}" data-incident-open="${escapeHtml(card.ref)}">Details</button></div>
         </li>`).join("")}
       </ul>
-    </section>`).join("") || `<div class="state-block" data-state="empty"><h3>No incident matches this severity</h3></div>`;
-
-  for (const button of groups.querySelectorAll("button[data-incident-open]")) {
-    button.addEventListener("click", () => openIncident(button.dataset.incidentOpen));
-  }
+    </section>`).join("") || `<div class="state-block" data-state="empty"><h3>No incident matches this severity</h3></div>`);
 }
 
-function openIncident(ref) {
-  const payload = payloadOf("incidents");
-  const row = payload?.incidents?.find((candidate) => candidate.ref === ref);
-  const dialog = $("incidentDialog");
-  if (!row || !dialog) return;
-  $("incidentDialogTitle").textContent = row.title;
-  $("incidentRows").innerHTML = Object.entries(row)
-    .filter(([, value]) => value !== null && value !== undefined && typeof value !== "object")
-    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(String(value))}</dd>`)
-    .join("");
-  const href = canonicalHref(row);
-  $("incidentRecordLine").innerHTML = href
-    ? `<a class="btn" href="${escapeHtml(href)}">Open the record</a>`
-    : escapeHtml(NO_CANONICAL_PAGE);
-  dialog.showModal();
-  announce(`${row.ref} is open.`);
+function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(item=>item.ref===ref);if(row)details.open({...row,id:row.ref},{source:'incidents'}); }
+
+function renderConnections(){
+ const projection=connectionView(payloadOf('connections'));
+ $('connectionsUpdated').textContent=updatedLabel(projection.generated_at);
+ replaceHtml($('connectionsProviders'),projection.providers.map(row=>`<article class="connection-card" data-connection="${escapeHtml(row.id)}" data-state="${row.status}"><div class="connection-heading"><span class="connection-dot" aria-hidden="true"></span><h3>${row.name}</h3></div><span class="connection-state">${row.label}</span><strong class="connection-spend">${escapeHtml(meteredSpend(row.spend))}</strong>${row.spend?`<time>${escapeHtml(updatedLabel(row.spend.as_of))}</time>`:''}${row.manage_url?`<a data-room-control="manage:${escapeHtml(row.id)}" href="${escapeHtml(row.manage_url)}" target="_blank" rel="noopener noreferrer">Manage ↗</a>`:''}</article>`).join(''));
+ $('connectionDevices').innerHTML=(projection.devices||[]).map(row=>`<article class="connection-card" data-device="${escapeHtml(row.id)}" data-state="${row.status}"><h3>${escapeHtml(row.name)}</h3><span>${{connected:'Connected',offline:'Not connected',unknown:'Status unavailable'}[row.status]}</span><time>${escapeHtml(updatedLabel(row.checked_at))}</time></article>`).join('');
+ $('devicesState').textContent=projection.devices?projection.devices.length?'':'No devices':'Device status unavailable';
+}
+function automationButton(job){return `<button type="button" class="automation-job" aria-label="${escapeHtml(job.name)}" data-room-control="${escapeHtml(JSON.stringify([job.owner,job.key]))}" data-automation="${escapeHtml(job.key)}" data-owner="${escapeHtml(job.owner)}" data-state="${escapeHtml(job.state)}"><span>${escapeHtml(job.name)}</span><time>${job.next_due_at?escapeHtml(new Date(job.next_due_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})):'Unscheduled'}</time>${job.next_due_basis==='cadence_deadline'?'<small>Expected by</small>':''}</button>`;}
+function renderAutomations(){
+ const data=automationMonth(payloadOf('schedule'),year,month);$('automationMonth').textContent=data.label;
+ details?.update((data.jobs||[]).map(job=>({...job,id:`automation:${job.owner}:${job.key}`,title:job.name})),{source:'schedule',state:view.reads.schedule.state});
+ const calendar=$('automationCalendar');replaceHtml(calendar,data.jobs?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'<p role="status">Automations unavailable</p>');
+ replaceHtml($('automationAgenda'),data.jobs?data.days.flatMap(day=>day.jobs.map(job=>`<div><time datetime="${day.key}">${day.day} ${data.label}</time>${automationButton(job)}</div>`)).join(''):'');
+ replaceHtml($('automationUndated'),data.undated.length?`<h3>Unscheduled</h3><div class="automation-undated-grid">${data.undated.map(automationButton).join('')}</div>`:'');
+ document.querySelectorAll('[data-automation]').forEach(button=>button.onclick=()=>{const job=data.jobs.find(j=>j.key===button.dataset.automation&&j.owner===button.dataset.owner);if(job)details.open({...job,id:`automation:${job.owner}:${job.key}`,title:job.name},{source:'schedule'});});
+}
+function renderRead(id){
+ if(id==='incidents')renderIncidents();
+ if(id==='approvals')board?.setGovernance(payloadOf(id),view.reads[id]);
+ if(id==='schedule')renderAutomations();
+ if(id==='connections')renderConnections();
+}
+async function take(id,run){
+ const sequence=view.sequence;
+ try{
+  const payload=await readWithDeadline(run);
+  if(sequence!==view.sequence)return;
+  const valid=id==='incidents'?validIncidentBoardPayload(payload):id==='approvals'?validGovernanceQueuePayload(payload):id==='schedule'?validScheduleBoardPayload(payload):true;
+  if(!valid)throw new Error('Invalid source read');
+  view.reads[id]={state:'read',payload,observed_at:new Date().toISOString()};
+  renderRead(id);
+ }catch(error){
+  if(sequence!==view.sequence)return;
+  const denied=[401,403].includes(error.status);
+  if(denied)details?.clear();
+  view.reads[id]={state:'unknown',reason:denied?'Sign in required':'Updates unavailable'};
+  // Projection/render errors follow the same unavailable path as transport
+  // errors, so they cannot leave earlier observations looking current.
+  renderRead(id);
+ }
+}
+async function load(){
+ view.sequence++;
+ await Promise.all([take('incidents',()=>client.incidentBoard({state:'open'})),take('approvals',()=>client.governanceQueue()),take('schedule',()=>client.scheduleBoard()),take('connections',()=>client.readConnections())]);
+ view.status='ready';await details.refresh();
+ announce(Object.values(view.reads).every(read=>read.state==='read')?'Control Room updated':'Control Room updates unavailable');
 }
 
-function renderStatus() {
-  const attempted = Object.fromEntries(Object.entries(view.reads).filter(([, read]) => read.state !== "pending"));
-  const incomplete = [...censusIncompleteSources(view.reads.census), ...atlasIncompleteSources(view.atlas)];
-  const phase = headerPhase(resourceRoomPhase(readPhase({ status: view.status, reads: attempted }), view.reads.resources), incomplete);
-  const words = HEADER_WORDS;
-  $("roomStatus")?.setAttribute("data-state", phase === "ready" ? "healthy" : phase === "loading" ? "refreshing" : phase === "partial" || phase === "incomplete" ? "attention" : "urgent");
-  $("roomOrb")?.setAttribute("data-state", phase === "ready" ? "healthy" : phase === "loading" ? "refreshing" : "urgent");
-  $("roomStatusLabel").textContent = words[phase];
-  const freshness = $("roomFreshness");
-  freshness.setAttribute("data-freshness", phase);
-  freshness.textContent = updatedLabel(Object.values(view.reads).find(read => read.observed_at)?.observed_at);
-  const retry = $("retryRead");
-  if (retry) retry.hidden = false;
-  announce(words[phase]);
-  return phase;
+function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
+function openSessions(){mountSessions({});}
+function openModelRoom(){mountModelRoom({});}
+async function boot(){
+ const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
+ details=mountJobDetail({client,document});board=mountProgressBoard({client,openTask:task=>details.open(task),onTasks:tasks=>details.update(tasks)});
+ $('severityChips').addEventListener('click',event=>{
+  const chip=event.target.closest('button[data-severity]');
+  if(chip){view.severity=chip.dataset.severity;renderIncidents();}
+ });
+ $('incidentGroups').addEventListener('click',event=>{
+  const row=event.target.closest('[data-incident]');
+  if(row)openIncident(row.dataset.incident);
+ });
+ mountDocDock('Control Room');mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
+ const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')openSessions();if(selected.id==='tabModelRoom')openModelRoom();};
+ document.getElementById('controlRoomTabs')?.addEventListener('click',event=>{const selected=event.target.closest('[data-tab-key]');if(!selected)return;const next=new URL(location.href);next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);activate(selected);},true);
+ const restoreTab=()=>{const requested=new URLSearchParams(location.search).get('tab');const key={atlas:'system-map','model-room':'agents',dashboard:'overview'}[requested]||requested||'overview';const selected=[...document.querySelectorAll('#controlRoomTabs [data-tab-key]')].find(t=>t.dataset.tabKey===key);if(selected){tabs.select(selected.id);activate(selected);}};
+ window.addEventListener('popstate',restoreTab);const parameters=new URLSearchParams(location.search);if(parameters.has("tab")) restoreTab();
+ $('automationPrev').onclick=()=>{month--;if(month<0){month=11;year--;}renderAutomations();};$('automationNext').onclick=()=>{month++;if(month>11){month=0;year++;}renderAutomations();};
+ await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();}});
 }
-
-function render() {
-  renderStatus();
-  renderCoverage();
-  renderTiles();
-  renderActiveWork();
-  renderNeedsJoe();
-  renderDelivery();
-  renderIncidents();
-  renderOperations();
-  renderResources();
-  renderScopeBlocks();
-}
-
-/* --------------------------------------------------------------------- reading */
-
-/** One read, settled on its own. A failure names its area and nothing else. */
-async function take(id, run, refusal) {
-  const sequence = view.sequence;
-  try {
-    const payload = await run();
-    if (!acceptsResponse(view.sequence, sequence)) return;
-    view.reads[id] = { state: "read", payload, observed_at: new Date().toISOString() };
-  } catch (error) {
-    if (!acceptsResponse(view.sequence, sequence)) return;
-    const status = Number(error?.status || 0);
-    if (status === 401 || status === 403) view.status = "unauthorized";
-    view.reads[id] = { state: "unknown", reason: status === 401 || status === 403 ? "the session has ended" : refusal };
-  }
-  render();
-}
-
-async function census() {
-  // The fixture's outage switch covers the census too, because CR-AC-02 has to
-  // be demonstrable for EVERY leg and this one is a plain HTTP read rather than
-  // a client method the fixture could refuse for us.
-  if (view.outage === "census") throw new Error("census outage requested by the fixture switch");
-  const response = await fetchRead(`${WORK_INVENTORY_ENDPOINT}?kinds=work_request`, { headers: { accept: "application/json" }, cache: "no-store" });
-  if (!response.ok) {
-    const error = new Error(`census -> ${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-  return response.json();
-}
-
-async function load({ background = false } = {}) {
-  view.sequence += 1;
-  view.status = "loading";
-  if (!background) { for (const id of Object.keys(view.reads)) view.reads[id] = { state: "pending" }; render(); }
-  view.status = "ready";
-  await Promise.all([
-    take("incidents", () => client.incidentBoard({ state: "open" }), "the incident ledger refused or could not be reached"),
-    take("work", () => client.currentWorkItem(), "the held-work read refused or could not be reached"),
-    take("needs_joe", () => client.currentWorkRequests(), "the shared request read refused or could not be reached"),
-    take("census", () => census(), "the census refused or could not be reached"),
-    take("approvals", () => client.governanceQueue(), "the governance queue refused or could not be reached"),
-    take("schedule", () => client.scheduleBoard(), "the schedule board refused or could not be reached"),
-    take("resources", () => client.readResourceDashboard(), "the resource read refused or could not be reached"),
-  ]);
-  render();
-  // V5-UX-C15 (C21): leave a timestamped last-known picture on THIS device so
-  // /status can show it when this page is unreachable. It records which reads
-  // answered and when — never a row, a title or a count.
-  storeSnapshot();
-}
-
-/** Never blocks a read and never throws: a device that refuses storage is fine. */
-function storeSnapshot() {
-  let storage = null;
-  try {
-    storage = globalThis.localStorage || null;
-  } catch {
-    return;
-  }
-  writeSnapshot(storage, snapshotFromReads(view.reads, Date.now()));
-}
-
-/* ------------------------------------------------------------------------ boot */
-
-/**
- * Mounted once, on demand. mountAtlas itself refuses a second mount.
- *
- * V5-UX-C09: hands atlas.js the SAME incident-board read this dashboard
- * already takes (a getter, since that read settles asynchronously and can
- * still be pending the first time a reader opens this tab) and the same
- * record-layer client, so an incident marked on the atlas resolves to the
- * exact incident this dashboard shows — never a second incident-board read.
- */
-function atlasChanged(atlas) {
-  const before = atlasIncompleteSources(view.atlas).join("\n");
-  view.atlas = atlas;
-  // The atlas repaints on every selection; the header repaints (and
-  // announces) only when what it would say about the atlas changed.
-  if (atlasIncompleteSources(atlas).join("\n") !== before) renderStatus();
-}
-
-function openAtlas(node = null) {
-  mountAtlas({ outage: view.outage, node, getIncidentsRead: () => view.reads.incidents, client, onChange: atlasChanged });
-}
-
-/**
- * V5-UX-S02: the session-identity read is LAZY for the same reason the atlas
- * read is. It fires on the first selection of the Sessions tab, never on page
- * boot, and mountSessions itself refuses a second mount.
- */
-function openSessions() {
-  mountSessions({ outage: view.outage });
-}
-
-/**
- * V5-UX-C12: the Model Room's three reads are LAZY for the same reason. They
- * fire on the first selection of the tab, never on page boot, and
- * mountModelRoom itself refuses a second mount. Nothing here polls.
- */
-function openModelRoom() {
-  mountModelRoom({ outage: view.outage });
-}
-
-
-async function boot() {
-  mountPrefs();
-  mountDocDock("Control Room");
-  tabs = wireTabs("controlRoomTabs");
-  // V5-UX-C07: the atlas read is LAZY. It fires on the first selection of the
-  // Atlas tab, never on page boot, so the four dashboard reads above keep the
-  // Control Room's time-to-glance. A  deep link selects the tab,
-  // which is what mounts it.
-  document.getElementById("controlRoomTabs")?.addEventListener("click", (event) => {
-    const selected = event.target.closest("[data-tab-key]");
-    if (!selected) return;
-    const next = new URL(globalThis.location.href);
-    next.searchParams.set("tab", selected.dataset.tabKey);
-    globalThis.history.pushState({ controlRoomTab: selected.dataset.tabKey }, "", next);
-    if (selected.id === "tabAtlas") openAtlas();
-    if (selected.id === "tabSessions") openSessions();
-    if (selected.id === "tabModelRoom") openModelRoom();
-  }, true);
-  const restoreTab = () => {
-    const requested = new URLSearchParams(globalThis.location.search).get("tab");
-    const key = { atlas: "system-map", "model-room": "agents", dashboard: "overview" }[requested] || requested || "overview";
-    const selected = [...document.querySelectorAll("#controlRoomTabs [data-tab-key]")]
-      .find((tab) => tab.dataset.tabKey === key);
-    if (!selected) return;
-    tabs?.select(selected.id);
-    if (key === "system-map") openAtlas(new URLSearchParams(globalThis.location.search).get("node"));
-    if (key === "sessions") openSessions();
-    if (key === "agents") openModelRoom();
-  };
-  globalThis.window?.addEventListener("popstate", restoreTab);
-  $("incidentClose")?.addEventListener("click", () => $("incidentDialog")?.close());
-  $("resourceDetailClose")?.addEventListener("click", () => $("resourceDetailDialog")?.close());
-  $("retryRead")?.addEventListener("click", () => load());
-  renderOperations();
-  renderScopeBlocks();
-  const location = globalThis.location || { hostname: "", search: "" };
-  const resolved = resolveDealroomBoot(location);
-  const outage = new URLSearchParams(location.search || "").get("outage");
-  view.outage = resolved.mode === "live" ? null : outage;
-  client = resolved.mode === "live"
-    ? createLiveClient()
-    : await createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
-  mountNotificationBadge(client);
-  // ?tab=atlas&node=<id> is a query on an already admitted path, so it needs no
-  // new route and no gate change. Back restores the previous selection.
-  const parameters = new URLSearchParams(location.search || "");
-  if (parameters.has("tab")) restoreTab();
-  const label = $("viewerLabel");
-  if (label) label.textContent = client.selfActor === "dell" ? "Dell's Workspace" : "Joe's Workspace";
-  await load();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ background: true }) });
-}
-
 boot();
-
-export { view };
