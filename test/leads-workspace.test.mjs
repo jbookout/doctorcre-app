@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {JSDOM} from 'jsdom';
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
+import {createLeadBoardClient} from '../js/leads-client.js';
 const tick=()=>new Promise(r=>setTimeout(r,10));
 async function setup(overrides={}){
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
@@ -108,6 +109,69 @@ test('blocking 2: detail, review and HTTP authorization denial invalidate every 
    assert.equal(s.d.getElementById('detailBody').textContent,'');
    assert.equal(s.app.state.proposal,null);assert.equal(s.app.state.identityReady,false);
   }finally{s.close()}
+ }
+});
+
+test('blocking 2: shared transport clears private workspace on authorization headers with a stalled body', async () => {
+ for (const status of [401, 403]) for (const surface of ['actor', 'workspace', 'detail', 'review', 'mutation']) {
+  const board = workspace(); let deny = false, bodyReads = 0;
+  const client = createLeadBoardClient({ timeoutMs: 20, fetchImpl: async (_path, init) => {
+   const { name, arguments: args } = JSON.parse(init.body).params;
+   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? name === 'deal-room-board' :
+    name === 'lead-board' && (surface === 'workspace' ? !args.lead_id : Boolean(args.lead_id)));
+   if (denied) return { ok: false, status, json: () => { bodyReads++; return new Promise(() => {}); } };
+   const payload = name === 'deal-room-board' ? { actor: 'example-partner' } :
+    { ...board, ...(args.lead_id ? { detail: detail(board.leads.find(l => l.id === args.lead_id)) } : {}) };
+   return { ok: true, status: 200, json: async () => ({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }) };
+  } });
+  const s = await setup(client);
+  try {
+   await s.app.readDetail(id(1));
+   assert.match(s.d.getElementById('detailBody').textContent, /Contact/);
+   assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+   if (surface === 'mutation') await s.app.openReview(id(1), 'engaged');
+   deny = true;
+   if (surface === 'mutation') {
+    s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit', { cancelable: true })); await tick();
+   } else if (surface === 'review') await s.app.openReview(id(1), 'qualified'); else await s.app.refresh();
+   assert.equal(s.d.querySelectorAll('.lead-card').length, 0, `${status}/${surface}`);
+   assert.equal(s.d.getElementById('leadDetail').open, false);
+   assert.equal(s.d.getElementById('stageDialog').open, false);
+   assert.equal(s.d.getElementById('detailBody').textContent, '');
+   assert.equal(s.app.state.pending, null); assert.equal(s.app.state.proposal, null);
+   assert.equal(s.app.state.identityReady, false); assert.equal(bodyReads, 0);
+   assert.match(s.d.getElementById('leadBoardError').textContent, /Sign-in required/);
+  } finally { s.close(); }
+ }
+});
+
+test('blocking 3: failed identity and workspace polls retain actionable recovery and the exact uncertain intent', async () => {
+ for (const kind of ['claim', 'stage']) for (const surface of ['getActor', 'getWorkspace']) {
+  const s = await setup(); const writes = [];
+  try {
+   s.client[kind === 'claim' ? 'claimLead' : 'recordStage'] = async (...args) => {
+    writes.push(args); throw Object.assign(new Error('uncertain'), { code: 'unknown_outcome' });
+   };
+   if (kind === 'claim') s.d.querySelector('[data-claim]').click();
+   else {
+    await s.app.openReview(id(1), 'engaged');
+    s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit', { cancelable: true }));
+   }
+   await tick(); s.d.getElementById('stageDialog').close();
+   const pending = s.app.state.pending, read = s.client[surface]; assert.ok(pending);
+   s.client[surface] = async () => { throw Object.assign(new Error('offline'), { code: 'network_error' }); };
+   for (let poll = 0; poll < 2; poll++) {
+    await s.app.refresh();
+    assert.equal(s.app.state.pending, pending); assert.equal(writes.length, 1);
+    const feedback = s.d.getElementById('leadBoardError'); assert.equal(feedback.hidden, false);
+    assert.match(feedback.textContent, /Connection interrupted/);
+    assert.ok(s.d.getElementById('checkPending'), `${kind}/${surface}`);
+   }
+   s.client[surface] = read; await s.app.refresh();
+   assert.doesNotMatch(s.d.getElementById('leadBoardError').textContent, /Connection interrupted/);
+   s.d.getElementById('checkPending').click(); await tick();
+   assert.equal(writes.length, 2); assert.deepEqual(writes[1], writes[0]);
+  } finally { s.close(); }
  }
 });
 

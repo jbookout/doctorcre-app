@@ -14,7 +14,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
   const state = { board: null, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
-    detail: null, detailId: null, commandFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
+    detail: null, detailId: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   function card(lead) {
     const move = automaticMove(lead), undo = undoReview(lead);
@@ -75,10 +75,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (focused?.container) restoreFocus(focused);
   }
   function paintCommandFeedback() {
-    if (!state.actor) return;
     const box = $("leadBoardError");
-    box.hidden = !state.pending && !state.commandFeedback;
-    box.innerHTML = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
+    const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
+    box.hidden = !state.pending && !state.commandFeedback && !state.connectionFeedback;
+    box.innerHTML = [command, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
     $("checkPending")?.addEventListener("click", executePending);
     if (state.pending && $("stageDialog").open) {
       $("saveStage").textContent = "Check outcome"; $("saveStage").disabled = state.writing;
@@ -86,7 +86,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     }
   }
   function clearPrivateView() {
-    state.commandFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.pending = null;
+    state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.pending = null;
     state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
@@ -98,7 +98,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (!["unauthorized", "not_authenticated", "forbidden"].includes(error.code) && ![401, 403].includes(error.status)) return false;
     ++state.epoch; state.identityReady = false; clearPrivateView(); state.actor = null;
     $("leadBoard").setAttribute("aria-busy", "false");
-    $("leadBoardError").textContent = "Sign-in required"; $("leadBoardError").hidden = false;
+    state.connectionFeedback = "Sign-in required";
+    paintCommandFeedback();
     return true;
   }
   async function refresh() {
@@ -115,6 +116,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       const next = await client.getWorkspace();
       if (epoch !== state.epoch) return;
       validateLeadWorkspace(next);
+      state.connectionFeedback = null;
       state.board = next; render();
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
@@ -138,8 +140,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } catch (error) {
       if (epoch !== state.epoch) return;
       if (authorizationFailure(error)) return;
-      $("leadBoardError").textContent = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
-      $("leadBoardError").hidden = false;
+      state.connectionFeedback = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
+      paintCommandFeedback();
     } finally { if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false"); }
   }
   function paintDetail(detail) {
@@ -229,7 +231,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         ["version_conflict", "undo_changed"].includes(error.code) ? "Lead updated" : "Change unavailable";
       state.commandFeedback = message;
       $("stageError").textContent = message; $("stageError").hidden = false;
-      $("leadBoardError").textContent = message; $("leadBoardError").hidden = false;
+      paintCommandFeedback();
       if (error.code !== "unknown_outcome") state.writing = false;
       await refresh(); // Read only. An unknown write is never sent again automatically.
       paintCommandFeedback();

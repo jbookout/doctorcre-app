@@ -115,3 +115,18 @@ test('blocking 13: shared workspace reads reject invalid consumed projections an
  payload=workspace();assert.equal((await c.getWorkspace()).leads.length,payload.leads.length);
  for(const invalid of [{id:payload.leads[0].id},{...detail(payload.leads[0]),correspondence:[null]}]){payload={schema_version:'lead-workspace.v1',detail:invalid};await assert.rejects(c.getLeadDetail({id:invalid.id}),{code:'invalid_projection'})}
 });
+
+test('blocking 2: HTTP authorization headers reject reads and writes before a stalled body', async () => {
+  for (const status of [401, 403]) {
+    let bodyReads = 0;
+    const client = createLeadBoardClient({ timeoutMs: 20, fetchImpl: async () => ({
+      ok: false, status, json: () => { bodyReads++; return new Promise(() => {}); },
+    }) });
+    for (const request of [() => client.getActor(), () => client.getWorkspace(),
+      () => client.getLeadDetail({ id: 'synthetic-lead' }),
+      () => client.claimLead({ id: 'synthetic-lead', base_version: 1 }, 'same-key', 'example-partner')]) {
+      await assert.rejects(request, { code: status === 401 ? 'not_authenticated' : 'forbidden', status });
+    }
+    assert.equal(bodyReads, 0);
+  }
+});

@@ -44,6 +44,11 @@ export function createLeadBoardClient(options = {}) {
       error.cause = cause;
       throw error;
     }
+    // Authorization is established by the headers even if the diagnostic body stalls.
+    if (response.status === 401 || response.status === 403) {
+      throw typedError({ error: response.status === 401 ? "not_authenticated" : "forbidden" },
+        "Sign-in required", response.status);
+    }
     let envelope;
     try { envelope = await response.json(); }
     catch (cause) { throw mutation ? unknownOutcome(cause) : typedError(null, "The Lead Board returned an unreadable response.", response.status); }
