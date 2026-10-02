@@ -92,7 +92,9 @@ export function mountSystemWorkBoard({client,onAccessDenied}){
  }
  function clearAccess(cause){
   ++generation;loading=false;items=[];live=[];cursor=null;cursorQuery=null;pageCount=1;
-  operations.clear();current=null;actionForm.replaceChildren();if(dialog.open)dialog.close();
+  // Access denial clears the protected view, but an unresolved write still
+  // needs its original request for reconciliation after access recovers.
+  current=null;actionForm.replaceChildren();if(dialog.open)dialog.close();
   coverage.replaceChildren();render();pipeline.clear();more.disabled=false;
   error.textContent=cause.status===401?'Sign in to view system work.':'System work access unavailable.';
   error.hidden=false;retry.hidden=false;

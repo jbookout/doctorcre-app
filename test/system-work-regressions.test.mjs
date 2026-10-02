@@ -32,6 +32,43 @@ test('finding 2: uncertain write replays immutable key, body and version after r
  h.open('a');h.submit('Original progress');await settle();assert.match(h.d.querySelector('.triage-status').textContent,/unconfirmed/i);assert.doesNotMatch(h.d.querySelector('.triage-status').textContent,/refused/);
  h.click('#work-triage-close');h.open('a');h.submit('Replacement progress');await settle();assert.equal(h.writes.length,2);assert.deepEqual(h.writes[1],h.writes[0]);
 });
+for(const denialStatus of [401,403])for(const pendingAtDenial of [false,true])test(`access denial ${denialStatus} preserves ${pendingAtDenial?'pending':'uncertain'} write replay through recovery`,async t=>{
+ let denied=false,version=2,commits=0;const receipts=new Map(),lostResponse=deferred();
+ const h=await setup(t,{
+  read:args=>{if(denied)throw Object.assign(new Error('Access denied'),{status:denialStatus});return envelope(args.live_library?[]:[{...row(),version}]);},
+  write:(_verb,args)=>{
+   if(receipts.has(args.idempotency_key))return receipts.get(args.idempotency_key);
+   assert.equal(args.base_version,version);version++;commits++;
+   receipts.set(args.idempotency_key,{ok:true,message:'Original request confirmed'});
+   return lostResponse.promise;
+  },
+ });
+ h.open('a');h.submit('Original progress');await settle();assert.equal(commits,1);
+ if(!pendingAtDenial){lostResponse.reject(new Error('Response lost'));await settle();}
+ h.click('#work-triage-close');denied=true;await h.board.refresh();
+ assert.equal(h.d.querySelector('#work-triage').open,false);
+ assert.equal(h.d.querySelector('#work-triage-form').textContent,'');
+ assert.equal(h.d.querySelectorAll('.work-card, #system-work-flow [data-task-id]').length,0);
+ assert.equal(h.d.querySelector('#system-work-coverage').textContent,'');
+ assert.match(h.d.querySelector('#system-work-error').textContent,denialStatus===401?/Sign in/:/access unavailable/);
+ denied=false;await h.board.refresh();h.open('a');
+ if(pendingAtDenial){
+  h.submit('Replacement progress');await settle();assert.equal(h.writes.length,1,'a pending operation cannot start another write');
+  lostResponse.reject(new Error('Response lost'));await settle();
+ }
+ assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').textContent,'Reconcile original request');
+ assert.equal(h.d.querySelector('#work-triage textarea').value,'Original progress');
+ assert.equal(h.d.querySelector('#work-triage textarea').disabled,true);
+ const freshReads=h.calls.filter(call=>call.id==='a').length;
+ h.submit('Replacement progress');await settle();
+ assert.equal(h.writes.length,2);assert.deepEqual(h.writes[1],h.writes[0]);
+ assert.equal(h.calls.filter(call=>call.id==='a').length,freshReads,'reconciliation skips preparing a fresh request');
+ assert.equal(commits,1,'the producer commits only the original operation');
+ assert.match(h.d.querySelector('.triage-status').textContent,/Original request confirmed/);
+ h.click('[data-receipt-close]');await settle();h.open('a');
+ assert.equal(h.d.querySelector('#work-triage textarea').value,'');
+ assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').textContent,'Review and confirm');
+});
 test('finding 3: late action receipt stays with its operation and never modifies another dialog',async t=>{
  const result=deferred();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('First progress');await settle();h.click('#work-triage-close');h.open('b');result.resolve({ok:true,message:'First receipt'});await settle();
  assert.equal(h.d.querySelector('#work-triage-form h2').textContent,'Progress · Synthetic b');assert.equal(h.d.querySelectorAll('#work-triage-form button').length,1);assert.equal(h.d.querySelector('.triage-status').textContent,'');
