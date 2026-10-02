@@ -8,10 +8,10 @@ const keyedPaint = (node, html, fallback) => {
   node.innerHTML = html;
   if (key) ([...node.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === key) || fallback)?.focus();
 };
-export function leaseCard(row, gap = false) {
+function leaseCard(row, gap = false) {
   return `<button type="button" class="lease-card ${gap ? 'gap' : row.tone || 'soon'}" data-lease="${E(row.id)}" data-radar-key="lease:${E(row.id)}"><span class="lease-light" aria-hidden="true"></span><span class="lease-card-copy"><strong>${E(row.client_name)}</strong><span>${E([row.city,row.state].filter(Boolean).join(' · '))}</span></span><span class="lease-card-date"><time datetime="${E(row.expiration_on || '')}">${date(row.expiration_on)}</time><small>${gap ? 'Date needed' : E(row.label)}</small></span><span class="lease-card-arrow" aria-hidden="true">↗</span></button>`;
 }
-export function mountLeaseDetail({document, dialog, rows, fallback}) {
+function mountLeaseDetail({document, dialog, rows, fallback}) {
   let selected = null, opener = null;
   const paint = () => {
     const row = rows().find(r => r.id === selected);

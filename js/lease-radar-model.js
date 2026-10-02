@@ -14,9 +14,8 @@ export function addMonths(day, months) {
   date.setUTCDate(Math.min(original, end));
   return date.toISOString().slice(0, 10);
 }
-const daysBetween = (start, end) => Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000);
-export const quarterKey = day => `${day.slice(0, 4)}-Q${Math.ceil(Number(day.slice(5, 7)) / 3)}`;
-export function leaseUrgency(day, today) {
+const quarterKey = day => `${day.slice(0, 4)}-Q${Math.ceil(Number(day.slice(5, 7)) / 3)}`;
+function leaseUrgency(day, today) {
   return day <= addMonths(today, 6) ? { tone: 'urgent', label: 'Within 6 months' }
     : day <= addMonths(today, 12) ? { tone: 'soon', label: '6–12 months' }
       : { tone: 'later', label: '12–24 months' };
@@ -44,7 +43,7 @@ export function projectLeaseRadar(payload, { scope = 'team', today = radarToday(
   const rows = payload.leases.filter(row => scope !== 'mine' || row.owner === payload.actor);
   const gaps = rows.filter(row => row.expiration_on === null);
   const dated = rows.filter(row => row.expiration_on && row.expiration_on >= today && row.expiration_on <= end)
-    .map(row => ({ ...row, ...leaseUrgency(row.expiration_on, today), daysLeft: daysBetween(today, row.expiration_on) }))
+    .map(row => ({ ...row, ...leaseUrgency(row.expiration_on, today) }))
     .sort((a, b) => a.expiration_on.localeCompare(b.expiration_on) || a.id.localeCompare(b.id));
   const quarters = [];
   let day = `${today.slice(0,4)}-${String(Math.floor((Number(today.slice(5,7)) - 1) / 3) * 3 + 1).padStart(2,'0')}-01`;
