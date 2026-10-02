@@ -71,7 +71,7 @@ export function mountAppLayout(root, host, pathname) {
   };
   const openRegion = (region, opener = root.activeElement) => {
     if (phone.matches) {
-      if (!drawer) drawerOpener = opener;
+      drawerOpener = opener;
       drawer = region;
     } else if (region === 'sidebar') sidebar = true;
     else today = true;
