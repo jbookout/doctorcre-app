@@ -400,9 +400,12 @@ export function validCanonicalEngineeringPassport(value) {
     if (!validExecutionEnvelope(envelope,value,true)) return false;
     const digest = canonicalDigest(envelope); if (envelopes.has(digest)) return false; envelopes.set(digest,envelope);
   }
-  const attempts = new Map();
+  // Attempt numbers are job-local. Separate envelope generations may each
+  // carry attempt:1; the producer's receipt key is (envelope, attempt).
+  const receiptKey = receipt => JSON.stringify([receipt?.envelope_digest,receipt?.attempt_id]);
+  const receiptsByLineage = new Map();
   for (const receipt of value.receipts) {
-    if (!validReceipt(receipt,value.slice_plan,new Set(),new Set()) || attempts.has(receipt.attempt_id)) return false;
+    if (!validReceipt(receipt,value.slice_plan,new Set(),new Set()) || receiptsByLineage.has(receiptKey(receipt))) return false;
     const envelope = envelopes.get(receipt.envelope_digest);
     const source = value.slice_plan.slices.find(slice => slice.slice_ref === receipt.slice_ref);
     if (!envelope || receipt.attribution.actor_ref !== envelope.server_binding.identity.agent_principal_id
@@ -410,17 +413,20 @@ export function validCanonicalEngineeringPassport(value) {
       || !sameSet(envelope.request.declared_expectations.plan_step_refs,source.declared_plan_step_refs)
       || !sameSet(envelope.request.declared_expectations.component_refs,source.declared_component_refs)
       || !sameSet(envelope.request.declared_expectations.resource_refs,source.declared_resource_refs)) return false;
-    attempts.set(receipt.attempt_id,receipt);
+    receiptsByLineage.set(receiptKey(receipt),receipt);
   }
   const current = new Map();
   for (const receipt of value.current_receipts) {
-    if (!semanticEqual(receipt,attempts.get(receipt?.attempt_id)) || current.has(receipt.slice_ref)) return false;
+    if (!semanticEqual(receipt,receiptsByLineage.get(receiptKey(receipt))) || current.has(receipt.slice_ref)) return false;
     current.set(receipt.slice_ref,receipt);
   }
   const reviews = new Set();
   for (const fact of value.reviewer_facts) {
-    const receipt = attempts.get(fact?.attempt_id);
-    if (!receipt || !validReviewerFacts([fact],[receipt]) || reviews.has(canonicalDigest(fact))) return false;
+    // Historical facts omit their ledger receipt_id. Check the matching
+    // slice/attempt candidates without selecting a generation by array order.
+    // Current facts below must still validate against the selected receipt.
+    const candidates = value.receipts.filter(receipt => receipt.slice_ref === fact?.slice_ref && receipt.attempt_id === fact?.attempt_id);
+    if (!candidates.some(receipt => validReviewerFacts([fact],[receipt])) || reviews.has(canonicalDigest(fact))) return false;
     reviews.add(canonicalDigest(fact));
   }
   if (!validReviewerFacts(value.current_reviewer_facts,[...current.values()]) || !value.current_reviewer_facts.every(fact => reviews.has(canonicalDigest(fact)))

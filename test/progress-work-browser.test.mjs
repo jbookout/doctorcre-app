@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
-import { canonicalFixture } from './fixtures/progress-work.synthetic.mjs';
+import { canonicalFixture, multiEnvelopeCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 import { scopedTurn, scopedQueueCard, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
 import { passportProjectionDigest, validEngineeringPassport } from '../js/job-passport.js';
 
@@ -120,6 +120,48 @@ test('canonical current-generation Passport validates typed evidence before acce
     value => {value.receipts[0].attribution.session_ref='session:unbound';value.current_receipts=structuredClone(value.receipts);},
     value => value.closure.proof.evidence_refs=[{...value.receipts[0].evidence_refs[0],ref:'evidence:unbound'}],
   ]) { const malformed=structuredClone(valid);change(malformed);assert.equal(canonicalPassport(reseal(malformed)),false); }
+});
+
+test('canonical Passport retains job-local attempts across envelope generations',()=>{
+  for (const reviewed of [false, true]) {
+    const value = multiEnvelopeCanonicalFixture({ reviewed });
+    assert.equal(value.receipts.length, 2);
+    assert.equal(value.current_receipts.length, 1);
+    assert.equal(value.receipts[0].attempt_id, value.receipts[1].attempt_id);
+    assert.notEqual(value.receipts[0].envelope_digest, value.receipts[1].envelope_digest);
+    assert.equal(canonicalPassport(value), true, 'Historical and current receipt lineage must coexist');
+    assert.equal(value.closure_state, reviewed ? 'complete' : 'blocked');
+    const reversed = structuredClone(value);
+    reversed.receipts.reverse();
+    reversed.projection_digest = passportProjectionDigest(reversed);
+    assert.equal(canonicalPassport(reversed), true, 'Historical order cannot select receipt authority');
+  }
+});
+
+test('canonical Passport refuses duplicate, unbound and self-reviewed receipt lineage',()=>{
+  const reseal = value => { value.projection_digest = passportProjectionDigest(value); return value; };
+  for (const change of [
+    value => value.receipts.push(structuredClone(value.receipts[0])),
+    value => value.current_receipts[0].envelope_digest = 'sha256:' + 'f'.repeat(64),
+    value => value.current_receipts[0].artifact_refs = ['artifact:unbound'],
+    value => value.reviewer_facts[0].slice_ref = 'slice:unbound',
+    value => value.reviewer_facts[0].attempt_id = 'attempt:unbound',
+    value => { value.reviewer_facts[0].session_ref = value.receipts[0].attribution.session_ref; },
+    value => { value.current_reviewer_facts = [structuredClone(value.reviewer_facts[0])]; },
+  ]) {
+    const value = multiEnvelopeCanonicalFixture();
+    change(value);
+    assert.equal(canonicalPassport(reseal(value)), false);
+  }
+});
+
+test('multi-envelope canonical Passport remains available and links its current session',async t=>{
+  const {page}=await open(t,{sessions:[
+    {canonical_session_id:'session:second',latest_attempt_ref:'attempt:1',display_name:'Second-generation builder'},
+  ],rpcReply:(rpc,payload)=>rpc.name==='engineering-passport'?multiEnvelopeCanonicalFixture():payload});
+  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+  assert.doesNotMatch(await page.locator('#workCanonicalBody').textContent(),/unavailable/i);
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Second-generation builder'));
 });
 
 test('canonical completion requires an independent pass for the selected current receipt',()=>{
