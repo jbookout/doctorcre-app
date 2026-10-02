@@ -191,13 +191,14 @@ function compareRevision(a,b) {
 }
 
 export function createDocContext({ page = 'home', now = () => Date.now() } = {}) {
-  let needsProjection = false;
   let epoch = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map();
   const listeners = new Set();
   const emit = () => listeners.forEach(listener => listener(snapshot()));
   function snapshot() {
-    const current = [...reads.values()];
-    const valid = current.filter(read => read.state === 'ready' && !needsProjection && now() - read.at < DOC_CONTEXT_TTL_MS);
+    // Sources retain their read state and observation time across filters,
+    // but only an explicit projection makes that source eligible in this scope.
+    const current = [...reads.values()].filter(read => read.epoch === epoch || read.state === 'unavailable');
+    const valid = current.filter(read => read.state === 'ready' && now() - read.at < DOC_CONTEXT_TTL_MS);
     const unique = new Map();
     for (const read of valid.sort((a, b) => a.at - b.at)) for (const row of read.records) {
       const key = `${row.kind}:${row.id}`; const previous = unique.get(key);
@@ -210,22 +211,22 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
     return { schema: 'doctorcre-doc-context.v1', page, label: DOC_PAGES[page].label, epoch, filters: { ...filters },
       selected: selected ? { ...selected } : null, active, records, ready,
       observedAt: valid.length ? new Date(Math.min(...valid.map(read => read.at))).toISOString() : null,
-      recentActivity: active?.activity.slice(0, 5) || [], state: ready ? 'ready' : current.some(read => read.state === 'pending') ? 'updating' : 'unavailable' };
+      recentActivity: active?.activityComplete === false ? [] : active?.activity.slice(0, 5) || [], state: ready ? 'ready' : current.some(read => read.state === 'pending') ? 'updating' : 'unavailable' };
   }
   return {
     snapshot,
     subscribe(listener) { listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener); },
-    navigate(next, nextFilters = {}) { needsProjection = false; page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
+    navigate(next, nextFilters = {}) { page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
     filter(next) {
       epoch++; selected = null; filters = { ...next };
-      needsProjection = true; emit();
+      tickets.clear(); emit();
     },
     project(method, payload, args = []) {
       const source = reads.get(method);
       if (!source || source.state !== 'ready') return false;
       let records; try { records=normalizeDocRead(method,payload,args); } catch { records=null; }
       if (!records) return false;
-      needsProjection = false; reads.set(method,{...source,records}); emit(); return true;
+      reads.set(method,{...source,records,epoch}); emit(); return true;
     },
     release(method) { reads.delete(method); tickets.delete(method); emit(); },
     select(kind, id) { selected = id ? { kind, id: String(id) } : null; emit(); },
@@ -233,22 +234,21 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       if (!DOC_PAGES[page].reads.includes(method)) return null;
       const key = method;
       const ticket = { key, method, args, epoch, sequence: (tickets.get(key)?.sequence || 0) + 1 };
-      tickets.set(key, ticket); reads.set(key, { state: 'pending', records: [], at: now() }); emit(); return ticket;
+      tickets.set(key, ticket); reads.set(key, { state: 'pending', records: [], at: now(), epoch }); emit(); return ticket;
     },
     finish(ticket, payload, { at = now() } = {}) {
-      if (!ticket || tickets.get(ticket.key) !== ticket) return false;
+      if (!ticket || ticket.epoch !== epoch || tickets.get(ticket.key) !== ticket) return false;
       let records;
       try { records = normalizeDocRead(ticket.method, payload, ticket.args); } catch { records = null; }
-      needsProjection = false;
-      reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at }); emit(); return records !== null;
+      reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at, epoch }); emit(); return records !== null;
     },
     fail(ticket, error = {}) {
       if ([401, 403].includes(error.status) || error.code === 'authentication_required') { epoch++; selected = null; reads.clear(); tickets.clear(); emit(); return; }
-      if (!ticket || tickets.get(ticket.key) !== ticket) return;
-      reads.set(ticket.key, { state: 'unavailable', records: [], at: now() });
+      if (!ticket || ticket.epoch !== epoch || tickets.get(ticket.key) !== ticket) return;
+      reads.set(ticket.key, { state: 'unavailable', records: [], at: now(), epoch });
       emit();
     },
-    clear() { needsProjection = false; epoch++; selected = null; reads.clear(); tickets.clear(); emit(); },
+    clear() { epoch++; selected = null; reads.clear(); tickets.clear(); emit(); },
     tick: emit,
   };
 }
@@ -259,7 +259,10 @@ export function docAnswer(context, { recordId, kind, question }) {
   const matches = context.records.filter(row => row.id === recordId && (!kind || row.kind === kind));
   if (matches.length !== 1) return { state: 'unknown', value: null };
   const row = matches[0];
-  if (question === 'Recent activity') return { state: row.activityComplete !== false && row.activity.length ? 'answered' : 'unknown', value: row.activity[0]?.text ?? null, recordId: row.id, version: row.version };
+  if (question === 'Recent activity') {
+    const value = row.activityComplete === false ? null : row.activity[0]?.text ?? null;
+    return { state: value === null ? 'unknown' : 'answered', value, recordId: row.id, version: row.version };
+  }
   const value = question === 'Name' ? row.title : row.fields.find(item => item.label === question)?.value ?? null;
   return { state: value === null || value === '' ? 'unknown' : 'answered', value: value === '' ? null : value, recordId: row.id, version: row.version };
 }

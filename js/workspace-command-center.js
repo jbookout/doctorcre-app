@@ -20,6 +20,10 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let snapshotDocObservedAt = null;
   const relationshipDialog = $('homeIntroductions') ? mountRelationshipDialog({document}) : null;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
+  const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
+    : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
+    : view?.control?.[source];
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
     const key = target.contains(document.activeElement) ? document.activeElement?.dataset.homeKey : null;
@@ -64,8 +68,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const refresh = async ({ signal } = {}) => {
-    const sources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
-    const docTickets = new Map(sources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
+    const docTickets = new Map(docSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
     const previous = snapshot;
     let latest = null;
@@ -93,10 +96,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (latest?.unauthorized) { snapshotDocObservedAt=null; pageDocContext?.clear(); }
       else {
         snapshotDocObservedAt = latest?.updatedAt ? Date.parse(latest.updatedAt) : null;
-        for (const [key] of sources) {
-          const payload = key === 'board' ? {deals:scopedDeals(latest?.board,scope)}
-            : key === 'leads' ? (latest?.leads ? {leads:topNewLeads(latest.leads,{scope,actor:latest.board?.actor,now:now()})} : null)
-            : latest?.control?.[key];
+        for (const [key] of docSources) {
+          const payload = docPayload(key,latest);
           if (latest?.reads?.[key]?.state === 'read') pageDocContext?.finish(docTickets.get(key),payload,{at:snapshotDocObservedAt});
           else pageDocContext?.fail(docTickets.get(key));
         }
@@ -134,7 +135,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   }, 1000);
   $('refreshHome').addEventListener('click', auto.refresh);
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
-  const select = value => { scope = value; setDocFilters({ scope }); if (!snapshot?.unauthorized && snapshot?.reads?.board?.state === 'read') publishDocRead('getBoard', { deals:scopedDeals(snapshot.board,scope) || [] }, []); if (!snapshot?.unauthorized && snapshot?.reads?.leads?.state === 'read') publishDocRead('getLeadBoard', { leads:topNewLeads(snapshot.leads,{scope,actor:snapshot.board?.actor,now:now()}) }, []); buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); }); render(); };
+  const select = value => {
+    scope = value; setDocFilters({ scope });
+    if (!snapshot?.unauthorized) for (const [key,method] of docSources) {
+      if (snapshot?.reads?.[key]?.state === 'read') publishDocRead(method,docPayload(key,snapshot));
+    }
+    buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); });
+    render();
+  };
   buttons.forEach(button => {
     button.addEventListener('click', () => select(button.dataset.scope));
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });

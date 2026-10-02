@@ -56,7 +56,9 @@ export function mountDocPresence({ document: root = document, window: win = wind
     $('docRecord').value = selectedRecord ? selected : ''; $('docRecord').disabled = !!snapshot.selected || !snapshot.ready;
     const facts = selectedRecord ? `<h3>${escape(selectedRecord.title)}</h3><dl>${selectedRecord.fields.map(item => { const answer = docAnswer(snapshot, { kind:selectedRecord.kind, recordId:selectedRecord.id, question:item.label }); return `<div><dt>${escape(item.label)}</dt><dd>${escape(display(answer.value))}</dd></div>`; }).join('')}</dl>` : snapshot.ready ? '' : `<p class="doc-quiet">${state}</p>`;
     keep($('docFacts'), facts);
-    keep($('docActivity'), selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
+    keep($('docActivity'), selectedRecord?.activityComplete === false
+      ? '<p class="doc-quiet">Recent activity unknown: conversation read is incomplete.</p>'
+      : selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
     keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
   };
   const refresh = async ({ signal } = {}) => {

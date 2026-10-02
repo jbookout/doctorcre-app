@@ -18,7 +18,7 @@ for (const item of docEvaluationSet) test(`Doc accuracy: ${item.page} — ${item
   assert.equal(docAnswer(snapshot,{...item,recordId:'not-this-record'}).state,'unknown');
   assert.equal(docAnswer(snapshot,{...item,question:'Unrecorded rent'}).state,'unknown');
   const suggestion = { id:'demo-suggestion-a', version:3, disposition:'open', conversation_id:item.page === 'chats' ? item.recordId : null, material_facts:{ page:item.page, record_kind:item.kind, record_id:item.recordId, record_version:snapshot.active.version } };
-  if(snapshot.active.version!==null) assert.equal(contextualSuggestions(snapshot,{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:2,scanned_through:2}}, {evaluatedPages:DOC_EVALUATED_PAGES,now}).length,1);
+  if(snapshot.active.version!==null) assert.equal(contextualSuggestions(snapshot,{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:2,scanned_through:2}}, {evaluatedPages:DOC_EVALUATED_PAGES,now}).length,snapshot.active.activityComplete===false?0:1);
   now+=DOC_CONTEXT_TTL_MS;
   assert.equal(docAnswer(context.snapshot(),item).state,'unavailable');
   assert.equal(contextualSuggestions(context.snapshot(),{ok:true,suggestions:[suggestion],coverage:{state:'complete',latest_sequence:2,scanned_through:2}},{evaluatedPages:DOC_EVALUATED_PAGES,now}).length,0);

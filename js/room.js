@@ -1962,7 +1962,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
   function render(fresh = []) {
     if (!authReadable(authGeneration())) return;
-    setDocFilters({ ...scope, seats:[...state.filters.seats], text:state.filters.text, turns:state.filters.turns, system:state.filters.system });
+    setDocFilters({ ...scope, refs:scope.refs || [], sourceSeqs:scope.sourceSeqs || [], seats:[...state.filters.seats], text:state.filters.text, turns:state.filters.turns, system:state.filters.system });
     publishDocRead('roomTurns', { turns:state.turns.filter(turn => scopedTurn(turn,scope) && turnPasses(turn,state.filters)) }, []);
     const model = deriveModel(state.turns, { now: Date.now(), viewer: state.viewer });
     const scoped = deriveModel(state.turns.filter(turn => scopedTurn(turn, scope)), { now: model.now, viewer: state.viewer });
@@ -2196,6 +2196,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     $("railToggle").setAttribute("aria-expanded", "false");
   }
   updateCounter();
+  render();
   poll();
   let scopeSignature = JSON.stringify(scope);
   return { refreshScope: () => {

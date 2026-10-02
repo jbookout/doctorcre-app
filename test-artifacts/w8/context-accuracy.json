@@ -971,6 +971,50 @@
       ]
     },
     {
+      "page": "chats",
+      "passed": 4,
+      "total": 4,
+      "percent": 100,
+      "questions": [
+        {
+          "prompt": "What is the latest activity when only the first conversation page was read?",
+          "query": "Recent activity",
+          "expected": null,
+          "recordId": "demo-chat-a",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        },
+        {
+          "prompt": "What is the name of this exact record?",
+          "query": "Name",
+          "expected": "Demo Discussion",
+          "recordId": "demo-chat-a",
+          "expectedState": "answered",
+          "actual": "Demo Discussion",
+          "actualState": "answered"
+        },
+        {
+          "prompt": "What is its unrecorded cost?",
+          "query": "Unrecorded cost",
+          "expected": null,
+          "recordId": "demo-chat-a",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        },
+        {
+          "prompt": "What is the next step for an unavailable record?",
+          "query": "Next step",
+          "expected": null,
+          "recordId": "demo-absent",
+          "expectedState": "unknown",
+          "actual": null,
+          "actualState": "unknown"
+        }
+      ]
+    },
+    {
       "page": "leads",
       "passed": 4,
       "total": 4,
@@ -1103,8 +1147,8 @@
       ]
     }
   ],
-  "total": 100,
-  "passed": 100,
+  "total": 104,
+  "passed": 104,
   "unsupportedPages": [
     "design",
     "share"

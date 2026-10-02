@@ -170,6 +170,7 @@ function openClaim(button) {
   const pending = state.pendingClaims.get(pendingId(state.actor, action, poolId));
   const candidate = pending?.candidate || state.claims?.candidates?.find(item => String(item.pool_id) === poolId);
   if (!candidate) return;
+  publishDocRead('getClaimCard',{candidates:[candidate]});
   selectDocRecord('candidate',candidate.pool_id);
   state.activeClaim = { candidate, action, trigger: button, actor: state.actor };
   const id = esc(candidate.pool_id);
@@ -463,6 +464,7 @@ if (typeof document !== "undefined") {
   client.getActor().then((actor) => {
     if (actorRead === state.actorReadEpoch) state.actor = actor;
   }).catch(() => { if (actorRead === state.actorReadEpoch) state.actor = null; });
+  renderBoard();
   refresh();
   refreshClaims();
 }

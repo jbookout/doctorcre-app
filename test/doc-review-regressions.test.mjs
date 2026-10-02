@@ -48,6 +48,42 @@ test('R13 merged activity sorts descending and incomplete conversation cannot cl
  chat.finish(chat.begin('readDocConversation',[{conversation_id:'sample'}]),payload);
  assert.equal(chat.snapshot().records[0].activity[0].text,'New');
  assert.equal(docAnswer(chat.snapshot(),{recordId:'sample',question:'Recent activity'}).state,'unknown');
+ assert.equal(docAnswer(chat.snapshot(),{recordId:'sample',question:'Recent activity'}).value,null);
+});
+test('filter projections expose only explicitly projected sources and never renew observations',()=>{
+ let now=1000;const c=createDocContext({page:'deals',now:()=>now});
+ const board={deals:[{id:'sample',name:'Sample',version:1}]};
+ c.finish(c.begin('getBoard'),board);
+ c.finish(c.begin('getDeal',['sample']),{deal:board.deals[0],activities:[{summary:'Detail only',occurred_at:old}]});
+ now=2000;c.filter({query:'none'});
+ assert.equal(c.project('getBoard',{deals:[]}),true);
+ assert.equal(c.snapshot().ready,true);assert.deepEqual(c.snapshot().records,[]);
+ assert.equal(c.snapshot().observedAt,new Date(1000).toISOString());
+ c.filter({query:'Sample'});assert.deepEqual(c.snapshot().records,[]);
+ assert.equal(c.project('getBoard',board),true);
+ assert.deepEqual(c.snapshot().records[0].activity,[]);
+ assert.equal(c.snapshot().observedAt,new Date(1000).toISOString());
+});
+test('filter changes reject both successful and failed prior-query tickets',()=>{
+ const c=createDocContext({page:'search'});
+ const prior=c.begin('find',[{query:'old'}]);
+ c.filter({query:'new'});
+ assert.equal(c.finish(prior,{parties:[{ref:'old',name:'Old query'}]}),false);
+ assert.deepEqual(c.snapshot().records,[]);assert.equal(c.snapshot().ready,false);
+ c.finish(c.begin('find',[{query:'new'}]),{parties:[{ref:'new',name:'New query'}]});
+ c.fail(prior,{status:503});
+ assert.equal(c.snapshot().ready,true);assert.deepEqual(c.snapshot().records.map(r=>r.id),['new']);
+});
+test('projecting one source does not restore another or turn a failed source into a successful read',()=>{
+ const c=createDocContext({page:'home'});
+ c.finish(c.begin('getBoard'),{deals:[{id:'sample',name:'Sample'}]});
+ c.fail(c.begin('getLeadBoard'),{status:503});
+ c.filter({scope:'mine'});
+ assert.equal(c.project('getBoard',{deals:[]}),true);
+ assert.equal(c.project('getLeadBoard',{leads:[]}),false);
+ assert.deepEqual(c.snapshot().records,[]);
+ c.fail(c.begin('getBoard'),{status:503});c.filter({scope:'all'});
+ assert.equal(c.project('getBoard',{deals:[]}),false);assert.equal(c.snapshot().ready,false);
 });
 test('R17 deleted mounting interface has no callers or fallback',async()=>{
  const {readdir}=await import('node:fs/promises');

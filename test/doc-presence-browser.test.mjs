@@ -15,7 +15,8 @@ async function setup(t,{width=1440,motion='no-preference',onRoute}={}) {
   const request=route.request(),url=new URL(request.url());if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
   if(onRoute && await onRoute(route,{url,fixture}))return;
   if(url.pathname==='/mcp'){
-   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
+  const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
+   if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
    const methods={'deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
@@ -126,6 +127,17 @@ test('selection/filter changes cancel context, auto-refresh recovers and no writ
 });
 
 const readContext=page=>page.evaluate(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot());
+// Native close is queued separately from the key press. Wait for the product
+// state as well as the dialog before inspecting the resulting projection.
+async function escapeRecord(page, selector) {
+ await page.evaluate(selector=>{
+  window.recordCloseObserved=false;
+  document.querySelector(selector).addEventListener('close',()=>queueMicrotask(()=>{window.recordCloseObserved=true;}),{once:true});
+ },selector);
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(async selector=>window.recordCloseObserved&&!document.querySelector(selector).open &&
+  (await import('/js/doc-context.js')).pageDocContext.snapshot().selected===null,selector);
+}
 const rpc=async(route,payload)=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(payload)}]}}});
 const tourId='22222222-2222-4222-8222-222222222222';
 const sampleTour={id:tourId,name:'Sample Tour',status:'draft',version:1,stops:[]};
@@ -159,20 +171,32 @@ for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired con
  await goto('/?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
  const before=await readContext(page);
  assert.equal(before.ready,failure===null,JSON.stringify(before));
- if(!failure)assert.ok(before.records.some(r=>r.kind==='deal'));
+ if(!failure){assert.ok(before.records.some(r=>r.kind==='deal'));assert.ok(before.records.some(r=>r.kind==='work'));}
  await page.locator('[data-scope="mine"]').click();const after=await readContext(page);
  assert.equal(after.ready,failure===null);if(failure===401)assert.equal(after.records.length,0);
+ if(!failure)assert.ok(after.records.some(r=>r.kind==='work'));
+});
+test('initial Queue read uses the mounted Wire filter scope and publishes its first response',async t=>{
+ let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
+ const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
+  if(env.url.pathname==='/api/room/queue'){started();await held;await route.fulfill({json:queuePayload('running')});return true;}
+  return producerRoute(route,env);
+ }});
+ await goto('/control-room/progress/work');await entered;
+ await page.waitForFunction(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().records.some(r=>r.kind==='room-turn'));
+ release();await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('running'));
+ const c=await readContext(page);assert.equal(c.ready,true);assert.ok(c.records.some(r=>r.kind==='room-task'));
 });
 test('R10 nonempty candidates bind popup identity and native close clears it',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
  await page.locator('[data-claim-open]').first().click();let c=await readContext(page);
  assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'candidate',id:'1'});assert.equal(c.active.title,'Sample candidate');
- await page.keyboard.press('Escape');assert.equal((await readContext(page)).selected,null);
+ await escapeRecord(page,'#claimDialog');assert.equal((await readContext(page)).selected,null);
 });
 test('R14/R15/R16 Ideas searches, Escape and tab return keep correctly scoped observations',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await page.goto('https://app.doctorcre.com/ideas-events',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.querySelector('#ideaList')?.textContent.includes('Sample idea'));
  await page.locator('.idea-tile').first().click();await page.waitForFunction(()=>document.querySelector('#ideaDialogBody .idea-rows'));assert.equal((await readContext(page)).selected?.id,'sample-idea');
- await page.keyboard.press('Escape');assert.equal((await readContext(page)).selected,null);
+ await escapeRecord(page,'#ideaDialog');assert.equal((await readContext(page)).selected,null);
  const before=await readContext(page);await page.locator('#ideaSearch').fill('no match');await page.waitForFunction(()=>document.querySelectorAll('.idea-tile').length===0);
  const filtered=await readContext(page);assert.equal(filtered.records.length,0);assert.equal(filtered.filters.query,'no match');assert.equal(filtered.observedAt,before.observedAt);
  await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');assert.equal((await readContext(page)).ready,true);
@@ -184,7 +208,7 @@ test('R6/R14 Tour background failure clears eligibility; search constrains origi
  assert.equal((await readContext(page)).ready,true);outage=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await page.waitForFunction(()=>document.querySelector('#detail-message').textContent.includes('unavailable'));
  assert.equal((await readContext(page)).ready,false);
- await page.keyboard.press('Escape');await page.locator('#tour-filter').fill('no match');
+ await escapeRecord(page,'#tour-dialog');await page.locator('#tour-filter').fill('no match');
  const c=await readContext(page);assert.equal(c.records.length,0);assert.equal(c.filters.query,'no match');assert.equal(c.ready,true);
 });
 for(const path of ['/api/tours/library','/api/v1/business/clients','/api/tours/detail'])test(`R6 Tour authorization loss from ${path} clears global context`,async t=>{
@@ -283,7 +307,56 @@ test('R11/R12 valid empty directory activity remains an authorized empty read',a
 
 test('R14 Tour closed detail cannot survive a no-match library filter',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/tours');await page.locator('.tour-button').first().click();await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='Sample Tour');
- await page.keyboard.press('Escape');await page.locator('#tour-filter').fill('no match');assert.equal((await readContext(page)).records.length,0);
+ await escapeRecord(page,'#tour-dialog');await page.locator('#tour-filter').fill('no match');assert.equal((await readContext(page)).records.length,0);
+});
+
+test('R13/R18 incomplete conversation reports unknown recent activity in the answer and visible Doc',async t=>{
+ const id='0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c01';
+ const {page,goto}=await setup(t,{onRoute:async(route,{url,fixture})=>{
+  if(url.pathname!=='/mcp'||route.request().postDataJSON().params.name!=='read-doc-conversation')return false;
+  await rpc(route,{...await fixture.readDocConversation({conversation_id:id}),latest_sequence:6,more:true,
+   turns:[{sequence:1,body:'Earlier sample turn',at:'2026-10-01T10:00:00Z'},
+    {sequence:2,body:'Later sample turn on first page',at:'2026-10-01T11:00:00Z'}]});return true;
+ }});
+ await goto('/doc-chats?mode=live&id='+id);
+ await page.waitForFunction(async()=> {const c=(await import('/js/doc-context.js')).pageDocContext.snapshot();return c.ready&&c.active?.activityComplete===false;});
+ await page.locator('#docOpen').click();
+ assert.match(await page.locator('#docActivity').innerText(),/Recent activity unknown.*incomplete/i);
+ assert.equal(await page.locator('#docActivity article').count(),0);
+ const answer=await page.evaluate(async id=>{
+  const c=(await import('/js/doc-context.js')).pageDocContext;
+  return (await import('/js/doc-context-model.js')).docAnswer(c.snapshot(),{kind:'conversation',recordId:id,question:'Recent activity'});
+ },id);
+ assert.equal(answer.state,'unknown');assert.equal(answer.value,null);
+ assert.deepEqual((await readContext(page)).recentActivity,[]);
+});
+test('R18 closed Deal detail cannot survive an empty board projection',async t=>{
+ const {page,goto}=await setup(t);await goto('/deals?mode=live&deal=d14');
+ await page.waitForFunction(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().active?.id==='d14');
+ await page.locator('[data-close-deal]').click();
+ await page.waitForFunction(async()=>!(await import('/js/doc-context.js')).pageDocContext.snapshot().selected);
+ await page.locator('[data-workspace="team"]').click();
+ await page.locator('#appSidebarToggle').click();
+ await page.locator('#search').fill('no matching synthetic record');
+ await page.waitForFunction(()=>document.querySelectorAll('#rows [data-deal]').length===0);
+ const c=await readContext(page);assert.equal(c.ready,true);assert.deepEqual(c.records,[]);
+});
+test('R18 a held Search response cannot publish under a later query scope',async t=>{
+ let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
+ const {page}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname!=='/mcp'||route.request().postDataJSON().params.name!=='find')return false;
+  started();await held;await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Old query sample',merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;
+ }});
+ await page.goto('https://app.doctorcre.com/search');
+ await page.evaluate(async()=>{
+  const c=(await import('/js/doc-context.js')).pageDocContext,finish=c.finish;
+  c.finish=(...args)=>{const result=finish(...args);window.finishedFind=result;return result;};
+ });
+ await page.locator('#searchQuery').fill('Old query');await page.locator('#searchForm').dispatchEvent('submit');await entered;
+ await page.locator('#searchQuery').fill('');await page.locator('#searchForm').dispatchEvent('submit');
+ release();await page.waitForFunction(()=>window.finishedFind!==undefined);
+ assert.equal(await page.evaluate(()=>window.finishedFind),false);
+ const c=await readContext(page);assert.equal(c.filters.query,'');assert.deepEqual(c.records,[]);assert.equal(c.ready,false);
 });
 
 for(const prefix of ['plan','space'])test(`R6 ${prefix} client record authorization loss clears Tour context`,async t=>{
