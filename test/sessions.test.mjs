@@ -388,7 +388,8 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   // this verb. The neighbour moved; the sorted invariant above did not.
   assert.equal(contract.mcp_operations[identity - 1], "read-room-queue");
   assert.equal(contract.mcp_operations[identity + 1], "read-tour-selection-cart");
-  assert.equal(contract.mcp_operations[identity + 2], "record-dispatch-link");
+  assert.equal(contract.mcp_operations[identity + 2], "record-commission-receipt");
+  assert.equal(contract.mcp_operations[identity + 3], "record-dispatch-link");
   // No route moves: /control-room was admitted at 04139737 and this is a tab.
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });

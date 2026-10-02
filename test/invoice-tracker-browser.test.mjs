@@ -21,6 +21,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
         reads++; if (denied) return route.fulfill({ status: 401, body: '' }); if (failed) return route.fulfill({ status: 503, body: '' }); response = data;
       } else if (req.name === 'record-commission-receipt') {
         writes++;
+        if (receipt === 'pending') return route.fulfill({ status: 502, body: '' });
         if (receipt === 'conflict') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { isError: true, content: [{ text: JSON.stringify({ error: 'version_conflict' }) }] } }) });
         const row = data.entries.find(row => row.commission_id === req.arguments.commission_id); row.status = 'received'; row.received_on = req.arguments.received_on; row.base_version++;
         if (receipt === 'uncertain') return route.fulfill({ status: 502, body: '' }); response = { ok: true, id: row.commission_id, base_version: row.base_version, received_on: row.received_on };
@@ -68,6 +69,22 @@ test('Home attention shares invoice identity, scope and refreshed paid state', a
   await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
   await page.screenshot({ path: new URL('test-artifacts/w15/home-attention-1440.png', root).pathname });
 });
+test('pending receipt confirmations remain attached to each invoice across popup changes', async t => {
+  const h = await open(t, { receipt: 'pending' }), page = h.page;
+  const invoices = page.locator('[data-invoice]');
+  const first = await invoices.nth(0).getAttribute('data-invoice');
+  await invoices.nth(0).click(); await page.locator('#markInvoicePaid').click();
+  await page.waitForFunction(() => /confirmation pending/.test(document.querySelector('#invoicePaymentNotice').textContent));
+  await page.locator('#closeInvoiceDetail').click(); await invoices.nth(1).click(); await page.locator('#markInvoicePaid').click();
+  await page.waitForFunction(() => /confirmation pending/.test(document.querySelector('#invoicePaymentNotice').textContent));
+  await page.locator('#closeInvoiceDetail').click(); await invoices.nth(0).click();
+  assert.equal(await page.locator('#markInvoicePaid').isDisabled(), true);
+  await page.clock.runFor(31000); assert.equal(h.writes, 2);
+  h.update(data => { const row = data.entries.find(row => row.commission_id === first); row.status = 'received'; row.received_on = today; });
+  await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
+  await page.locator('#closeInvoiceDetail').click(); await page.locator('[data-invoice]').filter({ hasText: 'Demo Bay' }).click();
+  assert.equal(await page.locator('#markInvoicePaid').isDisabled(), true); assert.equal(h.writes, 2);
+});
 test('deep link, reduced motion and authentication loss keep the screen contract', async t => {
   const h = await open(t, { width: 390, reducedMotion: 'reduce', query: '&invoice=00000000-0000-4000-8000-000000000002' }); await h.page.waitForFunction(() => document.querySelector('#invoiceDetail').open); assert.equal(await h.page.locator('#invoiceDetailTitle').innerText(), 'Demo Oak Purchase');
   await h.page.locator('#closeInvoiceDetail').click(); assert.equal(await h.page.locator('.invoice-row.overdue .invoice-state').first().evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
@@ -76,7 +93,6 @@ test('deep link, reduced motion and authentication loss keep the screen contract
 for (const width of [1440, 390]) test(`Home invoice attention fits ${width}px`, async t => {
   const h = await open(t, { home: true, width });
   const overflow = await h.page.evaluate(() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('body *')].filter(node=>node.getBoundingClientRect().right>innerWidth+1).map(node=>({id:node.id,cls:String(node.className),right:node.getBoundingClientRect().right})).slice(0,12)}));
-  await h.page.screenshot({ path: new URL(`test-artifacts/w15/home-attention-${width}.png`, root).pathname });
   assert.ok(overflow.scroll<=overflow.width, JSON.stringify(overflow));
   await h.page.screenshot({ path: new URL(`test-artifacts/w15/home-attention-${width}.png`, root).pathname });
   assert.deepEqual(h.errors, []);

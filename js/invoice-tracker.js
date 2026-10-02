@@ -8,7 +8,8 @@ const E=value=>String(value ?? '').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 const statusLabel=row=>row.status==='paid'?'Paid':row.status==='awaiting'?'Awaiting invoice':row.overdue?'Overdue':'Unpaid';
 export function mountInvoiceTracker({ document, window, client, today=localToday, intervalMs=30_000 }) {
   const $=id=>document.getElementById(id);
-  let rows=null,status='all',age=null,selected=null,opener=null,payment=null,disposed=false,updatedAt=null;
+  let rows=null,status='all',age=null,selected=null,opener=null,disposed=false,updatedAt=null;
+  const payments=new Map();
   const requested=new URL(window.location.href).searchParams.get('invoice');
   let requestHandled=false;
   const paint=(target,html)=>{
@@ -46,8 +47,8 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
     paint($('invoiceOriginalFacts'),[['Owner',row.owner || 'Unassigned'],['Closed',invoiceDate(row.closed_on)],['Invoiced',invoiceDate(row.invoiceDay)],['Commission',invoiceMoney(row.amount)],['Due',row.due_on?invoiceDate(row.due_on):'Not set'],['Paid',invoiceDate(row.received_on)]].map(([label,value])=>`<dt>${label}</dt><dd>${E(value)}</dd>`).join(''));
     $('invoicePayment').hidden=!row.canMarkPaid;
     $('invoicePaidDate').min=row.invoiceDay || '';$('invoicePaidDate').max=today();
-    if(payment?.key===row.key && row.status==='paid')payment=null;
-    const pending=payment?.key===row.key;
+    if(row.status==='paid')payments.delete(row.key);
+    const pending=payments.has(row.key);
     $('markInvoicePaid').disabled=Boolean(pending);
     if(pending){$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent='Confirming payment…';}
   }
@@ -85,19 +86,19 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
   $('refreshInvoices').addEventListener('click',()=>auto.refresh());
   $('invoicePayment').addEventListener('submit',async event=>{
     event.preventDefault();const row=rows?.find(row=>row.key===selected);
-    if(!row?.canMarkPaid || payment?.key===row.key || !$('invoicePayment').reportValidity())return;
+    if(!row?.canMarkPaid || payments.has(row.key) || !$('invoicePayment').reportValidity())return;
     const intent={key:row.key,args:{commission_id:row.commission_id,base_version:row.base_version,received_on:$('invoicePaidDate').value,idempotency_key:uuidv4()}};
-    payment=intent;renderDetail();
+    payments.set(row.key,intent);renderDetail();
     try{await client.markInvoicePaid(intent.args);await auto.refresh();}
     catch(error){
       const code=error?.payload?.error;
       if(['version_conflict','invoice_not_unpaid','invalid_received_on','payment_date_out_of_range','invoice_not_found','offline'].includes(code)||[401,403].includes(error?.status)){
-        if(payment===intent)payment=null;
+        if(payments.get(row.key)===intent)payments.delete(row.key);
         await auto.refresh();
         if(selected===row.key){renderDetail();$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent=code==='version_conflict'?'Invoice changed. Review payment date.':code==='offline'?'Payment not recorded. You are offline.':'Payment not recorded. Review payment date.';}
       }else{
         await auto.refresh();
-        if(selected===row.key && payment===intent){$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent='Payment confirmation pending.';}
+        if(selected===row.key && payments.get(row.key)===intent){$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent='Payment confirmation pending.';}
       }
     }
   });
