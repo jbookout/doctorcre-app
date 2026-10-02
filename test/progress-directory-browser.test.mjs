@@ -445,6 +445,7 @@ test("completed card keyboard opens the embedded popup with current model and wo
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.querySelector('#jobDialog').open);
   assert.match(await page.locator('#jobDialog').textContent(), /WR-000901.*PR #17/s);
+  assert.match(await page.locator('#jobBody .job-summary').textContent(), /Synthetic delivery summary/);
   assert.equal(new URL(page.url()).pathname, '/control-room/progress');
   assert.deepEqual(errors,[]);
 });

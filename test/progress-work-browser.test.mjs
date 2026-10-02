@@ -434,7 +434,12 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#queueStatus').selectOption('');await page.locator('#queueTarget').selectOption('dot');assert.equal(await page.locator('.queue-card').count(),1);
   for(const id of ['stageSvg','roomDesks','roomPresence','roomHealth','sessionList','assignmentList','wireFeed','viewConversation','viewEverything','kindTurns','kindSystem','kindReceipts','kindHeartbeats','wireSearch','wireResume','roomComposer','queueColumns','queueTarget','queueStatus','queueComposer'])assert.equal(await page.locator(`#${id}`).count(),1,id);
   await page.locator('#desksToggle').click();await page.locator('#desksToggle').click();
-  await page.locator('#desksToggle').click();await page.locator('.desk-card .assignment-badge').click();
+  await page.locator('#desksToggle').click();
+  const deskLogin = page.waitForRequest(request => new URL(request.url()).pathname === '/api/room/turn'
+    && request.postDataJSON()?.control?.action === 'login');
+  await page.locator('.desk-card .assignment-badge').click();
+  await deskLogin;
+  await assertEventually(()=>posts.some(post=>post.body.control?.action==='login'));
   assert.equal(posts[0].body.control.action,'login');assert.equal(posts[0].body.control.desk,'Synthetic desk');
   await page.locator('#viewEverything').click();await page.locator('#kindReceipts').click();assert.equal(await page.locator('#kindReceipts').getAttribute('aria-pressed'),'false');await page.locator('#kindReceipts').click();
   await page.locator('#wireSearch').fill('Unrelated');assert.match(await page.locator('#wireFeed').textContent(),/Unrelated synthetic task/);await page.locator('#wireSearch').fill('');

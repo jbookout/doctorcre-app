@@ -61,6 +61,12 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  assert.match(await page.locator('[data-task-id="work_request:WR-000901"]').textContent(),/WR-000901.*PR #17/);
  assert.equal(await page.locator('#board-retry').getAttribute('aria-label'),'Refresh');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.equal(await page.locator('.flow-stage').evaluateAll(stages=>stages.every(stage=>{
+  const well=stage.querySelector('.stage-well').getBBox();
+  return [...stage.querySelectorAll('.node-shape')].every(node=>{
+   const card=node.getBBox();return card.y+card.height<=well.y+well.height;
+  });
+ })),true,'all task cards fit inside their stage');
  if(width!==320)await capture(page,`board-${width}`);
  const card=page.locator('[data-task-id="work_request:WR-000901"]');await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
  await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();assert.ok((await page.locator('#jobDialog').boundingBox()).width>=Math.min(900,width-40));

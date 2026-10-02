@@ -211,9 +211,11 @@ function renderStages(view) {
   const total = view.stages.reduce((sum, stage) => sum + stage.tasks.length, 0);
   taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
   const width = phone ? 360 : 1200;
+  const cardHeight = 120;
+  const rowStep = cardHeight + 9;
   const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
-  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 129) + 21, 0) - 21
-    : Math.max(270, 93 + maxTasks * 115);
+  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * rowStep) + 21, 0) - 21
+    : Math.max(270, 93 + maxTasks * rowStep);
   flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
   flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
   let offset = 0;
@@ -221,7 +223,7 @@ function renderStages(view) {
     const x = phone ? 8 : 8 + index * 199;
     const y = phone ? offset : 8;
     const wellWidth = phone ? 344 : 186;
-    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 129) : height - 16;
+    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * rowStep) : height - 16;
     const group = svg("g", "flow-stage", { "data-stage": stage.id });
     group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
     group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
@@ -230,7 +232,7 @@ function renderStages(view) {
       String(stage.tasks.length).padStart(2, "0")));
     if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
     stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
-      y + 44 + taskIndex * 129, wellWidth - 18, 120, phone)));
+      y + 44 + taskIndex * rowStep, wellWidth - 18, cardHeight, phone)));
     flow.append(group);
     if (index < view.stages.length - 1) {
       const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`
@@ -257,7 +259,8 @@ function renderCompleted(view) {
   }
   for (const task of live.tasks) {
     const identity = taskIdentity(task);
-    const card = element("article", "completed-card");
+     const card = element("article", "completed-card");
+     card.dataset.taskId = task.id;
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", `${task.title || task.id}. Open task detail.`);

@@ -112,7 +112,13 @@ test('W5 late successful save cannot repaint another selected vendor',async t=>{
 for (const status of [200,502]) test(`W5 pre-expiry save response ${status} cannot release a recovered session save`,async t=>{
  const h=await open(t),{page}=h;const held=await holdWrites(page);
  await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await page.waitForTimeout(50);
- h.setExpired(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Your session has ended');
+ // Expiry refresh reads the list and then the selected record. The title can
+ // change after the first read; finish both before simulating restored auth.
+ const expiredRecord=page.waitForResponse(response=>response.status()===401
+  && /\/api\/v1\/business\/vendors\/[^/]+$/.test(new URL(response.url()).pathname));
+ h.setExpired(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await (await expiredRecord).finished();await page.clock.runFor(1);
+ await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Your session has ended');
  h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await page.waitForTimeout(50);assert.equal(held.length,2);
  if (status===200) await ack(held[0]); else await held[0].fulfill({status,body:'Synthetic lost response'});
  await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
