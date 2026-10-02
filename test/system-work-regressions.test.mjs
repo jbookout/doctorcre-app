@@ -5,7 +5,7 @@ import {JSDOM} from 'jsdom';
 import {mountSystemWorkBoard} from '../js/system-work-board.js';
 import {systemPipeline} from '../js/system-work-board-model.js';
 import {taskPulse,taskStage} from '../js/progress-board-model.js';
-const row=(id='a')=>({id,source:'public.loop_item',kind:'loop',title:`Synthetic ${id}`,state:'open',completed:false,age:1,version:2,last_activity_at:'2026-10-01T12:00:00Z',link:'/system-work.html',available_triage_actions:[{action:'progress',verb:'update-loop',args:{loop_id:id},versioned:true,fields:[{name:'body',label:'Progress',required:true}]}]});
+const row=(id='a')=>({id,source:'public.loop_item',kind:'loop',title:`Synthetic ${id}`,state:'open',completed:false,age:1,version:2,last_activity_at:'2026-10-01T12:00:00Z',link:'/system-work.html',navigation:{state:'available',link:'/system-work.html'},available_triage_actions:[{action:'progress',verb:'update-loop',args:{loop_id:id},versioned:true,fields:[{name:'body',label:'Progress',required:true}]}]});
 const envelope=(items=[row()],extra={})=>({schema:'unfinished-work.v1',items,coverage:[{kind:'loop',source_ref:'public.loop_item',state:'complete',count_total:items.length}],census_complete:true,next_cursor:null,...extra});
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
