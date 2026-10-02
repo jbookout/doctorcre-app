@@ -141,3 +141,16 @@ test("synthetic promotion moves one candidate onto the refreshed Lead Board; ref
   assert.equal((await client.getClaimCard()).claimable, 0);
   assert.equal((await client.getLeadBoard()).leads[0].registry_ref, "L-SYNTHETIC");
 });
+
+test('Leads workspace transports exact reviewed stage, undo, claim and link intents without outward effects',async()=>{
+ const calls=[];const client=createLeadBoardClient({fetchImpl:async(path,init)=>{calls.push({path,body:JSON.parse(init.body)});return jsonResponse({result:{content:[{type:"text",text:JSON.stringify({ok:true})}]}})}});
+ const lead={id:'30000000-0000-0000-0000-000000000001',registry_ref:'L-1',base_version:3};
+ await client.getWorkspace();await client.getLeadDetail(lead);
+ const review={reason:'Undo automatic stage move',evidence_ids:[],undo_event_id:'synthetic-event'};await client.recordStage(lead,'new',review,'same-key','example-partner');await client.claimLead(lead,'claim-key','example-partner');await client.linkClient(lead,'30000000-0000-0000-0000-000000000002','link-key','example-partner');
+ assert.deepEqual(calls.map(c=>c.body.params.name),['lead-board','lead-board','update-lead','claim-lead','link-lead-client']);assert.deepEqual(calls[2].body.params.arguments.stage_review,review);assert.equal(calls[2].body.params.arguments.idempotency_key,'same-key');assert.equal(calls[4].body.params.arguments.confirmed,true);assert.ok(calls.slice(2).every(c=>c.body.params.arguments.expected_actor==='example-partner'));assert.ok(calls.every(c=>c.path==='/mcp'));
+});
+test('Leads read and mutation deadlines stop indefinite loading and classify mutation as unknown',async()=>{
+ const c=createLeadBoardClient({timeoutMs:15,fetchImpl:()=>new Promise(()=>{})});
+ await assert.rejects(()=>c.getWorkspace(),e=>e.code==='read_timeout');
+ await assert.rejects(()=>c.claimLead({id:'synthetic-lead',base_version:1},'same-key'),e=>e.code==='unknown_outcome');
+});

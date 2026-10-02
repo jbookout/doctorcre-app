@@ -1,4 +1,5 @@
 import { uuidv4 } from "./uuid.js";
+import { readWithDeadline } from "./auto-refresh.mjs";
 
 /** A deliberately small MCP client for the lead board and candidate decisions.
  * Authentication remains the host's
@@ -22,7 +23,11 @@ export function createLeadBoardClient(options = {}) {
     return error;
   }
 
-  async function rpc(name, args = {}, mutation = false) {
+  function rpc(name, args = {}, mutation = false) {
+    const promise = readWithDeadline(() => request(name, args, mutation), { timeoutMs: options.timeoutMs || 10_000 });
+    return mutation ? promise.catch(error => { throw error.code === "read_timeout" ? unknownOutcome(error) : error; }) : promise;
+  }
+  async function request(name, args = {}, mutation = false) {
     let response;
     try {
       response = await fetchImpl("/mcp", {
@@ -75,6 +80,20 @@ export function createLeadBoardClient(options = {}) {
       return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
     },
     getLeadBoard: () => rpc("lead-board"),
+    getWorkspace: () => rpc("lead-board", { workspace: "leads" }),
+    getLeadDetail: (lead) => rpc("lead-board", { workspace: "leads", lead_id: lead.id }),
+    claimLead(lead, key, actor) {
+      return rpc("claim-lead", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
+        expected_actor: actor, idempotency_key: key }, true);
+    },
+    recordStage(lead, stage, review, key, actor) {
+      return rpc("update-lead", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
+        expected_actor: actor, fields: { stage }, stage_review: review, idempotency_key: key }, true);
+    },
+    linkClient(lead, clientId, key, actor) {
+      return rpc("link-lead-client", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
+        expected_actor: actor, client_id: clientId, confirmed: true, idempotency_key: key }, true);
+    },
     getClaimCard: () => rpc("claim-card", { limit: 5 }),
     promoteCandidate(candidate, evidence, idempotencyKey) {
       return rpc("promote-pool", {

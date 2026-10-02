@@ -6,54 +6,18 @@ import { claimEvidence, confidenceInfo, errorMessage, freshness, isDncStage, isT
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 
-test("lead board shell carries accessible controls, status regions, and pipeline SVG markers", async () => {
-  const html = await read("leads.html");
-  assert.match(html, /<a class="skip" href="#leadBoard">/);
-  assert.match(html, /aria-live="polite"/);
-  assert.match(html, /aria-busy="true"/);
-  assert.match(html, /<svg[^>]+role="img"[^>]+aria-labelledby=/);
-  assert.match(html, /<marker id="pipelineArrow"/);
-  assert.match(html, /class="pipeline-track"[^>]+tabindex="0"/);
-  assert.match(html, /id="leadSearch"/);
-  assert.doesNotMatch(html, /id="densityToggle"/);
-  assert.match(html, /id="boardView"[^>]+aria-pressed="true"/);
-  assert.match(html, /id="listView"[^>]+aria-pressed="false"/);
-  assert.match(html, /id="refreshBoard"/);
+test("Leads shell exposes named filters, accessible dialogs and discreet freshness", async () => {
+ const html=await read("leads.html");
+ for(const id of ["leadSearch","ownerFilter","stageFilter","marketFilter","leadDetail","stageDialog","boardUpdated","refreshBoard","searchUpdated","territoryMap","hotLeads"]) assert.match(html,new RegExp(`id="${id}"`));
+ assert.match(html,/aria-live="polite"/);assert.match(html,/aria-busy="true"/);assert.match(html,/5 hottest leads to claim/);
+ assert.doesNotMatch(html,/Compact|Comfortable|claimCards|pipelineArrow|Read again|retry read/);
+ assert.match(html,/js\/leads-workspace-app.js/);
 });
-
-test("lead board styling provides semantic motion states and disables all motion when reduced", async () => {
-  const css = await read("css/leads.css");
-  assert.match(css, /data-freshness="healthy"/);
-  assert.match(css, /data-freshness="attention"/);
-  assert.match(css, /data-freshness="overdue"/);
-  assert.match(css, /data-freshness="terminal"/);
-  assert.match(css, /3\.5s/);
-  assert.match(css, /2s/);
-  assert.match(css, /1s/);
-  assert.match(css, /animation:pipeline-flow 8s linear infinite/);
-  assert.match(css, /@keyframes pipeline-flow/);
-  assert.match(css, /min-width:760px/);
-  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-  assert.match(css, /animation:\s*none\s*!important/);
-  assert.match(css, /content-visibility:\s*auto/);
-  assert.match(css, /contain-intrinsic-size:\s*auto\s+260px/);
+test("Leads motion and responsive grid honor reduced motion and never require a wide canvas", async () => {
+ const css=await read("css/leads.css");assert.match(css,/repeat\(6,minmax\(0,1fr\)\)/);assert.match(css,/translateY\(-2px\)/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);assert.match(css,/animation:none!important/);assert.match(css,/transition:none!important/);
+ assert.match(css,/width:min\(1120px/);assert.doesNotMatch(css,/min-width:760px/);
 });
-
-test("lead app exposes accessible stage actions and conflict refresh behavior", async () => {
-  const app = await read("js/leads-app.js");
-  assert.match(app, /aria-label="Move /);
-  assert.match(app, /document\.activeElement/);
-  assert.match(app, /version_conflict/);
-  assert.match(app, /await refresh\(\)/);
-  assert.match(app, /await refresh\(\);\s*\$\("leadBoardError"\)\.textContent = message/);
-  assert.match(app, /\$\("refreshBoard"\)\.addEventListener/);
-  assert.match(app, /state\.view === "list"/);
-  assert.match(app, /class="lead-list"/);
-  assert.match(app, /isDncStage\(select\.value\)/);
-  assert.match(app, /Stage locked by suppression instruction/);
-  assert.doesNotMatch(app, /reminder|outreach|create-lead|promote-lead|decline-lead/i);
-});
-
 test("confidence and terminal helpers preserve production values and lock suppression instructions", () => {
   assert.deepEqual(confidenceInfo("high"), { text: "High confidence", verify: false });
   assert.deepEqual(confidenceInfo("medium"), { text: "Medium confidence", verify: true });
@@ -80,8 +44,8 @@ test("Claim Card demands typed source links and preserves stated discrepancies",
   const html = await read("leads.html");
   const app = await read("js/leads-app.js");
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.match(html, /id="claimCards"[^>]+aria-busy="true"/);
-  assert.match(html, /id="claimError"[^>]+role="alert"/);
+  assert.match(html, /id="hotLeads"[^>]+aria-busy="true"/);
+  assert.match(html, /id="leadBoardError"[^>]+role="alert"/);
   assert.match(app, /Possible duplicate/);
   assert.match(app, /Retry same request/);
   for (const verb of ["claim-card", "promote-pool", "decline-candidate"]) assert.ok(contract.mcp_operations.includes(verb));

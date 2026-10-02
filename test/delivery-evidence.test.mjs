@@ -277,7 +277,7 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // reads the census, at the route the census already owns.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
   assert.equal(routes.version, "1.17.0", "the Control Room route moved this additive contract on");
-  assert.equal(carr.version, "1.38.0", "the current interface retains the delivery evidence verbs");
+  assert.equal(carr.version, "1.39.0", "the current interface retains the delivery evidence verbs");
   for (const verb of ["engineering-passport", "read-portfolio", "work-request-card", "decline-work-request", "supersede-work-request", "set-work-shape-disposition"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }

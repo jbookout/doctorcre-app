@@ -110,12 +110,13 @@ test("late candidate read cannot hide an unknown decision or remove its retry", 
   } finally { view.restore(); }
 });
 
-test("Claim Card uses title-only heading and focused popup forms", async () => {
+test("Leads uses self-explanatory hottest section and focused detail/stage popups", async () => {
   const html = await readFile(new URL("../leads.html", import.meta.url), "utf8");
-  const app = await readFile(new URL("../js/leads-app.js", import.meta.url), "utf8");
-  assert.match(html, /<h2 id="claimHeading">Claim Card<\/h2><\/div>/);
-  assert.match(html, /<dialog id="claimDialog"/);
-  assert.doesNotMatch(app, /<details>/);
+  const app = await readFile(new URL("../js/leads-workspace-app.js", import.meta.url), "utf8");
+  assert.match(html, /<h2>5 hottest leads to claim<\/h2>/);
+  assert.match(html, /<dialog id="leadDetail"/);
+  assert.match(html, /<dialog id="stageDialog"/);
+  assert.match(app, /<details data-entry-key=/);
   assert.match(app, /showModal\(\)/);
   assert.match(app, /\.focus\(\)/);
 });
