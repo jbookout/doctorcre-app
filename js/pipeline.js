@@ -27,7 +27,7 @@
 
 import { createCommandDock } from './command-dock.js';
 import { preserveBoardFocus } from './board-focus.mjs';
-import { createCommandState, performCommand } from './command-feedback.mjs';
+import { createCommandState, performCommand, pendingCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
@@ -43,7 +43,7 @@ import {
   pendingFieldWrite, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
 import {
-  escapeText, fieldLabel, ingestChangeEvents, receiptViews,
+  escapeText, fieldLabel, readableValue, ingestChangeEvents, receiptViews,
   receiptListHtml, receiptsSignature, createFeedProgress, observeChangeBatch,
   createUndoState, performUndo,
 } from './change-receipts.mjs';
@@ -63,6 +63,7 @@ const BOARD_REFRESH_MS = 15000;
 const $ = (id) => document.getElementById(id);
 const esc = escapeText;
 const actorName = (slug) => ACTOR_LABEL[slug] || slug || 'Unassigned';
+const incomingScope = new URLSearchParams(globalThis.location?.search);
 
 /** One place holds what this page believes; nothing else keeps a copy. */
 const state = {
@@ -80,8 +81,10 @@ const state = {
   undo: createUndoState(),
   feed: createFeedProgress(),
   receiptSignature: null,
-  filter: 'all',
-  view: new URLSearchParams(globalThis.location?.search).get('view') === 'list' ? 'list' : 'board',
+  filter: ['joe','dell'].includes(incomingScope.get('owner')) ? incomingScope.get('owner') : 'all',
+  personalScope: incomingScope.get('owner') === 'me',
+  scopeFilter: incomingScope.get('filter') === 'flagged' ? 'flagged' : 'all',
+  view: incomingScope.get('view') === 'list' ? 'list' : 'board',
   parkedOpen: false,
   /** Ids, never rows: a lifted card, a chosen column, an open panel, a move in hand. */
   lifted: null,
@@ -149,7 +152,8 @@ function parkedHtml(deal) {
 function renderBoard() {
   const board = $('kanban');
   if (!board) return;
-  const rows = localDeals([...state.deals.values()], state.filter);
+  const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
+    .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
   const active = rows.filter(d => d.operating_state !== 'parked');
   const parked = rows.filter(d => d.operating_state === 'parked');
   const grouped = groupByColumn(active);
@@ -249,6 +253,7 @@ function noteCellBase(cell, event) {
 
 function applyBoardSnapshot(board) {
   state.selfActor = board.actor || state.client.selfActor || state.selfActor;
+  if (state.personalScope && ['joe','dell'].includes(state.selfActor)) state.filter = state.selfActor;
   state.deals = new Map((board.deals || []).map((deal) => [deal.id, deal]));
   // The base for each editable cell, from the same read as the values, through
   // the forward-only rule — a read already open when a write was confirmed
@@ -338,11 +343,13 @@ async function sendFieldWrite(dealId, field, value, extra = null) {
 }
 
 const FOLLOW_UP_SENDERS = {
+  'resolve-conflict': request => state.client.resolveConflict(request),
   'add-deal-note': (request) => state.client.addDealNote(request),
   'set-next-step': (request) => state.client.setNextStep(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
 };
+const nextStepKey = deal => `next-step:${deal}`;
 
 /**
  * The outcome write, and the fresh read it is built on.
@@ -396,9 +403,11 @@ async function runOutcomeWrite(operationKey, step, intent) {
 
 /** One follow-up, its own key, its own receipt. A failure never un-moves a card. */
 async function runFollowUp(operationKey, step) {
+  // Every next-step control shares one operation for the deal, including moves.
+  if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
-  operations.set(operationKey, { kind: 'command', verb: step.verb, args: step.args, send, summary: step.summary });
+  if (!pendingCommand(commandState, operationKey)) operations.set(operationKey, { kind: 'command', verb: step.verb, args: step.args, send, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
   const result = await performCommand({
     operationKey,
@@ -409,9 +418,17 @@ async function runFollowUp(operationKey, step) {
     call: (request) => send(request),
   });
   dock.record(operationKey, {
-    summary: step.summary, status: result.status, reason: result.message || null,
-    retry: result.retry, undo: false, request: result.request,
+    summary: operations.get(operationKey).summary,
+    status: result.status === 'blocked' ? 'unknown' : result.status,
+    reason: result.message || null,
+    retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
   });
+  if (step.verb === 'set-next-step' && operationKey === nextStepKey(state.panelDeal)) {
+    if (result.status === 'ok') nextDraft = null;
+    syncNextForm();
+    if (result.status === 'ok') await refreshPanel();
+  }
+  if (step.verb === 'resolve-conflict') await settleConflictChoice(step.args.conflict_id, result);
   return result;
 }
 
@@ -612,51 +629,164 @@ function closeCompletion({ cancelled }) {
 function showConflict(conflict) {
   const dialog = $('conflictDialog');
   if (!conflict || !dialog) return;
-  const display = (value) => (typeof value === 'string' ? columnLabel(value) : value ?? '(empty)');
+  const display = value => conflict.field === 'operating_state' && value && typeof value === 'object'
+    ? [value.state, value.reason, value.note].filter(Boolean).join(' · ')
+    : readableValue(conflict.field, value, {actorLabel:actorName});
   $('conflictTitle').textContent = `Choose the value for ${fieldLabel(conflict.field)}`;
   $('conflictChoices').innerHTML = ['a', 'b'].map((side) => `<label class="field">
     <input type="radio" name="winner" value="${side}"${side === 'a' ? ' checked' : ''}>
-    <span>${esc(actorName(conflict[side].actor))}: ${esc(display(conflict[side].value))}</span></label>`).join('');
+    <span>${esc(actorName(conflict[side].actor))}: ${esc(display(conflict[side].value))}${conflict[side].recorded_at ? ` · ${esc(dateWords(conflict[side].recorded_at))}` : ''}</span></label>`).join('');
   dialog.dataset.conflict = conflict.conflict_id;
+  if (!$('conflictStatus')) { const status = document.createElement('p'); status.id = 'conflictStatus'; status.setAttribute('role','status'); $('conflictChoices').after(status); }
+  syncConflictForm();
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
 }
 
+function syncConflictForm() {
+  const dialog = $('conflictDialog');
+  const pending = pendingCommand(commandState, `resolve-conflict:${dialog.dataset.conflict}`);
+  dialog.querySelectorAll('input[name="winner"]').forEach(input => {
+    input.disabled = Boolean(pending);
+    if (pending) input.checked = input.value === pending.request.winner;
+  });
+  const button = dialog.querySelector('button[type="submit"]');
+  button.disabled = pending?.status === 'pending';
+  button.textContent = pending ? 'Check outcome' : 'Keep selected value';
+  $('conflictStatus').textContent = pending?.message || '';
+}
 async function resolveConflictChoice() {
   const dialog = $('conflictDialog');
   const conflictId = dialog?.dataset.conflict;
   if (!conflictId) return;
-  const winner = dialog.querySelector('input[name="winner"]:checked')?.value || 'a';
-  dialog.close();
-  await state.client.resolveConflict({ conflict_id: conflictId, winner, idempotency_key: uuidv4() });
-  state.boardSync.requestRefresh('after-conflict');
-  showToast('Conflict resolved with both values kept in history');
+  const key = `resolve-conflict:${conflictId}`;
+  const pending = pendingCommand(commandState, key);
+  const winner = pending?.request.winner || dialog.querySelector('input[name="winner"]:checked')?.value;
+  if (!winner) return;
+  const promise = runFollowUp(key, {verb:'resolve-conflict',args:{conflict_id:conflictId,winner},summary:'Conflict resolution'});
+  syncConflictForm();
+  await promise;
+}
+async function settleConflictChoice(conflictId, result) {
+  const dialog = $('conflictDialog');
+  if (dialog.dataset.conflict !== conflictId) return;
+  syncConflictForm();
+  if (result.status === 'ok') {
+    dialog.close();
+    state.boardSync.requestRefresh('after-conflict');
+    await refreshPanel();
+    showToast('Conflict resolved with both values kept in history');
+  } else $('conflictStatus').textContent = result.message || 'Resolution not confirmed';
 }
 
 /* ------------------------------------------------------------- record panel */
 
 let disposeEvidence = null;
 let panelReadSequence = 0;
+// The next-step draft remembers the read behind each edited field. Pristine
+// fields follow current reads; edited fields keep their original comparison.
+let nextDraft = null;
+const nextReads = new Set();
+const stepValues = deal => ({text:noteText(deal.next_step),date:deal.next_date || ''});
+function syncNextForm(deal = null) {
+  const form = $('detailNextForm');
+  if (!form || !state.panelDeal) return;
+  const pending = pendingCommand(commandState, nextStepKey(state.panelDeal));
+  if (deal) {
+    const values = stepValues(deal);
+    if (!nextDraft || nextDraft.id !== deal.id) nextDraft = {id:deal.id,base:{...values},dirty:new Set(),current:values};
+    nextDraft.current = values;
+    for (const name of ['text','date']) {
+      if (!nextDraft.dirty.has(name)) {
+        nextDraft.base[name] = values[name];
+        form.elements.namedItem(name).value = values[name];
+      }
+    }
+  }
+  for (const name of ['text','date']) {
+    const field = form.elements.namedItem(name);
+    field.disabled = Boolean(pending) || nextReads.has(state.panelDeal);
+    if (pending) field.value = name === 'text' ? pending.request.text : pending.request.next_date || '';
+  }
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = pending?.status === 'pending' || nextReads.has(state.panelDeal);
+  button.textContent = pending ? 'Check outcome' : 'Save next step';
+  if (pending) $('detailNextStatus').textContent = pending.message || 'Saving next step…';
+}
+function validateDetail(detail, id) {
+  if (!detail?.deal || detail.deal.id !== id || typeof detail.deal.name !== 'string') throw new Error('Invalid detail');
+  for (const field of ['activities','thread','next_actions','critical_dates','participants','premises','negotiation_rounds','documents','history']) {
+    if (detail[field] !== undefined && (!Array.isArray(detail[field]) || detail[field].some(row => !row || typeof row !== 'object'))) throw new Error('Invalid detail section');
+  }
+  return detail;
+}
+async function saveNextStep(id) {
+  const key = nextStepKey(id);
+  const pending = pendingCommand(commandState, key);
+  if (pending?.status === 'pending' || nextReads.has(id)) return;
+  const form = $('detailNextForm');
+  const draft = nextDraft;
+  if (!form || !draft) return;
+  const proposed = {text:form.elements.namedItem('text').value.trim(),date:form.elements.namedItem('date').value};
+  if (!pending && !proposed.text) { $('detailNextStatus').textContent = 'Enter a next step'; return; }
+  if (!pending) {
+    nextReads.add(id); syncNextForm();
+    try {
+      const fresh = validateDetail(await state.client.getDeal(id), id);
+      if (state.panelDeal !== id || nextDraft !== draft) return;
+      const recorded = stepValues(fresh.deal);
+      const crossed = ['text','date'].some(name => draft.dirty.has(name) && recorded[name] !== draft.base[name]);
+      if (crossed) {
+        draft.current = recorded;
+        $('detailNextStatus').innerHTML = `Next step changed since you began editing. Recorded: ${esc(recorded.text)} · ${esc(dateWords(recorded.date))}. Your draft: ${esc(proposed.text)} · ${esc(dateWords(proposed.date))}. <button type="button" class="btn" data-next-keep>Keep my draft</button> <button type="button" class="btn" data-next-recorded>Use recorded value</button>`;
+        return;
+      }
+      // Unedited fields come from this read, even when no poll ran first.
+      for (const name of ['text','date']) if (!draft.dirty.has(name)) proposed[name] = recorded[name];
+    } catch {
+      if (state.panelDeal === id && nextDraft === draft) $('detailNextStatus').textContent = 'Next step could not be re-read. Retry before saving.';
+      return;
+    } finally { nextReads.delete(id); if (state.panelDeal === id) syncNextForm(); }
+  }
+  const args = pending?.request || {deal:id,text:proposed.text,next_date:proposed.date || null};
+  const promise = runFollowUp(key,{verb:'set-next-step',args,summary:'Next step'});
+  syncNextForm();
+  const result = await promise;
+  if (state.panelDeal !== id) return;
+  syncNextForm();
+  $('detailNextStatus').textContent = result.status === 'ok' ? 'Next step confirmed' : result.message || 'Change not confirmed';
+  state.boardSync.requestRefresh('next-step');
+}
+function fullRecordHtml(detail) {
+  const section = (title, rows, describe) => `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('') || '<p>None recorded</p>'}</section>`;
+  return `<details class="full-record" data-detail-read="full"><summary>Full record</summary>
+    ${section('Open next actions',(detail.next_actions || []).filter(a => a.status === 'open'), a => `${a.description} · ${actorName(a.owner)} · ${dateWords(a.due_on)}`)}
+    ${section('Premises',detail.premises || [], p => [p.label,p.address,p.suite,p.city,p.state,p.area_amount ? `${p.area_amount} ${p.area_basis || 'SF'}` : null].filter(Boolean).join(' · '))}
+    ${section('Negotiation rounds',detail.negotiation_rounds || [], n => `Round ${n.round_no} · ${n.side} · ${n.rate_amount ?? 'Rate not captured'} ${n.rate_basis || ''} · ${n.term_months ? `${n.term_months} months` : 'Term not captured'}`)}
+    ${section('Documents',detail.documents || [], d => `${String(d.sent_status || '').replaceAll('_',' ')} · Prepared ${dateWords(d.prepared_at)} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}`)}
+    ${section('Change history',detail.history || [], h => `${h.summary} · ${actorName(h.actor)} · ${dateWords(h.recorded_at)}`)}
+  </details>`;
+}
 function detailHtml(detail) {
   const d = detail.deal;
   const entries = noteEntries(detail);
   const parked = d.operating_state === 'parked';
-  return `<div class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${COLUMNS.map(c => `<span${c.value === d.phase ? ' aria-current="step"' : ''} title="${esc(PHASE_TRIGGERS[c.slug])}">${esc(c.label)}</span>`).join('')}</div>
+  return `<p id="detailReadStatus" role="status"></p><div class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${COLUMNS.map(c => `<span${c.value === d.phase ? ' aria-current="step"' : ''} title="${esc(PHASE_TRIGGERS[c.slug])}">${esc(c.label)}</span>`).join('')}</div>
     <div class="detail-grid"><section>
       <div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div>
       <h3>Next step</h3><p class="detail-next">${esc(noteText(d.next_step) || 'Next step pending')}</p>
-      <form id="detailNextForm" class="detail-controls"><label>Next step<textarea name="text" rows="3">${esc(noteText(d.next_step))}</textarea></label><label>Due date<input name="date" type="date" value="${esc(d.next_date || '')}"></label><button class="btn" type="submit">Save next step</button></form>
+      <form id="detailNextForm" class="detail-controls"><label>Next step<textarea name="text" rows="3">${esc(noteText(d.next_step))}</textarea></label><label>Due date<input name="date" type="date" value="${esc(d.next_date || '')}"></label><button class="btn" type="submit">Save next step</button></form><p id="detailNextStatus" role="status"></p>
       <div data-detail-read="dates"><h3>Dates</h3>${(detail.critical_dates || []).map(e => `<p>${esc(e.label || e.kind)} · ${esc(dateWords(e.date || e.due_on))}</p>`).join('') || '<p>None scheduled</p>'}</div>
       <button class="btn" type="button" data-jev-deal="${esc(d.id)}">Deal outlook</button><p data-jev-result></p><div data-detail-read="people"><h3>People</h3>${(detail.participants || []).map(p => `<p>${esc(p.name || actorName(p.actor))}</p>`).join('')}</div>
       <div data-detail-read="automatic">${autoHtml(d)}</div>
       <div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(d.parking_note || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div>
-    </section><section><h3>Notes &amp; activity</h3>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}"><b>${esc(e.kind)}</b>${e.when ? `<time> · ${esc(dateWords(e.when))}</time>` : ''}<p>${esc(e.summary)}</p><details><summary>Details</summary><p class="note-original">${esc(e.original)}</p></details></article>`).join('') || '<p>No notes yet</p>'}</section></div><div id="panelEvidence"></div>`;
+    </section><section><h3>Notes &amp; activity</h3>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}"><b>${esc(e.kind)}</b><span> · ${esc(actorName(e.actor))}</span>${e.when ? `<time> · ${esc(dateWords(e.when))}</time>` : ''}<p>${esc(e.summary)}</p><details><summary>Details</summary><p class="note-original">${esc(e.original)}</p></details></article>`).join('') || '<p>No notes yet</p>'}</section></div>${fullRecordHtml(detail)}<div id="panelEvidence"></div>`;
 }
 async function refreshPanel() {
   const id = state.panelDeal;
   if (!id) return;
   const seq = ++panelReadSequence;
   try {
-    const detail = await state.client.getDeal(id);
+    const detail = validateDetail(await state.client.getDeal(id), id);
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     state.panelDetail = detail;
     $('recordPanel').dataset.updated = new Date().toISOString();
@@ -667,13 +797,19 @@ async function refreshPanel() {
       if (document.activeElement !== $('detailOwner')) $('detailOwner').value = detail.deal.owner || '';
       const next = $('panelBody').querySelector('.detail-next');
       if (next) next.textContent = noteText(detail.deal.next_step) || 'Next step pending';
+      syncNextForm(detail.deal);
+      $('detailReadStatus').textContent = '';
       $('panelTitle').textContent = detail.deal.name;
       const template = document.createElement('div'); template.innerHTML = detailHtml(detail);
       for (const fresh of template.querySelectorAll('[data-detail-read]')) {
         const current = $('panelBody').querySelector(`[data-detail-read="${fresh.dataset.detailRead}"]`);
         if (!current) continue;
         if (fresh.dataset.detailRead === 'parking' && current.dataset.parked === 'false' && fresh.dataset.parked === 'false') continue;
-        if (current.innerHTML !== fresh.innerHTML) current.replaceWith(fresh);
+        if (current.innerHTML !== fresh.innerHTML) {
+          const wasOpen = current.open;
+          current.replaceWith(fresh);
+          if (wasOpen) fresh.open = true;
+        }
       }
       const notes = $('panelBody').querySelectorAll('.detail-grid > section')[1];
       const signature = JSON.stringify(noteEntries(detail));
@@ -695,19 +831,26 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
-  } catch { $('boardStatusLabel').textContent = 'Reconnecting'; }
+  } catch {
+    if (state.panelDeal !== id || seq !== panelReadSequence) return;
+    const message = 'Deal details could not be read. <button class="btn" type="button" data-retry-detail>Retry</button>';
+    const status = $('detailReadStatus');
+    if (status) status.innerHTML = `Details are stale. ${message}`;
+    else $('panelBody').innerHTML = `<p role="status">${message}</p>`;
+  }
 }
 function paintPanel(detail) {
   $('panelTitle').textContent = detail.deal.name;
   $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.();
   disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
+  syncNextForm(detail.deal);
   $('recordPanel').dataset.updated = new Date().toISOString();
   $('panelBody').querySelectorAll('.detail-grid > section')[1].dataset.signature = JSON.stringify(noteEntries(detail));
 }
 async function openPanel(dealId, trigger) {
   const panel = $('recordPanel');
-  state.panelDeal = dealId; state.panelDetail = null;
+  state.panelDeal = dealId; state.panelDetail = null; nextDraft = null;
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
   $('panelBody').innerHTML = '<p>Updating…</p>';
@@ -726,12 +869,13 @@ function fieldPatch(field, value) {
 }
 async function setOperatingState(id, value) {
   const result = await sendFieldWrite(id, 'operating_state', value);
-  if (result.status === 'ok') {
-    confirmLocalWrite(id, fieldPatch('operating_state', value));
-    showToast(value.state === 'active' ? 'Deal revived' : 'Deal parked');
+  if (result.status === 'ok' && !result.superseded) {
+    const accepted = result.request.value;
+    confirmLocalWrite(id, fieldPatch('operating_state', accepted));
+    showToast(accepted.state === 'active' ? 'Deal revived' : 'Deal parked');
     if (state.panelDeal === id) closePanel();
   } else if (result.conflict) showConflict(result.conflict);
-  else showToast('Change not confirmed');
+  else { showToast(fieldWriteMessage(result,'Operating state') || 'Change not confirmed'); state.boardSync.requestRefresh('operating-state'); }
   renderPendingWrites();
 }
 
@@ -897,7 +1041,7 @@ function wire() {
   $('boardChips')?.addEventListener('click', (event) => {
     const chip = event.target.closest('button[data-filter]');
     if (!chip) return;
-    state.filter = chip.dataset.filter;
+    state.personalScope = false; state.filter = chip.dataset.filter;
     renderChips();
     renderBoard();
     say(`Showing ${state.filter === 'all' ? 'every deal type' : state.filter} on the board.`);
@@ -998,25 +1142,33 @@ function wire() {
   $('listView').addEventListener('click', () => changeView('list'));
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
+  $('panelBody').addEventListener('click', e => {
+    if (e.target.closest('[data-retry-detail]')) refreshPanel();
+    if (e.target.closest('[data-next-keep]') && nextDraft) {
+      nextDraft.base = {...nextDraft.current};
+      $('detailNextStatus').textContent = 'Draft reviewed against the recorded value. Save to apply it.';
+    }
+    if (e.target.closest('[data-next-recorded]') && nextDraft) {
+      nextDraft.dirty.clear();
+      syncNextForm({id:nextDraft.id,next_step:nextDraft.current.text,next_date:nextDraft.current.date});
+      $('detailNextStatus').textContent = 'Recorded next step restored';
+    }
+  });
+  $('panelBody').addEventListener('input', e => {
+    if (e.target.closest('#detailNextForm') && nextDraft) nextDraft.dirty.add(e.target.name);
+  });
   $('panelBody').addEventListener('change', async e => {
     const id = state.panelDeal;
     if (e.target.id === 'detailPhase') {
       const intent = moveIntent(state.deals.get(id), e.target.value);
       if (intent) { const result = await sendPhaseWrite(id,intent.value); if(result.status === 'ok' && !result.superseded) { confirmLocalWrite(id,{phase:result.request?.value ?? intent.value}); await refreshPanel(); } else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Phase') || 'Change not confirmed'); renderPendingWrites(); }
     }
-    if (e.target.id === 'detailOwner') { const result = await sendFieldWrite(id,'owner',e.target.value || null); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request?.value ?? (e.target.value || null)}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed'); renderPendingWrites(); }
+    if (e.target.id === 'detailOwner') { const value = e.target.value || null; const result = await sendFieldWrite(id,'owner',value); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request.value}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed'); renderPendingWrites(); }
   });
   $('panelBody').addEventListener('submit', async e => {
     e.preventDefault(); const id=state.panelDeal; const form = new FormData(e.target);
     if (e.target.id === 'detailParkForm') await setOperatingState(id,{state:'parked',reason:'other',note:String(form.get('reason'))});
-    if (e.target.id === 'detailNextForm') {
-      const step = {verb:'set-next-step', args:{deal:id,text:String(form.get('text')),next_date:form.get('date') || null},summary:'Next step saved'};
-      const button = e.target.querySelector('button');
-      if (button.disabled) return;
-      button.disabled = true;
-      const result = await runFollowUp('detail-next-'+id+'-'+uuidv4(),step);
-      button.disabled = false; state.boardSync.requestRefresh('next-step'); await refreshPanel();
-    }
+    if (e.target.id === 'detailNextForm') await saveNextStep(id);
   });
 
   globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); refreshPanel(); });

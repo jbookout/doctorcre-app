@@ -14,7 +14,9 @@ export function localDeals(rows, owner = 'all') {
 }
 export function needsAttention(deal, now = Date.now()) {
   if (deal.operating_state === 'parked') return false;
-  const changed = Date.parse(deal.phase_change?.recorded_at || deal.updated_at || '');
+  const changed = Math.max(...[deal.phase_change?.recorded_at, deal.updated_at,
+    ...Object.values(deal.field_base || {}).map(event => event?.recorded_at)]
+    .map(value => Date.parse(value || '')).filter(Number.isFinite), -Infinity);
   const review = Date.parse(deal.last_review_at || '');
   const touch = Date.parse(deal.last_touch || '');
   const due = Date.parse(deal.next_date || '');
@@ -44,12 +46,12 @@ export function automaticMove(deal) {
 }
 export function noteEntries(detail) {
   const activities = (detail.activities || []).map(a => ({
-    id: a.id, kind: a.kind || 'Entry', when: a.occurred_at,
+    id: a.id, kind: a.kind || 'Entry', actor: a.actor, when: a.occurred_at || a.recorded_at,
     summary: concise(a.summary || a.detail, 150),
     original: typeof a.detail === 'string' ? a.detail : noteText(a.detail) || noteText(a.summary),
   }));
-  const notes = (detail.thread || []).filter(n => n.kind !== 'archived_step').map(n => ({
-    id: n.id, kind: n.kind === 'note' ? 'Note' : n.kind || 'Entry', when: n.at || n.created_at,
+  const notes = (detail.thread || []).map(n => ({
+    id: n.id, kind: n.kind === 'archived_step' ? 'Prior next step' : n.kind === 'note' ? 'Note' : n.kind || 'Entry', actor: n.actor, when: n.at || n.created_at || n.recorded_at,
     summary: concise(n.text,150), original: noteText(n.text),
   }));
   return [...activities, ...notes].filter(n => n.summary).sort((a,b) => (Date.parse(b.when) || 0) - (Date.parse(a.when) || 0));

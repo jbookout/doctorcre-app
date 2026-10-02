@@ -36,3 +36,11 @@ test('W4 read binds the separate producer revision and versioned phase/parking f
  assert.equal(contract.response.schema_version,'local-deals-board.v1');
  for(const key of ['operating_state','parking_note','phase_change','invoiced_on']) assert.ok(contract.response.deal_keys.includes(key));
 });
+
+test('R11 non-phase board field evidence newer than review requests attention',()=>{
+ for(const field of ['owner','next_date','attention','operating_state']) {
+  const deal={...base,phase_change:{recorded_at:'2026-10-01T15:00:00Z'},field_base:{[field]:{id:'new-event',recorded_at:'2026-10-01T16:30:00Z'}}};
+  assert.equal(needsAttention(deal,now),true,field);
+  assert.equal(needsAttention({...deal,last_review_at:'2026-10-01T17:00:00Z'},now),false);
+ }
+});

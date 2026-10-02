@@ -441,8 +441,9 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 });
 
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
+  const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
