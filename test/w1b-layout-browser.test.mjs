@@ -14,6 +14,7 @@ async function open(t,{width=1440,motion='no-preference',clock=false,deniedStora
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
   const errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
+  const liveLeads=structuredClone(leads);
   await page.route('**/*',async route=>{
     const request=route.request(),url=new URL(request.url());
     if(url.origin!=='http://localhost') return route.abort();
@@ -24,7 +25,8 @@ async function open(t,{width=1440,motion='no-preference',clock=false,deniedStora
     if(url.pathname==='/mcp'){
       const {name,arguments:args}=request.postDataJSON().params;
       let body;
-      if(name==='lead-board') body={actor:'joe',generated_at:new Date().toISOString(),leads,stages:leads.map((l,i)=>({slug:l.stage,label:l.stage_label,sort:i}))};
+      if(name==='lead-board') body={actor:'joe',generated_at:new Date().toISOString(),leads:liveLeads,stages:leads.map((l,i)=>({slug:l.stage,label:l.stage_label,sort:i}))};
+      else if(name==='update-lead') {writes.push(name);const lead=liveLeads.find(l=>l.id===args.lead);Object.assign(lead,args.fields,{stage_label:args.fields.stage,base_version:(lead.base_version||0)+1});body={ok:true};}
       else if(name==='claim-card') body={claimable:0,needs_contact_count:0,candidates:[]};
       else if(name==='deal-room-board') body=await fixture.getBoard();
       else if(name==='today-triage') body=await fixture.todayTriage();
@@ -58,6 +60,19 @@ test('five regions, rail destinations, original tab controls and per-page sideba
  assert.deepEqual(errors,[]);
 });
 
+test('Leads drag uses the existing stage command and keeps a keyboard path without visible Move controls',async t=>{
+ const{page,goto,writes,errors}=await open(t);await goto('/leads');
+ const card=()=>page.locator('[data-open-lead="synthetic-lead-0"]');
+ assert.equal(await card().locator('.lead-ref').textContent(),'');
+ assert.equal(await card().locator('.lead-move').evaluate(n=>getComputedStyle(n).clipPath),'inset(50%)');
+ await card().dragTo(page.locator('.stage-column[data-stage="qualified"] .lead-stack'));
+ await page.waitForFunction(()=>document.querySelector('.stage-column[data-stage="qualified"] [data-open-lead="synthetic-lead-0"]'));
+ await card().focus();await page.keyboard.press('Tab');assert.equal(await page.locator('#stage-synthetic-lead-0').evaluate(n=>n===document.activeElement),true);
+ await page.locator('#stage-synthetic-lead-0').selectOption('contacted');await page.keyboard.press('Tab');await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>document.querySelector('.stage-column[data-stage="contacted"] [data-open-lead="synthetic-lead-0"]'));
+ assert.deepEqual(writes,['update-lead','update-lead']);assert.deepEqual(errors,[]);
+});
+
 test('phone rail is a bottom bar; drawers close by Escape and scrim with focus restored',async t=>{
  const{page,goto,errors}=await open(t,{width:390,motion:'reduce'});await goto('/leads');
  const rail=await page.locator('.app-shell-header').boundingBox();assert.ok(rail.y>=850);
@@ -86,12 +101,13 @@ test('recent moves catch up through history and update read-only on pages withou
 
 test('Local Deals opens a wide popup, refreshes its original note, and retains one-tap Undo in Today',async t=>{
  const{page,goto,errors}=await open(t,{clock:true});await goto('/deals?view=board');
- await page.locator('.kanban-card[data-id="d05"] [data-open]').click();await page.waitForFunction(()=>document.querySelector('#panelBody details'));
+ await page.locator('.kanban-card[data-id="d05"]').click({position:{x:8,y:8}});await page.waitForFunction(()=>document.querySelector('#panelBody details'));
  assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);await page.locator('#panelBody summary').click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d05',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
  await page.clock.fastForward(16_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
  assert.equal(await page.locator('#panelBody details').evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),false);
+ await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
  const original=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
  await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,original);
@@ -108,6 +124,27 @@ test('blocked localStorage, automatic Today refresh, and wide item details stay 
  await goto('/leads');await page.locator('.lead-card').first().click();assert.equal(await page.locator('#leadDetailDialog').evaluate(n=>n.open),true);assert.ok((await page.locator('#leadDetailDialog').boundingBox()).width>=900);
  await page.locator('#leadDetailBody summary').click();assert.equal(await page.locator('#leadDetailBody details').evaluate(n=>n.open),true);await page.locator('#leadDetailBody summary').focus();await page.clock.fastForward(31_000);assert.equal(await page.locator('#leadDetailBody summary').evaluate(n=>n===document.activeElement),true);assert.equal(await page.locator('#leadDetailBody details').evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#leadDetailDialog').evaluate(n=>n.open),false);assert.deepEqual(errors,[]);
+});
+
+test('Today clears unavailable data and recovers automatically after a failed refresh',async t=>{
+ const{page,goto,writes,errors}=await open(t,{clock:true});let unavailable=false;
+ await page.route('**/mcp',route=>{
+  const name=route.request().postDataJSON().params.name;
+  if(unavailable && ['deal-room-board','today-triage'].includes(name))return route.fulfill({status:503,body:'Unavailable'});
+  return route.fallback();
+ });
+ await goto('/leads?mode=live');const before=await page.locator('#appSyncTime').getAttribute('datetime');
+ assert.ok(await page.locator('#appTodayNeeds [data-layout-deal]').count());
+ unavailable=true;await page.clock.fastForward(31_000);
+ await page.waitForFunction(()=>document.querySelector('#appTodayNeeds')?.textContent==='Unavailable');
+ assert.equal(await page.locator('#appTodayNeeds [data-layout-deal]').count(),0);
+ assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);
+ assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection unavailable');
+ unavailable=false;await page.clock.fastForward(31_000);
+ await page.waitForFunction(()=>document.querySelector('#appTodayNeeds [data-layout-deal]'));
+ assert.notEqual(await page.locator('#appSyncTime').getAttribute('datetime'),before);
+ assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
+ assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
 test('Home, Leads and Local Deals fit desktop and phone; capture the six review renders',async t=>{

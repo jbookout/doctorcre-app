@@ -30,8 +30,8 @@
   </div>
 
   <main id="main" class="shell">
-    <section class="card glass" aria-labelledby="pageTitle">
-      <div data-layout-slot="sidebar" class="hero">
+    <section data-layout-slot="sidebar" class="card glass" aria-labelledby="pageTitle">
+      <div class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="boardOrb" aria-hidden="true"></span> Pipeline</p>
           <h1 id="pageTitle">Deals</h1>
@@ -60,11 +60,10 @@
 
     <div class="pipeline-layout">
       <div class="kanban" id="kanban" aria-label="Deals by phase" tabindex="-1"></div>
-      <dialog id="recordPanel" class="side-panel glass" aria-labelledby="panelTitle" data-pinned="false" hidden>
+      <dialog id="recordPanel" class="record-popup glass" aria-labelledby="panelTitle" hidden>
         <div class="panel-head">
           <div><p class="eyebrow">Record</p><h2 id="panelTitle">Record</h2></div>
           <div class="row-wrap">
-            <button class="btn icon-btn" type="button" id="panelPin" aria-pressed="false" aria-label="Pin this panel">📌</button>
             <button class="btn icon-btn" type="button" id="panelClose" aria-label="Close record panel">×</button>
           </div>
         </div>

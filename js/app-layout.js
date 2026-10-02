@@ -81,6 +81,15 @@ export function mountAppLayout(root, host, pathname) {
   // Page tab controllers retain selection and lazy reads. Give groups without
   // their own roving focus the same left/right keyboard affordance.
   const tabs = layout.querySelector('#appTabsSlot');
+  const showSelectedTab = () => {
+    const selected = tabs.querySelector('[aria-current="page"],[aria-selected="true"],[aria-pressed="true"]');
+    if (!selected) return;
+    const edge = selected.getBoundingClientRect(), viewport = tabs.getBoundingClientRect();
+    if (edge.right > viewport.right) tabs.scrollLeft += edge.right - viewport.right;
+    else if (edge.left < viewport.left) tabs.scrollLeft -= viewport.left - edge.left;
+  };
+  win.requestAnimationFrame(showSelectedTab);
+  phone.addEventListener('change', showSelectedTab);
   tabs.addEventListener('keydown', event => {
     if (event.target.closest('[role="tablist"]') || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
     const items = [...tabs.querySelectorAll('a,button')].filter(n => !n.disabled && n.getClientRects().length);
