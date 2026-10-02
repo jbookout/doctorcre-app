@@ -10,7 +10,7 @@ const share = readFileSync(new URL("../reports/share.js", import.meta.url), "utf
 const html = readFileSync(new URL("../reports/share.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("../reports/share.css", import.meta.url), "utf8");
 const tours = readFileSync(new URL("../tours/app.js", import.meta.url), "utf8");
-const tourHtml = readFileSync(new URL("../tours/index.html", import.meta.url), "utf8");
+const tourHtml = readFileSync(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 
 const propertyRef = "property:public:synthetic_property_01";
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
