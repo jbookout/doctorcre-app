@@ -1,37 +1,58 @@
 import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
-import { createPlannerClient } from "./planner-client.js";
+import { createPlannerClient, validateTourList, validateClientList, validateClientRecord, validateTourDetail } from "./planner-client.js";
 import { cheatSheetText } from "./tour-format.js";
 import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, validateCriteria, addPrivateFiles } from "./planner-model.js";
 
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
-  let clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0;
-  let currentTour = null, selectedRecord = null, scope = null, disposed = false;
+  let clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
+  let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
   const key = "doctorcre-tour-planning-drafts-v1";
+  // Capture restoration input before an edit can persist a partial boot draft.
+  let savedDraft = null;
+  try { savedDraft = JSON.parse(window.sessionStorage.getItem(key)); } catch { /* Disabled or invalid storage. */ }
   const message = (selector, text) => { $(selector).textContent = text; };
   const element = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const option = (text, value) => { const node = element("option", text); node.value = value; return node; };
-  function save() {
-    if (!scope) return;
-    try { window.sessionStorage.setItem(key, JSON.stringify({ scope, planClient, searchClient, plan: plan.values, search: search.values })); }
-    catch { message("#plan-message", "Draft stays in this tab."); }
-  }
-  function restoreOrClear() {
-    if (api.scope === scope) return;
-    const first = scope === null; scope = api.scope;
-    if (!scope) return;
-    if (!first) {
-      ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
-      plan.reset(); search.reset(); closeDialog(); message("#plan-message", "Session changed. New draft started."); renderFiles();
-    } else {
+  function save(target) {
+    restoreOrClear();
+    let outcome = "Draft stays in this tab. Sign in to save.";
+    if (scope) {
       try {
-        const saved = JSON.parse(window.sessionStorage.getItem(key));
-        if (saved?.scope === scope) { plan.reset(saved.plan); search.reset(saved.search); planClient = saved.planClient || ""; searchClient = saved.searchClient || ""; }
+        window.sessionStorage.setItem(key, JSON.stringify({ scope, planClient, searchClient, plan: plan.values, search: search.values }));
+        return true;
+      } catch { outcome = "Draft stays in this tab."; }
+    }
+    if (target) message(target, outcome);
+    return false;
+  }
+  function restoreOrClear(refused = false) {
+    if (!refused && api.scope === scope) return;
+    const first = !scopeEstablished && !refused; scope = api.scope; scopeEstablished = true;
+    if (!first) {
+      ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
+      savedDraft = null; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
+      $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
+      try { window.sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
+      for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
+      $(".freshness").classList.remove("current");
+    } else if (scope) {
+      try {
+        if (savedDraft?.scope === scope) {
+          if (planEpoch === 0) { plan.restore(savedDraft.plan); planClient = savedDraft.planClient || ""; }
+          if (searchEpoch === 0) { search.restore(savedDraft.search); searchClient = savedDraft.searchClient || ""; }
+        }
       } catch { /* An invalid draft never selects another client's record. */ }
     }
     syncForm("plan", plan); syncForm("space", search);
   }
+  async function read(operation) {
+    try { return await operation(); }
+    catch (error) { if (error?.code === "authentication_required") restoreOrClear(true); throw error; }
+    finally { restoreOrClear(); }
+  }
+  const unavailable = error => error?.code === "authentication_required" ? "Sign in to continue." : null;
   function syncForm(prefix, draft) {
     for (const [field, value] of Object.entries(draft.values)) {
       const control = $(`#${prefix}-${field}`);
@@ -42,10 +63,12 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   }
   function wireDraft(prefix, draft) {
     for (const field of Object.keys(draft.values)) $(`#${prefix}-${field}`).addEventListener("input", event => {
-      draft.set(field, event.target.value); syncForm(prefix, draft); save();
+      const value = event.target.value;
+      if (scope !== null) restoreOrClear();
+      draft.set(field, value); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
     });
     $(`#${prefix}-undo`).addEventListener("click", () => {
-      const field = draft.undo(); syncForm(prefix, draft); save();
+      const field = draft.undo(); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
       if (field) { $(`#${prefix}-${field}`).focus(); message(prefix === "plan" ? "#plan-message" : "#space-message", "Change undone."); }
     });
   }
@@ -64,17 +87,17 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const draft = prefix === "plan" ? plan : search;
     if (prefix === "plan") { planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
     // A new record starts an independent draft, so previous-client criteria never migrate.
-    draft.reset(); syncForm(prefix, draft); save();
+    draft.reset(); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
     const target = prefix === "plan" ? "#plan-message" : "#space-message";
     message(target, id ? "Updating…" : "");
     if (!id) return;
     try {
-      const record = await api.client(id);
+      const record = await read(async () => validateClientRecord(await api.client(id), id));
       if (disposed || epoch !== (prefix === "plan" ? planEpoch : searchEpoch) || record.id !== id) return;
       if (prefix === "plan") selectedRecord = record;
-      draft.suggest(clientSuggestions(record)); syncForm(prefix, draft); save();
+      draft.suggest(clientSuggestions(record)); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
       message(target, "");
-    } catch { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, "Client details temporarily unavailable."); }
+    } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || "Client details temporarily unavailable."); }
   }
   function renderLibrary() {
     const focusedId = document.activeElement?.dataset?.tourId;
@@ -104,7 +127,6 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   function renderTour(tour) {
     const signature = JSON.stringify(tour);
     if (signature === renderedTour) return;
-    renderedTour = signature;
     const body = $("#detail-content"), dialog = $("#tour-dialog"), scroll = dialog.scrollTop;
     const expanded = body.querySelector("details")?.open;
     const focused = body.contains(document.activeElement) ? document.activeElement.tagName : null;
@@ -112,7 +134,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     body.replaceChildren();
     const summary = element("div", undefined, "detail-summary");
     summary.append(element("span", (tour.status || "draft").replaceAll("_", " "), "pill"));
-    const stops = (tour.routes?.find(route => route.accepted)?.stops || tour.stops || []).filter(stop => stop.stop_state !== "excluded");
+    const stops = (tour.routes?.[0]?.stops || tour.stops || []).filter(stop => stop.stop_state !== "excluded");
     summary.append(element("span", `${stops.length} stops`, "pill")); body.append(summary);
     const list = element("ol", undefined, "detail-stops");
     for (const stop of stops) {
@@ -132,15 +154,16 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (focused === "SUMMARY") body.querySelector("summary")?.focus({ preventScroll: true });
     if (focused === "A") link.focus({ preventScroll: true });
     dialog.scrollTop = scroll;
+    renderedTour = signature;
   }
   async function openTour(id, trigger) {
     showDialog("Tour", trigger); const epoch = ++dialogEpoch; currentTour = id;
     message("#detail-message", "Updating…");
     try {
-      const tour = await api.tour(id);
+      const tour = await read(async () => validateTourDetail(await api.tour(id), id));
       if (epoch !== dialogEpoch || currentTour !== id || disposed) return;
       renderTour(tour); message("#detail-message", "");
-    } catch { if (epoch === dialogEpoch) message("#detail-message", "Tour temporarily unavailable."); }
+    } catch (error) { if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
   }
   function renderFiles() {
     const list = $("#packet-files"); list.replaceChildren();
@@ -152,6 +175,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     message("#file-count", `${files.length} files`);
   }
   function acceptFiles(incoming) {
+    restoreOrClear();
     try { files = addPrivateFiles(files, incoming); renderFiles(); message("#file-message", ""); }
     catch (error) { message("#file-message", error.message); }
     $("#packet-upload").value = "";
@@ -170,24 +194,28 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const file of files) attachments.append(element("li", file.name)); body.append(attachments);
     body.append(element("p", "Packet compilation unavailable", "capability-state"));
   }
-  async function refresh() {
-    const results = await Promise.allSettled([api.library(), api.clients()]);
-    if (disposed) return;
+  async function refresh({ signal } = {}) {
+    // Boot, manual and scheduled reads share one generation boundary.
+    const revision = ++refreshEpoch;
+    const active = () => !disposed && revision === refreshEpoch && !signal?.aborted;
+    const results = await Promise.allSettled([read(async () => validateTourList(await api.library({ signal }))), read(async () => validateClientList(await api.clients({ signal })))]);
+    if (!active()) return;
     restoreOrClear();
+    if (!active()) return;
     if (results[0].status === "fulfilled") { tours = results[0].value; renderLibrary(); message("#tour-library-state", ""); }
-    else message("#tour-library-state", "Tours temporarily unavailable.");
+    else message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable.");
     if (results[1].status === "fulfilled") {
       clients = results[1].value; fillClients();
       for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === "Clients temporarily unavailable.") message(target, "");
     }
-    else { message("#plan-message", "Clients temporarily unavailable."); message("#space-message", "Clients temporarily unavailable."); }
+    else { for (const target of ["#plan-message", "#space-message"]) message(target, unavailable(results[1].reason) || "Clients temporarily unavailable."); }
     let current = results.every(result => result.status === "fulfilled");
     // Fresh source data remains separate from the user's edited draft.
     for (const id of new Set([planClient, searchClient].filter(Boolean))) {
-      const planRevision = planEpoch, searchRevision = searchEpoch;
+      const planRevision = planClient === id ? ++planEpoch : planEpoch, searchRevision = searchClient === id ? ++searchEpoch : searchEpoch;
       try {
-        const record = await api.client(id);
-        if (disposed) return;
+        const record = await read(async () => validateClientRecord(await api.client(id, { signal }), id));
+        if (!active()) return;
         if (record.id === id && [planClient, searchClient].includes(id)) {
           if (planClient === id && planEpoch === planRevision) { selectedRecord = record; plan.refreshSuggestions(clientSuggestions(record)); syncForm("plan", plan); }
           if (searchClient === id && searchEpoch === searchRevision) { search.refreshSuggestions(clientSuggestions(record)); syncForm("space", search); }
@@ -195,16 +223,19 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
           save();
         }
       } catch {
+        if (!active()) return;
         current = false;
         if (planClient === id && planEpoch === planRevision) message("#plan-message", "Client details temporarily unavailable.");
         if (searchClient === id && searchEpoch === searchRevision) message("#space-message", "Client details temporarily unavailable.");
       }
     }
-    const id = currentTour, epoch = dialogEpoch;
+    if (!active()) return;
+    const id = currentTour, epoch = currentTour ? ++dialogEpoch : dialogEpoch;
     if (id && $("#tour-dialog").open) {
-      try { const detail = await api.tour(id); if (currentTour === id && epoch === dialogEpoch && !disposed) { renderTour(detail); message("#detail-message", ""); } }
-      catch { current = false; if (epoch === dialogEpoch) message("#detail-message", "Tour temporarily unavailable."); }
+      try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { renderTour(detail); message("#detail-message", ""); } }
+      catch { if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", "Tour temporarily unavailable."); }
     }
+    if (!active()) return;
     if (current) message("#planner-updated", updatedLabel(new Date().toISOString()));
     $(".freshness").classList.toggle("current", current);
   }
@@ -212,8 +243,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#plan-client").addEventListener("change", event => void prefill("plan", event.target.value));
   $("#space-client").addEventListener("change", event => void prefill("space", event.target.value));
   $("#tour-filter").addEventListener("input", renderLibrary);
-  $("#plan-form").addEventListener("submit", event => { event.preventDefault(); save(); reviewDraft($("#review-packet")); });
-  $("#space-form").addEventListener("submit", event => { event.preventDefault(); const error = validateCriteria(search.values); save(); message("#space-message", error || "Search draft saved."); });
+  $("#plan-form").addEventListener("submit", event => { event.preventDefault(); save("#plan-message"); reviewDraft($("#review-packet")); });
+  $("#space-form").addEventListener("submit", event => { event.preventDefault(); const error = validateCriteria(search.values); if (error) message("#space-message", error); else if (save("#space-message")) message("#space-message", "Search draft saved."); });
   $("#packet-upload").addEventListener("change", event => acceptFiles([...event.target.files]));
   const drop = $("#packet-drop");
   drop.addEventListener("dragover", event => { event.preventDefault(); drop.classList.add("dragging"); });
@@ -222,12 +253,13 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#detail-close").addEventListener("click", closeDialog);
   $("#tour-dialog").addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
   for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
-    search.set("area", button.dataset.market); syncForm("space", search); save();
+    search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");
   });
   const auto = mountAutoRefresh({ document, window, refresh });
   $("#planner-refresh").addEventListener("click", () => void auto.refresh());
+  const unsubscribe = api.onScopeChange?.(restoreOrClear);
   const ready = refresh();
-  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
+  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
 }
 
 if (typeof document !== "undefined" && document.querySelector("#plan-form")) mountPlanner({ document, window });

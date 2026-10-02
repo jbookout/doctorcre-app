@@ -5,19 +5,29 @@ export const SEARCH_FIELDS = ["area", "use", "minSize", "maxSize", "budget", "re
 export function createDraft(fields) {
   let values = Object.fromEntries(fields.map(field => [field, ""]));
   const history = [];
-  const managed = new Set();
+  const managed = new Set(), touched = new Set();
   return {
     get values() { return { ...values }; },
     get canUndo() { return history.length > 0; },
     set(field, value, suggested = false) {
-      if (!fields.includes(field) || typeof value !== "string" || values[field] === value) return false;
+      if (!fields.includes(field) || typeof value !== "string") return false;
+      if (!suggested) { touched.add(field); managed.delete(field); }
+      if (values[field] === value) return false;
       history.push({ field, before: values[field] }); values[field] = value;
       if (suggested) managed.add(field); else managed.delete(field); return true;
     },
-    suggest(suggestions) { for (const field of fields) if (suggestions[field] && !values[field]) this.set(field, String(suggestions[field]), true); },
-    refreshSuggestions(suggestions) { for (const field of managed) this.set(field, String(suggestions[field] || ""), true); },
-    undo() { const change = history.pop(); if (change) { values[change.field] = change.before; managed.delete(change.field); } return change?.field || null; },
-    reset(saved = {}) { values = Object.fromEntries(fields.map(field => [field, typeof saved[field] === "string" ? saved[field] : ""])); history.length = 0; managed.clear(); },
+    suggest(suggestions) { for (const field of fields) if (suggestions[field] && !values[field] && !touched.has(field)) this.set(field, String(suggestions[field]), true); },
+    refreshSuggestions(suggestions) {
+      for (const field of managed) this.set(field, String(suggestions[field] || ""), true);
+      this.suggest(suggestions);
+    },
+    restore(saved = {}) {
+      for (const field of fields) if (!touched.has(field) && typeof saved[field] === "string") {
+        values[field] = saved[field]; if (saved[field]) touched.add(field);
+      }
+    },
+    undo() { const change = history.pop(); if (change) { values[change.field] = change.before; managed.delete(change.field); touched.add(change.field); } return change?.field || null; },
+    reset(saved = {}) { values = Object.fromEntries(fields.map(field => [field, typeof saved[field] === "string" ? saved[field] : ""])); history.length = 0; managed.clear(); touched.clear(); },
   };
 }
 
