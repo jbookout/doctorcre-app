@@ -9,7 +9,7 @@
 <body class="planner-page">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip-link" href="#plan-form">Skip to tour planning</a>
-  <header class="planner-header"><h1>Tours</h1><div class="freshness"><time id="planner-updated">Updating…</time><button id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
+  <div data-layout-slot="status" class="planner-header"><h1>Tours</h1><div class="freshness"><time id="planner-updated">Updating…</time><button data-layout-refresh id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></div>
   <main class="planner-grid">
     <section class="card plan-card" aria-labelledby="plan-title">
       <div class="widget-heading"><span class="widget-icon" aria-hidden="true">↗</span><h2 id="plan-title">Plan a Tour</h2><button id="plan-undo" aria-label="Undo tour edit" title="Undo tour edit" disabled type="button">↶</button></div>
@@ -44,7 +44,7 @@
       <div class="results-heading"><h3>Options</h3><span class="capability-state">MLS unavailable</span></div>
       <ul id="space-results" class="space-results"></ul><div id="empty-state" class="empty-options"><h4>No listing results</h4></div>
     </section>
-    <aside class="card library-card" aria-label="Tours library">
+    <aside data-layout-slot="sidebar" class="card library-card" aria-label="Tours library">
       <div class="widget-heading"><span class="widget-icon" aria-hidden="true">◷</span><h2>Your tours</h2></div>
       <label class="library-filter" for="tour-filter">Find a tour<input id="tour-filter" type="search" placeholder="Name or status"></label>
       <h3>Upcoming</h3><ul id="upcoming-tours" class="tour-list library-scroll"></ul>

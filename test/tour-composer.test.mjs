@@ -591,11 +591,11 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const layout = await touchLayout(page);
       assert.ok(layout.document <= width, `${width}px creation overflow`);
       assert.ok(layout.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px creation touch targets: ${JSON.stringify(layout.targets)}`);
-      await page.getByLabel("Navigation menu", { exact: true }).click();
+      await page.getByLabel("More", { exact: true }).click();
       const navigation = await touchLayout(page);
       assert.ok(navigation.document <= width, `${width}px navigation overflow`);
       assert.ok(navigation.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px open navigation touch targets`);
-      await page.getByLabel("Navigation menu", { exact: true }).click();
+      await page.getByLabel("More", { exact: true }).click();
     }
     for (const [selector, value] of [["#create-tour-name", "Synthetic Tour"], ["#create-subject-id", "work:fixture"], ["#create-dataset", "synthetic-v1"]]) await page.locator(selector).fill(value);
     for (const role of ["start", "end"]) {

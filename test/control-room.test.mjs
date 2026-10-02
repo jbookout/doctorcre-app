@@ -366,7 +366,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
 
 test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede, and 44px targets", () => {
   assert.match(html, /<title>Control Room · DoctorCRE<\/title>/);
-  assert.match(html, /<div class="tabs" id="controlRoomTabs" role="tablist"/);
+  assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="controlRoomTabs" role="tablist"/);
   for (const label of ["Overview", "Attention", "Agents", "System Map", "Sessions"]) {
     assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
   }
