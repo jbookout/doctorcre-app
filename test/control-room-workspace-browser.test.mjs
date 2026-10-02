@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
-import {execFileSync} from 'node:child_process';
 import {chromium} from 'playwright';
 import {createFixtureClient} from '../js/fixture-client.js';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 const root=new URL('../',import.meta.url);
 const reads={'read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','list-notifications':'listNotifications'};
-async function open(t,{width=1440,baseline=false}={}){
+async function open(t,{width=1440}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});page.setDefaultTimeout(5000);
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
@@ -26,7 +25,7 @@ async function open(t,{width=1440,baseline=false}={}){
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
   const file=routes.routes[url.pathname]||url.pathname.slice(1);
-  try{const body=baseline?execFileSync('git',['show',`HEAD:${file}`],{cwd:root}):await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+  try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto('http://localhost/control-room?mode=live');
  await page.waitForFunction(()=>document.querySelector('#selfAvatar')?.textContent==='J');
@@ -70,6 +69,10 @@ for(const width of [1440,390])test(`W7 calendar defaults and dedicated automatio
  const link=page.locator('#panelAutomations').getByRole('link',{name:'List',exact:true});assert.equal(await link.getAttribute('href'),'/control-room/automations');await link.click();await page.waitForURL('**/control-room/automations');await page.waitForSelector('#automationList .automation-job');
  assert.equal(await page.locator('#appTabsSlot').getByRole('link',{name:'List',exact:true}).getAttribute('aria-current'),'page');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await capture(page,`list-${width}`);await page.locator('#automationList .automation-job').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);assert.deepEqual(errors,[]);
 });
-test('W7 captures prior Control Room at desktop and phone width for before/after review',async t=>{
- for(const width of [1440,390]){const {page}=await open(t,{width,baseline:true});await page.waitForFunction(()=>document.querySelector('#headerPhase')?.textContent!=='reading');await capture(page,`before-${width}`);}
+test('W7 retains distinct before and after renders at desktop and phone width',async()=>{
+ for(const width of [1440,390]){
+  const before=await readFile(new URL(`test-artifacts/w7/before-${width}.png`,root));
+  const after=await readFile(new URL(`test-artifacts/w7/board-${width}.png`,root));
+  assert.equal(before.readUInt32BE(16),width);assert.equal(after.readUInt32BE(16),width);assert.notDeepEqual(before,after);
+ }
 });
