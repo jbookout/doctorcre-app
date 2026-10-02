@@ -9,7 +9,10 @@ const ROOT_FILES = [
   "pipeline.html", "progress-board.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
 ];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
-const CONTRACT_FILES = ["contracts/carr-interface.v1.json", "contracts/app-routes.v1.json"];
+const CONTRACT_INPUTS = {
+  carr_interface: "contracts/carr-interface.v1.json",
+  route_contract: "contracts/app-routes.v1.json",
+};
 const SHA = /^[0-9a-f]{64}$/;
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -137,13 +140,14 @@ async function assembleArtifact(commit, paths, readSource) {
     const parsed = JSON.parse(content);
     return { path, schema: parsed.schema, version: parsed.version, sha256: digest(content) };
   };
+  const contracts = {};
+  for (const [key, path] of Object.entries(CONTRACT_INPUTS)) contracts[key] = await contract(path);
   const manifest = {
     schema: "doctorcre-static-artifact.v1",
     repository: "jbookout/doctorcre-app",
     source_commit: commit,
     entrypoint: "workspace.html",
-    carr_interface: await contract("contracts/carr-interface.v1.json"),
-    route_contract: await contract("contracts/app-routes.v1.json"),
+    ...contracts,
     files: payload,
   };
   const manifestContent = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
@@ -202,9 +206,10 @@ async function verifyCommittedSource(root, archive, result) {
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
   const paths = await inputPaths(root);
-  const sourcePaths = [...paths, ...CONTRACT_FILES].sort();
+  const contractPaths = Object.values(CONTRACT_INPUTS);
+  const sourcePaths = [...paths, ...contractPaths].sort();
   const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
-    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...CONTRACT_FILES], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();
+    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();
   if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
 
   // Compare the bytes themselves, not Git's working-tree status/cache. A forged
