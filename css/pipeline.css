@@ -12,7 +12,7 @@
  *      button row, the field grid);
  *   3. the four things this board invents: the card title button, the partner
  *      presence chip, the unconfirmed-changes bar and the change list inside the
- *      Recent changes popup.
+ *      Recent changes in the shared Today drawer.
  *
  * Nothing here restates a token, a colour or a motion duration: those have one
  * home and it is the shared system.
@@ -25,9 +25,7 @@
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
 
 /* ------------------------------------------------------ board and panel */
-/* The board scrolls sideways through eight columns; the record panel sits
-   beside it and collapses out of the grid when it is closed, so the board gets
-   the whole width back rather than leaving a hole where a panel might be. */
+/* The phase grid uses the page width; record details open in a modal. */
 .pipeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; margin-top: 12px; }
 .pipeline-layout .side-panel:not([hidden]) { display: grid; }
 .pipeline-layout:has(.side-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
@@ -54,7 +52,7 @@
 .check-option { display: flex; gap: 8px; align-items: center; min-height: var(--touch); font-size: 12px; }
 .field-hint.error { color: var(--red-text); font-size: 12px; font-weight: 700; }
 
-/* ------------------------------------------------------ Recent changes popup */
+/* ------------------------------------------------------ Recent changes in Today */
 .receipt-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 
 @media (max-width: 1100px) {
@@ -63,3 +61,74 @@
 @media (max-width: 767px) {
   .shell { padding-bottom: 96px; }
 }
+
+/* W4: one local workspace, responsive phase grid, modal details. */
+.shell { width: 100%; max-width: none; padding-inline: clamp(12px, 1.5vw, 28px); }
+.board-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.pipeline-layout { display: block; }
+.kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(8,minmax(0,1fr)); overflow: visible; gap: 10px; }
+.kanban-column { min-width: 0; padding: 9px; }
+.kanban-column > h3 { min-height: 48px; font-size: 21px; gap: 6px; }
+.kanban-card { height: 212px; min-width: 0; grid-template-rows: 44px 24px 20px 1fr; gap: 6px; padding: 10px; overflow: hidden; }
+.kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.kanban-lane-label { display: none; }
+.next-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; font-size: 12px; }
+.auto-move { display: grid; align-content: end; gap: 3px; font-size: 10px; color: var(--orange-text); }
+.auto-move span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.auto-move button { justify-self: start; padding: 0 8px; min-height: 44px; }
+.kanban-card[data-attention="true"] { border-top: 2px solid var(--orange); }
+.attention-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); animation: deal-breathe 2s ease-in-out infinite; }
+@keyframes deal-breathe { 50% { box-shadow: 0 0 10px 3px #ff8a3340; } }
+.parked-lane { grid-column: 1/-1; margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); }
+.parked-lane > summary { cursor: pointer; color: var(--quiet); min-height: 44px; }
+.parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 12px; margin-top: 14px; }
+.parked-card { height: 212px; grid-template-rows: 44px 1fr 44px; }
+.deal-list { display: grid; grid-column: 1/-1; gap: 8px; }
+.deal-row { height: auto; min-height: 96px; grid-template-rows: auto auto; overflow: visible; display: grid; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 80px; align-items: center; gap: 16px; cursor: pointer; }
+.deal-row h4 { margin: 0; }
+.deal-row .auto-move { grid-column: 3; grid-row: 2; }
+.deal-detail { max-width: none; width: min(1180px,calc(100vw - 28px)); }
+.detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: 24px; }
+.detail-grid section { min-width: 0; }
+.detail-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.detail-controls label { display: grid; gap: 8px; }
+.detail-controls select, .detail-controls input, .detail-controls textarea { width: 100%; min-height: 44px; }
+.detail-next { line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.deal-note { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.deal-note p { margin: 8px 0; line-height: 1.5; }
+.deal-note time { color: var(--quiet); font-size: 11px; }
+.deal-note details { margin-top: 8px; }
+.deal-note summary { cursor: pointer; color: var(--orange-text); min-height: 44px; }
+.note-original { white-space: pre-wrap; overflow-wrap: anywhere; }
+.park-control { color: var(--red-text); background: transparent; border: 0; margin-top: 20px; }
+.phase-rail { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+.phase-rail span { border: 1px solid var(--line); padding: 6px; border-radius: 6px; font-size: 11px; color: var(--quiet); }
+.phase-rail span[aria-current="step"] { border-color: var(--orange); color: var(--orange-text); }
+@media(max-width:1200px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .detail-grid { grid-template-columns: 1fr; } .deal-row { height: auto; min-height: 148px; grid-template-rows: auto auto auto; grid-template-columns: minmax(0,1fr) 80px; gap: 8px; } .deal-row .next-line { grid-column: 1/-1; } .deal-row .auto-move { grid-column: 1/-1; grid-row: auto; } .detail-controls { grid-template-columns: 1fr; } }
+@media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
+@media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; animation: none; } .attention-dot { animation: none; } }
+
+.deal-detail select, .deal-detail input, .deal-detail textarea { color: var(--text); background: #091420; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; color-scheme: dark; }
+.deal-detail :is(select,input,textarea):focus { outline: 2px solid var(--orange); outline-offset: 2px; }
+.detail-controls { margin-bottom: 20px; align-items: start; }
+.detail-controls label { color: var(--quiet); font-size: 12px; }
+#detailNextForm label:first-child { grid-column: 1/-1; }
+#detailNextForm button { align-self: end; }
+.park-options summary { cursor: pointer; min-height: 44px; }
+#detailParkForm { display: grid; gap: 12px; }
+#detailParkForm label { display: grid; gap: 8px; }
+.shell { padding-top: 18px; }
+@media(max-width:650px) { .hero h1 { font-size: 40px; } .board-toolbar { gap: 8px; margin-top: 12px; } }
+
+.hero-meta .as-of::after { content: none; }
+.hero-meta #retryRead { border: 0; background: transparent; color: var(--quiet); }
+
+.kanban-card[data-phase="Closed"] .attention-dot { animation: none; }
+
+.kanban-card .auto-move span { display: block; white-space: nowrap; text-overflow: ellipsis; }
+
+/* The editable deal dialog owns its grid; the shell supplies its viewport placement. */
+.has-app-layout dialog.deal-detail#recordPanel { width: min(1180px,calc(100vw - 28px)); padding: 0; }
+.has-app-layout .deal-detail #panelBody { display: block; }

@@ -99,17 +99,17 @@ test('all authenticated pages have global controls and fit desktop and phone', a
 test('an open Deal detail updates automatically without closing its popup', async t => {
   const { page, errors } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/deals');
-  await page.locator('.deal-link').first().click();
-  await page.waitForFunction(() => document.querySelector('#dealDialog')?.open);
-  const name = await page.locator('#dealDetail h2').textContent();
-  const before = await page.locator('#dealDetail .as-of').textContent();
+  await page.locator('.card-open').first().click();
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open);
+  const name = await page.locator('#panelTitle').textContent();
+  const before = await page.locator('#recordPanel').getAttribute('data-updated');
   await page.clock.fastForward(61_000);
-  await page.waitForFunction(before => document.querySelector('#dealDetail .as-of')?.textContent !== before, before);
-  assert.equal(await page.locator('#dealDetail h2').textContent(), name);
-  assert.equal(await page.locator('#dealDialog').evaluate(e => e.open), true);
-  await page.getByLabel('Close details', {exact:true}).click();
+  await page.waitForFunction(before => document.querySelector('#recordPanel')?.dataset.updated !== before, before);
+  assert.equal(await page.locator('#panelTitle').textContent(), name);
+  assert.equal(await page.locator('#recordPanel').evaluate(e => e.open), true);
+  await page.getByLabel('Close deal', {exact:true}).click();
   await page.clock.fastForward(61_000);
-  assert.equal(await page.locator('#dealDialog').evaluate(e => e.open), false);
+  assert.equal(await page.locator('#recordPanel').evaluate(e => e.open), false);
   assert.deepEqual(errors, []);
 });
 

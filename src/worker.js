@@ -161,7 +161,7 @@ export async function handleDoctorcreRequest(request, env) {
     return assetResponse(request, env, `/${APP_ROUTES.get(pathname)}`);
   }
 
-  const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "board" ? "pipeline.html"
+  const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
     : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
     : APP_ROUTES.get(pathname);
   if (routeAsset) {

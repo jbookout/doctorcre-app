@@ -2,7 +2,7 @@
   "routes": [
     {
       "path": "/deals",
-      "asset": "index.html",
+      "asset": "pipeline.html",
       "order": 4
     }
   ],

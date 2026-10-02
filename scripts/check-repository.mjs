@@ -45,7 +45,7 @@ assert.equal(routes.routes["/all-work"], "work-inventory.html", "All Work must s
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
 assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path must stay pinned in the CARR interface");
 assert.equal(routes.redirects["/tasks"], "/", "old Work links must reach Home");
-assert.equal(routes.routes["/deals"], "index.html", "the Deal Room must stay in the route contract");
+assert.equal(routes.routes["/deals"], "pipeline.html", "the Deal Room must stay in the route contract");
 assert.equal(routes.redirects["/pipeline"], "/deals?view=board", "the old board bookmark must reach the Deals board");
 assert.equal(routes.redirects["/business"], "/", "the old business bookmark must reach Home");
 assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");
