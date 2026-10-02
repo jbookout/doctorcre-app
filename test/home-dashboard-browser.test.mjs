@@ -222,10 +222,14 @@ test('R6 settled board failure shows unavailable rather than Updating and automa
 test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
   for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
+    // Finish Home's detail wave before observing the receiving Deals request.
+    // Otherwise a late Home request can advance the clock before Deals starts its deadline.
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
     const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
-      && request.postDataJSON()?.params?.name === 'get-deal-room');
+      && request.postDataJSON()?.params?.name === 'get-deal-room'
+      && new URL(request.frame().url()).pathname === '/deals');
     await page.goto('http://localhost/deals?mode=live&deal=d01');
     await page.locator('#rows .deal-link').first().waitFor();
     await firstFeed;
