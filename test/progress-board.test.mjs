@@ -51,7 +51,7 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
     } },
     ASSETS: { fetch: async () => { throw Error("signed-out board must not load"); } },
   };
-  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress?board=project-one`), env);
+  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress/board/project-one`), env);
   assert.equal(signedOut.status, 302);
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
   assert.equal(new URL(gated[0].url).search, "");

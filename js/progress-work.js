@@ -1,4 +1,5 @@
 import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAuth } from './progress-auth.js';
+import { boardPageUrl } from './progress-board-route.js';
 import { createLiveClient } from './live-client.js';
 import { boardView, boardFreshness } from './progress-board-model.js';
 import { mountProgressWire } from './room.js';
@@ -44,7 +45,7 @@ function breadcrumbs(boardTitle = scope.board, title = scope.task || 'Project ac
   if ($('workBreadcrumbs').dataset.signature === signature) return;
   $('workBreadcrumbs').dataset.signature = signature;
   const list = node('ol');
-  for (const [label, href] of [['Progress', '/control-room/progress'], [boardTitle, `/control-room/progress?board=${encodeURIComponent(scope.board)}`], [title, null]]) {
+  for (const [label, href] of [['Progress', '/control-room/progress'], [boardTitle, boardPageUrl(scope.board)], [title, null]]) {
     const item = node('li'); const link = node(href ? 'a' : 'span', label);
     if (href) link.href = href; else link.setAttribute('aria-current', 'page'); item.append(link); list.append(item);
   }

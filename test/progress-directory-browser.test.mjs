@@ -38,7 +38,7 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
       } }) });
     }
     if (url.pathname === "/app-release" || url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "application/json", body: "{}" });
-    const path = url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
+    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
       : url.pathname === "/control-room" ? "control-room.html" : url.pathname.slice(1);
     try {
       const body = await readFile(new URL("../" + path, import.meta.url));
@@ -82,9 +82,10 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.match(await project.locator('[data-freshness="stale"]').textContent(), /2d 1h ago.*Stale.*24h/);
   assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "carr-v5");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.equal(await page.locator(".flow-stage").count(), 6);
+  assert.equal(await page.locator("#board-flow .flow-stage").count(), 6);
+  await project.evaluate(node => node.removeAttribute("target"));
   await project.click();
-  await page.waitForURL("**/control-room/progress?board=demo-project");
+  await page.waitForURL("**/control-room/progress/board/demo-project");
   await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
   assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -286,7 +287,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) assert.match(await page.locator("#board-error").textContent(), /(unavailable|offline)/i);
+    if (fail) assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i);
     assert.deepEqual(errors, []);
   });
 

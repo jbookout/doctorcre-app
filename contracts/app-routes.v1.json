@@ -1,10 +1,11 @@
 {
   "schema": "doctorcre-app-routes.v1",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "routes": {
     "/": "workspace.html",
     "/control-room": "control-room.html",
     "/control-room/progress": "progress-board.html",
+    "/control-room/progress/board/:boardId": "progress-board.html",
     "/control-room/progress/work": "progress-work.html",
     "/deals": "index.html",
     "/leads": "leads.html",

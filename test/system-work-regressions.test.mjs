@@ -10,16 +10,16 @@ const envelope=(items=[row()],extra={})=>({schema:'unfinished-work.v1',items,cov
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
 async function setup(t,{read,write}={}){
- const dom=new JSDOM(readFileSync(new URL('../progress-board.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm};
- Object.assign(globalThis,{document:dom.window.document,FormData:dom.window.FormData,confirm:()=>true});t.after(()=>{Object.assign(globalThis,previous);dom.window.close();});
+ const dom=new JSDOM(readFileSync(new URL('../progress-board.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm,matchMedia:globalThis.matchMedia};
+ Object.assign(globalThis,{document:dom.window.document,FormData:dom.window.FormData,confirm:()=>true,matchMedia:()=>({matches:false,addEventListener(){}})});t.after(()=>{Object.assign(globalThis,previous);dom.window.close();});
  const d=dom.window.document,dialog=d.querySelector('#work-triage');let restore;
  dialog.showModal=()=>{restore=d.activeElement;dialog.open=true;};dialog.close=()=>{dialog.open=false;restore?.focus();};
- const calls=[],writes=[],pipelines=[];const client={unfinishedWork:async args=>{calls.push(args);return read?read(args):envelope(args.live_library?[]:[row(),row('b')]);},triageSystemWork:async(verb,args)=>{writes.push({verb,args:structuredClone(args)});return write?write(verb,args):{ok:true,message:'Source updated'};}};
- const board=mountSystemWorkBoard({client,onPipeline:p=>pipelines.push(p)});await settle();
+ const calls=[],writes=[];const client={unfinishedWork:async args=>{calls.push(args);return read?read(args):envelope(args.live_library?[]:[row(),row('b')]);},triageSystemWork:async(verb,args)=>{writes.push({verb,args:structuredClone(args)});return write?write(verb,args):{ok:true,message:'Source updated'};}};
+ const board=mountSystemWorkBoard({client});await settle();
  const click=selector=>d.querySelector(selector).click();
  const open=id=>click(`.work-card[data-work-id="${id}"] button`);
  const submit=value=>{d.querySelector('#work-triage textarea').value=value;d.querySelector('#work-triage-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));};
- return {d,dom,board,calls,writes,pipelines,click,open,submit};
+ return {d,dom,board,calls,writes,click,open,submit};
 }
 test('finding 1: structured non-confirmation displays outcomes, counts and source state',async t=>{
  for(const outcome of ['not_proven','held','stale','superseded']){
@@ -103,4 +103,12 @@ test('W1: background work updates recover without prompting and do not overlap',
  fail=false;slow=true;const pending=h.board.refresh();const count=h.calls.length;await h.board.refresh();assert.equal(h.calls.length,count);
  next.resolve(envelope([{...row(),title:'Automatically updated'}]));await pending;assert.equal(h.d.querySelector('#system-work-error').hidden,true);assert.equal(h.d.querySelector('.work-card h4').textContent,'Automatically updated');assert.equal(h.writes.length,0);
  assert.equal(h.d.querySelector('#system-work-coverage button').getAttribute('aria-label'),'Refresh');assert.doesNotMatch(h.d.querySelector('#system-work-coverage').textContent,/source|census|items|read|retry/i);
+});
+
+
+test('unsupported source navigation displays its absence without a directory fallback', async t => {
+ const item={...row(),link:null,navigation:{state:'unavailable'}};
+ const h=await setup(t,{read:args=>envelope(args.live_library?[]:[item])});
+ assert.match(h.d.querySelector('#system-work-cards').textContent,/Source page unavailable/);
+ assert.equal(h.d.querySelectorAll('#system-work-cards a').length,0);
 });

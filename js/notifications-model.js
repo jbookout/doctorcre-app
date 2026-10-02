@@ -1,3 +1,4 @@
+import { BOARD_ROUTE, boardIdFromPath } from './progress-board-route.js';
 // V5-UX-B12a — what the Notifications page shows, decided without a DOM.
 //
 // The producer is `mcp-server/src/notifications.js` over migrations 0521 and
@@ -105,7 +106,7 @@ export const ACKNOWLEDGE_SCOPE =
  * which is what stops the two drifting apart.
  */
 export const APP_ROUTE_PATHS = Object.freeze([
-  "/", "/control-room", "/control-room/progress", "/control-room/progress/work", "/deals", "/leads", "/clients", "/vendors",
+  "/", "/control-room", "/control-room/progress", "/control-room/progress/board/:boardId", "/control-room/progress/work", "/deals", "/leads", "/clients", "/vendors",
   "/calendar", "/ideas-events", "/work-requests", "/tours", "/share", "/design-lab",
   "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work",
 ]);
@@ -203,7 +204,7 @@ export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   const [pathname, query] = path.split("?");
   const home = LEGACY_ROUTE_HOMES[pathname] || pathname;
   const homePath = home.split("?")[0];
-  const routed = routeList.includes(homePath);
+  const routed = routeList.includes(homePath) || (boardIdFromPath(homePath) !== null && routeList.includes(BOARD_ROUTE));
   const href = routed ? `${home}${query ? `${home.includes("?") ? "&" : "?"}${query}` : ""}` : null;
   return { path, href, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
 }

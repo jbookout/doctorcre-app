@@ -1,10 +1,14 @@
+import { mountProgressPipeline } from "./progress-pipeline.js";
+import { boardIdFromPath, boardPageUrl } from "./progress-board-route.js";
 import { mountSystemWorkBoard } from './system-work-board.js';
 import { workDetailUrl } from './progress-work-model.js';
 import { createLiveClient } from "./live-client.js";
 import { uuidv4 } from "./uuid.js";
-import { boardView, answerRequest, taskPulse, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
+import { boardView, answerRequest, SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange } from "./progress-board-model.js";
 
-const boardId = new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
+const pathBoardId = boardIdFromPath(location.pathname || "");
+const boardId = pathBoardId || new URLSearchParams(location.search).get("board") || SYSTEM_BOARD_ID;
+if (pathBoardId) document.querySelector(".directory-panel").hidden = true;
 document.getElementById('board-activity').href = workDetailUrl({board:boardId});
 document.getElementById('board-parent-name').textContent = boardId === 'carr-v5' ? 'System board' : 'Project board';
 const client = createLiveClient();
@@ -28,8 +32,6 @@ let viewSignature = "";
 let refreshGeneration = 0;
 const badgeTimes = new Map();
 let ageTimer;
-let taskNodes = new Map();
-let renderedStages = "";
 let systemWork = null;
 
 function element(tag, className, content) {
@@ -92,7 +94,9 @@ function renderDirectory(read) {
   if (directory.dataset) directory.dataset.boards = JSON.stringify(boards);
   for (const board of boards) {
     const link = element("a", "board-link");
-    link.href = `/control-room/progress?board=${encodeURIComponent(board.board_id)}`;
+    link.href = boardPageUrl(board.board_id);
+    link.target = "_blank";
+    link.rel = "noopener";
     if (board.board_id === boardId) link.setAttribute("aria-current", "page");
     link.setAttribute("data-board-id", board.board_id);
     link.append(element("span", "eyebrow", board.board_id === SYSTEM_BOARD_ID ? "System-wide" : "Project"),
@@ -109,120 +113,10 @@ function renderDirectory(read) {
   if (changed) live.textContent = "Published boards updated.";
 }
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-const phoneQuery = matchMedia("(max-width: 680px)");
 let currentView = null;
-
-function svg(tag, className, attributes = {}, content) {
-  const node = document.createElementNS(SVG_NS, tag);
-  if (className) node.setAttribute("class", className);
-  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
-  if (content !== undefined) node.textContent = String(content);
-  return node;
-}
-
-function showTask(task, stage) {
-  location.href = workDetailUrl({ board: boardId, task: task.id,
-    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) });
-}
-
-function titleLines(value, width) {
-  const words = String(value).split(/\s+/).filter(Boolean);
-  const lines = [];
-  for (const word of words) {
-    const last = lines.length - 1;
-    if (last >= 0 && `${lines[last]} ${word}`.length <= width) lines[last] += ` ${word}`;
-    else lines.push(word);
-  }
-  if (lines.length > 2) return [lines[0], `${lines[1].slice(0, width - 1)}…`];
-  return lines;
-}
-
-function taskNode(task, stage, x, y, width, height, phone) {
-  const pulse = taskPulse(task);
-  const node = svg("g", "pipeline-node", { "data-task-id": task.id, "data-stage": stage.id,
-    "data-pulse": pulse, role: "button", tabindex: 0,
-    "aria-label": `${task.title || task.id}, ${stage.label}. Open task detail.` });
-  node.append(svg("rect", "node-shape", { x, y, width, height, rx: 12 }));
-  node.append(svg("circle", "node-halo", { cx: x + 20, cy: y + 23, r: 8 }));
-  node.append(svg("circle", "node-pulse", { cx: x + 20, cy: y + 23, r: 12 }));
-  const title = String(task.title || task.id);
-  const lines = titleLines(title, phone ? 38 : 18);
-  const label = svg("text", "node-label", { x: x + 35, y: y + 26 });
-  for (const [index, line] of lines.entries()) {
-    label.append(svg("tspan", "", { x: x + 35, dy: index ? 14 : 0 }, line));
-  }
-  node.append(label);
-  node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 12 },
-    [task.executor || "Unassigned", task.pr != null ? `PR ${task.pr}` : "No PR"].join(" · ")));
-  const retained = taskNodes.get(task.id);
-  const target = retained?.node || node;
-  if (retained) {
-    target.replaceChildren(...node.childNodes);
-    for (const attribute of node.attributes) target.setAttribute(attribute.name, attribute.value);
-  }
-  const entry = { node: target, task, stage };
-  taskNodes.set(task.id, entry);
-  if (retained) return target;
-  const open = () => {
-    const current = taskNodes.get(task.id);
-    if (current) showTask(current.task, current.stage);
-  };
-  node.addEventListener("click", open);
-  node.addEventListener("keydown", event => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
-  });
-  return node;
-}
-
-function renderStages(view) {
-  currentView = view;
-  const phone = phoneQuery.matches;
-  const signature = JSON.stringify([view.stages, phone]);
-  if (signature === renderedStages) {
-    for (const { node, task } of taskNodes.values()) node.setAttribute("data-pulse", taskPulse(task));
-    return;
-  }
-  renderedStages = signature;
-  const focusedId = [...taskNodes].find(([, entry]) => entry.node === document.activeElement)?.[0];
-  flow.replaceChildren();
-  const total = view.stages.reduce((sum, stage) => sum + stage.tasks.length, 0);
-  taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
-  const width = phone ? 360 : 1200;
-  const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
-  const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 88) + 21, 0) - 21
-    : Math.max(270, 93 + maxTasks * 89);
-  flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
-  let offset = 0;
-  view.stages.forEach((stage, index) => {
-    const x = phone ? 8 : 8 + index * 199;
-    const y = phone ? offset : 8;
-    const wellWidth = phone ? 344 : 186;
-    const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 88) : height - 16;
-    const group = svg("g", "flow-stage", { "data-stage": stage.id });
-    group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
-    group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
-    group.append(svg("text", "stage-label", { x: x + 47, y: y + 28 }, stage.label));
-    group.append(svg("text", "stage-count", { x: x + wellWidth - 14, y: y + 27, "text-anchor": "end" },
-      String(stage.tasks.length).padStart(2, "0")));
-    if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
-    stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
-      y + 44 + taskIndex * (phone ? 88 : 89), wellWidth - 18, phone ? 78 : 79, phone)));
-    flow.append(group);
-    if (index < view.stages.length - 1) {
-      const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`
-        : `M ${x + wellWidth + 2} 47 H ${x + 197}`;
-      flow.append(svg("path", "pipeline-connector", { d, "aria-hidden": "true" }));
-    }
-    if (phone) offset += wellHeight + 21;
-  });
-  const ids = new Set(view.stages.flatMap(stage => stage.tasks.map(task => task.id)));
-  for (const id of taskNodes.keys()) if (!ids.has(id)) taskNodes.delete(id);
-  if (focusedId) (taskNodes.get(focusedId)?.node || title).focus();
-}
-
-phoneQuery.addEventListener("change", () => { if (currentView) renderStages(currentView); });
+const boardPipeline = mountProgressPipeline({ flow, taskCount, focusFallback: title,
+  onTask: task => { location.href = workDetailUrl({ board: boardId, task: task.id,
+    workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) }); } });
 
 function answerForm(q, view) {
   const form = element("form", "answer-form");
@@ -360,8 +254,7 @@ function renderQuestions(view) {
 function clearBoard(state) {
   currentView = null;
   viewSignature = "";
-  renderedStages = "";
-  taskNodes.clear();
+  boardPipeline.clear();
   questionCards.clear();
   pendingRequests.clear();
   flow.replaceChildren();
@@ -394,8 +287,7 @@ function readFailure(cause, target) {
     else if (target === "board") clearBoard(state);
     else clearDirectory();
   } else {
-    const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "Progress temporarily unavailable.";
-    const retained = target === "board" ? Boolean(currentView) : Boolean(directorySignature);
+    const label = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : `Could not load board “${boardId}”. Retry to load its published tasks.`;
     message = label;
   }
   if (target === "directory") {
@@ -416,7 +308,7 @@ async function refresh(force = false) {
   if (!force && questions.contains(document.activeElement)) return;
   const generation = ++refreshGeneration;
   if (systemWork) systemWork.refresh();
-  client.listProgressBoards().then(read => {
+  if (!pathBoardId) client.listProgressBoards().then(read => {
     if (generation === refreshGeneration) renderDirectory(read);
   }).catch(cause => {
     if (generation === refreshGeneration) readFailure(cause, "directory");
@@ -425,17 +317,14 @@ async function refresh(force = false) {
     if (generation !== refreshGeneration) return;
     const view = boardView(read);
     if (!view.version) {
-      if (!systemWork) clearBoard("unpublished");
-      else {
-        meta.textContent = "No published system snapshot.";
-        meta.setAttribute("data-read-state", "unpublished");
-        badgeTimes.delete(freshness);
-      }
+      clearBoard("unpublished");
       setError("This board has not been published yet.");
       retry.hidden = false;
       return;
     }
+    currentView = view;
     setError("");
+    retry.hidden = false;
     signIn.hidden = true;
     title.textContent = view.title;
     document.title = `${view.title} · DoctorCRE`;
@@ -444,10 +333,10 @@ async function refresh(force = false) {
     badgeTimes.set(freshness, view.updated_at);
     refreshAges();
     const signature = JSON.stringify(view);
-    if (signature === viewSignature) { if (!systemWork) renderStages(view); return; }
+    if (signature === viewSignature) { boardPipeline.render(view); return; }
     live.textContent = viewSignature ? `${view.title} updated.` : `${view.title} loaded.`;
     viewSignature = signature;
-    if (!systemWork) renderStages(view);
+    boardPipeline.render(view);
     renderQuestions(view);
   }).catch(cause => {
     if (generation !== refreshGeneration) return;
@@ -457,7 +346,7 @@ async function refresh(force = false) {
   await loaded;
 }
 
-if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client, onPipeline: renderStages });
+if (boardId === SYSTEM_BOARD_ID) systemWork = mountSystemWorkBoard({ client });
 
 retry.addEventListener("click", () => refresh(true).catch(() => {}));
 refresh();

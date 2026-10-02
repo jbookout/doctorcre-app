@@ -1,14 +1,17 @@
 import {updatedLabel} from './auto-refresh.mjs';
 import {uuidv4} from './uuid.js';
 import {workDetailUrl} from './progress-work-model.js';
+import {mountProgressPipeline} from './progress-pipeline.js';
 import {validSystemWork,groupSystemWork,systemPipeline,triageWork} from './system-work-board-model.js';
 const workLabel=value=>String(value||'Work').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 const node=(tag,text,className)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(className)e.className=className;return e;};
-export function mountSystemWorkBoard({client,onPipeline}){
+export function mountSystemWorkBoard({client}){
  const panel=document.getElementById('system-work-panel');panel.hidden=false;
  const cards=document.getElementById('system-work-cards'),coverage=document.getElementById('system-work-coverage'),form=document.getElementById('system-work-filters');
  const more=document.getElementById('system-work-more'),library=document.getElementById('live-library'),error=document.getElementById('system-work-error');
  const dialog=document.getElementById('work-triage'),actionForm=document.getElementById('work-triage-form');
+ const retry=document.getElementById('system-work-retry');
+ const pipeline=mountProgressPipeline({flow:document.getElementById('system-work-flow'),taskCount:document.getElementById('system-work-count'),focusFallback:document.getElementById('system-work-title'),onTask:task=>{location.href=workDetailUrl({board:'carr-v5',task:task.id,workRequest:task.human_ref});}});
  let items=[],live=[],cursor=null,libraryMode=false,generation=0,current=null,loading=false,cursorQuery=null,pageCount=1;
  const operations=new Map();
  const operationId=(item,action)=>JSON.stringify([item.source,item.kind,item.id,action.action]);
@@ -38,7 +41,9 @@ export function mountSystemWorkBoard({client,onPipeline}){
     article.append(heading,node('p',`${item.kind.replaceAll('_',' ')} · ${item.state} · ${item.age} days old${item.owner?` · ${item.owner}`:''}`,'work-card-meta'));
     if(item.suggested_triage)article.append(node('p',`${item.suggested_triage.label}: ${item.suggested_triage.action}`,'work-suggestion'));
     const actions=node('div','','work-actions');for(const action of item.available_triage_actions||[]){const b=node('button',action.action);b.type='button';b.addEventListener('click',()=>openAction(item,action));actions.append(b);}
-    const link=node('a','Details');link.href=item.link||'/system-work.html';actions.append(link);article.append(actions);grid.append(article);
+    if(item.link && item.navigation?.state!=='unavailable'){const link=node('a','Open source');link.href=item.link;actions.append(link);}
+    else actions.append(node('span','Source page unavailable.','caption'));
+    article.append(actions);grid.append(article);
    }section.append(grid);cards.append(section);
   }
   if(!items.length)cards.append(node('p',libraryMode?'No completed work matches these filters.':'No unfinished work matches these filters.','empty'));
@@ -114,12 +119,15 @@ export function mountSystemWorkBoard({client,onPipeline}){
     select.value=selected;
    }
    render();
-   if(!queryArgs.live_library){if(liveRead)live=liveRead.items;onPipeline(systemPipeline(items,live));}
+   retry.hidden=true;
+   if(!queryArgs.live_library){if(liveRead)live=liveRead.items;pipeline.render(systemPipeline(items,live));}
   }catch(cause){if(gen!==generation)return;error.textContent=cause.status===401?'Sign in to view system work.':'System work updates unavailable.';error.hidden=false;
-   if(cause.status===401||cause.status===403){items=[];live=[];cursor=null;render();onPipeline(systemPipeline([],[]));}}
+   retry.hidden=false;
+   if(cause.status===401||cause.status===403){items=[];live=[];cursor=null;render();pipeline.clear();}}
   finally{if(gen===generation){loading=false;more.disabled=false;}}
  }
  form.addEventListener('submit',event=>{event.preventDefault();refresh(false,{force:true});});
+ retry.addEventListener('click',()=>refresh(false,{force:true}));
  form.addEventListener('change',()=>refresh(false,{force:true}));
  more.addEventListener('click',()=>refresh(true));
  library.addEventListener('click',()=>{libraryMode=!libraryMode;library.textContent=libraryMode?'Unfinished work':'Live Library';library.setAttribute('aria-pressed',String(libraryMode));refresh(false,{force:true});});
