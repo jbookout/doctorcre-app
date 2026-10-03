@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -297,19 +298,18 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   const css = await readFile(`${ROOT}/css/tasks.css`, "utf8");
   const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
-  const artifactScript = await readFile(`${ROOT}/scripts/artifact.mjs`, "utf8");
   const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract, both bumped for an additive change.
   assert.equal(routes.redirects["/tasks"], "/");
-  assert.equal(routes.version, "1.19.0");
-  assert.equal(carr.version, "1.40.0");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(carr.version, "1.42.0");
   for (const verb of ["add-loop", "close-loop", "loop-board", "loop-headers", "read-loop", "update-loop"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort(), "the pinned operations stay sorted");
-  assert.match(artifactScript, /"tasks\.html"/, "the page ships in the artifact");
+  assert.equal(await hasArtifactPage("tasks.html"), true, "the page ships in the verified artifact");
   assert.match(checkScript, /"tasks\.html"/);
   assert.match(summary, /tasks\.html/);
 

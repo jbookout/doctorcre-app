@@ -139,3 +139,17 @@ test('R8 a known approval receipt stays associated with its intent and is never 
  const first=await approval.approve(row(),shown); const second=await approval.approve(row(),shown);
  assert.deepEqual(second,first); assert.equal(writes,1);
 });
+
+test('versioned Leads workspace and detail preserve canonical identity and original correspondence', () => {
+ const c=createDocContext({page:'leads'});
+ const lead={id:'example-lead',doctor_name:'Dr. Example',base_version:3,stage:'new',owner:'example-partner'};
+ assert.equal(c.finish(c.begin('getWorkspace'),{schema_version:'lead-workspace.v1',leads:[lead]}),true);
+ c.select('lead',lead.id);
+ assert.equal(c.snapshot().active.title,'Dr. Example');
+ const detail={...lead,correspondence:[{summary:'Original example entry',occurred_at:'2026-10-01T12:00:00Z'}]};
+ assert.equal(c.finish(c.begin('getLeadDetail',[lead]),{detail}),true);
+ assert.equal(c.snapshot().active.activity[0].text,'Original example entry');
+ assert.equal(c.snapshot().active.version,3);
+ assert.equal(c.finish(c.begin('getLeadDetail',[lead]),{detail:{...detail,id:'other-lead'}}),false);
+ assert.equal(c.snapshot().ready,false);
+});

@@ -1,3 +1,4 @@
+import { dealInsightLines } from './pipeline-model.js';
 import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
 import { entryDetailsHtml } from './entry-details.mjs';
@@ -1179,20 +1180,9 @@ async function readJevDeal(button) {
   target.innerHTML = '<div class="detail-row">Reviewing…</div>';
   try {
     const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
-    if (!reading.judged) {
-      const message = reading.reason === 'insufficient_recorded_evidence'
-        ? 'Insufficient evidence'
-        : 'Insights unavailable';
-      target.innerHTML = `<div class="detail-row">${esc(message)}</div>`;
-      return;
-    }
-    const waiting = String(reading.waiting_on || 'not recorded').replaceAll('_', ' ');
-    const silence = Math.round(Number(reading.silence_is_bad) * 100);
-    target.innerHTML = `<div class="detail-row"><b>Movement ${esc(reading.movement_rung)} of ${esc(reading.movement_rungs)}</b><small>${esc(reading.movement_label)}</small></div>
-      <div class="detail-row"><b>Waiting on: ${esc(waiting)}</b></div>
-      <div class="detail-row"><b>Estimated silence concern: ${esc(silence)}%</b></div>`;
+    target.innerHTML = dealInsightLines(reading).map(line => `<div class="detail-row">${esc(line)}</div>`).join('');
   } catch {
-    target.innerHTML = '<div class="detail-row">Insights unavailable</div>';
+    target.innerHTML = `<div class="detail-row">${esc(dealInsightLines(null)[0])}</div>`;
   } finally {
     button.disabled = false;
   }

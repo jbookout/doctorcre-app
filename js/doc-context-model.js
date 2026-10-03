@@ -7,7 +7,7 @@ export const DOC_CONTEXT_TTL_MS = 60_000;
 export const DOC_PAGES = Object.freeze({
   home: { label: 'Home', reads: ['getBoard', 'getDeal', 'getLeadBoard', 'currentWorkItem', 'currentWorkRequests', 'incidentBoard'] },
   deals: { label: 'Local Deals', reads: ['getBoard', 'getDeal'] },
-  leads: { label: 'Leads', reads: ['getLeadBoard', 'getClaimCard'] },
+  leads: { label: 'Leads', reads: ['getWorkspace', 'getLeadDetail'] },
   tours: { label: 'Tours', reads: ['tourLibrary', 'tourDetail', 'tourProperties'] },
   clients: { label: 'Clients', reads: ['businessList', 'businessRecord', 'businessActivity'] },
   vendors: { label: 'Vendors', reads: ['businessList', 'businessRecord', 'businessActivity'] },
@@ -62,6 +62,8 @@ function record(kind, row, id, title, fields, activity = []) {
 }
 const deal = (row = {}) => record('deal', row, row.id, row.name, [field('Owner', row.owner), field('Stage', row.phase),
   field('Next step', row.next_step), field('Due', row.next_date), field('Needs attention', row.attention)]);
+const lead = (row = {}) => record('lead', row, row.id, row.doctor_name || row.practice_name || row.entity_name || row.name,
+  [field('Owner', row.owner), field('Stage', row.stage), field('Score', row.score), field('Next step', row.next_action), field('Market', row.city || row.market)]);
 const work = (row = {}) => record('work', row, row.human_ref || row.id, row.title || row.requested_outcome,
   [field('Owner', row.owner), field('Status', row.state || row.status || row.controlled_phase),
     field('Next step', row.next_human_action || row.next_action), field('Due', row.due_on)]);
@@ -92,8 +94,14 @@ export function normalizeDocRead(method, payload, args = []) {
     }
     case 'getLeadBoard': rows = payload.leads; map = row => record('lead', row, row.id, row.name,
       [field('Owner', row.owner), field('Stage', row.stage), field('Score', row.score), field('Next step', row.next_action), field('Market', row.city || row.market)]); break;
-    case 'getClaimCard': rows = payload.candidates; map = row => record('candidate', row, row.pool_id, row.display_name,
-      [field('Score', row.score), field('Market', row.city), field('Status', row.stage)]); break;
+    case 'getWorkspace': rows = payload.leads; map = lead; break;
+    case 'getLeadDetail': {
+      const row = lead(payload.detail);
+      if (!row || row.id !== args[0]?.id) return null;
+      row.activity = (payload.detail.correspondence || []).map(item => ({ text:item.summary, at:item.occurred_at })).filter(item => text(item.text));
+      sortActivity(row);
+      return [row];
+    }
     case 'todayTriage': rows = payload.items; map = row => record(row.subject_type || 'task', row, row.id || row.subject_id,
       row.subject_name || row.what, [field('Owner', row.owner), field('Next step', row.what), field('Due', row.due_on)]); break;
     case 'loopBoard': rows = payload.loops; map = loop; break;

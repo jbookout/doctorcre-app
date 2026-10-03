@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
+import { workspace, detail } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const contract=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
@@ -54,39 +55,39 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
  const{page,goto,errors,calls}=await setup(t);
  await goto('/deals?mode=live&deal=d14');
- await page.locator('#dealDialog[open]').waitFor();
- await page.locator('#dealDialog > #docPresence').waitFor();
- await page.waitForFunction(()=>document.querySelector('#dealDialog > #docPresence')?.dataset.state==='ready');
- assert.equal(await page.getByRole('button',{name:'Review deal',exact:true}).count(),1);
+ await page.locator('#recordPanel[open]').waitFor();
+ await page.locator('#recordPanel > #docPresence').waitFor();
+ await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready');
+ assert.equal(await page.getByRole('button',{name:'Deal outlook',exact:true}).count(),1);
  assert.ok(await page.locator('[data-jev-deal]').evaluate(n=>n.getBoundingClientRect().height)>=44);
- assert.doesNotMatch(await page.locator('#dealDialog').innerText(),/Jev|Read this deal|lint|leak check/);
+ assert.doesNotMatch(await page.locator('#recordPanel').innerText(),/Jev|Read this deal|lint|leak check/);
  await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
  await page.screenshot({path:new URL('test-artifacts/w8/record-presence-desktop.png',root).pathname,animations:'disabled'});
  await page.setViewportSize({width:390,height:844});
  await page.screenshot({path:new URL('test-artifacts/w8/record-presence-phone.png',root).pathname,animations:'disabled'});
- const persistent=await page.locator('#dealDialog').evaluate(dialog=>{
+ const persistent=await page.locator('#recordPanel').evaluate(dialog=>{
   dialog.scrollTop=500;
   const card=dialog.getBoundingClientRect(),presence=dialog.querySelector('#docPresence').getBoundingClientRect();
   const visible=presence.top>=card.top && presence.bottom<=card.bottom;
   dialog.scrollTop=0;return visible;
  });assert.equal(persistent,true);
  await page.setViewportSize({width:1440,height:960});
- await page.locator('#dealDialog #docOpen').click();
+ await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').isDisabled(),true);
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
  await page.keyboard.press('Escape');
- assert.equal(await page.locator('#dealDialog #docOpen').evaluate(n=>n===document.activeElement),true);
+ assert.equal(await page.locator('#recordPanel #docOpen').evaluate(n=>n===document.activeElement),true);
  const detailReads=calls.filter(call=>call.name==='get-deal-room').length;
  const refreshed=page.waitForResponse(response=>response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await refreshed;
- await page.waitForFunction(()=>document.querySelector('#dealDialog > #docPresence')?.dataset.state==='ready' && document.querySelector('#dealDialog #docPageLabel')?.textContent==='Demo Surgical Practice');
+ await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && document.querySelector('#recordPanel #docPageLabel')?.textContent==='Demo Surgical Practice');
  assert.ok(calls.filter(call=>call.name==='get-deal-room').length>detailReads);
- await page.locator('#dealDialog #docOpen').click();
+ await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
  await page.keyboard.press('Escape');
- await page.locator('[data-close-deal]').click();
+ await page.locator('#panelClose').click();
  await page.locator('#appMainSlot > #docPresence').waitFor();
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
@@ -146,13 +147,10 @@ async function escapeRecord(page, selector) {
 const rpc=async(route,payload)=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(payload)}]}}});
 const tourId='22222222-2222-4222-8222-222222222222';
 const sampleTour={id:tourId,name:'Sample Tour',status:'draft',version:1,stops:[]};
-const sampleLead={id:'sample-lead',name:'Sample lead',stage:'new',owner:'joe',score:82,created_at:new Date().toISOString(),version:1};
-const candidate={pool_id:1,display_name:'Sample candidate',base_version:1};
 async function producerRoute(route,{url,fixture}) {
  if(url.pathname==='/mcp'){
-  const {name}=route.request().postDataJSON().params;
-  if(name==='lead-board'){await rpc(route,{leads:[sampleLead],stages:[],as_of:new Date().toISOString()});return true;}
-  if(name==='claim-card'){await rpc(route,{claimable:1,needs_contact_count:0,candidates:[candidate]});return true;}
+  const {name,arguments:args}=route.request().postDataJSON().params;
+  if(name==='lead-board'){const board=workspace();await rpc(route,{...board,...(args.lead_id?{detail:detail(board.leads.find(row=>row.id===args.lead_id))}:{})});return true;}
   if(name==='loop-board'){await rpc(route,{loops:[{number:1,label:'Sample idea',kind:'idea',owner:'sample',version:1}]});return true;}
   if(name==='read-loop'){await rpc(route,{loop:{number:1,loop_id:'sample-idea',title:'Sample idea',kind:'idea',version:1}});return true;}
  }
@@ -192,20 +190,21 @@ test('initial Queue read uses the mounted Wire filter scope and publishes its fi
  release();await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('running'));
  const c=await readContext(page);assert.equal(c.ready,true);assert.ok(c.records.some(r=>r.kind==='room-task'));
 });
-test('R10 nonempty candidates bind popup identity and native close clears it',async t=>{
+test('versioned Leads details bind popup identity and native close clears it',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
- await page.locator('[data-claim-open]').first().click();let c=await readContext(page);
- assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'candidate',id:'1'});assert.equal(c.active.title,'Sample candidate');
- await escapeRecord(page,'#claimDialog');assert.equal((await readContext(page)).selected,null);
+ await page.locator('.lead-card').first().click();
+ await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Correspondence'));let c=await readContext(page);
+ assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'lead',id:workspace().leads[0].id});assert.equal(c.active.title,'Dr. Example 1');
+ await escapeRecord(page,'#leadDetail');assert.equal((await readContext(page)).selected,null);
 });
 test('close readiness waits until queued context cleanup finishes',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
- await page.locator('[data-claim-open]').first().click();
+ await page.locator('.lead-card').first().click();
  await page.evaluate(async()=>{
   const c=(await import('/js/doc-context.js')).pageDocContext,select=c.select;
   c.select=(kind,id)=>id===null?setTimeout(()=>select(kind,id),250):select(kind,id);
  });
- await escapeRecord(page,'#claimDialog');
+ await escapeRecord(page,'#leadDetail');
  assert.equal((await readContext(page)).selected,null);
 });
 test('R14/R15/R16 Ideas searches, Escape and tab return keep correctly scoped observations',async t=>{
@@ -278,7 +277,7 @@ for(const dataset of ['clients','vendors'])test(`R12/R13/R18 ${dataset} facts an
 });
 test('R11/R18 Search completed catch-up supports positive context through live MCP',async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{
-  if(url.pathname!=='/mcp')return false;const {name}=route.request().postDataJSON().params;
+  if(url.pathname!=='/mcp')return false;const {name,arguments:args}=route.request().postDataJSON().params;
   if(name==='find'){await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Sample Practice',city:null,specialty:null,org_name:null,merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;}
   if(name==='find-and-catch-up'){await rpc(route,{state:'completed',match:{kind:'client',name:'Sample Practice',target:'C-SAMPLE'},catch_up:{timeline:[{summary:'Sample review',occurred_at:'2026-10-01T12:00:00Z'}]}});return true;}return false;
  }});await page.goto('https://app.doctorcre.com/search',{waitUntil:'domcontentloaded'});await page.locator('#searchQuery').fill('Sample');await page.locator('#searchForm').dispatchEvent('submit');await page.waitForFunction(()=>{const c=window.docContext?.snapshot();return c?.ready&&c.records.some(r=>r.kind==='catch-up'&&r.activity[0]?.text==='Sample review');});
@@ -346,14 +345,15 @@ test('R13/R18 incomplete conversation reports unknown recent activity in the ans
  assert.deepEqual((await readContext(page)).recentActivity,[]);
 });
 test('R18 closed Deal detail cannot survive an empty board projection',async t=>{
- const {page,goto}=await setup(t);await goto('/deals?mode=live&deal=d14');
+ let empty=false;
+ const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{
+  if(empty && url.pathname==='/mcp' && route.request().postDataJSON().params.name==='deal-room-board'){await rpc(route,{deals:[],actor:'joe',workspace_kind:'team'});return true;}return false;
+ }});await page.clock.install();await goto('/deals?mode=live&deal=d14');
  await page.waitForFunction(()=>window.docContext?.snapshot().active?.id==='d14');
- await page.locator('[data-close-deal]').click();
+ await page.locator('#panelClose').click();
  await page.waitForFunction(()=>window.docContext?.snapshot().selected===null);
- await page.locator('[data-workspace="team"]').click();
- await page.locator('#appSidebarToggle').click();
- await page.locator('#search').fill('no matching synthetic record');
- await page.waitForFunction(()=>document.querySelectorAll('#rows [data-deal]').length===0);
+ empty=true;await page.clock.fastForward(31_000);
+ await page.waitForFunction(()=>document.querySelectorAll('.kanban-card').length===0);
  const c=await readContext(page);assert.equal(c.ready,true);assert.deepEqual(c.records,[]);
 });
 test('R18 a held Search response cannot publish under a later query scope',async t=>{

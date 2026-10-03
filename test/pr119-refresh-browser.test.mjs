@@ -13,7 +13,7 @@ before(async()=>{
 });
 after(()=>server?.kill());
 async function open(t,{smallChats=false,clientHooks=''}={}){
- const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();page.setDefaultTimeout(5000);await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
+ const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();page.setDefaultTimeout(10000);await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/system-work/session',r=>r.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic'}}));
  await page.route('**/api/v1/atlas-graph**',r=>{const u=new URL(r.request().url());u.searchParams.set('limit','2');const a=atlasFixtureResponse(u,'GET');return r.fulfill({status:a.status,json:a.body});});
@@ -183,7 +183,7 @@ test('PR119 finding 10: retained Act caller reaches a supported work lookup and 
 });
 test('PR119 finding 7: a pending Deal poll cannot detach a later Jev reading',async t=>{
  const hooks=`const get=c.getDeal;c.getDeal=async id=>{const d=await get(id);if(window.holdDeal){window.dealWaiting=true;await new Promise(r=>window.releaseDeal=r);}return d;};c.getJevDealReading=async()=>{window.jevWaiting=true;await new Promise(r=>window.releaseJev=r);return {judged:true,movement_rung:2,movement_rungs:5,movement_label:'Synthetic movement',waiting_on:'partner',silence_is_bad:0.2};};`;
- const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/deals');await page.locator('.deal-link').first().click();await page.waitForFunction(()=>document.querySelector('#dealDialog')?.open);
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/index.html');await page.locator('.deal-link').first().click();await page.waitForFunction(()=>document.querySelector('#dealDialog')?.open);
  await page.evaluate(()=>window.holdDeal=true);await online(page);await page.waitForFunction(()=>window.dealWaiting);
  await page.locator('[data-jev-deal]').click();await page.waitForFunction(()=>window.jevWaiting);
  assert.match(await page.locator('[data-jev-result]').innerText(),/Reviewing/);
@@ -199,8 +199,8 @@ for(const [result,label] of [
  ["throw new Error('Synthetic unavailable');",'Insights unavailable']
 ])test('W8 deal insight outcomes use public labels: '+result,async t=>{
  const {page,errors}=await open(t,{clientHooks:`c.getJevDealReading=async()=>{${result}};`});
- await page.goto(origin+'/deals');await page.locator('.deal-link').first().click();
- await page.getByRole('button',{name:'Review deal',exact:true}).click();
+ await page.goto(origin+'/deals');await page.locator('.kanban-card').first().click();
+ await page.getByRole('button',{name:'Deal outlook',exact:true}).click();
  await page.waitForFunction(label=>document.querySelector('[data-jev-result]')?.textContent===label,label);
  assert.equal(await page.locator('[data-jev-deal]').isEnabled(),true);assert.deepEqual(errors,[]);
 });

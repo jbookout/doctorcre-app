@@ -33,7 +33,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   // Keep the same presence reachable in a native record popup. DOM state
   // controls placement only; record identity still comes from the page read.
   function placePresence() {
-    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail), #recordPanel:not([hidden])')];
+    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail), aside#recordPanel:not([hidden])')];
     const host = hosts.at(-1) || main;
     strip.classList.toggle('doc-in-detail', host !== main);
     if (strip.parentElement !== host) host.prepend(strip);

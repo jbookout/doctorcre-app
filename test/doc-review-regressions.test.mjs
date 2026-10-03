@@ -19,9 +19,9 @@ test('R9 summary Ideas uses recorded number, label and version',()=>{
  const rows=normalizeDocRead('loopBoard',{loops:[{number:1,label:'Sample idea',owner:'sample',version:1}]});
  assert.equal(rows?.[0].title,'Sample idea');assert.equal(rows?.[0].version,1);
 });
-test('R10 claims accepts display_name and base_version',()=>{
- const rows=normalizeDocRead('getClaimCard',{candidates:[{pool_id:1,display_name:'Sample candidate',base_version:2}]});
- assert.equal(rows?.[0].title,'Sample candidate');assert.equal(rows?.[0].version,2);
+test('Leads workspace accepts doctor_name and base_version',()=>{
+ const rows=normalizeDocRead('getWorkspace',{leads:[{id:'example-lead',doctor_name:'Sample lead',base_version:2}]});
+ assert.equal(rows?.[0].title,'Sample lead');assert.equal(rows?.[0].version,2);
 });
 test('R11 Search catch-up completed/empty/disambiguation/not-found states preserve a successful find',()=>{
  const c=createDocContext({page:'search'});c.finish(c.begin('find'),{parties:[{ref:'sample',name:'Sample'}]});
