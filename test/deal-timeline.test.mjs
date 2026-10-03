@@ -108,3 +108,14 @@ test('review 2: recorded and projected lease expiration share urgency while comm
   assert.equal(countdown(date,now).state,day==='2026-10-03'?'past':'upcoming');
  }
 });
+
+test('timeline slice owns its files without competing with the Deals route registration',async()=>{
+ const {assertSliceOwnership,sliceNames,sliceOutputs}=await import('../scripts/slices.mjs');
+ const root=new URL('../',import.meta.url);
+ const {fileURLToPath}=await import('node:url');
+ const registry=await sliceOutputs(await sliceNames(fileURLToPath(root)),path=>readFile(new URL(path,root)));
+ const owners=assertSliceOwnership(registry.slices,registry.shared);
+ for(const path of ['js/deal-timeline.js','css/deal-timeline.css','test/deal-timeline.test.mjs','test/deal-timeline-browser.test.mjs']) assert.equal(owners.get(path),'deal-timeline');
+ assert.equal(registry.contract.routes['/deals'],'pipeline.html');
+ assert.equal(registry.navigationItems.filter(n=>n.href==='/deals').length,1);
+});
