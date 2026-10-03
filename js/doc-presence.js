@@ -7,6 +7,7 @@ import { createDocApproval } from './doc-approval.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { uuidv4 } from './uuid.js';
+import { mountMorningBrief } from './morning-brief.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const display = value => value === null ? 'Unknown' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
 
@@ -61,12 +62,16 @@ export function mountDocPresence({ document: root = document, window: win = wind
       : selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
     keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
   };
+  // Doc and its brief share one client; concurrent first reads share one creation.
+  let clientReady = null;
+  const ensureClient = () => clientReady ||= (client ? Promise.resolve(client) : createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }))
+    .then(value => client = value, error => { clientReady = null; throw error; });
   const refresh = async ({ signal } = {}) => {
     const epoch = ++readEpoch, captured = context.snapshot();
     const scope = `${captured.epoch}:${captured.page}:${captured.selected?.kind || ''}:${captured.selected?.id || ''}`;
     suggestionState = 'updating'; suggestions = null; render();
     try {
-      client ||= await createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false });
+      await ensureClient();
       approval ||= createDocApproval({ client, context, evaluatedPages:DOC_EVALUATED_PAGES, uuid:uuidv4 });
       const args = captured.page === 'chats' && captured.selected?.kind === 'conversation' ? { conversation_id:captured.selected.id } : {};
       const payload = await readWithDeadline(() => client.listDocSuggestions(args), { signal });
@@ -109,7 +114,8 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
-  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const brief = mountMorningBrief({ document:root, window:win, strip, getClient:ensureClient, intervalMs });
+  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); brief.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };
 }
