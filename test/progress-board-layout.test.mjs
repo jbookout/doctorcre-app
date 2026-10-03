@@ -3,28 +3,17 @@
 // real page and code run against a local server whose /mcp answers with the
 // synthetic fixture; nothing in production code knows about this test.
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import test from "node:test";
+import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FULL = JSON.parse(await readFile(join(ROOT, "test/fixtures/progress-board-full.json"), "utf8"));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
   ".json": "application/json", ".svg": "image/svg+xml" };
-
-function findChrome() {
-  const candidates = [process.env.CHROME_BIN];
-  if (existsSync("/opt/pw-browsers")) for (const dir of readdirSync("/opt/pw-browsers"))
-    if (dir.startsWith("chromium-")) candidates.push(join("/opt/pw-browsers", dir, "chrome-linux", "chrome"));
-  candidates.push("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
-  return candidates.find(path => path && existsSync(path)) || null;
-}
 
 const MEASURE = `
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -65,7 +54,28 @@ for (const control of document.querySelectorAll("#legend-toggle, .app-shell-doc:
 }
 const page = document.documentElement;
 if (page.scrollWidth > innerWidth + 1) problems.push("page scrolls sideways: " + page.scrollWidth + " > " + innerWidth);
-parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.length, width: innerWidth, problems }));
+// Open the real Key: presence checks cannot catch a sample obscuring its explanation.
+document.querySelector("#legend-toggle").click();
+await wait(300);
+const entries = [...document.querySelectorAll(".legend-entry")];
+if (!entries.some(entry => entry.dataset.legendId === "flag-unrefreshed"))
+  problems.push("outage legend entry missing");
+for (const entry of entries) {
+  entry.scrollIntoView({ block: "nearest" });
+  const sample = entry.querySelector(".legend-sample > *").getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(entry.querySelector("dd"));
+  const textLines = [...range.getClientRects()];
+  if (!sample.width || !textLines.some(line => line.width)) {
+    problems.push(entry.dataset.legendId + ": sample or explanation not visible");
+    continue;
+  }
+  if (textLines.some(line => sample.right > line.left + 1 && sample.left < line.right - 1
+      && sample.bottom > line.top + 1 && sample.top < line.bottom - 1))
+    problems.push(entry.dataset.legendId + ": legend sample overlaps explanation");
+}
+if (page.scrollWidth > innerWidth + 1) problems.push("open Key makes the page scroll sideways");
+parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.length, legendEntries: entries.length, width: innerWidth, problems }));
 `;
 
 function serve() {
@@ -79,15 +89,6 @@ function serve() {
         ? (params.arguments?.board_id === "all-repos" ? FULL.all_repos : FULL.project) : {};
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ result: { content: [{ text: JSON.stringify({ ok: true, ...read }) }] } }));
-      return;
-    }
-    if (url.pathname === "/__frame") {
-      // Headless windows cannot go below 500px, so the page runs in a frame of the exact width.
-      const width = Number(url.searchParams.get("width"));
-      const board = encodeURIComponent(url.searchParams.get("board"));
-      response.writeHead(200, { "content-type": "text/html" });
-      response.end(`<!doctype html><body style="margin:0"><iframe src="/progress-board?board=${board}"
-        style="border:0;width:${width}px;height:2400px"></iframe></body>`);
       return;
     }
     if (url.pathname === "/__measure.js") {
@@ -112,36 +113,22 @@ function serve() {
   return new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-const chrome = findChrome();
-
 for (const width of [390, 1280]) {
   for (const board of ["carr-v5", "all-repos"]) {
-    test(`no card content overflows its card at ${width}px on ${board}`, { skip: chrome ? false : "no Chrome or Chromium found; set CHROME_BIN" }, async () => {
+    test(`cards and open Key have no clipping or overlap at ${width}px on ${board}`, async t => {
       const server = await serve();
-      // A fresh profile per run: a shared default profile being created or
-      // held by another Chrome can stall a headless launch until the timeout.
-      const profile = await mkdtemp(join(tmpdir(), "board-layout-"));
-      try {
-        const { port } = server.address();
-        // Async on purpose: a synchronous spawn would block this process's own server.
-        const run = await new Promise(resolve => execFile(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-          "--no-first-run", "--no-default-browser-check", "--no-proxy-server", "--window-size=1400,2500",
-          `--user-data-dir=${profile}`, "--disable-background-networking", "--disable-component-update",
-          "--disable-dev-shm-usage", "--virtual-time-budget=10000",
-          "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
-          "--dump-dom", `http://127.0.0.1:${port}/__frame?width=${width}&board=${board}`],
-        { encoding: "utf8", timeout: 60000, maxBuffer: 32 * 1024 * 1024 },
-        (error, stdout, stderr) => resolve({ stdout: stdout || "", stderr: stderr || String(error || "") })));
-        const match = run.stdout.match(/data-measure="([^"]*)"/);
-        assert.ok(match, `the page measured itself: ${run.stderr.slice(-400)}`);
-        const result = JSON.parse(match[1].replaceAll("&quot;", '"').replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">"));
-        assert.equal(result.width, width);
-        assert.ok(result.cards > 10, `cards rendered: ${result.cards}`);
-        assert.deepEqual(result.problems, []);
-      } finally {
-        server.close();
-        await rm(profile, { recursive: true, force: true });
-      }
+      t.after(() => server.close());
+      const browser = await chromium.launch();
+      t.after(() => browser.close());
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      const { port } = server.address();
+      await page.goto(`http://127.0.0.1:${port}/progress-board?board=${board}`);
+      await page.waitForFunction(() => document.body.hasAttribute("data-measure"));
+      const result = await page.evaluate(() => JSON.parse(document.body.getAttribute("data-measure")));
+      assert.equal(result.width, width);
+      assert.ok(result.cards > 10, `cards rendered: ${result.cards}`);
+      assert.ok(result.legendEntries > 0, "the open Key rendered its explanations");
+      assert.deepEqual(result.problems, []);
     });
   }
 }
