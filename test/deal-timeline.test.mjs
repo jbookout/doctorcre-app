@@ -28,15 +28,15 @@ test('conflicting contract dates remain visible; co-located originals survive; k
  assert.ok(view.missing.some(d=>d.kind==='rent_start'));
  assert.match(view.dates.find(d=>d.day==='2026-11-01').original,/Demo signed contract date/);
  assert.match(view.dates.find(d=>d.day==='2026-11-01').original,/Demo clause 3/);
- const statuses=dealTimeline({...detail,critical_dates:[{kind:'loi_expiry',due_on:'2026-10-03',status:'done'},{kind:'loi_expiry',due_on:'2026-10-03',status:'open'}]},now);
+ const statuses=dealTimeline({...detail,critical_dates:[{kind:'loi_expiry',due_on:'2026-10-03',status:'cleared'},{kind:'loi_expiry',due_on:'2026-10-03',status:'open'}]},now);
  assert.equal(statuses.dates.filter(d=>d.kind==='loi_expiry').length,2);
 });
-test('countdowns cross midnight and distinguish deadlines, completed dates and past commencement',()=>{
+test('countdowns cross midnight and distinguish deadlines, cleared dates and past commencement',()=>{
  assert.deepEqual(countdown({day:'2026-10-04',deadline:true},now),{state:'today',text:'Due today'});
  assert.deepEqual(countdown({day:'2026-10-05',deadline:true},now),{state:'soon',text:'1 day'});
  assert.equal(countdown({day:'2026-10-03',deadline:true},now).text,'1 day overdue');
  assert.equal(countdown({day:'2026-10-03'},now).text,'1 day ago');
- assert.equal(countdown({day:'2026-10-03',status:'completed'},now).text,'Completed');
+ assert.equal(countdown({day:'2026-10-03',status:'cleared'},now).text,'Cleared');
  const root=new JSDOM(renderCriticalDates(detail,now)).window.document;
  updateCountdowns(root,now+86400000);
  assert.equal(root.querySelector('[data-countdown="2026-10-03"]').textContent,'2 days overdue');
@@ -82,4 +82,29 @@ test('timeline labels use words while retaining exact wire kinds for identity',(
  assert.equal(cards.querySelector('.timeline-entry b').textContent,'email in');
  assert.equal(cards.querySelector('.timeline-entry').dataset.kind,'email_in');
  assert.match(new JSDOM(renderCriticalDates(value,now)).window.document.body.textContent,/tenant notice/);
+});
+
+test('review 1: producer cleared and passed dates do not raise deadline alarms',()=>{
+ for (const [status,state,text] of [['cleared','complete','Cleared'],['passed','past','Passed'],['open','overdue','1 day overdue']]) {
+  const value={deal:detail.deal,critical_dates:[{id:'loi',kind:'loi_expiry',due_on:'2026-10-03',status}]};
+  assert.deepEqual(countdown(dealTimeline(value,now).dates[0],now),{state,text});
+  const root=new JSDOM(renderCriticalDates(value,now)).window.document;
+  updateCountdowns(root,now+86400000);
+  assert.equal(root.querySelector('[data-date-id="loi"]').dataset.state,state);
+  if(status!=='open') assert.equal(root.querySelector('strong').textContent,text);
+ }
+});
+test('review 2: recorded and projected lease expiration share urgency while commencement stays a milestone',()=>{
+ for(const day of ['2026-10-03','2026-10-07']) {
+  const expected=day==='2026-10-03'?'overdue':'soon';
+  for(const lease of [null,{...detail.lease,expiration_on:day}]) {
+   const value={deal:detail.deal,lease,critical_dates:lease?[]:[{id:'expiry',kind:'lease_expiration',due_on:day,status:'open'}]};
+   const date=dealTimeline(value,now).dates.find(d=>d.kind==='lease_expiration');
+   assert.equal(countdown(date,now).state,expected);
+   const root=new JSDOM(renderCriticalDates(value,now)).window.document;
+   assert.equal(root.querySelector(`[data-countdown="${day}"]`).closest('article').dataset.state,expected);
+  }
+  const date=dealTimeline({deal:detail.deal,critical_dates:[{kind:'lease_commencement',due_on:day,status:'open'}]},now).dates[0];
+  assert.equal(countdown(date,now).state,day==='2026-10-03'?'past':'upcoming');
+ }
 });

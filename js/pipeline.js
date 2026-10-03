@@ -687,6 +687,7 @@ async function settleConflictChoice(conflictId, result) {
 /* ------------------------------------------------------------- record panel */
 
 let disposeEvidence = null;
+let dateDraft = null;
 let panelReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
 // fields follow current reads; edited fields keep their original comparison.
@@ -817,7 +818,7 @@ async function refreshPanel() {
         if (current.innerHTML !== fresh.innerHTML) {
           const expanded = new Set([...current.querySelectorAll('.deal-note details[open]')].map(n => n.closest('.deal-note').dataset.id));
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
-          const focusedEntry = focused?.closest('.deal-note')?.dataset.id;
+          const focusIdentity = focused?.dataset.detailFocus;
           const wasOpen = current.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
           const chartScroll = current.querySelector('.timeline-viewport')?.scrollLeft;
@@ -828,7 +829,7 @@ async function refreshPanel() {
           if (chartScroll !== undefined) fresh.querySelector('.timeline-viewport').scrollLeft = chartScroll;
           fresh.querySelectorAll('[data-date-id]').forEach(n => { if (dateOpens.has(n.dataset.dateId)) n.querySelector('details').open = true; });
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
-          if (focusedEntry) [...fresh.querySelectorAll('.deal-note')].find(n => n.dataset.id === focusedEntry)?.querySelector(focused?.tagName === 'SUMMARY' ? 'summary' : 'p')?.focus({preventScroll:true});
+          if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }
@@ -1115,18 +1116,24 @@ function wire() {
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
-  $('dealDateCancel').onclick = () => $('dealDateDialog').close();
+  $('dealDateCancel').onclick = () => { dateDraft = null; $('dealDateDialog').close(); };
+  $('dealDateDialog').addEventListener('cancel', () => { dateDraft = null; });
   $('dealDateForm').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, values = new FormData(form);
-    const id = state.panelDeal, kind = form.dataset.kind;
+    const draft = dateDraft;
+    if (!draft) return;
+    const {deal:id, kind} = draft;
     // Lost responses retain exactly the same request and key in the command dock.
     const args = {deal:id,kind,due_on:String(values.get('date')),source:String(values.get('evidence'))};
     form.querySelector('button[type="submit"]').disabled = true;
     const result = await runFollowUp(`critical-date:${id}:${kind}`,{verb:'add-critical-date',args,summary:'Date added'});
-    form.querySelector('button[type="submit"]').disabled = false;
-    if (result?.status === 'ok') { $('dealDateDialog').close(); if (state.panelDeal === id) await refreshPanel(); }
-    else $('dealDateStatus').textContent = 'Date not confirmed';
+    if (dateDraft === draft && $('dealDateDialog').open) {
+      form.querySelector('button[type="submit"]').disabled = false;
+      if (result?.status === 'ok') { dateDraft = null; $('dealDateDialog').close(); }
+      else $('dealDateStatus').textContent = 'Date not confirmed';
+    }
+    if (result?.status === 'ok' && state.panelDeal === id) await refreshPanel();
   });
 
   $('receiptsOpen')?.addEventListener('click', () => {
@@ -1190,7 +1197,9 @@ function wire() {
     if (add) {
       const definition = DATE_KINDS.find(d => d.kind === add.dataset.addDate);
       $('dealDateTitle').textContent = definition.label;
-      const form = $('dealDateForm'); form.reset(); form.dataset.kind = definition.kind;
+      dateDraft = {deal:state.panelDeal,kind:definition.kind};
+      const form = $('dealDateForm'); form.reset();
+      form.querySelector('button[type="submit"]').disabled = false;
       $('dealDateStatus').textContent = ''; $('dealDateDialog').showModal();
     }
     const day = e.target.closest('[data-timeline-day]');
