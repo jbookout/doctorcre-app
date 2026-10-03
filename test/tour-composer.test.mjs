@@ -381,11 +381,11 @@ test("review 10: endpoint-only edits appear in review, support undo, and save a 
   assert.equal([...store.tours.values()][0].routes[0].accepted, true); dom.window.close();
 });
 test("review 10: endpoint review survives reload of an unresolved version save", async t => {
-  const store = domain(), first = await open(t, store); t.after(() => first.dom.window.close()); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
+  const store = domain(), first = await open(t, store); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
   fill(first.doc, "#edit-start-latitude", "30.7"); store.fail("/api/tours/route-stop", "lost");
   first.doc.querySelector("#save-composer").click(); await settle();
   const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
-  const next = await open(t, store, { "doctorcre-tour-pending-v1": retained }); t.after(() => next.dom.window.close());
+  const next = await open(t, store, { "doctorcre-tour-pending-v1": retained });
   const deadline = Date.now() + 10000;
   while (next.doc.querySelector("#edit-start-latitude").value !== "30.7" && Date.now() < deadline) await settle();
   assert.equal(next.doc.querySelector("#edit-start-latitude").value, "30.7");
@@ -685,7 +685,7 @@ test("Dot Tour: default cart labels satisfy accepted membership and accept witho
     }
     return normal(path, options);
   };
-  const { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(t, store);
   await create(doc); await addCart(doc); await saveAndAccept(doc);
   assert.equal([...store.tours.values()][0].routes[0].accepted, true);
   assert.deepEqual(store.calls.filter(call => call.path === "/api/tours/route-stop").map(call => call.body.route_label), ["1", "2"]);
@@ -699,7 +699,7 @@ for (const next of ["open", "create"]) test(`Dot Tour: ${next} another Tour clea
     if (path.startsWith("/api/tours/feedback")) return response({ feedback: { items: [] } });
     return normal(path, options);
   };
-  const { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(t, store);
   let copied = null;
   Object.defineProperty(dom.window.navigator, "clipboard", { value: { writeText: async value => { copied = value; } } });
   await create(doc);
@@ -722,7 +722,7 @@ for (const next of ["open", "create"]) test(`Dot Tour: ${next} another Tour clea
 
 
 test("Dot Tour: keyboard reorder keeps focus on the moved property at route boundaries", async t => {
-  const store = domain(), { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const store = domain(), { dom, doc } = await open(t, store);
   await create(doc); await addCart(doc);
   const down = [...doc.querySelector(`[data-property-id="${propA}"] .stop-controls`).children].find(button => button.textContent === "Down");
   down.focus(); down.click();
@@ -750,7 +750,7 @@ test("Dot Tour: acceptance submits the digest of the reviewed stop set and handl
     if (payload.data) payload.data.routes[0].acceptance_digest = reviewedDigest;
     return { ...result, json: async () => payload };
   };
-  const { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(t, store);
   await create(doc); await addCart(doc);
   doc.querySelector("#save-composer").click(); await settle();
   doc.querySelector("#route-reviewed").click();
@@ -767,7 +767,7 @@ test("Dot Tour: acceptance submits the digest of the reviewed stop set and handl
 
 
 for (const label of ["Stop 1", "ABCD", "A_", "A B", ""]) test(`Dot Tour: invalid membership label ${JSON.stringify(label)} cannot write a draft`, async t => {
-  const store = domain(), { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const store = domain(), { dom, doc } = await open(t, store);
   await create(doc); await addCart(doc);
   fill(doc, `[data-property-id="${propA}"] [data-field="route_label"]`, label);
   doc.querySelector("#save-composer").click(); await settle();
@@ -783,7 +783,7 @@ for (const missing of [undefined, "invalid"]) test(`Dot Tour: missing or invalid
     if (payload.data) payload.data.routes[0].acceptance_digest = missing;
     return { ...result, json: async () => payload };
   };
-  const { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(t, store);
   await create(doc); await addCart(doc);
   doc.querySelector("#save-composer").click(); await settle();
   assert.equal(doc.querySelector("#route-reviewed").disabled, true);
@@ -865,7 +865,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
     }
     return result;
   };
-  const { dom, doc } = await open(t, store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(t, store);
   await create(doc); await addCart(doc);
   doc.querySelector("#save-composer").click(); await settle();
   const reviewedDigest = displayedDigest;
