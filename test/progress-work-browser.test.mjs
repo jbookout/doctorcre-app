@@ -68,6 +68,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),events})});
     }
     if(url.pathname==='/api/room/turn'){
+      if(state.postDelay) await new Promise(resolve=>setTimeout(resolve,state.postDelay));
       posts.push({body:route.request().postDataJSON(),csrf:route.request().headers()['x-carr-csrf']});
       if(state.postFailure)return route.fulfill({status:502,contentType:'application/json',body:'{}'});
       return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
@@ -504,7 +505,10 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#queueStatus').selectOption('');await page.locator('#queueTarget').selectOption('dot');assert.equal(await page.locator('.queue-card').count(),1);
   for(const id of ['stageSvg','roomDesks','roomPresence','roomHealth','sessionList','assignmentList','wireFeed','viewConversation','viewEverything','kindTurns','kindSystem','kindReceipts','kindHeartbeats','wireSearch','wireResume','roomComposer','queueColumns','queueTarget','queueStatus','queueComposer'])assert.equal(await page.locator(`#${id}`).count(),1,id);
   await page.locator('#desksToggle').click();await page.locator('#desksToggle').click();
+  state.postDelay=200;
+  const loginResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/room/turn' && response.request().postDataJSON()?.control?.action==='login');
   await page.locator('#desksToggle').click();await page.locator('.desk-card .assignment-badge').click();
+  await loginResponse;state.postDelay=0;
   assert.equal(posts[0].body.control.action,'login');assert.equal(posts[0].body.control.desk,'Synthetic desk');
   await page.locator('#viewEverything').click();await page.locator('#kindReceipts').click();assert.equal(await page.locator('#kindReceipts').getAttribute('aria-pressed'),'false');await page.locator('#kindReceipts').click();
   await page.locator('#wireSearch').fill('Unrelated');assert.match(await page.locator('#wireFeed').textContent(),/Unrelated synthetic task/);await page.locator('#wireSearch').fill('');

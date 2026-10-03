@@ -58,7 +58,10 @@ test('W5 filters, traversal and autonomous refresh recover without losing search
   await page.locator('[data-owner="dell"]').click();await page.waitForFunction(()=>document.querySelector('#resultSummary').textContent.startsWith('31 '));assert.match(h.calls.at(-1),/owner=dell/);
   await page.locator('#territoryInput').fill('Demo North');await page.locator('#territoryInput').dispatchEvent('change');await page.waitForFunction(()=>location.search.includes('territory=Demo'));
   await page.locator('#sortSelect').selectOption('territory');await page.waitForFunction(()=>location.search.includes('sort=territory'));
-  await page.locator('#resetFilters').click();await page.waitForFunction(()=>document.querySelectorAll('.record-row').length===25);
+  const resetRead=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/v1/business/vendors' && (url.searchParams.get('owner')||'all')==='all' && !url.searchParams.get('territory') && (url.searchParams.get('sort')||'name')==='name' && (url.searchParams.get('page')||'1')==='1';});
+  await page.locator('#resetFilters').click();await resetRead;
+  await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>=25 && document.querySelector('#resultSummary').textContent.startsWith('62 '));
+  assert.equal(await page.locator('#territoryInput').inputValue(),'');assert.equal(await page.locator('#sortSelect').inputValue(),'name');
   await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>25);const search=await page.locator('.search-dock').boundingBox();assert.ok(search.y>=69&&search.y<102);assert.ok(search.height<110);assert.doesNotMatch(page.url(),/page=/);
   await page.locator('#searchInput').fill('Demo');await page.clock.fastForward(400);await page.waitForFunction(()=>location.search.includes('q=Demo'));
   await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>25);
