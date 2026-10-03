@@ -30,3 +30,17 @@ test("the production rollback deploys one exact prior version at 100% on the roo
   assert.match(source, /"versions", "deploy", `\$\{versionId\}@100%`, "--env", ""/);
   assert.match(source, /rollback:production -- <exact-version-id>/);
 });
+
+// Both release scripts gate on `npm test`. Left unbounded, node --test runs
+// availableParallelism()-1 files at once: 17 on the 18-core release host
+// against about 3 on a GitHub runner. That many software-GL Chromium files at
+// once on a loaded host timed out a different handful of browser tests on 5 of
+// 7 app releases (2026-10-02/03) while CI stayed green on the same commits.
+test("the release test gate runs at a fixed, CI-sized file concurrency", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const concurrency = Number(/--test-concurrency=(\d+)/.exec(pkg.scripts.test)?.[1]);
+  assert.ok(concurrency >= 1 && concurrency <= 3, `npm test must cap file concurrency at 3 or lower: ${pkg.scripts.test}`);
+  for (const name of ["release-production.mjs", "release-staging.mjs"]) {
+    assert.match(read(name), /run\("npm", \["test"\]\)/, `${name} gates on npm test`);
+  }
+});
