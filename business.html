@@ -19,11 +19,8 @@
 </head>
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-  <!-- data-panel-background marks everything the record panel COVERS when the
-       phone layout takes it full screen. The script makes exactly these regions
-       inert while it is a dialog, so keyboard and screen-reader focus cannot
-       walk underneath it; on a desktop the panel sits beside them and none of
-       this applies. -->
+  <!-- The open record is a dialog at every width. Its covered background is
+       inert so keyboard and screen-reader focus remain inside the dialog. -->
   <a class="skip" href="#main" data-panel-background>Skip to records</a>
 
 
@@ -32,23 +29,22 @@
       <div>
         <p class="eyebrow"><a class="back-home" href="/">&larr; Home</a> · <span id="viewerWorkspace">Partner workspace</span></p>
         <h1 id="pageTitle">Clients</h1>
-        <p class="intro" id="pageIntro"></p>
       </div>
       <div class="hero-meta" aria-label="Status">
-        <span class="status-pill"><span id="healthOrb" class="status-orb loading" aria-hidden="true"></span> <span id="healthLabel">Checking…</span></span>
-        <span id="observedAt" class="observed">Checking…</span>
+        <span id="observedAt" class="observed">Updating…</span><button type="button" class="refresh-icon" id="refreshList" aria-label="Refresh" title="Refresh">↻</button>
       </div>
     </section>
 
+    <div class="search-dock glass" data-panel-background>
+      <div class="field field-search">
+        <label for="searchInput">Search</label>
+        <input id="searchInput" name="q" form="filterForm" type="search" autocomplete="off" spellcheck="false" maxlength="80" placeholder="Search by name">
+      </div>
+    </div>
     <section class="business-controls" aria-labelledby="controlsTitle" data-panel-background>
       <h2 class="visually-hidden" id="controlsTitle">Search and filter</h2>
       <form id="filterForm" class="filter-form glass" novalidate>
         <div class="filter-row">
-          <div class="field field-search">
-            <label for="searchInput">Search</label>
-            <input id="searchInput" name="q" type="search" autocomplete="off" spellcheck="false" maxlength="80" placeholder="Name or reference" aria-describedby="searchHint">
-            <p class="field-hint" id="searchHint">Looks through names and reference codes. Up to 80 characters.</p>
-          </div>
           <div class="field" data-field="a">
             <label for="filterA" id="filterALabel">Status</label>
             <select id="filterA" name="a"><option value="">Any status</option></select>
@@ -64,17 +60,22 @@
           <div class="field">
             <label for="sortSelect">Sort</label>
             <select id="sortSelect" name="sort">
-              <option value="name">Name (A–Z)</option>
-              <option value="recent">Recently updated</option>
+              <option value="name">Alphabetical</option>
+              <option value="vertical">Vertical</option>
+              <option value="deal_type">Deal type</option>
+              <option value="last_deal_desc">Last deal · most recent</option>
+              <option value="last_deal_asc">Last deal · least recent</option>
+              <option value="territory" data-vendor-sort>Territory</option>
             </select>
           </div>
         </div>
         <div class="filter-row filter-row-actions">
           <div class="scope-switch" id="scopeSwitch" role="group" aria-label="Record scope">
-            <button type="button" class="scope-option on" data-scope="team" aria-pressed="true"><span>Team</span></button>
-            <button type="button" class="scope-option" data-scope="mine" aria-pressed="false"><span>My work</span><small>Recorded as mine</small></button>
+            <button type="button" class="scope-option on" data-owner="all" aria-pressed="true">All</button>
+            <button type="button" class="scope-option" data-owner="joe" aria-pressed="false">Joe</button>
+            <button type="button" class="scope-option" data-owner="dell" aria-pressed="false">Dell</button>
           </div>
-          <p class="scope-note" id="scopeNote">Showing everyone's. Switch to My work for the ones recorded as yours.</p>
+<div class="field territory-field" id="territoryField" hidden><label for="territoryInput">Territory</label><input id="territoryInput" maxlength="80" placeholder="All territories" list="territories"><datalist id="territories"></datalist></div>
           <div class="filter-actions">
             <button type="submit" class="action primary-action" id="applyFilters">Apply</button>
             <button type="button" class="action secondary-action" id="resetFilters">Reset</button>
@@ -99,21 +100,18 @@
             <li class="record-skeleton"><span class="skeleton-line"></span><span class="skeleton-line short"></span></li>
           </ol>
         </div>
-        <nav class="pager" id="pager" aria-label="Pages" hidden>
-          <a class="action secondary-action" id="pagerPrevious" href="/clients" rel="prev">Previous</a>
-          <span class="pager-position" id="pagerPosition"></span>
-          <a class="action secondary-action" id="pagerNext" href="/clients" rel="next">Next</a>
-        </nav>
-        <p class="source" id="listSource">Checking…</p>
+        <div id="scrollSentinel" aria-hidden="true"></div>
+
       </div>
 
-      <aside class="record-panel glass" id="recordPanel" role="complementary" aria-labelledby="recordTitle" hidden>
+      <div class="record-backdrop" id="recordBackdrop" hidden></div>
+      <aside class="record-panel glass" id="recordPanel" role="dialog" aria-modal="true" aria-labelledby="recordTitle" hidden>
         <div class="record-panel-head">
           <div>
             <p class="eyebrow" id="recordEyebrow">Client</p>
             <h2 id="recordTitle" tabindex="-1">Opening…</h2>
           </div>
-          <button type="button" class="panel-close" id="recordClose" aria-label="Close record">Close</button>
+          <button type="button" class="panel-close" id="recordClose" aria-label="Close record">×</button>
         </div>
         <div class="record-panel-body" id="recordBody">
           <p class="attention-copy">Opening this record.</p>
@@ -121,9 +119,7 @@
       </aside>
     </section>
 
-    <section class="business-footnote glass" data-panel-background>
-      <p class="inert-note">Not available yet: <span class="inert-entry" aria-disabled="true">Calls</span></p>
-    </section>
+
   </main>
 
   <footer class="footer" data-panel-background><span>DoctorCRE · Clients and Vendors</span></footer>

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <meta name="description" content="DoctorCRE Deals — the pipeline board by phase, moved by drag or keyboard, with the record beside it">
-  <title>Deals · DoctorCRE</title>
+  <meta name="description" content="Local Deals · DoctorCRE">
+  <title>Local Deals · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
@@ -20,34 +20,33 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the board</a>
-  <div data-layout-slot="status">
-
-
-
-    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
-    </div>
-  </div>
+  <p id="prefsLive" class="sr-only" aria-live="polite"></p>
 
   <main id="main" class="shell">
     <section data-layout-slot="sidebar" class="card glass" aria-labelledby="pageTitle">
       <div class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="boardOrb" aria-hidden="true"></span> Pipeline</p>
-          <h1 id="pageTitle">Deals</h1>
-          <nav data-layout-slot="tabs" class="page-views" aria-label="Deals pages"><a href="/deals">All Deals</a><a href="/deals?view=national">National Accounts</a></nav>
+          <h1 id="pageTitle">Local Deals</h1>
+          <nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals">Local Deals</a><a href="/deals?view=national">National Accounts</a></nav>
         </div>
-        <div class="hero-meta">
-          <span class="status" data-state="unknown" id="boardStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="boardStatusLabel">Updating…</span></span>
-          <span class="as-of" id="boardAsOf">Updating…</span>
+        <div data-layout-slot="status" class="hero-meta">
+          <span id="deploymentBadge" class="small"></span>
+          <span id="syncStatus"><span class="as-of" id="boardAsOf">Updating…</span></span>
+          <span id="captureStatus" hidden></span>
+          <span class="status sr-only" data-state="unknown" id="boardStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="boardStatusLabel">Updating…</span></span>
+          <button class="btn icon-btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh">↻</button>
         </div>
       </div>
-      <div data-layout-slot="tabs" class="page-views" role="group" aria-label="Deal view"><a href="/deals">List</a><span class="deal-page-view-current" aria-current="page">Board</span></div>
-      <div class="chip-bar">
-        <div class="chip-bar" id="boardChips" aria-label="Deal type filters"></div>
-        <button class="btn" type="button" id="receiptsOpen" aria-haspopup="dialog">Recent changes <span id="receiptsCount">0</span></button>
-        <button class="btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+      <div data-layout-slot="tabs" class="board-toolbar">
+        <div class="chip-bar" id="boardChips" aria-label="Deal owner"></div>
+        <div class="chip-bar" role="group" aria-label="Deal view">
+          <button class="chip" id="boardView" type="button" aria-pressed="true">Board</button>
+          <button class="chip" id="listView" type="button" aria-pressed="false">List</button>
+          <button class="chip" id="parkedToggle" type="button" aria-pressed="false">Parked</button>
+        </div>
       </div>
+      <button class="btn" type="button" id="receiptsOpen" aria-controls="appToday">Recent changes <span id="receiptsCount">0</span></button>
     </section>
 
     <p class="sr-only" id="boardLive" aria-live="polite" role="status">Updating…</p>
@@ -60,20 +59,17 @@
 
     <div class="pipeline-layout">
       <div class="kanban" id="kanban" aria-label="Deals by phase" tabindex="-1"></div>
-      <dialog id="recordPanel" class="record-popup glass" aria-labelledby="panelTitle" hidden>
-        <div class="panel-head">
-          <div><p class="eyebrow">Record</p><h2 id="panelTitle">Record</h2></div>
-          <div class="row-wrap">
-            <button class="btn icon-btn" type="button" id="panelClose" aria-label="Close record panel">×</button>
-          </div>
-        </div>
-        <div id="panelBody"></div>
-        <div class="panel-section" id="panelContextOpenWrap" hidden>
-          <button class="btn" type="button" id="panelContextOpen" aria-haspopup="dialog">Client &amp; vendor context</button>
-        </div>
-      </dialog>
+
     </div>
   </main>
+
+  <dialog id="recordPanel" class="dialog deal-detail" aria-labelledby="panelTitle">
+    <header><h2 id="panelTitle">Deal</h2><button class="btn icon-btn" id="panelClose" type="button" aria-label="Close deal">×</button></header>
+    <div id="panelBody" class="dialog-body"></div>
+    <div class="panel-section" id="panelContextOpenWrap" hidden>
+      <button class="btn" type="button" id="panelContextOpen" aria-haspopup="dialog">Client &amp; vendor context</button>
+    </div>
+  </dialog>
 
   <dialog id="moveDialog" class="dialog" aria-labelledby="moveTitle">
     <header>
@@ -93,8 +89,8 @@
         <button class="btn icon-btn" type="button" id="completionDismiss" aria-label="Cancel">×</button>
       </header>
       <div class="dialog-body">
-        <p class="field-hint" id="completionFrom"></p>
-        <p class="field-hint" id="completionClosedNote" hidden></p>
+
+
         <p class="field-hint error" id="completionErrors" tabindex="-1" hidden></p>
         <fieldset class="field" id="completionOutcomeField" hidden>
           <legend>Outcome</legend>
@@ -153,7 +149,7 @@
           <label for="completionSource">Where did this date come from?</label>
           <input id="completionSource" type="text" autocomplete="off">
         </div>
-        <p class="field-hint" id="completionDateCaption"></p>
+
       </div>
       <footer>
         <button class="btn btn-quiet" type="button" id="completionCancel">Cancel, keep phase</button>
@@ -176,18 +172,7 @@
     </form>
   </dialog>
 
-  <dialog id="receiptsDialog" class="dialog" aria-labelledby="receiptsTitle">
-    <article>
-      <header>
-        <div><p class="eyebrow">This session</p><h2 id="receiptsTitle">Recent changes</h2></div>
-        <button class="btn icon-btn" type="button" id="receiptsClose" aria-label="Close">×</button>
-      </header>
-      <div class="dialog-body">
-        <ul data-layout-slot="moves" class="receipt-list" id="receiptsList"></ul>
-
-      </div>
-    </article>
-  </dialog>
+  <ul data-layout-slot="moves" class="receipt-list" id="receiptsList"></ul>
 
   <dialog id="contextDrawer" class="dialog" aria-labelledby="contextDrawerTitle">
     <article>
@@ -205,7 +190,7 @@
   <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
   <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
     <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Deals</p></div>
+      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Local Deals</p></div>
       <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
     </div>
     <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
@@ -217,7 +202,7 @@
   </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small">DoctorCRE · Deals · One record, one owner, one safety key per command.</p></footer>
+
 
   <script type="module" src="/js/pipeline.js"></script>
 </body>

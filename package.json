@@ -19,7 +19,15 @@
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
     "test": "node --test test/*.test.mjs",
-    "serve": "node scripts/serve.mjs"
+    "serve": "node scripts/serve.mjs",
+    "privacy:check": "node scripts/privacy/client-data-check.mjs",
+    "privacy:fixtures": "node scripts/privacy/generate-synthetic-fixtures.mjs",
+    "slices:check": "node scripts/slices.mjs",
+    "pretest": "npm run slices:check",
+    "prebuild": "npm run slices:check",
+    "preserve": "npm run slices:check",
+    "predeployment:check:staging": "npm run slices:check",
+    "predeployment:check:production": "npm run slices:check"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

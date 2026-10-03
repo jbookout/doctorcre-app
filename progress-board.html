@@ -38,6 +38,10 @@
           <svg id="board-flow" class="pipeline-diagram" role="group" aria-label="Tasks positioned along the six delivery stages"></svg>
         </div>
       </section>
+      <section class="panel" aria-labelledby="completed-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / COMPLETED</p><h2 id="completed-title">Live work</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div id="completed-list" class="completed-list"></div>
+      </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
         <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
         <form id="system-work-filters" class="work-filters">
@@ -52,7 +56,7 @@
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
-        <div class="panel-heading"><div><p class="eyebrow">02 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">03 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
 
         <div id="board-questions" class="questions" aria-live="polite"></div>
       </section>

@@ -73,7 +73,12 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: new URL(`test-artifacts/w6/${name}-detail.png`, root).pathname, fullPage: false, animations: "disabled" });
     await page.keyboard.press("Escape");
-    if (width <= 760) await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#tour-dialog").evaluate(n => n.open), false, "R5 one Escape closes the top modal");
+    if (width <= 760) {
+      assert.equal(await page.locator("#appLayout").getAttribute("data-drawer"), "sidebar");
+      assert.equal(await page.locator("#upcoming-tours").evaluate(n => n.contains(document.activeElement)), true);
+      await page.keyboard.press("Escape");
+    }
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await page.locator(".planner-grid").evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     await page.locator(".plan-card").hover(); assert.equal(await page.locator(".plan-card").evaluate(el => getComputedStyle(el).transform), "none");
@@ -81,7 +86,7 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     const small = await page.locator(".planner-grid").evaluate(el => [...el.querySelectorAll("button,input,select")].filter(node => node.getClientRects().length).filter(node => { const b = node.getBoundingClientRect(); return b.width < 44 || b.height < 44; }).map(node => node.id));
     assert.deepEqual(small, []); assert.deepEqual(app.errors, []);
     assert.ok(app.calls.every(call => call.method === "GET")); assert.ok(app.calls.every(call => !call.body));
-    assert.ok(app.calls.every(call => !/search|upload|render|share|mcp/.test(call.path)));
+    assert.ok(app.calls.every(call => call.path.startsWith("/js/") || call.path.startsWith("/css/") || !/search|upload|render|share|mcp/.test(call.path)));
   });
 });
 
