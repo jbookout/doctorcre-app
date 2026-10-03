@@ -93,6 +93,13 @@ test('approval never writes after revision/selection/filter race or changed sugg
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');assert.equal(writes,0);
 });
 
+test('a live version_conflict refusal reads as changed, never as an unknown confirmation',async()=>{
+ // The live client reports a tool refusal on error.payload.error (js/live-client.js), not error.code.
+ const c=context();let writes=0;const refusal=()=>Object.assign(new Error('live decide-doc-suggestion refused: version_conflict'),{payload:{error:'version_conflict'}});
+ const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw refusal();}}});
+ assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');assert.equal(writes,1);
+});
+
 test('unknown write result is never replayed automatically or by another tap',async()=>{
  const c=context();let writes=0;const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw new Error('Connection lost');}}});
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');assert.equal(writes,1);

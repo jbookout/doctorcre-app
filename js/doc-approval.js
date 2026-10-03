@@ -35,7 +35,8 @@ export function createDocApproval({ client, context, evaluatedPages, uuid }) {
       } catch (error) {
         if ([401,403].includes(error.status)) context.clear();
         if (!writing) { intents.delete(signature); return { state:'unavailable' }; }
-        if (error.code === 'version_conflict') return { state: 'changed' };
+        // A refusal is a decided outcome: the live client carries its code on payload.error.
+        if (error.payload?.error === 'version_conflict') { intents.delete(signature); return { state: 'changed' }; }
         intent.state = 'unknown'; return { state: 'unknown' };
       } finally { busy = false; }
     },
