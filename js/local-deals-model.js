@@ -48,7 +48,7 @@ export function noteEntries(detail) {
   const activities = (detail.activities || []).map(a => ({
     id: a.id, kind: a.kind || 'Entry', actor: a.actor, when: a.occurred_at || a.recorded_at,
     summary: concise(a.summary || a.detail, 150),
-    original: typeof a.detail === 'string' ? a.detail : noteText(a.detail) || noteText(a.summary),
+    original: typeof a.detail === 'string' ? a.detail : noteText(a.detail),
   }));
   const notes = (detail.thread || []).map(n => ({
     id: n.id, kind: n.kind === 'archived_step' ? 'Prior next step' : n.kind === 'note' ? 'Note' : n.kind || 'Entry', actor: n.actor, when: n.at || n.created_at || n.recorded_at,
