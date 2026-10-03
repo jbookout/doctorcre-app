@@ -12,12 +12,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: doctorcre-app
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: doctorcre-app
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
       - if: github.event_name == 'pull_request'
         run: node scripts/check-pr-description.mjs
@@ -29,14 +35,14 @@ jobs:
         with:
           repository: jbookout/carr-system
           ref: ${{ steps.producer.outputs.commit }}
-          path: .carr-producer
+          path: carr-producer
           fetch-depth: 0
           persist-credentials: false
       - run: npm run slices:check
       - run: node --test test/property-producer.test.mjs
         name: Verify the exact CARR runtime interface
         env:
-          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/.carr-producer
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - run: npx playwright install --with-deps chromium
       - run: npm run privacy:check
       - run: npm run check

@@ -1,12 +1,41 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
+const root = fileURLToPath(new URL("../", import.meta.url));
+
+test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "doctorcre-checkout-layout-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const steps = ci.split(/^      - /m).slice(1);
+  const appCheckout = steps.find(step => /^uses: actions\/checkout@/m.test(step));
+  const producerCheckout = steps.find(step => /repository: jbookout\/carr-system/.test(step));
+  const app = resolve(workspace, appCheckout.match(/path: (\S+)/)?.[1] ?? ".");
+  const producer = resolve(workspace, producerCheckout.match(/path: (\S+)/)[1]);
+  await mkdir(app, { recursive: true });
+  const archive = join(workspace, "app.tar");
+  execFileSync("git", ["archive", "-o", archive, "HEAD"], { cwd: root });
+  execFileSync("tar", ["-xf", archive, "-C", app]);
+  await symlink(join(root, "node_modules"), join(app, "node_modules"), "dir");
+  await mkdir(join(producer, ".github/workflows"), { recursive: true });
+  // Synthetic external source reproduces the scanner refusal without reading
+  // credentials or requiring the producer checkout for this offline test.
+  const externalSource = `connection: ${"post" + "gresql"}://synthetic.invalid/example\n`;
+  await writeFile(join(producer, ".github/workflows/producer.yml"), externalSource);
+  const result = execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, encoding: "utf8" });
+  assert.match(result, /repository check passed/);
+  assert.equal(ci.match(/working-directory: (\S+)/)?.[1], appCheckout.match(/path: (\S+)/)?.[1]);
+  assert.match(ci, new RegExp(`cache-dependency-path: ${appCheckout.match(/path: (\S+)/)?.[1]}/package-lock\\.json`));
+  await writeFile(join(app, "app-owned.yml"), externalSource);
+  assert.throws(() => execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, stdio: "pipe" }),
+    /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
+});
 
 // Execute the workflow's shell steps with instrumented tools. This small reader
 // supports the workflows' run/if forms and refuses unfamiliar conditions.
