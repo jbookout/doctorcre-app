@@ -224,7 +224,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  });
  await goto('/deals?view=board&mode=live');
  await page.locator('.kanban-card[data-id="d14"] .card-open').click();
- await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.includes('could not be read'));
+ await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.includes('Updates temporarily unavailable'));
  assert.equal(await page.locator('#detailPhase').count(),1,await page.locator('#panelBody').textContent());
  const title=await page.locator('#panelTitle').textContent();
  await page.locator('#detailNextForm textarea').fill('Synthetic unsaved draft');
@@ -232,13 +232,13 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody h3')?.textContent!=='Updating…');
  failure=true;
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'authorization-regression'});});
- await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('could not be read'));
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('Updates temporarily unavailable'));
  assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
  if(status===503) {
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
   assert.equal(await page.locator('#panelTitle').textContent(),title);
   assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Synthetic unsaved draft');
-  assert.match(await page.locator('#detailReadStatus').textContent(),/stale/);
+  assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
  } else {
   assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
@@ -250,7 +250,8 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
   assert.equal(await page.locator('#contextDrawerBody').textContent(),'');
  }
  if(status===503) await page.locator('#contextDrawerClose').click();
- failure=false;await page.locator('[data-retry-detail]').click();
+ assert.equal(await page.locator('[data-retry-detail]').count(),0);
+ failure=false;await page.clock.fastForward(16000);
  await page.locator('#detailPhase').waitFor();
  assert.equal(await page.locator('#panelTitle').textContent(),title);
  assert.equal(await page.locator('#detailNextForm textarea').inputValue()==='Synthetic unsaved draft',status===503);

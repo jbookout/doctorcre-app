@@ -856,7 +856,7 @@ async function refreshPanel() {
       $('contextDrawer')?.close();
       $('contextDrawerBody')?.replaceChildren();
     }
-    const message = 'Deal details could not be read. <button class="btn" type="button" data-retry-detail>Retry</button>';
+    const message = 'Updates temporarily unavailable';
     const status = $('detailReadStatus');
     if (status) status.textContent = message;
     else $('panelBody').innerHTML = `<p role="status">${message}</p>`;
