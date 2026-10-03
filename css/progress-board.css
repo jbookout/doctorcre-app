@@ -15,12 +15,6 @@
   --red: #ff696b;
   --green: #7dddc0;
   --violet: #bf9cff;
-  --stage-queued: var(--muted);
-  --stage-build: var(--blue);
-  --stage-review: var(--violet);
-  --stage-ci: #ffd479;
-  --stage-merged: var(--orange);
-  --stage-live: var(--green);
   font-family: 'DM Sans', sans-serif;
 }
 * { box-sizing: border-box; }
@@ -294,12 +288,7 @@ footer { padding-top: 8px; }
 /* The independent system-work census diagram. */
 .flow-wrap { margin-top: 16px; overflow: hidden; }
 .pipeline-diagram { display: block; width: 100%; height: auto; }
-.pipeline-diagram .flow-stage { --stage-accent: var(--stage-queued); }
-.pipeline-diagram .flow-stage[data-stage="build"] { --stage-accent: var(--stage-build); }
-.pipeline-diagram .flow-stage[data-stage="review"] { --stage-accent: var(--stage-review); }
-.pipeline-diagram .flow-stage[data-stage="ci"] { --stage-accent: var(--stage-ci); }
-.pipeline-diagram .flow-stage[data-stage="merged"] { --stage-accent: var(--stage-merged); }
-.pipeline-diagram .flow-stage[data-stage="live"] { --stage-accent: var(--stage-live); }
+.pipeline-diagram .flow-stage { --stage-accent: currentColor; }
 .pipeline-diagram .stage-well { fill: rgba(2,13,29,.59); stroke: var(--stage-accent); stroke-width: 1.25; }
 .pipeline-diagram .stage-index { fill: var(--stage-accent); font: 800 12px 'DM Sans', sans-serif; letter-spacing: .1em; }
 .pipeline-diagram .stage-label { fill: var(--stage-accent); font-size: 21px; font-weight: 800; }
@@ -309,7 +298,7 @@ footer { padding-top: 8px; }
   animation: flow 4s linear infinite; }
 .pipeline-diagram .pipeline-node { cursor: pointer; outline: none; }
 .pipeline-diagram .node-shape { fill: rgba(10,31,54,.96); stroke: var(--stage-accent); stroke-width: 1.2; transition: fill .2s, stroke-width .2s; }
-.pipeline-diagram .pipeline-node:hover .node-shape, .pipeline-node:focus-visible .node-shape { fill: #174064; stroke-width: 2.5; }
+.pipeline-diagram .pipeline-node:hover .node-shape, .pipeline-diagram .pipeline-node:focus-visible .node-shape { fill: #174064; stroke-width: 2.5; }
 .pipeline-diagram .pipeline-node:focus-visible .node-shape { stroke: #fff; }
 .pipeline-diagram .node-halo { fill: var(--stage-accent); opacity: .88; transform-box: fill-box; transform-origin: center; }
 .pipeline-diagram .node-pulse { fill: none; stroke: var(--pulse-accent); stroke-width: 1.5; }

@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
+import { STAGES } from '../js/progress-board-model.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
 async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390 } = {}) {
@@ -115,6 +116,15 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+test('independent census diagram uses the same stage colors as the published board legend', async t => {
+  const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
+  await page.locator('#system-work-flow .flow-stage').first().waitFor();
+  for (const stage of STAGES) {
+    const expected = `rgb(${stage.color.slice(1).match(/../g).map(value => parseInt(value, 16)).join(', ')})`;
+    assert.equal(await page.locator(`#system-work-flow [data-stage="${stage.id}"] .stage-well`).evaluate(node => getComputedStyle(node).stroke), expected);
+  }
+  assert.deepEqual(errors, []);
+});
 async function panelTasks(page, ids) {
   await page.waitForFunction(expected => {
     const actual = [...document.querySelectorAll('#system-work-flow [data-task-id]')].map(n => n.dataset.taskId).sort();
