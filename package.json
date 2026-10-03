@@ -18,7 +18,7 @@
     "rollback:staging": "node scripts/rollback-staging.mjs",
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
-    "test": "node --test --test-timeout=120000 test/*.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "serve": "node scripts/serve.mjs",
     "privacy:check": "node scripts/privacy/client-data-check.mjs",
     "privacy:fixtures": "node scripts/privacy/generate-synthetic-fixtures.mjs",
