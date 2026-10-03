@@ -1,0 +1,17 @@
+{
+  "routes": [
+    {
+      "path": "/ideas-events",
+      "asset": "ideas.html",
+      "order": 9,
+      "gatePath": "/control-room"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/ideas",
+      "to": "/ideas-events",
+      "order": 15
+    }
+  ]
+}

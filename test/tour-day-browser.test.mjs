@@ -206,8 +206,14 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   await record(page);
   await page.evaluate(async () => { const r = await navigator.serviceWorker.register("/tours/day-sw.js", { scope: "/tours/" }); await navigator.serviceWorker.ready; });
   await page.waitForFunction(() => navigator.serviceWorker.controller);
-  const cached = await page.evaluate(async () => (await caches.open("doctorcre-tour-day-shell-v2")).keys().then(rows => rows.map(r => new URL(r.url).pathname)));
-  assert.ok(cached.length > 10); assert.equal(cached.some(path => path.startsWith("/api/")), false);
+  const cached = await page.evaluate(async () => {
+    const names = (await caches.keys()).filter(name => name.startsWith('doctorcre-tour-day-shell-'));
+    if (names.length !== 1) throw new Error('Expected one current tour shell cache');
+    return (await (await caches.open(names[0])).keys()).map(r => new URL(r.url).pathname);
+  });
+  assert.ok(cached.includes('/js/slices.generated.js'));
+  assert.ok(cached.includes('/js/slices/tours.js'));
+  assert.equal(cached.some(path => path.startsWith("/api/")), false);
   await context.setOffline(true); await page.reload();
   await page.waitForFunction(() => document.querySelector("#day-status")?.textContent.includes("Offline"));
   assert.equal(await page.locator(".day-stop").count(), 2); assert.equal(await page.locator(".note-card").count(), 1);

@@ -10,3 +10,10 @@ coverage/
 __pycache__/
 *.pyc
 
+
+# Assembled from slice-owned modules and route fragments.
+/contracts/app-routes.v1.json
+/js/slices.generated.js
+/tours/day-shell.generated.js
+/out/
+/_to_delete/

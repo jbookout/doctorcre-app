@@ -1,13 +1,11 @@
+import { GENERATED_PATHS, prepareSlices, sliceNames, sliceOutputs } from "./slices.mjs";
+import { NAVIGATION_GROUPS } from "../js/slice-registration.js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
-const ROOT_FILES = [
-  "business.html", "calendar.html", "charts.html", "control-room.html", "conversations.html", "design.html",
-  "ideas.html", "incidents.html", "index.html", "leads.html", "manifest.webmanifest", "notifications.html",
-  "relationships.html", "pipeline.html", "progress-board.html", "progress-work.html", "queue.html", "room.html", "search.html", "status.html", "system-work.html", "tasks.html", "work-inventory.html", "workspace.html",
-];
+const ROOT_FILES = ["manifest.webmanifest"];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
@@ -100,16 +98,17 @@ function parseTar(archive) {
   throw new Error("artifact archive trailer is missing");
 }
 
-async function inputPaths(root) {
-  const paths = [...ROOT_FILES];
+async function inputPaths(root, sliceRegistration) {
+  const pageAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => path.endsWith('.html'));
+  const paths = [...ROOT_FILES, ...pageAssets];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));
   }
-  return paths.sort();
+  return [...new Set(paths)].sort();
 }
 
-async function assembleArtifact(commit, paths, readSource) {
+async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
   const payload = [];
   const files = new Map();
@@ -120,8 +119,10 @@ async function assembleArtifact(commit, paths, readSource) {
       // Token-authenticated public reports carry navigation back to the app.
       // Partner controls live on the signed-in app, not the report hostname.
       const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
+        .replace('const registration = registerSlices(slices);\nexport const navigationItems = registration.navigationItems;\nconst sectionForRoute = registration.sectionForRoute;',
+          `const NAVIGATION_GROUPS = ${JSON.stringify(NAVIGATION_GROUPS)};\nexport const navigationItems = Object.freeze(${JSON.stringify(sliceRegistration.navigationItems)});\nconst sectionForRoute = ${JSON.stringify(sliceRegistration.sectionForRoute)};`)
         .replace("  else mountAccount(root, host, pathname);", "")
-        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
+        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
       const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
       if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
         throw new Error("report shell bundle needs an explicit export update");
@@ -161,13 +162,14 @@ async function assembleArtifact(commit, paths, readSource) {
 }
 
 export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
-  const paths = await inputPaths(root);
+  const sliceRegistration = await prepareSlices(root);
+  const paths = await inputPaths(root, sliceRegistration);
   const readSource = async (path) => {
     const sourcePath = join(root, path);
     if (!(await lstat(sourcePath)).isFile()) throw new Error(`artifact input is not a file: ${path}`);
     return readFile(sourcePath);
   };
-  const { archive, archiveSha256, manifest, manifestContent, files } = await assembleArtifact(commit, paths, readSource);
+  const { archive, archiveSha256, manifest, manifestContent, files } = await assembleArtifact(commit, paths, readSource, sliceRegistration);
   const siteDir = join(outDir, "site");
   await rm(siteDir, { recursive: true, force: true });
   await mkdir(siteDir, { recursive: true });
@@ -206,11 +208,14 @@ export function verifyArtifact(archive, expectedSha256 = null) {
 async function verifyCommittedSource(root, archive, result) {
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
-  const paths = await inputPaths(root);
+  const names = await sliceNames(root);
+  const onDiskRegistration = await sliceOutputs(names, path => readFile(join(root, path)));
+  const paths = await inputPaths(root, onDiskRegistration);
   const contractPaths = Object.values(CONTRACT_INPUTS);
-  const sourcePaths = [...paths, ...contractPaths].sort();
+  const slicePaths = ['contracts/routes.v1.json', 'contracts/slice-ownership.v1.json', ...names.map(name => `contracts/routes/${name}.json`)];
+  const sourcePaths = [...new Set([...paths, ...contractPaths, ...slicePaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
   const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
-    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean).sort();
+    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths, ...slicePaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();
   if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
 
   // Compare the bytes themselves, not Git's working-tree status/cache. A forged
@@ -224,7 +229,12 @@ async function verifyCommittedSource(root, archive, result) {
     }
     source.set(path, committed);
   }
-  const expected = await assembleArtifact(commit, paths, async (path) => source.get(path));
+  const sliceRegistration = await sliceOutputs(names, async path => source.get(path));
+  for (const [path, bytes] of sliceRegistration.outputs) {
+    if (!(await readFile(join(root, path))).equals(bytes)) throw new Error(`artifact source input mismatch: ${path}`);
+    source.set(path, bytes);
+  }
+  const expected = await assembleArtifact(commit, paths, async (path) => source.get(path), sliceRegistration);
   if (!archive.equals(expected.archive)) throw new Error("artifact does not match committed source");
   return expected;
 }

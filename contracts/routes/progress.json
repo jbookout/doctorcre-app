@@ -1,0 +1,17 @@
+{
+  "routes": [
+    {
+      "path": "/control-room/progress",
+      "asset": "progress-board.html",
+      "order": 2,
+      "gatePath": "/control-room"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/progress-board",
+      "to": "/control-room/progress",
+      "order": 0
+    }
+  ]
+}

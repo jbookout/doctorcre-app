@@ -66,7 +66,8 @@ test("day map selection uses canonical IDs, short copy, navigation receipts and 
 test("offline tour shell caches every local module dependency", async () => {
   const root = new URL('../', import.meta.url);
   const source = await readFile(new URL('tours/day-sw.js', root), 'utf8');
-  const sandbox = { self: { addEventListener() {} } };
+  const manifest = await readFile(new URL('tours/day-shell.generated.js', root), 'utf8');
+  const sandbox = { self: { addEventListener() {} }, importScripts() { runInNewContext(manifest, sandbox); } };
   runInNewContext(source + '\nthis.files = FILES;', sandbox);
   const files = new Set(sandbox.files), checked = new Set();
   async function check(path) {

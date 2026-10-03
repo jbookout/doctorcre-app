@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 // V5-UX-B04 — the critical-dates Calendar.
 //
 // The calendar is a READ surface over two verbs the app already pins:
@@ -318,13 +319,12 @@ test("the calendar reads through the fixture adapter's real getBoard/getDeal sha
 test("the Calendar is a routed, shipped surface that reads only pinned verbs", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  const artifact = await read("scripts/artifact.mjs");
   const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.19.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.20.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
-  assert.match(artifact, /"calendar\.html"/);
+  assert.equal(await hasArtifactPage("calendar.html"), true, "the page ships in the verified artifact");
   assert.match(check, /"calendar\.html"/);
   assert.match(summary, /calendar\.html/);
 
