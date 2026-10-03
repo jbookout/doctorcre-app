@@ -30,6 +30,10 @@
     "predeployment:check:production": "npm run slices:check"
   },
   "devDependencies": {
+    "@ai-sdk/openai": "4.0.83",
+    "@e2e-dev/web": "0.11.2",
+    "ai": "7.0.127",
+    "e2e": "0.16.0",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
     "wrangler": "4.131.2"

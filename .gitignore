@@ -16,3 +16,6 @@ __pycache__/
 /js/slices.generated.js
 /out/
 /_to_delete/
+
+# e2e runner output (report, artifacts, logs, local replay cache).
+/.e2e/
