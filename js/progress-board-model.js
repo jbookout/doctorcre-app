@@ -150,11 +150,14 @@ export function relatedQuestions(task, questions) {
 
 // Mirrors task_stage in carr-system tools/progress_board.py at the pinned producer revision.
 export function taskStage(task) {
+  // Live means complete: a done card with no PR has nothing left to merge or release.
+  if (task.status === "done" && task.pr == null) return "live";
   let requested = task.stage === "measured" ? "live" : task.stage;
   const evidence = task.evidence;
   if (requested === "live" && !(typeof evidence === "string" && evidence.trim())) requested = null;
   if (STAGES.some(stage => stage.id === requested)) return requested;
-  if (task.status === "done") return task.pr != null && task.pr_phase === "Merged" ? "merged" : "build";
+  // Merged and waiting on a verified release stays Merged; an unmerged PR is still in review.
+  if (task.status === "done") return task.pr_phase === "Merged" ? "merged" : "review";
   if (task.status === "measured") return typeof evidence === "string" && evidence.trim() ? "live" : "build";
   return typeof task.status === "string" && Object.hasOwn(STATUS_STAGE, task.status)
     ? STATUS_STAGE[task.status] : "queued";
