@@ -199,6 +199,16 @@ test('PR129 R1 a context read survives an authorized detail poll but not a refus
  assert.deepEqual(errors,[]);
 });
 
+test('PR129 transient detail failure keeps the authorized next-step draft',async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ await page.locator('#detailNextForm textarea').fill('Draft retained through outage');
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});
+ await readPanel(page);
+ assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
+ assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Draft retained through outage');
+ assert.deepEqual(errors,[]);
+});
+
 test('R1 pristine fields follow reads; dirty draft reconciles its original read before send', async t => {
  const {page}=await open(t); await detail(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'New recorded step',next_date:'2026-11-01',idempotency_key:'external-1'});});
@@ -304,15 +314,6 @@ test('R7 detail outages recover automatically and late failure cannot replace an
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=id=>id==='d14'?new Promise((_,reject)=>window.failOld=()=>reject(Error('old'))):originalRead(id);dispatchEvent(new Event('online'));});
  await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="d20"]').click();await page.waitForSelector('#detailNextForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
-});
-test('PR129 transient detail failure keeps the authorized next-step draft',async t=>{
- const {page,errors}=await open(t);await detail(page);
- await page.locator('#detailNextForm textarea').fill('Draft retained through outage');
- await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});
- await readPanel(page);
- assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
- assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Draft retained through outage');
- assert.deepEqual(errors,[]);
 });
 for(const width of [1440,390]) test('R8 list Undo is visible and clickable at '+width,async t=>{
  const {page}=await open(t,{width});await page.locator('#listView').click();
