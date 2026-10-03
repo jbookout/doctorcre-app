@@ -1,3 +1,4 @@
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
@@ -1317,7 +1318,9 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
   const client = {
+    ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
     mode: /** @type {const} */ ('fixture'),
     selfActor,
