@@ -186,8 +186,22 @@ test('PR119 finding 7: a pending Deal poll cannot detach a later Jev reading',as
  const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/index.html');await page.locator('.deal-link').first().click();await page.waitForFunction(()=>document.querySelector('#dealDialog')?.open);
  await page.evaluate(()=>window.holdDeal=true);await online(page);await page.waitForFunction(()=>window.dealWaiting);
  await page.locator('[data-jev-deal]').click();await page.waitForFunction(()=>window.jevWaiting);
+ assert.match(await page.locator('[data-jev-result]').innerText(),/Reviewing/);
  await page.evaluate(()=>window.releaseDeal());await page.evaluate(()=>window.releaseJev());
  await page.waitForFunction(()=>document.querySelector('[data-jev-result]')?.textContent.includes('Synthetic movement'));
+ assert.match(await page.locator('[data-jev-result]').innerText(),/Estimated silence concern: 20%/);
+ assert.doesNotMatch(await page.locator('[data-jev-result]').innerText(),/Jev|verify against|reading/);
+ assert.equal(await page.locator('[data-jev-deal]').isEnabled(),true);assert.deepEqual(errors,[]);
+});
+for(const [result,label] of [
+ ["return {judged:false,reason:'insufficient_recorded_evidence'};",'Insufficient evidence'],
+ ["return {judged:false,reason:'unavailable'};",'Insights unavailable'],
+ ["throw new Error('Synthetic unavailable');",'Insights unavailable']
+])test('W8 deal insight outcomes use public labels: '+result,async t=>{
+ const {page,errors}=await open(t,{clientHooks:`c.getJevDealReading=async()=>{${result}};`});
+ await page.goto(origin+'/deals');await page.locator('.kanban-card').first().click();
+ await page.getByRole('button',{name:'Deal outlook',exact:true}).click();
+ await page.waitForFunction(label=>document.querySelector('[data-jev-result]')?.textContent===label,label);
  assert.equal(await page.locator('[data-jev-deal]').isEnabled(),true);assert.deepEqual(errors,[]);
 });
 for(const trigger of ['online','timer','resume'])test('PR119 finding 6: '+trigger+' preserves the active suggestion editor and snooze date',async t=>{

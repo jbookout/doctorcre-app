@@ -46,7 +46,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
+    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }
@@ -139,7 +139,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const refresh = async ({ signal } = {}) => {
-    try { client ||= await createClient(boot.mode, boot.options); }
+    try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
     catch { resetFeed(); connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),

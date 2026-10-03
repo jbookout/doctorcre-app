@@ -69,3 +69,10 @@ test('a registered section mounts its own controls module once after its markup'
   assert.equal(dom.window.document.querySelectorAll('script').length, 1);
   assert.equal(script.previousElementSibling.id, 'alpha-panel');
 });
+
+test('shared Doc modules remain admitted to the assembled application', async () => {
+  const { shared } = await prepareSlices(new URL('../', import.meta.url).pathname);
+  for (const path of ['js/doc-presence.js', 'js/doc-context.js', 'js/doc-context-model.js', 'js/doc-approval.js', 'js/doc-accuracy.js', 'css/doc-presence.css', 'test/doc-context.test.mjs', 'test/doc-presence-browser.test.mjs']) {
+    assert.ok(shared.includes(path), `shared Doc input is admitted: ${path}`);
+  }
+});

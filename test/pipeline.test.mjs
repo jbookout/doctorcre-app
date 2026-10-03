@@ -751,9 +751,9 @@ test("pipeline.html asks for dates with a calendar only, and never claims a gate
 
 test("pipeline.html carries the shared shell exactly once and nothing under its title", async () => {
   const html = await read("pipeline.html");
-  assert.equal((html.match(/id="docFab"/g) || []).length, 1, "one floating Doc");
-  assert.equal((html.match(/id="docChat"/g) || []).length, 1);
-  assert.match(html, /id="docReading">Doc is reading: Local Deals</);
+  assert.equal((html.match(/id="docFab"/g) || []).length, 0, "legacy dock is absent");
+  assert.equal((html.match(/id="docChat"/g) || []).length, 0);
+  assert.doesNotMatch(html, /id="docReading">Doc is reading: Deals</);
   assert.match(html, /id="receiptDock"/, "the command dock is on the page");
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
@@ -956,4 +956,13 @@ test("the two new controls' values reach the completion plan", async () => {
   const pageJs = await read("js/pipeline.js");
   assert.match(pageJs, /changeReason: \$\('completionReason'\)/);
   assert.match(pageJs, /humanQuote: \$\('completionQuote'\)/);
+});
+
+test('deal insight lines distinguish insufficient evidence from unavailable and preserve recorded movement', async () => {
+  const { dealInsightLines } = await import('../js/pipeline-model.js');
+  assert.deepEqual(dealInsightLines({judged:false,reason:'insufficient_recorded_evidence'}), ['Insufficient evidence']);
+  assert.deepEqual(dealInsightLines({judged:false,reason:'unavailable'}), ['Insights unavailable']);
+  assert.deepEqual(dealInsightLines(null), ['Insights unavailable']);
+  assert.deepEqual(dealInsightLines({judged:true,movement_rung:2,movement_rungs:4,movement_label:'Reviewed',waiting_on:'client_reply',silence_is_bad:0.2}),
+    ['Movement 2 of 4', 'Reviewed', 'Waiting on: client reply', 'Estimated silence concern: 20%']);
 });

@@ -10,11 +10,11 @@ import {
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const contract = JSON.parse(await read("contracts/visual-system.v1.json"));
-const css = await read("css/system.css");
+const css = (await Promise.all(contract.stylesheets.map(read))).join("\n");
 const pages = Object.fromEntries(await Promise.all(Object.entries(contract.prototypes).map(async ([key, file]) => [key, await read(file)])));
 const prototypeJs = await read("js/design-prototype.js");
 const atlasSceneJs = await read("js/atlas-scene.js");
-const docDockJs = await read("js/doc-dock.js");
+const docDockJs = await read("js/doc-presence.js");
 const workInventoryHtml = await read("work-inventory.html");
 const tasksHtml = await read("tasks.html");
 const pipelineHtml = await read("pipeline.html");
@@ -42,7 +42,7 @@ const SURFACES = {
   "ideas.html": ideasHtml,
   "js/design-prototype.js": prototypeJs,
   "js/shell.js": shellJs,
-  "js/doc-dock.js": docDockJs,
+  "js/doc-presence.js": docDockJs,
 };
 
 // --------------------------------------------------------------- contract ↔ stylesheet
@@ -112,7 +112,7 @@ test("touch targets, focus and the modal/nonmodal distinction are in the stylesh
   assert.match(css, /\.btn-group \.btn \{[^}]*min-height: var\(--touch\)/, "a grouped button keeps the floor");
   assert.match(css, /\.chip \{[^}]*min-height: var\(--touch\)/, "a chip is a full touch target");
   assert.doesNotMatch(css, /\.(btn|chip)[^{]*\{[^}]*min-height: [0-9]+px/, "no button or chip rule sits under the shared floor");
-  assert.match(css, /\.doc-fab \{[^}]*width: 56px; height: 56px/, "the floating Doc icon is over the 44px floor");
+  assert.match(css, /\.doc-presence button[^}]*min-height:44px; min-width:44px/, "Doc controls keep the touch floor");
   assert.match(css, /:focus-visible \{ outline: 3px solid var\(--focus\)/);
   assert.match(css, /\.side-panel \{ position: sticky/);
   assert.match(css, /\.dialog::backdrop/);
@@ -145,14 +145,14 @@ test("every clock time is 12-hour with AM or PM", () => {
   }
 });
 
-test("Doc is one floating icon and one chat on every surface, and never a per-tile button", () => {
+test("Doc uses the shared presence and removes the canned dock and voice controls", () => {
   for (const [name, html] of Object.entries(SURFACES)) {
     if (!name.endsWith(".html")) continue;
-    assert.match(html, /<button class="doc-fab" type="button" id="docFab"/, `${name} floating Doc icon`);
-    assert.match(html, /class="doc-chat glass" id="docChat"/, `${name} Doc chat window`);
-    assert.match(html, /id="docReading">Doc is reading: /, `${name} names the page Doc is reading`);
-    assert.match(html, /id="docMic"[^>]*aria-pressed="false"/, `${name} dictation toggle`);
-    assert.match(html, /Dictate with Quill/, `${name} dictation label`);
+    assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/, `${name} floating Doc icon`);
+    assert.doesNotMatch(html, /class="doc-chat glass" id="docChat"/, `${name} Doc chat window`);
+    assert.doesNotMatch(html, /id="docReading">Doc is reading: /, `${name} names the page Doc is reading`);
+    assert.doesNotMatch(html, /id="docMic"[^>]*aria-pressed="false"/, `${name} dictation toggle`);
+    assert.doesNotMatch(html, /Dictate with Quill/, `${name} dictation label`);
     assert.doesNotMatch(html, /<button[^>]*>\s*Ask Doc\b/, `${name} still has a per-tile Ask Doc button`);
     assert.doesNotMatch(html, /class="side-panel glass doc-panel"/, `${name} still has the old top-of-page Doc panel`);
     // The floating button is the one Doc entry: the bottom navigation must not
@@ -161,8 +161,8 @@ test("Doc is one floating icon and one chat on every surface, and never a per-ti
     assert.doesNotMatch(mobileNav, />Doc</, `${name} duplicates Doc in the mobile navigation`);
   }
   assert.doesNotMatch(prototypeJs, /"data-doc"/, "no per-tile Ask Doc wiring remains");
-  assert.match(docDockJs, /Prototype reply/, "Doc's prototype answers are marked as prototype answers");
-  assert.doesNotMatch(docDockJs, /fetch\(|getUserMedia|SpeechRecognition|MediaRecorder/, "dictation is a prototype toggle: no audio and no network");
+  assert.doesNotMatch(docDockJs, /CANNED|Prototype reply/, "Doc never invents a canned answer");
+  assert.doesNotMatch(docDockJs, /getUserMedia|SpeechRecognition|MediaRecorder/, "unsupported audio capture is never simulated");
 });
 
 test("each surface is built from tabs and popups, and no title carries a description paragraph", () => {

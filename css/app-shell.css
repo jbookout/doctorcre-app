@@ -70,7 +70,7 @@ body.report-shell{padding-left:72px;padding-bottom:34px}.app-layout-today .recei
 .has-app-layout .planner-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:0;width:100%}.has-app-layout .territory-card{grid-column:1/-1}.has-app-layout main.layout{display:block}.app-layout-sidebar .library-scroll{max-height:250px}.app-layout-sidebar .library-filter input{width:100%}
 @media(max-width:760px){body.report-shell{padding-left:0;padding-bottom:100px}.lead-detail-grid,.has-app-layout .planner-grid{grid-template-columns:1fr}}
 :root[data-theme="light"] body.has-app-layout{background:#e8eef5;color:#172d44}
-.app-layout-tabs [aria-current=page]{scroll-margin-inline:12px}
+.has-app-layout .card-move,.has-app-layout .lead-move{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.has-app-layout .card-move:focus,.has-app-layout .lead-move:focus-within{position:static;width:auto;height:auto;overflow:visible;clip-path:none}.app-layout-tabs [aria-current=page]{scroll-margin-inline:12px}
 
 .has-app-layout aside#recordPanel{inset:5dvh max(3vw,calc((100vw - 1180px)/2));transform:none;width:auto;max-height:90dvh;z-index:2001;box-sizing:border-box;box-shadow:0 30px 90px #0009}
 .has-app-layout .room-toast{bottom:calc(var(--layout-bottom) + 16px);z-index:1200}

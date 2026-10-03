@@ -1,3 +1,4 @@
+import { selectDocRecord, pageDocContext } from './doc-context.js';
 // V5-UX-B04 — Calendar: DOM wiring only.
 //
 // Every decision about a date, a read or a state lives in ./calendar-model.js.
@@ -16,7 +17,7 @@
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatCalendarDate } from "./visual-system.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import {
@@ -307,6 +308,9 @@ function go(next, { push = true } = {}) {
 /** Select a day, moving the period so it is on screen. Selection replaces history. */
 function selectDay(day, { entry = null, focus = false } = {}) {
   view.focusEntry = entry;
+  const currentEntry = view.result?.entries?.find(row => row.key === entry);
+  selectDocRecord(currentEntry ? "deal" : null, currentEntry?.deal_id);
+  if(currentEntry) void client.getDeal(currentEntry.deal_id).catch(() => {});
   const state = view.state;
   const layout = state.view === "week" ? weekStrip(state.anchor) : monthGrid(state.anchor);
   const inView = layout.days.some((cell) => cell.day === day && (state.view === "week" || cell.inMonth));
@@ -379,6 +383,8 @@ async function load({ failClosed = false } = {}) {
   const result = await readCalendar(client);
   if (sequence !== view.sequence) return;
   view.result = result;
+  const selected = pageDocContext?.snapshot().selected;
+  if(selected?.kind === "deal" && result.status === "ready") void client.getDeal(selected.id).catch(() => {});
   if (["ready", "partial"].includes(result.status)) view.updatedAt = new Date().toISOString();
   view.painted = null;
   render();
@@ -392,7 +398,7 @@ async function load({ failClosed = false } = {}) {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Calendar");
+
   view.state = parseCalendarState(location.search, view.today);
   history.replaceState({ calendar: true }, "", calendarHref(view.state));
   wire();

@@ -1,3 +1,4 @@
+import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 // V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
 //
 // Every decision about columns, payloads and words lives in
@@ -34,7 +35,7 @@ import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
-import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
+import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
   createBoardSync, batchTouchesBoard, SYNC_STATES,
@@ -52,7 +53,7 @@ import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, presenceChip,
-  tapMoveTargets,
+  tapMoveTargets, dealInsightLines,
 } from './pipeline-model.js';
 import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderPhaseTimeline, renderCriticalDates, renderDealTimeline, updateCountdowns } from './deal-timeline.js';
@@ -157,6 +158,8 @@ function renderBoard() {
   if (!board || board.querySelector('[data-dragging="true"]')) return;
   const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
     .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
+  setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
+  publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
   const parked = rows.filter(d => d.operating_state === 'parked');
   const grouped = groupByColumn(active);
@@ -903,6 +906,7 @@ function paintPanel(detail) {
   centerCurrentPhase();
 }
 async function openPanel(dealId, trigger) {
+  selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
@@ -915,6 +919,8 @@ async function openPanel(dealId, trigger) {
   await refreshPanel();
 }
 function closePanel() {
+  selectDocRecord('deal', null);
+  pageDocContext?.release('getDeal');
   ++panelReadSequence;
   clearDateDraft();
   const id = state.panelReturnTo;
@@ -1117,7 +1123,7 @@ function wire() {
 
   document.addEventListener('click', async (event) => {
     const outlook = event.target.closest('[data-jev-deal]');
-    if(outlook) { const id=state.panelDeal; outlook.disabled=true; try { const answer=await state.client.getJevDealReading(id); if(state.panelDeal===id && outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=answer.movement_label || 'Outlook unavailable'; } catch { if(outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent='Outlook unavailable'; } finally { if(outlook.isConnected) outlook.disabled=false; } return; }
+    if(outlook) { const id=state.panelDeal; outlook.disabled=true; try { const answer=await state.client.getJevDealReading(id); if(state.panelDeal===id && outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=dealInsightLines(answer).join(' · '); } catch { if(outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=dealInsightLines(null).join(' · '); } finally { if(outlook.isConnected) outlook.disabled=false; } return; }
     const revive = event.target.closest('button[data-revive]');
     if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
@@ -1307,7 +1313,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock('Local Deals');
+
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
