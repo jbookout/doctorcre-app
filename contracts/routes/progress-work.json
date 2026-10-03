@@ -1,0 +1,32 @@
+{
+  "routes": [
+    {
+      "path": "/control-room/progress/work",
+      "asset": "progress-work.html",
+      "order": 3,
+      "gatePath": "/control-room"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/queue.html",
+      "to": "/control-room/progress/work?view=tasks",
+      "order": 2
+    },
+    {
+      "path": "/control-room/agents/queue",
+      "to": "/control-room/progress/work?view=tasks",
+      "order": 3
+    },
+    {
+      "path": "/room.html",
+      "to": "/control-room/progress/work?view=wire",
+      "order": 7
+    },
+    {
+      "path": "/agent-room",
+      "to": "/control-room/progress/work?view=wire",
+      "order": 8
+    }
+  ]
+}
