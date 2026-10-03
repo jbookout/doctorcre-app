@@ -691,6 +691,14 @@ async function settleConflictChoice(conflictId, result) {
 
 let disposeEvidence = null;
 let dateDraft = null;
+function closeDateEditor() {
+  dateDraft = null;
+  const form = $('dealDateForm');
+  form.reset();
+  form.querySelector('button[type="submit"]').disabled = true;
+  $('dealDateStatus').textContent = '';
+  $('dealDateDialog').close();
+}
 let panelReadSequence = 0;
 let contextReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
@@ -879,6 +887,15 @@ async function refreshPanel() {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     if (refusePanelDetail(error)) return;
     setContextOpenVisible(false);
+    if (error.status === 401 || error.status === 403) {
+      state.panelDetail = null; nextDraft = null;
+      closeDateEditor();
+      disposeEvidence?.(); disposeEvidence = null;
+      $('panelTitle').textContent = 'Unavailable';
+      $('panelBody').replaceChildren();
+      $('contextDrawer')?.close();
+      $('contextDrawerBody')?.replaceChildren();
+    }
     const message = 'Updates temporarily unavailable';
     const status = $('detailReadStatus');
     if (status) status.textContent = message;

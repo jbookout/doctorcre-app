@@ -1,0 +1,25 @@
+{
+  "schema": "doctorcre-lease-radar-contract.v1",
+  "version": "1.0.0",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "84955cdb72d64bb7e712f7dd3b696c20b38710a1"
+  },
+  "read": {
+    "method": "GET",
+    "path": "/api/v1/business/leases",
+    "response_schema": "lease-radar.v1",
+    "authentication": "server-issued host-only partner session",
+    "audience": "carr-internal",
+    "query_parameters": [],
+    "clock_timezone": "America/Chicago",
+    "horizon_calendar_months": 24,
+    "inclusive_boundaries": true,
+    "coverage": "All live clients, including past clients; current and legacy leases in the horizon plus missing expiry dates",
+    "excluded": ["superseded leases", "merged clients", "merged or deleted parties"],
+    "touch_eligibility": "CARR determines eligibility; DoctorCRE displays due touches and deduplicates touch IDs",
+    "lease_fields": ["id", "client_id", "deal_id", "client_name", "client_status", "client_status_label", "city", "state", "vertical", "owner", "owner_label", "contact_state", "contact_state_until", "expiration_on", "commencement_on", "executed_on", "term_months", "lease_status", "evidence_kind", "options_note", "evidence_ref", "version", "touch_id", "touch_due_on", "touch_summary", "touch_owner", "touch_eligible", "notice_on", "notice_note"],
+    "null_expiration": "Missing-date gap; never infer an expiry from commencement or term",
+    "missing_or_refused_read": "Unavailable; clear stale details and recover automatically"
+  }
+}

@@ -14,6 +14,21 @@ function clock() {
 }
 const settle = async () => { for (let i = 0; i < 8; ++i) await Promise.resolve(); };
 
+test('polling preserves detail; resume and reconnect invalidate before reading', async () => {
+  const c=clock();let polls=0,resumes=0;
+  const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:()=>{polls++;}});
+  c.tick();await settle();assert.equal(polls,1);assert.equal(resumes,0);
+  c.hide();c.show();await settle();assert.equal(polls,2);assert.equal(resumes,1);
+  c.window.dispatchEvent(new Event('online'));await settle();assert.equal(polls,3);assert.equal(resumes,2);
+  handle.dispose();c.window.dispatchEvent(new Event('online'));await settle();assert.equal(resumes,2);
+});
+test('resume invalidation cancels a hanging read and starts a fresh authorized read', async () => {
+  const c=clock();let firstSignal,resumes=0,reads=0;
+  const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:({signal})=>{reads++;if(reads===1){firstSignal=signal;return new Promise(()=>{});}}});
+  c.tick();await settle();c.hide();c.show();await settle();await settle();
+  assert.equal(firstSignal.aborted,true);assert.equal(resumes,1);assert.equal(reads,2);handle.dispose();
+});
+
 test('background refresh recovers after failure, does not overlap, sleeps hidden and disposes', async () => {
   const c = clock(); let reads = 0, release;
   const refresh = mountAutoRefresh({ ...c, refresh: () => { reads++; if (reads === 1) throw Error('synthetic outage'); return new Promise(resolve => { release = resolve; }); } });

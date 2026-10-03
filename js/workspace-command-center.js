@@ -1,4 +1,7 @@
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
+import { mountPastClientWidget } from './lease-radar.js';
+import { createLeaseRadarClient } from './lease-radar-client.js';
+import { leaseRadarFixture } from './lease-radar-fixture.js';
 import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountRelationshipDialog } from './relationship-dialog.js';
@@ -141,9 +144,10 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   }, 1000);
   $('refreshHome').addEventListener('click', auto.refresh);
+  const pastWidget = $('homePastClients') && client.readLeaseRadar ? mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope}) : null;
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
   const select = value => {
-    scope = value; setDocFilters({ scope });
+    scope = value; pastWidget?.render(); setDocFilters({ scope });
     if (!snapshot?.unauthorized) for (const [key,method] of docSources) {
       if (snapshot?.reads?.[key]?.state === 'read') publishDocRead(method,docPayload(key,snapshot));
     }
@@ -155,13 +159,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
   const boot = resolveDealroomBoot(location);
   const client = boot.mode === 'live' ? createLiveClient({docContext:false}) : await createFixtureClient({...boot.options,docContext:false});
   client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient({docContext:false}).getLeadBoard : async () => ({ leads: [] });
+  client.readLeaseRadar = boot.mode === 'live' ? createLeaseRadarClient().readLeaseRadar : async()=>leaseRadarFixture();
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
 }

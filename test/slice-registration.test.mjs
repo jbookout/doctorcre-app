@@ -31,6 +31,8 @@ test('two new slices add route, navigation and page sections without shared sour
   const before = await Promise.all(['progress-board.html', 'js/app-shell.js'].map(p => readFile(join(root, p), 'utf8')));
   for (const [index, id] of ['alpha', 'beta'].entries()) {
     const slice = definition(id);
+    slice.files.push(`contracts/${id}.v1.json`);
+    await writeFile(join(root, `contracts/${id}.v1.json`), JSON.stringify({ schema: `demo-${id}.v1` }));
     slice.navigation[0].order += index;
     await writeFile(join(root, `js/slices/${id}.js`), `export default ${JSON.stringify(slice)};`);
     await writeFile(join(root, `contracts/routes/${id}.json`), JSON.stringify({ routes: [{ path: `/${id}`, asset: `${id}.html`, order: index, gatePath: '/control-room' }], redirects: [] }));
@@ -52,6 +54,8 @@ test('two new slices add route, navigation and page sections without shared sour
   const artifact = await buildArtifact({ root, outDir: join(root, 'dist'), commit: '1'.repeat(40) });
   assert.ok(artifact.manifest.files.some(file => file.path === 'alpha.html'));
   assert.ok(artifact.manifest.files.some(file => file.path === 'beta.html'));
+  assert.equal(await readFile(join(root, 'dist/site/contracts/alpha.v1.json'), 'utf8'), JSON.stringify({ schema: 'demo-alpha.v1' }));
+  assert.ok(!artifact.manifest.files.some(file => file.path.startsWith('test/')));
   const a = definition('alpha'), b = definition('beta');
   assert.throws(() => assembleSlices([a, b], [
     { routes: [{ path: '/same', asset: 'alpha.html', order: 0 }] },
