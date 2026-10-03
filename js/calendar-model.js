@@ -60,6 +60,11 @@ export function toDay(value) {
   return fromUtc(asUtc(day)) === day ? day : null;
 }
 
+/** Strict date-only contracts share the calendar validation without midnight coercion. */
+export function isCalendarDay(value) {
+  return typeof value === "string" && DAY_PATTERN.test(value) && toDay(value) === value;
+}
+
 /** The viewer's own calendar day. */
 export function localToday(now = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
