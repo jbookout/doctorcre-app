@@ -1,3 +1,4 @@
+import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 // V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
 //
 // Every decision about columns, payloads and words lives in
@@ -34,7 +35,7 @@ import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { ACTOR_LABEL } from './client.js';
-import { mountDocDock, mountNotificationBadge, mountPrefs } from './shell.js';
+import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
   createBoardSync, batchTouchesBoard, SYNC_STATES,
@@ -52,7 +53,7 @@ import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, presenceChip,
-  tapMoveTargets,
+  tapMoveTargets, dealInsightLines,
 } from './pipeline-model.js';
 import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderPhaseTimeline, renderCriticalDates, renderDealTimeline, updateCountdowns } from './deal-timeline.js';
@@ -157,6 +158,8 @@ function renderBoard() {
   if (!board || board.querySelector('[data-dragging="true"]')) return;
   const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
     .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
+  setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
+  publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
   const parked = rows.filter(d => d.operating_state === 'parked');
   const grouped = groupByColumn(active);
@@ -429,7 +432,7 @@ async function runFollowUp(operationKey, step) {
     reason: result.message || null,
     retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
   });
-  if (step.verb === 'set-next-step' && operationKey === nextStepKey(state.panelDeal)) {
+  if (step.verb === 'set-next-step' && operationKey === nextStepKey(state.panelDeal) && state.panelDetail) {
     if (result.status === 'ok') nextDraft = null;
     syncNextForm();
     if (result.status === 'ok') await refreshPanel();
@@ -689,11 +692,34 @@ async function settleConflictChoice(conflictId, result) {
 let disposeEvidence = null;
 let dateDraft = null;
 let panelReadSequence = 0;
+let contextReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
 // fields follow current reads; edited fields keep their original comparison.
 let nextDraft = null;
 const nextReads = new Set();
 const stepValues = deal => ({text:noteText(deal.next_step),date:deal.next_date || ''});
+function clearDateDraft() {
+  dateDraft = null;
+  $('dealDateDialog').close();
+  $('dealDateForm').reset();
+  $('dealDateTitle').textContent = 'Add date';
+  $('dealDateStatus').textContent = '';
+}
+function refusePanelDetail(error) {
+  if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
+  ++panelReadSequence;
+  ++contextReadSequence;
+  state.panelDetail = null;
+  nextDraft = null;
+  clearDateDraft();
+  disposeEvidence?.(); disposeEvidence = null;
+  setContextOpenVisible(false);
+  $('contextDrawer').close();
+  $('contextDrawerBody').replaceChildren();
+  $('panelTitle').textContent = 'Deal';
+  $('panelBody').innerHTML = '<p role="status">Unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
+  return true;
+}
 function syncNextForm(deal = null) {
   const form = $('detailNextForm');
   if (!form || !state.panelDeal) return;
@@ -740,7 +766,10 @@ async function saveNextStep(id) {
   if (!pending) {
     nextReads.add(id); syncNextForm();
     try {
-      const fresh = await readDealDetail(id);
+      const fresh = await readDealDetail(id).catch(error => {
+        if (state.panelDeal === id && nextDraft === draft) refusePanelDetail(error);
+        throw error;
+      });
       if (state.panelDeal !== id || nextDraft !== draft) return;
       const recorded = stepValues(fresh.deal);
       const crossed = ['text','date'].some(name => draft.dirty.has(name) && recorded[name] !== draft.base[name]);
@@ -762,10 +791,11 @@ async function saveNextStep(id) {
   const promise = runFollowUp(key,{verb:'set-next-step',args,summary:'Next step'});
   syncNextForm();
   const result = await promise;
-  if (state.panelDeal !== id) return;
+  // The command receipt and readback outlive a closed or refused detail form.
+  state.boardSync.requestRefresh('next-step');
+  if (state.panelDeal !== id || !state.panelDetail || !form.isConnected) return;
   syncNextForm();
   $('detailNextStatus').textContent = result.status === 'ok' ? 'Next step confirmed' : result.message || 'Change not confirmed';
-  state.boardSync.requestRefresh('next-step');
 }
 function fullRecordHtml(detail) {
   const section = (title, rows, describe) => `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('') || '<p>None recorded</p>'}</section>`;
@@ -845,8 +875,9 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
-  } catch {
+  } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
+    if (refusePanelDetail(error)) return;
     setContextOpenVisible(false);
     const message = 'Updates temporarily unavailable';
     const status = $('detailReadStatus');
@@ -875,6 +906,7 @@ function paintPanel(detail) {
   centerCurrentPhase();
 }
 async function openPanel(dealId, trigger) {
+  selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
@@ -887,7 +919,10 @@ async function openPanel(dealId, trigger) {
   await refreshPanel();
 }
 function closePanel() {
+  selectDocRecord('deal', null);
+  pageDocContext?.release('getDeal');
   ++panelReadSequence;
+  clearDateDraft();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url);
@@ -930,13 +965,14 @@ async function openContextDrawer() {
   const dialog = $('contextDrawer');
   const detail = state.panelDetail;
   if (!dialog || !detail) return;
+  const seq = ++contextReadSequence;
   $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
   const context = await loadDealContext(state.client, detail);
   // Same late-answer guard as the record panel: a slower client read must
   // never paint over a drawer the person has since moved on from.
-  if (state.panelDeal !== dealId || !dialog.open) return;
+  if (state.panelDeal !== dealId || seq !== contextReadSequence || !dialog.open) return;
   $('contextDrawerBody').innerHTML = contextDrawerSections(context, { dateLabel: dateWords })
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
       <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('');
@@ -1087,7 +1123,7 @@ function wire() {
 
   document.addEventListener('click', async (event) => {
     const outlook = event.target.closest('[data-jev-deal]');
-    if(outlook) { const id=state.panelDeal; outlook.disabled=true; try { const answer=await state.client.getJevDealReading(id); if(state.panelDeal===id && outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=answer.movement_label || 'Outlook unavailable'; } catch { if(outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent='Outlook unavailable'; } finally { if(outlook.isConnected) outlook.disabled=false; } return; }
+    if(outlook) { const id=state.panelDeal; outlook.disabled=true; try { const answer=await state.client.getJevDealReading(id); if(state.panelDeal===id && outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=dealInsightLines(answer).join(' · '); } catch { if(outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=dealInsightLines(null).join(' · '); } finally { if(outlook.isConnected) outlook.disabled=false; } return; }
     const revive = event.target.closest('button[data-revive]');
     if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
@@ -1116,13 +1152,13 @@ function wire() {
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
-  $('dealDateCancel').onclick = () => { dateDraft = null; $('dealDateDialog').close(); };
-  $('dealDateDialog').addEventListener('cancel', () => { dateDraft = null; });
+  $('dealDateCancel').onclick = clearDateDraft;
+  $('dealDateDialog').addEventListener('cancel', clearDateDraft);
   $('dealDateForm').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, values = new FormData(form);
     const draft = dateDraft;
-    if (!draft) return;
+    if (!draft || !$('dealDateDialog').open || state.panelDeal !== draft.deal || state.panelDetail?.deal.id !== draft.deal) return;
     const {deal:id, kind} = draft;
     // Lost responses retain exactly the same request and key in the command dock.
     const args = {deal:id,kind,due_on:String(values.get('date')),source:String(values.get('evidence'))};
@@ -1130,10 +1166,10 @@ function wire() {
     const result = await runFollowUp(`critical-date:${id}:${kind}`,{verb:'add-critical-date',args,summary:'Date added'});
     if (dateDraft === draft && $('dealDateDialog').open) {
       form.querySelector('button[type="submit"]').disabled = false;
-      if (result?.status === 'ok') { dateDraft = null; $('dealDateDialog').close(); }
+      if (result?.status === 'ok') clearDateDraft();
       else $('dealDateStatus').textContent = 'Date not confirmed';
     }
-    if (result?.status === 'ok' && state.panelDeal === id) await refreshPanel();
+    if (result?.status === 'ok' && state.panelDeal === id && state.panelDetail?.deal.id === id) await refreshPanel();
   });
 
   $('receiptsOpen')?.addEventListener('click', () => {
@@ -1195,6 +1231,7 @@ function wire() {
     if (e.target.closest('[data-refresh-detail]')) refreshPanel();
     const add = e.target.closest('[data-add-date]');
     if (add) {
+      if (!state.panelDetail || state.panelDetail.deal.id !== state.panelDeal) return;
       const definition = DATE_KINDS.find(d => d.kind === add.dataset.addDate);
       $('dealDateTitle').textContent = definition.label;
       dateDraft = {deal:state.panelDeal,kind:definition.kind};
@@ -1276,7 +1313,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock('Local Deals');
+
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });

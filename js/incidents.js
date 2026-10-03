@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C14 — the incident page: DOM wiring only.
 //
@@ -24,7 +25,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import { groupedIncidents, validIncidentBoardPayload } from "./control-room-model.js";
 import {
@@ -169,6 +170,7 @@ async function take(slot, run) {
 }
 
 async function load() {
+  selectDocRecord('incident', view.refState === 'ok' ? view.ref : null);
   view.sequence += 1;
   if (view.refState === "ok") {
     view.detail = { state: "pending" };
@@ -247,7 +249,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Incident");
+
   mountDock();
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = refFromSearch(location.search || "");

@@ -502,3 +502,10 @@ export function contextDrawerSections(context, options = {}) {
     { title: 'Critical dates', lines: dateLines },
   ];
 }
+
+export function dealInsightLines(reading) {
+  if (!reading?.judged) return [reading?.reason === 'insufficient_recorded_evidence' ? 'Insufficient evidence' : 'Insights unavailable'];
+  return [`Movement ${reading.movement_rung} of ${reading.movement_rungs}`, reading.movement_label,
+    `Waiting on: ${String(reading.waiting_on || 'not recorded').replaceAll('_', ' ')}`,
+    `Estimated silence concern: ${Math.round(Number(reading.silence_is_bad) * 100)}%`];
+}

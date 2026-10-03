@@ -3,6 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { observeDocRead, selectDocRecord, setDocFilters } from "../js/doc-context.js";
+import { createDocContext } from "../js/doc-context-model.js";
 import { createLiveClient } from "../js/live-client.js";
 import { createSystemWorkClient } from "../js/system-work-client.js";
 import { mountPrefs } from "../js/shell.js";
@@ -22,7 +24,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }

@@ -46,7 +46,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
+    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }
@@ -114,11 +114,16 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     items[next]?.focus();
   });
   const boot = resolveDealroomBoot(globalThis.location);
-  let client, cursor = null, feed = createFeedProgress(), receipts = [];
+  let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
+  const resetFeed = () => { feedActor = null; cursor = null; feed = createFeedProgress(); receipts = []; if (!pageOwnsMoves) renderMoves(); };
   const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
+  const renderMoves = () => {
+    const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
+    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${move.after}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
+  };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';
   const validBoard = value => scopedDeals(value, 'team') !== null
@@ -134,8 +139,8 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const refresh = async ({ signal } = {}) => {
-    try { client ||= await createClient(boot.mode, boot.options); }
-    catch { connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
+    try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
+    catch { resetFeed(); connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(() => client.todayTriage(), { signal }),
@@ -148,6 +153,13 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${i.due_on || ''}`)).join('') || empty : unavailable);
     if (connected) {
       const value = board.value;
+      if (feedActor !== value.actor) resetFeed();
+      feedActor = value.actor;
+      // Retained receipts have the same authorization scope as newly read ones.
+      const authorized = new Map(value.deals.map(deal => [deal.id, deal.name]));
+      receipts = receipts.filter(receipt => authorized.has(receipt.deal_id))
+        .map(receipt => ({ ...receipt, deal_name: authorized.get(receipt.deal_id) }));
+      if (!pageOwnsMoves) renderMoves();
       if (triageValid) {
         const observed = new Date().toISOString();
         status.querySelector('#appSyncTime').textContent = time(observed);
@@ -171,11 +183,10 @@ export function mountAppLayout(root, host, pathname, slices = []) {
             cursor = changes.cursor ?? cursor;
             if (feed.caught_up) break;
           }
-          const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
-          render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${move.after}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
+          renderMoves();
         } catch { render('#appTodayMoves', unavailable); }
       }
-    } else { render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); }
+    } else { resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); }
   };
   layout.addEventListener('click', event => {
     const item = event.target.closest('[data-layout-deal]'); if (!item) return;

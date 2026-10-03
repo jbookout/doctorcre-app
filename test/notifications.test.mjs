@@ -387,8 +387,8 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/notifications\.css">/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "the dock is not mounted");
   assert.match(html, /<p id="prefsLive" class="sr-only" aria-live="polite">/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
