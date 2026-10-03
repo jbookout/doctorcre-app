@@ -229,12 +229,20 @@ test("the GitHub refresh state is shown: an outage names the unrefreshed cards a
   assert.match(line.textContent, /3 older Live cards not shown/);
   assert.ok(page.$('[data-card-id="a"] .flag-unrefreshed'), "the unrefreshed card is marked");
   assert.equal(page.$('[data-card-id="b"] .flag-unrefreshed'), null);
+  const legendIds = () => new Set(page.$$("#legend-body [data-legend-id]").map(node => node.dataset.legendId));
+  const emitted = () => new Set(page.$$("[data-indicators]").flatMap(node => node.dataset.indicators.split(" ")));
+  assert.ok(emitted().has("flag-unrefreshed"), "the outage mark is a card indicator");
+  assert.equal(page.$('[data-legend-id="flag-unrefreshed"] .flag-unrefreshed').textContent, "not refreshed",
+    "the Key shows the same mark the card carries");
+  for (const id of emitted()) assert.ok(legendIds().has(id), `indicator ${id} has no legend entry`);
 
   sync = { checked_at: "2026-09-30T12:00:00Z", last_verified_at: "2026-09-30T12:00:00Z", failed: [] };
   await page.board.refresh(true);
   assert.equal(page.$("#board-sync").dataset.state, "ok");
   assert.match(page.$("#board-sync").textContent, /GitHub checked/);
   assert.equal(page.$('[data-card-id="a"] .flag-unrefreshed'), null, "recovery clears the mark");
+  assert.equal(emitted().has("flag-unrefreshed"), false, "recovery clears the indicator");
+  for (const id of emitted()) assert.ok(legendIds().has(id), `indicator ${id} has no legend entry`);
 });
 
 test("an all-repos repository that could not be read marks its cards, and no sync record shows nothing", () => {

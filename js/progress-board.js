@@ -211,6 +211,7 @@ export function mountBoard(deps = {}) {
         } else if (entry.id === "outline-dashed") sample.append(el("span", "dashed-sample"));
         else if (entry.id === "badge-question") sample.append(el("span", "badge-question", "?"));
         else if (entry.id === "flag-stale") sample.append(el("span", "flag-stale", "stale 7h"));
+        else if (entry.id === "flag-unrefreshed") sample.append(el("span", "flag-unrefreshed", "not refreshed"));
         else if (entry.id === "note-release-wait") sample.append(el("span", "wait-sample", "waiting"));
         const meaning = el("dd", "");
         meaning.append(el("strong", "", entry.label), el("span", "", entry.meaning));

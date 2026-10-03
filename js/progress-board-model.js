@@ -53,6 +53,7 @@ export const INDICATORS = [
   { id: "outline-dashed", group: "Marks", label: "Dashed outline", meaning: "Critical, blocked or stuck" },
   { id: "badge-question", group: "Marks", glyph: "?", label: "Question badge", meaning: "Waiting on an answer or a review" },
   { id: "flag-stale", group: "Marks", label: "Stale flag", meaning: "In flight with no update for 6 hours or more; shows the age" },
+  { id: "flag-unrefreshed", group: "Marks", label: "Not refreshed", meaning: "GitHub could not be read for this card; it shows its last verified state" },
   { id: "note-release-wait", group: "Marks", label: "Waiting on release", meaning: "Merged, but not in the latest verified release yet" },
 ];
 
