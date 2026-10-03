@@ -7,9 +7,9 @@ import { workspace, detail, id } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
-async function open(t,{width=1440,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
+async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:960},timezoneId,reducedMotion:clock?'reduce':motion});page.setDefaultTimeout(5000);
+  const page=await browser.newPage({viewport:{width,height},hasTouch,timezoneId,reducedMotion:clock?'reduce':motion});page.setDefaultTimeout(5000);
   if(clock) await page.clock.install({time:new Date(now)});
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -213,4 +213,78 @@ test('R9 Recent changes transfers phone focus into Today and keeps its keyboard 
  assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#appTodayToggle').evaluate(n=>n===document.activeElement),true);
+});
+
+// PR 129 numbered review regressions. All data is synthetic.
+for (const transition of ['actor', 'scope', 'refusal']) test(`PR129 #2 recent moves discard retained private rows on ${transition}`, async t => {
+ const events=[{id:'review-private-move',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Synthetic private value',recorded_at:'2026-10-01T15:00:00Z'}];
+ const {page,goto}=await open(t,{clock:true,events});let changed=false;
+ await page.route('**/mcp',route=>{
+  if(changed && route.request().postDataJSON().params.name==='deal-room-board') return transition==='refusal'?route.fulfill({status:401,body:'Denied'}):route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:transition==='actor'?'dell':'joe',deals:[]})}]}}});
+  return route.fallback();
+ });
+ await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
+ changed=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
+ assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value|Demo Specialty Clinic/);
+ if(transition==='refusal') { events.length=0;changed=false;await page.clock.fastForward(31_000);await page.waitForFunction(()=>document.querySelector('#appConnection').dataset.state==='healthy');assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value/); }
+});
+test('PR129 #4 parked and normalized Closed records stay out of both attention lists',async t=>{
+ const {page,goto}=await open(t);
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'joe',deals:[{id:'closed',name:'Closed Example',phase:'closed',owner:'joe',attention:true},{id:'parked',name:'Parked Example',phase:'research',operating_state:'parked',owner:'joe',attention:true}]})}]}}}):route.fallback());
+ await goto('/leads?mode=live');assert.equal(await page.locator('#appTodayNeeds [data-layout-deal],#appWorkingList [data-layout-deal]').count(),0);
+});
+test('PR129 #7 closing Lead detail after polling resolves the current card by identity',async t=>{
+ const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
+ await card.focus();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();await page.clock.fastForward(31_000);await page.keyboard.press('Escape');
+ assert.equal(await card.evaluate(n=>n===document.activeElement),true);
+});
+test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
+ const {page,goto,writes}=await open(t,{width:390,hasTouch:true});await goto('/leads');await page.locator('.lead-card').first().tap();await page.locator('#detailStage').selectOption('engaged');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);await page.locator('#saveStage').tap();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();assert.deepEqual(writes,['update-lead']);
+ await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
+ assert.equal(await page.locator('#detailPhase').inputValue(),'legal');
+});
+for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain pointer actionable at ${width}x390`,async t=>{
+ const {page,goto}=await open(t,{width,height:390});await goto('/leads');
+ for(const link of await page.locator('.app-shell-navigation>a').all()) await link.click({trial:true});
+ await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('Progress',{exact:true}).isVisible(),true);
+});
+test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
+ const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();
+ const luminance=rgb=>{const c=rgb.match(/[\d.]+/g).slice(0,3).map(n=>{const x=Number(n)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2];};
+ const colors=await page.locator('#appSidebarSlot').evaluate(n=>({background:getComputedStyle(n.closest('aside')).backgroundColor,text:getComputedStyle(n).color}));
+ assert.ok((Math.max(luminance(colors.background),luminance(colors.text))+.05)/(Math.min(luminance(colors.background),luminance(colors.text))+.05)>=4.5,JSON.stringify(colors));
+ const labelColor=await page.locator('#appSidebarSlot label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
+ await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailPhase').waitFor();
+ const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
+ assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
+ assert.equal(await page.locator('#recordPanel input[type="date"]').evaluate(n=>getComputedStyle(n).colorScheme),'light');
+ const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
+ for(const field of fields)assert.ok((Math.max(luminance(field.background),luminance(field.text))+.05)/(Math.min(luminance(field.background),luminance(field.text))+.05)>=4.5,JSON.stringify(field));
+ const summaryColor=await page.locator('#recordPanel summary').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(pair.background)+.05)/(luminance(summaryColor)+.05)>=4.5,summaryColor);
+ await page.screenshot({animations:'disabled',path:new URL('test-artifacts/w1b/light-detail.png',root).pathname});
+ await page.setViewportSize({width:390,height:960});await fits(page,'light detail phone');await page.screenshot({animations:'disabled',path:new URL('test-artifacts/w1b/light-detail-390.png',root).pathname});
+});
+
+for(const width of [1440,390]) test(`PR129 #3 sync failure is visibly distinct from shared connection health at ${width}`,async t=>{
+ const {page,goto}=await open(t,{width});await goto('/deals?view=board');
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getChanges=async()=>{throw new Error('Synthetic feed failure')};await state.boardSync.pollChanges({force:true});});
+ await page.waitForFunction(()=>document.querySelector('#boardStatusLabel').textContent==='Reconnecting');
+ const visible=await page.locator('#boardStatus').evaluate(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>20&&r.height>10&&s.clipPath==='none'});
+ assert.equal(visible,true);assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
+ await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture: failed';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
+});
+
+test('PR129 #2 account transition removes prior receipts before a delayed feed answers',async t=>{
+ const events=[{id:'old-private',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Synthetic private value',recorded_at:'2026-10-01T15:00:00Z'}];
+ const {page,goto}=await open(t,{clock:true,events});await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
+ let release;const pending=new Promise(r=>release=r);t.after(()=>release());
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'dell',deals:[]})}]}}}):route.fallback());
+ await page.route('**/pipeline/changes*',async route=>{await pending;return route.fulfill({json:{events:[],cursor:'1'}})});
+ await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
+ assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value|Demo Specialty Clinic/);release();
+});
+
+for(const width of [1440,390]) test(`PR129 #3 Leads freshness feedback fits the visible status bar at ${width}`,async t=>{
+ const {page,goto}=await open(t,{width});await goto('/leads');
+ const item=await page.locator('#boardUpdated').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(item.y>=bar.y && item.y+item.height<=bar.y+bar.height,JSON.stringify({item,bar}));
 });

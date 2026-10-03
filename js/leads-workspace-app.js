@@ -144,11 +144,18 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       }
       if (state.detailId && $("leadDetail").open) {
         if (leadById(state.detailId)) await readDetail(state.detailId, false);
-        else { state.detail = null; $("leadDetail").close(); }
+        else if (next.leads.some(lead => lead.id === state.detailId)) { state.detail = null; $("leadDetail").close(); }
+        else { state.detail = null; ++state.detailEpoch; $("detailTitle").textContent = "Lead unavailable"; $("detailBody").innerHTML = '<p class="empty">Unavailable</p>'; }
       }
     } catch (error) {
       if (epoch !== state.epoch) return;
       if (authorizationFailure(error)) return;
+      // A refused verification/read cannot leave the previous private snapshot visible.
+      if (!state.identityReady) state.board = null;
+      state.identityReady = false; state.detail = null; state.detailId = null;
+      ++state.detailEpoch; state.trigger = null;
+      $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
+      render();
       state.connectionFeedback = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
       paintCommandFeedback();
     } finally { if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false"); }
