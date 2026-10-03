@@ -78,9 +78,9 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   await link.click();
   const board = opened ? await opened : page;
   await board.locator('#board-title').filter({ hasText: 'System delivery' }).waitFor();
-  assert.equal(await board.locator('#board-flow [data-task-id="build"]').count(), 1, 'published task remains visible');
+  assert.equal(await board.locator('#board-stages [data-card-id="build"]').count(), 1, 'published task remains visible');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
-  assert.equal(await board.locator('#board-flow .flow-stage').count(), 6);
+  assert.equal(await board.locator('#board-stages .column').count(), 6);
   assert.equal(await board.locator('.directory-panel').isVisible(), false);
   if (!unfinished) {
     assert.match(await board.locator('#system-work-error').textContent(), /System work updates unavailable/);
@@ -91,7 +91,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
 
 for (const id of ['carr-v5', 'demo-project']) test(`legacy query redirects to the ${id} board page`, async t => {
   const { page, errors } = await open(t, { path: `/control-room/progress?board=${id}&view=flow` });
-  await page.locator('#board-flow [data-task-id="build"]').waitFor();
+  await page.locator('#board-stages [data-card-id="build"]').waitFor();
   assert.equal(new URL(page.url()).pathname, `/control-room/progress/board/${id}`);
   assert.equal(new URL(page.url()).search, '?view=flow');
   assert.deepEqual(errors, []);
@@ -105,7 +105,7 @@ for (const boardRead of ['missing', 'failed']) test(`${boardRead} board read sta
   assert.equal(await page.locator('.directory-panel').isVisible(), false);
   recover();
   await page.locator('#board-retry').click();
-  await page.locator('#board-flow [data-task-id="build"]').waitFor();
+  await page.locator('#board-stages [data-card-id="build"]').waitFor();
   assert.equal(await page.locator('#board-title').textContent(), 'Demo project');
   assert.equal(await page.locator('#board-error').isVisible(), false);
   assert.deepEqual(errors, []);
@@ -135,7 +135,7 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
       else await route.continue();
       return true;
     } });
-    await page.locator('#board-flow [data-task-id="build"]').waitFor();
+    await page.locator('#board-stages [data-card-id="build"]').waitFor();
     await panelTasks(page, ['open']);
     active = true;
     const success = order === 'success-first'
@@ -151,11 +151,11 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
     await page.waitForFunction(() => document.querySelectorAll('#board-flow [data-task-id], #system-work-flow [data-task-id], .work-card').length === 0);
     // Give the previously held successful response time to arrive and render.
     await page.waitForLoadState('networkidle');
-    assert.equal(await page.locator('#board-flow [data-task-id], #system-work-flow [data-task-id], .work-card').count(), 0);
+    assert.equal(await page.locator('#board-stages [data-card-id], #board-completed .completed-card, #system-work-flow [data-task-id], .work-card').count(), 0);
     assert.equal(await page.locator('#system-work-coverage').textContent(), '');
     active = false;
     await page.locator('#board-retry').click();
-    await page.locator('#board-flow [data-task-id="build"]').waitFor();
+    await page.locator('#board-stages [data-card-id="build"]').waitFor();
     await panelTasks(page, ['open']);
     assert.equal(await page.locator('#board-sign-in').isVisible(), false);
     assert.deepEqual(errors, []);
@@ -207,12 +207,12 @@ for (const failed of ['unfinished-work', 'read-progress-board']) test(`${failed}
       if (!active || rpc.name !== failed) return false;
       await route.fulfill({ status: 503, body: '{}' }); return true;
     } });
-  await page.locator('#board-flow [data-task-id="build"]').waitFor();
+  await page.locator('#board-stages [data-card-id="build"]').waitFor();
   await panelTasks(page, ['open']);
   active = true;
   await page.clock.runFor(15000);
   await page.locator(failed === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
-  assert.equal(await page.locator('#board-flow [data-task-id="build"]').count(), 1);
+  assert.equal(await page.locator('#board-stages [data-card-id="build"]').count(), 1);
   await panelTasks(page, ['open']);
   assert.equal(await page.locator('#board-sign-in').isVisible(), false);
   active = false;
