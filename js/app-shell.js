@@ -76,7 +76,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (!base && pathname !== "/share") { mountAppLayout(root, host, pathname, slices); mountDocPresence({ document:root, window:root.defaultView }); }
+  if (!base && pathname !== "/share") { mountAppLayout(root, host, pathname, slices); mountDocPresence({ document:root, window:root.defaultView, pages:navigationItems }); }
   else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");

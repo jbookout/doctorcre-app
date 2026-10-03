@@ -78,6 +78,17 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       if (field) { $(`#${prefix}-${field}`).focus(); message(prefix === "plan" ? "#plan-message" : "#space-message", "Change undone."); }
     });
   }
+  // Doc's "plan a tour for …" arrives once as ?plan_for=; only an exact single
+  // match is chosen, so a vague name never binds another client's record.
+  let planRequest = new URLSearchParams(window.location.search).get("plan_for");
+  function applyPlanRequest() {
+    if (!planRequest) return;
+    const words = planRequest.toLowerCase().split(/\s+/).filter(Boolean); planRequest = null;
+    const url = new URL(window.location.href); url.searchParams.delete("plan_for"); window.history.replaceState(window.history.state, "", url);
+    const found = clients.filter(client => words.every(word => String(client.name || "").toLowerCase().includes(word)));
+    if (found.length !== 1) { $("#plan-client").focus(); return; }
+    $("#plan-client").value = found[0].id; void prefill("plan", found[0].id); $("#plan-name").focus();
+  }
   function fillClients() {
     for (const [prefix, selected, research] of [["plan", planClient, false], ["space", searchClient, true]]) {
       const select = $(`#${prefix}-client`);
@@ -217,7 +228,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); }
     else { pageDocContext?.fail(docTicket,results[0].reason); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
     if (results[1].status === "fulfilled") {
-      clients = results[1].value; fillClients();
+      clients = results[1].value; fillClients(); applyPlanRequest();
       for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === "Clients temporarily unavailable.") message(target, "");
     }
     else { for (const target of ["#plan-message", "#space-message"]) message(target, unavailable(results[1].reason) || "Clients temporarily unavailable."); }
