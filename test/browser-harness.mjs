@@ -5,17 +5,20 @@
 // made any wait that needed a little longer fail at random. Here:
 //  - each test process keeps one Chromium; every launch() hands out its own
 //    browser contexts, so storage, routes, clock and viewport stay per test;
-//  - every page waits up to WAIT_MS for a condition before it fails;
+//  - every page waits up to WAIT_MS for a condition before it fails, and no
+//    request leaves the machine unless the test routes it;
 //  - BROWSER_CPU_THROTTLE=<n> slows every page n times (CDP emulation) and
 //    BROWSER_ROUTE_JITTER_MS=<ms> answers each routed request up to <ms> late,
 //    so a CI-starved runner can be reproduced locally.
 import { after } from 'node:test';
+import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium as playwright } from 'playwright';
 
 export const WAIT_MS = 30_000;
 const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const launched = new Map();
 
 after(async () => {
@@ -35,6 +38,10 @@ export const chromium = {
         const context = await browser.newContext(options);
         contexts.add(context);
         context.setDefaultTimeout(WAIT_MS);
+        // Tests never reach the network. A page's Google Fonts link held its
+        // load event, and so page.goto, until an outside server answered. A
+        // request a test does not route itself and that leaves this machine is refused.
+        await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort());
         const page = await context.newPage();
         if (throttle > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
         if (jitter > 0) {
@@ -51,6 +58,18 @@ export const chromium = {
     };
   },
 };
+
+// Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
+// a fixed range can be taken by a parallel run or an ephemeral connection.
+export async function fixtureServer() {
+  const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const origin = await new Promise((resolve, reject) => {
+    server.stdout.once('data', data => resolve(String(data).match(/http:\/\/[\d.]+:\d+/)[0]));
+    server.once('error', reject);
+    server.once('exit', code => reject(new Error(`fixture server exited ${code}`)));
+  });
+  return { origin, close: () => server.kill() };
+}
 
 // page.waitForFunction treats a returned promise as truthy, so an async
 // predicate (one that imports an app module to read its state) returns at once

@@ -1,17 +1,14 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
-import { chromium, settles } from './browser-harness.mjs';
+import { chromium, fixtureServer, settles } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 let server, origin;
 before(async()=>{
-  // Port 0: the OS picks a free port, so parallel runs and ephemeral ports never collide.
-  server=spawn(process.execPath,['scripts/serve.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:'0'},stdio:['ignore','pipe','pipe']});
-  origin=await new Promise((res,rej)=>{server.stdout.once('data',data=>res(String(data).match(/http:\/\/[\d.]+:\d+/)[0]));server.once('error',rej);server.once('exit',code=>{if(code)rej(Error('server '+code));});});
+  server=await fixtureServer();origin=server.origin;
   await mkdir(new URL('../test-artifacts/w5',import.meta.url),{recursive:true});
 });
-after(()=>server?.kill());
+after(()=>server?.close());
 async function open(t,width=1440){
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:width===390?844:1000}}), errors=[], overrides=new Map(), calls=[];

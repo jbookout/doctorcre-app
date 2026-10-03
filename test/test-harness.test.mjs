@@ -101,3 +101,15 @@ test('layout is measured after entrance animations finish', async () => {
     assert.equal(await height(), 44);
   } finally { await browser.close(); }
 });
+
+test('a page never waits on the outside network', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const refused = [];
+    page.on('requestfailed', request => refused.push(new URL(request.url()).hostname));
+    await page.route('http://localhost/', route => route.fulfill({ contentType: 'text/html', body: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans"><p>loaded</p>' }));
+    await page.goto('http://localhost/');
+    assert.deepEqual(refused, ['fonts.googleapis.com']);
+  } finally { await browser.close(); }
+});

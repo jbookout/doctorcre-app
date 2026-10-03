@@ -1,17 +1,14 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
-import { chromium, settles, waitForAsync } from './browser-harness.mjs';
+import { chromium, fixtureServer, settles, waitForAsync } from './browser-harness.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 let server, origin;
 before(async()=>{
- const port=19000+Math.floor(Math.random()*20000);origin=`http://127.0.0.1:${port}`;
- server=spawn(process.execPath,['scripts/serve.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:String(port)},stdio:['ignore','pipe','pipe']});
- await new Promise((resolve,reject)=>{server.stdout.once('data',resolve);server.once('error',reject);server.once('exit',code=>{if(code)reject(Error('Fixture server exited '+code));});});
+ server=await fixtureServer();origin=server.origin;
 });
-after(()=>server?.kill());
+after(()=>server?.close());
 async function open(t,{smallChats=false,clientHooks=''}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
