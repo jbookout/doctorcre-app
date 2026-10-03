@@ -56,13 +56,43 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
     const box = await page.locator('#recordPanel').boundingBox(); assert.ok(box.width >= Math.min(1100, width - 30));
     assert.ok((await page.locator('.deal-note p').first().textContent()).length <= 150);
-    await page.locator('.deal-note summary').first().click();
-    assert.match(await page.locator('.note-original').first().textContent(), /Full original demo entry/);
+    await page.locator('.deal-note[data-id="demo-note"] summary').click();
+    assert.match(await page.locator('.deal-note[data-id="demo-note"] .note-original').textContent(), /Full original demo entry/);
     await page.locator('#recordPanel').evaluate(e => { e.scrollTop = 0; });
     assert.equal(await page.locator('#recordPanel').evaluate(e => e.scrollWidth <= e.clientWidth), true);
     await page.screenshot({ path: new URL(`test-artifacts/w4/detail-${width}.png`, root).pathname });
     await page.getByLabel('Close deal', { exact: true }).click(); assert.deepEqual(errors, []);
   });
+});
+
+test('board refresh preserves a native drag until its drop is reviewed', async t => {
+  const {page,errors}=await open(t);
+  const card=page.locator('.kanban-column [data-id="d14"]');
+  await card.evaluate(node=>{
+    window.draggedCard=node;
+    node.addEventListener('dragstart',()=>window.dragStarted=true,{once:true});
+  });
+  const box=await card.boundingBox();
+  await page.mouse.move(box.x+10,box.y+10);await page.mouse.down();
+  await page.mouse.move(box.x+30,box.y+30,{steps:5});
+  await page.waitForFunction(()=>window.dragStarted);
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
+    state.client.getBoard=async (...args)=>{
+      const result=await get(...args);
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during drag'}:d)};
+    };
+  });
+  await refresh(page);
+  assert.equal(await page.evaluate(()=>window.draggedCard.isConnected),true);
+  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').next_step),'Demo fresh action during drag');
+  assert.doesNotMatch(await card.textContent(),/Demo fresh action during drag/);
+  const target=await page.locator('[data-column="legal"] > h3').boundingBox();
+  await page.mouse.move(target.x+10,target.y+10,{steps:5});await page.mouse.up();
+  await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
+  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').phase),'Negotiation');
+  assert.match(await card.textContent(),/Demo fresh action during drag/);
+  assert.deepEqual(errors,[]);
 });
 
 test('W4 drag and keyboard phase writes, manual phase, park, revive and undo record history', async t => {
@@ -146,7 +176,7 @@ test('W4 lost park response retries the original field exactly once; next-step e
 test('W4 detail polls phase evidence, dates, people and parking while preserving drafts and expanded originals', async t => {
   const { page, errors } = await open(t);
   await page.locator('[data-id="d14"] .card-open').click();
-  await page.locator('.deal-note summary').first().click();
+  await page.locator('.deal-note[data-id="demo-note"] summary').click();
   await page.locator('#detailNextForm textarea').fill('Demo unsaved draft');
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const original = state.client.getDeal;
@@ -207,16 +237,17 @@ test('W4 detail and next-step rereads time out at the client seam and recover wi
   await page.locator('.kanban-column [data-id="d14"] .card-open').click();
   await page.waitForFunction(() => window.detailProbe.calls > 0);
   await page.clock.runFor(10_001);
-  await page.locator('[data-retry-detail]').waitFor();
+  await page.getByText('Updates temporarily unavailable', {exact:true}).waitFor();
+  assert.equal(await page.locator('[data-retry-detail]').count(),0);
   await page.evaluate(() => { window.detailProbe.hang = false; });
-  await page.locator('[data-retry-detail]').click();
+  await page.clock.fastForward(16000);
   await page.locator('#detailNextForm').waitFor();
   await page.locator('#detailNextForm textarea').fill('Unsaved deadline demo');
   await page.evaluate(() => { window.detailProbe.hang = true; window.detailProbe.calls = 0; });
   await page.locator('#detailNextForm button').click();
   await page.waitForFunction(() => window.detailProbe.calls > 0);
   await page.clock.runFor(10_001);
-  await page.waitForFunction(() => document.querySelector('#detailNextStatus').textContent.includes('could not be re-read'));
+  await page.waitForFunction(() => document.querySelector('#detailNextStatus').textContent.includes('is updating'));
   assert.equal(await page.locator('#detailNextForm textarea').isEnabled(), true);
   assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
   await page.evaluate(() => { window.detailProbe.hang = false; });

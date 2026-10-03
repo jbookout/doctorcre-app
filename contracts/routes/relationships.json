@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {
+      "path": "/relationships",
+      "asset": "relationships.html",
+      "order": 21,
+      "gatePath": "/business"
+    }
+  ],
+  "redirects": []
+}

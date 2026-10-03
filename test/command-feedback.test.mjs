@@ -344,7 +344,7 @@ test("checking is a declared state of the shared visual system, and the styleshe
   // The invariant this whole slice exists to keep, pinned where the consumer
   // contract can be read without the code.
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(carr.version, "1.41.0");
+  assert.equal(carr.version, "1.42.0");
   assert.ok(carr.invariants.some((line) => /one idempotency key across double click, reconnect and a second device/.test(line)));
 });
 
@@ -416,4 +416,22 @@ test("eviction never changes what the newest four render as", () => {
   }
   assert.equal(after, commandDockHtml([...expected.entries.values()].map(commandReceiptView)));
   assert.equal(after.includes("confirmed 9"), false, "the old ones are gone from the render too");
+});
+
+test('review 5: command deadline retains unknown intent and ignores late transport completion',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ let finish;
+ const ui=surface([()=>new Promise(resolve=>{finish=resolve;}),ok({replayed:true,event_id:'demo-event'})]);
+ const operation='critical-date:demo:rent_start', args={deal:'demo',kind:'rent_start',due_on:'2026-12-01',source:'Demo clause 4'};
+ const sending=ui.send(operation,args);
+ t.mock.timers.tick(30_000);
+ for(let i=0;i<8;i++)await Promise.resolve();
+ assert.equal(pendingCommand(ui.state(),operation)?.status,'unknown');
+ const outcome=await sending;assert.equal(outcome.status,'unknown');assert.equal(outcome.reason,'no_answer');
+ assert.equal(ui.sent.length,1);assert.equal(ui.keys(),1);
+ assert.equal((await ui.send(operation,{...args,due_on:'2026-12-02'})).status,'blocked');
+ const checked=await ui.send(operation,args);assert.equal(checked.status,'ok');
+ assert.equal(checked.replayed,true);assert.equal(ui.keys(),1);assert.strictEqual(ui.sent[1],ui.sent[0]);
+ finish({ok:false});for(let i=0;i<8;i++)await Promise.resolve();
+ assert.equal(pendingCommand(ui.state(),operation),null);
 });

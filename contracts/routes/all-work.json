@@ -1,0 +1,17 @@
+{
+  "routes": [
+    {
+      "path": "/all-work",
+      "asset": "work-inventory.html",
+      "order": 14,
+      "gatePath": "/work-inventory"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/work-inventory",
+      "to": "/all-work",
+      "order": 12
+    }
+  ]
+}

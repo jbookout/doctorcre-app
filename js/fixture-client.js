@@ -1,3 +1,4 @@
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
@@ -1317,7 +1318,9 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
   const client = {
+    ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
     mode: /** @type {const} */ ('fixture'),
     selfActor,
@@ -1353,7 +1356,7 @@ export async function createFixtureClient(opts = {}) {
       const critical_dates = [];
       if (deal.next_date) {
         critical_dates.push({
-          label: deal.id === 'd14' ? 'Lease commencement' : 'Next date',
+          label: 'Next date',
           date: deal.next_date,
         });
       }
@@ -1365,7 +1368,7 @@ export async function createFixtureClient(opts = {}) {
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [] };
+        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {

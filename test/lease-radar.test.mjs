@@ -82,6 +82,18 @@ test('HTTP seam is credentialed no-store read only; malformed/refused data canno
   for(const response of [new Response('{}'),new Response('{}',{status:403})]) await assert.rejects(createLeaseRadarClient({fetchImpl:async()=>response}).readLeaseRadar());
 });
 
+test('slice discovery registers Lease radar beside invoices with its admitted gate and owned contract', async () => {
+  const { sliceNames, sliceOutputs } = await import('../scripts/slices.mjs');
+  const { fileURLToPath } = await import('node:url');
+  const root = new URL('../', import.meta.url);
+  const registration = await sliceOutputs(await sliceNames(fileURLToPath(root)), path => readFile(new URL(path, root)));
+  assert.equal(registration.contract.routes['/leases'], 'lease-radar.html');
+  assert.equal(registration.contract.gatePaths['/leases'], '/business');
+  assert.equal(registration.contract.routes['/invoices'], 'invoices.html');
+  assert.ok(registration.navigationItems.some(item => item.label === 'Lease radar' && item.href === '/leases' && item.group === 'Workspace'));
+  assert.ok(registration.slices.find(slice => slice.id === 'lease-radar')?.files.includes('contracts/lease-radar.v1.json'));
+});
+
 test('merged route contract adds leases beside relationships and Progress under a new minor version', async () => {
   const routes = JSON.parse(await readFile(new URL('../contracts/app-routes.v1.json', import.meta.url)));
   assert.equal(routes.version, '1.20.0');
