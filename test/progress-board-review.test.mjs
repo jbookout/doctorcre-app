@@ -47,6 +47,13 @@ function mount({ now = "2026-09-30T12:00:00Z", reads, answer } = {}) {
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
+function assertIndicatorsHaveLegend(page) {
+  const legendIds = new Set(page.$$("#legend-body [data-legend-id]").map(node => node.dataset.legendId));
+  const emitted = new Set(page.$$("[data-indicators]").flatMap(node => node.dataset.indicators.split(" ")));
+  for (const id of emitted) assert.ok(legendIds.has(id), `indicator ${id} has no legend entry`);
+  return emitted;
+}
+
 test("an answered question published as a snapshot decision is shown and counted once", async () => {
   const read = snapshotRead(v2({ decisions: [{ id: "q1", question: "Synthetic choice?", answer: "A" }] }),
     { questions: [{ question_id: "q1", revision: 2, prompt: "Synthetic choice?", choices: ["A", "B"],
@@ -229,29 +236,39 @@ test("the GitHub refresh state is shown: an outage names the unrefreshed cards a
   assert.match(line.textContent, /3 older Live cards not shown/);
   assert.ok(page.$('[data-card-id="a"] .flag-unrefreshed'), "the unrefreshed card is marked");
   assert.equal(page.$('[data-card-id="b"] .flag-unrefreshed'), null);
-  const legendIds = () => new Set(page.$$("#legend-body [data-legend-id]").map(node => node.dataset.legendId));
-  const emitted = () => new Set(page.$$("[data-indicators]").flatMap(node => node.dataset.indicators.split(" ")));
-  assert.ok(emitted().has("flag-unrefreshed"), "the outage mark is a card indicator");
+  assert.ok(assertIndicatorsHaveLegend(page).has("flag-unrefreshed"), "the outage mark is a card indicator");
   assert.equal(page.$('[data-legend-id="flag-unrefreshed"] .flag-unrefreshed').textContent, "not refreshed",
     "the Key shows the same mark the card carries");
-  for (const id of emitted()) assert.ok(legendIds().has(id), `indicator ${id} has no legend entry`);
 
   sync = { checked_at: "2026-09-30T12:00:00Z", last_verified_at: "2026-09-30T12:00:00Z", failed: [] };
   await page.board.refresh(true);
   assert.equal(page.$("#board-sync").dataset.state, "ok");
   assert.match(page.$("#board-sync").textContent, /GitHub checked/);
   assert.equal(page.$('[data-card-id="a"] .flag-unrefreshed'), null, "recovery clears the mark");
-  assert.equal(emitted().has("flag-unrefreshed"), false, "recovery clears the indicator");
-  for (const id of emitted()) assert.ok(legendIds().has(id), `indicator ${id} has no legend entry`);
+  assert.equal(assertIndicatorsHaveLegend(page).has("flag-unrefreshed"), false, "recovery clears the indicator");
 });
 
-test("an all-repos repository that could not be read marks its cards, and no sync record shows nothing", () => {
+test("all-repos outage marks have a matching Key sample and clear when the repository recovers", async () => {
   const card = { title: "Synthetic", status: "review", stage: "review", pr: 1, repo: "jbookout/carr-system" };
-  const view = boardView(snapshotRead(v2({ kind: "all-repos", tasks: { "carr-system-1": card,
+  let sync = { checked_at: "2026-09-30T12:00:00Z", last_verified_at: null,
+    failed: [{ repo: "jbookout/carr-system", error: "synthetic timeout" }] };
+  const page = mount({ reads: async () => snapshotRead(v2({ kind: "all-repos", tasks: { "carr-system-1": card,
     "doctorcre-app-1": { ...card, repo: "jbookout/doctorcre-app" } },
-    github_sync: { checked_at: "2026-09-30T12:00:00Z", last_verified_at: null,
-      failed: [{ repo: "jbookout/carr-system", error: "malformed row" }] } })));
-  assert.equal(view.sync.state, "failed");
-  assert.deepEqual(view.cards.filter(c => c.sync_failed).map(c => c.id), ["carr-system-1"]);
+    github_sync: sync })) });
+  await page.board.refresh(true);
+  assert.equal(page.$("#board-sync").dataset.state, "failed");
+  assert.ok(page.$('[data-card-id="carr-system-1"] .flag-unrefreshed'));
+  assert.equal(page.$('[data-card-id="doctorcre-app-1"] .flag-unrefreshed'), null);
+  assert.ok(assertIndicatorsHaveLegend(page).has("flag-unrefreshed"));
+  const sample = page.$('[data-legend-id="flag-unrefreshed"] .flag-unrefreshed');
+  assert.equal(sample.textContent, page.$('[data-card-id="carr-system-1"] .flag-unrefreshed').textContent);
+
+  sync = { checked_at: "2026-09-30T12:01:00Z", last_verified_at: "2026-09-30T12:01:00Z", failed: [] };
+  await page.board.refresh(true);
+  assert.equal(page.$("#board-sync").dataset.state, "ok");
+  assert.equal(page.$('[data-card-id="carr-system-1"] .flag-unrefreshed'), null);
+  assert.equal(assertIndicatorsHaveLegend(page).has("flag-unrefreshed"), false);
+  assert.equal(page.$('[data-legend-id="flag-unrefreshed"] .flag-unrefreshed').textContent, "not refreshed",
+    "Key keeps explaining the mark after recovery");
   assert.equal(boardView(snapshotRead(v2())).sync.state, null);
 });
