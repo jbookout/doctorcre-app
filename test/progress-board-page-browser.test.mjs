@@ -6,9 +6,9 @@ import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390 } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const context = await browser.newContext({ viewport: { width: 390, height: 900 } });
+  const context = await browser.newContext({ viewport: { width, height: 900 } });
   const page = await context.newPage(); page.setDefaultTimeout(7000);
   await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
@@ -231,3 +231,38 @@ for (const empty of [false, true]) test(`automatic refresh keeps keyboard positi
   assert.equal(await page.evaluate(() => document.activeElement.id), 'system-work-title');
   assert.deepEqual(errors, []);
 });
+
+for (const width of [390, 1440]) {
+  for (const change of ['updated', 'removed', 'empty']) test(`Live work keeps keyboard position during automatic refresh (${width}px, ${change})`, async t => {
+    const released = { title: 'Synthetic release', summary: 'Original summary', status: 'done', stage: 'live', evidence: 'https://example.com/synthetic-delivery', work_request: 'WR-101' };
+    let tasks = { keep: { ...released, title: 'Other release' }, released };
+    let version = 1;
+    const { page, errors } = await open(t, { width, path: '/control-room/progress/board/demo-project', control: async (route, rpc) => {
+      if (rpc.name !== 'read-progress-board') return false;
+      const payload = { snapshot: { board_id: 'demo-project', version,
+        updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: 'Demo project', tasks } }, questions: [] };
+      await route.fulfill({ json: { result: { content: [{ text: JSON.stringify(payload) }] } } });
+      return true;
+    } });
+    const card = page.locator('.completed-card').filter({ hasText: 'Synthetic release' });
+    await card.waitFor();
+    await card.focus();
+    await card.evaluate(node => { window.focusedLiveCard = node; });
+    tasks = change === 'updated' ? { released: { ...released, summary: 'Updated summary', work_request: 'WR-102' }, keep: tasks.keep }
+      : change === 'removed' ? { keep: tasks.keep } : {};
+    version++;
+    await page.clock.runFor(15000);
+    await page.waitForFunction(() => document.querySelector('#board-meta').textContent.includes('Version 2'));
+    if (change === 'updated') {
+      assert.match(await card.textContent(), /Updated summary/);
+      assert.equal(await card.evaluate(node => node === document.activeElement), true);
+      assert.equal(await card.evaluate(node => node === window.focusedLiveCard), true, 'retain the same card by task identity');
+      await page.keyboard.press('Enter');
+      await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released&work_request=WR-102');
+    } else {
+      assert.equal(await page.locator('.completed-card').count(), change === 'removed' ? 1 : 0);
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'completed-title');
+    }
+    assert.deepEqual(errors, []);
+  });
+}

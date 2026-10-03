@@ -121,34 +121,44 @@ function showTask(task) {
     workRequest: task.work_request || task.human_ref || (/^WR-\d+$/.test(task.id) ? task.id : null) });
 }
 const boardPipeline = mountProgressPipeline({ flow, taskCount, focusFallback: title, onTask: showTask });
+const completedCards = new Map();
 
 function renderCompleted(view) {
   const live = view.stages.find(stage => stage.id === "live");
   const signature = JSON.stringify(live.tasks);
   if (completedList.dataset.signature === signature) return;
   completedList.dataset.signature = signature;
+  const focusedId = [...completedCards].find(([, entry]) => entry.card === document.activeElement)?.[0];
   completedList.replaceChildren();
   completedCount.textContent = `${live.tasks.length} LIVE`;
   if (!live.tasks.length) {
     completedList.append(element("p", "empty", "No live tasks yet."));
-    return;
   }
   for (const task of live.tasks) {
     const identity = taskIdentity(task);
-    const card = element("article", "completed-card");
+    const retained = completedCards.get(task.id);
+    const card = retained?.card || element("article", "completed-card");
+    const entry = { card, task };
+    completedCards.set(task.id, entry);
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", `${task.title || task.id}. Open task detail.`);
-    card.append(element("strong", "", task.title || task.id),
+    card.replaceChildren(element("strong", "", task.title || task.id),
       element("p", "card-summary", taskSummary(task)),
       element("span", "card-provider", identity.provider),
       element("span", "card-model", `${identity.model} · ${identity.effort}`));
-    card.addEventListener("click", () => showTask(task));
-    card.addEventListener("keydown", event => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showTask(task); }
-    });
+    if (!retained) {
+      const open = () => showTask(completedCards.get(task.id).task);
+      card.addEventListener("click", open);
+      card.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+      });
+    }
     completedList.append(card);
   }
+  const ids = new Set(live.tasks.map(task => task.id));
+  for (const id of completedCards.keys()) if (!ids.has(id)) completedCards.delete(id);
+  if (focusedId) (completedCards.get(focusedId)?.card || document.getElementById("completed-title")).focus();
 }
 
 
@@ -293,6 +303,7 @@ function clearBoard(state) {
   pendingRequests.clear();
   flow.replaceChildren();
   completedList.replaceChildren();
+  completedCards.clear();
   delete completedList.dataset.signature;
   completedCount.textContent = "—";
   questions.replaceChildren();
