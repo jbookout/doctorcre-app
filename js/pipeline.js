@@ -685,11 +685,26 @@ async function settleConflictChoice(conflictId, result) {
 
 let disposeEvidence = null;
 let panelReadSequence = 0;
+let contextReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
 // fields follow current reads; edited fields keep their original comparison.
 let nextDraft = null;
 const nextReads = new Set();
 const stepValues = deal => ({text:noteText(deal.next_step),date:deal.next_date || ''});
+function refusePanelDetail(error) {
+  if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
+  ++panelReadSequence;
+  ++contextReadSequence;
+  state.panelDetail = null;
+  nextDraft = null;
+  disposeEvidence?.(); disposeEvidence = null;
+  setContextOpenVisible(false);
+  $('contextDrawer').close();
+  $('contextDrawerBody').replaceChildren();
+  $('panelTitle').textContent = 'Deal';
+  $('panelBody').innerHTML = '<p role="status">Unavailable. <button class="btn" type="button" data-retry-detail>Retry</button></p>';
+  return true;
+}
 function syncNextForm(deal = null) {
   const form = $('detailNextForm');
   if (!form || !state.panelDeal) return;
@@ -749,8 +764,8 @@ async function saveNextStep(id) {
       }
       // Unedited fields come from this read, even when no poll ran first.
       for (const name of ['text','date']) if (!draft.dirty.has(name)) proposed[name] = recorded[name];
-    } catch {
-      if (state.panelDeal === id && nextDraft === draft) $('detailNextStatus').textContent = 'Next step could not be re-read. Retry before saving.';
+    } catch (error) {
+      if (state.panelDeal === id && nextDraft === draft && !refusePanelDetail(error)) $('detailNextStatus').textContent = 'Next step could not be re-read. Retry before saving.';
       return;
     } finally { nextReads.delete(id); if (state.panelDeal === id) syncNextForm(); }
   }
@@ -839,8 +854,9 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
-  } catch {
+  } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
+    if (refusePanelDetail(error)) return;
     setContextOpenVisible(false);
     const message = 'Deal details could not be read. <button class="btn" type="button" data-retry-detail>Retry</button>';
     const status = $('detailReadStatus');
@@ -911,13 +927,14 @@ async function openContextDrawer() {
   const dialog = $('contextDrawer');
   const detail = state.panelDetail;
   if (!dialog || !detail) return;
+  const seq = ++contextReadSequence;
   $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
   const context = await loadDealContext(state.client, detail);
   // Same late-answer guard as the record panel: a slower client read must
   // never paint over a drawer the person has since moved on from.
-  if (state.panelDeal !== dealId || !dialog.open) return;
+  if (state.panelDeal !== dealId || seq !== contextReadSequence || !dialog.open) return;
   $('contextDrawerBody').innerHTML = contextDrawerSections(context, { dateLabel: dateWords })
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
       <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}</div>`).join('');
