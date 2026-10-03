@@ -8,7 +8,6 @@ import { readWithDeadline } from './auto-refresh.mjs';
 
 export const HOME_SCOPES = ['team', 'mine'];
 export const HIDDEN_HOME_WIDGETS = Object.freeze({
-  pastClients: 'Past-client follow-up moments, executed lease expiry through 24 calendar months, owner and contact holds',
   vendors: 'New vendor prospects with compatibility evidence',
   listings: 'Fresh client/listing matches with listing URL, agent contact and authorized attachments',
   capture: 'Doc task/idea classification and document-now/table workflow',

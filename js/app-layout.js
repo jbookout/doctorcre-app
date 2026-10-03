@@ -1,6 +1,7 @@
 import { mountSliceSections } from './slice-registration.js';
 import { scopedDeals } from './home-dashboard-model.js';
-import { localToday, toDay } from './calendar-model.js';
+import { toDay } from './calendar-model.js';
+import { radarToday } from './lease-radar-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
@@ -54,6 +55,8 @@ export function mountAppLayout(root, host, pathname, slices = []) {
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia('(max-width: 760px)');
   let sidebar = !boardPage, today = true, drawer = null;
+  let drawerOpener = null;
+  const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; today = win.localStorage.getItem('doctorcre:today') !== 'closed'; } catch {}
   const sidebarToggle = layout.querySelector('#appSidebarToggle'), todayToggle = layout.querySelector('#appTodayToggle');
   const paint = () => {
@@ -64,19 +67,37 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     layout.querySelector('#appToday').inert = !rightOpen;
     sidebarToggle.setAttribute('aria-expanded', String(leftOpen)); todayToggle.setAttribute('aria-expanded', String(rightOpen));
     layout.querySelector('#appDrawerScrim').hidden = !phone.matches || !drawer;
+    if (phone.matches && drawer) {
+      for (const node of [layout.querySelector('.app-layout-center'), ...root.body.children]) {
+        if (node === layout || node.tagName === 'DIALOG') continue;
+        if (!background.has(node)) background.set(node, node.inert);
+        node.inert = true;
+      }
+    } else {
+      for (const [node, inert] of background) node.inert = inert;
+      background.clear();
+    }
   };
-  const openDrawer = region => {
-    drawer = region;
+  const openRegion = (region, opener = root.activeElement) => {
+    if (phone.matches) {
+      drawerOpener = opener;
+      drawer = region;
+    } else if (region === 'sidebar') sidebar = true;
+    else today = true;
     paint();
-    layout.querySelector(`#${region === 'sidebar' ? 'appSidebar' : 'appToday'} button`).focus();
+    if (phone.matches) layout.querySelector(`#${region === 'sidebar' ? 'appSidebar' : 'appToday'} button`).focus();
   };
   const toggle = region => {
-    if (phone.matches) { if (drawer === region) closeDrawer(); else openDrawer(region); return; }
+    if (phone.matches) { if (drawer === region) closeDrawer(); else openRegion(region); return; }
     else if (region === 'sidebar') { sidebar = !sidebar; try { win.localStorage.setItem(`doctorcre:sidebar:${pageKey}`, sidebar ? 'open' : 'closed'); } catch {} }
     else { today = !today; try { win.localStorage.setItem('doctorcre:today', today ? 'open' : 'closed'); } catch {} }
     paint();
   };
-  const closeDrawer = () => { const previous = drawer; drawer = null; paint(); if (previous) (previous === 'sidebar' ? sidebarToggle : todayToggle).focus(); };
+  const closeDrawer = () => {
+    const previous = drawer; drawer = null; paint();
+    if (previous) (drawerOpener?.isConnected && !drawerOpener.closest("[inert]") ? drawerOpener : previous === 'sidebar' ? sidebarToggle : todayToggle).focus();
+    drawerOpener = null;
+  };
   sidebarToggle.onclick = () => toggle('sidebar'); todayToggle.onclick = () => toggle('today');
   layout.querySelector('#appDrawerScrim').onclick = closeDrawer;
   layout.querySelectorAll('[data-layout-close]').forEach(button => button.onclick = () => phone.matches ? closeDrawer() : toggle(button.dataset.layoutClose));
@@ -87,13 +108,14 @@ export function mountAppLayout(root, host, pathname, slices = []) {
       const panel = layout.querySelector(drawer === 'sidebar' ? '#appSidebar' : '#appToday');
       const focusable = [...panel.querySelectorAll('a,button,input,select,textarea,[tabindex="0"]')].filter(n => !n.disabled && n.getClientRects().length);
       const first = focusable[0], last = focusable.at(-1);
-      if (event.shiftKey && root.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!panel.contains(root.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+      else if (event.shiftKey && root.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && root.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
   });
   phone.addEventListener('change', () => { drawer = null; paint(); });
   paint();
-  root.addEventListener('doctorcre:open-today', () => { if (phone.matches) openDrawer('today'); else { today = true; paint(); } });
+  root.addEventListener('doctorcre:open-today', () => openRegion('today'));
   // Page tab controllers retain selection and lazy reads. Give groups without
   // their own roving focus the same left/right keyboard affordance.
   const tabs = layout.querySelector('#appTabsSlot');
@@ -154,7 +176,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
         status.querySelector('#appSyncTime').dateTime = observed;
       }
       const active = scopedDeals(value, 'team');
-      const needs = scopedDeals(value, 'mine').filter(d => d.attention || d.next_date && toDay(d.next_date) <= localToday());
+      const needs = scopedDeals(value, 'mine').filter(d => d.attention || d.next_date && toDay(d.next_date) <= radarToday());
       render('#appTodayNeeds', needs.slice(0,6).map(d => row(d,d.next_step)).join('') || empty);
       render('#appWorkingList', active.filter(d => d.attention).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       if (!pageOwnsMoves) {
@@ -180,7 +202,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
   layout.addEventListener('click', event => {
     const item = event.target.closest('[data-layout-deal]'); if (!item) return;
     const id = item.dataset.layoutDeal;
-    const existing = [...root.querySelectorAll('.deal-link, .kanban-card')].find(n => n.dataset.id === id || n.dataset.openDeal === id || n.dataset.deal === id);
+    const existing = [...root.querySelectorAll('.deal-link, .kanban-card, button[data-open], button[data-open-deal]')].find(n => n.dataset.id === id || n.dataset.open === id || n.dataset.openDeal === id || n.dataset.deal === id);
     if (existing) { closeDrawer(); existing.click(); }
     else globalThis.location.assign(`/deals?deal=${encodeURIComponent(id)}`);
   });
