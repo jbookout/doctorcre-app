@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/pipeline.css">
   <link rel="stylesheet" href="/css/correspondence.css">
+  <link rel="stylesheet" href="/css/deal-timeline.css">
   <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
@@ -69,6 +70,17 @@
     <div class="panel-section" id="panelContextOpenWrap" hidden>
       <button class="btn" type="button" id="panelContextOpen" aria-haspopup="dialog">Client &amp; vendor context</button>
     </div>
+  </dialog>
+
+  <dialog id="dealDateDialog" class="dialog" aria-labelledby="dealDateTitle">
+    <form id="dealDateForm">
+      <header><h2 id="dealDateTitle">Add date</h2><button type="button" class="btn icon-btn" id="dealDateCancel" aria-label="Cancel date">×</button></header>
+      <div class="dialog-body detail-controls">
+        <label>Date<input type="date" name="date" required></label>
+        <label>Lease clause or contract reference<input type="text" name="evidence" maxlength="500" required></label>
+        <button class="btn btn-primary" type="submit">Save date</button><p id="dealDateStatus" role="status"></p>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="moveDialog" class="dialog" aria-labelledby="moveTitle">

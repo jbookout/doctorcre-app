@@ -236,6 +236,7 @@ test('PR129 #4 parked and normalized Closed records stay out of both attention l
 test('PR129 #7 closing Lead detail after polling resolves the current card by identity',async t=>{
  const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  await card.focus();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();await page.clock.fastForward(31_000);await page.keyboard.press('Escape');
+ await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
  assert.equal(await card.evaluate(n=>n===document.activeElement),true);
 });
 test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
