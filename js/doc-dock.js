@@ -24,6 +24,11 @@ export function mountDocDock(reading) {
   const fab = document.getElementById("docFab");
   const chat = document.getElementById("docChat");
   if (!fab || !chat) return null;
+  if (!chat.querySelector("[data-doc-activity-link]")) {
+    const link = document.createElement("a");
+    link.href = "/doc-activity"; link.textContent = "Doc Activity"; link.dataset.docActivityLink = "";
+    (chat.querySelector(".doc-chat-head") || chat).append(link);
+  }
   const transcript = document.getElementById("docTranscript");
   const form = document.getElementById("docForm");
   const input = document.getElementById("docInput");

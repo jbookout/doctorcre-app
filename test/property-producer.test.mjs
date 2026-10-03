@@ -4,11 +4,12 @@ import { readFile } from "node:fs/promises";
 import { posix } from "node:path";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
+import { handleDoctorcreRequest } from "../src/worker.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const pinnedProducer = "993f6e630aca20175b92a0475b2dda3dd51bdba9";
 
-test("property evidence pins the Progress directory CARR producer", () => {
+test("property evidence pins the merged CARR producer with the inherited Progress directory", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
@@ -99,4 +100,90 @@ test("the app consumes the merged producer's directory and selected-board interf
   assert.equal(view.updated_at, directory[0].updated_at);
   assert.equal(view.stages.flatMap(stage => stage.tasks).length, 2);
   assert.deepEqual(calls[1][1], ["carr-internal", "joe", "carr-v5"]);
+});
+
+// Feature revisions record provenance. The one CARR service binding must serve
+// the entire interface at the advertised runtime revision.
+test("the advertised runtime producer retains Unfinished and the system-filtered Live Library", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify inherited system work",
+}, () => {
+  const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  const registry = committed("mcp-server/src/tools.js");
+  assert.ok(/import.*systemWorkTools.*system-work-census/.test(registry), "pinned producer lacks the inherited system-work module import");
+  assert.ok(/registerTools\(systemWorkTools\(/.test(registry), "pinned producer must register inherited system-work tools");
+  assert.match(committed("mcp-server/src/system-work-census.v5.js"), /["']unfinished-work["']\s*:/);
+
+  assert.match(committed("mcp-server/src/work-inventory-census.v5.js"), /system === true/);
+});
+
+test("the same advertised runtime producer registers Doc activity", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime activity admission",
+}, () => {
+  const registry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
+  assert.ok(/registerTools\(docActivityTools\(/.test(registry),
+    "the advertised runtime producer must register Doc activity alongside inherited system work");
+});
+
+// Evaluate only the pinned producer's route predicate and its declarations.
+// This proves gate admission without loading its database or credential doors.
+test("Doc activity reaches the exact pinned CARR browser route predicate through the app Worker", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify gate admission",
+}, async () => {
+  const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  const source = committed("mcp-server/src/dealroom-web.js");
+  const business = committed("mcp-server/src/workspace-business-read.js");
+  const declaration = (text, name) => {
+    const found = text.match(new RegExp(`^(?:export )?const ${name} = [\\s\\S]*?;\\n`, "m"));
+    assert.ok(found, `producer declaration missing: ${name}`);
+    return found[0].replace(/^export /, "");
+  };
+  const functions = ["cookieValue", "dealroomOrigin", "doctorcreAppOrigin", "dealroomOriginForRequest",
+    "legacyDealroomOrigin", "requestMatchesDealroomOrigin", "isDealroomRequest"].map(name => {
+      const found = source.match(new RegExp(`^(?:export )?function ${name}\\([^]*?^}`, "m"));
+      assert.ok(found, `producer route function missing: ${name}`);
+      return found[0].replace(/^export /, "");
+    });
+  const constants = ["SESSION_COOKIE", "SYSTEM_WORK_PREFIX", "COMMAND_CENTER_API_PREFIX", "DEALROOM_HOST_PATTERN",
+    "APP_DOCUMENT_PATHS", "DEALROOM_EXACT_PATHS", "DEALROOM_PATH_PREFIXES"].map(name => declaration(source, name));
+  const businessConstants = ["CLIENTS_ROUTE", "VENDORS_ROUTE", "BUSINESS_ASSET_PATH"].map(name => declaration(business, name));
+  const module = [...businessConstants, ...constants, ...functions, "export { isDealroomRequest };"].join("\n");
+  const { isDealroomRequest } = await import(`data:text/javascript;base64,${Buffer.from(module).toString("base64")}`);
+  const origin = "https://app.doctorcre.com", env = { DOCTORCRE_APP_HOST: "app.doctorcre.com" };
+  assert.equal(isDealroomRequest(new Request(origin + "/doc-activity"), env), false, "the unmapped route is not admitted");
+  const carr = { fetch: async request => {
+    assert.equal(isDealroomRequest(request, env), true, "the forwarded gate path must be admitted by the pin");
+    return request.headers.has("cookie") ? new Response(null)
+      : new Response(null, { status: 302, headers: { location: origin + "/auth/login?return_to=%2Fcontrol-room" } });
+  } };
+  const assets = { fetch: async request => new Response(new URL(request.url).pathname) };
+  const signedIn = await handleDoctorcreRequest(new Request(origin + "/doc-activity", { headers: { cookie: "synthetic-session" } }), { CARR: carr, ASSETS: assets });
+  assert.equal(await signedIn.text(), "/activity.html");
+  const signedOut = await handleDoctorcreRequest(new Request(origin + "/doc-activity?partner=dell"), { CARR: carr, ASSETS: assets });
+  assert.equal(signedOut.status, 302);
+  assert.equal(new URL(signedOut.headers.get("location")).searchParams.get("return_to"), "/doc-activity?partner=dell");
+});
+
+test("the advertised runtime producer accepts the inherited Live Library system=true query", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify system-filtered inventory",
+}, async () => {
+  const source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:mcp-server/src/dealroom-web.js`], { encoding: "utf8" });
+  const found = source.match(/^async function workInventoryResponse\([^]*?^}/m);
+  assert.ok(found, "producer must expose its inventory response handler");
+  const module = `const workspaceCommandCenterEnabled = () => true;
+    const JSON_HEADERS = { "content-type": "application/json" };
+    const json = (body, status=200) => new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+    ${found[0]}
+    export { workInventoryResponse };`;
+  const { workInventoryResponse } = await import(`data:text/javascript;base64,${Buffer.from(module).toString("base64")}`);
+  let consumed;
+  const response = await workInventoryResponse(new Request("https://app.doctorcre.com/api/v1/work-inventory?system=true&live_library=true"), {}, { actor: { slug: "joe" } }, {
+    workInventoryReader: async (_env, _actor, _correlation, args) => { consumed = args; return { items: [] }; },
+  });
+  assert.equal(response.status, 200, "the pin must admit the query already used by the Live Library");
+  assert.equal(consumed.system, "true");
+  assert.equal(consumed.live_library, "true");
 });

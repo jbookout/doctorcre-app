@@ -382,7 +382,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
   assert.equal(contract.mcp_operations[dispatch - 1], "read-correspondence-thread");
-  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-conversation");
+  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-activity");
   const identity = contract.mcp_operations.indexOf("read-session-identity");
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.

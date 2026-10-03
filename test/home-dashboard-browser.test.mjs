@@ -22,6 +22,7 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
   await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
+  const responses = new Map();
   let boardMalformed = malformedBoard;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
@@ -38,6 +39,8 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
+    'correspondence-readiness': args => client.correspondenceReadiness(args),
+    'today-triage': () => client.todayTriage(),
     'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:[],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
@@ -50,7 +53,8 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
     if (url.origin !== origin) return route.abort();
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params.name);
-      try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
+      if (!handlers[rpc.params.name]) { errors.push(`Unexpected MCP operation: ${rpc.params.name}`); return route.fulfill({ status: 500, json: { error: 'unexpected_operation' } }); }
+      try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(responses.has(rpc.params.name) ? responses.get(rpc.params.name) : await handlers[rpc.params.name](rpc.params.arguments)) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
     if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
@@ -74,8 +78,47 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   });
   await page.goto(`${origin}/?mode=live`);
   await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
-  return { page, errors, calls, releaseInitialFeed, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
+
+test('PR123 finding 8: malformed and mixed live reads settle unavailable and recover', async t => {
+  const state = await open(t); const { page, responses } = state;
+  const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const refresh = async () => {
+    const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
+      && response.request().postDataJSON()?.params?.name === 'lead-board');
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await read; await settled();
+  };
+  await settled();
+  for (const [name, payloads] of [
+    ['deal-room-board', [{}, { deals: [{ name: 'Missing identity' }] }, { deals: [{ id: 'demo-valid', name: 'Demo valid' }, { name: 'Missing identity' }] }]],
+    ['lead-board', [{}, { leads: [{ score: 99, created_at: NOW.toISOString() }] }, { leads: [leadRows[0], null] }]],
+  ]) for (const payload of payloads) await t.test(`${name}: ${JSON.stringify(payload)}`, async () => {
+    if (name === 'lead-board') await page.locator('.home-lead').first().click();
+    responses.set(name, payload);
+    try {
+      await refresh();
+      assert.equal(await page.locator('#homeNotice').isVisible(), true);
+      assert.match(await page.locator('#observedAt').textContent(), /unavailable|partial/i);
+      assert.equal(await page.locator('#dealAttention').getAttribute('aria-busy'), 'false');
+      if (name === 'deal-room-board') {
+        assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: —/);
+        assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
+        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags/);
+        assert.equal(await page.locator('#homeLeads').isVisible(), true);
+      } else {
+        assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: \d/);
+        assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
+      }
+    } finally { responses.delete(name); await refresh(); }
+    assert.equal(await page.locator('#homeNotice').isVisible(), false);
+    assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
+    assert.equal(await page.locator('#homeLeads').isVisible(), true);
+  });
+  assert.deepEqual(state.errors, []);
+});
+
 
 test('PR124 R1 generated Home flag and task links open the requested record through the deployed route', async t => {
   const { page, errors } = await open(t, { origin: 'https://app.doctorcre.com' });

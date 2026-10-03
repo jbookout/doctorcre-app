@@ -41,6 +41,8 @@ for (const path of ["control-room.html", "progress-board.html", "workspace.html"
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
 const routes = await json("contracts/app-routes.v1.json");
+for (const path of new Set(Object.values(routes.routes))) await read(path);
+assert.equal(routes.routes["/doc-activity"], "activity.html");
 assert.equal(routes.routes["/all-work"], "work-inventory.html", "All Work must stay in the route contract");
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
 assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path must stay pinned in the CARR interface");
