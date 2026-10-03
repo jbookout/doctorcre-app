@@ -176,8 +176,8 @@ test('R1 Lead detail clears immediately while resume revalidation is delayed',as
  await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);
  assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.equal(await page.locator('#detailBody').textContent(),'');await requested;release();
 });
-test('R3 Today excludes normalized Closed deals and uses the local calendar day',async t=>{
- const {page,goto,errors}=await open(t,{clock:true,now:'2026-10-02T00:30:00Z'});
+for(const timezoneId of ['America/Chicago','Europe/Paris']) test(`R3 Today excludes normalized Closed deals and uses the Chicago business day in ${timezoneId}`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true,timezoneId,now:'2026-10-02T00:30:00Z'});
  await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board' ? route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'joe',deals:[{id:'closed',name:'Closed Demo',phase:'closed',owner:'joe',attention:true},{id:'tomorrow',name:'Tomorrow Demo',phase:'research',owner:'joe',attention:false,next_date:'2026-10-02'},{id:'due',name:'Due Demo',phase:'research',owner:'joe',next_date:'2026-10-01'}]})}]}}}) : route.fallback());
  await goto('/leads?mode=live');assert.deepEqual(await page.locator('#appTodayNeeds [data-layout-deal]').evaluateAll(ns=>ns.map(n=>n.dataset.layoutDeal)),['due']);
  assert.equal(await page.locator('#appWorkingList [data-layout-deal]').count(),0);assert.deepEqual(errors,[]);
@@ -288,4 +288,86 @@ test('PR129 #2 account transition removes prior receipts before a delayed feed a
 for(const width of [1440,390]) test(`PR129 #3 Leads freshness feedback fits the visible status bar at ${width}`,async t=>{
  const {page,goto}=await open(t,{width});await goto('/leads');
  const item=await page.locator('#boardUpdated').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(item.y>=bar.y && item.y+item.height<=bar.y+bar.height,JSON.stringify({item,bar}));
+});
+
+for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status} during a deal refresh`,async t=>{
+ const {page,goto,writes,errors}=await open(t,{clock:true});let failure=false;
+ await page.route('**/mcp',route=>{
+  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
+  if(failure) return route.fulfill({status,body:'Unavailable'});
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',thread:[],events:[],critical_dates:[]})}]}}});
+ });
+ await goto('/deals?view=board&mode=live');await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.locator('[data-add-date="loi_expiry"]').click();
+ const form=page.locator('#dealDateForm'),save=form.locator('button[type="submit"]');
+ await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic protected clause');
+ failure=true;await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'date-authorization-regression'});});
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('Updates temporarily unavailable'));
+ if(status===503) {
+  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),true);
+  assert.equal(await form.locator('[name="date"]').inputValue(),'2026-12-01');
+  assert.equal(await form.locator('[name="evidence"]').inputValue(),'Synthetic protected clause');assert.equal(await save.isEnabled(),true);
+ } else {
+  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),false,'refused read closes the date editor');
+  assert.equal(await form.locator('[name="date"]').inputValue(),'');assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
+  assert.equal(await save.isDisabled(),true);
+  // A queued submit cannot use the invalidated draft, even with a closed dialog.
+  await form.dispatchEvent('submit');assert.deepEqual(writes,[]);
+ }
+ failure=false;await page.clock.fastForward(16000);await page.locator('#detailPhase').waitFor();
+ if(status!==503) {
+  assert.equal(await save.isDisabled(),true,'recovery requires opening a new editor');
+  await page.locator('[data-add-date="loi_expiry"]').click();assert.equal(await save.isEnabled(),true);
+  assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
+  await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic fresh clause');
+ }
+ const posted=page.waitForRequest(r=>r.url().endsWith('/mcp') && r.postDataJSON().params.name==='add-critical-date');
+ await save.click();const args=(await posted).postDataJSON().params.arguments;
+ assert.equal(args.deal,'d14');assert.equal(args.due_on,'2026-12-01');
+ assert.equal(args.source,status===503?'Synthetic protected clause':'Synthetic fresh clause');
+ await page.waitForFunction(()=>!document.querySelector('#dealDateDialog').open);
+ assert.deepEqual(writes,['add-critical-date']);assert.deepEqual(errors,[]);
+});
+
+for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP ${status} from authorization refusal`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true});let failure=false,failedReads=0;
+ await page.route('**/mcp',route=>{
+  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
+  if(failure) {failedReads++;return route.fulfill({status,body:'Unavailable'});}
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',next_step:'Synthetic recorded next step',thread:[{id:'synthetic-note',kind:'note',text:'Synthetic protected note',actor:'joe',recorded_at:'2026-10-01T12:00:00Z'}],events:[],critical_dates:[]})}]}}});
+ });
+ await goto('/deals?view=board&mode=live');
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.includes('Updates temporarily unavailable'));
+ assert.equal(await page.locator('#detailPhase').count(),1,await page.locator('#panelBody').textContent());
+ const title=await page.locator('#panelTitle').textContent();
+ await page.locator('#detailNextForm textarea').fill('Synthetic unsaved draft');
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>document.querySelector('#contextDrawerBody h3')?.textContent!=='Updating…');
+ failure=true;
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'authorization-regression'});});
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('Updates temporarily unavailable'));
+ assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
+ if(status===503) {
+  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#panelTitle').textContent(),title);
+  assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Synthetic unsaved draft');
+  assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
+  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
+ } else {
+  assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
+  assert.equal(await page.locator('#panelBody .detail-grid').count(),0);
+  assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
+  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  assert.equal(await page.locator('#contextDrawerBody').textContent(),'');
+ }
+ if(status===503) await page.locator('#contextDrawerClose').click();
+ assert.equal(await page.locator('[data-retry-detail]').count(),0);
+ failure=false;await page.clock.fastForward(16000);
+ await page.locator('#detailPhase').waitFor();
+ assert.equal(await page.locator('#panelTitle').textContent(),title);
+ assert.equal(await page.locator('#detailNextForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
+ assert.deepEqual(errors,[]);
 });

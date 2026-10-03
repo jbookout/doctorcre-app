@@ -691,6 +691,7 @@ async function settleConflictChoice(conflictId, result) {
 
 let disposeEvidence = null;
 let dateDraft = null;
+
 let panelReadSequence = 0;
 let contextReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
@@ -702,6 +703,7 @@ function clearDateDraft() {
   dateDraft = null;
   $('dealDateDialog').close();
   $('dealDateForm').reset();
+  $('dealDateForm').querySelector('button[type="submit"]').disabled = true;
   $('dealDateTitle').textContent = 'Add date';
   $('dealDateStatus').textContent = '';
 }
@@ -716,8 +718,8 @@ function refusePanelDetail(error) {
   setContextOpenVisible(false);
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
-  $('panelTitle').textContent = 'Deal';
-  $('panelBody').innerHTML = '<p role="status">Unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
+  $('panelTitle').textContent = 'Unavailable';
+  $('panelBody').innerHTML = '<p role="status">Updates temporarily unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
   return true;
 }
 function syncNextForm(deal = null) {
@@ -879,6 +881,7 @@ async function refreshPanel() {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     if (refusePanelDetail(error)) return;
     setContextOpenVisible(false);
+
     const message = 'Updates temporarily unavailable';
     const status = $('detailReadStatus');
     if (status) status.textContent = message;
