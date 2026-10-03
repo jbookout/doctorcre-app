@@ -63,6 +63,10 @@ if (!entries.some(entry => entry.dataset.legendId === "flag-unrefreshed"))
 for (const entry of entries) {
   entry.scrollIntoView({ block: "nearest" });
   const sample = entry.querySelector(".legend-sample > *").getBoundingClientRect();
+  const column = entry.querySelector(".legend-sample").getBoundingClientRect();
+  const explanation = entry.querySelector("dd").getBoundingClientRect();
+  if (sample.left < column.left - 1 || sample.right > column.right + 1 || sample.right > explanation.left)
+    problems.push(entry.dataset.legendId + ": legend sample spills outside its column");
   const range = document.createRange();
   range.selectNodeContents(entry.querySelector("dd"));
   const textLines = [...range.getClientRects()];

@@ -216,8 +216,9 @@ footer { padding-top: 8px; }
 @keyframes legend-in { from { opacity: 0; transform: translateY(8px); } }
 .legend-body { display: grid; gap: 12px; }
 .legend-group h3 { margin: 0 0 6px; color: var(--muted); font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; }
-.legend-list { margin: 0; display: grid; gap: 6px; }
-.legend-entry { display: grid; grid-template-columns: minmax(44px, max-content) minmax(0, 1fr); gap: 10px; align-items: center; }
+/* One sample column per group, as wide as its widest mark, so a pill never runs under its explanation. */
+.legend-list { margin: 0; display: grid; grid-template-columns: minmax(44px, max-content) minmax(0, 1fr); gap: 6px 10px; }
+.legend-entry { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
 .legend-entry dd { margin: 0; display: grid; font-size: .76rem; min-width: 0; }
 .legend-entry dd span { color: var(--muted); font-size: .7rem; }
 .legend-sample { display: grid; place-items: center; }
