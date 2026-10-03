@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { pbkdf2, webcrypto } from 'node:crypto';
-import { chromium, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
+import { animationsSettled, chromium, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
 import { openDom } from './jsdom-harness.mjs';
 
 const dir = new URL('./', import.meta.url);
@@ -88,4 +88,16 @@ test('JSDOM hashing finishes within settle turns while the threadpool is saturat
   for (let turn = 0; turn < 8 && !digest; turn += 1) await new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual(digest, expected);
   await Promise.all(busy);
+});
+
+test('layout is measured after entrance animations finish', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<style>@keyframes grow{from{height:20px}to{height:44px}}button{height:44px;animation:grow .4s linear}</style><button>Go</button>');
+    const height = () => page.locator('button').evaluate(el => el.getBoundingClientRect().height);
+    assert.ok(await height() < 44, 'mid-animation the target is still undersized');
+    await animationsSettled(page);
+    assert.equal(await height(), 44);
+  } finally { await browser.close(); }
 });

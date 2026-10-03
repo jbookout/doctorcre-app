@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { webcrypto, createHash } from "node:crypto";
 import { openDom } from "./jsdom-harness.mjs";
-import { chromium } from "./browser-harness.mjs";
+import { animationsSettled, chromium } from "./browser-harness.mjs";
 
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
@@ -555,6 +555,7 @@ test("a reloaded accepted Tour requests route endpoints in the composer before o
   assert.match(next.doc.querySelector("#composer-state").textContent, /Draft saved/); next.dom.window.close();
 });
 async function touchLayout(page) {
+  await animationsSettled(page);
   return page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth,
     overflowing: [...document.querySelectorAll("body *")].filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, id: el.id, className: el.getAttribute("class"), right: el.getBoundingClientRect().right })).slice(0, 12),
     rows: [...document.querySelectorAll(".composer-stop")].map(row => ({ width: row.clientWidth, scroll: row.scrollWidth })),

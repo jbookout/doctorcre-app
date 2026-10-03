@@ -74,6 +74,15 @@ export async function settles(check, budgetMs = WAIT_MS) {
   }
 }
 
+// A layout read during an entrance animation sees transformed, fractional
+// boxes (a 44px target measures 43.6px mid-slide). Wait for every finite
+// animation on the page to finish before measuring.
+export async function animationsSettled(page) {
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+    .map(animation => animation.finished.catch(() => {}))));
+}
+
 // A clock that stays at `time` until the test advances it. Installing at
 // `time` and then pausing races the wall clock: any real millisecond between
 // the two calls makes pauseAt(time) a step into the past. Install at the epoch
