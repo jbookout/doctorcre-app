@@ -215,6 +215,45 @@ test('R9 Recent changes transfers phone focus into Today and keeps its keyboard 
  await page.keyboard.press('Escape');assert.equal(await page.locator('#appTodayToggle').evaluate(n=>n===document.activeElement),true);
 });
 
+for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status} during a deal refresh`,async t=>{
+ const {page,goto,writes,errors}=await open(t,{clock:true});let failure=false;
+ await page.route('**/mcp',route=>{
+  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
+  if(failure) return route.fulfill({status,body:'Unavailable'});
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',thread:[],events:[],critical_dates:[]})}]}}});
+ });
+ await goto('/deals?view=board&mode=live');await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.locator('[data-add-date="loi_expiry"]').click();
+ const form=page.locator('#dealDateForm'),save=form.locator('button[type="submit"]');
+ await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic protected clause');
+ failure=true;await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'date-authorization-regression'});});
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('Updates temporarily unavailable'));
+ if(status===503) {
+  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),true);
+  assert.equal(await form.locator('[name="date"]').inputValue(),'2026-12-01');
+  assert.equal(await form.locator('[name="evidence"]').inputValue(),'Synthetic protected clause');assert.equal(await save.isEnabled(),true);
+ } else {
+  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),false,'refused read closes the date editor');
+  assert.equal(await form.locator('[name="date"]').inputValue(),'');assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
+  assert.equal(await save.isDisabled(),true);
+  // A queued submit cannot use the invalidated draft, even with a closed dialog.
+  await form.dispatchEvent('submit');assert.deepEqual(writes,[]);
+ }
+ failure=false;await page.clock.fastForward(16000);await page.locator('#detailPhase').waitFor();
+ if(status!==503) {
+  assert.equal(await save.isDisabled(),true,'recovery requires opening a new editor');
+  await page.locator('[data-add-date="loi_expiry"]').click();assert.equal(await save.isEnabled(),true);
+  assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
+  await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic fresh clause');
+ }
+ const posted=page.waitForRequest(r=>r.url().endsWith('/mcp') && r.postDataJSON().params.name==='add-critical-date');
+ await save.click();const args=(await posted).postDataJSON().params.arguments;
+ assert.equal(args.deal,'d14');assert.equal(args.due_on,'2026-12-01');
+ assert.equal(args.source,status===503?'Synthetic protected clause':'Synthetic fresh clause');
+ await page.waitForFunction(()=>!document.querySelector('#dealDateDialog').open);
+ assert.deepEqual(writes,['add-critical-date']);assert.deepEqual(errors,[]);
+});
+
 for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP ${status} from authorization refusal`,async t=>{
  const {page,goto,errors}=await open(t,{clock:true});let failure=false,failedReads=0;
  await page.route('**/mcp',route=>{
