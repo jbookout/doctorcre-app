@@ -134,5 +134,5 @@ test('Home publishes independent ready data, shares one board, bounds detail con
   const started = Date.now();
   assert.equal((await readHomeDashboard(client, { timeoutMs: 10 })).board, null);
   assert.ok(Date.now() - started < 1000);
-  assert.deepEqual(Object.keys(HIDDEN_HOME_WIDGETS), ['pastClients', 'vendors', 'listings', 'capture']);
+  assert.deepEqual(Object.keys(HIDDEN_HOME_WIDGETS), ['vendors', 'listings', 'capture']);
 });

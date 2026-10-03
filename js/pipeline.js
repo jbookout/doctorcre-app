@@ -688,6 +688,14 @@ async function settleConflictChoice(conflictId, result) {
 
 let disposeEvidence = null;
 let dateDraft = null;
+function closeDateEditor() {
+  dateDraft = null;
+  const form = $('dealDateForm');
+  form.reset();
+  form.querySelector('button[type="submit"]').disabled = true;
+  $('dealDateStatus').textContent = '';
+  $('dealDateDialog').close();
+}
 let panelReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
 // fields follow current reads; edited fields keep their original comparison.
@@ -845,9 +853,18 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
-  } catch {
+  } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     setContextOpenVisible(false);
+    if (error.status === 401 || error.status === 403) {
+      state.panelDetail = null; nextDraft = null;
+      closeDateEditor();
+      disposeEvidence?.(); disposeEvidence = null;
+      $('panelTitle').textContent = 'Unavailable';
+      $('panelBody').replaceChildren();
+      $('contextDrawer')?.close();
+      $('contextDrawerBody')?.replaceChildren();
+    }
     const message = 'Updates temporarily unavailable';
     const status = $('detailReadStatus');
     if (status) status.textContent = message;
@@ -888,6 +905,7 @@ async function openPanel(dealId, trigger) {
 }
 function closePanel() {
   ++panelReadSequence;
+  closeDateEditor();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url);
@@ -1116,8 +1134,8 @@ function wire() {
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
-  $('dealDateCancel').onclick = () => { dateDraft = null; $('dealDateDialog').close(); };
-  $('dealDateDialog').addEventListener('cancel', () => { dateDraft = null; });
+  $('dealDateCancel').onclick = closeDateEditor;
+  $('dealDateDialog').addEventListener('cancel', closeDateEditor);
   $('dealDateForm').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, values = new FormData(form);
@@ -1130,7 +1148,7 @@ function wire() {
     const result = await runFollowUp(`critical-date:${id}:${kind}`,{verb:'add-critical-date',args,summary:'Date added'});
     if (dateDraft === draft && $('dealDateDialog').open) {
       form.querySelector('button[type="submit"]').disabled = false;
-      if (result?.status === 'ok') { dateDraft = null; $('dealDateDialog').close(); }
+      if (result?.status === 'ok') closeDateEditor();
       else $('dealDateStatus').textContent = 'Date not confirmed';
     }
     if (result?.status === 'ok' && state.panelDeal === id) await refreshPanel();
