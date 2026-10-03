@@ -53,6 +53,7 @@ export function mountBoard(deps = {}) {
   // focus, drafts and the dialog's return target survive every poll.
   const cardNodes = new Map();
   const completedCards = new Map();
+  const blockedCards = new Map();
   let questionCards = new Map();
   let viewSignature = "";
   let directorySignature = "";
@@ -459,20 +460,27 @@ export function mountBoard(deps = {}) {
 
   function renderBlocked(view) {
     const list = byId("board-blocked");
+    const focusedId = [...blockedCards].find(([, node]) => node === doc.activeElement)?.[0];
     list.replaceChildren();
     const blocked = view.cards.filter(card => card.blocked);
     byId("blocked-count").textContent = `${blocked.length} BLOCKED`;
-    if (!blocked.length) { list.append(el("p", "empty", "Nothing is blocked.")); return; }
+    if (!blocked.length) list.append(el("p", "empty", "Nothing is blocked."));
     for (const card of blocked) {
-      const item = el("article", "blocked-card", undefined, { "data-card-id": card.id, style: `--stage-accent:${stageColor(card.stage)}` });
+      const retained = blockedCards.get(card.id);
+      const item = retained || el("article", "blocked-card", undefined, { "data-card-id": card.id });
+      item.style.setProperty("--stage-accent", stageColor(card.stage));
       const top = el("div", "blocked-top");
       top.append(el("strong", "card-title", card.title || card.id, { title: card.title || card.id }),
         el("span", "card-pr", prLabel(card)));
-      item.append(top, el("p", "blocked-why", `Why: ${card.blocked.reason}`),
+      item.replaceChildren(top, el("p", "blocked-why", `Why: ${card.blocked.reason}`),
         el("p", "blocked-next", `Next: ${card.blocked.next}`));
-      clickable(item, () => openWork(card.id));
+      if (!retained) clickable(item, () => openWork(card.id));
+      blockedCards.set(card.id, item);
       list.append(item);
     }
+    const ids = new Set(blocked.map(card => card.id));
+    for (const id of blockedCards.keys()) if (!ids.has(id)) blockedCards.delete(id);
+    if (focusedId) (blockedCards.get(focusedId) || byId("blocked-title")).focus();
   }
 
   function renderLedger(view) {
@@ -836,6 +844,7 @@ export function mountBoard(deps = {}) {
     viewSignature = "";
     cardNodes.clear();
     completedCards.clear();
+    blockedCards.clear();
     questionCards = new Map();
     fingerprints.clear();
     formState.clear();

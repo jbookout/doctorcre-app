@@ -276,3 +276,54 @@ for (const width of [390, 1440]) {
     assert.deepEqual(errors, []);
   });
 }
+
+for (const width of [390, 1440]) {
+  for (const change of ['unchanged', 'updated', 'unblocked', 'removed', 'empty']) test(`Blocked work keeps keyboard position during automatic refresh (${width}px, ${change})`, async t => {
+    const blocked = { title: 'Synthetic blocked task', status: 'blocked', stage: 'review',
+      blocked_reason: 'Original reason', next_action: 'Original next action', work_request: 'WR-101' };
+    let tasks = { keep: { ...blocked, title: 'Other blocked task' }, blocked };
+    let version = 1;
+    const { page, errors } = await open(t, { width, path: '/control-room/progress/board/demo-project', control: async (route, rpc) => {
+      if (rpc.name !== 'read-progress-board') return false;
+      const payload = { snapshot: { board_id: 'demo-project', version,
+        updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: 'Demo project', tasks } }, questions: [] };
+      await route.fulfill({ json: { result: { content: [{ text: JSON.stringify(payload) }] } } });
+      return true;
+    } });
+    const card = page.locator('#board-blocked [data-card-id="blocked"]');
+    await card.waitFor();
+    await card.focus();
+    await card.evaluate(node => { window.focusedBlockedCard = node; });
+    if (change === 'updated') tasks = { blocked: { ...blocked, title: 'Updated blocked task', stage: 'ci',
+      blocked_reason: 'Updated reason', next_action: 'Updated next action', work_request: 'WR-102' }, keep: tasks.keep };
+    else if (change === 'unblocked') tasks = { keep: tasks.keep, blocked: { title: blocked.title, status: 'running', stage: 'build', updated_at: new Date().toISOString() } };
+    else if (change === 'removed') tasks = { keep: tasks.keep };
+    else if (change === 'empty') tasks = {};
+    if (change !== 'unchanged') version++;
+    const read = page.waitForResponse(response => response.url().endsWith('/mcp')
+      && response.request().postDataJSON().params.name === 'read-progress-board');
+    await page.clock.runFor(15000);
+    await (await read).finished();
+    await page.waitForLoadState('networkidle');
+    if (change === 'unchanged' || change === 'updated') {
+      assert.equal(await card.evaluate(node => node === document.activeElement), true, 'keep the focused blocked task');
+      assert.equal(await card.evaluate(node => node === window.focusedBlockedCard), true, 'retain the same card by task identity');
+      assert.equal(await page.locator('#blocked-count').textContent(), '2 BLOCKED');
+      if (change === 'updated') {
+        assert.match(await card.textContent(), /Updated blocked task.*Why: Updated reason.*Next: Updated next action/);
+        assert.equal(await card.evaluate(node => node.style.getPropertyValue('--stage-accent')), STAGES.find(stage => stage.id === 'ci').color);
+        assert.equal(await page.locator('#board-blocked .blocked-card').first().getAttribute('data-card-id'), 'blocked');
+      }
+      await page.keyboard.press('Enter');
+      await page.waitForURL(`**/control-room/progress/work?board=demo-project&task=blocked&work_request=${change === 'updated' ? 'WR-102' : 'WR-101'}`);
+    } else {
+      assert.equal(await card.count(), 0);
+      const count = change === 'empty' ? 0 : 1;
+      assert.equal(await page.locator('#board-blocked .blocked-card').count(), count);
+      assert.equal(await page.locator('#blocked-count').textContent(), `${count} BLOCKED`);
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'blocked-title');
+      if (change === 'unblocked') assert.equal(await page.locator('#board-stages [data-card-id="blocked"]').count(), 1);
+    }
+    assert.deepEqual(errors, []);
+  });
+}
