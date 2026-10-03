@@ -9,7 +9,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'UTC', reducedMotion }); page.setDefaultTimeout(6000);
   await page.clock.install({ time: new Date(today + 'T17:00:00Z') });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  const data = invoiceTrackerFixture(today); let failed = false, denied = false, reads = 0, writes = 0;
+  const data = invoiceTrackerFixture(today); let failed = false, denied = false, reads = 0, writes = 0; const attempts = [];
   const routes = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root), 'utf8')).routes;
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -20,7 +20,8 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
       if (req.name === 'read-invoice-tracker') {
         reads++; if (denied) return route.fulfill({ status: 401, body: '' }); if (failed) return route.fulfill({ status: 503, body: '' }); response = data;
       } else if (req.name === 'record-commission-receipt') {
-        writes++;
+        writes++; attempts.push(structuredClone(req.arguments));
+        if (receipt === 'hung') return;
         if (receipt === 'pending') return route.fulfill({ status: 502, body: '' });
         if (receipt === 'conflict') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { isError: true, content: [{ text: JSON.stringify({ error: 'version_conflict' }) }] } }) });
         const row = data.entries.find(row => row.commission_id === req.arguments.commission_id); row.status = 'received'; row.received_on = req.arguments.received_on; row.base_version++;
@@ -35,12 +36,13 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`http://localhost/${home ? '' : 'invoices'}?mode=live${query}`);
-  await page.waitForFunction(home ? () => document.querySelector('#homeInvoices a[data-home-key]') : () => document.querySelectorAll('[data-invoice]').length === 6);
-  return { page, errors, get reads() { return reads; }, get writes() { return writes; }, setFailed(value) { failed = value; }, setDenied(value) { denied = value; }, update(fn) { fn(data); } };
+  await page.waitForFunction(home ? () => document.querySelector('#homeInvoices a[data-home-key]') : () => document.querySelector('[data-invoice]'));
+  return { page, errors, attempts, setReceipt(value) { receipt = value; }, get reads() { return reads; }, get writes() { return writes; }, setFailed(value) { failed = value; }, setDenied(value) { denied = value; }, update(fn) { fn(data); } };
 }
 for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${width}px`, async t => {
   const { page, errors } = await open(t, { width }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(await page.locator('.app-layout-sidebar #invoiceSearch').count(), 1);
+  assert.equal(await page.locator('#invoiceAging strong').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().height<30)),true,'ordinary aging amounts stay on one line');
   await page.locator('[data-invoice]').first().click(); await page.waitForFunction(() => document.querySelector('#invoiceDetail').open);
   const box = await page.locator('#invoiceDetail').boundingBox(); assert.ok(box.width <= width); if (width === 1440) assert.ok(box.width > 850);
   await page.locator('#invoiceOriginal summary').click();
@@ -78,14 +80,14 @@ test('pending receipt confirmations remain attached to each invoice across popup
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(1).click(); await page.locator('#markInvoicePaid').click();
   await page.waitForFunction(() => /confirmation pending/.test(document.querySelector('#invoicePaymentNotice').textContent));
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(0).click();
-  assert.equal(await page.locator('#markInvoicePaid').isDisabled(), true);
+  assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment');
   h.update(data => { data.entries.find(row => row.commission_id === first).gross_amount = '9401'; });
   await page.clock.runFor(31000); await page.waitForFunction(() => /9,401/.test(document.querySelector('#invoiceDetailFacts').textContent));
   assert.equal(h.writes, 2);
   h.update(data => { const row = data.entries.find(row => row.commission_id === first); row.status = 'received'; row.received_on = today; });
   await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
   await page.locator('#closeInvoiceDetail').click(); await page.locator('[data-invoice]').filter({ hasText: 'Demo Bay' }).click();
-  assert.equal(await page.locator('#markInvoicePaid').isDisabled(), true); assert.equal(h.writes, 2);
+  assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment'); assert.equal(h.writes, 2);
 });
 test('deep link, reduced motion and authentication loss keep the screen contract', async t => {
   const h = await open(t, { width: 390, reducedMotion: 'reduce', query: '&invoice=00000000-0000-4000-8000-000000000002' }); await h.page.waitForFunction(() => document.querySelector('#invoiceDetail').open); assert.equal(await h.page.locator('#invoiceDetailTitle').innerText(), 'Demo Oak Purchase');
@@ -98,4 +100,58 @@ for (const width of [1440, 390]) test(`Home invoice attention fits ${width}px`, 
   assert.ok(overflow.scroll<=overflow.width, JSON.stringify(overflow));
   await h.page.screenshot({ path: new URL(`test-artifacts/w15/home-attention-${width}.png`, root).pathname });
   assert.deepEqual(h.errors, []);
+});
+
+test('status controls reconcile unpaid aging before showing Paid or Awaiting invoice',async t=>{
+ const {page}=await open(t);
+ for(const status of ['paid','awaiting']){
+  await page.locator('#invoiceAging [data-age="3"]').click();await page.locator(`[data-status="${status}"]`).click();
+  assert.equal(await page.locator('[data-invoice]').count(),1);assert.equal(await page.locator('#invoiceFiltered').innerText(),'');
+ }
+});
+test('owner scope survives an empty snapshot result',async t=>{
+ const h=await open(t);await h.page.locator('#invoiceOwner').selectOption('dell');
+ h.update(data=>{data.entries=data.entries.filter(row=>row.owner!=='dell');});await h.page.locator('#refreshInvoices').click();
+ await h.page.waitForFunction(()=>document.querySelector('#invoiceRows').textContent.includes('No invoices match'));
+ assert.equal(await h.page.locator('#invoiceOwner').inputValue(),'dell');assert.equal(await h.page.locator('[data-invoice]').count(),0);
+});
+test('unknown aging amounts remain visible without a quantitative fill',async t=>{
+ const h=await open(t);h.update(data=>{data.entries=[{...data.entries[5],invoiced_on:'2026-09-25'}, {...data.entries[1],gross_amount:'0'}];});
+ await h.page.locator('#refreshInvoices').click();await h.page.waitForFunction(()=>document.querySelectorAll('[data-invoice]').length===2);
+ const unknown=h.page.locator('#invoiceAging [data-age="0"]');assert.match(await unknown.innerText(),/—/);assert.match(await unknown.innerText(),/1 amount pending/);
+ assert.equal(await unknown.locator('.age-fill').getAttribute('width'),'0');
+ assert.match(await h.page.locator('#invoiceAging [data-age="1"]').innerText(),/\$0.00/);
+});
+test('payment uncertainty offers explicit immutable replay across close, polling and reload',async t=>{
+ const h=await open(t,{receipt:'pending'}),page=h.page;const key=await page.locator('[data-invoice]').first().getAttribute('data-invoice');
+ await page.locator('[data-invoice]').first().click();await page.locator('#invoicePaidDate').fill('2026-09-30');await page.locator('#markInvoicePaid').click();
+ await page.waitForFunction(()=>document.querySelector('#markInvoicePaid').textContent==='Retry payment');
+ await page.locator('#closeInvoiceDetail').click();await page.locator(`[data-invoice="${key}"]`).click();assert.equal(await page.locator('#invoicePaidDate').inputValue(),'2026-09-30');
+ await page.clock.runFor(93000);assert.equal(h.writes,1);assert.equal(await page.locator('#markInvoicePaid').isEnabled(),true);
+ await page.reload();await page.locator(`[data-invoice="${key}"]`).click();assert.equal(await page.locator('#invoicePaidDate').inputValue(),'2026-09-30');assert.equal(await page.locator('#invoicePaidDate').isDisabled(),true);
+ h.setReceipt('ok');await page.locator('#markInvoicePaid').click();await page.waitForFunction(()=>document.querySelector('#invoicePayment').hidden);
+ assert.equal(h.writes,2);assert.deepEqual(h.attempts[1],h.attempts[0]);assert.deepEqual(h.errors,[]);
+});
+test('hung payment becomes recoverable after the write deadline without an automatic write',async t=>{
+ const h=await open(t,{receipt:'hung'});await h.page.locator('[data-invoice]').first().click();await h.page.locator('#markInvoicePaid').click();
+ await h.page.clock.runFor(11000);await h.page.waitForFunction(()=>document.querySelector('#markInvoicePaid').textContent==='Retry payment');
+ assert.equal(h.writes,1);assert.equal(await h.page.locator('#markInvoicePaid').isEnabled(),true);
+});
+test('phone focus survives automatic invoice removal and filtered-out row repaint',async t=>{
+ const h=await open(t,{width:320}),page=h.page;
+ await page.locator('[data-invoice]').first().click();h.update(data=>{data.entries=data.entries.filter(row=>row.name!=='Demo Cedar Expansion');});
+ await page.clock.runFor(31000);await page.waitForFunction(()=>!document.querySelector('#invoiceDetail').open);
+ assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#refreshInvoices')),true);
+ await page.locator('[data-invoice]').first().focus();await page.evaluate(()=>{const input=document.querySelector('#invoiceSearch');input.value='no match';input.dispatchEvent(new Event('input'));});
+ assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#refreshInvoices')),true);
+});
+test('large and aggregate currency values fit 320px with unavailable web fonts',async t=>{
+ const h=await open(t,{width:320}),page=h.page;
+ for(const amount of ['1000000','10000000','999999999999.99']){
+  h.update(data=>{for(const row of data.entries)if(row.commission_id)row.gross_amount=amount;});await page.locator('#refreshInvoices').click();
+  await page.waitForFunction(value=>document.querySelector('.row-money').textContent.includes(Number(value).toLocaleString('en-US',{maximumFractionDigits:2})),amount);
+  const check=async()=>page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('.invoice-total strong,.invoice-age strong,.row-money,.invoice-detail-facts strong')].filter(node=>node.getClientRects().length&&node.scrollWidth>node.clientWidth+1).map(node=>node.textContent)}));
+  let result=await check();assert.equal(result.scroll<=result.width,true,JSON.stringify(result));assert.deepEqual(result.offenders,[]);
+  await page.locator('[data-invoice]').first().click();result=await check();assert.deepEqual(result.offenders,[]);await page.locator('#closeInvoiceDetail').click();
+ }
 });

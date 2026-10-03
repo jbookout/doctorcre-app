@@ -24,6 +24,7 @@ const UNGATED_PAGES = new Set(["/status"]);
 // the gate about the Control Room page path on their behalf: same session cookie,
 // same refusal or redirect, same 200 for a signed-in partner.
 const GATE_PATHS = new Map([
+  ["/invoices", "/control-room"],
   ["/control-room/progress", "/control-room"], ["/control-room/progress/work", "/control-room"],
   ["/ideas-events", "/control-room"], ["/design-lab", "/control-room"],
   ["/calendar", "/business"], ["/search", "/business"], ["/work-requests", "/system-work.html"],

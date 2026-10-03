@@ -7,6 +7,38 @@ import { createLiveClient } from '../js/live-client.js';
 import { readHomeDashboard } from '../js/home-dashboard-model.js';
 const today='2026-10-02';
 const payload=()=>invoiceTrackerFixture(today);
+test('aging buckets retain unknown amounts separately from confirmed zero',()=>{
+ const data=payload();data.entries=[{...data.entries[0],gross_amount:null},{...data.entries[1],gross_amount:'0'}];
+ const summary=invoiceSummary(projectInvoices(data,{today}));
+ assert.equal(summary.buckets[0].unknown,1);assert.equal(summary.buckets[0].amount,0);
+ assert.equal(summary.buckets[1].unknown,0);assert.equal(summary.buckets[1].amount,0);
+});
+test('fixture binds receipt keys to the immutable request and requires a key',async()=>{
+ const adapter=createInvoiceFixture({today:()=>today}),data=await adapter.getInvoiceTracker();
+ const args={commission_id:data.entries[0].commission_id,base_version:1,received_on:today,idempotency_key:'K'};
+ await assert.rejects(adapter.markInvoicePaid({...args,idempotency_key:undefined}),e=>e.payload.error==='missing_idempotency_key');
+ const receipt=await adapter.markInvoicePaid(args);
+ for(const changed of [{commission_id:data.entries[1].commission_id},{received_on:'2026-10-01'},{base_version:2}])
+  await assert.rejects(adapter.markInvoicePaid({...args,...changed}),e=>e.payload.error==='key_reuse');
+ assert.deepEqual(await adapter.markInvoicePaid({...args}),receipt);
+ assert.equal((await adapter.getInvoiceTracker()).entries[1].status,'invoiced');
+});
+test('invoice dates use the shared calendar rule with strict date-only inputs',async()=>{
+ for(const day of ['0099-01-01','2026-02-30','2026-10-01T00:00:00Z']){
+  const data=payload();data.entries[0].due_on=day;assert.equal(validInvoiceTracker(data),false,day);
+  const adapter=createInvoiceFixture({today:()=>today});
+  await assert.rejects(adapter.markInvoicePaid({commission_id:data.entries[0].commission_id,base_version:1,received_on:day,idempotency_key:day}),e=>e.payload.error==='invalid_received_on',day);
+ }
+});
+test('receipt transport bounds a hung fetch and hung body without replay',async()=>{
+ for(const phase of ['fetch','body']){
+  let writes=0,signal;
+  const client=createLiveClient({writeTimeoutMs:20,fetchImpl:async(_,init)=>{writes++;signal=init.signal;
+   return phase==='fetch'?new Promise(()=>{}):{ok:true,json:()=>new Promise(()=>{})};}});
+  const outcome=await Promise.race([client.markInvoicePaid({commission_id:'demo',base_version:1,received_on:today,idempotency_key:'hung'}).then(()=> 'success',()=> 'bounded'),new Promise(resolve=>setTimeout(()=>resolve('hung'),150))]);
+  assert.equal(outcome,'bounded',phase);assert.equal(writes,1);assert.equal(signal.aborted,true);
+ }
+});
 test('awaiting is a normal closed-deal state; commission amounts remain separate from benefits',()=>{
  const data=payload();data.entries[0].won_value=9999999;
  const rows=projectInvoices(data,{today});const waiting=rows.find(row=>row.status==='awaiting');

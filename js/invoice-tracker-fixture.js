@@ -1,4 +1,4 @@
-import { addDays, localToday } from './calendar-model.js';
+import { addDays, localToday, isCalendarDay } from './calendar-model.js';
 export function invoiceTrackerFixture(today = localToday()) {
   const row=(n,age,amount,status='invoiced',owner='joe')=>({deal_id:`demo-invoice-deal-${n}`,name:`Demo ${['Harbor Renewal','Oak Purchase','Bay Relocation','Cedar Expansion','River Renewal'][n-1]}`,
     owner,phase:'closed',lane:'territory',outcome:'won',closed_on:addDays(today,-age-7),invoiced_on:addDays(today,-age),
@@ -15,16 +15,19 @@ export function createInvoiceFixture({ actor, entries, today = localToday } = {}
   return {
     async getInvoiceTracker(){return structuredClone({...payload,entries:payload.entries.map(row=>({...row,as_of:today()})),observed_at:new Date().toISOString()});},
     async markInvoicePaid(args){
-      if(receipts.has(args.idempotency_key))return structuredClone(receipts.get(args.idempotency_key));
-      const row=payload.entries.find(row=>row.commission_id===args.commission_id);
       const refusal=code=>{throw Object.assign(new Error(code),{payload:{error:code}});};
+      if(!args.idempotency_key)refusal('missing_idempotency_key');
+      const request=JSON.stringify(Object.fromEntries(Object.entries(args).filter(([key])=>key!=='idempotency_key').sort(([a],[b])=>a.localeCompare(b))));
+      const prior=receipts.get(args.idempotency_key);
+      if(prior){if(prior.request!==request)refusal('key_reuse');return structuredClone(prior.result);}
+      const row=payload.entries.find(row=>row.commission_id===args.commission_id);
       if(!row)refusal('invoice_not_found');
       if(row.base_version!==args.base_version)refusal('version_conflict');
       if(row.status!=='invoiced')refusal('invoice_not_unpaid');
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(args.received_on || '') || !Number.isFinite(Date.parse(args.received_on)) || new Date(args.received_on+'T00:00:00Z').toISOString().slice(0,10)!==args.received_on)refusal('invalid_received_on');
+      if(!isCalendarDay(args.received_on))refusal('invalid_received_on');
       if(args.received_on<row.commission_invoiced_on || args.received_on>today())refusal('payment_date_out_of_range');
       row.status='received';row.received_on=args.received_on;row.base_version++;
-      const result={ok:true,id:row.commission_id,base_version:row.base_version,received_on:row.received_on};receipts.set(args.idempotency_key,result);return structuredClone(result);
+      const result={ok:true,id:row.commission_id,base_version:row.base_version,received_on:row.received_on};receipts.set(args.idempotency_key,{request,result});return structuredClone(result);
     },
   };
 }

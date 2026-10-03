@@ -1,9 +1,7 @@
-import { localToday } from './calendar-model.js';
+import { localToday, isCalendarDay as date } from './calendar-model.js';
 const DAY = 86_400_000;
 export const AGES = ['0–30 days', '31–60 days', '61–90 days', '91+ days'];
 export const invoiceHref = key => `/invoices?invoice=${encodeURIComponent(key)}`;
-const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && Number.isFinite(Date.parse(value)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 const nullableDate = value => value === null || date(value);
 export function validInvoiceTracker(payload) {
   const ids = new Set();
@@ -44,8 +42,11 @@ export function invoiceSummary(rows) {
   return { unpaid: unpaid.length, owed: unpaid.reduce((sum,row)=>sum+(row.amount ?? 0),0),
     unknown: unpaid.filter(row=>row.amount===null).length, awaiting: rows.filter(row=>row.status==='awaiting').length,
     paid: rows.filter(row=>row.status==='paid').length,
-    buckets: AGES.map((label,index)=>({label, index, count:unpaid.filter(row=>row.bucket===index).length,
-      amount:unpaid.filter(row=>row.bucket===index).reduce((sum,row)=>sum+(row.amount ?? 0),0)})) };
+    buckets: AGES.map((label,index)=>{
+      const entries=unpaid.filter(row=>row.bucket===index);
+      return {label, index, count:entries.length, unknown:entries.filter(row=>row.amount===null).length,
+        amount:entries.reduce((sum,row)=>sum+(row.amount ?? 0),0)};
+    }) };
 }
 export const invoiceMoney = value => value === null ? '—' : new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(value);
 export const invoiceDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
