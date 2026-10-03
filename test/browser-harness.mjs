@@ -75,11 +75,11 @@ export async function settles(check, budgetMs = WAIT_MS) {
 }
 
 // A layout read during an entrance animation sees transformed, fractional
-// boxes (a 44px target measures 43.6px mid-slide). Wait for every finite
-// animation on the page to finish before measuring.
+// boxes (a 44px target measures 43.6px mid-slide). Wait for every running,
+// finite animation to finish before measuring; paused and endless ones stay.
 export async function animationsSettled(page) {
   await page.evaluate(() => Promise.all(document.getAnimations()
-    .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+    .filter(animation => animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime))
     .map(animation => animation.finished.catch(() => {}))));
 }
 
