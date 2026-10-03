@@ -241,7 +241,7 @@ test("review 4: Reload serializes edits and writes until its captured read settl
   store.fetch = fetch; dom.window.close();
 });
 test("review 5: Tour navigation locks the outgoing composer against intervening edits", async t => {
-  const store = domain(), { dom, doc } = await open({ fetch: (...args) => store.fetch(...args) });
+  const store = domain(), { dom, doc } = await open(t, { fetch: (...args) => store.fetch(...args) });
   await create(doc); await addCart(doc); await saveAndAccept(doc); await create(doc);
   const tours = [...store.tours.values()]; doc.querySelector(".tour-button").click(); await settle();
   const release = deferDetail(store); doc.querySelectorAll(".tour-button")[1].click(); await settle();
@@ -253,7 +253,7 @@ test("review 5: Tour navigation locks the outgoing composer against intervening 
 });
 for (const kind of ["create", "composer"]) test(`review 2: ${kind} intent cannot retry under a changed authenticated session`, async t => {
   const store = domain(); let changed = false;
-  const { dom, doc } = await open({ fetch: async (...args) => {
+  const { dom, doc } = await open(t, { fetch: async (...args) => {
     const result = await store.fetch(...args);
     if (!changed) return result;
     return { ...result, json: async () => ({ ...await result.json(), csrf_token: "second-session" }) };
@@ -283,7 +283,7 @@ test("review 3: a failed boot library cannot expose writes that replace a retain
   const store = domain(), first = await open(t, store); await create(first.doc); await addCart(first.doc);
   store.fail("/api/tours/route-stop", "lost"); first.doc.querySelector("#save-composer").click(); await settle();
   const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
-  const next = await open({ fetch: (path, options) => path === "/api/tours/library" ? response({}) : store.fetch(path, options) }, { "doctorcre-tour-pending-v1": retained });
+  const next = await open(t, { fetch: (path, options) => path === "/api/tours/library" ? response({}) : store.fetch(path, options) }, { "doctorcre-tour-pending-v1": retained });
   assert.equal(next.doc.querySelector("#create-tour").disabled, true);
   await create(next.doc);
   assert.equal(store.tours.size, 1);
@@ -307,7 +307,7 @@ test("review 6: Reload after a refused transition preserves and resumes partial 
 });
 for (const artifact of ["library", "truncated detail", "wrong Tour", "partial route"]) test(`review 7: ${artifact} is a failed reconciliation artifact`, async t => {
   const store = domain(); let malformed = false;
-  const { dom, doc } = await open({ fetch: async (path, options) => {
+  const { dom, doc } = await open(t, { fetch: async (path, options) => {
     if (malformed && (artifact === "library" ? path === "/api/tours/library" : path.startsWith("/api/tours/detail"))) {
       if (artifact === "truncated detail") return { ok: true, status: 200, json: async t => { throw new SyntaxError("truncated"); } };
       if (artifact === "library") return response({});
@@ -326,7 +326,7 @@ for (const artifact of ["library", "truncated detail", "wrong Tour", "partial ro
   assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), retained); dom.window.close();
 });
 test("review 7: projected display fields may differ from raw route history", async t => {
-  const store = domain(), { dom, doc } = await open({ fetch: async (path, options) => {
+  const store = domain(), { dom, doc } = await open(t, { fetch: async (path, options) => {
     const result = await store.fetch(path, options);
     if (!path.startsWith("/api/tours/detail")) return result;
     const data = (await result.json()).data;
@@ -352,7 +352,7 @@ for (const inactive of ["held", "excluded"]) test(`review 8: an initial ${inacti
 });
 for (const lost of ["acceptance", "readback"]) test(`review 9: ${lost} confirms the accepted target after a newer draft opens`, async t => {
   const store = domain(); let advance = false;
-  const { dom, doc } = await open({ fetch: async (path, options) => {
+  const { dom, doc } = await open(t, { fetch: async (path, options) => {
     if (advance && path.startsWith("/api/tours/detail")) {
       advance = false; const tour = [...store.tours.values()][0];
       tour.routes.unshift({ id: uuid(), route_version: 2, accepted: false, stops: [] });
@@ -397,7 +397,7 @@ test("review 10: endpoint review survives reload of an unresolved version save",
 for (const hung of ["creation", "stop", "reconciliation"]) test(`review 11: a non-settling ${hung} request times out without resending`, async t => {
   const store = domain(); let hang = false, hungCalls = 0;
   const pathToHang = hung === "creation" ? "/api/tours/create" : hung === "stop" ? "/api/tours/route-stop" : "/api/tours/detail";
-  const { dom, doc } = await open({ fetch: async (path, options) => {
+  const { dom, doc } = await open(t, { fetch: async (path, options) => {
     if (hang && path.startsWith(pathToHang)) { hungCalls++; return new Promise(() => {}); }
     return store.fetch(path, options);
   } });
