@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { JSDOM } from "jsdom";
 
 import {
   NO_PORTFOLIO_REASON, STAGES, STALE_REASON, availableActions, deliveryStages, dispositionArgs,
@@ -198,7 +199,7 @@ test("verb arguments are built from the fresh card and refuse a missing part in 
   assert.equal(validWorkRequestCard({ ok: true, human_ref: "WR-1", state: "captured", version: 0 }), false);
 });
 
-test("a refused write keeps the draft, a re-read moves the base, and the replay is confirmed", async () => {
+test("a refused write moves the base on re-read and the replay is confirmed", async () => {
   const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
   let state = createCommandState();
   const operationKey = operationKeys.decline("WR-000904");
@@ -214,8 +215,6 @@ test("a refused write keeps the draft, a re-read moves the base, and the replay 
   assert.equal(stale.status, "conflict");
   assert.equal(stale.reason, "version_conflict");
   assert.match(refusalMessage("version_conflict", { ref: "WR-000904" }), /changed elsewhere/);
-  // The draft is still the caller's; nothing in the kernel consumed or changed it.
-  assert.equal(draft, "captured twice by the intake");
 
   // Re-read, then decide from what the record holds now.
   const fresh = await fixture.workRequestCard({ work_request: "WR-000904" });
@@ -237,6 +236,104 @@ test("a refused write keeps the draft, a re-read moves the base, and the replay 
 
   // And a declined record offers no second withdrawal.
   assert.deepEqual(availableActions(after).filter((action) => action.available), []);
+});
+
+test("a refused disposition preserves the typed dialog draft through re-read", async (t) => {
+  const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
+  const dom = new JSDOM(await readFile(`${ROOT}/work-inventory.html`, "utf8"), {
+    url: "https://app.doctorcre.com/all-work",
+  });
+  const { window } = dom;
+  const document = window.document;
+  // jsdom has no native modal implementation; only supply that browser API.
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  const calls = [];
+  let serverVersion = 1;
+  const fetch = async (path, options = {}) => {
+    if (path.startsWith("/api/v1/work-inventory")) {
+      const kinds = ["work_request", "portfolio_node", "loop", "work_shape", "slice_plan", "governance_item"];
+      return Response.json({
+        viewer: "joe", tenant: "carr-internal", kinds, statuses: null, limit: 100, next_cursor: null,
+        items: [{ kind: "work_request", id: "WR-000904", version: "1", title: "Demo captured request",
+          status: "captured", source_ref: "ops.work_request", updated_at: "2026-09-01T00:00:00Z",
+          related: [], unlinked: true, open: null }],
+        coverage: kinds.map((kind) => ({ kind, source_ref: kind, state: "complete",
+          count_returned: kind === "work_request" ? 1 : 0, count_total: kind === "work_request" ? 1 : 0,
+          reason: null, excluded_other_tenant: 0, page_capped: false })),
+        census_complete: true,
+        source: { source: "work_inventory_census", source_ref: "synthetic-census",
+          observed_at: "2026-09-01T00:00:00Z", valid_until: "2026-09-01T00:01:00Z",
+          freshness: "fresh", correlation_id: "draft-retention", safe_explanation: "Synthetic census." },
+      });
+    }
+    assert.equal(path, "/mcp");
+    const rpc = JSON.parse(options.body);
+    const { name, arguments: args } = rpc.params;
+    calls.push({ name, args });
+    let payload;
+    let isError = false;
+    if (name === "work-request-card") payload = { ...await fixture.workRequestCard(args), version: serverVersion };
+    else if (name === "notification-feed") payload = await fixture.notificationFeed(args);
+    else if (name === "decline-work-request") {
+      // The synthetic server models a competing edit after the fresh read.
+      // The separate fixture test owns the version guard and replay contract.
+      serverVersion += 1;
+      payload = { error: "version_conflict", human_ref: args.human_ref,
+        resolution: "re-read the Work Request card" };
+      isError = true;
+    } else assert.fail(`Unexpected MCP operation: ${name}`);
+    return Response.json({ jsonrpc: "2.0", id: rpc.id,
+      result: { isError, content: [{ type: "text", text: JSON.stringify(payload) }] } });
+  };
+  const globals = { window, document, location: window.location, localStorage: window.localStorage,
+    navigator: window.navigator, HTMLElement: window.HTMLElement, fetch };
+  const prior = new Map(Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  t.after(() => {
+    window.close();
+    for (const [key, descriptor] of prior) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const until = async (condition, message) => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (condition()) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.fail(message);
+  };
+  // Import the untouched application entry and its real dependencies.
+  await import("../js/work-inventory.js");
+  await until(() => document.querySelector('[data-open-card="WR-000904"]'), "census must render the record");
+  document.querySelector('[data-open-card="WR-000904"]').click();
+  await until(() => document.querySelector('[data-action="decline"]'), "card must offer decline");
+  document.querySelector('[data-action="decline"]').click();
+  const dialog = document.querySelector("#dispositionDialog");
+  const input = document.querySelector("#dispositionReason");
+  const draft = "Captured twice. Keep my explanation & punctuation.";
+  input.value = draft;
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.equal(dialog.open, true);
+  assert.equal(input.value, draft);
+  document.querySelector("#dispositionForm").requestSubmit();
+  const refusal = document.querySelector("#dispositionRefusal");
+  await until(() => !refusal.hidden, "a version refusal must be visible");
+  assert.match(refusal.textContent, /Changed elsewhere/);
+  assert.equal(dialog.open, true, "refusal keeps the dialog open");
+  assert.equal(input.value, draft, "refusal must preserve the typed dialog draft");
+  const writes = calls.filter((call) => call.name === "decline-work-request");
+  assert.equal(writes.length, 1, "refusal must not retry the write");
+  assert.equal(writes[0].args.exit_reason, draft);
+  assert.equal(writes[0].args.base_version, 1);
+  document.querySelector("#dispositionReread").click();
+  await until(() => /now reads captured at version 2/.test(refusal.textContent), "re-read must show the competing version");
+  assert.equal(input.value, draft, "re-read must preserve the typed dialog draft");
+  assert.equal(dialog.open, true);
+  assert.equal(calls.filter((call) => call.name === "decline-work-request").length, 1);
 });
 
 test("the fixture carries the three delivery examples plus a stale plan, and refuses a miss", async () => {
@@ -276,8 +373,8 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // NO new page and NO new route: this slice lives on the surface that already
   // reads the census, at the route the census already owns.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.18.0", "the Control Room route moved this additive contract on");
-  assert.equal(carr.version, "1.39.0", "the current interface retains the delivery evidence verbs");
+  assert.equal(routes.version, "1.20.0", "the Control Room route moved this additive contract on");
+  assert.equal(carr.version, "1.42.0", "the current interface retains the delivery evidence verbs");
   for (const verb of ["engineering-passport", "read-portfolio", "work-request-card", "decline-work-request", "supersede-work-request", "set-work-shape-disposition"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }

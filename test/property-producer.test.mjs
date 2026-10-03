@@ -7,9 +7,9 @@ import { execFileSync } from "node:child_process";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "f3f57f42a881c103bf3eca14bd69b23bec2b41a1";
+const pinnedProducer = "993f6e630aca20175b92a0475b2dda3dd51bdba9";
 
-test("property evidence pins the W10 CARR producer with the inherited Progress directory", () => {
+test("property evidence pins the merged CARR producer with the inherited Progress directory", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
@@ -102,18 +102,20 @@ test("the app consumes the merged producer's directory and selected-board interf
   assert.deepEqual(calls[1][1], ["carr-internal", "joe", "carr-v5"]);
 });
 
-test("the exact producer retains Unfinished and the system-filtered Live Library alongside Doc activity", {
+test("the distinct feature producers retain Unfinished, the system-filtered Live Library and Doc activity", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify inherited system work",
 }, () => {
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+    "show", `${contract.system_work_inventory.producer.source_commit}:${path}`], { encoding: "utf8" });
   const registry = committed("mcp-server/src/tools.js");
   assert.ok(/import.*systemWorkTools.*system-work-census/.test(registry), "pinned producer lacks the inherited system-work module import");
   assert.ok(/registerTools\(systemWorkTools\(/.test(registry), "pinned producer must register inherited system-work tools");
   assert.match(committed("mcp-server/src/system-work-census.v5.js"), /["']unfinished-work["']\s*:/);
 
   assert.match(committed("mcp-server/src/work-inventory-census.v5.js"), /system === true/);
-  assert.match(registry, /registerTools\(docActivityTools\(/);
+  const activityRegistry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.mcp_read_contracts.doc_activity.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
+  assert.match(activityRegistry, /registerTools\(docActivityTools\(/);
 });
 
 // Evaluate only the pinned producer's route predicate and its declarations.
@@ -122,7 +124,7 @@ test("Doc activity reaches the exact pinned CARR browser route predicate through
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify gate admission",
 }, async () => {
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+    "show", `${contract.mcp_read_contracts.doc_activity.producer.source_commit}:${path}`], { encoding: "utf8" });
   const source = committed("mcp-server/src/dealroom-web.js");
   const business = committed("mcp-server/src/workspace-business-read.js");
   const declaration = (text, name) => {
@@ -160,7 +162,7 @@ test("the exact producer accepts the inherited Live Library system=true query", 
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify system-filtered inventory",
 }, async () => {
   const source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.producer.source_commit}:mcp-server/src/dealroom-web.js`], { encoding: "utf8" });
+    "show", `${contract.system_work_inventory.producer.source_commit}:mcp-server/src/dealroom-web.js`], { encoding: "utf8" });
   const found = source.match(/^async function workInventoryResponse\([^]*?^}/m);
   assert.ok(found, "producer must expose its inventory response handler");
   const module = `const workspaceCommandCenterEnabled = () => true;

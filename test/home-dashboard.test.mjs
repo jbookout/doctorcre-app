@@ -99,6 +99,30 @@ test('Home accepts verified empty feeds without treating them as malformed', asy
   assert.equal(dealSnapshot(result.board).active, 0);
   assert.deepEqual(topNewLeads(result.leads), []);
 });
+
+test('PR124 R2 malformed Home boards never publish a successful read or authoritative counts', async () => {
+  const client = await fixtureClient();
+  const valid = await client.getBoard();
+  let detailReads = 0;
+  client.getDeal = async () => { detailReads++; return { critical_dates: [], next_actions: [] }; };
+  for (const invalid of [null, {}, { deals: {} }, { deals: [null] }, { deals: [[]] },
+    { deals: [{ name: 'Demo missing ID' }] }, { deals: [{ id: '' }] }, { deals: [{ id: '  ' }] },
+    { ...valid, deals: [...valid.deals, { name: 'Demo missing ID' }] }]) {
+    client.getBoard = async () => invalid;
+    const published = [];
+    const result = await readHomeDashboard(client, { onUpdate: result => published.push(result.reads.board.state) });
+    assert.equal(result.reads.board.state, 'error', JSON.stringify(invalid));
+    assert.equal(result.board, null);
+    assert.equal(dealSnapshot(invalid), null);
+    assert.equal(agendaSnapshot(invalid, new Map()), null);
+    assert.ok(!published.includes('read'));
+  }
+  assert.equal(detailReads, 0, 'malformed identities cannot start detail reads');
+  client.getBoard = async () => ({ ...valid, deals: [] });
+  const empty = await readHomeDashboard(client);
+  assert.equal(empty.reads.board.state, 'read');
+  assert.equal(dealSnapshot(empty.board).active, 0, 'validated empty boards retain zero counts');
+});
 test('malformed board identity is unavailable, never a verified empty workload', async t => {
   const fixture = await fixtureClient();
   for (const deals of [[{}], [{ id: '' }], [{ id: '  ' }], [null], [board.deals[0], {}]]) {

@@ -375,7 +375,7 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads", () => {
-  assert.equal(contract.version, "1.39.0", "the checkpoint read and lead calls advance the interface");
+  assert.equal(contract.version, "1.42.0", "the checkpoint read and lead calls advance the interface");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -388,14 +388,15 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   // this verb. The neighbour moved; the sorted invariant above did not.
   assert.equal(contract.mcp_operations[identity - 1], "read-room-queue");
   assert.equal(contract.mcp_operations[identity + 1], "read-tour-selection-cart");
-  assert.equal(contract.mcp_operations[identity + 2], "record-dispatch-link");
+  assert.equal(contract.mcp_operations[identity + 2], "record-commission-receipt");
+  assert.equal(contract.mcp_operations[identity + 3], "record-dispatch-link");
   // No route moves: /control-room was admitted at 04139737 and this is a tab.
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "f3f57f42a881c103bf3eca14bd69b23bec2b41a1",
+  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");

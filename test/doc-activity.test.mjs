@@ -71,3 +71,16 @@ test('malformed or partial feed rows are unavailable rather than verified empty;
   assert.deepEqual(activityRows({...answer,entries:[]}),[]);
   for(const undo of [{...row.undo,verb:'future-verb'},{...row.undo,event_id:'other'}])assert.equal(undoArgs({...row,undo},'key'),null);
 });
+
+test('Doc activity registers its route, gate and deployed files alongside every main slice', async () => {
+  const { prepareSlices } = await import('../scripts/slices.mjs');
+  const { fileURLToPath } = await import('node:url');
+  const { slices, contract } = await prepareSlices(fileURLToPath(new URL('../', import.meta.url)));
+  assert.equal(contract.routes['/doc-activity'], 'activity.html');
+  assert.equal(contract.gatePaths['/doc-activity'], '/control-room');
+  const activity = slices.find(slice => slice.id === 'doc-activity');
+  for (const path of ['activity.html', 'css/doc-activity.css', 'js/doc-activity.js', 'js/doc-activity-model.js', 'js/doc-activity-fixture.js', 'test/doc-activity.test.mjs', 'test/doc-activity-browser.test.mjs']) {
+    assert.ok(activity?.files.includes(path), `Doc activity must own ${path}`);
+  }
+  for (const route of ['/deals', '/leads', '/relationships', '/invoices', '/control-room/progress']) assert.ok(contract.routes[route], `main route survives: ${route}`);
+});

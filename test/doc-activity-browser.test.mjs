@@ -36,6 +36,10 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
         if(refusal)return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{text:JSON.stringify({error:'newer_change_exists'})}]}})});
         result=await fixture.undo(params.arguments);
         if(fail){fail=false;return route.fulfill({status:504,body:''});}
+      }else if(params.name==='deal-room-board'){
+        result={actor:'joe',deals:[]};
+      }else if(params.name==='today-triage'){
+        result={items:[]};
       }else { errors.push(`Unexpected MCP operation: ${params.name}`); return route.fulfill({status:500,body:''}); }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(result)}]}})});
     }

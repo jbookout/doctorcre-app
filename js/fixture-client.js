@@ -1,3 +1,5 @@
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
+import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
@@ -271,11 +273,20 @@ export async function createFixtureClient(opts = {}) {
       // The partner's own words, carried on the event and nowhere else: they
       // describe the change, not the deal, so the deal row never learns them.
       change_reason: partial.change_reason ?? null,
+      automatic: partial.automatic ?? false,
+      evidence_date: partial.evidence_date ?? null,
       human_quote: partial.human_quote ?? null,
     };
     events.push(e);
     if (e.field) lastFieldEvent.set(`${e.subject_id}|${e.field}`, e.id);
     return e;
+  }
+
+  function phaseChangeFor(id) {
+    const e = [...events].reverse().find(e => e.subject_id === id && e.field === 'phase');
+    return e ? { event_id:e.id, prior_phase:e.old_value, phase:e.new_value,
+      automatic:e.automatic === true && e.verb !== 'revert-deal-field', reason:e.change_reason,
+      evidence_date:e.evidence_date, recorded_at:e.recorded_at } : null;
   }
 
   /**
@@ -1308,7 +1319,10 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
   const client = {
+    ...invoices,
+    async getRelationshipNetwork() { return relationshipNetworkFixture(); },
     mode: /** @type {const} */ ('fixture'),
     selfActor,
 
@@ -1320,7 +1334,7 @@ export async function createFixtureClient(opts = {}) {
         // field_base, the same shape the live read returns: the latest committed
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
-        deals: [...deals.values()].map((d) => ({ ...d, field_base: fieldBaseFor(d.id) })),
+        deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
@@ -1343,19 +1357,19 @@ export async function createFixtureClient(opts = {}) {
       const critical_dates = [];
       if (deal.next_date) {
         critical_dates.push({
-          label: deal.id === 'd14' ? 'Lease commencement' : 'Next date',
+          label: 'Next date',
           date: deal.next_date,
         });
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
-      return { deal, thread, critical_dates, history: hist,
+      return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
         next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [] };
+        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {

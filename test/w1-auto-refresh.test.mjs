@@ -70,9 +70,16 @@ for(const method of ['readDocConversation','listDocConversations','listDocSugges
  await rejected;
 });
 test('every data surface mounts background refresh or the existing board coordinator', async () => {
-  for (const name of ['workspace-command-center','workspace-business','leads-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','business-workspace','charts','search','status']) {
+  for (const name of ['workspace-command-center','workspace-business','leads-workspace-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','business-workspace','charts','search','status']) {
     assert.match(await readFile(new URL(`../js/${name}.js`, import.meta.url), 'utf8'), /mountAutoRefresh\(/, name);
   }
   assert.match(await readFile(new URL('../tours/app.js', import.meta.url), 'utf8'), /mountAutoRefresh\(/);
   assert.match(await readFile(new URL('../js/app.js', import.meta.url), 'utf8'), /refreshBoard/);
+});
+
+test('R1 resume invalidation fires before a coalesced in-flight read and never for polling',async()=>{
+ const c=clock();let release,invalidated=0;
+ const handle=mountAutoRefresh({...c,onResume:()=>{invalidated++;},refresh:()=>new Promise(resolve=>{release=resolve;})});
+ handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
+ release();await settle();handle.dispose();
 });

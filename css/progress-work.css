@@ -29,6 +29,9 @@ body.room-body.progress-work-body { display:block; height:auto; padding:80px 0 1
 .work-detail-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr)); gap:12px; }
 .work-detail-fields dt { color:#a6b7d1; font-size:12px; }
 .work-detail-fields dd { margin:4px 0 12px; }
+.work-stage-history { margin:0; padding:0; list-style:none; display:grid; gap:6px; }
+.work-stage-history li { padding-left:10px; border-left:3px solid #34445b; overflow-wrap:anywhere; }
+.work-stage-history time { color:#a6b7d1; font-size:12px; }
 .work-flow { width:100%; height:auto; max-height:200px; }
 .work-flow line { stroke:#f08a2d; stroke-width:2; stroke-dasharray:4 8; }
 .work-flow[data-pulse=healthy] line { animation:work-flow 3.5s linear infinite; }

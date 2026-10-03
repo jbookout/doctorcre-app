@@ -1,3 +1,6 @@
+import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
+import { introductionSuggestions } from './relationship-network-model.js';
+import { mountRelationshipDialog } from './relationship-dialog.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
@@ -14,6 +17,7 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
+  const relationshipDialog = $('homeIntroductions') ? mountRelationshipDialog({document}) : null;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
@@ -35,6 +39,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('dealCounts').innerHTML = `Active Deals: ${count(summary?.active ?? null)} <span>Deals in Market: ${count(summary?.inMarket ?? null)}</span> <span>National Account Deals: ${count(summary?.national ?? null)}</span>`;
     paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No deal flags</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
+    if ($('homeInvoices')) {
+      const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
+      const overdue = invoices?.filter(row => row.overdue) || [];
+      const invoiceUnavailable = snapshot?.reads?.invoices?.state === 'error';
+      widget('homeInvoices', overdue.length ? `<header class="home-panel-head"><h2>Invoice attention · ${overdue.length}</h2><a class="home-outline" href="/invoices">Invoices ↗</a></header><div class="home-flags">${overdue.map(row => `<a class="home-flag" data-home-key="invoice:${E(row.key)}" href="${E(invoiceHref(row.key))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(row.name)}</strong><span>${E(invoiceMoney(row.amount))} · overdue since ${E(invoiceDate(row.due_on))}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('')}</div>` : invoiceUnavailable && !signedOut ? '<header class="home-panel-head"><h2>Invoice attention</h2></header><p class="home-empty">Invoices unavailable</p>' : null);
+    }
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
@@ -45,6 +55,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const leads = signedOut ? [] : topNewLeads(snapshot?.leads, { scope, actor: snapshot?.board?.actor, now: now() });
     leadEntries = new Map(leads.map(lead => [lead.id, lead]));
     widget('homeLeads', leads.length ? `<header class="home-panel-head"><h2>New leads</h2><span class="home-period">7 days</span></header><svg class="home-lead-scores" viewBox="0 0 600 42" role="img" aria-label="Relative scores of the top new leads">${leads.map((lead, i) => `<rect class="score-track" x="${i * 200}" y="10" width="186" height="12" rx="6"/><rect x="${i * 200}" y="10" width="${Math.max(0, lead.score) / Math.max(1, ...leads.map(row => row.score)) * 186}" height="12" rx="6"/>`).join('')}</svg><div class="home-lead-list">${leads.map((lead, i) => `<button type="button" data-lead="${E(lead.id)}" data-home-key="lead:${E(lead.id)}" class="home-lead"><span class="home-lead-rank">${i + 1}</span><div><strong>${E(lead.name)}</strong><span>${E([lead.specialty, lead.city].filter(Boolean).join(' · '))}</span></div><span class="home-score"><b>${E(lead.score)}</b><small>Score</small></span></button>`).join('')}</div>` : null);
+    if ($('homeIntroductions')) {
+      const suggestions = signedOut ? [] : introductionSuggestions(snapshot?.relationships, {scope,actor:snapshot?.board?.actor,now:now()});
+      widget('homeIntroductions', suggestions.length ? `<header class="home-panel-head"><h2>Suggested introductions</h2><a class="home-icon-link" href="/relationships" aria-label="Open relationships">↗</a></header><div class="relationship-intro-list">${suggestions.map(s=>`<button type="button" class="relationship-card" data-intro-node="${E(s.to)}" data-home-key="intro:${E(s.id)}"><span class="intro-route">${E(s.fromNode.name)} → ${E(s.toNode.name)}</span><strong>${E(s.reason)}</strong></button>`).join('')}</div>` : null);
+      if (signedOut || snapshot?.reads?.relationships?.state === 'error') relationshipDialog.clear();
+      else if(snapshot?.relationships) relationshipDialog.update(snapshot.relationships);
+    }
     $('observedAt').textContent = signedOut ? 'Sign in' : unavailable ? (updatedAt ? `Partial · ${updatedLabel(updatedAt)}` : 'Unavailable') : updatedLabel(updatedAt);
     if (signedOut || snapshot?.reads?.leads?.state === 'error') $('homeDetail').close();
     if (selectedLead && snapshot?.leads) {
@@ -58,7 +74,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     let latest = null;
     const project = result => {
       const view = { ...result, control: { ...result.control }, details: new Map(result.details) };
-      for (const key of ['board', 'leads']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
+      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
       for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key].state === 'loading') view.control[key] = previous?.control[key] ?? null;
       for (const [id, detail] of previous?.details || []) if (result.reads.board.state === 'loading' || result.reads[id]?.state === 'loading') view.details.set(id, detail);
       return view;
@@ -98,7 +114,16 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
   });
+  $('homeIntroductions')?.addEventListener('click',event=>{const button=event.target.closest('[data-intro-node]');if(button && snapshot?.relationships)relationshipDialog.open(snapshot.relationships,button.dataset.introNode,button);});
   const auto = mountAutoRefresh({ document, window, refresh, intervalMs });
+  const expiry = window.setInterval(() => {
+    if (snapshot?.relationships && Date.parse(snapshot.relationships.valid_until) <= now()) {
+      snapshot.relationships = null;
+      relationshipDialog?.clear();
+      render();
+      auto.refresh();
+    }
+  }, 1000);
   $('refreshHome').addEventListener('click', auto.refresh);
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
   const select = value => { scope = value; buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); }); render(); };
@@ -107,7 +132,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; auto.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

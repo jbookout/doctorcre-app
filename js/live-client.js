@@ -84,7 +84,7 @@ export function createLiveClient(opts = {}) {
     return payload;
   }
 
-  async function write(verb, args) {
+  async function write(verb, args, timeoutMs) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
     if (!online()) {
@@ -92,7 +92,8 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    return rawRpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
+    const request = { ...args, idempotency_key: args.idempotency_key || uuidv4() };
+    return timeoutMs ? readWithDeadline(signal => rawRpc(verb, request, signal), { timeoutMs }) : rawRpc(verb, request);
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -146,6 +147,11 @@ export function createLiveClient(opts = {}) {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
     async readAssuranceHealth(args) { return rpc('read-assurance-health', assuranceHealthRequest(args)); },
+    async getRelationshipNetwork({ signal } = {}) {
+      const response = await fetchReadImpl('/api/v1/business/relationships?contract=relationship-network.v1', {signal,credentials:'same-origin',cache:'no-store',headers:{accept:'application/json'}});
+      if (!response.ok) throw Object.assign(new Error('Relationships unavailable'), {status:response.status});
+      return response.json();
+    },
     async updateVendorTrust(args) { return write("update-vendor", args); },
     async correspondenceReadiness(args = {}) { return rpc('correspondence-readiness', readinessRequest(args)); },
     async readCorrespondenceThread(args) { return rpc('read-correspondence-thread', threadRequest(args)); },
@@ -155,6 +161,8 @@ export function createLiveClient(opts = {}) {
     // to. It passes through untouched: it is the record layer's own identity for
     // an event, in the record layer's own field vocabulary, and translating or
     // rebuilding it would be inventing one.
+    async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
+    async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
@@ -209,6 +217,8 @@ export function createLiveClient(opts = {}) {
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
+        lease: page.lease ?? null,
+        schema_version: page.schema_version,
       };
     },
 

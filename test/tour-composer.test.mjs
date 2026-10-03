@@ -376,12 +376,14 @@ test("review 10: endpoint-only edits appear in review, support undo, and save a 
   doc.querySelector("#route-reviewed").click(); doc.querySelector("#accept-route").click(); await settle();
   assert.equal([...store.tours.values()][0].routes[0].accepted, true); dom.window.close();
 });
-test("review 10: endpoint review survives reload of an unresolved version save", async () => {
-  const store = domain(), first = await open(store); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
+test("review 10: endpoint review survives reload of an unresolved version save", async t => {
+  const store = domain(), first = await open(store); t.after(() => first.dom.window.close()); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
   fill(first.doc, "#edit-start-latitude", "30.7"); store.fail("/api/tours/route-stop", "lost");
   first.doc.querySelector("#save-composer").click(); await settle();
   const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
-  const next = await open(store, { "doctorcre-tour-pending-v1": retained });
+  const next = await open(store, { "doctorcre-tour-pending-v1": retained }); t.after(() => next.dom.window.close());
+  const deadline = Date.now() + 10000;
+  while (next.doc.querySelector("#edit-start-latitude").value !== "30.7" && Date.now() < deadline) await settle();
   assert.equal(next.doc.querySelector("#edit-start-latitude").value, "30.7");
   assert.match(next.doc.querySelector("#route-changes").textContent, /Start endpoint changed/);
   next.doc.querySelector("#reconcile-composer").click(); await settle(); next.doc.querySelector("#retry-composer").click(); await settle();
@@ -573,6 +575,8 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
     const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
+    const { slices } = await import('../js/slices.generated.js');
+    const registrationScript = (await readFile(new URL('../js/slice-registration.js', import.meta.url), 'utf8')).replace(/^export /gm, '');
     const shellScript = (await readFile(new URL("../js/app-shell.js", import.meta.url), "utf8")).replace(/^export /gm, "").replace(/^import [^\n]*\n/gm, "");
     const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}\n${shellCss}</style></head>`);
     await page.route("https://tour.test/**", async route => {
@@ -582,7 +586,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
-    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
+    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountAppLayout = () => {}; const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\nconst slices = ${JSON.stringify(slices)};\n${registrationScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
     // Exercise the preserved catalog/cart component independently of its retired UI.
     await page.evaluate(() => { document.querySelector(".discovery").hidden = false; });
     await page.locator("#create-tour-panel summary").click();
@@ -591,11 +595,11 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const layout = await touchLayout(page);
       assert.ok(layout.document <= width, `${width}px creation overflow`);
       assert.ok(layout.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px creation touch targets: ${JSON.stringify(layout.targets)}`);
-      await page.getByLabel("Navigation menu", { exact: true }).click();
+      await page.getByLabel("More", { exact: true }).click();
       const navigation = await touchLayout(page);
       assert.ok(navigation.document <= width, `${width}px navigation overflow`);
       assert.ok(navigation.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px open navigation touch targets`);
-      await page.getByLabel("Navigation menu", { exact: true }).click();
+      await page.getByLabel("More", { exact: true }).click();
     }
     for (const [selector, value] of [["#create-tour-name", "Synthetic Tour"], ["#create-subject-id", "work:fixture"], ["#create-dataset", "synthetic-v1"]]) await page.locator(selector).fill(value);
     for (const role of ["start", "end"]) {

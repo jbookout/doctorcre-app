@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {
+      "path": "/tours",
+      "asset": "tours/index.html",
+      "order": 11,
+      "gatePath": "/tours"
+    }
+  ],
+  "redirects": []
+}

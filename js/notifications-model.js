@@ -1,3 +1,4 @@
+import { routeContract } from "./slices.generated.js";
 // V5-UX-B12a — what the Notifications page shows, decided without a DOM.
 //
 // The producer is `mcp-server/src/notifications.js` over migrations 0521 and
@@ -97,28 +98,9 @@ export const EXPOSURE_STATEMENT =
 export const ACKNOWLEDGE_SCOPE =
   "";
 
-/**
- * Every route this application serves, copied from
- * `contracts/app-routes.v1.json`. It is a copy because `js/` is served to a
- * browser with no build step, so the contract cannot be imported here; the
- * contract test asserts this list is byte-identical to the contract's own keys,
- * which is what stops the two drifting apart.
- */
-export const APP_ROUTE_PATHS = Object.freeze([
-  "/", "/control-room", "/control-room/progress", "/control-room/progress/work", "/deals", "/leads", "/clients", "/vendors",
-  "/calendar", "/ideas-events", "/work-requests", "/tours", "/share", "/design-lab",
-  "/all-work", "/search", "/status", "/incidents", "/updates", "/doc-chats", "/doc-chats/work", "/doc-activity",
-]);
-
-const LEGACY_ROUTE_HOMES = Object.freeze({
-  "/tasks": "/", "/work": "/", "/tasks.html": "/",
-  "/progress-board": "/control-room/progress", "/workspace": "/", "/queue.html": "/control-room/progress/work?view=tasks",
-  "/control-room/agents/queue": "/control-room/progress/work?view=tasks", "/agent-room": "/control-room/progress/work?view=wire",
-  "/pipeline": "/deals?view=board", "/business": "/", "/ideas": "/ideas-events",
-  "/system-work.html": "/work-requests", "/room.html": "/control-room/progress/work?view=wire", "/design": "/design-lab",
-  "/design/business": "/design-lab?reference=business", "/design/operations": "/design-lab?reference=operations",
-  "/work-inventory": "/all-work", "/notifications": "/updates", "/conversations": "/doc-chats",
-});
+// Browser and Worker routing come from the same assembled slice fragments.
+export const APP_ROUTE_PATHS = Object.freeze(Object.keys(routeContract.routes));
+const LEGACY_ROUTE_HOMES = Object.freeze(routeContract.redirects);
 
 /** The sentence an unroutable deep link carries. */
 export const NO_PAGE_SENTENCE = "This link points at a record the app has no page for yet.";

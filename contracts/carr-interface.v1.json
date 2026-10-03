@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.39.0",
+  "version": "1.42.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "f3f57f42a881c103bf3eca14bd69b23bec2b41a1"
+    "source_commit": "993f6e630aca20175b92a0475b2dda3dd51bdba9"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -30,7 +30,7 @@
     "cancel-capability-session",
     "cancel-workflow-cutover-plan",
     "capture-queue",
-    "claim-card",
+    "claim-lead",
     "close-investigation",
     "close-loop",
     "confirm-slice-completions",
@@ -42,7 +42,6 @@
     "current-work-requests",
     "deal-room-board",
     "decide-doc-suggestion",
-    "decline-candidate",
     "decline-work-request",
     "end-deal-review",
     "engineering-passport",
@@ -55,6 +54,7 @@
     "incident-board",
     "lead-board",
     "link-incident-work-request",
+    "link-lead-client",
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-industry-events",
@@ -66,7 +66,6 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
-    "promote-pool",
     "propose-doc-correction",
     "read-assurance-health",
     "read-correspondence-thread",
@@ -74,6 +73,7 @@
     "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
+    "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
@@ -83,6 +83,7 @@
     "read-room-queue",
     "read-session-identity",
     "read-tour-selection-cart",
+    "record-commission-receipt",
     "record-dispatch-link",
     "rename-doc-conversation",
     "resolve-candidate",
@@ -452,7 +453,66 @@
       "operation": "read-doc-activity",
       "schema_version": "doc-activity.v1",
       "producer_module": "mcp-server/src/doc-activity.js",
-      "undo_operation": "revert-deal-field"
+      "undo_operation": "revert-deal-field",
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "f3f57f42a881c103bf3eca14bd69b23bec2b41a1"
+      }
+    },
+    "deal-room-board": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "7214532128a836a84d3e75a584e56facbf6662ba"
+      },
+      "response": {
+        "schema_version": "local-deals-board.v1",
+        "deal_keys": [
+          "operating_state",
+          "parking_note",
+          "invoiced_on",
+          "phase_change",
+          "field_base"
+        ],
+        "phase_change_keys": [
+          "event_id",
+          "prior_phase",
+          "phase",
+          "automatic",
+          "reason",
+          "evidence_date",
+          "recorded_at"
+        ],
+        "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
+        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
+      }
+    },
+    "get-deal-room": {
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+      },
+      "response": {
+        "schema_version": "deal-timeline.v1",
+        "lease_keys": [
+          "id",
+          "version",
+          "status",
+          "executed_on",
+          "commencement_on",
+          "expiration_on",
+          "options_note",
+          "evidence_kind",
+          "evidence_ref",
+          "source"
+        ],
+        "lease_absence": null
+      },
+      "critical_date_write": "add-critical-date",
+      "never_derive": [
+        "rent_start",
+        "option_window"
+      ]
     }
   },
   "vendor_directory": {
@@ -482,6 +542,67 @@
       "id",
       "limit"
     ],
-    "cache": "GitHub comes from published producer cache; no GitHub requests per page load"
+    "cache": "GitHub comes from published producer cache; no GitHub requests per page load",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "ee8fd95ec7b1c82591089b7694fd558bec9034e2"
+    }
+  },
+  "relationship_network": {
+    "schema": "carr-relationship-network.v1",
+    "version": "1.0.0",
+    "path": "contracts/relationship-network.v1.json",
+    "sha256": "7984c3b46ca7292e4b70c3e5b716d2d1724e8912a1b8880f2259cf4fe5bd4644",
+    "request_selector": "contract=relationship-network.v1",
+    "endpoint": "/api/v1/business/relationships"
+  },
+  "lead_workspace": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+    },
+    "schema_version": "lead-workspace.v1",
+    "board": {
+      "verb": "lead-board",
+      "arguments": {
+        "workspace": "leads"
+      }
+    },
+    "detail": {
+      "verb": "lead-board",
+      "arguments": {
+        "workspace": "leads",
+        "lead_id": "exact UUID"
+      }
+    },
+    "writes": {
+      "stage": "update-lead (base_version, stage_review evidence IDs, same idempotency key on retry)",
+      "undo": "update-lead (latest exact undo_event_id and prior stage)",
+      "claim": "claim-lead (authenticated human, unowned New, exact base_version)",
+      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)"
+    },
+    "coverage": {
+      "correspondence": "captured_entries_only; Details exposes stored original entry",
+      "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
+      "scores": "existing record score; null shown as missing"
+    }
+  },
+  "invoice_tracker": {
+    "schema_version": "invoice-tracker.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "3a41bd685abedd218b504174b6a240499f77ddaf"
+    },
+    "read": "read-invoice-tracker",
+    "write": "record-commission-receipt",
+    "amount": "commission.gross_amount",
+    "payment": "Full receipt of one commission; dated and version guarded",
+    "due_date": "Explicit due_on; null means unknown",
+    "lifecycle_fields": [
+      "invoiced_on",
+      "closed_on",
+      "lane",
+      "outcome"
+    ]
   }
 }
