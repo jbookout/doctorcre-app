@@ -1021,10 +1021,10 @@
       "percent": 100,
       "questions": [
         {
-          "prompt": "Where is the open Demo candidate?",
+          "prompt": "Where is the open Demo lead?",
           "query": "Market",
           "expected": "Demo City",
-          "recordId": "1",
+          "recordId": "demo-lead",
           "expectedState": "answered",
           "actual": "Demo City",
           "actualState": "answered"
@@ -1032,17 +1032,17 @@
         {
           "prompt": "What is the name of this exact record?",
           "query": "Name",
-          "expected": "Demo candidate",
-          "recordId": "1",
+          "expected": "Demo lead",
+          "recordId": "demo-lead",
           "expectedState": "answered",
-          "actual": "Demo candidate",
+          "actual": "Demo lead",
           "actualState": "answered"
         },
         {
           "prompt": "What is its unrecorded cost?",
           "query": "Unrecorded cost",
           "expected": null,
-          "recordId": "1",
+          "recordId": "demo-lead",
           "expectedState": "unknown",
           "actual": null,
           "actualState": "unknown"

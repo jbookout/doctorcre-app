@@ -198,6 +198,11 @@ function compareRevision(a,b) {
   return String(a).localeCompare(String(b), 'en', {numeric:true});
 }
 
+// The Leads workspace request reads the whole authorized collection without
+// local search/filter arguments. Retain that source across filters; its old
+// scope remains ineligible until the page explicitly projects the response.
+const survivesFilters = method => method === 'getWorkspace';
+
 export function createDocContext({ page = 'home', now = () => Date.now() } = {}) {
   let epoch = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map();
   const listeners = new Set();
@@ -227,7 +232,8 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
     navigate(next, nextFilters = {}) { page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
     filter(next) {
       epoch++; selected = null; filters = { ...next };
-      tickets.clear(); emit();
+      for (const [key, ticket] of tickets) if (!survivesFilters(ticket.method)) tickets.delete(key);
+      emit();
     },
     project(method, payload, args = []) {
       const source = reads.get(method);
@@ -245,14 +251,14 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       tickets.set(key, ticket); reads.set(key, { state: 'pending', records: [], at: now(), epoch }); emit(); return ticket;
     },
     finish(ticket, payload, { at = now() } = {}) {
-      if (!ticket || ticket.epoch !== epoch || tickets.get(ticket.key) !== ticket) return false;
+      if (!ticket || tickets.get(ticket.key) !== ticket || ticket.epoch !== epoch && !survivesFilters(ticket.method)) return false;
       let records;
       try { records = normalizeDocRead(ticket.method, payload, ticket.args); } catch { records = null; }
-      reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at, epoch }); emit(); return records !== null;
+      reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at, epoch: ticket.epoch }); emit(); return records !== null;
     },
     fail(ticket, error = {}) {
       if ([401, 403].includes(error.status) || error.code === 'authentication_required') { epoch++; selected = null; reads.clear(); tickets.clear(); emit(); return; }
-      if (!ticket || ticket.epoch !== epoch || tickets.get(ticket.key) !== ticket) return;
+      if (!ticket || tickets.get(ticket.key) !== ticket || ticket.epoch !== epoch && !survivesFilters(ticket.method)) return;
       reads.set(ticket.key, { state: 'unavailable', records: [], at: now(), epoch });
       emit();
     },

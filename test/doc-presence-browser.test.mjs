@@ -197,6 +197,31 @@ test('versioned Leads details bind popup identity and native close clears it',as
  assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'lead',id:workspace().leads[0].id});assert.equal(c.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');assert.equal((await readContext(page)).selected,null);
 });
+test('held Leads collection recovers in the current local filter before opening a visible sidebar lead',async t=>{
+ let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
+ const {page,goto,errors}=await setup(t,{onRoute:async(route,env)=>{
+  const params=env.url.pathname==='/mcp'?route.request().postDataJSON().params:null;
+  if(params?.name==='lead-board' && params.arguments.workspace==='leads' && !params.arguments.lead_id){
+   started();await held;await rpc(route,workspace());return true;
+  }
+  return producerRoute(route,env);
+ }});
+ await goto('/leads?mode=live');await entered;
+ await page.locator('#appSidebarToggle').click();
+ await page.locator('#leadSearch').fill('no matches');
+ release();await page.waitForFunction(()=>document.querySelectorAll('#hotLeads [data-lead-id]').length>0);
+ assert.equal(await page.locator('.lead-card').count(),0);
+ const filtered=await readContext(page);
+ assert.equal(filtered.ready,true,JSON.stringify(filtered));assert.deepEqual(filtered.records,[]);
+ assert.equal(filtered.filters.search,'no matches');assert.ok(filtered.observedAt);
+ await page.locator('#hotLeads [data-lead-id]').first().click();
+ await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Correspondence'));
+ const opened=await readContext(page);assert.equal(opened.ready,true);assert.equal(opened.active.title,'Dr. Example 1');
+ await escapeRecord(page,'#leadDetail');
+ await page.locator('#leadSearch').fill('');
+ const restored=await readContext(page);assert.equal(restored.ready,true);assert.ok(restored.records.length>0);
+ assert.equal(restored.observedAt,filtered.observedAt);assert.deepEqual(errors,[]);
+});
 test('close readiness waits until queued context cleanup finishes',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
  await page.locator('.lead-card').first().click();

@@ -74,6 +74,35 @@ test('filter changes reject both successful and failed prior-query tickets',()=>
  c.fail(prior,{status:503});
  assert.equal(c.snapshot().ready,true);assert.deepEqual(c.snapshot().records.map(r=>r.id),['new']);
 });
+test('pending unfiltered Leads collection survives local filters but needs an explicit current projection',()=>{
+ let now=1000;const c=createDocContext({page:'leads',now:()=>now});
+ const ticket=c.begin('getWorkspace');
+ const board={leads:[{id:'sample',doctor_name:'Sample lead',base_version:1}]};
+ now=2000;c.filter({search:'no matches'});
+ assert.equal(c.finish(ticket,board),true);
+ assert.deepEqual(c.snapshot().records,[]);assert.equal(c.snapshot().ready,false);
+ now=3000;assert.equal(c.project('getWorkspace',{leads:[]}),true);
+ assert.equal(c.snapshot().ready,true);assert.deepEqual(c.snapshot().records,[]);
+ assert.equal(c.snapshot().observedAt,new Date(2000).toISOString());
+ c.filter({search:''});assert.equal(c.project('getWorkspace',board),true);
+ c.select('lead','sample');assert.equal(c.snapshot().active.title,'Sample lead');
+ assert.equal(c.snapshot().observedAt,new Date(2000).toISOString());
+});
+test('retained collection tickets cannot recover after failure, supersession, authorization loss or navigation',()=>{
+ const board={leads:[{id:'sample',doctor_name:'Sample lead',base_version:1}]};
+ const failed=createDocContext({page:'leads'}),pending=failed.begin('getWorkspace');
+ failed.filter({search:'none'});failed.fail(pending,{status:503});
+ assert.equal(failed.project('getWorkspace',board),false);assert.equal(failed.snapshot().ready,false);
+ assert.equal(failed.snapshot().state,'unavailable');
+ for(const invalidate of [c=>c.begin('getWorkspace'),c=>c.clear(),c=>c.navigate('leads'),c=>c.fail(null,{status:401})]){
+  const c=createDocContext({page:'leads'}),ticket=c.begin('getWorkspace');
+  c.filter({search:'none'});invalidate(c);
+  assert.equal(c.finish(ticket,board),false);assert.equal(c.project('getWorkspace',board),false);
+ }
+ const c=createDocContext({page:'leads'}),old=c.begin('getWorkspace');c.filter({search:'none'});
+ c.finish(c.begin('getWorkspace'),board);c.fail(old,{status:503});
+ assert.equal(c.snapshot().ready,true);assert.equal(c.snapshot().records[0].id,'sample');
+});
 test('projecting one source does not restore another or turn a failed source into a successful read',()=>{
  const c=createDocContext({page:'home'});
  c.finish(c.begin('getBoard'),{deals:[{id:'sample',name:'Sample'}]});
