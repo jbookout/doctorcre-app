@@ -183,6 +183,39 @@ test("Ideas and Events use the admitted Control Room sign-in gate", async () => 
   assert.equal(signedOut.status, 302);
 });
 
+test("lease radar uses the admitted Business gate and preserves the sign-in return path", async () => {
+  let forwarded;
+  const response = await handleDoctorcreRequest(request("/leases?quarter=2027-Q1", {
+    headers: { cookie: "__Host-dealroom_session=opaque" },
+  }), environment({ carr: { fetch: async value => { forwarded = value; return new Response(); } } }));
+  assert.equal(await response.text(), "asset:/lease-radar.html");
+  assert.equal(new URL(forwarded.url).pathname, "/business");
+  assert.equal(new URL(forwarded.url).search, "");
+  assert.equal(forwarded.headers.get("cookie"), "__Host-dealroom_session=opaque");
+  const signedOut = await handleDoctorcreRequest(request("/leases?quarter=2027-Q1"), environment({
+    carr: { fetch: async () => new Response(null, { status: 302, headers: {
+      location: `https://${HOST}/auth/login?return_to=%2Fbusiness`,
+    } }) },
+  }));
+  assert.equal(new URL(signedOut.headers.get("location")).searchParams.get("return_to"), "/leases?quarter=2027-Q1");
+});
+
+test("lease projection proxies the authenticated GET and CARR refusal unchanged", async () => {
+  let forwarded;
+  const response = await handleDoctorcreRequest(request("/api/v1/business/leases", {
+    headers: { cookie: "__Host-dealroom_session=opaque" },
+  }), environment({ carr: { fetch: async value => {
+    forwarded = value;
+    return new Response('{"error":"unauthorized"}', { status: 401, headers: { "cache-control": "no-store" } });
+  } } }));
+  assert.equal(new URL(forwarded.url).pathname, "/api/v1/business/leases");
+  assert.equal(forwarded.method, "GET");
+  assert.equal(forwarded.headers.get("cookie"), "__Host-dealroom_session=opaque");
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), { error: "unauthorized" });
+});
+
 test("signed-out Ideas Events visits return to the requested path and query", async () => {
   const response = await handleDoctorcreRequest(request("/ideas-events?tab=events"), environment({
     carr: { fetch: async () => new Response(null, {
