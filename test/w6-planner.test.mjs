@@ -416,3 +416,15 @@ test("explicitly entered suggestion text becomes an override even when its value
   draft.set("area", "Demo area"); draft.refreshSuggestions({ area: "New source area" });
   assert.equal(draft.values.area, "Demo area");
 });
+
+test("Doc's tour request selects the one matching client and leaves an ambiguous name unchosen", async t => {
+  const one = harness({}, window => window.history.replaceState({}, "", "/tours?plan_for=practice%20b")); t.after(one.close);
+  await one.view.ready;
+  assert.equal(one.doc.querySelector("#plan-client").value, clientB);
+  assert.equal(one.doc.activeElement, one.doc.querySelector("#plan-name"));
+  assert.equal(one.dom.window.location.search, "");
+  const many = harness({}, window => window.history.replaceState({}, "", "/tours?plan_for=Demo%20Practice")); t.after(many.close);
+  await many.view.ready;
+  assert.equal(many.doc.querySelector("#plan-client").value, "");
+  assert.equal(many.doc.activeElement, many.doc.querySelector("#plan-client"));
+});
