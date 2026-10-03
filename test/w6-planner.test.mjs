@@ -10,6 +10,13 @@ const html = await readFile(new URL("../tours/index.html", import.meta.url), "ut
 const clientA = "11111111-1111-4111-8111-111111111111", clientB = "22222222-2222-4222-8222-222222222222";
 const record = id => ({ id, name: id === clientA ? "Demo Practice A" : "Demo Practice B", city: "Demo City", state: "FL", vertical: "Demo specialty", notes: "Synthetic original entry" });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+async function waitFor(predicate) {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    assert.ok(Date.now() < deadline, 'planner transition did not complete');
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
 function harness(api = {}, beforeMount = () => {}) {
   const dom = new JSDOM(html, { url: "https://example.test/tours", pretendToBeVisual: true });
   const doc = dom.window.document;
@@ -152,7 +159,8 @@ test("detail session transition clears private drafts, files and cached records 
   const app = sessionHarness();
   try {
     await app.view.ready; app.change("#plan-client", clientA); await settle(); app.change("#plan-name", "Private draft A"); stageFile(app);
-    app.session("synthetic-B"); app.doc.querySelector(".tour-button").click(); await settle(); await settle();
+    app.session("synthetic-B"); app.doc.querySelector(".tour-button").click();
+    await waitFor(() => app.doc.querySelector('#plan-name').value === '');
     assert.equal(app.doc.querySelector("#plan-name").value, ""); assert.equal(app.view.files.length, 0);
     assert.equal(app.doc.querySelectorAll(".tour-button").length, 0); assert.equal(app.doc.querySelectorAll("#plan-client option").length, 1);
     assert.equal(app.doc.querySelector("dialog").open, false);

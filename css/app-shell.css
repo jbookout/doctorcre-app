@@ -90,3 +90,6 @@ body.report-shell{padding-left:72px;padding-bottom:34px}.app-layout-today .recei
   #appStatusSlot{gap:6px;font-size:10px}
   #appStatusSlot>[data-layout-slot="status"]{gap:4px 6px}
 }
+.slice-controls-status{padding:.6rem .8rem;color:var(--muted,#94abc0);font-size:.875rem}
+.slice-controls-status button{margin-left:.4rem;border:1px solid currentColor;border-radius:.4rem;padding:.3rem .6rem;background:transparent;color:inherit;cursor:pointer}
+.slice-controls-status button:hover,.slice-controls-status button:focus-visible{color:var(--orange,#f28a39);outline:2px solid currentColor;outline-offset:2px}
