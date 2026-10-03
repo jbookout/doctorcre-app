@@ -41,7 +41,7 @@ export const chromium = {
         // Tests never reach the network. A page's Google Fonts link held its
         // load event, and so page.goto, until an outside server answered. A
         // request a test does not route itself and that leaves this machine is refused.
-        await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort());
+        await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
         const page = await context.newPage();
         if (throttle > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
         if (jitter > 0) {
