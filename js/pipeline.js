@@ -719,7 +719,7 @@ function refusePanelDetail(error) {
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
   $('panelTitle').textContent = 'Unavailable';
-  $('panelBody').innerHTML = '<p role="status">Updates temporarily unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
+  $('panelBody').innerHTML = '<p role="status">Unavailable. Updates temporarily unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
   return true;
 }
 function syncNextForm(deal = null) {

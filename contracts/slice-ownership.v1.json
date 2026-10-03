@@ -104,6 +104,7 @@
     "test/inline-style-csp.test.mjs",
     "test/morning-brief-browser.test.mjs",
     "test/morning-brief.test.mjs",
+    "test/morning-brief-review.test.mjs",
     "test/national-accounts.test.mjs",
     "test/open-session.test.mjs",
     "test/operations.test.mjs",

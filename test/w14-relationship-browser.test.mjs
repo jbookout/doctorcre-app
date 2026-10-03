@@ -283,7 +283,7 @@ for (const width of [1440, 390])
     );
     await page.locator("#homeIntroductions button").click();
     assert.match(
-      await page.locator(".relationship-dialog h2").innerText(),
+      await page.locator(".relationship-dialog #relationshipTitle").innerText(),
       /Demo Dental Expansion/,
     );
     await page.screenshot({

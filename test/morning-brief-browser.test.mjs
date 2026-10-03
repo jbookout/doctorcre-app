@@ -93,6 +93,7 @@ test('speech is a remembered setting: on speaks the brief, off silences it, and 
   assert.deepEqual(await page.evaluate(() => window.spoken), []);
   await toggle.click();
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+  await page.waitForFunction(() => window.spoken.length === 1);
   const [spoken] = await page.evaluate(() => window.spoken);
   assert.match(spoken, /^Good (morning|afternoon|evening), Joe\. First, /);
   await toggle.click();
@@ -127,4 +128,42 @@ test('a brief that arrives after the partner starts working waits behind Doc ins
   await page.locator('#docBriefOpen').click();
   await page.locator('#docBriefFirst a').waitFor();
   assert.equal(await page.locator('#docBriefOpen').getAttribute('data-ready'), null);
+});
+
+for (const width of [1440, 390]) test(`review #7 brief reopening is focusable inside a native record popup at ${width}`, async t => {
+  const { page, goto } = await setup(t, { width });
+  await goto('/?mode=live');
+  await page.locator('#docBriefFirst a').waitFor();
+  await page.locator('#docBriefClose').click();
+  await page.evaluate(() => {
+    const dialog = document.createElement('dialog'); dialog.id = 'syntheticRecord';
+    dialog.innerHTML = '<h2>Synthetic record</h2><button id="syntheticClose">Close</button>';
+    document.body.append(dialog); dialog.showModal();
+    document.querySelector('#syntheticClose').onclick = () => dialog.close();
+  });
+  await page.locator('#syntheticRecord #docBriefOpen').waitFor();
+  await page.locator('#docBriefOpen').click();
+  await page.locator('#syntheticRecord #docBriefFirst a').waitFor();
+  assert.equal(await page.locator('#docBriefTitle').evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.locator('#docBriefClose').click();
+  assert.equal(await page.locator('#docBriefOpen').evaluate(node => node === document.activeElement), true);
+  await page.locator('#syntheticClose').click();
+  await page.locator('#appMainSlot #docBriefOpen').waitFor();
+  await page.locator('#docBriefOpen').click();
+  await page.locator('#appMainSlot #docBrief').waitFor({ state: 'visible' });
+});
+
+test('review #11 status stays visually hidden on pages without a shared sr-only style', async t => {
+  const { page, goto } = await setup(t);
+  await goto('/?mode=live'); await page.locator('#docBriefFirst a').waitFor();
+  await page.evaluate(() => {
+    for (const sheet of document.querySelectorAll('link[rel="stylesheet"],style')) {
+      if (!sheet.href?.endsWith('/css/doc-presence.css')) sheet.remove();
+    }
+  });
+  const status = page.locator('#docPresence [role="status"]');
+  assert.match(await status.textContent(), /brief/i);
+  assert.equal(await status.evaluate(node => getComputedStyle(node).position), 'absolute');
+  const bounds = await status.boundingBox(); assert.ok(bounds.width <= 1 && bounds.height <= 1);
 });

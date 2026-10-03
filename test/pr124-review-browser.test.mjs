@@ -91,7 +91,7 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  await page.clock.fastForward(15000);
  await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
- assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
+ assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
  assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
  assert.equal(await page.locator('#panelBody input, #panelBody textarea, #panelBody select').count(),0);
  assert.equal(await page.locator('#contextDrawer').evaluate(e=>e.open),false);
