@@ -32,6 +32,7 @@ jobs:
           path: .carr-producer
           fetch-depth: 0
           persist-credentials: false
+      - run: npm run slices:check
       - run: node --test test/property-producer.test.mjs
         name: Verify the exact CARR runtime interface
         env:

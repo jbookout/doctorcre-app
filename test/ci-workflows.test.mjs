@@ -87,6 +87,10 @@ test("CI verifies the contract's exact CARR producer without opt-in skips", asyn
   assert.ok(steps.indexOf(checkout) < steps.indexOf(verification));
   const failure = "node --test test/property-producer.test.mjs";
   for (const event of ["pull_request", "push"]) {
+    const run = commands(ci, event);
+    const generate = run.indexOf("npm run slices:check");
+    assert.ok(generate >= 0 && generate < run.indexOf(failure),
+      "generate the Worker route contracts before importing the producer tests");
     const result = await replay(t, ci, event, failure);
     assert.equal(result.failed, true, event);
     assert.ok(result.trace.includes(failure));
