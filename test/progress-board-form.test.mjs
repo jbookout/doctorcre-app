@@ -11,6 +11,7 @@ class Node {
     this.tagName = tag.toUpperCase();
     this.children = [];
     this.listeners = {};
+    this.dataset = {};
     this.value = "";
     this.checked = false;
     this.disabled = false;

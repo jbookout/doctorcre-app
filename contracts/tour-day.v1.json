@@ -5,7 +5,7 @@
   "route_contract": "contracts/tour-map.v1.json",
   "tour_read_contract": "contracts/tour-composer.v1.json",
   "app_state": "Account-scoped IndexedDB audio drafts and itinerary snapshot; never canonical business records. No bearer tokens persisted. Offline reload requires the last authenticated tab binding, which successful sign-out revokes. Online resumption revalidates identity. Capture-only: no upload or filing transport.",
-  "layout": "Awaiting W1b shared sidebar/tab slot API. Tour day contains no page-level navigation or tab markup; existing app shell is the temporary shared host.",
+  "layout": "Uses the shared workspace main region and shell-owned navigation. The capture dock respects the shared rail and status offsets; tour day adds no page-level navigation or tab markup.",
   "live_voice_notes": false,
   "producer_requirements": {
     "submitNote": "Authenticated versioned audio upload, exact note/tour/client/property/route/stop IDs, captured_at, supported MIME; note ID is immutable idempotency key. Server derives tenant, author and client binding from the tour. Bounded audio limits, consent policy, server audio digest and retention policy required.",

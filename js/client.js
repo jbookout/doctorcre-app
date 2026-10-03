@@ -77,6 +77,7 @@
  * @property {ConflictPayload} [conflict]
  *
  * @typedef {Object} DealRoomClient
+ * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getRelationshipNetwork authenticated relationship-network.v1 snapshot, with observed_at and valid_until
  * @property {(args:Object) => Promise<Object>} readAssuranceHealth read-only assurance-health.v1 for an exact workflow scope
  * @property {(args?:Object) => Promise<Object>} correspondenceReadiness governed installation read, no arguments
  * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
@@ -327,11 +328,12 @@ export const PHASES = [
 
 // The display word for each wire phase. The wire words above are what the
 // record layer, the fixture validation and the change feed all speak, so they
-// never move; these are the words a human reads. Six are identical; two are
-// not, and those two are the reason this map exists.
+// never move; this map owns the words a human reads.
 export const PHASE_LABEL = {
-  'On Deck': 'Pending',
-  Diligence: 'Due diligence',
+  'On Deck': 'Prospective Client',
+  Diligence: 'Due Diligence',
+  'Site selection': 'Site Selection',
+  Negotiation: 'Negotiating',
 };
 
 /** The display word for a phase wire value; the value itself when unmapped. */

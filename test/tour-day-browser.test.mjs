@@ -83,7 +83,16 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, requests, errors } = await open(t, { width });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    const record = await page.locator("#day-record").boundingBox(); assert.ok(record.width >= 140 && record.height >= 60 && record.y + record.height < 844);
+    await page.locator('body.has-app-layout').waitFor();
+    assert.equal(await page.locator('#appMainSlot #tour-day').count(), 1, 'Tour day belongs in the workspace main region');
+    const record = await page.locator("#day-record").boundingBox();
+    const status = await page.locator('.app-layout-status').boundingBox();
+    assert.ok(record.width >= 140 && record.height >= 60 && record.y + record.height < status.y,
+      JSON.stringify({record,status,width}));
+    for (const id of ['day-record', 'day-previous', 'day-next']) assert.equal(await page.locator('#' + id).evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    }), true, 'The shared shell must leave every capture control reachable');
     assert.equal(await page.locator(".day-stop").count(), 2);
     assert.match(await page.locator("#day-current").textContent(), /100 Example Way.*Demo listing contact.*West entrance/s);
     assert.equal(await page.locator(".property-actions a").getAttribute("href"), "tel:+12025550100");
@@ -197,11 +206,13 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   await record(page);
   await page.evaluate(async () => { const r = await navigator.serviceWorker.register("/tours/day-sw.js", { scope: "/tours/" }); await navigator.serviceWorker.ready; });
   await page.waitForFunction(() => navigator.serviceWorker.controller);
-  const cached = await page.evaluate(async () => (await caches.open("doctorcre-tour-day-shell-v1")).keys().then(rows => rows.map(r => new URL(r.url).pathname)));
+  const cached = await page.evaluate(async () => (await caches.open("doctorcre-tour-day-shell-v2")).keys().then(rows => rows.map(r => new URL(r.url).pathname)));
   assert.ok(cached.length > 10); assert.equal(cached.some(path => path.startsWith("/api/")), false);
   await context.setOffline(true); await page.reload();
   await page.waitForFunction(() => document.querySelector("#day-status")?.textContent.includes("Offline"));
   assert.equal(await page.locator(".day-stop").count(), 2); assert.equal(await page.locator(".note-card").count(), 1);
+  assert.equal(await page.locator("#appMainSlot #tour-day").count(), 1);
+  assert.equal(await page.getByLabel("Workspace sidebar", { exact: true }).isVisible(), true);
   await page.screenshot({ path: new URL("test-artifacts/w16/phone-offline.png", root).pathname, fullPage: true });
   await context.setOffline(false);
   await page.waitForFunction(() => document.querySelector("#day-status").textContent === "Voice notes stay on this phone");

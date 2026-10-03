@@ -1,4 +1,6 @@
 import test from "node:test";
+import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { noteState } from "../tours/day-store.js";
 import { createDayClient } from "../tours/day-client.js";
@@ -59,4 +61,25 @@ test("day map selection uses canonical IDs, short copy, navigation receipts and 
   view.dispatch({ type: "route_stop_change", route_stop_id: "stop-a" }); assert.equal(view.navigationLinks().length, 2);
   view.update({ route, promotion_receipt: null, scope: "synthetic", user_ref: "synthetic-user" }); assert.equal(view.navigationLinks().length, 0);
   view.destroy(); dom.window.close();
+});
+
+test("offline tour shell caches every local module dependency", async () => {
+  const root = new URL('../', import.meta.url);
+  const source = await readFile(new URL('tours/day-sw.js', root), 'utf8');
+  const sandbox = { self: { addEventListener() {} } };
+  runInNewContext(source + '\nthis.files = FILES;', sandbox);
+  const files = new Set(sandbox.files), checked = new Set();
+  async function check(path) {
+    if (checked.has(path) || !/\.m?js$/.test(path)) return;
+    checked.add(path);
+    const source = await readFile(new URL(path.slice(1), root), 'utf8');
+    for (const match of source.matchAll(/(?:from\s*|import\s*\(\s*)["']([^"']+)["']/g)) {
+      const relative = match[1];
+      if (!relative.startsWith('.') && !relative.startsWith('/')) continue;
+      const dependency = new URL(relative, 'https://synthetic.test' + path).pathname;
+      assert.ok(files.has(dependency), `${path} needs ${dependency} on offline reload`);
+      await check(dependency);
+    }
+  }
+  for (const path of files) await check(path);
 });

@@ -1,9 +1,57 @@
 // Cache application code only. Never cache session/API responses, tour records,
 // provider tiles or audio; account-scoped drafts stay in the page's IndexedDB.
-const CACHE = "doctorcre-tour-day-shell-v1";
-const FILES = ["/tours/day.html", "/tours/day.js", "/tours/day.css", "/tours/day-client.js", "/tours/day-store.js", "/tours/day-recorder.js", "/tours/planner-client.js", "/tours/itinerary-map.js", "/tours/vendor/tour-map-route-state.js", "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs", "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs", "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css", "/css/app-shell.css", "/js/app-shell.js", "/js/offline-tour-session.js", "/js/auto-refresh.mjs", "/js/read-on-resume.mjs", "/js/shell.js", "/js/visual-system.js", "/js/boot-mode.js", "/js/doc-dock.js"];
+const CACHE = "doctorcre-tour-day-shell-v2";
+const FILES = [
+  "/tours/day.html",
+  "/tours/day.js",
+  "/tours/day.css",
+  "/tours/day-client.js",
+  "/tours/day-store.js",
+  "/tours/day-recorder.js",
+  "/tours/planner-client.js",
+  "/tours/itinerary-map.js",
+  "/tours/vendor/tour-map-route-state.js",
+  "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
+  "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs",
+  "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css",
+  "/css/app-shell.css",
+  "/js/app-shell.js",
+  "/js/offline-tour-session.js",
+  "/js/auto-refresh.mjs",
+  "/js/read-on-resume.mjs",
+  "/js/shell.js",
+  "/js/visual-system.js",
+  "/js/boot-mode.js",
+  "/js/doc-dock.js",
+  "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl-shared.mjs",
+  "/js/app-layout.js",
+  "/js/home-dashboard-model.js",
+  "/js/relationship-network-model.js",
+  "/js/calendar-model.js",
+  "/js/control-room-model.js",
+  "/js/operations-model.js",
+  "/js/resource-dashboard-model.js",
+  "/js/client.js",
+  "/js/live-client.js",
+  "/js/assurance-health-model.js",
+  "/js/uuid.js",
+  "/js/correspondence-model.js",
+  "/js/fixture-client.js",
+  "/js/relationship-network-fixture.js",
+  "/js/example-sessions.js",
+  "/js/workspace-command-center-model.js",
+  "/js/change-receipts.mjs",
+  "/js/global-call-mode.js",
+  "/js/call-mode.js",
+  "/js/post-call-client.js"
+];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES))));
-self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
+self.addEventListener("activate", event => event.waitUntil((async () => {
+  for (const name of await caches.keys()) {
+    if (name.startsWith("doctorcre-tour-day-shell-") && name !== CACHE) await caches.delete(name);
+  }
+  await self.clients.claim();
+})()));
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin || !FILES.includes(url.pathname)) return;

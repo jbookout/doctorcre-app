@@ -23,9 +23,9 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PHASES, PHICON, phaseLabel } from "../js/client.js";
 import {
   CLOSED_SLUG, COLUMNS, DEAL_OUTCOMES, PHASE_DATE_KIND, attachedParties, closedColumnCaption,
-  columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections, filterDeals,
+  columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections,
   groupByColumn, isDealOutcome, keyboardTarget, loadDealContext, moveIntent, moveSummary,
-  moveTitle, orderColumn, partyRoleLabel, presenceChip, recordPanelSections, tapMoveTargets, typeFilters,
+  moveTitle, partyRoleLabel, presenceChip, tapMoveTargets,
 } from "../js/pipeline-model.js";
 import {
   createUndoState, ingestChangeEvents, performUndo, receiptViews,
@@ -45,15 +45,15 @@ test("the board has the eight deal phases, in the record layer's own order", () 
     "pending", "research", "site_selection", "negotiation", "legal", "due_diligence", "closing", "closed",
   ]);
   assert.deepEqual(COLUMNS.map((column) => column.label), [
-    "Pending", "Research", "Site selection", "Negotiation", "Legal", "Due diligence", "Closing", "Closed",
+    "Prospective Client", "Research", "Site Selection", "Negotiating", "Legal", "Due Diligence", "Closing", "Closed",
   ]);
   // The board's labels are a display map OVER the client's UI values; the two
   // long-standing Deal Room names are untouched, which is what keeps the pinned
   // markup at /deals green.
   assert.equal(columnBySlug("pending").value, "On Deck");
   assert.equal(columnBySlug("due_diligence").value, "Diligence");
-  assert.equal(columnLabel("On Deck"), "Pending");
-  assert.equal(columnLabel("Diligence"), "Due diligence");
+  assert.equal(columnLabel("On Deck"), "Prospective Client");
+  assert.equal(columnLabel("Diligence"), "Due Diligence");
   // /deals now prints the same display words as the board. One map per word,
   // asserted against the other, so the two surfaces cannot drift apart.
   for (const column of COLUMNS) {
@@ -62,10 +62,10 @@ test("the board has the eight deal phases, in the record layer's own order", () 
 });
 
 test("the /deals phase select shows the display word and writes the wire word", async () => {
-  assert.equal(phaseLabel("On Deck"), "Pending");
-  assert.equal(phaseLabel("Diligence"), "Due diligence");
+  assert.equal(phaseLabel("On Deck"), "Prospective Client");
+  assert.equal(phaseLabel("Diligence"), "Due Diligence");
   for (const phase of PHASES) {
-    if (phase !== "On Deck" && phase !== "Diligence") assert.equal(phaseLabel(phase), phase, `${phase} is renamed`);
+    if (!["On Deck","Diligence","Site selection","Negotiation"].includes(phase)) assert.equal(phaseLabel(phase), phase, `${phase} is renamed`);
   }
   // The option the /deals table renders: the wire word in the value attribute,
   // the display word in the text, so a write still sends 'On Deck'.
@@ -109,7 +109,7 @@ test("a move intent names both ends, and a drop on the card's own column is not 
   const intent = moveIntent(deal, "closing");
   assert.deepEqual({ ...intent }, {
     deal: "d20", name: "Demo Osteopathic Office", field: "phase", value: "Closing",
-    from: "due_diligence", from_label: "Due diligence", to: "closing", to_label: "Closing",
+    from: "due_diligence", from_label: "Due Diligence", to: "closing", to_label: "Closing",
   });
   assert.equal(moveSummary(intent), "Demo Osteopathic Office → Closing");
   assert.equal(moveTitle(intent), "Move Demo Osteopathic Office to Closing");
@@ -240,35 +240,6 @@ test("a partner's lease reads as a chip, and the viewer's own never does", () =>
   assert.equal(presenceChip(presence, "d01", { selfActor: "joe", field: "phase", actorLabel: label }), null);
   assert.equal(presenceChip(presence, "d03", { selfActor: "joe", field: "phase", actorLabel: label }), null);
   assert.equal(presenceChip([], "d01", { selfActor: "joe" }), null);
-});
-
-test("the chips are built from the deal types the board returns, and filter by them", () => {
-  const deals = [
-    { id: "a", type: "Renewal" }, { id: "b", type: "Startup" }, { id: "c", type: "Renewal" }, { id: "d" },
-  ];
-  assert.deepEqual(typeFilters(deals).map((chip) => chip.value), ["all", "Renewal", "Startup"]);
-  assert.deepEqual(filterDeals(deals, "Renewal").map((deal) => deal.id), ["a", "c"]);
-  assert.equal(filterDeals(deals, "all").length, 4);
-  assert.equal(filterDeals(deals, null).length, 4);
-});
-
-test("a column orders flagged records first, then by name, and the panel states what is missing", () => {
-  const ordered = orderColumn([
-    { id: "b", name: "Demo B" }, { id: "c", name: "Demo C", attention: true }, { id: "a", name: "Demo A" },
-  ]);
-  assert.deepEqual(ordered.map((deal) => deal.id), ["c", "a", "b"]);
-
-  const sections = recordPanelSections({
-    deal: { name: "Demo A", type: "Renewal", phase: "Diligence", owner: "joe", next_step: "", attention: false },
-    critical_dates: [],
-    thread: [],
-  }, { actorLabel: (slug) => ({ joe: "Joe" }[slug] || "Unassigned"), dateLabel: (value) => value });
-  assert.deepEqual(sections.map((section) => section.title),
-    ["Situation", "Next action", "Critical dates", "Blockers", "Latest communication", "Doc work"]);
-  assert.match(sections[0].lines[0], /Due diligence/, "the panel says the phase's own name");
-  assert.equal(sections[1].lines[0], "No next step recorded.");
-  assert.deepEqual(sections[2].lines, ["None recorded."]);
-  assert.deepEqual(sections[5].lines, ["Not in this release."]);
 });
 
 /* ------------------------------------------ V5-UX-B04: record/client/vendor context */
@@ -689,7 +660,7 @@ test("js/pipeline.js reads the board in exactly one place, through the coordinat
   assert.match(source, /from '\.\/board-sync\.mjs'/);
   assert.equal((source.match(/getBoard\(/g) || []).length, 1, "one board read path");
   assert.equal((source.match(/getChanges\(/g) || []).length, 1, "one changes read path");
-  assert.match(source, /readBoard: \(\) => state\.client\.getBoard\(\{ workspace: 'all' \}\)/);
+  assert.match(source, /readBoard: \(\) => state\.client\.getBoard\(\{ workspace: 'team' \}\)/);
   assert.match(source, /readChanges: \(cursor\) => state\.client\.getChanges\(cursor\)/);
   assert.equal((source.match(/state\.deals = new Map/g) || []).length, 1,
     "one place builds the board, and only an applied snapshot reaches it");
@@ -711,7 +682,7 @@ test("js/pipeline.js copies no value out of a change event and holds ids rather 
   assert.match(source, /lifted: null,/);
   assert.match(source, /panelDeal: null,/);
   assert.match(source, /const deal = state\.deals\.get\(id\);/);
-  assert.match(source, /if \(state\.panelDeal !== dealId\) return;/,
+  assert.match(source, /state\.panelDeal !== id \|\| seq !== panelReadSequence/,
     "a late detail read never paints over a record the person has since opened");
 
   const noteCellBase = source.slice(source.indexOf("function noteCellBase"), source.indexOf("function applyBoardSnapshot"));
@@ -757,9 +728,8 @@ test("pipeline offers drag, keyboard and tap through one reviewed move", async (
   assert.match(html, /Arrows choose a column, Enter drops, Escape cancels/);
   assert.match(html, /<dialog id="moveDialog"[^>]*aria-labelledby="moveTitle"/);
   assert.match(html, /id="moveTargets"[^>]*aria-label="Choose a destination phase"/);
-  assert.match(source, /data-move="\$\{esc\(deal\.id\)\}"/, "every rendered card offers a tap control");
-  assert.match(source, /if \(move\) \{ openMoveChooser\(move\.dataset\.move\); return; \}/);
-  assert.match(source, /beginMove\(dealId, target\.dataset\.moveTarget\)/, "tap joins the shared completion path");
+  assert.doesNotMatch(source, /data-move="/);
+  assert.match(source, /id="detailPhase"/, 'manual phase remains accessible inside the detail popup');
 });
 
 test("pipeline.html asks for dates with a calendar only, and never claims a gate", async () => {
@@ -783,16 +753,18 @@ test("pipeline.html carries the shared shell exactly once and nothing under its 
   const html = await read("pipeline.html");
   assert.equal((html.match(/id="docFab"/g) || []).length, 1, "one floating Doc");
   assert.equal((html.match(/id="docChat"/g) || []).length, 1);
-  assert.match(html, /id="docReading">Doc is reading: Deals</);
+  assert.match(html, /id="docReading">Doc is reading: Local Deals</);
   assert.match(html, /id="receiptDock"/, "the command dock is on the page");
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
   assert.match(html, /<dialog id="conflictDialog"/);
-  assert.match(html, /<dialog id="receiptsDialog"/, "recent changes are a popup, not an inline panel");
-  assert.match(html, /<aside id="recordPanel" class="side-panel glass"[^>]*data-pinned="false"/);
-  assert.match(html, /id="panelPin" aria-pressed="false"/);
+  assert.doesNotMatch(html, /receiptsDialog|receiptsClose|receiptsTitle/, "R10 Recent changes belongs to Today without a legacy modal");
+  assert.match(html, /<ul data-layout-slot="moves" class="receipt-list" id="receiptsList"/);
+  assert.match(html, /<dialog id="recordPanel" class="dialog deal-detail"/);
+  assert.equal((html.match(/id="recordPanel"/g) || []).length, 1, "one editable deal dialog");
+  assert.doesNotMatch(html, /id="panelPin"/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
-  assert.match(html, /<h1 id="pageTitle">Deals<\/h1>/, "Joe's name for this surface, on this surface");
+  assert.match(html, /<h1 id="pageTitle">Local Deals<\/h1>/, "Joe's name for this surface, on this surface");
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
 });
 
@@ -813,7 +785,7 @@ test("every control on the page clears the 44 px floor through the shared classe
 test("the route and the verbs this surface needs are pinned in the contracts", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   assert.equal(routes.redirects["/pipeline"], "/deals?view=board");
-  assert.equal(routes.routes["/deals"], "index.html", "the existing Deal Room keeps its route");
+  assert.equal(routes.routes["/deals"], "pipeline.html", "the existing Deal Room keeps its route");
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   for (const verb of ["patch-deal-field", "add-deal-note", "set-next-step", "add-critical-date", "resolve-conflict", "presence-lease", "revert-deal-field"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -932,7 +904,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.38.0");
+  assert.equal(contract.version, "1.41.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

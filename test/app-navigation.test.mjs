@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Script } from "node:vm";
 
 const root = new URL("../", import.meta.url);
 const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
 const pages = [...new Set(Object.values(routes))];
-const expected = ["Home", "Leads", "Tours", "Deals", "Vendors", "Control Room", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "Progress", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"];
+const expected = ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room", "Relationships", "Clients", "Ideas", "Events", "Updates", "Doc Chats", "Progress", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"];
 
 test("every app route mounts the same navigation before page content", () => {
   for (const page of pages) {
@@ -39,6 +40,7 @@ test("built report uses only report-adapter asset routes and includes the shared
     assert.match(script, /function appShellMarkup\(/, "report JavaScript carries the shared navigation renderer");
     assert.match(style, /\.app-shell-header\{/, "report CSS carries the shared shell styles");
     assert.doesNotMatch(script, /^export /m, "report JavaScript runs without an unrouted module import");
+    assert.doesNotThrow(() => new Script(script), "the standalone report bundle parses after removing app-only mounting");
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }

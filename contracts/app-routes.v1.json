@@ -1,12 +1,12 @@
 {
   "schema": "doctorcre-app-routes.v1",
-  "version": "1.18.0",
+  "version": "1.19.0",
   "routes": {
     "/": "workspace.html",
     "/control-room": "control-room.html",
     "/control-room/progress": "progress-board.html",
     "/control-room/progress/work": "progress-work.html",
-    "/deals": "index.html",
+    "/deals": "pipeline.html",
     "/leads": "leads.html",
     "/clients": "business.html",
     "/vendors": "business.html",
@@ -22,7 +22,8 @@
     "/incidents": "incidents.html",
     "/updates": "notifications.html",
     "/doc-chats": "conversations.html",
-    "/doc-chats/work": "tasks.html"
+    "/doc-chats/work": "tasks.html",
+    "/relationships": "relationships.html"
   },
   "redirects": {
     "/progress-board": "/control-room/progress",
