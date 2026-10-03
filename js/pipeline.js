@@ -755,7 +755,10 @@ async function saveNextStep(id) {
   if (!pending) {
     nextReads.add(id); syncNextForm();
     try {
-      const fresh = await readDealDetail(id);
+      const fresh = await readDealDetail(id).catch(error => {
+        if (state.panelDeal === id && nextDraft === draft) refusePanelDetail(error);
+        throw error;
+      });
       if (state.panelDeal !== id || nextDraft !== draft) return;
       const recorded = stepValues(fresh.deal);
       const crossed = ['text','date'].some(name => draft.dirty.has(name) && recorded[name] !== draft.base[name]);
@@ -768,8 +771,8 @@ async function saveNextStep(id) {
       }
       // Unedited fields come from this read, even when no poll ran first.
       for (const name of ['text','date']) if (!draft.dirty.has(name)) proposed[name] = recorded[name];
-    } catch (error) {
-      if (state.panelDeal === id && nextDraft === draft && !refusePanelDetail(error)) $('detailNextStatus').textContent = 'Next step is updating. Your draft is saved here.';
+    } catch {
+      if (state.panelDeal === id && nextDraft === draft) $('detailNextStatus').textContent = 'Next step is updating. Your draft is saved here.';
       return;
     } finally { nextReads.delete(id); if (state.panelDeal === id) syncNextForm(); }
   }
