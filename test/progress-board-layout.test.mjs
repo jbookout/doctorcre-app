@@ -56,6 +56,23 @@ for (const label of document.querySelectorAll(".board-card .card-pr, .blocked-ca
   if (label.scrollWidth > label.clientWidth + 1)
     problems.push(owner + ": PR label clipped (" + label.clientWidth + " < " + label.scrollWidth + ")");
 }
+// With Key open, every legend sample stays inside its own column, clear of its explanation.
+document.querySelector("#legend-toggle").click();
+await wait(50);
+for (const entry of document.querySelectorAll("#legend-body .legend-entry")) {
+  const sample = entry.querySelector(".legend-sample");
+  const text = entry.querySelector("dd").getBoundingClientRect();
+  const column = sample.getBoundingClientRect();
+  for (const mark of sample.querySelectorAll("*")) {
+    const rect = mark.getBoundingClientRect();
+    if (!rect.width) continue;
+    if (rect.right > column.right + 1 || rect.left < column.left - 1 || rect.right > text.left)
+      problems.push("legend " + entry.dataset.legendId + ": sample (" + Math.round(rect.left) + "-" + Math.round(rect.right)
+        + ") overlaps its explanation (starts " + Math.round(text.left) + ")");
+  }
+}
+document.querySelector("#legend-toggle").click();
+await wait(50);
 // Every fixed control is the thing a tap at its centre reaches, with the app shell mounted.
 for (const control of document.querySelectorAll("#legend-toggle, .app-shell-doc:not([hidden])")) {
   const rect = control.getBoundingClientRect();
