@@ -11,14 +11,15 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&am
 const display = value => value === null ? 'Unknown' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
 
 export function mountDocPresence({ document: root = document, window: win = window, context = pageDocContext, client: supplied, intervalMs = 30_000 } = {}) {
-  const main = root.getElementById('appMainSlot');
-  if (!main || !context || root.getElementById('docPresence')) return null;
+  // Doc belongs to the authenticated app layout only.
+  if (!root.getElementById('appMainSlot') || !context || root.getElementById('docPresence')) return null;
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
-  const strip = root.createElement('section'); strip.id = 'docPresence'; strip.className = 'doc-presence'; strip.setAttribute('aria-label', 'Doc');
-  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span><span><b>Doc</b><span id="docPageLabel"></span></span><span aria-hidden="true">↗</span></button><div id="docSuggestions" class="doc-suggestion-strip" aria-live="polite"></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button></div>';
-  main.prepend(strip);
+  // Doc is one floating icon at the bottom right; everything else lives in the panel it opens.
+  const presence = root.createElement('div'); presence.id = 'docPresence'; presence.className = 'doc-presence';
+  presence.innerHTML = '<button id="docOpen" class="doc-fab" type="button" aria-haspopup="dialog" aria-controls="docDetail" aria-expanded="false" aria-label="Doc" title="Doc"><span class="doc-orb" aria-hidden="true">◍</span><span id="docCount" class="doc-count" aria-hidden="true" hidden></span></button>';
+  root.body.append(presence);
   const dialog = root.createElement('dialog'); dialog.id = 'docDetail'; dialog.className = 'doc-detail'; dialog.setAttribute('aria-labelledby','docTitle');
-  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a></section></div>';
+  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><div><h2 id="docTitle">Doc</h2><p id="docPageLabel"></p></div></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button><button id="docClose" type="button" aria-label="Close Doc">×</button></div></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a></section></div>';
   root.body.append(dialog);
   const $ = id => root.getElementById(id);
   let snapshot = context.snapshot(), suggestions = null, suggestionState = 'updating', client = supplied, approval, shown = [], chosen = null, disposed = false, readEpoch = 0, lastScope = '';
@@ -30,23 +31,26 @@ export function mountDocPresence({ document: root = document, window: win = wind
     for (const node of target.querySelectorAll('details')) if (expanded.includes(node.dataset.entry)) node.open = true;
     if (focus) ([...target.querySelectorAll('[data-doc-key]')].find(node => node.dataset.docKey === focus) || $('docClose')).focus();
   };
-  // Keep the same presence reachable in a native record popup. DOM state
-  // controls placement only; record identity still comes from the page read.
+  // A modal record popup makes the page inert, so the icon joins the popup's
+  // bottom edge while it is open. DOM state controls placement only; record
+  // identity still comes from the page read.
   function placePresence() {
     const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail), aside#recordPanel:not([hidden])')];
-    const host = hosts.at(-1) || main;
-    strip.classList.toggle('doc-in-detail', host !== main);
-    if (strip.parentElement !== host) host.prepend(strip);
+    const host = hosts.at(-1) || root.body;
+    presence.classList.toggle('doc-in-detail', host !== root.body);
+    if (host.lastElementChild !== presence) host.append(presence);
   }
   const render = () => {
     placePresence();
     $('docPageLabel').textContent = snapshot.active?.title || snapshot.label;
-    strip.dataset.state = snapshot.state;
+    presence.dataset.state = snapshot.state;
     $('docUpdated').textContent = updatedLabel(snapshot.observedAt);
     if (snapshot.observedAt) $('docUpdated').dateTime = snapshot.observedAt; else $('docUpdated').removeAttribute('datetime');
     shown = contextualSuggestions(snapshot, suggestions, { evaluatedPages: DOC_EVALUATED_PAGES });
     const state = !snapshot.ready ? snapshot.state === 'updating' ? 'Updating…' : 'Unavailable' : suggestionState === 'unavailable' ? 'Suggestions unavailable' : suggestionState === 'updating' ? 'Updating…' : 'No suggestions';
-    keep($('docSuggestions'), shown.length ? shown.slice(0, 2).map(row => `<button type="button" data-doc-suggestion="${escape(row.id)}" data-doc-key="suggestion:${escape(row.id)}"><span aria-hidden="true">✦</span>${escape(row.polished_text || 'Review suggestion')}<span aria-hidden="true">↗</span></button>`).join('') : `<span class="doc-quiet">${state}</span>`);
+    $('docOpen').setAttribute('aria-label', shown.length ? `Doc, ${shown.length} suggestion${shown.length === 1 ? '' : 's'}` : 'Doc');
+    $('docCount').hidden = !shown.length; $('docCount').textContent = shown.length || '';
+    keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
     if (!dialog.open) return;
     const records = snapshot.ready ? snapshot.records : [];
     const selected = snapshot.active ? `${snapshot.active.kind}:${snapshot.active.id}` : chosen;
@@ -59,7 +63,6 @@ export function mountDocPresence({ document: root = document, window: win = wind
     keep($('docActivity'), selectedRecord?.activityComplete === false
       ? '<p class="doc-quiet">Recent activity unknown: conversation read is incomplete.</p>'
       : selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
-    keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
   };
   const refresh = async ({ signal } = {}) => {
     const epoch = ++readEpoch, captured = context.snapshot();
@@ -78,10 +81,10 @@ export function mountDocPresence({ document: root = document, window: win = wind
     finally { if (epoch === readEpoch && !disposed) render(); }
   };
   const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs });
-  const open = () => { if (!dialog.open) dialog.showModal(); render(); };
+  const open = () => { if (!dialog.open) dialog.showModal(); $('docOpen').setAttribute('aria-expanded', 'true'); render(); };
   $('docOpen').onclick = open;
   $('docClose').onclick = () => dialog.close();
-  dialog.addEventListener('close', () => $('docOpen').focus());
+  dialog.addEventListener('close', () => { $('docOpen').setAttribute('aria-expanded', 'false'); $('docOpen').focus(); });
   dialog.addEventListener('click', async event => {
     const button = event.target.closest('[data-doc-approve]'); if (!button || !approval || approval.busy || DOC_PAGES[snapshot.page].approvals === false) return;
     const row = shown.find(item => item.id === button.dataset.docApprove); if (!row) return;
@@ -92,7 +95,6 @@ export function mountDocPresence({ document: root = document, window: win = wind
     $('docApprovalStatus').textContent = result.state === 'approved' ? 'Discussion approved' : result.state === 'changed' ? 'Suggestion changed' : 'Confirmation unavailable';
     await auto.refresh(); render();
   });
-  $('docSuggestions').addEventListener('click', event => { if (event.target.closest('[data-doc-suggestion]')) open(); });
   $('docRecord').onchange = () => { chosen = $('docRecord').value || null; render(); };
   $('docRefresh').onclick = () => { context.tick(); auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   const unsubscribe = context.subscribe(next => {
@@ -107,9 +109,8 @@ export function mountDocPresence({ document: root = document, window: win = wind
   placement.observe(root.body, { subtree:true, childList:true, attributes:true, attributeFilter:['open','hidden'] });
   placePresence();
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
-  root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
-  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };
 }

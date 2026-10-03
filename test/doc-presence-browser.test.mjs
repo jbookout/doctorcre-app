@@ -38,18 +38,62 @@ async function setup(t,{width=1440,motion='no-preference',onRoute}={}) {
  return{page,goto,calls,errors};
 }
 
-test('shared Doc presence appears on every authenticated route; narrow drawers never hide it',async t=>{
+// Doc is one round icon fixed at the bottom right, never a strip across the
+// page. Returns the problems found at the current viewport and scroll.
+const floatingProblems=page=>page.evaluate(()=>{
+ const problems=[],presence=document.querySelector('#docPresence'),icon=presence.getBoundingClientRect();
+ const shellBottom=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--layout-bottom'))||0;
+ if(getComputedStyle(presence).position!=='fixed')problems.push('position '+getComputedStyle(presence).position);
+ if(icon.width>72||icon.height>72)problems.push(`not an icon: ${icon.width}x${icon.height}`);
+ if(innerWidth-icon.right>32||innerHeight-shellBottom-icon.bottom>32||icon.bottom>innerHeight-shellBottom)problems.push(`not bottom right: ${JSON.stringify(icon)}`);
+ if(document.querySelector('.doc-suggestion-strip,[data-doc-suggestion]'))problems.push('a suggestion strip is outside the chat panel');
+ const overlaps=r=>r.width&&r.height&&r.left<icon.right&&r.right>icon.left&&r.top<icon.bottom&&r.bottom>icon.top;
+ // At the end of the page every control must be reachable beside the icon.
+ for(const control of document.querySelectorAll('a[href],button,input,select,textarea,summary,[role=tab],[tabindex]:not([tabindex="-1"])')){
+  if(presence.contains(control)||control.closest('dialog:not([open]),#docDetail')||!control.checkVisibility({visibilityProperty:true}))continue;
+  if(overlaps(control.getBoundingClientRect()))problems.push('covers '+(control.id||control.getAttribute('aria-label')||control.className||control.tagName));
+ }
+ return problems;
+});
+test('Doc is one floating bottom-right icon on every authenticated route, never a top strip, and clears page controls',async t=>{
  const{page,goto,errors,calls}=await setup(t);
  for(const width of [1440,390]) { await page.setViewportSize({width,height:960});
  for(const path of ['/', '/deals', '/leads', '/tours', '/clients','/vendors','/calendar','/ideas-events','/control-room','/control-room/progress','/work-requests','/all-work','/incidents','/control-room/progress/work','/updates','/doc-chats','/doc-chats/work','/search','/status','/design-lab']){
-  try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); } assert.equal(await page.locator('#appMainSlot > #docPresence').count(),1,path);
+  try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); }
+  assert.equal(await page.locator('#docPresence').count(),1,path);
+  assert.equal(await page.locator('#appMainSlot #docPresence').count(),0,`${path} Doc is mounted in the page flow`);
   assert.equal(await page.locator('#docOpen').isVisible(),true,path);
   assert.equal(await page.locator('#docChat:visible').count(),0,path);
+  await page.evaluate(()=>{for(const node of [document.documentElement,...document.querySelectorAll('body *')])if(node.scrollHeight>node.clientHeight)node.scrollTo({top:node.scrollHeight,behavior:'instant'});});
+  assert.deepEqual(await floatingProblems(page),[],`${path} at ${width}px`);
   await page.locator('#docOpen').click();assert.equal(await page.locator('#docDetail').evaluate(n=>n.open),true,path);await page.keyboard.press('Escape');
  }
  }
  assert.deepEqual(errors,[]);
  assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
+});
+
+test('the floating Doc icon is a named keyboard button that opens and returns focus from the chat panel',async t=>{
+ const{page,goto,errors}=await setup(t,{width:390});
+ await goto('/deals?mode=live');
+ await page.waitForFunction(()=>document.querySelector('#docActionList')?.textContent.includes('Confirm the survey'));
+ const icon=page.getByRole('button',{name:'Doc, 1 suggestion',exact:true});
+ assert.equal(await icon.count(),1);
+ assert.equal(await icon.getAttribute('aria-haspopup'),'dialog');
+ assert.equal(await icon.getAttribute('aria-expanded'),'false');
+ let reached=false;
+ for(let i=0;i<200&&!reached;i++){await page.keyboard.press('Tab');reached=await page.locator('#docOpen').evaluate(n=>n===document.activeElement);}
+ assert.equal(reached,true,'Tab reaches the floating Doc icon');
+ await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#docDetail').evaluate(n=>n.open&&n.contains(document.activeElement)),true);
+ assert.equal(await icon.getAttribute('aria-expanded'),'true');
+ assert.equal(await page.getByRole('dialog',{name:'Doc'}).count(),1);
+ assert.match(await page.locator('#docPageLabel').innerText(),/\S/);
+ await page.keyboard.press('Escape');
+ // The native close event is queued after the key press.
+ await page.waitForFunction(()=>document.querySelector('#docOpen').getAttribute('aria-expanded')==='false');
+ assert.equal(await page.locator('#docOpen').evaluate(n=>n===document.activeElement),true);
+ assert.deepEqual(errors,[]);
 });
 
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
@@ -68,7 +112,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  const persistent=await page.locator('#recordPanel').evaluate(dialog=>{
   dialog.scrollTop=500;
   const card=dialog.getBoundingClientRect(),presence=dialog.querySelector('#docPresence').getBoundingClientRect();
-  const visible=presence.top>=card.top && presence.bottom<=card.bottom;
+  const visible=presence.top>=card.top && presence.bottom<=card.bottom && card.right-presence.right<=32 && card.bottom-presence.bottom<=32;
   dialog.scrollTop=0;return visible;
  });assert.equal(persistent,true);
  await page.setViewportSize({width:1440,height:960});
@@ -82,14 +126,14 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  const refreshed=page.waitForResponse(response=>response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await refreshed;
- await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && document.querySelector('#recordPanel #docPageLabel')?.textContent==='Demo Surgical Practice');
+ await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && document.querySelector('#docPageLabel')?.textContent==='Demo Surgical Practice');
  assert.ok(calls.filter(call=>call.name==='get-deal-room').length>detailReads);
  await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
  await page.keyboard.press('Escape');
  await page.locator('#panelClose').click();
- await page.locator('#appMainSlot > #docPresence').waitFor();
- await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
+ await page.locator('body > #docPresence').waitFor();
+ await page.waitForFunction(()=>document.querySelector('#docActionList')?.textContent.includes('Confirm the survey'));
  await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
  await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
@@ -121,14 +165,14 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
 test('selection/filter changes cancel context, auto-refresh recovers and no write happens without a click',async t=>{
  const{page,goto,calls}=await setup(t);await page.clock.install();
  await goto('/deals?mode=live');
- await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
+ await page.waitForFunction(()=>document.querySelector('#docActionList')?.textContent.includes('Confirm the survey'));
  const result=await page.evaluate(async()=>{
   const {pageDocContext}=await import('/js/doc-context.js');
   const ticket=pageDocContext.begin('getBoard');pageDocContext.fail(ticket,{status:401});return pageDocContext.snapshot();
  });assert.equal(result.ready,false);
- assert.match(await page.locator('#docSuggestions').innerText(),/Unavailable/);
+ assert.match(await page.locator('#docActionList').innerText(),/Unavailable/);
  await page.clock.fastForward(31_000);
- await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
+ await page.waitForFunction(()=>document.querySelector('#docActionList')?.textContent.includes('Confirm the survey'));
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
 });
 
@@ -262,7 +306,7 @@ test('R8 delayed approval receipt cannot appear under a different record',async 
  const {page,goto,calls}=await setup(t,{onRoute:async(route,{url})=>{
   if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='decide-doc-suggestion'){started();await wait;const args=route.request().postDataJSON().params.arguments;await rpc(route,{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:args.base_version+1});return true;}
   return false;
- }});await goto('/deals?mode=live');await page.waitForFunction(()=>document.querySelector('[data-doc-suggestion]'));await page.locator('#docOpen').click();await page.locator('[data-doc-approve]').click();await entered;
+ }});await goto('/deals?mode=live');await page.waitForFunction(()=>document.querySelector('[data-doc-approve]'));await page.locator('#docOpen').click();await page.locator('[data-doc-approve]').click();await entered;
  await page.keyboard.press('Escape');await page.evaluate(async()=>{const c=(await import('/js/doc-context.js')).pageDocContext;c.select('deal','d1');});await page.locator('#docOpen').click();release();
  await page.waitForTimeout(100);assert.equal(await page.locator('#docApprovalStatus').textContent(),'');
 });

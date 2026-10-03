@@ -17,7 +17,7 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/ja
 
 const MEASURE = `
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-for (let i = 0; i < 200 && !(document.querySelector("#board-stages .board-card") && document.querySelector(".app-shell-doc")); i += 1)
+for (let i = 0; i < 200 && !(document.querySelector("#board-stages .board-card") && document.querySelector("#docOpen")); i += 1)
   await wait(25);
 document.querySelector("#live-toggle")?.click();
 await wait(50);
@@ -46,7 +46,7 @@ for (const label of document.querySelectorAll(".board-card .card-pr, .blocked-ca
     problems.push(owner + ": PR label clipped (" + label.clientWidth + " < " + label.scrollWidth + ")");
 }
 // Every fixed control is the thing a tap at its centre reaches, with the app shell mounted.
-for (const control of document.querySelectorAll("#legend-toggle, .app-shell-doc:not([hidden])")) {
+for (const control of document.querySelectorAll("#legend-toggle, #docOpen")) {
   const rect = control.getBoundingClientRect();
   const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
   const target = hit?.closest("a, button");

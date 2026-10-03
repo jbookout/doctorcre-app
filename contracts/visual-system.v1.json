@@ -551,7 +551,7 @@
       "selectors": [
         ".doc-presence",
         ".doc-detail",
-        ".doc-identity",
+        ".doc-fab",
         ".doc-orb",
         ".doc-action",
         ".doc-activity"
