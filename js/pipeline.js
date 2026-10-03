@@ -695,12 +695,20 @@ let contextReadSequence = 0;
 let nextDraft = null;
 const nextReads = new Set();
 const stepValues = deal => ({text:noteText(deal.next_step),date:deal.next_date || ''});
+function clearDateDraft() {
+  dateDraft = null;
+  $('dealDateDialog').close();
+  $('dealDateForm').reset();
+  $('dealDateTitle').textContent = 'Add date';
+  $('dealDateStatus').textContent = '';
+}
 function refusePanelDetail(error) {
   if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
   ++panelReadSequence;
   ++contextReadSequence;
   state.panelDetail = null;
   nextDraft = null;
+  clearDateDraft();
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
   $('contextDrawer').close();
@@ -908,6 +916,7 @@ async function openPanel(dealId, trigger) {
 }
 function closePanel() {
   ++panelReadSequence;
+  clearDateDraft();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url);
@@ -1137,13 +1146,13 @@ function wire() {
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
-  $('dealDateCancel').onclick = () => { dateDraft = null; $('dealDateDialog').close(); };
-  $('dealDateDialog').addEventListener('cancel', () => { dateDraft = null; });
+  $('dealDateCancel').onclick = clearDateDraft;
+  $('dealDateDialog').addEventListener('cancel', clearDateDraft);
   $('dealDateForm').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, values = new FormData(form);
     const draft = dateDraft;
-    if (!draft) return;
+    if (!draft || !$('dealDateDialog').open || state.panelDeal !== draft.deal || state.panelDetail?.deal.id !== draft.deal) return;
     const {deal:id, kind} = draft;
     // Lost responses retain exactly the same request and key in the command dock.
     const args = {deal:id,kind,due_on:String(values.get('date')),source:String(values.get('evidence'))};
@@ -1151,10 +1160,10 @@ function wire() {
     const result = await runFollowUp(`critical-date:${id}:${kind}`,{verb:'add-critical-date',args,summary:'Date added'});
     if (dateDraft === draft && $('dealDateDialog').open) {
       form.querySelector('button[type="submit"]').disabled = false;
-      if (result?.status === 'ok') { dateDraft = null; $('dealDateDialog').close(); }
+      if (result?.status === 'ok') clearDateDraft();
       else $('dealDateStatus').textContent = 'Date not confirmed';
     }
-    if (result?.status === 'ok' && state.panelDeal === id) await refreshPanel();
+    if (result?.status === 'ok' && state.panelDeal === id && state.panelDetail?.deal.id === id) await refreshPanel();
   });
 
   $('receiptsOpen')?.addEventListener('click', () => {
@@ -1216,6 +1225,7 @@ function wire() {
     if (e.target.closest('[data-refresh-detail]')) refreshPanel();
     const add = e.target.closest('[data-add-date]');
     if (add) {
+      if (!state.panelDetail || state.panelDetail.deal.id !== state.panelDeal) return;
       const definition = DATE_KINDS.find(d => d.kind === add.dataset.addDate);
       $('dealDateTitle').textContent = definition.label;
       dateDraft = {deal:state.panelDeal,kind:definition.kind};
