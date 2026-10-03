@@ -66,6 +66,34 @@ test("description check runs for PRs and stays out of main pushes", () => {
   assert.equal(commands(ci, "push").includes(check), false);
 });
 
+test("CI verifies the contract's exact CARR producer without opt-in skips", async (t) => {
+  const steps = ci.split(/^      - /m).slice(1);
+  const pin = steps.find(step => /^id: producer$/m.test(step));
+  assert.ok(pin, "CI must obtain the runtime pin from the consumer contract");
+  assert.match(pin, /contracts\/carr-interface\.v1\.json/);
+  assert.match(pin, /producer\.source_commit/);
+  assert.match(pin, /GITHUB_OUTPUT/);
+  const checkout = steps.find(step => /repository: jbookout\/carr-system/.test(step));
+  assert.ok(checkout, "CI must fetch committed producer source");
+  assert.match(checkout, /ref: \$\{\{ steps\.producer\.outputs\.commit \}\}/);
+  assert.match(checkout, /fetch-depth: 0/, "ancestor checks require producer history");
+  assert.match(checkout, /persist-credentials: false/);
+  const directory = checkout.match(/path: (\S+)/)?.[1];
+  assert.ok(directory);
+  const verification = steps.find(step => /^run: node --test test\/property-producer\.test\.mjs$/m.test(step));
+  assert.ok(verification, "producer compatibility must be executed explicitly");
+  assert.ok(verification.includes(`CARR_PRODUCER_CHECKOUT: \${{ github.workspace }}/${directory}`));
+  assert.doesNotMatch(verification, /(?:continue-on-error|if):/);
+  assert.ok(steps.indexOf(checkout) < steps.indexOf(verification));
+  const failure = "node --test test/property-producer.test.mjs";
+  for (const event of ["pull_request", "push"]) {
+    const result = await replay(t, ci, event, failure);
+    assert.equal(result.failed, true, event);
+    assert.ok(result.trace.includes(failure));
+    assert.equal(result.trace.includes("npm run build"), false, "incompatible pins cannot reach a green build");
+  }
+});
+
 test("main keeps artifact checks while avoiding a repeated full suite", async (t) => {
   const pr = await replay(t, ci, "pull_request");
   const main = await replay(t, ci, "push");

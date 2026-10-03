@@ -21,6 +21,21 @@ jobs:
       - run: npm ci
       - if: github.event_name == 'pull_request'
         run: node scripts/check-pr-description.mjs
+      - id: producer
+        name: Read the CARR runtime revision from the consumer contract
+        run: >-
+          node -e 'const fs = require("node:fs"); const { producer } = JSON.parse(fs.readFileSync("contracts/carr-interface.v1.json", "utf8")); if (producer.repository !== "jbookout/carr-system" || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error("Invalid CARR runtime pin"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + producer.source_commit + "\n");'
+      - uses: actions/checkout@v4
+        with:
+          repository: jbookout/carr-system
+          ref: ${{ steps.producer.outputs.commit }}
+          path: .carr-producer
+          fetch-depth: 0
+          persist-credentials: false
+      - run: node --test test/property-producer.test.mjs
+        name: Verify the exact CARR runtime interface
+        env:
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/.carr-producer
       - run: npx playwright install --with-deps chromium
       - run: npm run privacy:check
       - run: npm run check
