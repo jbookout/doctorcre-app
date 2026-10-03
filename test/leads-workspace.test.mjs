@@ -37,9 +37,47 @@ test('missing evidence asks one question; changed record refreshes the unsigned 
  }finally{s.close()}
 });
 test('Undo, Link, and Claim are one-tap record operations; link removes card, claim preserves New stage',async()=>{
- const s=await setup();try{s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].review.undo_event_id,id(500));
+ const s=await setup();try{s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes.length,0);assert.equal(s.d.getElementById('stageDialog').open,true);
+ const answer=s.d.querySelector('#stageQuestions textarea');assert.ok(answer);answer.value='The automatic move was premature';
+ s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].review.undo_event_id,id(500));assert.equal(s.writes[0].review.human_quote,answer.value);
  s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
  s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#hotLeads [data-lead-id="${id(1)}"]`),null);
+ }finally{s.close()}
+});
+
+test('PR1481 F10: attempted or unknown calls ask for contact before constructing Engaged evidence',async()=>{
+ for(const connected of [false,null,true]){
+  const s=await setup();try{
+   s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[{id:id(710),kind:'call',connected,occurred_at:'2026-10-01T10:00:00Z',summary:'Synthetic captured call'}]}});
+   await s.app.openReview(id(1),'engaged');const answer=s.d.querySelector('#stageQuestions textarea');
+   assert.equal(Boolean(answer),connected!==true);assert.equal(s.writes.length,0);
+   s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+   if(connected!==true){assert.equal(s.writes.length,0);answer.value='The partner confirmed contact separately';s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();}
+   assert.deepEqual(s.writes[0].review.evidence_ids,connected===true?[id(710)]:[]);
+   assert.equal(s.writes[0].review.human_quote,connected===true?undefined:'The partner confirmed contact separately');
+  }finally{s.close()}
+ }
+});
+
+test('PR1481 Undo: blank answer and cancellation never write; polling preserves quote and rejects replaced transition',async()=>{
+ const s=await setup();try{
+  s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes.length,0);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes.length,0);
+  const answer=s.d.querySelector('#stageQuestions textarea');assert.ok(answer);answer.value='Restore the previous stage';
+  await s.app.refresh();assert.equal(s.d.querySelector('#stageQuestions textarea').value,answer.value);assert.equal(s.app.state.proposal.review.undo_event_id,id(500));
+  s.board.leads.find(row=>row.id===id(10)).last_stage_move.event_id=id(501);
+  await s.app.refresh();assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.writes.length,0);
+  s.d.querySelector('[data-undo]').click();await tick();s.d.getElementById('stageDialog').close();assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+
+test('PR1481 Undo: resume retains the exact correction event and literal quote',async()=>{
+ const s=await setup();try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='The automatic move was premature';
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.app.state.proposal.review.undo_event_id,id(500));assert.equal(s.d.querySelector('#stageQuestions textarea').value,'The automatic move was premature');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes[0].review.undo_event_id,id(500));assert.equal(s.writes[0].review.human_quote,'The automatic move was premature');
  }finally{s.close()}
 });
 test('unknown write retains exact key and payload, never automatically resends; actor change clears it',async()=>{

@@ -44,6 +44,15 @@ test('one-tap undo binds to latest automatic event, restores prior stage, reject
  assert.equal(undoReview({...l,stage:'nurture_drip'}),null);assert.equal(undoReview({...l,last_stage_move:{...l.last_stage_move,undone:true}}),null);
 });
 
+test('PR1481 F10: Engaged evidence requires a recorded connected call',()=>{
+ for (const connected of [false,null,undefined,true]) {
+  const result=stageReview({correspondence:[{id:lead(71).id,kind:'call',connected,occurred_at:'2026-10-01T10:00:00Z'}]},'engaged',Date.parse('2026-10-02'));
+  assert.equal(result.evidence.length,connected===true?1:0);
+  assert.equal(result.reason,connected===true?'Call completed':null);
+  assert.equal(result.question,connected===true?null:'What contact has taken place?');
+ }
+});
+
 test('blocking 15: historical closed_lost presents as Nurture but Undo preserves the exact producer stage/event',()=>{
  const row=lead(99,{stage:'engaged',last_stage_move:{automatic:true,from:'closed_lost',to:'engaged',event_id:'synthetic-historical-event'}});
  assert.equal(undoReview(row)?.stage,'closed_lost');assert.equal(undoReview(row)?.stage_review.undo_event_id,'synthetic-historical-event');

@@ -48,6 +48,7 @@ export function marketCounts(leads, filters = {}) {
 export function stageReview(detail, target, now = Date.now()) {
   const kinds = target === "engaged" ? ["email_in", "meeting", "call"] : target === "outreach_active" ? ["email_out"] : [];
   const evidence = (detail.correspondence || []).filter(entry => kinds.includes(entry.kind) &&
+    (entry.kind !== "call" || entry.connected === true) &&
     Number.isFinite(Date.parse(entry.occurred_at)) && Date.parse(entry.occurred_at) <= now)
     .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)).slice(0, 3);
   const questions = { new: "Why return this lead to New?", qualified: "What makes this lead qualified?",
