@@ -30,7 +30,7 @@ async function open(t,width=1440){
   return {page,errors,calls,get writes(){return writes;},setFail:value=>{fail=value;},setExpired:value=>{expired=value;},setWriteMode:value=>{writeMode=value;}};
 }
 for(const width of [1440,390])test(`W5 rendered directories and wide dialog at ${width}px`,async t=>{
-  const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
+  const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
   assert.equal(await page.locator('#pager').count(),0);assert.doesNotMatch(await page.locator('main').innerText(),/Checked a while ago|About this list|source|No filters|read again/i);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({animations:'disabled',path:`test-artifacts/w5/vendors-${width}.png`});
@@ -48,10 +48,10 @@ for(const width of [1440,390])test(`W5 rendered directories and wide dialog at $
   await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('.relationship-section').textContent.includes('Computed:'));
   assert.equal(h.writes,1);assert.match(await page.locator('.relationship-section').innerText(),/Trial.*Computed: Proven/s);
   await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').isVisible(),false);assert.equal(await page.locator('#appShell').evaluate(el=>el.inert),false);
-  await page.goto(origin+'/clients');await page.waitForSelector('.record-row');await page.screenshot({animations:'disabled',path:`test-artifacts/w5/clients-${width}.png`});assert.deepEqual(h.errors,[]);
+  await page.goto(origin+'/clients', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');await page.screenshot({animations:'disabled',path:`test-artifacts/w5/clients-${width}.png`});assert.deepEqual(h.errors,[]);
 });
 test('W5 filters, traversal and autonomous refresh recover without losing search',async t=>{
-  const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row');
+  const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');
   await page.locator('[data-owner="dell"]').click();await page.waitForFunction(()=>document.querySelector('#resultSummary').textContent.startsWith('31 '));assert.match(h.calls.at(-1),/owner=dell/);
   await page.locator('#territoryInput').fill('Demo North');await page.locator('#territoryInput').dispatchEvent('change');await page.waitForFunction(()=>location.search.includes('territory=Demo'));
   await page.locator('#sortSelect').selectOption('territory');await page.waitForFunction(()=>location.search.includes('sort=territory'));
@@ -69,13 +69,13 @@ test('W5 filters, traversal and autonomous refresh recover without losing search
   h.setFail(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('.record-empty');h.setFail(false);await page.clock.fastForward(31000);await page.waitForSelector('.record-row');assert.deepEqual(h.errors,[]);
 });
 test('W5 reduced motion stops hover travel and pulse while keeping content visible',async t=>{
-  const {page}=await open(t);await page.emulateMedia({reducedMotion:'reduce'});await page.goto(origin+'/vendors');await page.waitForSelector('.record-row');await page.locator('.record-row').first().hover();
+  const {page}=await open(t);await page.emulateMedia({reducedMotion:'reduce'});await page.goto(origin+'/vendors', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');await page.locator('.record-row').first().hover();
   const style=await page.locator('.record-row').first().evaluate(el=>({animation:getComputedStyle(el).animationName,transform:getComputedStyle(el).transform,opacity:getComputedStyle(el).opacity}));assert.deepEqual(style,{animation:'none',transform:'none',opacity:'1'});
   assert.equal(await page.locator('.business-hero').evaluate(el=>getComputedStyle(el,'::before').animationName),'none');await page.screenshot({animations:'disabled',path:'test-artifacts/w5/reduced-motion.png'});
 });
 
 for(const mode of ['lost','rejected','uncertain','unknown200','unknownAck','unknownTool'])test(`W5 ${mode} override response is reconciled without replay`,async t=>{
-  const h=await open(t);h.setWriteMode(mode);const {page}=h;await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo exception');await page.locator('#trustForm button').click();
+  const h=await open(t);h.setWriteMode(mode);const {page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo exception');await page.locator('#trustForm button').click();
   await page.waitForFunction(()=>['Rating confirmed','Rating not confirmed'].includes(document.querySelector('#trustStatus')?.textContent));assert.equal(h.writes,1);
   if(mode==='lost'){assert.match(await page.locator('.relationship-section').innerText(),/Computed: Proven/);assert.equal(await page.locator('#trustStatus').textContent(),'Rating confirmed');assert.equal(await page.locator('#trustForm button').isDisabled(),false);}
   else assert.equal(await page.locator('#trustForm button').isDisabled(),['uncertain','unknown200','unknownAck','unknownTool'].includes(mode));
@@ -114,7 +114,7 @@ async function holdWrites(page) {
 }
 test('W5 late successful save cannot repaint another selected vendor',async t=>{
  const {page}=await open(t);const held=await holdWrites(page);
- await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus').textContent==='Saving…');
+ await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus').textContent==='Saving…');
  await page.locator('#recordClose').click();await page.locator('.record-row').nth(1).click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 02');
  await ack(held[0]);await page.waitForTimeout(150);
  assert.equal(await page.locator('#recordTitle').textContent(),'Demo Partner 02');assert.equal(await page.locator('#trustForm').count(),1);assert.equal(await page.locator('#trustForm button').isDisabled(),false);
@@ -130,7 +130,7 @@ for (const status of [200,502]) test(`W5 pre-expiry save response ${status} cann
 test('W5 a read dispatched before a new save cannot reconcile that save',async t=>{
  const {page}=await open(t);const writes=await holdWrites(page), reads=[];
  const reason='Synthetic repeated rating';
- await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page,reason);
+ await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await beginRating(page,reason);
  await page.route('**/api/v1/business/vendors/*',r=>reads.push(r));
  await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,1));await ack(writes[0]);
  await page.waitForFunction(()=>!document.querySelector('#trustForm button').disabled);await settles(()=>assert.equal(reads.length,1));
@@ -142,21 +142,21 @@ test('W5 a read dispatched before a new save cannot reconcile that save',async t
  await page.unroute('**/api/v1/business/vendors/*');await ack(writes[1]);
 });
 test('W5 keyboard reaches disclosures and skips closed controls',async t=>{
- const {page}=await open(t);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});
+ const {page}=await open(t);await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});
  await page.locator('[data-details-key="trust"] summary').focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.tagName),'SUMMARY');
  await page.locator('[data-details-key="trust"] summary').focus();await page.keyboard.press('Enter');await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement.name),'tier');
  await page.keyboard.press('Shift+Tab');assert.equal(await page.evaluate(()=>document.activeElement.tagName),'SUMMARY');
  await page.locator('[data-details-key="entry-demo-entry"] summary').focus();await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>document.activeElement.closest('details')?.dataset.detailsKey),'entry-demo-entry');
 });
 test('W5 Back restores cached query rows while its read is pending',async t=>{
- const {page}=await open(t);await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row');await page.locator('[data-owner="joe"]').click();await page.waitForFunction(()=>document.querySelector('#resultSummary').textContent.startsWith('31 '));
+ const {page}=await open(t);await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');await page.locator('[data-owner="joe"]').click();await page.waitForFunction(()=>document.querySelector('#resultSummary').textContent.startsWith('31 '));
  await page.locator('[data-owner="dell"]').click();await page.waitForFunction(()=>document.querySelector('.row-owner')?.textContent.includes('Dell'));
  const held=[];await page.route('**/api/v1/business/vendors?**',r=>new URL(r.request().url()).searchParams.get('owner')==='joe'?held.push(r):r.fallback());
  await page.goBack();await settles(async()=>{assert.equal(await page.locator('[data-owner="joe"]').getAttribute('aria-pressed'),'true');assert.equal(await page.locator('.row-owner').evaluateAll(rows=>rows.every(row=>row.textContent.includes('Joe'))),true);});
  for(const r of held)await r.fulfill({json:directoryFixture(r.request().url())});
 });
 test('W5 ordinary record read failure preserves the unsaved rating draft',async t=>{
- const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page,'Synthetic draft survives');
+ const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await beginRating(page,'Synthetic draft survives');
  h.setFail(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='This did not load');
  h.setFail(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});
  assert.equal(await page.locator('[name="reason"]').inputValue(),'Synthetic draft survives');assert.equal(await page.locator('[name="tier"]').inputValue(),'Trial');
@@ -164,18 +164,18 @@ test('W5 ordinary record read failure preserves the unsaved rating draft',async 
 test('W5 failed continuous page is visible and polling retries without scroll',async t=>{
  const {page}=await open(t);let fail=true;
  await page.route('**/api/v1/business/vendors?**',r=>new URL(r.request().url()).searchParams.get('page')==='2'&&fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fallback());
- await page.goto(origin+'/vendors?mode=live');await page.waitForSelector('.record-row');await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForTimeout(150);
+ await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForTimeout(150);
  assert.match(await page.locator('#noticeRegion').innerText(),/Could not load more/);assert.equal(await page.locator('.record-row').count(),25);
  fail=false;await page.clock.fastForward(31000);await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>=50);
 });
 test('W5 missing original details never displays summary as original',async t=>{
  const {page}=await open(t);await page.route('**/api/v1/business/vendors/*',r=>{const p=directoryFixture(r.request().url());p.record.relationship.recent_entries[0].detail=null;return r.fulfill({json:p});});
- await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});assert.equal(await page.locator('[data-details-key="entry-demo-entry"]').count(),0);
+ await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});assert.equal(await page.locator('[data-details-key="entry-demo-entry"]').count(),0);
 });
 test('W5 vendor business facts remain visible in the modal',async t=>{
  const {page}=await open(t);await page.route('**/api/v1/business/vendors/*',r=>{const p=directoryFixture(r.request().url());p.record.verticals=['Synthetic specialist vertical'];return r.fulfill({json:p});});
- await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});const body=await page.locator('#recordBody').innerText();for(const value of ['Synthetic specialist vertical','Banking','Warm','Active'])assert.ok(body.includes(value),value);
+ await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});const body=await page.locator('#recordBody').innerText();for(const value of ['Synthetic specialist vertical','Banking','Warm','Active'])assert.ok(body.includes(value),value);
 });
 test('W5 fixture adapter withholds unsupported rating action',async t=>{
- const h=await open(t),{page}=h;await page.goto(origin+'/vendors');await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 01');assert.equal(await page.locator('#trustForm').count(),0);assert.equal(h.writes,0);
+ const h=await open(t),{page}=h;await page.goto(origin+'/vendors', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 01');assert.equal(await page.locator('#trustForm').count(),0);assert.equal(h.writes,0);
 });
