@@ -1,3 +1,4 @@
+import { navigationItems } from "../js/app-shell.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -6,8 +7,8 @@ import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root)));
-const primary = ['Home','Leads','Tours','Local Deals','Vendors','Control Room'];
-const secondary = ['Relationships','Invoices','Clients','Ideas','Events','Updates','Doc Chats','Progress','Work Requests','All Work','Incidents','Project activity','Design Lab','Status'];
+const primary = navigationItems.filter(item => !item.group).map(item => item.label);
+const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 
 async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());

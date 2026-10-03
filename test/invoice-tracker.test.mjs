@@ -86,7 +86,16 @@ test('Home reads the same invoice snapshot and fails closed when it is malformed
 });
 test('invoice route and deterministic artifact input bind the exact separate CARR PR contract',async()=>{
  const read=path=>readFile(new URL(`../${path}`,import.meta.url),'utf8');const contract=JSON.parse(await read('contracts/carr-interface.v1.json'));const routes=JSON.parse(await read('contracts/app-routes.v1.json'));
- assert.equal(routes.routes['/invoices'],'invoices.html');assert.match(await read('scripts/artifact.mjs'),/"invoices.html"/);
+ assert.equal(routes.routes['/invoices'],'invoices.html');assert.equal(JSON.parse(await read('contracts/routes/invoices.json')).routes[0].asset,'invoices.html');
  assert.match(contract.invoice_tracker.producer.source_commit,/^[a-f0-9]{40}$/);assert.equal(contract.invoice_tracker.amount,'commission.gross_amount');
  for(const name of ['read-invoice-tracker','record-commission-receipt'])assert.ok(contract.mcp_operations.includes(name));
+});
+
+test('invoice slice registers its gate, navigation and complete file ownership',async()=>{
+ const {prepareSlices}=await import('../scripts/slices.mjs');
+ const result=await prepareSlices(new URL('../',import.meta.url).pathname);
+ assert.equal(result.contract.gatePaths['/invoices'],'/control-room');
+ assert.ok(result.navigationItems.some(item=>item.href==='/invoices'&&item.label==='Invoices'));
+ const invoice=result.slices.find(slice=>slice.id==='invoices');
+ for(const path of ['invoices.html','js/invoice-tracker.js','js/invoice-tracker-model.js','js/invoice-tracker-fixture.js','css/invoice-tracker.css','test/invoice-tracker.test.mjs','test/invoice-tracker-browser.test.mjs'])assert.ok(invoice.files.includes(path),path);
 });

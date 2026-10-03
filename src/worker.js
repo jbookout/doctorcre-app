@@ -17,24 +17,13 @@ const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"]
 // page cannot be its own fallback (CR-AC-26). This page reads nothing from CARR
 // on the server side; what it can and cannot say is decided in the browser.
 const UNGATED_PAGES = new Set(["/status"]);
-// V5-UX-S01/C08: the design prototypes (/design, /design/business,
-// /design/operations) run on embedded synthetic data and are for the partners'
-// visual review only, so they stay behind the sign-in gate. The CARR gate admits
-// an exact list of app page paths that the prototypes are not on, so the app asks
-// the gate about the Control Room page path on their behalf: same session cookie,
-// same refusal or redirect, same 200 for a signed-in partner.
-const GATE_PATHS = new Map([
-  ["/invoices", "/control-room"],
-  ["/control-room/progress", "/control-room"], ["/control-room/progress/work", "/control-room"],
-  ["/ideas-events", "/control-room"], ["/design-lab", "/control-room"],
-  ["/calendar", "/business"], ["/search", "/business"], ["/work-requests", "/system-work.html"],
-  ["/agent-room", "/room.html"], ["/all-work", "/work-inventory"],
-  ["/updates", "/notifications"], ["/doc-chats", "/conversations"],
-]);
+// Each slice chooses an admitted CARR page gate through its route fragment.
+// Authentication and authorization remain entirely in the producer.
+const GATE_PATHS = new Map(Object.entries(routeContract.gatePaths));
 
 function gateRequestFor(request, pathname) {
   const gatePath = GATE_PATHS.get(pathname);
-  if (!gatePath) return request;
+  if (gatePath === pathname) return request;
   const url = new URL(request.url);
   url.pathname = gatePath;
   url.search = "";
