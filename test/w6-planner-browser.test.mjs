@@ -86,7 +86,7 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     const small = await page.locator(".planner-grid").evaluate(el => [...el.querySelectorAll("button,input,select")].filter(node => node.getClientRects().length).filter(node => { const b = node.getBoundingClientRect(); return b.width < 44 || b.height < 44; }).map(node => node.id));
     assert.deepEqual(small, []); assert.deepEqual(app.errors, []);
     assert.ok(app.calls.every(call => call.method === "GET")); assert.ok(app.calls.every(call => !call.body));
-    assert.ok(app.calls.every(call => !/search|upload|render|share|mcp/.test(call.path)));
+    assert.ok(app.calls.every(call => call.path.startsWith("/js/") || call.path.startsWith("/css/") || !/search|upload|render|share|mcp/.test(call.path)));
   });
 });
 

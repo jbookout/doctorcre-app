@@ -1,3 +1,4 @@
+import { mountSliceSections } from './slice-registration.js';
 import { scopedDeals } from './home-dashboard-model.js';
 import { localToday, toDay } from './calendar-model.js';
 import { createClient } from './client.js';
@@ -8,14 +9,8 @@ import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptView
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
-// Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
-// lazy tab reads therefore retain their existing owner across layout changes.
-export function mountAppLayout(root, host, pathname) {
-  if (root.getElementById('appLayout')) return;
-  const win = root.defaultView || globalThis.window;
-  const pageKey = pathname === '/deals' ? '/deals' : pathname;
-  const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
-  const title = pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+// Build validation and runtime use the same layout targets.
+export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
   layout.className = 'app-layout';
@@ -26,6 +21,20 @@ export function mountAppLayout(root, host, pathname) {
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
   status.innerHTML = '<span><time id="appSyncTime" title="Last sync">—</time><button type="button" id="appSyncRefresh" aria-label="Refresh workspace" title="Refresh">↻</button></span><span title="Last new-lead search">⌕ <time id="appLeadSearchTime">—</time></span><span id="appConnection" class="app-layout-health" data-state="unknown" role="img" aria-label="Connection unknown" title="Connection unknown"></span><div id="appStatusSlot"></div>';
+  return { layout, status };
+}
+
+// Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
+// lazy tab reads therefore retain their existing owner across layout changes.
+export function mountAppLayout(root, host, pathname, slices = []) {
+  if (root.getElementById('appLayout')) return;
+  const win = root.defaultView || globalThis.window;
+  const pageKey = pathname === '/deals' ? '/deals' : pathname;
+  const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
+  const title = pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const { layout, status } = createAppLayout(root, title);
+  host.after(layout, status);
+  mountSliceSections(root, pathname, slices);
   const main = layout.querySelector('#appMainSlot');
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
@@ -37,11 +46,10 @@ export function mountAppLayout(root, host, pathname) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
+    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }
-  host.after(layout, status);
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia('(max-width: 760px)');

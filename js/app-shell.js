@@ -1,41 +1,14 @@
+import { slices } from "./slices.generated.js";
+import { registerSlices, NAVIGATION_GROUPS } from "./slice-registration.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this module owns the shared rail and layout.
-export const navigationItems = Object.freeze([
-  { label: "Home", href: "/" },
-  { label: "Leads", href: "/leads" },
-  { label: "Tours", href: "/tours" },
-  { label: "Local Deals", href: "/deals" },
-  { label: "Vendors", href: "/vendors" },
-  { label: "Control Room", href: "/control-room" },
-  { label: "Relationships", href: "/relationships", group: "Workspace" },
-  { label: "Clients", href: "/clients", group: "Workspace" },
-  { label: "Ideas", href: "/ideas-events?tab=ideas", group: "Workspace" },
-  { label: "Events", href: "/ideas-events?tab=events", group: "Workspace" },
-  { label: "Updates", href: "/updates", group: "Updates" },
-  { label: "Doc Chats", href: "/doc-chats", group: "Updates" },
-  { label: "Progress", href: "/control-room/progress", group: "Operations" },
-  { label: "Work Requests", href: "/work-requests", group: "Operations" },
-  { label: "All Work", href: "/all-work", group: "Operations" },
-  { label: "Incidents", href: "/incidents", group: "Operations" },
-  { label: "Project activity", href: "/control-room/progress/work", group: "Operations" },
-  { label: "Design Lab", href: "/design-lab", group: "Reference" },
-  { label: "Status", href: "/status", group: "Reference" },
-]);
-
-const sectionForRoute = {
-  "/tasks": "/", "/work": "/", "/doc-chats/work": "/doc-chats",
-  "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
-  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room/progress/work",
-  "/control-room/agents/queue": "/control-room/progress/work", "/agent-room": "/control-room/progress/work",
-  "/ideas": "/ideas-events?tab=ideas", "/system-work.html": "/work-requests", "/room.html": "/control-room/progress/work",
-  "/work-inventory": "/all-work", "/design": "/design-lab",
-  "/design/business": "/design-lab", "/design/operations": "/design-lab",
-  "/notifications": "/updates", "/conversations": "/doc-chats",
-};
+const registration = registerSlices(slices);
+export const navigationItems = registration.navigationItems;
+const sectionForRoute = registration.sectionForRoute;
 
 export function activeDestination(pathname) {
   return sectionForRoute[pathname] || pathname;
@@ -63,7 +36,7 @@ function link({ label, href }, current, base) {
 export function appShellMarkup(pathname, base = "", search = "") {
   const current = pathname === "/ideas-events" ? `/ideas-events?tab=${new URLSearchParams(search).get("tab") === "events" ? "events" : "ideas"}` : activeDestination(pathname);
   const primary = navigationItems.filter(item => !item.group).map((item) => link(item, current, base)).join("");
-  const more = ["Workspace", "Updates", "Operations", "Reference"].map((group) =>
+  const more = NAVIGATION_GROUPS.map((group) =>
     `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
   const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
   return `<header class="app-shell-header" aria-label="Workspace rail">
@@ -103,7 +76,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname);
+  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);
   else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");

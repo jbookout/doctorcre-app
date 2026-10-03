@@ -164,7 +164,10 @@ test('reduced motion stops ambient and hover motion without hiding data', async 
 });
 
 test('no eligible leads means hidden widget; polling, resume and online recover failed Home without a retry prompt', async t => {
-  const state = await open(t, { leads: false }); const { page } = state;
+  const state = await open(t, { leads: false, delayDetails: true }); const { page } = state;
+  // Counts render before detail reads settle. Polling is scheduled after the
+  // whole refresh, so advancing its clock must wait for that refresh to finish.
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeLeads').isVisible(), false);
   state.failBoard(true);
   await page.clock.fastForward(31_000);
