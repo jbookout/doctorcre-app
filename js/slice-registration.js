@@ -28,13 +28,9 @@ function loadControls(root, section, state) {
   state.node.inert = true;
   state.node.dataset.sliceState = 'loading';
   state.notice.textContent = 'Loading controls…';
-  state.notice.removeAttribute('data-slice-error');
-  state.script?.remove();
   const script = root.createElement('script');
   script.type = 'module';
-  // Browsers cache failed module loads by URL. A retry needs a fresh module URL.
-  state.attempt++;
-  script.setAttribute('src', state.attempt === 1 ? section.module : `${section.module}?slice_retry=${state.attempt}`);
+  script.setAttribute('src', section.module);
   script.onload = () => {
     state.node.inert = false;
     state.node.dataset.sliceState = 'ready';
@@ -45,35 +41,30 @@ function loadControls(root, section, state) {
     state.node.after(state.notice);
     state.notice.dataset.sliceError = section.id;
     state.notice.textContent = 'Controls unavailable. ';
-    const retry = root.createElement('button');
-    retry.type = 'button'; retry.textContent = 'Retry controls';
-    retry.onclick = () => loadControls(root, section, state);
-    state.notice.append(retry);
+    const reload = root.createElement('button');
+    reload.type = 'button'; reload.textContent = 'Reload page';
+    // Reload resets failed URLs throughout the module graph, including imports.
+    reload.onclick = () => root.defaultView.location.reload();
+    state.notice.append(reload);
   };
-  state.script = script;
   state.node.after(script, state.notice);
 }
 
 export function mountSliceSections(root, pathname, slices) {
   let mounted = mountedSections.get(root);
-  if (!mounted) mountedSections.set(root, mounted = new Map());
+  if (!mounted) mountedSections.set(root, mounted = new Set());
   const errors = [];
   for (const slice of slices) for (const section of slice.sections || []) {
     if (section.page !== pathname) continue;
     try {
-      const prior = mounted.get(section.id);
-      if (prior) {
-        if (prior.node.dataset.sliceState === 'failed') loadControls(root, section, prior);
-        continue;
-      }
+      if (mounted.has(section.id)) continue;
       const slot = root.querySelector(section.slot);
       if (!slot) throw new Error(`missing slice section slot: ${slice.id} ${section.slot}`);
       const node = createSliceSection(root, section);
       slot.append(node);
       const notice = root.createElement('div'); notice.className = 'slice-controls-status'; notice.setAttribute('role', 'status');
-      const state = { node, notice, attempt: 0 };
-      mounted.set(section.id, state);
-      if (section.module) loadControls(root, section, state);
+      mounted.add(section.id);
+      if (section.module) loadControls(root, section, { node, notice });
     } catch (error) {
       errors.push(error);
       const notice = root.createElement('div'); notice.className = 'slice-controls-status';

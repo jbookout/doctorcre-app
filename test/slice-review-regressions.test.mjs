@@ -99,16 +99,17 @@ test('finding 6: contributed actions must be contained by the section whose cont
   await assert.rejects(prepareSlices(root), /section.*root/);
 });
 
-async function open(t, root, { failControls = false, runtimeOnly = false } = {}) {
+async function open(t, root, { failControls = false, failHelper = false, runtimeOnly = false } = {}) {
   const registration = await prepareSlices(root);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ reducedMotion: 'reduce' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  let controlsRequests = 0;
+  let controlsRequests = 0, helperRequests = 0;
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/js/alpha-controls.js') { controlsRequests++; if (failControls && controlsRequests === 1) return route.abort(); }
+    if (url.pathname === '/js/alpha-helper.js') { helperRequests++; if (failHelper && helperRequests === 1) return route.abort(); }
     if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe' } } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/mcp') return route.fulfill({ json: {} });
     const file = registration.contract.routes[url.pathname] || url.pathname.slice(1);
@@ -120,7 +121,7 @@ async function open(t, root, { failControls = false, runtimeOnly = false } = {})
     } catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto('http://localhost/');
-  return { page, errors, requests: () => controlsRequests, registration };
+  return { page, errors, requests: () => controlsRequests, helperRequests: () => helperRequests, registration };
 }
 
 for (const slot of ['#appMainSlot', '#appSidebarSlot']) test(`finding 4: actual shell mounts a section in ${slot} and executes its controls`, async t => {
@@ -151,19 +152,46 @@ test('finding 4: a runtime section failure leaves global navigation usable', asy
   assert.equal(await page.locator('.app-shell-more-list').isVisible(), true); assert.deepEqual(errors, []);
 });
 
-test('finding 6: failed controls show an unavailable state and retry initializes existing markup', async t => {
+test('finding 6: failed entry controls stay inert until a page reload restores them', async t => {
   const root = await fixture(t); await addSlice(root);
   const { page, errors, requests } = await open(t, root, { failControls: true });
-  const retry = page.getByRole('button', { name: 'Retry controls' }); await retry.waitFor({ timeout: 3000 });
+  const reload = page.getByRole('button', { name: 'Reload page' }); await reload.waitFor({ timeout: 3000 });
   assert.equal(await page.locator('#alpha-panel').getAttribute('data-slice-state'), 'failed');
   assert.equal(await page.locator('#alpha-panel').evaluate(node => node.inert), true);
   assert.match(await page.locator('[data-slice-error]').textContent(), /controls unavailable/i);
-  await retry.click(); await page.waitForFunction(() => !!document.querySelector('#alpha-action')?.onclick);
+  await page.evaluate(async () => { const { mountSliceSections } = await import('/js/slice-registration.js'); const { slices } = await import('/js/slices.generated.js'); mountSliceSections(document, '/', slices); });
+  assert.equal(requests(), 1, 'remounting preserves the failed state without retrying a cached graph');
+  assert.equal(await page.getByRole('button', { name: 'Reload page' }).count(), 1);
+  await reload.click(); await page.waitForFunction(() => !!document.querySelector('#alpha-action')?.onclick);
   assert.equal(await page.locator('#alpha-panel').evaluate(node => node.inert), false);
   await page.locator('#alpha-action').click(); assert.equal(await page.locator('#alpha-action').textContent(), 'Demo ran');
   assert.equal(requests(), 2); assert.equal(await page.locator('#alpha-panel').count(), 1);
   await page.evaluate(async () => { const { mountSliceSections } = await import('/js/slice-registration.js'); const { slices } = await import('/js/slices.generated.js'); mountSliceSections(document, '/', slices); });
   assert.equal(requests(), 2, 'ready sections initialize once'); assert.deepEqual(errors, []);
+});
+
+test('finding 6: recovery downloads a failed imported helper and restores working controls', async t => {
+  const root = await fixture(t); const slice = await addSlice(root);
+  slice.files.push('js/alpha-helper.js');
+  await writeFile(join(root, 'js/slices/alpha.js'), `export default ${JSON.stringify(slice)};`);
+  await writeFile(join(root, 'js/alpha-controls.js'), `import { install } from './alpha-helper.js'; install();`);
+  await writeFile(join(root, 'js/alpha-helper.js'), `export function install() { document.querySelector('#alpha-action').onclick = () => { document.querySelector('#alpha-action').textContent = 'Demo ran'; }; }`);
+  const { page, requests, helperRequests, errors } = await open(t, root, { failHelper: true });
+  await page.getByRole('button', { name: 'Reload page' }).waitFor();
+  assert.equal(await page.locator('#alpha-panel').getAttribute('data-slice-state'), 'failed');
+  assert.equal(await page.locator('#alpha-panel').evaluate(node => node.inert), true);
+  await page.evaluate(() => history.replaceState(null, '', '/?view=demo#alpha-panel'));
+  await page.getByRole('button', { name: 'Reload page' }).click();
+  await page.waitForFunction(() => document.querySelector('#alpha-panel')?.dataset.sliceState === 'ready', null, { timeout: 3000 });
+  assert.equal(helperRequests(), 2, 'failed dependencies are downloaded again');
+  assert.equal(requests(), 2);
+  assert.equal(page.url(), 'http://localhost/?view=demo#alpha-panel');
+  assert.equal(await page.locator('#alpha-panel').count(), 1);
+  assert.equal(await page.locator('[data-slice-error]').count(), 0);
+  await page.locator('#alpha-action').click();
+  assert.equal(await page.locator('#alpha-action').textContent(), 'Demo ran');
+  assert.ok(await page.locator('[data-app-nav-item]').count() > 0);
+  assert.deepEqual(errors, []);
 });
 
 test('finding 7: a late Workspace entry keeps desktop/phone expectations in rendered group order', async t => {
