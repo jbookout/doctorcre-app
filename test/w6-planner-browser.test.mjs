@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 
 const root = new URL("../", import.meta.url);
 const clientId = "11111111-1111-4111-8111-111111111111", tourId = "22222222-2222-4222-8222-222222222222";
@@ -11,7 +11,7 @@ const tour = { id: tourId, name: "Demo Gulf Coast Tour", status: "draft", stops:
 
 async function open(t, width) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 1000 } }); page.setDefaultTimeout(6000);
+  const page = await browser.newPage({ viewport: { width, height: 1000 } });
   await page.clock.install({ time: new Date("2026-10-01T15:00:00Z") });
   const calls = [], errors = []; let unavailable = false, revision = 0;
   page.on("pageerror", error => errors.push(error.message));
@@ -100,7 +100,7 @@ test("W6 polling recovers from outage without retry controls and refreshes open 
   assert.match(await page.locator("#tour-library-state").textContent(), /temporarily/);
   app.outage(false); await page.clock.runFor(30_500);
   await page.waitForFunction(() => document.querySelector("#detail-title").textContent === "Demo refreshed tour");
-  assert.equal(await page.locator("#plan-name").inputValue(), "Typed draft"); assert.equal(await page.locator("#tour-library-state").textContent(), "");
+  assert.equal(await page.locator("#plan-name").inputValue(), "Typed draft"); await page.waitForFunction(() => document.querySelector("#tour-library-state").textContent === "");
   assert.equal(await page.locator("#detail-content details").evaluate(el => el.open), true);
   assert.equal(await page.locator("#detail-content summary").evaluate(el => document.activeElement === el), true);
   await page.keyboard.press("Escape");

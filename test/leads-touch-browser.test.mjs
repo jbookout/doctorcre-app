@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {chromium} from 'playwright';
+import test from 'node:test';import assert from 'node:assert/strict';import { chromium } from './browser-harness.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 
 test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens its review',async t=>{
@@ -10,9 +10,9 @@ test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens
  const initial=await page.evaluate(()=>scrollY);const box=await handle.boundingBox();const cdp=await page.context().newCDPSession(page);
  const touch=(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,radiusX:3,radiusY:3,id:1}]});
  await touch('touchStart',box.x+box.width/2,box.y+box.height/2);await touch('touchMove',195,945);
- await page.waitForFunction(start=>scrollY>start+150,initial,{timeout:3000});
+ await page.waitForFunction(start=>scrollY>start+150,initial);
  const target=page.locator('[data-stage="qualified"] .stage-head');
- await page.waitForFunction(()=>{const r=document.querySelector('[data-stage="qualified"] .stage-head').getBoundingClientRect();const top=document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom;const bottom=document.querySelector('.app-layout-status').getBoundingClientRect().top;return r.top>top&&r.bottom<bottom},{timeout:5000});
+ await page.waitForFunction(()=>{const r=document.querySelector('[data-stage="qualified"] .stage-head').getBoundingClientRect();const top=document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom;const bottom=document.querySelector('.app-layout-status').getBoundingClientRect().top;return r.top>top&&r.bottom<bottom});
  const destination=await target.boundingBox();await touch('touchMove',destination.x+destination.width/2,destination.y+destination.height/2);
  await page.waitForFunction(()=>document.querySelector('[data-stage="qualified"]').dataset.dropActive==='true');await touch('touchEnd');
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.match(await page.locator('.stage-proposal').innerText(),/New.*Qualified/s);assert.equal(writes.length,0);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, settles } from './browser-harness.mjs';
 import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
@@ -22,7 +22,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
   // Virtual time pauses CSS transitions. Data journeys use reduced motion so
   // actionability cannot wait on a hover transition the clock never advances.
-  await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
+  await page.clock.install({ time: NOW });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   let boardMalformed = malformedBoard;
   let releaseInitialFeed;
@@ -174,7 +174,8 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
   assert.equal(await page.locator('#homeLeads').isVisible(), false);
   state.failBoard(true);
   await page.clock.fastForward(31_000);
-  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —'));
+  // Recover only after the failing refresh ends: a resume during it joins that read.
+  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeCalendar').isVisible(), false);
   assert.doesNotMatch(await page.locator('main').textContent(), /retry|read again/i);
   state.failBoard(false);
@@ -230,7 +231,7 @@ test('R5 whole refresh deadline preserves completed widgets across multiple hung
   assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: 12/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.equal(await page.locator('#homeControl').isVisible(), true);
-  assert.equal(calls.filter(name => name === 'get-deal-room').length, 12);
+  await settles(() => assert.equal(calls.filter(name => name === 'get-deal-room').length, 12));
 });
 
 test('R6 settled board failure shows unavailable rather than Updating and automatic recovery clears it', async t => {

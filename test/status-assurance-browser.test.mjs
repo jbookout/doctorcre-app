@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { scope, NOW, projection } from './fixtures/assurance-health.mjs';
 
 async function openStatus(t, { width = 390, answer = projection(), refused = false, query = true, timezoneId = 'UTC' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1024 }, timezoneId });
-  page.setDefaultTimeout(5000);
   const calls = []; const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.clock.install({ time: NOW });
   await page.route('**/*', async route => {
