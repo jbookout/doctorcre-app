@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { JSDOM } from 'jsdom';
 import { renderEvidence, loadEvidence, mountEvidence } from '../js/correspondence.js';
 import { correspondenceState, meetingEvidence } from '../js/correspondence-model.js';

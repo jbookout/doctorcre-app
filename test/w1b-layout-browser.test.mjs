@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { workspace, detail, id } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
@@ -9,7 +9,7 @@ const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 async function open(t,{width=1440,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:960},timezoneId,reducedMotion:clock?'reduce':motion});page.setDefaultTimeout(5000);
+  const page=await browser.newPage({viewport:{width,height:960},timezoneId,reducedMotion:clock?'reduce':motion});
   if(clock) await page.clock.install({time:new Date(now)});
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -112,7 +112,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
  const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
- await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
+ await waitForAsync(page, async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
  assert.deepEqual(errors,[]);
 });
 
@@ -154,7 +154,7 @@ test('Home, Leads and Local Deals fit desktop and phone; capture the six review 
  const{page,goto,errors}=await open(t);
  for(const width of[1440,390]){await page.setViewportSize({width,height:960});for(const[name,path]of[['home','/'],['leads','/leads'],['local-deals','/deals?view=board']]){
   await goto(path);if(name==='leads')await page.waitForSelector('.lead-card');if(name==='local-deals')await page.waitForSelector('.kanban-card');
-  await fits(page,`${name} ${width}`);await page.screenshot({timeout:15000,animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
+  await fits(page,`${name} ${width}`);await page.screenshot({animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
  }}assert.deepEqual(errors,[]);
 });
 

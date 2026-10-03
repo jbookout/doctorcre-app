@@ -5,8 +5,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { webcrypto, createHash } from "node:crypto";
-import { JSDOM } from "jsdom";
-import { chromium } from "playwright";
+import { openDom } from "./jsdom-harness.mjs";
+import { chromium } from "./browser-harness.mjs";
 
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
@@ -123,8 +123,7 @@ function domain() {
   return { tours, calls, transitions, fetch, fail(path, kind) { fault = { path, kind }; } };
 }
 async function open(store, storage = {}, query = "") {
-  const dom = new JSDOM(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" });
-  Object.defineProperty(dom.window, "crypto", { value: webcrypto }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
+  const dom = openDom(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
   if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
   for (const [key, value] of Object.entries(storage)) dom.window.sessionStorage.setItem(key, value);
   dom.window.eval(script); await settle();
