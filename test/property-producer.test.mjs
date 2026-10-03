@@ -102,20 +102,28 @@ test("the app consumes the merged producer's directory and selected-board interf
   assert.deepEqual(calls[1][1], ["carr-internal", "joe", "carr-v5"]);
 });
 
-test("the distinct feature producers retain Unfinished, the system-filtered Live Library and Doc activity", {
+// Feature revisions record provenance. The one CARR service binding must serve
+// the entire interface at the advertised runtime revision.
+test("the advertised runtime producer retains Unfinished and the system-filtered Live Library", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify inherited system work",
 }, () => {
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.system_work_inventory.producer.source_commit}:${path}`], { encoding: "utf8" });
+    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
   const registry = committed("mcp-server/src/tools.js");
   assert.ok(/import.*systemWorkTools.*system-work-census/.test(registry), "pinned producer lacks the inherited system-work module import");
   assert.ok(/registerTools\(systemWorkTools\(/.test(registry), "pinned producer must register inherited system-work tools");
   assert.match(committed("mcp-server/src/system-work-census.v5.js"), /["']unfinished-work["']\s*:/);
 
   assert.match(committed("mcp-server/src/work-inventory-census.v5.js"), /system === true/);
-  const activityRegistry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.mcp_read_contracts.doc_activity.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
-  assert.match(activityRegistry, /registerTools\(docActivityTools\(/);
+});
+
+test("the same advertised runtime producer registers Doc activity", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime activity admission",
+}, () => {
+  const registry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
+  assert.ok(/registerTools\(docActivityTools\(/.test(registry),
+    "the advertised runtime producer must register Doc activity alongside inherited system work");
 });
 
 // Evaluate only the pinned producer's route predicate and its declarations.
@@ -124,7 +132,7 @@ test("Doc activity reaches the exact pinned CARR browser route predicate through
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify gate admission",
 }, async () => {
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.mcp_read_contracts.doc_activity.producer.source_commit}:${path}`], { encoding: "utf8" });
+    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
   const source = committed("mcp-server/src/dealroom-web.js");
   const business = committed("mcp-server/src/workspace-business-read.js");
   const declaration = (text, name) => {
@@ -158,11 +166,11 @@ test("Doc activity reaches the exact pinned CARR browser route predicate through
   assert.equal(new URL(signedOut.headers.get("location")).searchParams.get("return_to"), "/doc-activity?partner=dell");
 });
 
-test("the exact producer accepts the inherited Live Library system=true query", {
+test("the advertised runtime producer accepts the inherited Live Library system=true query", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify system-filtered inventory",
 }, async () => {
   const source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.system_work_inventory.producer.source_commit}:mcp-server/src/dealroom-web.js`], { encoding: "utf8" });
+    "show", `${contract.producer.source_commit}:mcp-server/src/dealroom-web.js`], { encoding: "utf8" });
   const found = source.match(/^async function workInventoryResponse\([^]*?^}/m);
   assert.ok(found, "producer must expose its inventory response handler");
   const module = `const workspaceCommandCenterEnabled = () => true;
