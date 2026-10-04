@@ -12,6 +12,8 @@ The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
+Local development and the e2e runner require Node.js 22.12.0 or newer.
+
 ```bash
 npm ci
 npx playwright install chromium
