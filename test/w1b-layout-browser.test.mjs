@@ -34,7 +34,7 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       else if(name==='today-triage') body=await fixture.todayTriage();
       else if(name==='get-deal-room') body=await fixture.getDeal(args.deal || args.deal_id);
       else if(name==='deal-room-changes') body=await fixture.getChanges(args.cursor);
-      else { if(!/^(read-|list-|get-|notification-|correspondence-)/.test(name)) writes.push(name); body={ok:true}; }
+      else { if(!/^(morning-brief$|read-|list-|get-|notification-|correspondence-)/.test(name)) writes.push(name); body={ok:true}; }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{type:'text',text:JSON.stringify(body)}]}})});
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release') return route.fulfill({contentType:'application/json',body:'{}'});

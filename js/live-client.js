@@ -284,9 +284,16 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
-    async getChanges(cursor) {
+    async getChanges(cursor, { signal, since } = {}) {
+      // Versioned pipeline keyset format. Starting at a clock cutoff avoids
+      // replaying years of history; subsequent cursors remain server-issued.
+      if (!cursor && since) {
+        const timestamp = new Date(since).toISOString();
+        cursor = btoa(JSON.stringify({ recorded_at:timestamp, id:'00000000-0000-0000-0000-000000000000' }))
+          .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      }
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
+      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal });
       if (!res.ok) throw new Error(`live changes -> ${res.status}`);
       const data = await res.json();
       for (const e of data.events || []) {
@@ -441,6 +448,9 @@ export function createLiveClient(opts = {}) {
     async listIndustryEvents(args = {}) { return rpc('list-industry-events', args); },
     async addIndustryEvent(args) { return write('add-industry-event', args); },
     async updateIndustryEvent(args) { return write('update-industry-event', args); },
+
+    // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
+    async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
 
     // ------------------------------------------------------------- triage
     // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are

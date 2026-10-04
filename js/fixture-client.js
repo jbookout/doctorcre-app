@@ -1419,9 +1419,9 @@ export async function createFixtureClient(opts = {}) {
       return { schema: 'carr.jev-deal-reading.v1', judged: false, reason: 'jev_unavailable' };
     },
 
-    async getChanges(cursor) {
+    async getChanges(cursor, { since } = {}) {
       pruneLeases();
-      const fresh = eventsAfter(cursor);
+      const fresh = eventsAfter(cursor).filter(event => cursor || !since || Date.parse(event.recorded_at) >= Date.parse(since));
       return {
         events: fresh.map((e) => ({ ...e })),
         presence: [...leases.values()].map((p) => ({ ...p })),
@@ -1693,6 +1693,16 @@ export async function createFixtureClient(opts = {}) {
     // statuses or inbox, so it never answers those rows, and no test may treat
     // it as evidence of what production returns. Dates are minted against the
     // current clock, since a frozen "today" would make every run look overdue.
+    async morningBrief() {
+      const own = row => !row.owner || row.owner === selfActor;
+      const section = items => ({ state: items.length ? 'ready' : 'empty', items });
+      return { state: 'ready', sponsor: selfActor, sections: {
+        today: section((await this.todayTriage()).items.filter(own)),
+        deals: section((await this.getBoard()).deals.filter(own)),
+        loops: section((await this.loopBoard({ owner: selfActor })).loops.filter(own)),
+      } };
+    },
+
     async todayTriage() {
       const today = nowIso().slice(0, 10);
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
