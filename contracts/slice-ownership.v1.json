@@ -52,6 +52,7 @@
     "js/pipeline-model.js",
     "js/post-call-client.js",
     "js/progress-board-model.js",
+    "js/progress-board-route.js",
     "js/progress-work-model.js",
     "js/read-on-resume.mjs",
     "js/relationship-dialog.js",
@@ -81,7 +82,9 @@
     "test/assurance-health.test.mjs",
     "test/auto-refresh-script.mjs",
     "test/boot-mode.test.mjs",
+    "test/browser-continuity.test.mjs",
     "test/browser-harness.mjs",
+    "test/browser-product-proof.test.mjs",
     "test/ci-workflows.test.mjs",
     "test/client-data-check.test.mjs",
     "test/client-interface.test.mjs",
@@ -139,7 +142,6 @@
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
-    "tours/vendor/tour-map-route-state.js",
-    "js/progress-board-route.js"
+    "tours/vendor/tour-map-route-state.js"
   ]
 }

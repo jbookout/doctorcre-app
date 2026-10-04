@@ -50,7 +50,10 @@ test("the deterministic suite covers every merged V1 journey without a model", a
 
 test("CI runs only the deterministic suite, with no model and no telemetry", async () => {
   const workflow = await read(".github/workflows/e2e.yml");
-  assert.match(workflow, /^\s+- run: npx e2e run tests\/journeys\b/m);
+  assert.match(workflow, /^\s+- run: node scripts\/browser-product-proof\.mjs/m);
+  const producer=await read('scripts/browser-product-proof.mjs');
+  assert.match(producer, /'run','tests\/journeys','--retries','0'/);
+  assert.match(producer, /--test','test\/browser-product-proof\.test\.mjs/);
   assert.match(workflow, /E2E_TELEMETRY_DISABLED: "1"/);
   assert.doesNotMatch(workflow, /tests\/agent|secrets\.|API_KEY|e2e login/);
   assert.doesNotMatch(await read(".github/workflows/ci.yml"), /e2e run/, "e2e stays out of the required test job");

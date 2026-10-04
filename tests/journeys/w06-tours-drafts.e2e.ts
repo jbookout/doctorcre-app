@@ -16,7 +16,7 @@ function tourData(url: URL) {
 
 // W6: the tour planner prefills from a client, undoes an edit, and keeps its
 // drafts in this tab across a reload.
-test('W6 Tours drafts prefill from a client, undo an edit and survive a reload', async ({ app, browser, screen }) => {
+test('W6 Tours drafts prefill from a client, undo an edit and survive a reload', { video: 'on', trace: 'on' }, async ({ app, browser, screen }) => {
   await browser.route(/\/api\/(tours|v1\/business)\//, route =>
     route.fulfill({ json: { data: tourData(new URL(route.request.url)), csrf_token: 'synthetic-e2e-token' } }));
   await app.open('/tours');

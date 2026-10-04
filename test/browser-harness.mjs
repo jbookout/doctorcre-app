@@ -80,8 +80,8 @@ export const webkit = browserEngine(playwrightWebkit);
 
 // Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
 // a fixed range can be taken by a parallel run or an ephemeral connection.
-export async function fixtureServer() {
-  const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+export async function fixtureServer({ root } = {}) {
+  const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: '0', ...(root ? { DOCTORCRE_FIXTURE_ROOT: root } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
   const origin = await new Promise((resolve, reject) => {
     server.stdout.once('data', data => resolve(String(data).match(/http:\/\/[\d.]+:\d+/)[0]));
     server.once('error', reject);
@@ -133,4 +133,43 @@ export async function animationsSettled(page) {
 export async function pausedClock(page, time) {
   await page.clock.install({ time: 0 });
   await page.clock.pauseAt(time);
+}
+
+// These assertions cross the same evaluate seam as Playwright and the e2e
+// browser fixture. Re-resolve selectors after repaint; detached nodes prove nothing.
+export async function retainDraftThroughRefresh(page, selector, refresh) {
+  const read = () => page.evaluate(selector => {
+    const el = document.querySelector(selector);
+    if (!el || !('value' in el)) throw new Error('draft field missing');
+    return {value:el.value, start:el.selectionStart, end:el.selectionEnd,
+      direction:el.selectionDirection, focused:document.activeElement === el};
+  }, selector);
+  const before = await read();
+  await refresh();
+  const after = await read();
+  if (before.value !== after.value || before.start !== after.start || before.end !== after.end || before.direction !== after.direction)
+    throw new Error('draft or selection changed through refresh');
+  if (before.focused && !after.focused) throw new Error('focus lost through refresh');
+}
+
+export async function assertFocusRoundTrip(page, selector, open, close) {
+  await page.evaluate(selector => {
+    const el=document.querySelector(selector); if (!el) throw new Error('focus trigger missing'); el.focus();
+  }, selector);
+  await open();
+  await close();
+  if (!(await page.evaluate(selector => document.activeElement === document.querySelector(selector), selector)))
+    throw new Error('focus did not return to the current trigger');
+}
+
+export async function assertFitsViewport(page, selectors = []) {
+  const fits = await page.evaluate(selectors => {
+    if (document.documentElement.scrollWidth > innerWidth) return false;
+    return selectors.every(selector => {
+      const el=document.querySelector(selector); if (!el) return false;
+      const box=el.getBoundingClientRect();
+      return box.width > 0 && box.left >= -1 && box.right <= innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1;
+    });
+  }, selectors);
+  if (!fits) throw new Error('layout exceeds viewport or required surface is missing');
 }
