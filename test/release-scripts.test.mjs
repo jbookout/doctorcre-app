@@ -30,3 +30,12 @@ test("the production rollback deploys one exact prior version at 100% on the roo
   assert.match(source, /"versions", "deploy", `\$\{versionId\}@100%`, "--env", ""/);
   assert.match(source, /rollback:production -- <exact-version-id>/);
 });
+
+test("releases run main's checks and leave the full suite to the strict PR gate", () => {
+  for (const name of ["release-staging.mjs", "release-production.mjs"]) {
+    const source = read(name);
+    assert.doesNotMatch(source, /run\("npm", \["test"\]\)/, name);
+    const checks = source.indexOf('run("npm", ["run", "test:main"]);');
+    assert.ok(checks >= 0 && checks < source.indexOf('run("npm", ["run", "build"]'), name);
+  }
+});

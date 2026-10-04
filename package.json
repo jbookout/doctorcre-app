@@ -19,6 +19,7 @@
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
     "test": "node --test --test-concurrency=2 test/*.test.mjs",
+    "test:main": "node --test test/artifact.test.mjs test/ci-workflows.test.mjs test/release-scripts.test.mjs",
     "serve": "node scripts/serve.mjs",
     "privacy:check": "node scripts/privacy/client-data-check.mjs",
     "privacy:fixtures": "node scripts/privacy/generate-synthetic-fixtures.mjs",

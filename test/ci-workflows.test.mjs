@@ -72,8 +72,13 @@ test("main keeps artifact checks while avoiding a repeated full suite", async (t
   assert.equal(main.failed, false);
   assert.equal(pr.trace.filter((command) => command === "npm test").length, 1);
   assert.equal(main.trace.filter((command) => command === "npm test").length, 0);
-  assert.ok(main.trace.some((command) => command.startsWith("node --test ") && command.includes("test/artifact.test.mjs")));
-  for (const command of ["npm run check", "npm run build", "npm run artifact:verify"]) assert.ok(main.trace.includes(command));
+  for (const command of ["npm run check", "npm run test:main", "npm run build", "npm run artifact:verify"]) {
+    assert.ok(main.trace.includes(command), command);
+  }
+  const mainTests = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).scripts["test:main"];
+  for (const file of ["test/artifact.test.mjs", "test/ci-workflows.test.mjs", "test/release-scripts.test.mjs"]) {
+    assert.ok(mainTests.split(" ").includes(file), file);
+  }
 });
 
 test("release retains full tests and source verification before publication", async (t) => {

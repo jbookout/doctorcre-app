@@ -27,7 +27,9 @@ if (sourceCommit !== mainCommit) throw new Error("production releases must use t
 if (status) throw new Error("production releases require a clean checkout");
 
 run("npm", ["run", "check"]);
-run("npm", ["test"]);
+// origin/main only holds commits whose merge candidate passed the full suite
+// under the strict required `test` context, so a release runs main's checks.
+run("npm", ["run", "test:main"]);
 run("npm", ["run", "build"], { env: { ...process.env, DOCTORCRE_SOURCE_COMMIT: sourceCommit } });
 run("npm", ["run", "artifact:verify"]);
 
