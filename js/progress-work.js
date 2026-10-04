@@ -9,6 +9,7 @@ import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
 const scope = workScope(location.search);
+const explicitWorkRequest = scope.workRequest;
 const $ = id => document.getElementById(id);
 const node = (tag, value, className) => {
   const el = document.createElement(tag); if (value != null) el.textContent = String(value);
@@ -21,7 +22,25 @@ let sessionIds = new Set(), dispatchCursor = null, reading = false;
 let dispatchRows = [], dispatchPages = 0;
 let sessionQuery = '', sessionRequest = 0;
 let dispatchSelection = 0, dispatchPending = null;
+let bindingGeneration = 0;
 const signatures = new Map();
+function clearRequestEvidence(message) {
+  engineering = null; card = null; turns = []; dotCards = [];
+  scope.refs = []; scope.attempts = []; sessionIds.clear(); ++sessionRequest;
+  selectedSession = scope.session; ++dispatchSelection;
+  dispatchRows = []; dispatchCursor = null; dispatchPages = 0;
+  $('workDispatchMore').hidden = true; signatures.clear();
+  for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),message);
+}
+function reconcileWorkRequest(task) {
+  const reference = task?.work_request || task?.human_ref || task?.id;
+  const next = explicitWorkRequest || (/^WR-\d+$/.test(reference || '') ? reference : null);
+  if (next === scope.workRequest) return;
+  scope.workRequest = next; ++bindingGeneration;
+  clearRequestEvidence('Reading evidence for the current task binding.');
+  wire?.refreshScope();
+}
+
 function patch(host, value, build) {
   const signature = JSON.stringify(value);
   if (signatures.get(host.id) === signature || host.contains(document.activeElement)) return;
@@ -188,8 +207,8 @@ async function readDispatch(more = false) {
 }
 async function readSessions(query = sessionQuery) {
   sessionQuery = query;
-  const request = ++sessionRequest, epoch = authGeneration();
-  const current = () => authReadable(epoch) && request === sessionRequest && query === sessionQuery;
+  const request = ++sessionRequest, epoch = authGeneration(), binding = bindingGeneration;
+  const current = () => authReadable(epoch) && binding === bindingGeneration && request === sessionRequest && query === sessionQuery;
   try {
     const read = await client.sessionIdentity({limit:50,include_closed:true,...(query ? {query} : {})});
     if (!current()) return;
@@ -208,7 +227,7 @@ async function readSessions(query = sessionQuery) {
       return nodes;
     });
     if (selectedSession) readDispatch();
-  } catch (error) { if (authCurrent(epoch) && request === sessionRequest) fail(error, $('workSessionList'), 'Sessions'); }
+  } catch (error) { if (authCurrent(epoch) && binding === bindingGeneration && request === sessionRequest) fail(error, $('workSessionList'), 'Sessions'); }
 }
 function fail(error, host, label) {
   if (error.status === 401 || error.status === 403) {
@@ -222,11 +241,8 @@ function fail(error, host, label) {
   $('workReadState').dataset.state = 'stale';
 }
 document.addEventListener('progress-auth-lost', () => {
-    engineering = null; card = null; turns = []; dotCards = []; queueTask = null;
-    sessionIds.clear(); ++dispatchSelection; dispatchRows = []; dispatchCursor = null; dispatchPages = 0;
-    $('workDispatchMore').hidden = true; signatures.clear();
-    for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),'Sign in to read work evidence.');
-    scope.refs = []; scope.attempts = []; scope.sourceSeqs = []; selectedSession = scope.session;
+    ++bindingGeneration; scope.workRequest = explicitWorkRequest; queueTask = null;
+    clearRequestEvidence('Sign in to read work evidence.'); scope.sourceSeqs = [];
     $('workTitle').textContent = 'Work detail'; document.title = 'Work detail · Progress';
     breadcrumbs('Progress', 'Sign in');
 });
@@ -255,24 +271,26 @@ async function refresh() {
       task = systemPipeline(census.items,[]).stages.flatMap(stage => stage.tasks).find(item => item.id === scope.task);
     }
     task ||= queueTask;
-    if (!scope.workRequest && /^WR-\d+$/.test(task?.work_request || task?.human_ref || task?.id || '')) scope.workRequest = task.work_request || task.human_ref || task.id;
+    reconcileWorkRequest(task);
+    const workRequest = scope.workRequest, binding = bindingGeneration;
+    const currentBinding = () => authCurrent(epoch) && binding === bindingGeneration && workRequest === scope.workRequest;
     const title = task?.title || card?.title || (scope.task ? 'Task work' : 'Project activity');
     $('workTitle').textContent = title; document.title = `${title} · Progress`; breadcrumbs(view.title, title);
     const age = boardFreshness(view.updated_at); $('workReadState').textContent = `${age.label}${age.state === 'stale' ? ' · Stale publication' : ''}`; $('workReadState').dataset.state = age.state;
     renderMetadata(task, view.questions);
-    if (scope.workRequest) await Promise.allSettled([
-      client.workRequestCard({work_request:scope.workRequest}).then(value => { if (!authCurrent(epoch)) return; if (value.human_ref !== scope.workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; renderMetadata(task, view.questions); }).catch(error=>authCurrent(epoch) && fail(error,$('workMetadata'),'Work request')),
-      client.engineeringPassport({work_request:scope.workRequest}).then(value => { if (!authCurrent(epoch)) return;
+    if (workRequest) await Promise.allSettled([
+      client.workRequestCard({work_request:workRequest}).then(value => { if (!currentBinding()) return; if (value.human_ref !== workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; renderMetadata(task, view.questions); }).catch(error=>currentBinding() && fail(error,$('workMetadata'),'Work request')),
+      client.engineeringPassport({work_request:workRequest}).then(value => { if (!currentBinding()) return;
         if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value;
         // The canonical projection resolves a human reference into its immutable
         // wr:<uuid> binding. Keep that binding for subsequent exact wire joins.
         scope.refs = [...new Set([...(scope.refs || []),typeof value.work_request === 'string' ? value.work_request : value.work_request.id])];
         scope.attempts = passportAttempts(value);
         patch($('workCanonicalBody'),value,()=>[record(`Closure: ${value.closure_state} · ${value.stale_conflict.state}`,value)]); deriveLinks(); renderReviews();
-      }).catch(error => authCurrent(epoch) && fail(error,$('workCanonicalBody'),'Engineering Passport')),
+      }).catch(error => currentBinding() && fail(error,$('workCanonicalBody'),'Engineering Passport')),
     ]);
     else empty($('workCanonicalBody'),'No canonical work-request reference is linked to this task.');
-    if (!authReadable(epoch)) return;
+    if (!currentBinding() || !authReadable(epoch)) return;
     renderReviews(); await readSessions();
     if (authReadable(epoch)) wire?.refreshScope();
   } catch (error) { if (authCurrent(epoch)) fail(error,$('workMetadata'),'Publication'); }

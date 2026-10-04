@@ -1,0 +1,40 @@
+{
+  "schema": "doctorcre-tour-day.v1",
+  "version": "0.1.0",
+  "status": "app_capture_only_upstream_contract_required",
+  "route_contract": "contracts/tour-map.v1.json",
+  "tour_read_contract": "contracts/tour-composer.v1.json",
+  "app_state": "Account-scoped IndexedDB audio drafts and itinerary snapshot; never canonical business records. No bearer tokens persisted. Offline reload requires the last authenticated tab binding, which successful sign-out revokes. Online resumption revalidates identity. Capture-only: no upload or filing transport.",
+  "layout": "Uses the shared workspace main region and shell-owned navigation. The capture dock respects the shared rail and status offsets; tour day adds no page-level navigation or tab markup.",
+  "live_voice_notes": false,
+  "producer_requirements": {
+    "submitNote": "Authenticated versioned audio upload, exact note/tour/client/property/route/stop IDs, captured_at, supported MIME; note ID is immutable idempotency key. Server derives tenant, author and client binding from the tour. Bounded audio limits, consent policy, server audio digest and retention policy required.",
+    "lookupNote": "Authenticated authoritative absent/processing/filed result for exact immutable note ID; unknown outcome must be read before resend.",
+    "filed_receipt": [
+      "id",
+      "tour_id",
+      "client_id",
+      "property_id",
+      "route_version_id",
+      "route_stop_id",
+      "summary",
+      "transcript",
+      "tour_feedback_ref",
+      "client_activity_ref"
+    ],
+    "filing": "CARR transcribes and summarizes once, preserves original audio/transcript and atomically links one note to tour feedback and client activity. The application must not infer filed from an upload acknowledgement.",
+    "activation": "Implement, review, deploy and pin an exact producer revision plus versioned HTTP contract before enabling the live adapter. Test real phone microphone, background/lock behavior, encrypted offline storage policy and native navigation before promotion."
+  },
+  "subject_read_producer": {
+    "repository": "jbookout/carr-system",
+    "revision": "756dc39e86436ab4ca76142ba2d88801670bf00b",
+    "contract": "workspace/contracts/tour-operations-foundation.v1.json",
+    "version": "1.8.0",
+    "migration": "0768_tour_internal_subject_read.sql",
+    "fields": [
+      "subject_type",
+      "subject_id"
+    ],
+    "activation": "Pending review, merge and deployment; consumer refuses unbound tours. This pin adds no audio write capability."
+  }
+}
