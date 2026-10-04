@@ -901,8 +901,7 @@ export function mountBoard(deps = {}) {
     let message;
     if (status === 401 || status === 403) {
       message = status === 401 ? "Sign-in required" : "You do not have access to this board.";
-      if (status === 401) { ++readSeq; clearBoard(state); clearDirectory(); }
-      else { ++readSeq; clearBoard(state); clearDirectory(); }
+      ++readSeq; clearBoard(state); clearDirectory();
       systemWork?.clearAccess(cause);
     } else {
       if (target === "board") { boardState="unknown"; deps.onTasks?.([], {state:"unknown"}); }
