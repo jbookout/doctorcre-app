@@ -6,6 +6,8 @@ export default {
     "js/system-work-board.js",
     "progress-board.html",
     "test/progress-board-form.test.mjs",
+    "test/progress-board-layout.test.mjs",
+    "test/progress-board-review.test.mjs",
     "test/progress-board.test.mjs",
     "test/progress-directory-browser.test.mjs",
     "test/system-work-board-browser.test.mjs",

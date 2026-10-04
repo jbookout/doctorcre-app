@@ -16,10 +16,12 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
+  // Virtual time pauses CSS transitions. Data journeys use reduced motion so
+  // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   let boardMalformed = malformedBoard;
@@ -130,7 +132,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'read-invoice-tracker': 1, 'today-triage': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'read-invoice-tracker':1, 'today-triage':1,'list-doc-suggestions': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -152,7 +154,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
 });
 
 test('reduced motion stops ambient and hover motion without hiding data', async t => {
-  const { page } = await open(t);
+  const { page } = await open(t, { motion: 'no-preference' });
   await page.locator('.home-radar').waitFor();
   assert.ok(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName !== 'none'));
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -197,7 +199,7 @@ test('a flagged Home deal opens that exact Deals record; unknown IDs show a fail
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Dental North/);
   await page.goto('http://localhost/deals?deal=unknown');
-  await page.locator('#recordPanel').getByRole('button', { name: 'Retry', exact: true }).waitFor();
+  await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail), null);
   assert.equal(await page.locator('#detailNextForm').count(), 0);
   assert.deepEqual(errors, []);
@@ -265,8 +267,8 @@ test('R7 linked Deals detail refusal or timeout cannot prevent board and feed po
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
-    await page.locator('#recordPanel').getByRole('button', { name: 'Retry', exact: true }).waitFor();
-    assert.match(await page.locator('#panelBody').textContent(), /Deal details could not be read/);
+    await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
+    assert.match(await page.locator('#panelBody').textContent(), /Updates temporarily unavailable/);
     assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Close deal', exact: true }).isVisible(), true);
     const before = [state.boardReads, state.feedReads];
     const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'

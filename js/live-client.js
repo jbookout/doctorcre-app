@@ -9,6 +9,7 @@ import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
+import { observeDocClient } from './doc-context.js';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -217,6 +218,8 @@ export function createLiveClient(opts = {}) {
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
+        lease: page.lease ?? null,
+        schema_version: page.schema_version,
       };
     },
 
@@ -647,5 +650,5 @@ export function createLiveClient(opts = {}) {
     async createNationalMarketDeal(args) { return write('create-national-market-deal', args); },
     async revertDealField(args) { return write('revert-deal-field', args); },
   };
-  return client;
+  return opts.docContext === false ? client : observeDocClient(client);
 }

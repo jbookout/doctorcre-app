@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/pipeline.css">
   <link rel="stylesheet" href="/css/correspondence.css">
+  <link rel="stylesheet" href="/css/deal-timeline.css">
   <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
@@ -69,6 +70,17 @@
     <div class="panel-section" id="panelContextOpenWrap" hidden>
       <button class="btn" type="button" id="panelContextOpen" aria-haspopup="dialog">Client &amp; vendor context</button>
     </div>
+  </dialog>
+
+  <dialog id="dealDateDialog" class="dialog" aria-labelledby="dealDateTitle">
+    <form id="dealDateForm">
+      <header><h2 id="dealDateTitle">Add date</h2><button type="button" class="btn icon-btn" id="dealDateCancel" aria-label="Cancel date">×</button></header>
+      <div class="dialog-body detail-controls">
+        <label>Date<input type="date" name="date" required></label>
+        <label>Lease clause or contract reference<input type="text" name="evidence" maxlength="500" required></label>
+        <button class="btn btn-primary" type="submit">Save date</button><p id="dealDateStatus" role="status"></p>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="moveDialog" class="dialog" aria-labelledby="moveTitle">
@@ -186,20 +198,6 @@
       </div>
     </article>
   </dialog>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Local Deals</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
 

@@ -320,7 +320,7 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   assert.match(html, /\/css\/tasks\.css/);
   assert.match(html, /id="taskLive"[^>]*aria-live="polite"/);
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "commands report in the shared dock");
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
   assert.match(html, /id="appShell"/, "the page mounts the shared navigation");
   for (const id of ["quickAddForm", "quickAddInput", "quickAddDate", "quickAddParsed", "quickAddQuestion", "quickAddDraft", "scopeSwitch", "taskList", "taskDialog", "taskState", "systemOwned"]) {
     assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
@@ -462,4 +462,8 @@ test("the matched record's id rides into add-loop as source_note prose, because 
   // No resolved record, no source_note from this path at all.
   const unmatched = quickAddPlan(parseQuickAdd("Send the redline friday", { now: Date.parse(NOW), viewer: "joe", records }), { viewer: "joe", sentence: "Send the redline friday" });
   assert.equal("source_note" in unmatched.args, false);
+});
+
+test("canonical loop identity survives the board projection for Doc selection", () => {
+  assert.equal(normalizeBoardRow({...boardRow(),loop_id:"synthetic-loop-a"}).loop_id,"synthetic-loop-a");
 });

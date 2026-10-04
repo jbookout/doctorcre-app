@@ -32,7 +32,7 @@ import { preferenceSaveView } from "./notification-preference-draft.mjs";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
   ACKNOWLEDGE_SCOPE, EXPOSURE_STATEMENT, PREFERENCE_OPERATION_KEY, QUIET_HOURS_EFFECT,
@@ -444,7 +444,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Notifications");
+
   mountDock();
   $("quietHoursEffect").textContent = QUIET_HOURS_EFFECT;
   $("quietHoursScope").textContent = QUIET_HOURS_SCOPE;

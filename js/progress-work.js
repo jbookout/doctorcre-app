@@ -1,6 +1,6 @@
 import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAuth } from './progress-auth.js';
 import { createLiveClient } from './live-client.js';
-import { boardView, boardFreshness, taskIdentity, taskSummary, relatedQuestions } from './progress-board-model.js';
+import { boardView, boardFreshness, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
 import { mountProgressWire } from './room.js';
 import { validEngineeringPassport } from './job-passport.js';
 import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
@@ -89,6 +89,23 @@ function taskRecord(task, questions) {
       answer: question.answer_text || `Waiting · ${question.default_answer || 'No default recorded'}`}));
   for (const event of Array.isArray(task.stage_history) ? task.stage_history : [])
     article.append(record('Stage history', event));
+  return article;
+}
+// The board card's derived delivery facts, which the raw record does not show.
+function deliveryRecord(detail) {
+  const article = node('article', null, 'work-record work-delivery'); article.append(node('h3', 'Delivery'));
+  const dl = node('dl', null, 'work-detail-fields');
+  for (const [label, value] of detail.rows) { const row = node('div'); row.append(node('dt', label), node('dd', value)); dl.append(row); }
+  article.append(dl);
+  if (detail.history.length) {
+    const list = node('ol', null, 'work-stage-history'); list.setAttribute('aria-label', 'Stage history');
+    for (const entry of detail.history) {
+      const item = node('li'); item.dataset.stage = entry.stage;
+      const since = node('time', ` from ${entry.entered_at}`); since.dateTime = entry.entered_at;
+      item.append(node('strong', entry.label), node('span', ` ${entry.duration}`), since); list.append(item);
+    }
+    article.append(list);
+  }
   return article;
 }
 function breadcrumbs(boardTitle = scope.board, title = scope.task || 'Project activity') {
@@ -228,6 +245,16 @@ document.addEventListener('progress-auth-lost', () => {
     $('workTitle').textContent = 'Work detail'; document.title = 'Work detail · Progress';
     breadcrumbs('Progress', 'Sign in');
 });
+function renderMetadata(task, questions) {
+  const delivery = task ? deliveryDetail(task) : null;
+  // Displayed delivery ages change independently of publication revisions.
+  patch($('workMetadata'), {task, card, questions, delivery}, () => [
+    flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
+      ? 'This task is not in the loaded publication; linked wire evidence remains available.'
+      : 'Shared project activity · infrastructure and queue cover all projects.', 'work-empty')]),
+    ...(card ? [record('Work request', card)] : []),
+  ]);
+}
 async function refresh() {
   if (reading) return; reading = true;
   const epoch = authGeneration();
@@ -249,9 +276,9 @@ async function refresh() {
     const title = task?.title || card?.title || (scope.task ? 'Task work' : 'Project activity');
     $('workTitle').textContent = title; document.title = `${title} · Progress`; breadcrumbs(view.title, title);
     const age = boardFreshness(view.updated_at); $('workReadState').textContent = `${age.label}${age.state === 'stale' ? ' · Stale publication' : ''}`; $('workReadState').dataset.state = age.state;
-    patch($('workMetadata'), {task,card,questions:view.questions}, () => [flow(task), ...(task ? [taskRecord(task,view.questions)] : [node('p',scope.task ? 'This task is not in the loaded publication; linked wire evidence remains available.' : 'Shared project activity · infrastructure and queue cover all projects.','work-empty')]), ...(card ? [record('Work request',card)] : [])]);
+    renderMetadata(task, view.questions);
     if (workRequest) await Promise.allSettled([
-      client.workRequestCard({work_request:workRequest}).then(value => { if (!currentBinding()) return; if (value.human_ref !== workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; patch($('workMetadata'),{task,card,questions:view.questions},()=>[flow(task),...(task ? [taskRecord(task,view.questions)] : []),record('Work request',card)]); }).catch(error=>currentBinding() && fail(error,$('workMetadata'),'Work request')),
+      client.workRequestCard({work_request:workRequest}).then(value => { if (!currentBinding()) return; if (value.human_ref !== workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; renderMetadata(task, view.questions); }).catch(error=>currentBinding() && fail(error,$('workMetadata'),'Work request')),
       client.engineeringPassport({work_request:workRequest}).then(value => { if (!currentBinding()) return;
         if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value;
         // The canonical projection resolves a human reference into its immutable
