@@ -22,9 +22,10 @@ const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const launched = new Map();
 
 after(async () => {
-  const browsers = await Promise.all(launched.values());
+  const results = await Promise.allSettled(launched.values());
   launched.clear();
-  await Promise.all(browsers.map(browser => browser.close()));
+  await Promise.all(results.filter(result => result.status === 'fulfilled')
+    .map(result => result.value.close()));
 });
 
 export const chromium = {
@@ -73,13 +74,18 @@ export async function fixtureServer() {
 
 // page.waitForFunction treats a returned promise as truthy, so an async
 // predicate (one that imports an app module to read its state) returns at once
-// without waiting. This evaluates the predicate to completion until it holds.
-export async function waitForAsync(page, predicate, arg) {
-  const deadline = Date.now() + WAIT_MS;
-  while (!(await page.evaluate(predicate, arg))) {
-    if (Date.now() >= deadline) throw new Error(`waitForAsync: still false after ${WAIT_MS} ms: ${predicate}`);
-    await delay(25);
-  }
+// without waiting. This evaluates the predicate to completion until it holds;
+// the deadline also bounds an evaluation that never resolves.
+export async function waitForAsync(page, predicate, arg, budgetMs = WAIT_MS) {
+  let timer;
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`waitForAsync: condition not met after ${budgetMs} ms: ${predicate}`)), budgetMs);
+  });
+  try {
+    while (!(await Promise.race([page.evaluate(predicate, arg), expired]))) {
+      await Promise.race([delay(25), expired]);
+    }
+  } finally { clearTimeout(timer); }
 }
 
 // Reruns `check` until its assertions pass, for the same budget as every page

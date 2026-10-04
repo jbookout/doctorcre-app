@@ -5,6 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { pbkdf2, webcrypto } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import { animationsSettled, chromium, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
 import { openDom } from './jsdom-harness.mjs';
 
@@ -28,10 +31,17 @@ test('an async predicate is awaited to completion, unlike waitForFunction', asyn
   try {
     const page = await browser.newPage();
     await page.goto('data:text/html,<p>loaded</p>');
-    await page.evaluate(() => { window.ready = false; setTimeout(() => { window.ready = true; }, 300); });
+    await page.evaluate(() => { window.ready = false; });
     await page.waitForFunction(async () => window.ready);
+    await delay(600); // A caller may be descheduled between browser reads.
     assert.equal(await page.evaluate(() => window.ready), false, 'waitForFunction returned before its async predicate held');
-    await waitForAsync(page, async () => window.ready);
+    let completed = false;
+    const waiting = waitForAsync(page, async () => { window.readStarted = true; return window.ready; })
+      .then(() => { completed = true; });
+    await page.waitForFunction(() => window.readStarted);
+    assert.equal(completed, false, 'the wait stays pending while readiness is held');
+    await page.evaluate(() => { window.ready = true; });
+    await waiting;
     assert.equal(await page.evaluate(() => window.ready), true);
   } finally { await browser.close(); }
 });
@@ -94,12 +104,84 @@ test('layout is measured after entrance animations finish', async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
+    const session = await page.context().newCDPSession(page);
+    await session.send('Animation.enable');
+    await session.send('Animation.setPlaybackRate', { playbackRate: 0 });
     await page.setContent('<style>@keyframes grow{from{height:20px}to{height:44px}}button{height:44px;animation:grow .4s linear}</style><button>Go</button>');
+    await page.evaluate(async () => {
+      const [animation] = document.getAnimations();
+      await animation.ready;
+      animation.currentTime = 200;
+      const getAnimations = document.getAnimations.bind(document);
+      document.getAnimations = () => { window.settleStarted = true; return getAnimations(); };
+    });
     const height = () => page.locator('button').evaluate(el => el.getBoundingClientRect().height);
+    await delay(600); // Measurement must tolerate a descheduled caller.
     assert.ok(await height() < 44, 'mid-animation the target is still undersized');
-    await animationsSettled(page);
+    let completed = false;
+    const waiting = animationsSettled(page).then(() => { completed = true; });
+    await page.waitForFunction(() => window.settleStarted);
+    assert.equal(completed, false, 'layout waits while the animation is held');
+    await page.evaluate(() => document.getAnimations().forEach(animation => animation.finish()));
+    await waiting;
     assert.equal(await height(), 44);
   } finally { await browser.close(); }
+});
+
+test('a stalled async predicate fails at the wait call and releases its timer', async () => {
+  const browser = await chromium.launch();
+  let wait;
+  try {
+    const page = await browser.newPage();
+    await page.route('http://localhost/', route => route.fulfill({ contentType: 'text/html', body: '<p>loaded</p>' }));
+    let requested;
+    const requestStarted = new Promise(resolve => { requested = resolve; });
+    await page.route('http://localhost/stalled.mjs', () => requested());
+    await page.goto('http://localhost/');
+    wait = waitForAsync(page, async () => Boolean(await import('/stalled.mjs')), undefined, 100)
+      .then(() => 'unexpected success', error => error);
+    await requestStarted;
+    const controller = new AbortController();
+    try {
+      const outcome = await Promise.race([wait, delay(1_000, 'still pending', { signal: controller.signal })]);
+      assert.match(String(outcome), /waitForAsync:.*100 ms.*stalled.mjs/s);
+      assert.equal(await page.evaluate(() => 2 + 2), 4, 'the timeout keeps the page usable');
+    } finally { controller.abort(); }
+  } finally {
+    await browser.close();
+    await wait;
+  }
+});
+
+test('the after-hook closes successful browsers even when a cached launch rejected', async () => {
+  const harness = new URL('./browser-harness.mjs', import.meta.url).href;
+  const script = `
+    import { after, test } from 'node:test';
+    import assert from 'node:assert/strict';
+    import { chromium } from ${JSON.stringify(harness)};
+    let underlying;
+    test('failed then successful launch', async () => {
+      await assert.rejects(chromium.launch({ executablePath: '/__review_missing_chromium__' }));
+      const lease = await chromium.launch();
+      underlying = (await lease.newPage()).context().browser();
+      await lease.close();
+      assert.equal(underlying.isConnected(), true);
+    });
+    after(async () => {
+      const connected = underlying.isConnected();
+      await underlying.close(); // Clean up even when the harness regresses.
+      assert.equal(connected, false, 'the harness after-hook must close the successful browser');
+    });
+  `;
+  await promisify(execFile)(process.execPath, ['--input-type=module', '--eval', script], { timeout: 30_000 });
+});
+
+test('async waits bound false predicates and preserve evaluation failures', async () => {
+  await assert.rejects(waitForAsync({ evaluate: async () => false }, () => false, undefined, 25),
+    /waitForAsync: condition not met after 25 ms/);
+  const failure = new Error('predicate failed');
+  await assert.rejects(waitForAsync({ evaluate: async () => { throw failure; } }, () => false),
+    error => error === failure);
 });
 
 test('a page never waits on the outside network', async () => {
