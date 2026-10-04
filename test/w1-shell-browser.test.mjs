@@ -2,7 +2,7 @@ import { navigationItems } from "../js/app-shell.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, waitForAsync } from './browser-harness.mjs';
+import { chromium, settles, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
@@ -71,6 +71,12 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
     assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
     const box = await page.locator('#callModeDialog').boundingBox(); assert.ok(box.width >= Math.min(900, width - 40));
+    await page.locator('#callModeDialog #docPresence').waitFor();
+    await page.locator('#callModeClose').scrollIntoViewIfNeeded();
+    await settles(async () => assert.equal(await page.locator('#callModeClose').evaluate(button => {
+      const box = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    }), true, 'Doc and brief controls leave the popup close action pointer-accessible'));
     await page.getByLabel('Close Call Mode', {exact:true}).click(); await page.locator('#selfAvatar').click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 
