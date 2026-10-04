@@ -77,7 +77,7 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
     } },
     ASSETS: { fetch: async () => { throw Error("signed-out board must not load"); } },
   };
-  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress?board=project-one`), env);
+  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress/board/project-one`), env);
   assert.equal(signedOut.status, 302);
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
@@ -91,8 +91,8 @@ test("/progress-board?board=all-repos keeps its board through the redirect and i
   const response = await handleDoctorcreRequest(new Request(`${host}/progress-board?board=all-repos`), env);
   assert.equal(response.status, 308);
   const location = new URL(response.headers.get("location"));
-  assert.equal(location.pathname, "/control-room/progress");
-  assert.equal(location.searchParams.get("board"), "all-repos");
+  assert.equal(location.pathname, "/control-room/progress/board/all-repos");
+  assert.equal(location.searchParams.has("board"), false);
   assert.equal(boardFromSearch("?board=all-repos"), "all-repos");
   assert.equal(boardFromSearch("?board=<script>"), null);
   assert.equal(boardFromSearch(""), "carr-v5", "no parameter opens the system board, as the Progress nav does");
