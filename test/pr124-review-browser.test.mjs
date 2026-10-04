@@ -47,6 +47,218 @@ async function readPanel(page) {
  await page.waitForTimeout(30);
 }
 
+// Exercise refusal through the live HTTP adapter, with synthetic authorized data.
+async function liveDetailRead(page) {
+ const wire = await page.evaluate(async () => {
+   const {state}=await import('/js/pipeline.js');
+   const detail=await state.client.getDeal('d14');
+   return {...detail.deal,deal_id:'d14',thread:detail.thread,critical_dates:[],events:[]};
+ });
+ const reads={status:200,delayed:null,delayNext:false};
+ await page.route('**/mcp',async route=>{
+   const request=route.request().postDataJSON();
+   assert.equal(request.params.name,'get-deal-room');
+   const status=reads.status;
+   if(reads.delayNext) {
+     reads.delayNext=false;
+     await new Promise(resolve=>{reads.delayed=resolve;});
+   }
+   await route.fulfill({status,contentType:'application/json',body:JSON.stringify({
+     jsonrpc:'2.0',id:request.id,result:{content:[{type:'text',text:JSON.stringify(wire)}]},
+   })});
+ });
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');
+   const {createLiveClient}=await import('/js/live-client.js');
+   window.beforeLiveDetail=state.panelDetail;
+   state.client.getDeal=createLiveClient().getDeal;
+ });
+ await readPanel(page);
+ await page.waitForFunction(async()=>{
+   const {state}=await import('/js/pipeline.js');
+   return state.panelDetail!==window.beforeLiveDetail&&state.panelDetail?.deal.id==='d14';
+ });
+ return reads;
+}
+
+for(const status of [401,403]) test('PR129 R1 loaded detail clears protected state on HTTP '+status,async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ const reads=await liveDetailRead(page);
+ await page.locator('#detailNextForm textarea').fill('Private unsaved draft');
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>document.querySelector('#contextDrawer').open);
+ reads.status=status;
+ await page.clock.fastForward(15000);
+ await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
+ assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+ assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
+ assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
+ assert.equal(await page.locator('#panelBody input, #panelBody textarea, #panelBody select').count(),0);
+ assert.equal(await page.locator('#contextDrawer').evaluate(e=>e.open),false);
+ assert.equal(await page.locator('#contextDrawerBody').textContent(),'');
+ assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+ reads.status=200;
+ await page.locator('[data-refresh-detail]').click();
+ await page.waitForSelector('#detailNextForm');
+ assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Confirm the next appointment');
+ assert.deepEqual(errors,[]);
+});
+
+for (const status of [401,403]) test(`PR129 R3 an open date draft clears on HTTP ${status} and cannot be submitted`,async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ const reads=await liveDetailRead(page);
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');window.dateSends=[];
+   state.client.addCriticalDate=async args=>{dateSends.push(args);return {ok:true};};
+ });
+ await page.locator('[data-add-date="rent_start"]').click();
+ await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
+ await page.locator('#dealDateForm [name="evidence"]').fill('Synthetic private unsent reference');
+ reads.status=status;await page.clock.fastForward(15000);
+ await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
+ assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),false);
+ assert.equal(await page.locator('#dealDateForm [name="date"]').inputValue(),'');
+ assert.equal(await page.locator('#dealDateForm [name="evidence"]').inputValue(),'');
+ // Even a queued/programmatic submit from the cleared form has no command path.
+ await page.locator('#dealDateForm').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ assert.deepEqual(await page.evaluate(()=>dateSends),[]);
+ reads.status=200;await page.locator('[data-refresh-detail]').click();
+ await page.waitForSelector('#detailNextForm');
+ await page.locator('[data-add-date="rent_start"]').click();
+ assert.equal(await page.locator('#dealDateForm [name="evidence"]').inputValue(),'');
+ assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
+ assert.deepEqual(errors,[]);
+});
+
+for (const status of [401,403]) test(`PR129 R3 a pending date receipt survives HTTP ${status} without reopening detail`,async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ const reads=await liveDetailRead(page);
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');window.dateSends=[];
+   state.client.addCriticalDate=args=>new Promise(resolve=>{dateSends.push(args);window.finishDate=()=>resolve({ok:true});});
+ });
+ await page.locator('[data-add-date="rent_start"]').click();
+ await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
+ await page.locator('#dealDateForm [name="evidence"]').fill('Synthetic lease clause');
+ await page.locator('#dealDateForm button[type="submit"]').click();
+ await page.waitForFunction(()=>dateSends.length===1);
+ reads.status=status;await page.clock.fastForward(15000);
+ await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
+ reads.status=200;await page.evaluate(()=>finishDate());
+ await page.waitForFunction(()=>document.querySelector('[data-op="critical-date:d14:rent_start"]').dataset.state==='confirmed');
+ await page.waitForTimeout(30);
+ assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),false);
+ assert.equal(await page.locator('#detailNextForm').count(),0);
+ assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
+ assert.equal(await page.evaluate(()=>dateSends.length),1);
+ assert.deepEqual(errors,[]);
+});
+
+for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR129 R2 pending next-step ${outcome} settles after HTTP ${status} clearing`,async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ const reads=await liveDetailRead(page);
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');
+   window.nextRefreshes=[];
+   state.boardSync.requestRefresh=reason=>nextRefreshes.push(reason);
+   state.client.setNextStep=()=>new Promise((resolve,reject)=>window.finishNext=outcome=>{
+     if(outcome==='ok') resolve({ok:true});
+     else {const error=Error('Synthetic refusal');error.payload={error:'synthetic_refusal'};reject(error);}
+   });
+ });
+ await page.locator('#detailNextForm textarea').fill('Pending synthetic next step');
+ await page.locator('#detailNextForm button').click();
+ await page.waitForFunction(()=>typeof finishNext==='function');
+ reads.status=status;
+ await page.clock.fastForward(15000);
+ await page.waitForFunction(()=>!document.querySelector('#detailNextForm'));
+ // A completion must not implicitly reopen a detail, even if later reads succeed.
+ reads.status=200;
+ await page.evaluate(outcome=>finishNext(outcome),outcome);
+ await page.waitForFunction(()=>document.querySelector('#receiptDock').textContent.includes('Next step')&&!document.querySelector('#receiptDock').textContent.includes('Sending'));
+ assert.deepEqual(errors,[]);
+ assert.deepEqual(await page.evaluate(()=>nextRefreshes.filter(reason=>reason==='next-step')),['next-step']);
+ assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+ assert.equal(await page.locator('#detailNextForm').count(),0);
+ assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
+ assert.match(await page.locator('#receiptDock').textContent(),outcome==='ok'?/Confirmed/:/synthetic refusal/);
+});
+
+test('PR129 R1 an older successful detail read cannot repopulate refused detail',async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ const reads=await liveDetailRead(page);
+ reads.delayNext=true;await readPanel(page);
+ assert.equal(typeof reads.delayed,'function');
+ reads.status=401;await readPanel(page);
+ assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
+ const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/mcp'&&r.status()===200);
+ reads.delayed();await response;await page.waitForTimeout(30);
+ assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+ assert.equal(await page.locator('#detailNextForm').count(),0);
+ assert.deepEqual(errors,[]);
+});
+
+test('PR129 R1 refused next-step revalidation clears detail without sending the draft',async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ const reads=await liveDetailRead(page);
+ await page.locator('#detailNextForm textarea').fill('Private unsaved draft');
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');window.nextSends=0;
+   state.client.setNextStep=async()=>{window.nextSends++;return {ok:true};};
+ });
+ reads.status=403;await page.locator('#detailNextForm button').click();
+ await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
+ assert.equal(await page.evaluate(()=>window.nextSends),0);
+ assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+ assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
+ assert.deepEqual(errors,[]);
+});
+
+test('PR129 R1 a context read survives an authorized detail poll but not a refusal/reopen',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+   const {state}=await import('/js/pipeline.js');
+   const read=state.client.getDeal.bind(state.client);
+   state.client.getDeal=async id=>{const detail=await read(id);detail.deal.account_client_id='synthetic-client';return detail;};
+   window.contextReads=[];
+   state.client.getPartyRecord=()=>new Promise(resolve=>contextReads.push(resolve));
+ });
+ await detail(page);const reads=await liveDetailRead(page);
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>contextReads.length===1);
+ await page.evaluate(async()=>{window.beforeContextPoll=(await import('/js/pipeline.js')).state.panelDetail;});
+ await readPanel(page);
+ await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.panelDetail!==window.beforeContextPoll);
+ await page.evaluate(()=>contextReads[0]({record:{name:'Authorized client'}}));
+ await page.waitForFunction(()=>document.querySelector('#contextDrawerBody').textContent.includes('Authorized client'));
+ await page.locator('#contextDrawerClose').click();
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>contextReads.length===2);
+ reads.status=401;await readPanel(page);
+ await page.waitForFunction(()=>!document.querySelector('#contextDrawer').open);
+ assert.equal(await page.locator('#contextDrawer').evaluate(e=>e.open),false);
+ reads.status=200;await page.locator('[data-refresh-detail]').click();
+ await page.waitForSelector('#detailNextForm');
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>contextReads.length===3);
+ await page.evaluate(()=>contextReads[2]({record:{name:'Revalidated client'}}));
+ await page.waitForFunction(()=>document.querySelector('#contextDrawerBody').textContent.includes('Revalidated client'));
+ await page.evaluate(()=>contextReads[1]({record:{name:'Refused old client'}}));
+ await page.waitForTimeout(30);
+ assert.doesNotMatch(await page.locator('#contextDrawerBody').textContent(),/Refused old client/);
+ assert.deepEqual(errors,[]);
+});
+
+test('PR129 transient detail failure keeps the authorized next-step draft',async t=>{
+ const {page,errors}=await open(t);await detail(page);
+ await page.locator('#detailNextForm textarea').fill('Draft retained through outage');
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});
+ await readPanel(page);
+ assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
+ assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Draft retained through outage');
+ assert.deepEqual(errors,[]);
+});
+
 test('R1 pristine fields follow reads; dirty draft reconciles its original read before send', async t => {
  const {page}=await open(t); await detail(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'New recorded step',next_date:'2026-11-01',idempotency_key:'external-1'});});
