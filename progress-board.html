@@ -57,11 +57,11 @@
         <div id="board-stages" class="columns" aria-live="polite"></div>
       </section>
       <section class="panel blocked-panel" aria-labelledby="blocked-title">
-        <div class="panel-heading"><div><p class="eyebrow">02 / BLOCKED</p><h2 id="blocked-title">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">02 / BLOCKED</p><h2 id="blocked-title" tabindex="-1">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
         <div id="board-blocked" class="blocked-list"></div>
       </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
-        <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
+        <div class="panel-heading"><h2 id="system-work-title" tabindex="-1">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
         <form id="system-work-filters" class="work-filters">
           <label>Search<input name="text" type="search" maxlength="200"></label>
           <label>Category<select name="source"><option value="">All categories</option></select></label>
@@ -71,6 +71,9 @@
         </form>
         <p id="system-work-coverage" class="caption" role="status"></p>
         <p id="system-work-error" class="error" role="alert" hidden></p>
+        <button id="system-work-retry" type="button" hidden>Retry system work</button>
+        <span id="system-work-count" class="panel-count">—</span>
+        <div class="flow-wrap"><svg id="system-work-flow" class="pipeline-diagram" role="group" aria-label="System work delivery stages"></svg></div>
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
@@ -96,7 +99,7 @@
         </section>
       </div>
       <section class="panel completed-panel" aria-labelledby="completed-title">
-        <div class="panel-heading"><div><p class="eyebrow">08 / COMPLETED</p><h2 id="completed-title">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><p class="eyebrow">08 / COMPLETED</p><h2 id="completed-title" tabindex="-1">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
         <div id="board-completed" class="completed-list"></div>
       </section>
     </main>

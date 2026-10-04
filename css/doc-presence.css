@@ -70,3 +70,6 @@
 #docCommandDetail a { display:inline-flex; align-items:center; min-height:44px; margin-top:12px; color:#a6c9ff; }
 @media(max-width:480px) { .doc-command-meta { align-items:start; } #docCommandForm { gap:6px; padding:6px; } #docCommandInput { font-size:16px; } .doc-context-tools { flex-wrap:wrap; } }
 @media(prefers-reduced-motion:reduce) { #docCommandResults>button { transition:none; transform:none; } }
+
+/* Popup controls keep their own row and stay reachable while the record scrolls. */
+:is(dialog[open],aside#recordPanel:not([hidden])) > .doc-presence { position:sticky; top:0; right:auto; bottom:auto; display:flex; align-items:center; gap:8px; margin:0 0 12px; }

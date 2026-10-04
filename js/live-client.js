@@ -295,11 +295,9 @@ export function createLiveClient(opts = {}) {
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
       const data = await readWithDeadline(async currentSignal => {
         const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal:currentSignal });
-        if (!res.ok) {
-          const error = new Error(`live changes -> HTTP ${res.status}`);
-          error.status = res.status;
-          throw error;
-        }
+        // Refusal is decided by the headers. Its diagnostic body must not
+        // turn a known authorization failure into a statusless read failure.
+        if (!res.ok) throw Object.assign(new Error(`live changes -> ${res.status}`), { status: res.status });
         return res.json();
       }, { signal, timeoutMs:opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
