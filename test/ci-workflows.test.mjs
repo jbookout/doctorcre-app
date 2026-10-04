@@ -60,6 +60,21 @@ test("PRs retain the unconditional required test job and full suite", async (t) 
   assert.equal(result.trace.includes("npm run build"), false, "failed tests cannot yield a green job");
 });
 
+test("the job budget covers the observed full suite plus setup and artifact verification", () => {
+  // PR 128 run 37174053422 passed its tests in 543.6 s, but the ten-minute
+  // job deadline cancelled it before build/verify. Leave room for both those
+  // steps and runner variation while keeping a finite bound on hung jobs.
+  const suiteMs = 543_606;
+  const setupMs = 120_000;
+  const artifactMs = 60_000;
+  const requiredMs = (setupMs + suiteMs + artifactMs) * 1.25;
+  for (const [name, workflow] of [["CI", ci], ["release", release]]) {
+    const minutes = Number(workflow.match(/^    timeout-minutes: (\d+)$/m)?.[1]);
+    assert.ok(Number.isFinite(minutes) && minutes > 0, `${name} needs a finite deadline`);
+    assert.ok(minutes * 60_000 >= requiredMs, `${name}: the full check sequence must fit with 25% runner headroom`);
+  }
+});
+
 test("description check runs for PRs and stays out of main pushes", () => {
   const check = "node scripts/check-pr-description.mjs";
   assert.equal(commands(ci, "pull_request").filter(command => command === check).length, 1);

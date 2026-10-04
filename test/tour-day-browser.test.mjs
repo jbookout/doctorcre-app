@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
@@ -33,8 +33,8 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://localhost:${server.address().port}`;
   const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
-  const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion, permissions: denied ? [] : ["microphone"] });
-  const page = await context.newPage(); page.setDefaultTimeout(7000); page.on("pageerror", e => errors.push(e.message));
+  const page = await browser.newPage({ viewport: { width, height: 844 }, reducedMotion, permissions: denied ? [] : ["microphone"] });
+  const context = page.context(); page.on("pageerror", e => errors.push(e.message));
   // All tests stay on the local synthetic server. Call/navigation links are
   // inspected as strings and never activated.
   await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
@@ -80,7 +80,7 @@ const record = async page => {
 
 test("W16 desktop and phone renders: reachable capture, wide Details, full width and reduced motion", async t => {
   await mkdir(new URL("test-artifacts/w16/", root), { recursive: true });
-  for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
+  for (const width of [1440, 761, 760, 721, 390, 320]) await t.test(String(width), async t => {
     const { page, requests, errors } = await open(t, { width });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.locator('body.has-app-layout').waitFor();
@@ -89,10 +89,15 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     const status = await page.locator('.app-layout-status').boundingBox();
     assert.ok(record.width >= 140 && record.height >= 60 && record.y + record.height < status.y,
       JSON.stringify({record,status,width}));
-    for (const id of ['day-record', 'day-previous', 'day-next']) assert.equal(await page.locator('#' + id).evaluate(button => {
+    const dock = await page.locator('.capture-dock').boundingBox();
+    const docPresence = await page.locator('#docPresence').boundingBox();
+    assert.ok(dock.x + dock.width <= docPresence.x || docPresence.x + docPresence.width <= dock.x ||
+      dock.y + dock.height <= docPresence.y || docPresence.y + docPresence.height <= dock.y,
+      `Capture and Doc must not overlap: ${JSON.stringify({ dock, docPresence, width })}`);
+    for (const id of ['day-record', 'day-previous', 'day-next', 'docOpen', 'docBriefOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
       const rect = button.getBoundingClientRect();
       return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
-    }), true, 'The shared shell must leave every capture control reachable');
+    }), true, `The shared shell must leave ${id} reachable`);
     assert.equal(await page.locator(".day-stop").count(), 2);
     assert.match(await page.locator("#day-current").textContent(), /100 Example Way.*Demo listing contact.*West entrance/s);
     assert.equal(await page.locator(".property-actions a").getAttribute("href"), "tel:+12025550100");
@@ -100,7 +105,7 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     assert.equal(await page.locator("#day-dialog").isVisible(), true);
     const dialog = await page.locator("#day-dialog").boundingBox(); assert.ok(dialog.width >= Math.min(1000, width - 24));
     assert.match(await page.locator("#day-dialog-body").textContent(), /200 Example Way.*north lobby/s);
-    await page.screenshot({ path: new URL(`test-artifacts/w16/details-${width}.png`, root).pathname, fullPage: true });
+    if ([1440, 390, 320].includes(width)) await page.screenshot({ path: new URL(`test-artifacts/w16/details-${width}.png`, root).pathname, fullPage: true });
     await page.getByLabel("Close property", { exact: true }).click();
     await page.locator("#day-previous").click();
     assert.match(await page.locator("#day-current").textContent(), /waterfront/);
@@ -108,7 +113,7 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     assert.equal(await page.locator(".day-stop").first().evaluate(e => getComputedStyle(e).transitionDuration), "0s");
     const copy = await page.locator("#tour-day").textContent(); assert.doesNotMatch(copy, /record layer|source|Read again|retry read|records read|Search Mode/i);
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: new URL(`test-artifacts/w16/day-${width}.png`, root).pathname, fullPage: true });
+    if ([1440, 390, 320].includes(width)) await page.screenshot({ path: new URL(`test-artifacts/w16/day-${width}.png`, root).pathname, fullPage: true });
     assert.deepEqual(errors, []); assert.equal(requests.some(r => r.method !== "GET"), false);
   });
 });
