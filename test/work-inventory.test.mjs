@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -234,18 +235,17 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
   const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
-  const artifactScript = await readFile(`${ROOT}/scripts/artifact.mjs`, "utf8");
   const serveScript = await readFile(`${ROOT}/scripts/serve.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.18.0", "an additive route is a minor version of the route contract");
+  assert.equal(routes.version, "1.20.0", "an additive route is a minor version of the route contract");
   assert.ok(carr.http_surfaces.includes("/api/v1/work-inventory"), "the consumed path belongs in the pinned interface");
 
   // The page is listed everywhere a page has to be listed.
   assert.match(checkScript, /"work-inventory\.html"/);
-  assert.match(artifactScript, /"work-inventory\.html"/);
+  assert.equal(await hasArtifactPage("work-inventory.html"), true, "the page ships in the verified artifact");
   assert.match(summary, /work-inventory/);
 
   // Accessibility floor.

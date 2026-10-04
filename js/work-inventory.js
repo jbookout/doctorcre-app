@@ -1,3 +1,4 @@
+import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C10 — Complete Work Inventory, DOM wiring.
 //
@@ -26,7 +27,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { uuidv4 } from "./uuid.js";
 
 const censusOrb = document.querySelector("#censusOrb");
@@ -196,6 +197,8 @@ function renderState(phase, payload) {
 function render() {
   renderFilters();
   const visible = filterItemsByStatusText(view.items, view.statusText);
+  setDocFilters({ kinds:view.kinds, status:view.statusText });
+  if (view.status === 'ready') publishDocRead('workInventory', { items:visible }, []);
   const phase = listPhase({ status: view.status, payload: view.payload, visible: visible.length });
 
   if (view.status === "loading") setCensusStatus("refreshing", "Reading the census…");
@@ -602,6 +605,7 @@ async function read({ cursor = null, append = false, background = false, signal 
 function settle({ status, payload = null, message = null }, sequence, append) {
   if (!accepts(sequence)) return;
   view.status = status;
+  if (status !== 'ready') pageDocContext?.clear();
   view.message = message;
   if (status === "ready") {
     // The newest page's coverage and source govern; the item list accumulates.
@@ -686,7 +690,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Complete Work Inventory");
+
   mountDock();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);

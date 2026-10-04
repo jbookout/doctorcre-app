@@ -19,23 +19,23 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the Control Room</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass hero-card" aria-labelledby="pageTitle">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="roomOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
           <h1 id="pageTitle">Control Room</h1>
           <a class="btn" href="/control-room/progress">Progress</a>
-          <div class="tabs" id="controlRoomTabs" role="tablist" aria-label="Control Room sections">
+          <div data-layout-slot="tabs" class="page-views" id="controlRoomTabs" role="tablist" aria-label="Control Room sections">
             <button class="tab" type="button" role="tab" id="tabDashboard" data-tab-key="overview" aria-controls="panelDashboard" aria-selected="true">Overview</button>
             <button class="tab" type="button" role="tab" id="tabAttention" data-tab-key="attention" aria-controls="panelAttention" aria-selected="false">Attention</button>
             <button class="tab" type="button" role="tab" id="tabModelRoom" data-tab-key="agents" aria-controls="panelModelRoom" aria-selected="false">Agents</button>
@@ -45,7 +45,7 @@
         </div>
         <div class="hero-meta">
           <span class="status" data-state="unknown" id="roomStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="roomStatusLabel">Updating…</span></span>
-          <button class="btn" type="button" id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+          <button class="btn" type="button" data-layout-refresh id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </div>
       </div>
       <p class="caption freshness" id="roomFreshness">Updating…</p>
@@ -463,20 +463,6 @@
   </dialog>
 
   <footer class="shell"><p class="small">DoctorCRE · Control Room · </p></footer>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Control Room</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
 
   <script type="module" src="/js/control-room.js"></script>

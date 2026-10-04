@@ -42,12 +42,12 @@
  * @type {readonly PipelineColumn[]}
  */
 export const COLUMNS = Object.freeze([
-  { slug: 'pending', value: 'On Deck', label: 'Pending' },
+  { slug: 'pending', value: 'On Deck', label: 'Prospective Client' },
   { slug: 'research', value: 'Research', label: 'Research' },
-  { slug: 'site_selection', value: 'Site selection', label: 'Site selection' },
-  { slug: 'negotiation', value: 'Negotiation', label: 'Negotiation' },
+  { slug: 'site_selection', value: 'Site selection', label: 'Site Selection' },
+  { slug: 'negotiation', value: 'Negotiation', label: 'Negotiating' },
   { slug: 'legal', value: 'Legal', label: 'Legal' },
-  { slug: 'due_diligence', value: 'Diligence', label: 'Due diligence' },
+  { slug: 'due_diligence', value: 'Diligence', label: 'Due Diligence' },
   { slug: 'closing', value: 'Closing', label: 'Closing' },
   { slug: 'closed', value: 'Closed', label: 'Closed' },
 ].map((column) => Object.freeze(column)));
@@ -352,37 +352,6 @@ export function presenceChip(presence, dealId, options = {}) {
   return null;
 }
 
-/**
- * The chips over the board, built from what the board actually returns.
- *
- * `deal-room-board` carries a deal `type` (the deal kind: Relocation, Renewal,
- * Startup and so on) and a `segment` (the practice's specialty). It does NOT
- * carry a prospect/client distinction, so this bar cannot offer one without
- * inventing a field. It offers what is there: All, then every type present, in
- * the board's own words.
- */
-export function typeFilters(deals) {
-  const rows = Array.isArray(deals) ? deals : [];
-  const types = [...new Set(rows.map((deal) => text(deal?.type)).filter(Boolean))].sort();
-  return [{ value: 'all', label: 'All' }, ...types.map((value) => ({ value, label: value }))];
-}
-
-/** Keep the rows this filter names. "all" — and an unknown filter — keep them all. */
-export function filterDeals(deals, filter) {
-  const rows = Array.isArray(deals) ? deals : [];
-  if (!filter || filter === 'all') return [...rows];
-  return rows.filter((deal) => text(deal?.type) === filter);
-}
-
-/** Cards inside a column, newest attention first, then by name. Stable. */
-export function orderColumn(deals) {
-  return [...(Array.isArray(deals) ? deals : [])].sort((a, b) => {
-    const attention = Number(Boolean(b?.attention)) - Number(Boolean(a?.attention));
-    if (attention !== 0) return attention;
-    return String(a?.name || '').localeCompare(String(b?.name || ''));
-  });
-}
-
 // A note or next step can reach this board as a sentence, an object such as
 // {text, at}, or that object's Python repr printed into a string
 // ("{'text': '...', 'at': '...'}"). Cards and the panel show the sentence only.
@@ -421,57 +390,11 @@ export function noteText(value) {
   return text;
 }
 
-/**
- * The sections of the record side panel, in the order Joe's review fixed them.
- *
- * Every value traces to the detail read. A section with nothing recorded says so
- * in plain words; none of them is filled in from somewhere else, and the Doc
- * section states its scope rather than showing work that does not exist yet.
- *
- * @param {Object} detail the answer from `getDeal`
- * @param {{actorLabel?:(slug:string)=>string, dateLabel?:(value:string)=>string}} [options]
- */
-export function recordPanelSections(detail, options = {}) {
-  const deal = detail?.deal || {};
-  const label = options.actorLabel || ((slug) => slug || 'Unassigned');
-  const date = options.dateLabel || ((value) => String(value ?? ''));
-
-  const situation = [
-    deal.name || 'This record',
-    deal.type ? `${deal.type}` : null,
-    deal.phase ? `${columnLabel(deal.phase)}` : null,
-    `owned by ${label(deal.owner)}`,
-    deal.attention ? 'flagged for attention' : null,
-  ].filter(Boolean).join(' · ');
-
-  const nextStep = noteText(deal.next_step);
-  const nextAction = nextStep
-    ? `${nextStep}${deal.next_date ? ` · ${date(deal.next_date)}` : ''}`
-    : 'No next step recorded.';
-
-  const criticalDates = (detail?.critical_dates || [])
-    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`);
-
-  const latest = (detail?.thread || [])[0] || null;
-
-  return [
-    { title: 'Situation', lines: [situation] },
-    { title: 'Next action', lines: [nextAction] },
-    { title: 'Critical dates', lines: criticalDates.length ? criticalDates : ['None recorded.'] },
-    { title: 'Blockers', lines: [deal.attention ? 'Flagged for attention on the record.' : 'None recorded.'] },
-    {
-      title: 'Latest communication',
-      lines: [latest ? `${label(latest.actor)}: ${noteText(latest.text)}` : 'Nothing captured on this record.'],
-    },
-    { title: 'Doc work', lines: ['Not in this release.'], state: 'not_in_release' },
-  ];
-}
-
 /* --------------------------------------------------------- V5-UX-B04: context */
 
 // deal_participant carries five roles. 'lead' and 'support' are internal team
-// assignment (actor_id, no party_id) and already own the "Situation" line
-// above; these three carry an external party_id and are what the context
+// assignment (actor_id, no party_id); these three carry an external party_id
+// and are what the context
 // drawer means by "attached parties/vendors".
 const EXTERNAL_PARTY_ROLES = ['client_contact', 'referring_agent', 'listing_side'];
 const PARTY_ROLE_LABEL = {
@@ -556,8 +479,7 @@ function clientContextLines(clientContext) {
 }
 
 /**
- * The context drawer's sections, in the shape `recordPanelSections` already
- * renders in — same section object, same honest-when-empty rule.
+ * Read-only context sections. Empty sections say what is missing.
  *
  * @param {Awaited<ReturnType<typeof loadDealContext>>} context
  * @param {{dateLabel?:(value:string)=>string}} [options]
@@ -579,4 +501,11 @@ export function contextDrawerSections(context, options = {}) {
     { title: 'Attached parties & vendors', lines: partyLines },
     { title: 'Critical dates', lines: dateLines },
   ];
+}
+
+export function dealInsightLines(reading) {
+  if (!reading?.judged) return [reading?.reason === 'insufficient_recorded_evidence' ? 'Insufficient evidence' : 'Insights unavailable'];
+  return [`Movement ${reading.movement_rung} of ${reading.movement_rungs}`, reading.movement_label,
+    `Waiting on: ${String(reading.waiting_on || 'not recorded').replaceAll('_', ' ')}`,
+    `Estimated silence concern: ${Math.round(Number(reading.silence_is_bad) * 100)}%`];
 }

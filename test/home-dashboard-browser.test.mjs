@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, settles } from './browser-harness.mjs';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const NOW = new Date('2026-10-01T15:00:00Z');
+const { routes } = JSON.parse(await readFile(new URL('../contracts/app-routes.v1.json', import.meta.url), 'utf8'));
 const leadRows = [96, 88, 71, 23].map((score, i) => ({ id: `demo-lead-${i}`, name: `Demo New Practice ${i + 1}`, specialty: 'Demo specialty', city: 'Demo City', score,
   owner: i === 0 ? 'dell' : 'joe', owner_label: 'Demo partner', stage: 'new', stage_label: 'New', created_at: NOW.toISOString() }));
 const screenshot = async (page, name) => {
@@ -14,23 +16,31 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
-  const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
-  await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
+  // Virtual time pauses CSS transitions. Data journeys use reduced motion so
+  // actionability cannot wait on a hover transition the clock never advances.
+  await page.clock.install({ time: NOW });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
+  let boardMalformed = malformedBoard;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
-  let malformedBoard = false;
-  t.after(() => releaseInitialFeed());
+  t.after(async () => {
+    releaseInitialFeed();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await browser.close();
+  });
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
-    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (malformedBoard) return { ...board, deals: [{}] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
+    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (boardMalformed) return { ...board, deals: [{ name: 'Demo missing record identity' }] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
     'get-deal-room': async args => { if (detailFailure === '503') throw Error('Unavailable'); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
-      critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, label: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
+      ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
+      critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
+    'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:[],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
@@ -39,12 +49,13 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
   };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
-    if (url.origin !== 'http://localhost') return route.abort();
+    if (url.origin !== origin) return route.abort();
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params.name);
       try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await (handlers[rpc.params.name]?.(rpc.params.arguments) ?? {})) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
+    if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
     if (url.pathname === '/pipeline/changes') {
       feedReads++;
@@ -59,35 +70,52 @@ async function open(t, { width = 1440, leads = true, delayDetails = false, hangD
       source += `\nexport async function createFixtureClient(options) { const client = await originalFixtureClient(options); const read = client.getDeal; client.getDeal = async id => ({ ...await read(id), critical_dates: [], next_actions: [{ id: 'demo-task-' + id, description: 'Demo follow-up', status: 'open', due_on: '2026-10-01', owner: 'joe' }] }); return client; }`;
       return route.fulfill({ body: source, contentType: 'text/javascript' });
     }
-    const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/deals' ? 'index.html' : url.pathname.slice(1);
+    const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto('http://localhost/?mode=live');
-  await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
-  return { page, errors, calls, releaseInitialFeed, malformedBoard(value) { malformedBoard = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  await page.goto(`${origin}/?mode=live`);
+  await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
+  return { page, errors, calls, releaseInitialFeed, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
-test('malformed Home board shows unavailable counts and recovers on the next valid read', async t => {
-  const state = await open(t); const { page } = state;
+test('PR124 R1 generated Home flag and task links open the requested record through the deployed route', async t => {
+  const { page, errors } = await open(t, { origin: 'https://app.doctorcre.com' });
+  for (const selector of ['.home-flag', '.home-agenda a:has(.home-item-type:text-is("Task"))']) {
+    await page.locator(selector).first().waitFor();
+    const link = page.locator(selector).first();
+    const id = new URL(await link.getAttribute('href'), page.url()).searchParams.get('deal');
+    assert.ok(id);
+    await link.click();
+    await page.locator('.kanban-card').first().waitFor();
+    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm') && document.querySelector('#detailOwner'), id);
+    const detail = await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail);
+    assert.equal(detail.deal.id, id);
+    assert.equal(await page.locator('#panelTitle').textContent(), detail.deal.name);
+    await page.keyboard.press('Escape');
+    await page.goto('https://app.doctorcre.com/');
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('PR124 R2 malformed initial or refreshed Home board shows unavailable counts and recovers', async t => {
+  const state = await open(t, { malformedBoard: true }); const { page } = state;
   const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  await settled();
-  const initialCounts = await page.locator('#dealCounts').textContent();
-  state.malformedBoard(true);
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await settled();
-  assert.equal(await page.locator('#homeNotice').isVisible(), true);
-  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: —.*Deals in Market: —.*National Account Deals: —/);
-  assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
-  assert.doesNotMatch(await page.locator('#observedAt').textContent(), /^Updated /);
-  assert.equal(await page.locator('#homeLeads').isVisible(), true);
-  assert.equal(await page.locator('#homeCalendar').isVisible(), false);
-  state.malformedBoard(false);
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await settled();
+  const unavailable = async () => {
+    await settled();
+    assert.match(await page.locator('#dealFlags').textContent(), /Deals unavailable/);
+    assert.doesNotMatch(await page.locator('#dealCounts').textContent(), /:\s*0/);
+    assert.match(await page.locator('#observedAt').textContent(), /Unavailable/);
+    assert.equal(await page.locator('#homeNotice').isVisible(), true);
+  };
+  await unavailable();
+  state.malformBoard(false);
+  await page.evaluate(() => dispatchEvent(new Event('online'))); await settled();
+  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: [1-9]/);
   assert.equal(await page.locator('#homeNotice').isVisible(), false);
-  assert.equal(await page.locator('#dealCounts').textContent(), initialCounts);
-  assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
+  state.malformBoard(true);
+  await page.evaluate(() => dispatchEvent(new Event('online'))); await unavailable();
+  assert.deepEqual(state.errors, []);
 });
 
 test('Home desktop and phone show flags, visual agenda, ranked leads and wide entry detail with no overflow', async t => {
@@ -104,7 +132,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'read-invoice-tracker':1, 'today-triage':1,'list-doc-suggestions': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -126,7 +154,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
 });
 
 test('reduced motion stops ambient and hover motion without hiding data', async t => {
-  const { page } = await open(t);
+  const { page } = await open(t, { motion: 'no-preference' });
   await page.locator('.home-radar').waitFor();
   assert.ok(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName !== 'none'));
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -139,11 +167,15 @@ test('reduced motion stops ambient and hover motion without hiding data', async 
 });
 
 test('no eligible leads means hidden widget; polling, resume and online recover failed Home without a retry prompt', async t => {
-  const state = await open(t, { leads: false }); const { page } = state;
+  const state = await open(t, { leads: false, delayDetails: true }); const { page } = state;
+  // Counts render before detail reads settle. Polling is scheduled after the
+  // whole refresh, so advancing its clock must wait for that refresh to finish.
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeLeads').isVisible(), false);
   state.failBoard(true);
   await page.clock.fastForward(31_000);
-  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —'));
+  // Recover only after the failing refresh ends: a resume during it joins that read.
+  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeCalendar').isVisible(), false);
   assert.doesNotMatch(await page.locator('main').textContent(), /retry|read again/i);
   state.failBoard(false);
@@ -158,18 +190,20 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
   assert.deepEqual(state.errors, []);
 });
 
-test('a flagged Home deal opens that exact Deals record; unknown IDs do not open another deal', async t => {
+test('a flagged Home deal opens that exact Deals record; unknown IDs show a failed detail instead of another deal', async t => {
   const { page, errors } = await open(t);
   const href = await page.locator('.home-flag').first().getAttribute('href');
   assert.equal(href, '/deals?deal=d01');
   // Keep this synthetic test on the fixture adapter on the receiving page.
   await page.locator('.home-flag').first().click();
-  await page.waitForFunction(() => document.querySelector('#dealDialog')?.open).catch(error => { throw new Error(`${error.message} ${errors.join('; ')}`); });
-  assert.equal(await page.locator('#dealDialog').getAttribute('data-deal-id'), 'd01');
-  assert.match(await page.locator('#dealDetail h2').textContent(), /Demo Dental North/);
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm'));
+  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
+  assert.match(await page.locator('#panelTitle').textContent(), /Demo Dental North/);
   await page.goto('http://localhost/deals?deal=unknown');
-  await page.locator('#rows .deal-link').first().waitFor();
-  assert.equal(await page.locator('#dealDialog').evaluate(dialog => dialog.open), false);
+  await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail), null);
+  assert.equal(await page.locator('#detailNextForm').count(), 0);
+  assert.deepEqual(errors, []);
 });
 
 test('an open lead detail updates automatically while preserving expanded Details and focus', async t => {
@@ -197,7 +231,7 @@ test('R5 whole refresh deadline preserves completed widgets across multiple hung
   assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: 12/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.equal(await page.locator('#homeControl').isVisible(), true);
-  assert.equal(calls.filter(name => name === 'get-deal-room').length, 12);
+  await settles(() => assert.equal(calls.filter(name => name === 'get-deal-room').length, 12));
 });
 
 test('R6 settled board failure shows unavailable rather than Updating and automatic recovery clears it', async t => {
@@ -220,18 +254,23 @@ test('R6 settled board failure shows unavailable rather than Updating and automa
 test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
   for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
+    // Finish Home's detail wave before observing the receiving Deals request.
+    // Otherwise a late Home request can advance the clock before Deals starts its deadline.
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
-    await page.goto('http://localhost/deals?mode=live&deal=d01');
-    await page.locator('#rows .deal-link').first().waitFor();
-    await firstFeed;
     const detailRead = page.waitForRequest(request => new URL(request.url()).pathname === '/mcp'
-      && request.postDataJSON()?.params?.name === 'get-deal-room');
+      && request.postDataJSON()?.params?.name === 'get-deal-room'
+      && new URL(request.frame().url()).pathname === '/deals');
+    await page.goto('http://localhost/deals?mode=live&deal=d01');
+    await page.locator('.kanban-card').first().waitFor();
+    await firstFeed;
     state.releaseInitialFeed();
     await detailRead;
     await page.clock.runFor(10_001);
-    await page.getByText('Deal details unavailable.', { exact: true }).waitFor();
-    assert.equal(await page.locator('#dealDialog').getByRole('button', { name: 'Close details' }).isVisible(), true);
+    await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
+    assert.match(await page.locator('#panelBody').textContent(), /Updates temporarily unavailable/);
+    assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Close deal', exact: true }).isVisible(), true);
     const before = [state.boardReads, state.feedReads];
     const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'deal-room-board');
@@ -313,9 +352,9 @@ test('R14 a task with no critical dates opens its exact deal and visible task', 
   await task.waitFor();
   assert.equal(await task.getAttribute('href'), '/deals?deal=d01');
   await task.click();
-  await page.waitForFunction(() => document.querySelector('#dealDialog')?.open);
-  assert.equal(await page.locator('#dealDialog').getAttribute('data-deal-id'), 'd01');
-  assert.match(await page.locator('#dealDetail').textContent(), /Demo follow-up/);
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm'));
+  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
+  assert.match(await page.locator('#panelBody').textContent(), /Demo follow-up/);
 });
 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {

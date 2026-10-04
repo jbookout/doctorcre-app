@@ -152,7 +152,7 @@ createServer(async (request, response) => {
     // so a browser's automatic request is not a 404 on every page.
     if (url.pathname.startsWith("/icons/")) url.pathname = `/public-shell${url.pathname}`;
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
-    const requested = url.pathname === "/deals" && url.searchParams.get("view") === "board" ? "pipeline.html"
+    const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
       : routes[url.pathname] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");
@@ -164,4 +164,4 @@ createServer(async (request, response) => {
     response.writeHead(404, {"content-type":"text/plain; charset=utf-8"});
     response.end("Not found\n");
   }
-}).listen(Number(process.env.PORT || 8787), "127.0.0.1", () => console.log(`DoctorCRE fixture server: http://127.0.0.1:${process.env.PORT || 8787}`));
+}).listen(Number(process.env.PORT || 8787), "127.0.0.1", function () { console.log(`DoctorCRE fixture server: http://127.0.0.1:${this.address().port}`); });

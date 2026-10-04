@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#07111f">
+<title>Invoices · DoctorCRE</title><link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml"><link rel="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/invoice-tracker.css">
+</head><body>
+<div id="appShell"></div><script type="module" src="/js/app-shell.js"></script><a class="invoice-skip" href="#main">Skip to invoices</a>
+<main id="main" class="invoice-workspace">
+<section data-layout-slot="sidebar" class="invoice-controls"><label for="invoiceSearch">Search invoices</label><input id="invoiceSearch" type="search" placeholder="Deal name" autocomplete="off"><label for="invoiceOwner">Owner</label><select id="invoiceOwner"><option value="">Everyone</option></select><button id="clearInvoiceFilters" type="button">Clear filters</button></section>
+<div data-layout-slot="tabs" id="invoiceTabs" class="invoice-tabs" role="group" aria-label="Invoice status"><button type="button" data-status="all" aria-pressed="true">All</button><button type="button" data-status="unpaid" aria-pressed="false">Unpaid</button><button type="button" data-status="awaiting" aria-pressed="false">Awaiting invoice</button><button type="button" data-status="paid" aria-pressed="false">Paid</button></div>
+<div data-layout-slot="status" class="invoice-updated"><span id="invoiceUpdated" role="status">Updating…</span><button id="refreshInvoices" type="button" data-layout-refresh aria-label="Refresh invoices" title="Refresh">↻</button></div>
+<p id="invoiceNotice" role="status" hidden></p>
+<section id="invoiceTotals" class="invoice-totals" aria-label="Invoice totals"></section>
+<section class="invoice-aging glass" aria-label="Unpaid invoice age"><div class="invoice-section-head"><h2>Outstanding</h2><button id="allAges" type="button" aria-pressed="true">All ages</button></div><div id="invoiceAging" class="invoice-aging-bars"></div></section>
+<section class="invoice-ledger glass" aria-label="Invoices"><div class="invoice-section-head"><h2 id="invoiceCount">Invoices</h2><span id="invoiceFiltered" aria-live="polite"></span></div><div class="invoice-column-head" aria-hidden="true"><span>Deal</span><span>Invoiced</span><span>Owed to CARR</span><span>Status</span><span>Outstanding</span></div><div id="invoiceRows" aria-busy="true"><p>Updating…</p></div></section>
+</main>
+<dialog id="invoiceDetail" class="invoice-detail" aria-labelledby="invoiceDetailTitle"><article><div class="invoice-detail-heading"><div><span class="invoice-eyebrow">Commission</span><h2 id="invoiceDetailTitle"></h2></div><button id="closeInvoiceDetail" type="button" aria-label="Close invoice">×</button></div><div id="invoiceDetailFacts"></div><div id="invoiceTimeline" class="invoice-timeline" aria-label="Invoice timeline"></div><div class="invoice-detail-bottom"><section><h3>Activity</h3><p id="invoiceActivity"></p><details id="invoiceOriginal"><summary>Details</summary><dl id="invoiceOriginalFacts"></dl></details></section><form id="invoicePayment"><label for="invoicePaidDate">Paid on</label><input id="invoicePaidDate" name="received_on" type="date" required><button id="markInvoicePaid" type="submit">Mark paid</button><p id="invoicePaymentNotice" role="status" hidden></p></form></div></article></dialog>
+<script type="module" src="/js/invoice-tracker.js"></script>
+</body></html>

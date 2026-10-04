@@ -1,3 +1,4 @@
+import { observeDocRead } from './doc-context.js';
 import { uuidv4 } from "./uuid.js";
 import { validateHumanRef } from "./system-work-view.js";
 import { readWithDeadline } from "./auto-refresh.mjs";
@@ -52,25 +53,25 @@ export function createSystemWorkClient(options = {}) {
     get pendingReport() { return pendingReport ? JSON.parse(JSON.stringify(pendingReport.request)) : null; },
     bootstrap,
     async current() {
-      return readWithDeadline(async signal => {
+      return observeDocRead('systemCurrent', [], () => readWithDeadline(async signal => {
         const response = await fetchImpl("/api/system-work/current", {
           signal,
           credentials: "same-origin", headers: { accept: "application/json" },
         });
         const envelope = await decode(response);
         return envelope.data ?? envelope;
-      }, { timeoutMs: options.readTimeoutMs || 10_000 });
+      }, { timeoutMs: options.readTimeoutMs || 10_000 }));
     },
     async read(humanRef) {
       const ref = validateHumanRef(humanRef);
-      return readWithDeadline(async signal => {
+      return observeDocRead('systemRecord', [ref], () => readWithDeadline(async signal => {
         const response = await fetchImpl(`/api/system-work/${encodeURIComponent(ref)}`, {
           signal,
           credentials: "same-origin", headers: { accept: "application/json" },
         });
         const envelope = await decode(response);
         return envelope.data ?? envelope;
-      }, { timeoutMs: options.readTimeoutMs || 10_000 });
+      }, { timeoutMs: options.readTimeoutMs || 10_000 }));
     },
     async report(body) {
       const { idempotency_key, ...intent } = body;

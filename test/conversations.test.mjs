@@ -403,9 +403,9 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.18.0");
-  assert.equal(contract.version, "1.39.0");
-  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(contract.version, "1.42.0");
+  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9");
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -577,8 +577,8 @@ test("the page is the shared shell, carries no composer in the transcript, and h
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/conversations\.css">/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "the dock is not mounted");
   assert.match(html, /<p id="prefsLive" class="sr-only" aria-live="polite">/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);

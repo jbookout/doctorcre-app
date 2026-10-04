@@ -1,0 +1,23 @@
+{
+  "routes": [
+    {
+      "path": "/doc-chats",
+      "asset": "conversations.html",
+      "order": 19,
+      "gatePath": "/conversations"
+    },
+    {
+      "path": "/doc-chats/work",
+      "asset": "tasks.html",
+      "order": 20,
+      "gatePath": "/tasks"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/conversations",
+      "to": "/doc-chats",
+      "order": 14
+    }
+  ]
+}

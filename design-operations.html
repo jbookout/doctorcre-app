@@ -19,14 +19,14 @@
 <body data-prototype="operations">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the dashboard</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. Production is not read or changed.</p>
@@ -40,7 +40,7 @@
       </select>
     </div>
 
-    <div class="tabs" id="operationsTabs" role="tablist" aria-label="Control Room sections">
+    <div data-layout-slot="tabs" class="page-views" id="operationsTabs" role="tablist" aria-label="Control Room sections">
       <button class="tab" type="button" role="tab" id="tabDashboard" aria-controls="panelDashboard" aria-selected="true">Dashboard</button>
       <button class="tab" type="button" role="tab" id="tabAtlas" aria-controls="panelAtlas" aria-selected="false">Atlas</button>
       <button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room</button>
@@ -48,7 +48,7 @@
     </div>
 
     <section class="tabpanel" id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard" tabindex="0">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="attention" aria-hidden="true"></span> Production · coverage 7 of 8 collectors</p>
           <h1 id="dashTitle">Control Room</h1>
@@ -251,20 +251,6 @@
       <div class="dialog-body" id="detailBody"></div>
     </article>
   </dialog>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Control Room dashboard</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="footer"><span>DoctorCRE · Control Room prototype</span><span>Synthetic examples. Production was not read or changed.</span></footer>

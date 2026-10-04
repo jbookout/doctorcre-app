@@ -19,23 +19,23 @@
   <script src="/js/theme-boot.js"></script>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to deals</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
     <span class="deployment-badge" id="deploymentBadge" data-mode="unknown" role="status" aria-live="polite">Checking environment…</span>
     <div class="top-actions">
       <span class="sync" id="syncStatus" role="status">Checking connection…</span>
       <span class="capture" id="captureStatus" hidden>Capture inactive</span>
     </div>
-  </header>
+  </div>
 
   <div class="offline" id="offlineBanner" role="status" hidden>You’re offline. Your current view is still readable; editing will resume when the connection returns.</div>
 
   <main id="main" class="shell">
-    <section class="hero" aria-labelledby="workspaceTitle">
+    <section data-layout-slot="sidebar" class="hero" aria-labelledby="workspaceTitle">
       <div>
         <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
         <p class="eyebrow" id="workspaceEyebrow">Shared territory pipeline</p>
         <h1 id="workspaceTitle">Deals</h1>
-        <nav class="app-section-tabs deal-section-tabs" aria-label="Deals pages">
+        <nav data-layout-slot="tabs" class="page-views" aria-label="Deals pages">
           <button type="button" class="workspace on" data-workspace="team" aria-current="page">All Deals</button>
           <button type="button" class="workspace" data-workspace="national_account">National Accounts</button>
         </nav>
@@ -47,7 +47,7 @@
       </div>
     </section>
 
-    <div class="deal-page-views" role="group" aria-label="Deal view">
+    <div data-layout-slot="tabs" class="page-views" role="group" aria-label="Deal view">
       <span class="deal-page-view-current" aria-current="page">List</span>
       <a href="/deals?view=board">Board</a>
     </div>
@@ -59,7 +59,7 @@
       <aside class="focus" id="focusStrip" aria-label="Suggested focus"></aside>
 
       <div class="board-sticky" id="boardSticky">
-        <div class="toolbar">
+        <div data-layout-slot="sidebar" class="toolbar">
           <div class="filters" role="group" aria-label="Filter work records">
             <button type="button" class="filter on" data-filter="active">Active</button>
             <button type="button" class="filter" data-filter="mine">Mine</button>
@@ -99,14 +99,8 @@
       </div>
     </section>
 
-    <section class="receipts" id="receiptsPanel" aria-labelledby="receiptsTitle" hidden>
-      <header class="receipts-head">
-        <div>
-          <p class="eyebrow">Change receipts</p>
-          <h2 id="receiptsTitle" tabindex="-1">Recent changes</h2>
-        </div>
-        <p class="receipts-note">The newest 25 changes this session has seen, kept in this page only. Each deal’s Change history holds the full record.</p>
-      </header>
+    <section data-layout-slot="moves" class="receipts" id="receiptsPanel" aria-labelledby="receiptsTitle" hidden>
+      <h2 class="sr-only" id="receiptsTitle" tabindex="-1">Recent changes</h2>
       <p class="receipts-live" id="receiptsLive" role="status" aria-live="polite"></p>
       <ol class="receipt-list" id="receiptsList" aria-label="Recent Deal Room changes"></ol>
     </section>

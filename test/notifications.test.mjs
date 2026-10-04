@@ -364,9 +364,9 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 /* ----------------------------------------------------------------- clause 10 */
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
-  assert.equal(routes.version, "1.18.0");
-  assert.equal(contract.version, "1.39.0");
-  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(contract.version, "1.42.0");
+  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9");
   assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -387,8 +387,8 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/notifications\.css">/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "the dock is not mounted");
   assert.match(html, /<p id="prefsLive" class="sr-only" aria-live="polite">/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
@@ -745,8 +745,8 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 /* ------------------------------------------------------------- behaviour 9 */
 
 test("B12-9 the current contract still pins both preference verbs and their order", async () => {
-  assert.equal(contract.version, "1.39.0", "the current interface retains notification preferences");
-  assert.equal(contract.producer.source_commit, "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65",
+  assert.equal(contract.version, "1.42.0", "the current interface retains notification preferences");
+  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
     "the producer pin includes preference verbs and the Codex checkpoint read");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 
@@ -758,7 +758,7 @@ test("B12-9 the current contract still pins both preference verbs and their orde
   assert.equal(contract.mcp_operations[set + 1], "set-work-shape-disposition");
 
   // The route contract does NOT move: this slice adds no page.
-  assert.equal(routes.version, "1.18.0");
+  assert.equal(routes.version, "1.20.0");
   assert.equal(routes.routes["/updates"], "notifications.html");
 
   // The repository check pins both verbs, and the shared client interface

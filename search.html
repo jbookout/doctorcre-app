@@ -14,7 +14,7 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to search</a>
   <main id="main" class="shell">
-    <div class="hero"><div><p class="eyebrow">Across authorized records</p><h1>Search</h1></div></div>
+    <div data-layout-slot="sidebar" class="hero"><div><p class="eyebrow">Across authorized records</p><h1>Search</h1></div></div>
     <section class="card glass" data-search="ask" aria-labelledby="searchTitle">
       <div class="card-heading"><h2 id="searchTitle">Find a record</h2></div>
       <form id="searchForm"><div class="field"><label for="searchQuery">Name to search</label><input id="searchQuery" type="search" maxlength="200" autocomplete="off" placeholder="Person, practice, building, deal, lead or vendor"></div><div class="row-wrap"><button class="btn btn-primary" type="submit">Search</button><span class="small" id="searchCount"></span></div></form>
@@ -30,8 +30,6 @@
     <section class="card glass" data-search="views" aria-labelledby="savedViewTitle"><div class="card-heading"><h2 id="savedViewTitle">Saved views</h2></div><div class="field"><label for="saveViewName">Name for this view</label><input id="saveViewName" type="text" maxlength="60" autocomplete="off"></div><div class="row-wrap"><button class="btn" type="button" id="saveViewButton">Save this view</button><button class="btn btn-quiet" type="button" id="resetViewsButton">Reset</button></div><div class="chip-bar"><span class="chip-list" id="savedViewList"></span></div><p class="caption" id="savedViewNote">Saved views stay in this browser.</p></section>
     <section class="card glass" data-search="not_searched" aria-labelledby="searchNotSearchedTitle"><div class="card-heading"><h2 id="searchNotSearchedTitle">Search coverage</h2></div><p class="caption" id="searchNotSearched">People, practices, buildings, deals, leads and vendors.</p><p class="caption" id="searchExposure">Search terms remain in this browser's address bar until cleared.</p></section>
   </main>
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden><div class="doc-chat-head"><p class="doc-reading" id="docReading">Doc is reading: Search</p><button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button></div><div class="doc-transcript" id="docTranscript" aria-live="polite"></div><form class="doc-composer" id="docForm"><div class="field"><label class="sr-only" for="docInput">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div><button class="btn btn-primary" type="submit">Send</button><button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="doc-mic-label">Dictate with Quill</span></button></form></aside>
   <script type="module" src="/js/search-page.js"></script>
 </body>
 </html>

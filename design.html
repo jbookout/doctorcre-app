@@ -19,19 +19,19 @@
 <body data-prototype="index">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the system</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. No record is read or changed.</p>
     <p class="prototype-links">Synthetic reference examples are saved below.</p>
-    <div class="hero">
+    <div data-layout-slot="sidebar" class="hero">
       <div>
         <p class="eyebrow">V5-UX-S01</p>
         <h1 id="pageTitle">Design Lab</h1>
@@ -42,7 +42,7 @@
       </div>
     </div>
 
-    <div class="tabs" id="systemTabs" role="tablist" aria-label="Visual system sections">
+    <div data-layout-slot="tabs" class="page-views" id="systemTabs" role="tablist" aria-label="Visual system sections">
       <button class="tab" type="button" role="tab" id="tabTokens" aria-controls="panelTokens" aria-selected="true">Tokens</button>
       <button class="tab" type="button" role="tab" id="tabComponents" aria-controls="panelComponents" aria-selected="false">Components</button>
       <button class="tab" type="button" role="tab" id="tabStates" aria-controls="panelStates" aria-selected="false">States</button>
@@ -102,7 +102,7 @@
         </div>
         <div class="component-row">
           <h3>Tabs</h3>
-          <div class="tabs" role="tablist" aria-label="Sample">
+          <div data-layout-slot="tabs" class="page-views" role="tablist" aria-label="Sample">
             <button class="tab" type="button" role="tab" aria-selected="true" aria-controls="sampleTabPanel" id="sampleTab">Selected</button>
             <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="sampleTabPanel">Other</button>
           </div>
@@ -249,20 +249,6 @@
       <div class="dialog-body" id="detailBody"></div>
     </article>
   </dialog>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Visual system</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <footer class="footer"><span>DoctorCRE · Visual system prototype</span><span>Synthetic examples. No record was read or changed.</span></footer>
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>

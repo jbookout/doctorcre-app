@@ -1,0 +1,698 @@
+{
+  "reference_time": "2026-09-29T12:00:00Z",
+  "synthetic": true,
+  "project": {
+    "snapshot": {
+      "board_id": "carr-v5",
+      "version": 12,
+      "updated_at": "2026-09-29T11:59:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "kind": "project",
+        "project": "carr-v5",
+        "title": "CARR v5 delivery",
+        "tasks": {
+          "queue-first": {
+            "title": "Queue the next migration batch",
+            "status": "queued",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T10:00:00Z",
+            "updated_at": "2026-09-29T10:00:00Z",
+            "stage_entered_at": "2026-09-29T10:00:00Z",
+            "stage_history": [
+              {
+                "stage": "queued",
+                "entered_at": "2026-09-29T10:00:00Z"
+              }
+            ]
+          },
+          "build-card": {
+            "title": "Build the stage timer on every card",
+            "summary": "Every card shows how long it has sat in its stage.",
+            "status": "running",
+            "stage": "build",
+            "pr": 1420,
+            "repo": "jbookout/carr-system",
+            "executor": "gpt-6-sol-extremely-long-model-identifier-preview-2026-09-29-with-suffix xhigh (Codex)",
+            "provider": "Codex",
+            "model": "gpt-6-sol-extremely-long-model-identifier-preview-2026-09-29-with-suffix",
+            "effort": "xhigh",
+            "created_at": "2026-09-29T09:00:00Z",
+            "updated_at": "2026-09-29T11:59:00Z",
+            "stage_entered_at": "2026-09-29T09:46:00Z",
+            "stage_history": [
+              {
+                "stage": "queued",
+                "entered_at": "2026-09-29T09:00:00Z"
+              },
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T09:46:00Z"
+              }
+            ]
+          },
+          "review-card": {
+            "title": "Review the release window rules",
+            "status": "review",
+            "stage": "review",
+            "pr": 1405,
+            "repo": "jbookout/carr-system",
+            "executor": "orchestrator",
+            "pr_phase": "Awaiting review",
+            "question_ids": [
+              "release-window"
+            ],
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "stage_entered_at": "2026-09-29T11:25:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T08:00:00Z"
+              },
+              {
+                "stage": "review",
+                "entered_at": "2026-09-29T11:25:00Z"
+              }
+            ]
+          },
+          "ci-card": {
+            "title": "Fix the flaky canary check",
+            "status": "blocked",
+            "stage": "ci",
+            "pr": 99,
+            "repo": "jbookout/doctorcre-app",
+            "executor": "grok 4.7 medium",
+            "pr_phase": "Checks failing",
+            "pr_checks": "3 pass · 0 pending · 1 fail",
+            "pr_head": "cccccccccccccccccccccccccccccccccccccccc",
+            "created_at": "2026-09-29T07:00:00Z",
+            "updated_at": "2026-09-29T11:40:00Z",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T07:00:00Z"
+              },
+              {
+                "stage": "ci",
+                "entered_at": "2026-09-29T11:00:00Z"
+              }
+            ]
+          },
+          "stale-card": {
+            "title": "Backfill the lease abstracts for the Mobile portfolio with a deliberately long title that must clamp",
+            "status": "running",
+            "stage": "build",
+            "pr": 1398,
+            "repo": "jbookout/carr-system",
+            "executor": "flash next",
+            "blocked_reason": "",
+            "created_at": "2026-09-29T04:00:00Z",
+            "updated_at": "2026-09-29T05:00:00Z",
+            "stage_entered_at": "2026-09-29T04:00:00Z"
+          },
+          "explicit-block": {
+            "title": "Wire the Neon credential",
+            "status": "blocked",
+            "executor": "Codex gpt-6-sol high",
+            "blocked_reason": "Waiting on the production database key",
+            "next_action": "Joe adds CARR_DB_URL to the Mac keychain",
+            "created_at": "2026-09-29T09:00:00Z",
+            "updated_at": "2026-09-29T11:50:00Z",
+            "stage_entered_at": "2026-09-29T09:00:00Z"
+          },
+          "merged-card": {
+            "title": "Show the national portfolio",
+            "status": "done",
+            "stage": "merged",
+            "pr": 97,
+            "repo": "jbookout/doctorcre-app",
+            "pr_phase": "Merged",
+            "merge_sha": "dddddddddddddddddddddddddddddddddddddddd",
+            "executor": "Claude cloud",
+            "release_wait": "release pipeline failed at canary: canary pending",
+            "created_at": "2026-09-29T06:00:00Z",
+            "updated_at": "2026-09-29T10:00:00Z",
+            "stage_entered_at": "2026-09-29T10:00:00Z",
+            "stage_history": [
+              {
+                "stage": "review",
+                "entered_at": "2026-09-29T06:00:00Z"
+              },
+              {
+                "stage": "merged",
+                "entered_at": "2026-09-29T10:00:00Z"
+              }
+            ]
+          },
+          "live-0": {
+            "title": "Live change 0",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (0)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T06:00:00Z",
+            "completed_at": "2026-09-29T06:00:00Z",
+            "stage_entered_at": "2026-09-29T06:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T06:00:00Z"
+              }
+            ],
+            "pr": 1380,
+            "repo": "jbookout/carr-system",
+            "health": "blocked"
+          },
+          "live-1": {
+            "title": "Live change 1",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (1)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T03:00:00Z",
+            "completed_at": "2026-09-29T03:00:00Z",
+            "stage_entered_at": "2026-09-29T03:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T03:00:00Z"
+              }
+            ],
+            "pr": 1391,
+            "repo": "jbookout/carr-system"
+          },
+          "live-2": {
+            "title": "Live change 2",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (2)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T08:00:00Z",
+            "completed_at": "2026-09-29T08:00:00Z",
+            "stage_entered_at": "2026-09-29T08:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T08:00:00Z"
+              }
+            ],
+            "pr": 1385,
+            "repo": "jbookout/carr-system"
+          },
+          "live-3": {
+            "title": "Live change 3",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (3)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T07:00:00Z",
+            "completed_at": "2026-09-29T07:00:00Z",
+            "stage_entered_at": "2026-09-29T07:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T07:00:00Z"
+              }
+            ],
+            "pr": 93,
+            "repo": "jbookout/doctorcre-app"
+          },
+          "live-4": {
+            "title": "Live change 4",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (4)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T01:00:00Z",
+            "completed_at": "2026-09-29T01:00:00Z",
+            "stage_entered_at": "2026-09-29T01:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T01:00:00Z"
+              }
+            ],
+            "pr": 1402,
+            "repo": "jbookout/carr-system"
+          },
+          "live-5": {
+            "title": "Live change 5",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (5)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T09:00:00Z",
+            "completed_at": "2026-09-29T09:00:00Z",
+            "stage_entered_at": "2026-09-29T09:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T09:00:00Z"
+              }
+            ],
+            "pr": 90,
+            "repo": "jbookout/doctorcre-app"
+          },
+          "live-6": {
+            "title": "Live change 6",
+            "status": "done",
+            "stage": "live",
+            "evidence": "Served in production; see https://app.doctorcre.com/app-release (6)",
+            "executor": "codex gpt-6-sol high",
+            "created_at": "2026-09-29T00:00:00Z",
+            "updated_at": "2026-09-29T02:00:00Z",
+            "completed_at": "2026-09-29T02:00:00Z",
+            "stage_entered_at": "2026-09-29T02:00:00Z",
+            "stage_history": [
+              {
+                "stage": "build",
+                "entered_at": "2026-09-29T00:00:00Z"
+              },
+              {
+                "stage": "live",
+                "entered_at": "2026-09-29T02:00:00Z"
+              }
+            ]
+          }
+        },
+        "deliverables": [
+          {
+            "title": "Board contract spec",
+            "link": "https://example.com/spec",
+            "created_at": "2026-09-29T09:00:00Z"
+          },
+          {
+            "title": "Unsafe link stays text",
+            "link": "javascript:alert(1)",
+            "created_at": "2026-09-29T08:00:00Z"
+          }
+        ],
+        "notes": [
+          {
+            "text": "Deploy freeze after 5pm CT.",
+            "created_at": "2026-09-29T11:00:00Z"
+          }
+        ],
+        "decisions": [
+          {
+            "id": "colour",
+            "question": "Which accent for Live?",
+            "answer": "Green",
+            "default": "Green",
+            "answered_at": "2026-09-29T10:00:00Z"
+          }
+        ],
+        "ledger": [
+          {
+            "pool": "codex",
+            "label": "Codex",
+            "glyph": "C",
+            "count": 10,
+            "violation": false,
+            "models": [
+              {
+                "provider": "Codex",
+                "model": "gpt-6-sol",
+                "effort": "high",
+                "count": 9
+              },
+              {
+                "provider": "Codex",
+                "model": "gpt-6-sol-extremely-long-model-identifier-preview-2026-09-29-with-suffix",
+                "effort": "xhigh",
+                "count": 1
+              }
+            ]
+          },
+          {
+            "pool": "grok",
+            "label": "Grok",
+            "glyph": "G",
+            "count": 1,
+            "violation": false,
+            "models": [
+              {
+                "provider": "xAI",
+                "model": "grok 4.7 medium",
+                "effort": "medium",
+                "count": 1
+              }
+            ]
+          },
+          {
+            "pool": "flash-next",
+            "label": "Flash Next",
+            "glyph": "F",
+            "count": 1,
+            "violation": false,
+            "models": []
+          },
+          {
+            "pool": "claude-cloud",
+            "label": "Claude cloud credits",
+            "glyph": "✦",
+            "count": 1,
+            "violation": true,
+            "models": []
+          },
+          {
+            "pool": "orchestrator",
+            "label": "Orchestrator seat",
+            "glyph": "O",
+            "count": 1,
+            "violation": false,
+            "models": []
+          }
+        ],
+        "repos": [],
+        "updated_at": "2026-09-29T11:59:00Z"
+      }
+    },
+    "questions": [
+      {
+        "question_id": "release-window",
+        "revision": 2,
+        "prompt": "Release tonight or tomorrow?",
+        "choices": [
+          "Tonight",
+          "Tomorrow"
+        ],
+        "allow_free_text": true,
+        "default_answer": "Tomorrow",
+        "status": null
+      },
+      {
+        "question_id": "old",
+        "revision": 1,
+        "prompt": "Keep the static page?",
+        "choices": [],
+        "allow_free_text": true,
+        "answer_text": "No, one board only",
+        "answered_by": "joe",
+        "status": "Applied",
+        "effect_ref": "PR 1420"
+      }
+    ]
+  },
+  "all_repos": {
+    "snapshot": {
+      "board_id": "all-repos",
+      "version": 40,
+      "updated_at": "2026-09-29T11:30:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "kind": "all-repos",
+        "project": "all-repos",
+        "title": "All repositories",
+        "tasks": {
+          "carr-system-93": {
+            "title": "CARR ninety-three",
+            "summary": "One line about 93.",
+            "repo": "jbookout/carr-system",
+            "pr": 93,
+            "url": "https://github.com/jbookout/carr-system/pull/93",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-93",
+            "pr_head": "0000000000000000000000000000000000000093",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "review",
+            "stage": "review",
+            "pr_phase": "Awaiting review",
+            "stage_entered_at": "2026-09-29T11:00:00Z"
+          },
+          "doctorcre-app-93": {
+            "title": "App ninety-three",
+            "summary": "One line about 93.",
+            "repo": "jbookout/doctorcre-app",
+            "pr": 93,
+            "url": "https://github.com/jbookout/doctorcre-app/pull/93",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-93",
+            "pr_head": "0000000000000000000000000000000000000093",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "blocked",
+            "stage": "review",
+            "pr_phase": "Merge conflict",
+            "stage_entered_at": "2026-09-29T11:00:00Z"
+          },
+          "software-factory-4": {
+            "title": "software-factory change 4",
+            "summary": "One line about 4.",
+            "repo": "jbookout/software-factory",
+            "pr": 4,
+            "url": "https://github.com/jbookout/software-factory/pull/4",
+            "author": "jbookout",
+            "executor": "Codex",
+            "branch": "claude/x-4",
+            "pr_head": "0000000000000000000000000000000000000004",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "running",
+            "stage": "build",
+            "pr_phase": "Draft",
+            "stage_entered_at": "2026-09-29T11:00:00Z"
+          },
+          "carr-system-1417": {
+            "title": "carr-system change 1417",
+            "summary": "One line about 1417.",
+            "repo": "jbookout/carr-system",
+            "pr": 1417,
+            "url": "https://github.com/jbookout/carr-system/pull/1417",
+            "author": "jbookout",
+            "executor": "Grok",
+            "branch": "claude/x-1417",
+            "pr_head": "0000000000000000000000000000000000001417",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "blocked",
+            "stage": "ci",
+            "pr_phase": "Checks failing",
+            "stage_entered_at": "2026-09-29T11:00:00Z"
+          },
+          "carr-system-1416": {
+            "title": "carr-system change 1416",
+            "summary": "One line about 1416.",
+            "repo": "jbookout/carr-system",
+            "pr": 1416,
+            "url": "https://github.com/jbookout/carr-system/pull/1416",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-1416",
+            "pr_head": "0000000000000000000000000000000000001416",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T03:00:00Z",
+            "status": "running",
+            "stage": "ci",
+            "pr_phase": "CI",
+            "stage_entered_at": "2026-09-29T11:00:00Z"
+          },
+          "carr-system-1400": {
+            "title": "carr-system change 1400",
+            "summary": "One line about 1400.",
+            "repo": "jbookout/carr-system",
+            "pr": 1400,
+            "url": "https://github.com/jbookout/carr-system/pull/1400",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-1400",
+            "pr_head": "0000000000000000000000000000000000001400",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "merged",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "merge_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "merged_at": "2026-09-29T10:00:00Z",
+            "release_wait": "waiting for the next release after 2222222222"
+          },
+          "carr-system-1398": {
+            "title": "carr-system change 1398",
+            "summary": "One line about 1398.",
+            "repo": "jbookout/carr-system",
+            "pr": 1398,
+            "url": "https://github.com/jbookout/carr-system/pull/1398",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-1398",
+            "pr_head": "0000000000000000000000000000000000001398",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "live",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "evidence": "Merged commit is in the verified release (1398)",
+            "completed_at": "2026-09-29T11:00:00Z",
+            "merged_at": "2026-09-29T06:00:00Z"
+          },
+          "doctorcre-app-96": {
+            "title": "doctorcre-app change 96",
+            "summary": "One line about 96.",
+            "repo": "jbookout/doctorcre-app",
+            "pr": 96,
+            "url": "https://github.com/jbookout/doctorcre-app/pull/96",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-96",
+            "pr_head": "0000000000000000000000000000000000000096",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "live",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "evidence": "Merged commit is in the verified release (96)",
+            "completed_at": "2026-09-29T11:30:00Z",
+            "merged_at": "2026-09-29T06:00:00Z"
+          },
+          "carr-system-1403": {
+            "title": "carr-system change 1403",
+            "summary": "One line about 1403.",
+            "repo": "jbookout/carr-system",
+            "pr": 1403,
+            "url": "https://github.com/jbookout/carr-system/pull/1403",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-1403",
+            "pr_head": "0000000000000000000000000000000000001403",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "live",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "evidence": "Merged commit is in the verified release (1403)",
+            "completed_at": "2026-09-29T09:00:00Z",
+            "merged_at": "2026-09-29T06:00:00Z"
+          },
+          "doctorcre-app-95": {
+            "title": "doctorcre-app change 95",
+            "summary": "One line about 95.",
+            "repo": "jbookout/doctorcre-app",
+            "pr": 95,
+            "url": "https://github.com/jbookout/doctorcre-app/pull/95",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-95",
+            "pr_head": "0000000000000000000000000000000000000095",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "live",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "evidence": "Merged commit is in the verified release (95)",
+            "completed_at": "2026-09-29T08:00:00Z",
+            "merged_at": "2026-09-29T06:00:00Z"
+          },
+          "carr-system-1404": {
+            "title": "carr-system change 1404",
+            "summary": "One line about 1404.",
+            "repo": "jbookout/carr-system",
+            "pr": 1404,
+            "url": "https://github.com/jbookout/carr-system/pull/1404",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-1404",
+            "pr_head": "0000000000000000000000000000000000001404",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "live",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "evidence": "Merged commit is in the verified release (1404)",
+            "completed_at": "2026-09-29T10:00:00Z",
+            "merged_at": "2026-09-29T06:00:00Z"
+          },
+          "software-factory-3": {
+            "title": "software-factory change 3",
+            "summary": "One line about 3.",
+            "repo": "jbookout/software-factory",
+            "pr": 3,
+            "url": "https://github.com/jbookout/software-factory/pull/3",
+            "author": "jbookout",
+            "executor": "Claude cloud",
+            "branch": "claude/x-3",
+            "pr_head": "0000000000000000000000000000000000000003",
+            "created_at": "2026-09-29T08:00:00Z",
+            "updated_at": "2026-09-29T11:30:00Z",
+            "status": "done",
+            "stage": "live",
+            "pr_phase": "Merged",
+            "stage_entered_at": "2026-09-29T11:00:00Z",
+            "evidence": "Merged commit is in the verified release (3)",
+            "completed_at": "2026-09-29T07:00:00Z",
+            "merged_at": "2026-09-29T06:00:00Z"
+          }
+        },
+        "deliverables": [],
+        "notes": [],
+        "decisions": [],
+        "ledger": [],
+        "repos": [
+          {
+            "repo": "jbookout/carr-system",
+            "open": 3,
+            "merged": 5
+          },
+          {
+            "repo": "jbookout/doctorcre-app",
+            "open": 1,
+            "merged": 2
+          },
+          {
+            "repo": "jbookout/software-factory",
+            "open": 1,
+            "merged": 1
+          },
+          {
+            "repo": "jbookout/tour-lab",
+            "open": 0,
+            "merged": 0,
+            "error": "gh pr list failed"
+          }
+        ],
+        "updated_at": "2026-09-29T11:30:00Z"
+      }
+    },
+    "questions": []
+  }
+}

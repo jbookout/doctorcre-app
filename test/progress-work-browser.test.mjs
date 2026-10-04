@@ -1,28 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, settles, animationsSettled } from './browser-harness.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
-import { scopedTurn, scopedQueueCard, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
+import { scopedTurn, scopedQueueCard, executionTurn, passportAttempts, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
 import { passportProjectionDigest, validEngineeringPassport } from '../js/job-passport.js';
 
 const NOW = new Date('2026-08-24T12:20:00Z');
 const taskId = 't_demo0001';
 const taskPath = `/control-room/progress/work?board=demo-project&task=${taskId}`;
 const kinds = {projection:'observatory_projection',portfolio:'eval_portfolio',spatial:'spatial_surface',elapsed:'telemetry_measurement',cost:'telemetry_measurement',engineering:'engineering_passport',activation:'attempt_receipt'};
-async function assertEventually(predicate) {
-  for(let attempt=0;attempt<100;attempt++) { if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20)); }
-  assert.equal(predicate(),true,'Expected the asynchronous mock read to finish');
-}
+const assertEventually = predicate => settles(() => assert.equal(predicate(), true, 'Expected the asynchronous mock read to finish'));
 function receipts() {
-  return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
+  return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
 async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:900}}); page.setDefaultTimeout(7000); await page.clock.install({time:NOW});
+  const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   const errors=[],calls=[],posts=[]; page.on('pageerror',error=>errors.push(error.message));
   const state={rpcReply,offline:false,authLost:false,postFailure:false,turns:empty?[]:receipts(),queueReads:0,turnReads:0};
   if(!empty) state.turns.push({seq:8,msg_id:'review',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`${taskId} Fix round one; independent review requested.`},
@@ -33,6 +30,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     const wrap=(kind,payload)=>({job_passport:{schema_version:'job-passport-wire.v1',kind,payload}});
     add('receipt',wrap('activation_reliability_projection',{canonical_binding:{...fixture.activation.knowledge_activation.canonical_binding,attempt_id:fixture.activation.attempt_id},canonical_revision:{authority_fact_count:0,learning_event_count:0,outcome_horizon_mature:false},learning:{lifecycle:'proposed',candidate_refs:['candidate:synthetic']},telemetry:[],reliability:{state:'insufficient_evidence',reasons:['reason:canonical-coverage'],derived_by:'canonical_authority_evaluation',outcome_horizon_state:'immature',outcome_horizon_not_before:'2026-08-31T12:00:00Z'}}));
     add('receipt',wrap('telemetry_measurement',{...fixture.elapsed,measurement_id:'synthetic-estimate',metric_kind:'session_tokens',value:{kind:'estimate',amount:10,estimate_method:'synthetic_method',uncertainty:'synthetic range'}}));
+    state.turns.at(-1).work_request_ref = fixture.projection.work_request_id;
     add('receipt',{session_status:{name:'Demo context',context_pct:82,claimed:taskId}},'hermes','2026-08-24T11:30:00Z');
     add('receipt',{assignment:{seat:'dot',verb:'assign',ref:taskId,title:'Demo research worker',by:'joe'}},'hermes');
     add('system',`WORKER SPAWNED — seat dot, a backend worker. Mission: research ${taskId}. Executor: synthetic isolated worker.`,'dot');
@@ -67,6 +65,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),events})});
     }
     if(url.pathname==='/api/room/turn'){
+      if(state.postDelay) await new Promise(resolve=>setTimeout(resolve,state.postDelay));
       posts.push({body:route.request().postDataJSON(),csrf:route.request().headers()['x-carr-csrf']});
       if(state.postFailure)return route.fulfill({status:502,contentType:'application/json',body:'{}'});
       return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
@@ -79,6 +78,63 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
+
+test('published task without a repository shows its PR as plain text', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {pr:100, executor:'orchestrator'});
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})});
+  await task.waitFor();
+  assert.equal(await task.locator('a[href*="/pull/100"]').count(), 0);
+  const repo = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^repo$/})});
+  assert.equal(await repo.locator('dd').textContent(), 'Not recorded');
+  assert.equal(await task.locator('p').filter({hasText:/^PR #100$/}).count(), 1);
+  const provider = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^provider$/})});
+  const model = task.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^model$/})});
+  assert.equal(await provider.locator('dd').textContent(), 'Unknown');
+  assert.equal(await model.locator('dd').textContent(), 'Not recorded');
+  assert.deepEqual(errors, []);
+});
+
+test('work detail carries the delivery facts the board card no longer pops up', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {status:'blocked', stage:'build', executor:'Codex gpt-6-sol high',
+        stage_entered_at:'2026-08-24T10:20:00Z', updated_at:'2026-08-24T10:20:00Z',
+        stage_history:[{stage:'queued',entered_at:'2026-08-24T09:50:00Z'},{stage:'build',entered_at:'2026-08-24T10:20:00Z'}],
+        blocked_reason:'Synthetic dependency is missing', next_action:'Synthetic owner supplies it', question:'SYNTHETIC INLINE QUESTION'});
+    return payload;
+  }});
+  const delivery = page.locator('#workMetadata article.work-delivery');
+  await delivery.waitFor();
+  const row = label => delivery.locator('.work-detail-fields > div').filter({has:page.locator('dt',{hasText:new RegExp(`^${label}$`)})}).locator('dd');
+  assert.equal(await row('Stage').textContent(), 'Building · 2h 0m in this stage');
+  assert.equal(await row('Blocked because').textContent(), 'Synthetic dependency is missing');
+  assert.equal(await row('Next action').textContent(), 'Synthetic owner supplies it');
+  assert.equal(await row('Model line').textContent(), 'Codex · gpt-6-sol · high');
+  assert.equal(await row('Question').textContent(), 'SYNTHETIC INLINE QUESTION');
+  const history = delivery.locator('ol.work-stage-history li');
+  assert.deepEqual(await history.evaluateAll(items => items.map(item => item.dataset.stage)), ['queued','build']);
+  assert.match(await history.nth(0).textContent(), /^Queued 30m/);
+  assert.match(await history.nth(1).textContent(), /^Building 2h 0m/);
+  assert.deepEqual(errors, []);
+});
+
+test('published task PR links retain the recorded repository and head', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board')
+      Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {pr:100, repo:'jbookout/doctorcre-app', pr_head:'synthetic-head'});
+    return payload;
+  }});
+  const anchor = page.locator('#workMetadata a[href="https://github.com/jbookout/doctorcre-app/pull/100"]');
+  await anchor.waitFor();
+  assert.equal(await anchor.textContent(), 'jbookout/doctorcre-app · PR #100 · synthetic-head');
+  assert.equal(await anchor.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(await anchor.getAttribute('target'), '_blank');
+  assert.deepEqual(errors, []);
+});
 
 test('exact work references never join similar titles or shared seats',()=>{
   const scope=workScope('?task=t_demo');
@@ -94,11 +150,58 @@ test('only explicit bindings and valid source sequences join execution evidence'
   const unrelated = {seq:undefined,task_id:'other-task',session_id:'session:other',body:JSON.stringify({title:'t_demo',session_id:'session:other'})};
   assert.equal(scopedTurn(unrelated,scope),false);
   for(const seq of [undefined,null,'',NaN,-1,1.5,Infinity])assert.equal(scopedQueueCard({task_id:'other',source_seq:seq},{...scope,sourceSeqs:[NaN]}),false);
-  assert.equal(scopedQueueCard({task_id:'other',source_seq:8},{...scope,sourceSeqs:[8]}),true);
+  assert.equal(scopedQueueCard({source_seq:8},{...scope,sourceSeqs:[8]}),true);
   const {page,state}=await open(t);
   state.turns.push({seq:100,msg_id:'mention-only',session_id:'session:other',seat:'human',kind:'turn',at:NOW.toISOString(),body:`Discuss ${taskId}.`});
   await page.clock.runFor(5100);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Other builder/);
+});
+
+test('job-local attempts require a bound job or envelope and reject contradictory work', () => {
+  const value = multiEnvelopeCanonicalFixture();
+  const scope = { task: taskId, workRequest: 'WR-900', refs: [value.work_request.id],
+    attempts: passportAttempts(value) };
+  const turn = body => ({ body: JSON.stringify(body), seat: 'dot' });
+  for (const body of [
+    { attempt_id: 'attempt:1' },
+    { work_request_id: 'wr:other', job_ref: 'job:other', attempt_id: 'attempt:1' },
+    { work_request_id: value.work_request.id, job_ref: 'job:other', attempt_id: 'attempt:1' },
+    { work_request_id: 'wr:other', envelope_digest: value.receipts[0].envelope_digest, attempt_id: 'attempt:1' },
+    { task_id: 'other-task', nested: { work_request_id: value.work_request.id } },
+  ]) {
+    assert.equal(executionTurn(turn(body), scope), false, JSON.stringify(body));
+    assert.equal(scopedTurn(turn(body), scope), false, JSON.stringify(body));
+  }
+  const historical = {envelope_digest:'sha256:'+'9'.repeat(64),attempt_id:'attempt:older',work_request_id:value.work_request.id};
+  assert.equal(executionTurn(turn(historical),scope),true,'Explicit work binding preserves earlier envelope history');
+  assert.equal(executionTurn(turn({...historical,session_ref:'session:selected'}),{session:'session:selected'}),true,'A session-only view includes its explicitly linked work');
+  assert.equal(executionTurn(turn({job_ref:scope.attempts[0].jobRef,envelope_digest:scope.attempts[1].envelopeDigest,attempt_id:'attempt:1'}),scope),false,'A tuple cannot mix two selected jobs');
+  for (const receipt of value.receipts) {
+    const job = scope.attempts.find(attempt => attempt.envelopeDigest === receipt.envelope_digest).jobRef;
+    assert.equal(executionTurn(turn({ job_ref: job, attempt_id: receipt.attempt_id }), scope), true);
+    assert.equal(executionTurn(turn({ envelope_digest: receipt.envelope_digest, attempt_id: receipt.attempt_id }), scope), true);
+  }
+  assert.equal(scopedQueueCard({task_id:'other', source_seq:8}, {...scope,sourceSeqs:[8]}), false);
+});
+
+test('colliding job-local attempts never add unrelated Dot evidence or native sessions', async t => {
+  const value = multiEnvelopeCanonicalFixture();
+  const {page,state,errors}=await open(t,{sessions:[
+    {canonical_session_id:'session:second',latest_attempt_ref:'attempt:1',display_name:'Selected builder'},
+    {canonical_session_id:'session:other-job',latest_attempt_ref:'attempt:1',display_name:'Unrelated job builder'},
+  ],rpcReply:(rpc,payload)=>rpc.name==='engineering-passport'?value:payload});
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Selected builder'));
+  const priorReads=state.turnReads;
+  for (const [id, body] of [
+    ['unrelated', {work_request_id:'wr:other',job_ref:'job:other',attempt_id:'attempt:1',session_ref:'session:other-job',evidence:'UNRELATED JOB EVIDENCE'}],
+    ['contradictory', {work_request_id:value.work_request.id,job_ref:'job:other',attempt_id:'attempt:1',session_ref:'session:other-job',evidence:'CONTRADICTORY JOB EVIDENCE'}],
+    ['bound', {job_ref:'job:second',attempt_id:'attempt:1',session_ref:'session:second',evidence:'BOUND JOB EVIDENCE'}],
+  ]) state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:id,seat:'dot',kind:'receipt',at:NOW.toISOString(),body:JSON.stringify(body)});
+  await page.clock.runFor(5100);await assertEventually(()=>state.turnReads>priorReads);
+  await page.waitForFunction(()=>document.querySelector('#workDotList').textContent.includes('BOUND JOB EVIDENCE'));
+  assert.doesNotMatch(await page.locator('#workDotList').textContent(),/UNRELATED JOB EVIDENCE|CONTRADICTORY JOB EVIDENCE/);
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Unrelated job builder/);
+  assert.deepEqual(errors,[]);
 });
 
 test('canonical current-generation Passport validates typed evidence before accepting its seal', () => {
@@ -227,13 +330,14 @@ test('canonical Passport accepts the pinned repository execution envelope while 
   assert.equal(validEngineeringPassport(wire),false);
 });
 
-test('linked sessions join pinned native host and latest attempt fields',async t=>{
+test('linked sessions require an exact native host and never a bare latest attempt',async t=>{
   const {page}=await open(t,{sessions:[
     {canonical_session_id:'session:attempt-linked',latest_attempt_ref:'attempt:a',native_host_id:'host:a',display_name:'Attempt-linked builder'},
     {canonical_session_id:'session:native-linked',native_host_id:'fresh',display_name:'Native-linked builder'},
     {canonical_session_id:'session:unrelated',latest_attempt_ref:'attempt:other',display_name:'Unrelated builder'},
   ]});
-  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Attempt-linked builder'));
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Native-linked builder'));
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Attempt-linked builder/);
   assert.match(await page.locator('#workSessionList').textContent(),/Native-linked builder/);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Unrelated builder/);
 });
@@ -307,10 +411,15 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
   let release, pending=0;const gate=new Promise(resolve=>release=resolve);
   state.rpcReply=async(rpc,payload)=>{if(rpc.name==='read-dispatch-history'&&rpc.arguments.cursor){pending++;await gate;return {...payload,events:[...payload.events,...payload.events]};}return payload;};
   await page.locator('#workDispatchMore').evaluate(button=>{button.click();button.click();});
-  await assertEventually(()=>pending>0);release();
-  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
+  await assertEventually(()=>pending>0);
+  t.after(()=>release());
+  const actedEvent=page.locator('#workDispatchHistory .work-record > h3').filter({hasText:/^acted$/});
+  assert.equal(await actedEvent.count(),0);
+  assert.equal(await page.locator('#workDispatchMore').isDisabled(),true);
   assert.equal(calls.filter(call=>call.name==='read-dispatch-history'&&call.arguments.cursor==='synthetic-cursor').length,1);
-  assert.equal(await page.locator('#workDispatchHistory .work-record > h3').filter({hasText:'acted'}).count(),1);
+  release();
+  await actedEvent.waitFor({state:'visible'});
+  assert.equal(await actedEvent.count(),1);
   assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
 });
 
@@ -348,14 +457,17 @@ for (const width of [390, 820, 1440]) test(`board → project → task uses one 
   const {page,errors}=await open(t,{width,path:'/control-room/progress'});
   await page.locator('[data-board-id="demo-project"]').click();
   await page.waitForURL('**/control-room/progress?board=demo-project');
-  await page.locator(`[data-task-id="${taskId}"]`).first().click();
+  await page.locator(`.board-card[data-card-id="${taskId}"]`).first().click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
-  const layout = await page.evaluate(() => ({
-    shellBottom: document.getElementById('appShell').getBoundingClientRect().bottom,
-    breadcrumbTop: document.getElementById('workBreadcrumbs').getBoundingClientRect().top,
-  }));
-  assert.ok(layout.breadcrumbTop >= layout.shellBottom, `shell overlaps breadcrumbs: ${JSON.stringify(layout)}`);
+  await animationsSettled(page);
+  for (const link of await page.locator('#workBreadcrumbs a').all()) {
+    assert.equal(await link.evaluate(node => {
+      const box = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return hit === node || node.contains(hit);
+    }), true, `${width}px: breadcrumb remains reachable beside the rail and above the status bar`);
+  }
   await page.locator('#workBreadcrumbs a').nth(1).click();
   await page.waitForURL('**/control-room/progress?board=demo-project');assert.deepEqual(errors,[]);
 });
@@ -398,7 +510,10 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#queueStatus').selectOption('');await page.locator('#queueTarget').selectOption('dot');assert.equal(await page.locator('.queue-card').count(),1);
   for(const id of ['stageSvg','roomDesks','roomPresence','roomHealth','sessionList','assignmentList','wireFeed','viewConversation','viewEverything','kindTurns','kindSystem','kindReceipts','kindHeartbeats','wireSearch','wireResume','roomComposer','queueColumns','queueTarget','queueStatus','queueComposer'])assert.equal(await page.locator(`#${id}`).count(),1,id);
   await page.locator('#desksToggle').click();await page.locator('#desksToggle').click();
+  state.postDelay=200;
+  const loginResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/room/turn' && response.request().postDataJSON()?.control?.action==='login');
   await page.locator('#desksToggle').click();await page.locator('.desk-card .assignment-badge').click();
+  await loginResponse;state.postDelay=0;
   assert.equal(posts[0].body.control.action,'login');assert.equal(posts[0].body.control.desk,'Synthetic desk');
   await page.locator('#viewEverything').click();await page.locator('#kindReceipts').click();assert.equal(await page.locator('#kindReceipts').getAttribute('aria-pressed'),'false');await page.locator('#kindReceipts').click();
   await page.locator('#wireSearch').fill('Unrelated');assert.match(await page.locator('#wireFeed').textContent(),/Unrelated synthetic task/);await page.locator('#wireSearch').fill('');
@@ -414,7 +529,7 @@ test('baseline Observatory controls all remain mounted in layer 3',async()=>{
   const before=await readFile(new URL('../_to_delete/room.html',import.meta.url),'utf8');
   const after=await readFile(new URL('../progress-work.html',import.meta.url),'utf8');
   const ids=source=>[...source.matchAll(/id="([^"]+)"/g)].map(match=>match[1]);
-  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard']);
+  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard','queueDrawer','drawerClose','drawerTitle','drawerSummary','drawerMeta']);
   assert.deepEqual(ids(before).filter(id=>!relocated.has(id)&&!ids(after).includes(id)),[]);
   assert.match(after,/id="workTasks"/);assert.match(after,/id="queueColumns"/);
 });
@@ -516,4 +631,75 @@ test('confirmed authentication loss clears protected queue and work evidence',as
 
 for(const [old,view] of [['/room.html','wire'],['/queue.html','tasks'],['/control-room/agents/queue','tasks'],['/agent-room','wire']])test(`legacy deep link ${old} opens matching Progress view`,async t=>{
   const {page}=await open(t,{path:`${old}?board=demo-project&task=${taskId}#jobPassport`});const url=new URL(page.url());assert.equal(url.pathname,'/control-room/progress/work');assert.equal(url.searchParams.get('view'),view);assert.equal(url.searchParams.get('task'),taskId);assert.equal(url.hash,'#jobPassport');
+});
+
+
+test('published task detail retains summary, model, safe PR links and related answers', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=>{
+    if(rpc.name !== 'read-progress-board')return payload;
+    payload.snapshot.snapshot_json.tasks[taskId] = {title:'Synthetic detail',status:'running',work_request:'WR-900',summary:'Synthetic task summary.',executor:'Codex gpt-6-sol high',
+      repo:'demo/example',pr:12,pr_head:'a'.repeat(40),pr_links:[{repo:'demo/other',number:3,head_sha:'b'.repeat(40)},{repo:'invalid',number:4}],
+      evidence:'https://example.com/synthetic-evidence',question_ids:['synthetic-choice'],stage_history:[{stage:'build',status:'running',at:NOW.toISOString()}]};
+    payload.questions=[{question_id:'synthetic-choice',prompt:'Synthetic choice?',answer_text:'Proceed with synthetic fixture',status:'Applied'},
+      {question_id:'unrelated',prompt:'Unrelated question',answer_text:'Unrelated answer'}];return payload;
+  }});
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  const detail=page.locator('#workMetadata');
+  assert.match(await detail.textContent(),/Codex.*gpt-6-sol.*high/s);
+  assert.equal(await detail.locator('a[href="https://github.com/demo/example/pull/12"]').count(),1);
+  assert.equal(await detail.locator('a[href="https://github.com/demo/other/pull/3"]').count(),1);
+  assert.equal(await detail.locator('a[href="https://example.com/synthetic-evidence"]').count(),1);
+  assert.match(await detail.textContent(),/Synthetic choice.*Proceed with synthetic fixture.*Stage history/s);
+  assert.doesNotMatch(await detail.textContent(),/Unrelated answer/);
+  assert.deepEqual(errors,[]);
+});
+
+for (const width of [390, 1280]) test(`work detail retains the board details at ${width}px`, async t => {
+  const {page,errors} = await open(t,{width,rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
+      status:'blocked', stage:'review', updated_at:'2026-08-24T12:19:00Z',
+      stage_entered_at:'2026-08-24T12:00:00Z', blocked_reason:'Synthetic missing review',
+      next_action:'Synthetic rerun review', question:'SYNTHETIC INLINE QUESTION',
+      executor:'codex', provider:'OpenAI', model:'Synthetic model', effort:'high',
+      pr:104, repo:'jbookout/doctorcre-app', pr_checks:'failure', review_verdict:'CHANGES REQUESTED',
+      evidence:'https://example.test/evidence',
+      stage_history:[{stage:'build',entered_at:'2026-08-24T11:00:00Z'},
+        {stage:'review',entered_at:'2026-08-24T12:00:00Z'}],
+    });
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})}).first();
+  const delivery = page.locator('#workMetadata .work-delivery');
+  const field = label => page.locator('#workMetadata .work-detail-fields > div').filter({has:page.locator('dt',{hasText:new RegExp(`^${label}$`)})}).locator('dd');
+  assert.equal(await field('Blocked because').textContent(), 'Synthetic missing review');
+  assert.equal(await field('Next action').textContent(), 'Synthetic rerun review');
+  assert.match(await field('Stage').textContent(), /Review.*20m/);
+  assert.match(await delivery.locator('.work-stage-history').textContent(), /Building 1h 0m.*Review 20m/s);
+  assert.equal(await field('Question').textContent(), 'SYNTHETIC INLINE QUESTION');
+  assert.equal(await field('Model line').textContent(), 'OpenAI · Synthetic model · high');
+  assert.equal(await field('pr checks').textContent(), 'failure');
+  assert.equal(await field('review verdict').textContent(), 'CHANGES REQUESTED');
+  assert.equal(await task.locator('a[href="https://example.test/evidence"]').count(), 1);
+  assert.equal(await task.locator('a[href="https://github.com/jbookout/doctorcre-app/pull/104"]').count(), 1);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), true);
+  await page.clock.runFor(65000);
+  await page.waitForFunction(() => [...document.querySelectorAll('#workMetadata dt')].some(dt => dt.textContent === 'Stage' && dt.nextElementSibling.textContent.includes('21m')));
+  assert.match(await field('Stage').textContent(), /Review.*21m/);
+  assert.match(await delivery.locator('.work-stage-history').textContent(), /Review 21m/);
+  assert.deepEqual(errors, []);
+});
+
+test('merged work detail displays the release wait and inline question', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
+    if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
+      status:'done', stage:'merged', release_wait:'Synthetic canary pending',
+      question:'SYNTHETIC V1 QUESTION', stage_history:[],
+    });
+    return payload;
+  }});
+  const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})}).first();
+  const row = page.locator('#workMetadata .work-delivery .work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^Waiting on release$/})});
+  assert.equal(await row.locator('dd').textContent(), 'Synthetic canary pending');
+  assert.match(await task.textContent(), /SYNTHETIC V1 QUESTION/);
+  assert.deepEqual(errors, []);
 });

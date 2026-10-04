@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium, pausedClock, settles } from "./browser-harness.mjs";
 import { boardFreshness, boardDirectory } from "../js/progress-board-model.js";
 
 const NOW = new Date("2026-10-01T15:00:00Z");
@@ -13,9 +13,8 @@ const boards = [
 async function open(t, { width = 390, path = "/control-room/progress?board=demo-project", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
-  page.setDefaultTimeout(5000);
-  await page.clock.install({ time: NOW });
-  if (publicationTime) await page.clock.pauseAt(NOW);
+  if (publicationTime) await pausedClock(page, NOW);
+  else await page.clock.install({ time: NOW });
   const calls = [], errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
@@ -60,7 +59,7 @@ test("freshness has an exact 24h boundary and unknown timestamps never look fres
 test("desktop and phone navigation reach Progress through More", async t => {
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, path: "/control-room" });
-    if (width <= 900) await page.locator(".app-shell-menu > summary").click();
+
     await page.locator(".app-shell-more-toggle").click();
     const selector = '[data-app-nav-item][aria-label="Progress"]';
     assert.equal(await page.locator(selector).isVisible(), true);
@@ -82,7 +81,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.match(await project.locator('[data-freshness="stale"]').textContent(), /2d 1h ago.*Stale.*24h/);
   assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "carr-v5");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.equal(await page.locator(".flow-stage").count(), 6);
+  assert.equal(await page.locator("#board-stages .column").count(), 6);
   await project.click();
   await page.waitForURL("**/control-room/progress?board=demo-project");
   await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
@@ -104,13 +103,14 @@ test("project deep links work on canonical and legacy routes even when discovery
 
 test("normal motion flows; reduced motion stops animation while preserving stale shape and task detail", async t => {
   const { page } = await open(t);
-  await page.waitForFunction(() => document.querySelector(".pipeline-connector"));
-  assert.equal(await page.locator(".pipeline-connector").first().evaluate(node => getComputedStyle(node).animationName), "flow");
+  await page.waitForFunction(() => document.querySelector(".rail-line"));
+  assert.equal(await page.locator(".rail-line").first().evaluate(node => getComputedStyle(node).animationName), "flow");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const selector of [".pipeline-connector", ".node-halo", ".freshness-badge"])
+  for (const selector of [".rail-line", ".halo", ".freshness-badge"])
     assert.equal(await page.locator(selector).first().evaluate(node => getComputedStyle(node, node.classList.contains("freshness-badge") ? "::before" : null).animationName), "none");
   assert.equal(await page.locator('[data-freshness="stale"]').first().evaluate(node => getComputedStyle(node, "::before").borderRadius), "1px");
-  await page.locator(".pipeline-node").click();
+  assert.equal(await page.locator("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
+  await page.locator(".board-card").click();
   await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
 });
 
@@ -247,7 +247,7 @@ test("all visible header controls are clickable around the navigation breakpoint
     // requires pointer actionability; a busy CI runner gets no force-click.
     for (const control of await controls.all()) await control.click({ trial: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    if (width <= 900) await page.locator(".app-shell-menu > summary").click();
+
     await page.locator(".app-shell-more-toggle").click();
     assert.equal(await page.locator(".app-shell-more-list").isVisible(), true);
     for (const control of await controls.all()) await control.click({ trial: true });
@@ -265,7 +265,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
         return true;
       },
     });
-    await page.waitForFunction(() => document.querySelector(".pipeline-node"));
+    await page.waitForFunction(() => document.querySelector(".board-card"));
     const target = state === "directory focus" ? ".board-link" : ".answer-form textarea";
     if (state.includes("focus")) await page.locator(target).first().focus();
     if (state === "answer focus") await page.locator(target).fill("Synthetic unsent draft");
@@ -286,11 +286,11 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) assert.match(await page.locator("#board-error").textContent(), /(unavailable|offline)/i);
+    if (fail) await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(unavailable|offline)/i));
     assert.deepEqual(errors, []);
   });
 
-test("task focus survives board polls before opening work detail", async t => {
+test("task focus and dialog return target survive unchanged and changed polls", async t => {
   let version = 1;
   const { page, errors } = await open(t, { onRpc: async (route, rpc) => {
     if (rpc.name !== "read-progress-board") return false;
@@ -299,7 +299,7 @@ test("task focus survives board polls before opening work detail", async t => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { content: [{ text: JSON.stringify(read) }] } }) });
     return true;
   } });
-  const task = page.locator('[data-task-id="build"]');
+  const task = page.locator('.board-card[data-card-id="build"]');
   await task.focus();
   await page.evaluate(() => window.retainedTask = document.activeElement);
   await page.clock.runFor(15000);
@@ -309,6 +309,7 @@ test("task focus survives board polls before opening work detail", async t => {
   await page.clock.runFor(15000);
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
+  assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);
   await task.press("Enter");
   await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
   assert.deepEqual(errors, []);
@@ -324,11 +325,11 @@ for (const state of ["unpublished", "unauthorized", "signed-out"])
       else await route.fulfill({ status: state === "signed-out" ? 401 : 403, body: "Synthetic denied" });
       return true;
     } });
-    await page.waitForFunction(() => document.querySelector(".pipeline-node"));
+    await page.waitForFunction(() => document.querySelector(".board-card"));
     failure = true;
     await page.clock.runFor(15000);
     await page.waitForFunction(state => document.querySelector("#board-meta").dataset.readState === state, state);
-    assert.equal(await page.locator(".pipeline-node").count(), 0);
+    assert.equal(await page.locator(".board-card").count(), 0);
     assert.equal(await page.locator(".answer-form").count(), 0);
     assert.equal(await page.locator("#board-freshness").textContent(), "");
     assert.equal(await page.locator("#board-title").textContent(), "Progress");
@@ -338,7 +339,7 @@ for (const state of ["unpublished", "unauthorized", "signed-out"])
     failure = false;
     await page.locator("#board-retry").click();
     await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
-    assert.equal(await page.locator(".pipeline-node").count(), 1);
+    assert.equal(await page.locator(".board-card").count(), 1);
     assert.equal(await page.locator(".answer-form").count(), 1);
     assert.equal(await page.locator("#board-error").isVisible(), false);
     assert.deepEqual(errors, []);
@@ -352,7 +353,7 @@ test("published empty, unpublished, timeout and partial discovery have distinct 
     return true;
   } });
   await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
-  assert.equal(await page.locator("#task-count").textContent(), "0 TASKS");
+  assert.equal(await page.locator("#task-count").textContent(), "0 OF 0 CARDS");
   assert.equal(await page.locator("#board-error").isVisible(), false);
   assert.equal(await page.locator("#directory-error").isVisible(), true);
   assert.equal(await page.locator("#directory-error").getAttribute("data-read-state"), "unavailable");
@@ -381,7 +382,7 @@ test("timeout retains and ages last-known data; Retry preserves the draft and co
   await page.clock.runFor(10001);
   await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "timeout");
   assert.match(await page.locator("#board-error").textContent(), /timed out/i);
-  assert.equal(await page.locator(".pipeline-node").count(), 1);
+  assert.equal(await page.locator(".board-card").count(), 1);
   stalled = false;
   await page.locator("#board-retry").click();
   await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
@@ -402,4 +403,43 @@ test("an in-flight poll preserves a refocused unchanged answer card when tasks c
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   assert.equal(await page.evaluate(() => window.focusedAnswer === document.activeElement), true);
   assert.equal(await page.locator("textarea").inputValue(), "Synthetic retained focus");
+});
+
+
+test("summary and model cards retain routed detail on desktop and phone", async t => {
+  for (const width of [1440, 390]) await t.test(String(width), async t => {
+    let unauthorized = false;
+    const { page, errors } = await open(t, { width, onRpc: async (route, rpc) => {
+      if (rpc.name !== 'read-progress-board') return false;
+      if (unauthorized) { await route.fulfill({status:401,body:'{}'}); return true; }
+      const payload = {ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',
+        tasks:{build:{title:'Synthetic build',status:'running',summary:'Show synthetic model details.',provider:'Synthetic provider',model:'Synthetic model',effort:'high'},
+          released:{title:'Synthetic completed task',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery',summary:'Synthetic delivery is verified.',executor:'Codex gpt-6-sol high'}}}},questions:[]};
+      await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})}); return true;
+    }});
+    await page.waitForFunction(() => document.querySelector('#completed-count').textContent === '1 LIVE');
+    const active = page.locator('.board-card[data-card-id="build"]');
+    assert.match(await active.textContent(), /Synthetic provider.*Synthetic model · high/);
+    assert.match(await active.textContent(), /Show synthetic/);
+    const completed = page.locator('.completed-card');
+    assert.match(await completed.textContent(), /Synthetic delivery is verified.*Codex.*gpt-6-sol · high/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    unauthorized = true;
+    await page.locator('#board-retry').evaluate(button => button.click());
+    await page.waitForFunction(() => document.querySelector('#board-completed').childElementCount === 0);
+    assert.equal(await page.locator('#completed-count').textContent(), '—');
+    assert.deepEqual(errors, []);
+  });
+});
+
+test("completed card keyboard opens the current routed task detail", async t => {
+  const {page,errors} = await open(t, {onRpc: async(route,rpc) => {
+    if(rpc.name !== 'read-progress-board') return false;
+    const payload={ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',tasks:{released:{title:'Synthetic completed',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery'}}}},questions:[]};
+    await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});return true;
+  }});
+  await page.locator('.completed-card').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released');
+  assert.deepEqual(errors,[]);
 });

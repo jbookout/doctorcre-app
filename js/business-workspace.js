@@ -32,7 +32,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { mountSearch } from "./search.js";
 import { mountCharts } from "./charts.js";
 import { parseChartsAddress } from "./charts-model.js";
@@ -764,14 +764,12 @@ function wire() {
 
 async function boot() {
   mountPrefs();
-  const doc = mountDocDock("Business home");
   const tabs = wireTabs("businessTabs");
   // Doc history is Doc's own history view. Doc owns that surface, so the tab
   // asks Doc for it and never renders a second copy of it here.
   const openDocHistory = (event) => {
     event?.preventDefault?.();
-    if (typeof doc?.openHistory === "function") doc.openHistory();
-    else doc?.open?.("Doc history");
+    window.location.href = "/doc-chats";
   };
   $("tabDocHistory")?.addEventListener("click", openDocHistory);
   $("mobileDocHistory")?.addEventListener("click", openDocHistory);

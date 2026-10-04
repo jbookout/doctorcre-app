@@ -1,39 +1,15 @@
+import { mountDocPresence } from "./doc-presence.js";
+import { slices } from "./slices.generated.js";
+import { registerSlices, NAVIGATION_GROUPS } from "./slice-registration.js";
+import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 // One navigation source for every DoctorCRE route. Page scripts own their local
-// controls; this component owns only the app-wide destinations and phone menu.
-export const navigationItems = Object.freeze([
-  { label: "Home", href: "/" },
-  { label: "Leads", href: "/leads" },
-  { label: "Tours", href: "/tours" },
-  { label: "Deals", href: "/deals" },
-  { label: "Vendors", href: "/vendors" },
-  { label: "Control Room", href: "/control-room" },
-  { label: "Clients", href: "/clients", group: "Workspace" },
-  { label: "Ideas", href: "/ideas-events?tab=ideas", group: "Workspace" },
-  { label: "Events", href: "/ideas-events?tab=events", group: "Workspace" },
-  { label: "Updates", href: "/updates", group: "Updates" },
-  { label: "Doc Chats", href: "/doc-chats", group: "Updates" },
-  { label: "Progress", href: "/control-room/progress", group: "Operations" },
-  { label: "Work Requests", href: "/work-requests", group: "Operations" },
-  { label: "All Work", href: "/all-work", group: "Operations" },
-  { label: "Incidents", href: "/incidents", group: "Operations" },
-  { label: "Project activity", href: "/control-room/progress/work", group: "Operations" },
-  { label: "Design Lab", href: "/design-lab", group: "Reference" },
-  { label: "Status", href: "/status", group: "Reference" },
-]);
-
-const sectionForRoute = {
-  "/tasks": "/", "/work": "/", "/doc-chats/work": "/doc-chats",
-  "/share": "/tours", "/workspace": "/", "/pipeline": "/deals",
-  "/business": "/", "/progress-board": "/control-room/progress", "/queue.html": "/control-room/progress/work",
-  "/control-room/agents/queue": "/control-room/progress/work", "/agent-room": "/control-room/progress/work",
-  "/ideas": "/ideas-events?tab=ideas", "/system-work.html": "/work-requests", "/room.html": "/control-room/progress/work",
-  "/work-inventory": "/all-work", "/design": "/design-lab",
-  "/design/business": "/design-lab", "/design/operations": "/design-lab",
-  "/notifications": "/updates", "/conversations": "/doc-chats",
-};
+// controls; this module owns the shared rail and layout.
+const registration = registerSlices(slices);
+export const navigationItems = registration.navigationItems;
+const sectionForRoute = registration.sectionForRoute;
 
 export function activeDestination(pathname) {
   return sectionForRoute[pathname] || pathname;
@@ -48,28 +24,32 @@ export function appOriginForReport(origin) {
   } catch { return ""; }
 }
 
+function groupIcon(label) {
+  return { Home: "⌂", Leads: "◎", Tours: "◇", "Local Deals": "▦", Vendors: "♧", "Control Room": "◈" }[label] || "";
+}
+
 function link({ label, href }, current, base) {
   const active = href === current;
   const badge = label === "Updates" ? '<span class="nav-badge" id="navUnreadBadge" hidden></span>' : "";
-  return `<a data-app-nav-item aria-label="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${label}${badge}</a>`;
+  return `<a data-app-nav-item aria-label="${label}" title="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${!groupIcon(label) ? label : `<span aria-hidden="true">${groupIcon(label)}</span><span class="app-shell-nav-label">${label}</span>`}${badge}</a>`;
 }
 
 export function appShellMarkup(pathname, base = "", search = "") {
   const current = pathname === "/ideas-events" ? `/ideas-events?tab=${new URLSearchParams(search).get("tab") === "events" ? "events" : "ideas"}` : activeDestination(pathname);
   const primary = navigationItems.filter(item => !item.group).map((item) => link(item, current, base)).join("");
-  const more = ["Workspace", "Updates", "Operations", "Reference"].map((group) =>
+  const more = NAVIGATION_GROUPS.map((group) =>
     `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
   const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
-  return `<header class="app-shell-header">
+  return `<header class="app-shell-header" aria-label="Workspace rail">
     <a class="app-shell-brand" href="${base}/" aria-label="DoctorCRE Home">
       <svg viewBox="0 0 42 42" role="img" aria-label="Work flows from leads through deals to delivery">
         <path class="app-shell-flow" d="M7 21h9l6-9h9M16 21l6 9h9"/>
         <circle cx="7" cy="21" r="3"/><circle cx="22" cy="12" r="3"/><circle cx="31" cy="12" r="3"/><circle cx="22" cy="30" r="3"/><circle cx="31" cy="30" r="3"/>
-      </svg><span>Doctor<span class="app-shell-brand-accent">CRE</span></span>
+      </svg><span class="app-shell-brand-name">Doctor<span class="app-shell-brand-accent">CRE</span></span>
     </a>
-    <details class="app-shell-menu"><summary aria-label="Navigation menu"><span class="app-shell-menu-label">Menu</span><span class="app-shell-menu-icon" aria-hidden="true"></span></summary>
-      <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false">More</button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
-    </details>
+    <div class="app-shell-menu">
+      <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false" aria-label="More" title="More"><span aria-hidden="true">•••</span><span class="app-shell-nav-label">More</span></button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
+    </div>
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">
       <button class="app-shell-control" type="button" data-pref="theme" data-on="dark" data-off="light" aria-pressed="true" aria-label="Dark mode" title="Dark mode"><span aria-hidden="true">☾</span></button>
@@ -89,7 +69,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
   </header><div class="app-shell-call-availability"${base ? ' hidden' : ''}>
     <span id="callModeAvailability" role="status">Checking Quill on this device…</span>
     <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Recheck Quill</button>
-  </div><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
+  </div>`;
 }
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
@@ -97,30 +77,24 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
-  // The control row wraps on phones, and Quill availability adds/removes a row.
-  // Keep fixed-page spacing and scroll targets below the measured shell.
-  const measureShell = () => root.documentElement.style.setProperty("--app-shell-height", `${host.getBoundingClientRect().height}px`);
-  measureShell();
-  const ResizeObserver = root.defaultView?.ResizeObserver;
-  if (ResizeObserver) new ResizeObserver(measureShell).observe(host);
-  if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
+
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  const menu = host.querySelector(".app-shell-menu");
+  if (!base && pathname !== "/share") {
+    mountAppLayout(root, host, pathname, slices);
+    root.querySelector(".app-layout-status").append(host.querySelector(".app-shell-call-availability"));
+    mountDocPresence({ document:root, window:root.defaultView });
+  }
+  else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");
-  const phone = globalThis.matchMedia?.("(max-width: 900px)");
-  const setMode = () => { menu.open = !phone?.matches; moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); };
-  setMode();
-  phone?.addEventListener?.("change", setMode);
   moreButton.addEventListener("click", () => {
     moreList.hidden = !moreList.hidden;
     moreButton.setAttribute("aria-expanded", String(!moreList.hidden));
   });
   host.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (phone?.matches && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
-    else if (!moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); moreButton.focus(); }
+    if (!moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); moreButton.focus(); }
   });
   root.addEventListener("click", (event) => {
     if (!event.target.closest(".app-shell-more") && !moreList.hidden) { moreList.hidden = true; moreButton.setAttribute("aria-expanded", "false"); }
@@ -194,7 +168,7 @@ function mountAccount(root, host, pathname) {
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
       const call = await mountGlobalCallMode(root);
       host.querySelector("#callModeButton").onclick = () => call.open();
-      host.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
+      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
     });
   }
 }

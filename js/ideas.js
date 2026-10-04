@@ -1,3 +1,4 @@
+import { pageDocContext, selectDocRecord, publishDocRead, setDocFilters, observeDocRead } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B04 — Ideas and Events: DOM wiring only.
 //
@@ -9,7 +10,7 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { formatCalendarDate } from "./visual-system.js";
 import { approach, localToday, staggerDelay } from "./calendar-model.js";
 import { partnerName } from "./task-records-model.js";
@@ -104,6 +105,10 @@ const STATE_COPY = {
 
 function render() {
   const shown = filterIdeas(view.rows, view.state.q);
+  if (view.state.tab === 'ideas') {
+    setDocFilters({query:view.state.q});
+    if (view.status === 'ready' && view.payload) publishDocRead('loopBoard',{loops:view.payload.loops.filter(row=>shown.some(item=>String(row.number)===item.number))});
+  }
   const phase = ideasPhase({ status: view.status, rows: view.rows, shown });
   if (phase === "loading") setStatus("refreshing", "Updating…");
   else if (phase === "unauthorized") setStatus("unknown", "Session ended");
@@ -201,21 +206,35 @@ function renderEvents() {
     : phase === "partial" ? EVENT_COPY.partial : EVENT_COPY[phase]);
 }
 
+function invalidateAuthorization(error) {
+  if (![401,403].includes(error?.status) && error?.code !== 'authentication_required') return false;
+  pageDocContext?.clear(); ++view.sequence; ++view.events.sequence; ++view.detailSequence;
+  view.status = 'unauthorized'; view.rows = []; view.payload = null;
+  view.events.status = 'unauthorized'; view.events.rows = []; view.events.payload = null;
+  closeIdea(); closeEvent(); render(); renderEvents(); return true;
+}
+
 async function loadEvents() {
   const sequence = ++view.events.sequence;
+  const ticket=view.state.tab === 'events' ? pageDocContext?.begin('listIndustryEvents') : null;
   view.events.status = "loading";
   renderEvents();
   try {
-    const read = eventReadState(await client.listIndustryEvents({ limit: EVENT_LIST_LIMIT }));
+    const payload=await client.listIndustryEvents({limit:EVENT_LIST_LIMIT});
+    const read = eventReadState(payload);
+    view.events.payload=payload;
     if (sequence !== view.events.sequence) return;
     view.events.status = read.status;
     view.events.rows = read.rows;
   } catch (error) {
     if (sequence !== view.events.sequence) return;
+    if (invalidateAuthorization(error)) return;
+    pageDocContext?.fail(ticket,error);
     view.events.status = error?.status === 401 || error?.status === 403 ? "unauthorized" : "error";
     view.events.rows = [];
   }
   if (view.events.status === "ready" || view.events.status === "partial") view.events.updatedAt = new Date().toISOString();
+  if (["ready","partial"].includes(view.events.status)) pageDocContext?.finish(ticket,view.events.payload,{at:Date.parse(view.events.updatedAt)}); else pageDocContext?.fail(ticket);
   renderEvents();
 }
 
@@ -258,6 +277,7 @@ function showEventConflict(latest) {
 function openEvent(id = null) {
   const row = id ? view.events.rows.find((event) => event.id === id) : null;
   if (id && !row) return;
+  selectDocRecord(row ? 'event' : null, row?.id);
   view.events.current = row ? { id: row.id, version: row.version } : null;
   const key = id || "new";
   const draft = view.events.draft?.key === key ? view.events.draft : null;
@@ -283,6 +303,7 @@ function openEvent(id = null) {
 }
 
 function closeEvent({ discard = false } = {}) {
+  selectDocRecord(null,null);
   if (discard) view.events.draft = null;
   const dialog = $("eventDialog");
   if (dialog?.open) dialog.close();
@@ -345,8 +366,10 @@ async function openIdea(number, { push = true } = {}) {
   const sequence = ++view.detailSequence;
   let read;
   try {
-    read = ideaReadState(await client.readLoop({ number, kind: "idea" }));
+    const payload=await observeDocRead('readLoop',[{number,kind:'idea'}],()=>client.readLoop({number,kind:'idea'}));
+    read = ideaReadState(payload);
   } catch (error) {
+    if (invalidateAuthorization(error)) return;
     read = { state: error?.status === 401 || error?.status === 403 ? "unauthorized" : "unavailable" };
   }
   if (sequence !== view.detailSequence || view.state.idea !== number) return;
@@ -363,6 +386,7 @@ async function openIdea(number, { push = true } = {}) {
     return;
   }
   const loop = read.loop;
+  selectDocRecord('loop', loop.loop_id || loop.number);
   if (title) title.textContent = loop.title || row?.label || `Idea #${number}`;
   const rows = ideaDetailRows(loop)
     .map((field) => `<dt>${escapeHtml(field.label)}</dt><dd${field.known ? "" : ' class="unknown"'}>${escapeHtml(field.text)}</dd>`).join("");
@@ -373,6 +397,7 @@ async function openIdea(number, { push = true } = {}) {
 }
 
 function closeIdea() {
+  selectDocRecord(null, null);
   const dialog = $("ideaDialog");
   if (dialog?.open) dialog.close();
 }
@@ -381,6 +406,7 @@ function closeIdea() {
 
 async function load() {
   const sequence = ++view.sequence;
+  const ticket=view.state.tab === 'ideas' ? pageDocContext?.begin('loopBoard',[IDEA_BOARD_ARGS]) : null;
   if (view.status !== "ready") { view.status = "loading"; render(); }
   try {
     const payload = await client.loopBoard(IDEA_BOARD_ARGS);
@@ -388,25 +414,39 @@ async function load() {
     if (!validIdeaBoard(payload)) {
       view.status = "error";
     } else {
+      view.payload = payload;
       view.rows = payload.loops.map(normalizeIdea).filter(Boolean);
       view.status = "ready";
     }
   } catch (error) {
     if (sequence !== view.sequence) return;
+    if (invalidateAuthorization(error)) return;
+    pageDocContext?.fail(ticket,error);
     view.status = error?.status === 401 || error?.status === 403 ? "unauthorized" : "error";
     view.rows = [];
   }
-  if (view.status === "ready") view.updatedAt = new Date().toISOString();
+  if (view.status === 'ready') { view.updatedAt = new Date().toISOString(); pageDocContext?.finish(ticket,view.payload,{at:Date.parse(view.updatedAt)}); }
+  else pageDocContext?.fail(ticket);
   render();
 }
 
 /* ------------------------------------------------------------------- wiring */
 
 function selectTab(key, { push = false } = {}) {
+  pageDocContext?.navigate(key === 'events' ? 'events' : 'ideas', {query:view.state.q});
   view.state = { ...view.state, tab: key };
   tabs?.select(key === "events" ? "tabEvents" : "tabIdeas");
   remember({ push });
-  if (key === "events") renderEvents();
+  closeIdea();
+  if (key === 'events') {
+    renderEvents();
+    if (['ready','partial'].includes(view.events.status)) pageDocContext?.finish(pageDocContext.begin('listIndustryEvents'),view.events.payload,{at:Date.parse(view.events.updatedAt)});
+    else if (client) loadEvents();
+  } else {
+    if (view.status === 'ready') pageDocContext?.finish(pageDocContext.begin('loopBoard',[IDEA_BOARD_ARGS]),view.payload,{at:Date.parse(view.updatedAt)});
+    else if (client) load();
+    render();
+  }
 }
 
 function wire() {
@@ -426,6 +466,7 @@ function wire() {
     search.addEventListener("input", () => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => {
+        closeIdea();
         view.state = { ...view.state, q: search.value.slice(0, 200) };
         remember();
         render();
@@ -453,6 +494,7 @@ function wire() {
 
   $("ideaDialogClose")?.addEventListener("click", closeIdea);
   $("ideaDialog")?.addEventListener("close", () => {
+    selectDocRecord(null,null); pageDocContext?.release('readLoop');
     view.detailSequence += 1;
     if (view.state.idea) { view.state = { ...view.state, idea: null }; remember({ push: true }); }
   });
@@ -500,8 +542,10 @@ function wire() {
     $("eventFormMessage").textContent = "Your draft now uses the latest event version. Review it before saving.";
     $("eventSave").focus();
   });
+  $("eventDialog")?.addEventListener("close", () => selectDocRecord(null,null));
   $("eventDialogClose")?.addEventListener("click", () => closeEvent());
   $("eventCancel")?.addEventListener("click", () => closeEvent({ discard: true }));
+  window.addEventListener("pagehide", () => { pageDocContext?.clear(); closeIdea(); closeEvent(); });
   window.addEventListener("resize", () => drawTimeline(["ready", "partial"].includes(view.events.status) ? view.events.rows : []));
   window.addEventListener("online", () => { load(); loadEvents(); });
   window.addEventListener("popstate", () => {
@@ -511,9 +555,7 @@ function wire() {
     // and does not push a history entry of its own.
     view.state = next;
     if (search) search.value = next.q;
-    tabs?.select(next.tab === "events" ? "tabEvents" : "tabIdeas");
-    render();
-    if (next.tab === "events") renderEvents();
+    selectTab(next.tab);
     if (!next.idea) closeIdea();
     else if (next.idea !== previousIdea) openIdea(next.idea, { push: false });
   });
@@ -521,7 +563,7 @@ function wire() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Ideas");
+
   wire();
   // The markup opens on Ideas; only a remembered Events tab moves it, so a
   // plain visit never steals focus into the tab strip.
@@ -529,7 +571,7 @@ async function boot() {
   remember();
   render();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
-  client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  client = resolved.mode === "live" ? createLiveClient({docContext:false}) : await createFixtureClient({...resolved.options,docContext:false});
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await loadEvents(); } });
   await load();

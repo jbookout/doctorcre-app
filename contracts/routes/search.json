@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {
+      "path": "/search",
+      "asset": "search.html",
+      "order": 15,
+      "gatePath": "/business"
+    }
+  ],
+  "redirects": []
+}

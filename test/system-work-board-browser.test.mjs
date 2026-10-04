@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
-import {chromium} from 'playwright';
+import { chromium } from './browser-harness.mjs';
 const kinds=['work_request','portfolio_node','loop','work_shape','slice_plan','governance_item','capability_session','slice_proposal','investigation','incident','cutover_plan','retrieval_proposal','ready_plan_amendment','defect','builder_brief','progress_task','pull_request','remote_branch','builder_brief_file'];
 const items=kinds.map((kind,index)=>({id:`synthetic-${index}`,source:`synthetic.${kind}`,kind,title:`Synthetic ${kind} concept`,state:'open',completed:false,
  opened_at:'2026-08-01T12:00:00Z',last_activity_at:'2026-09-01T12:00:00Z',age:61,owner:null,version:'3',link:'/system-work.html',
@@ -36,7 +36,11 @@ async function open(t,width,{snapshot=true}={}){
 test('all source cards and ten recent Live nodes fit phone and desktop; library finds old completion',async t=>{
  for(const width of [320,390,1440])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);assert.equal(await page.locator('.work-source').count(),19);
-  assert.equal(await page.locator('.flow-stage[data-stage="live"] .pipeline-node').count(),10);
+  // The v2 Live column shows the newest five and expands to all ten recent Live nodes.
+  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),5);
+  assert.match(await page.locator('.column[data-stage="live"] .live-summary').textContent(),/^10 live/);
+  await page.locator('#live-toggle').click();
+  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),10);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Live Library',exact:true}).click();
   await page.locator('[name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();

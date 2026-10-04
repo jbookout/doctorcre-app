@@ -2,64 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { mountDocDock } from '../js/doc-dock.js';
+import { mountDocPresence } from '../js/doc-presence.js';
+import { createDocContext } from '../js/doc-context-model.js';
 import { createCallMode, CALL_MODE_URL } from '../js/call-mode.js';
 import { createServer } from 'node:http';
 import { extname } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, animationsSettled, settles } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { appShellMarkup } from '../js/app-shell.js';
 import { mountGlobalCallMode } from '../js/global-call-mode.js';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-// Translation animations can round a 44px rectangle just below 44px. Read its
-// settled geometry, preserving the exact touch-target floor without a sleep.
 async function touchTargetBox(locator) {
-  await locator.evaluate(async element => {
-    const animations = [];
-    for (let node = element; node; node = node.parentElement) {
-      animations.push(...node.getAnimations().filter(animation =>
-        animation.effect.getTiming().iterations !== Infinity));
-    }
-    await Promise.all(animations.map(animation => animation.finished));
-  });
+  await animationsSettled(locator.page());
   return locator.boundingBox();
 }
 
-async function dock(check) {
-  const dom = new JSDOM(await read('pipeline.html'), { url: 'https://example.test/pipeline.html' });
-  const previous = { document: globalThis.document, HTMLElement: globalThis.HTMLElement };
-  globalThis.document = dom.window.document;
-  globalThis.HTMLElement = dom.window.HTMLElement;
-  try { await check(dom.window, mountDocDock('Deals')); }
-  finally { Object.assign(globalThis, previous); dom.window.close(); }
-}
-
-test('Doc offers the working conversation list and cannot render canned answers on submission', async () => {
-  await dock((window, ui) => {
-    const doc = window.document;
-    ui.open();
-    for (let i = 0; i < 6; i++) {
-      doc.querySelector('#docInput').value = 'What is next?';
-      doc.querySelector('#docForm').dispatchEvent(new window.Event('submit', { cancelable: true }));
-    }
-    assert.match(doc.querySelector('#docTranscript').textContent, /Doc cannot answer here yet/);
-    assert.doesNotMatch(doc.querySelector('#docChat').textContent, /prototype|demo|reminder for your review|five assignments/i);
-    assert.equal(doc.querySelector('#docForm').hidden, true);
-    const link = doc.querySelector('#docTranscript a');
-    assert.equal(link.textContent, 'Open Doc Chats');
+test('shared Doc shows unavailable reads, keeps Chats reachable and offers no unsupported input', async () => {
+  const dom = new JSDOM('<main id="appMainSlot"></main>', { url:'https://example.test/deals' });
+  const context = createDocContext({ page:'deals' });
+  let ui;
+  try {
+    ui = mountDocPresence({ document:dom.window.document, window:dom.window, context,
+      client:{ listDocSuggestions:async () => { throw new Error('unavailable'); } } });
+    const doc = dom.window.document;
+    await settles(() => assert.match(doc.querySelector('#docSuggestions').textContent, /Unavailable/));
+    assert.equal(doc.querySelector('form, #docMic, #docInput'), null);
+    assert.doesNotMatch(doc.querySelector('#docPresence').textContent, /Listening|prototype|demo/i);
+    const link = doc.querySelector('.doc-chats-link');
     assert.equal(new URL(link.href).pathname, '/doc-chats');
-    assert.equal(doc.activeElement, link);
-    ui.close();
-    assert.equal(doc.activeElement, doc.querySelector('#docFab'));
-  });
-});
-
-test('the Doc Chats dock action passes the Worker sign-in gate and serves the conversation list', async () => {
-  await dock(async (window, ui) => {
-    ui.open();
-    const destination = window.document.querySelector('#docTranscript a').href;
+    const destination = link.href;
     const gates = [], assets = [];
     const response = await handleDoctorcreRequest(new Request(destination), {
       CARR: { fetch: async (request) => { gates.push(new URL(request.url).pathname); return new Response('signed in'); } },
@@ -72,19 +45,7 @@ test('the Doc Chats dock action passes the Worker sign-in gate and serves the co
     assert.deepEqual(gates, ['/conversations']);
     assert.deepEqual(assets, ['/conversations.html']);
     assert.match(await response.text(), /Doc Chats/);
-  });
-});
-
-test('Dictate with Quill is disabled with a reason and never claims to listen without capture', async () => {
-  await dock((window, ui) => {
-    ui.open();
-    const mic = window.document.querySelector('#docMic');
-    mic.dispatchEvent(new window.Event('click'));
-    assert.equal(mic.disabled, true);
-    assert.match(window.document.querySelector('#docChat').textContent, /Dictation is not available here yet/);
-    assert.doesNotMatch(window.document.querySelector('#docChat').textContent, /Listening/);
-    assert.equal(mic.getAttribute('aria-pressed'), 'false');
-  });
+  } finally { ui?.dispose(); dom.window.close(); }
 });
 
 async function callSurface(fetchImpl, check) {
@@ -207,7 +168,7 @@ test('a pending recorder recheck coalesces presses and remains retryable after a
   });
 });
 
-test('honest controls fit 390px and iPad in both motion settings with 44px touch targets', async () => {
+test('honest controls fit 320px, 390px and iPad in both motion settings with 44px touch targets', async () => {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css' };
   const server = createServer(async (req, res) => {
     const response = await handleDoctorcreRequest(new Request(new URL(req.url, 'http://example.test')), {
@@ -226,41 +187,29 @@ test('honest controls fit 390px and iPad in both motion settings with 44px touch
   const base = `http://127.0.0.1:${server.address().port}`;
   const browser = await chromium.launch({ headless: true });
   try {
-    for (const width of [390, 820]) for (const reducedMotion of ['reduce', 'no-preference']) {
+    for (const width of [320, 390, 820]) for (const reducedMotion of ['reduce', 'no-preference']) {
       const page = await browser.newPage({ viewport: { width, height: 1180 }, reducedMotion });
       // Isolate these UI seams from unrelated backend boot and shell requests.
       await page.route(/\/(pipeline|app)\.js$/, route => route.fulfill({ contentType: 'text/javascript', body: '' }));
       await page.route(/https:\/\/.*/, route => route.abort());
+      let companionAvailable = false;
+      await page.route('http://127.0.0.1:4682/**', route => route.fulfill({ status:companionAvailable ? 200 : 503, json:{state:'idle'} }));
       await page.goto(`${base}/deals?view=board`);
-      await page.evaluate(async () => (await import('/js/doc-dock.js')).mountDocDock('Deals'));
-      await page.locator('#docFab').click();
-      assert.equal(await page.locator('#docForm').isVisible(), false);
-      assert.equal(await page.locator('#docMic').isDisabled(), true);
-      assert.match(await page.locator('#docTranscript').textContent(), /Doc cannot answer here yet/);
-      for (const selector of ['#docFab', '#docChatClose', '#docTranscript a', '#docMic']) {
+      await page.locator('#docOpen').click();
+      assert.equal(await page.locator('#docDetail form, #docMic, #docInput').count(), 0);
+      assert.match(await page.locator('#docSuggestions').textContent(), /Unavailable|Updating/);
+      for (const selector of ['#docOpen', '#docClose', '.doc-chats-link']) {
         const box = await touchTargetBox(page.locator(selector));
         assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
       }
-      const dockBox = await page.locator('#docChat').boundingBox();
+      const dockBox = await page.locator('#docDetail').boundingBox();
       assert.ok(dockBox.x >= 0 && dockBox.x + dockBox.width <= width);
-      if (reducedMotion === 'reduce') {
-        assert.equal(await page.locator('#docChat').evaluate(el => getComputedStyle(el).animationName), 'none');
-      }
-      await page.locator('#docTranscript a').click();
+      await page.locator('.doc-chats-link').click();
       await page.waitForURL('**/doc-chats');
       await page.locator('#conversationList').waitFor({ state: 'attached' });
 
       await page.goto(`${base}/deals`);
-      await page.evaluate(async () => {
-        const { createCallMode } = await import('/js/call-mode.js');
-        window.companionAvailable = false;
-        window.callUi = createCallMode({ root: document, fetchImpl: async () => {
-          if (!window.companionAvailable) throw new Error('unreachable');
-          return { ok: true, json: async () => ({ state: 'idle' }) };
-        } });
-        document.addEventListener('click', event => window.callUi.handleClick(event.target));
-        await window.callUi.checkEligibility();
-      });
+      await page.locator('#callModeRetry').waitFor({ state:'visible' });
       assert.equal(await page.locator('#callModeButton').isVisible(), false);
       assert.match(await page.locator('#callModeAvailability').textContent(), /Call recording runs on the Mac with Quill/);
       const notice = await page.locator('#callModeAvailability').boundingBox();
@@ -268,19 +217,19 @@ test('honest controls fit 390px and iPad in both motion settings with 44px touch
       const retryBox = await page.locator('#callModeRetry').boundingBox();
       assert.ok(retryBox.width >= 44 && retryBox.height >= 44, `${width}: retry touch target`);
       assert.ok(retryBox.x >= 0 && retryBox.x + retryBox.width <= width, `${width}: retry fits`);
-      await page.evaluate(() => { window.companionAvailable = true; });
+      companionAvailable = true;
       await page.locator('#callModeRetry').focus();
       await page.keyboard.press('Enter');
       await page.locator('#callModeButton').waitFor({ state: 'visible' });
       assert.equal(await page.locator('#callModeRetry').isVisible(), false);
       assert.equal(await page.locator('#callModeButton').evaluate(el => el === document.activeElement), true);
-      await page.evaluate(async () => {
-        await window.callUi.open();
-      });
+      await page.locator('#callModeButton').click();
+      await page.locator('#callModeDialog[open]').waitFor();
       for (const selector of ['#callModeButton', '#callModeClose', '[data-call-mode-start]', '#callModeConsentRow', '#callModeStandalone']) {
         for (const locator of await page.locator(selector).all()) {
           const box = await touchTargetBox(locator);
-          assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
+          const style = await locator.evaluate(el => { const s=getComputedStyle(el); return {minWidth:s.minWidth,minHeight:s.minHeight,transform:s.transform}; });
+          assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify({box,style})}`);
         }
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -290,7 +239,7 @@ test('honest controls fit 390px and iPad in both motion settings with 44px touch
 });
 
 // Pin the fractional translation that made CI intermittently report 43.999px.
-test('Doc touch targets are measured after their entry animation settles', async () => {
+test('touch targets are measured after their entry animation settles', async () => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 820, height: 1180 } });
