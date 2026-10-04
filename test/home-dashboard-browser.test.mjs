@@ -43,6 +43,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
       next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
     'correspondence-readiness': args => client.correspondenceReadiness(args),
     'today-triage': () => client.todayTriage(),
+    'list-doc-suggestions': args => client.listDocSuggestions(args),
     'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:[],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),

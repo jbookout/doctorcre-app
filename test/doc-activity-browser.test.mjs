@@ -40,6 +40,8 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
         result={actor:'joe',deals:[]};
       }else if(params.name==='today-triage'){
         result={items:[]};
+      }else if(params.name==='list-doc-suggestions'){
+        result={ok:true,suggestions:[]};
       }else { errors.push(`Unexpected MCP operation: ${params.name}`); return route.fulfill({status:500,body:''}); }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(result)}]}})});
     }
