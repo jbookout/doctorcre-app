@@ -7,7 +7,7 @@ import { createLiveClient } from "../js/live-client.js";
 import {
   STAGES, EXECUTORS, PULSES, INDICATORS, LIVE_PREVIEW, LIVE_PREF_KEY, legendEntries, boardView, answerRequest,
   taskStage, taskHealth, taskPulse, blockedDetail, isStale, stageTimer, stageDurations, taskIdentity, taskSummary,
-  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, prLabel, deliveryDetail,
+  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, jobLinks, deliveryDetail,
 } from "../js/progress-board-model.js";
 import { mountBoard } from "../js/progress-board.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
@@ -77,13 +77,13 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
     } },
     ASSETS: { fetch: async () => { throw Error("signed-out board must not load"); } },
   };
-  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress?board=project-one`), env);
+  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress/board/project-one`), env);
   assert.equal(signedOut.status, 302);
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
   env.ASSETS.fetch = async (request) => new Response(new URL(request.url).pathname);
   const signedIn = await handleDoctorcreRequest(new Request(`${host}/control-room/progress`), env);
-  assert.equal(await signedIn.text(), "/control-room.html");
+  assert.equal(await signedIn.text(), "/progress-board.html");
 });
 
 test("/progress-board?board=all-repos keeps its board through the redirect and is accepted", async () => {
@@ -91,8 +91,8 @@ test("/progress-board?board=all-repos keeps its board through the redirect and i
   const response = await handleDoctorcreRequest(new Request(`${host}/progress-board?board=all-repos`), env);
   assert.equal(response.status, 308);
   const location = new URL(response.headers.get("location"));
-  assert.equal(location.pathname, "/control-room/progress");
-  assert.equal(location.searchParams.get("board"), "all-repos");
+  assert.equal(location.pathname, "/control-room/progress/board/all-repos");
+  assert.equal(location.searchParams.has("board"), false);
   assert.equal(boardFromSearch("?board=all-repos"), "all-repos");
   assert.equal(boardFromSearch("?board=<script>"), null);
   assert.equal(boardFromSearch(""), "carr-v5", "no parameter opens the system board, as the Progress nav does");
@@ -321,7 +321,7 @@ test("all-repos board groups by repo, keys cards per repo, and filters by repo, 
   assert.ok(carr && app && carr !== app, "equal PR numbers never collide");
   assert.equal(carr.querySelector(".card-pr").textContent, "carr-system #93");
   assert.equal(app.querySelector(".card-pr").textContent, "doctorcre-app #93");
-  assert.equal(prLabel({ pr: 93, repo: "jbookout/doctorcre-app" }), "doctorcre-app #93");
+  assert.deepEqual(jobLinks({ pr: 93, repo: "jbookout/doctorcre-app" }), {workRequest:null,prLabel:"doctorcre-app #93",prUrl:"https://github.com/jbookout/doctorcre-app/pull/93"});
   const review = $('.column[data-stage="review"]');
   assert.deepEqual([...review.querySelectorAll(".repo-group")].map(node => node.textContent), ["carr-system", "doctorcre-app"]);
   assert.match(carr.querySelector(".card-summary").textContent, /One line about 93\./);
@@ -471,4 +471,16 @@ test("board activity links to project history and cards open the shared popup", 
   doc.querySelector(".board-card").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   assert.equal(opened[0].work_request, "WR-900", "Enter opens the same popup");
   window.close();
+});
+
+
+test('PR132 #8: explicit bindings share the pipeline, blocked and completed projections',async()=>{
+ const read=structuredClone(FULL.project);
+ const fields={work_request_ref:'WR-000999',pr_url:'https://github.com/example/demo/pull/88'};
+ for(const task of Object.values(read.snapshot.snapshot_json.tasks)){Object.assign(task,fields);delete task.work_request;delete task.human_ref;delete task.pr;}
+ const {doc}=await mount(read);
+ for(const selector of ['#board-stages .board-card','#board-blocked .blocked-card','#completed-list .completed-card']){
+  const cards=[...doc.querySelectorAll(selector)];assert.ok(cards.length,selector);
+  for(const card of cards){assert.match(card.textContent,/WR-000999/);assert.match(card.textContent,/#88/);}
+ }
 });

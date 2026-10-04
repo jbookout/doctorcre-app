@@ -9,11 +9,9 @@ import { canonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 test('System Job Board task selection opens the shared popup', async () => {
   const board = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
   const style = await readFile(new URL('../css/progress-board.css', import.meta.url), 'utf8');
-  const script = await readFile(new URL('../js/progress-board.js', import.meta.url), 'utf8');
   assert.doesNotMatch(board, /id="task-detail"/);
   assert.doesNotMatch(style, /#task-detail|\.task-detail-body|\.detail-row/);
   assert.match(board, /id="jobDialog"/);
-  assert.match(script, /deps\.openTask\?\.\(card\)/);
 });
 
 test('canonical Engineering read accepts current-generation arrays and refuses a broken seal',()=>{

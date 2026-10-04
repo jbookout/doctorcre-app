@@ -23,6 +23,12 @@ import {
 import { classifyCommandOutcome } from "../js/command-feedback.mjs";
 import { createFixtureClient } from "../js/fixture-client.js";
 
+test('board notifications retain encoded board identity and require the registered board route', () => {
+  const path = '/control-room/progress/board/demo%20project?task=build';
+  assert.equal(deepLinkView(path).href, path);
+  assert.equal(deepLinkView(path, ['/control-room/progress']).href, null);
+});
+
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("notifications.html");

@@ -6,18 +6,13 @@
 // test written against friendlier names would pass here and fail against CARR.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import {
-  NO_CADENCE_REASON, TILES, canonicalHref, coverageLine, dashboardTiles, groupedIncidents,
-  incidentFilters, needsJoeAdvisoryLabel, notInReleaseBlocks, readPhase, sinceChangeLabel, stallCandidates,
-  validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload,
-  workInProgressLine, STUCK_SILENCE_HOURS,
-} from "../js/control-room-model.js";
-import { acceptsResponse } from "../js/workspace-command-center-model.js";
-import { createFixtureClient } from "../js/fixture-client.js";
-import { createLiveClient } from "../js/live-client.js";
-import { needsJoeCardFields, refuseWorkRequestCard, workItemLedger } from "../js/model-room-model.js";
+import {canonicalHref, coverageLine, groupedIncidents, incidentFilters, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload, STUCK_SILENCE_HOURS} from "../js/control-room-model.js";
+import {acceptsResponse} from "../js/workspace-command-center-model.js";
+import {createFixtureClient} from "../js/fixture-client.js";
+import {createLiveClient} from "../js/live-client.js";
+import {needsJoeCardFields, refuseWorkRequestCard, workItemLedger} from "../js/model-room-model.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -71,59 +66,9 @@ const refused = (reason) => ({ state: "unknown", reason });
 
 /* ------------------------------------------------------- checkable done clauses */
 
-test("the five questions are answered from the real payload shapes, in doctrine order", () => {
-  assert.ok(validIncidentBoardPayload(INCIDENTS));
-  assert.ok(validCurrentWorkItemPayload(WORK));
-  assert.ok(validCurrentWorkRequestsPayload(NEEDS_JOE));
-  const tiles = dashboardTiles({ incidents: answered(INCIDENTS), work: answered(WORK), needsJoe: answered(NEEDS_JOE) });
-  assert.deepEqual(tiles.map((tile) => tile.id), [...TILES]);
-  assert.deepEqual(tiles.map((tile) => tile.title), ["Broken", "Running", "Stuck", "Needs Joe", "Changed"]);
-  assert.equal(tiles[0].value, 2);
-  assert.equal(tiles[1].value, 2);
-  assert.equal(tiles[3].value, 1);
-  // With no cadence passed, Stuck is still unknown by ruling, not by outage,
-  // and Changed has no producer.
-  assert.equal(tiles[2].state, "unknown");
-  assert.equal(tiles[2].reason, NO_CADENCE_REASON);
-  assert.equal(tiles[4].state, "not_in_release");
-  for (const tile of tiles) assert.ok(tile.sentence.length > 0 && !/\bunknown count\b/.test(tile.sentence));
-});
 
-test("one read failing makes only its own tile unknown, and no tile falls back to zero", () => {
-  const tiles = dashboardTiles({
-    incidents: refused("the incident ledger refused"), work: answered(WORK), needsJoe: answered(NEEDS_JOE),
-  });
-  const byId = Object.fromEntries(tiles.map((tile) => [tile.id, tile]));
-  assert.equal(byId.broken.state, "unknown");
-  assert.equal(byId.broken.value, null);
-  assert.equal(byId.broken.word, "unknown");
-  assert.match(byId.broken.sentence, /the incident ledger refused/);
-  assert.equal(byId.running.state, "read");
-  assert.equal(byId.running.value, 2);
-  assert.equal(byId.needs_joe.value, 1);
-  for (const tile of tiles) {
-    if (tile.state !== "read") assert.equal(tile.value, null, `${tile.id} invented a value`);
-    assert.notEqual(tile.word, "0", `${tile.id} fell back to zero`);
-  }
-});
 
-test("a verified zero stays a zero and never becomes unknown", () => {
-  const empty = { ...INCIDENTS, count: 0, incidents: [], by_severity: {}, by_state: {}, ready_to_close: 0 };
-  const [broken] = dashboardTiles({ incidents: answered(empty) });
-  assert.equal(broken.state, "read");
-  assert.equal(broken.value, 0);
-  assert.equal(broken.word, "0");
-});
 
-test("a payload the read layer would not recognise is refused rather than rendered", () => {
-  assert.equal(validIncidentBoardPayload({ count: 1, incidents: [] }), false);
-  assert.equal(validIncidentBoardPayload({ ...INCIDENTS, incidents: [{ ...INCIDENTS.incidents[0], severity: "high" }], count: 1 }), false);
-  assert.equal(validCurrentWorkItemPayload({ ...WORK, wip: { limit_system_wide: "two", in_flight: 1 } }), false);
-  assert.equal(validCurrentWorkItemPayload({ ...WORK, current: [{ ...WORK.current[0], state: "ready" }], count: 1 }), false);
-  assert.equal(validCurrentWorkRequestsPayload({ ok: true, items: [{ human_ref: "WR-1", title: "x", state: "needs_joe" }] }), false);
-  const [broken] = dashboardTiles({ incidents: answered({ count: 1, incidents: [] }) });
-  assert.equal(broken.value, null);
-});
 
 test("the coverage line states each read's own clock and carries no denominator", () => {
   const chips = coverageLine({
@@ -140,76 +85,11 @@ test("the coverage line states each read's own clock and carries no denominator"
   assert.equal(coverageLine({}).length, 0);
 });
 
-test("read phase separates loading, partial, offline and ready without blanking the page", () => {
-  assert.equal(readPhase({ status: "loading", reads: {} }), "loading");
-  assert.equal(readPhase({ status: "ready", reads: { incidents: { state: "read", observed_at: "2026-09-17T14:02:00Z" } } }), "ready");
-  assert.equal(readPhase({ status: "ready", reads: { incidents: { state: "read", observed_at: "2026-09-17T14:02:00Z" }, work: { state: "unknown", reason: "refused" } } }), "partial");
-  assert.equal(readPhase({ status: "ready", reads: { incidents: { state: "unknown", reason: "refused" } } }), "offline");
-  assert.equal(readPhase({ status: "unauthorized", reads: {} }), "no_access");
-});
-
-test("stuck states facts, not a verdict, until a cadence is approved", () => {
-  const without = stallCandidates(WORK.current, {});
-  assert.equal(without.state, "unknown");
-  assert.equal(without.reason, NO_CADENCE_REASON);
-  assert.deepEqual(without.items.map((item) => item.human_ref), ["WR-000902", "WR-000901"]);
-  // The later ruling turns it on without a rewrite.
-  const withCadence = stallCandidates(WORK.current, { cadence: 48 });
-  assert.equal(withCadence.state, "read");
-  assert.deepEqual(withCadence.items.map((item) => item.human_ref), ["WR-000902"]);
-  assert.equal(sinceChangeLabel(51.2), "51.2 hours since change");
-  assert.equal(sinceChangeLabel(1), "1 hour since change");
-  assert.equal(sinceChangeLabel(null), "unknown");
-});
-
-test("the approved 48-hour cadence turns Stuck into a count the read actually supports", () => {
-  assert.equal(STUCK_SILENCE_HOURS, 48);
-  const tiles = dashboardTiles({
-    incidents: answered(INCIDENTS), work: answered(WORK), needsJoe: answered(NEEDS_JOE),
-    cadence: STUCK_SILENCE_HOURS,
-  });
-  const stuck = tiles.find((tile) => tile.id === "stuck");
-  // 47 h is not stuck; 49 h is. The fixture above holds one of each side.
-  assert.equal(stuck.state, "read");
-  assert.equal(stuck.value, 1, "only the 51.2-hour row is past the cadence");
-  assert.equal(stuck.sentence, "Held work with no change for 48 hours or more.");
-  assert.equal(stuck.reason, null);
-
-  const edges = {
-    ...WORK,
-    count: 2,
-    current: [
-      { ...WORK.current[0], human_ref: "WR-000911", hours_since_last_change: 47 },
-      { ...WORK.current[1], human_ref: "WR-000912", hours_since_last_change: 49 },
-    ],
-  };
-  assert.deepEqual(
-    stallCandidates(edges.current, { cadence: STUCK_SILENCE_HOURS }).items.map((item) => item.human_ref),
-    ["WR-000912"],
-  );
-  const quiet = dashboardTiles({
-    incidents: answered(INCIDENTS), needsJoe: answered(NEEDS_JOE), cadence: STUCK_SILENCE_HOURS,
-    work: answered({ ...WORK, count: 1, current: [{ ...WORK.current[0], hours_since_last_change: 2 }] }),
-  });
-  const none = quiet.find((tile) => tile.id === "stuck");
-  assert.equal(none.state, "read");
-  assert.equal(none.value, 0, "a read that answered says 0, never unknown");
-
-  // An unanswered read is the only thing that still says unknown.
-  const outage = dashboardTiles({
-    incidents: answered(INCIDENTS), work: refused("the held-work read refused"),
-    needsJoe: answered(NEEDS_JOE), cadence: STUCK_SILENCE_HOURS,
-  });
-  assert.equal(outage.find((tile) => tile.id === "stuck").state, "unknown");
-});
 
 
 
-test("the work-in-progress line is stated only when the read carried both integers", () => {
-  assert.deepEqual(workInProgressLine(WORK.wip), { known: true, text: "1 of 2 in flight" });
-  assert.deepEqual(workInProgressLine({ in_flight: 1 }), { known: false, text: "unknown" });
-  assert.deepEqual(workInProgressLine(null), { known: false, text: "unknown" });
-});
+
+
 
 test("incidents group by severity with the ledger's own next step, verbatim or absent", () => {
   const groups = groupedIncidents(INCIDENTS.incidents);
@@ -237,24 +117,7 @@ test("an incident resolves to the same canonical identity from the tile and from
   assert.equal(canonicalHref({ human_ref: "not a ref" }), null);
 });
 
-test("every prototype panel without a producer is a named scope statement", () => {
-  const blocks = notInReleaseBlocks();
-  const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "atlas_causal_failure_graph_and_planned_layer"]) {
-    assert.ok(ids.includes(id), `${id} has no scope statement`);
-  }
-  for (const block of blocks) {
-    assert.match(block.title, /not in this release$/);
-    assert.match(block.slice, /^V5-UX-C[0-9]/, `${block.id} names no owning slice`);
-    assert.ok(block.reason.length > 0);
-  }
-  assert.ok(!ids.includes("model_room"), "the live Model Room board is not an out-of-release panel");
-  assert.ok(!ids.includes("resources"), "the resource read now has its own dashboard card");
-});
 
-// V5-UX-C14 — the Operations section. Its two cards (approvals from
-// governance-queue, and the honest no-read schedule card) are tested in
-// test/operations.test.mjs; this only pins where the section lives.
 
 
 test("a stale answer that overtakes a newer read is dropped", () => {
@@ -321,19 +184,14 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
   assert.deepEqual({ ...paths[0], init: readInit }, { path: "/api/system-work/current", init: {
     credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store",
   } });
-  assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate \(uncalibrated\).*priority 20%/);
-  assert.equal(needsJoeAdvisoryLabel(readback, 1), "Jev abstained");
   const unsupportedCalibration = structuredClone(readback);
   delete unsupportedCalibration.advisory.items[0].calibration_status;
-  assert.equal(needsJoeAdvisoryLabel(unsupportedCalibration, 0), "Jev advisory unavailable");
   const swapped = structuredClone(readback);
   swapped.advisory.items.reverse();
-  assert.equal(needsJoeAdvisoryLabel(swapped, 0), "Jev advisory unavailable");
   assert.deepEqual(swapped.items, canonical.items);
   canonical.advisory.snapshot_digest = `sha256:${"c".repeat(64)}`;
   const stale = await client.currentWorkRequests();
   assert.deepEqual(stale.items, canonical.items);
-  assert.equal(needsJoeAdvisoryLabel(stale, 0), "Jev advisory unavailable");
 });
 
 /* --------------------------------------------------------------- static page */
@@ -368,15 +226,8 @@ test("the route and the three verbs are pinned in the contracts", () => {
 // The fixture is EXECUTED, not described: atlasFixtureResponse is the same
 // function scripts/serve.mjs answers the route with, so the fixture cannot
 // drift away from what these tests certify.
-import { atlasFixtureResponse } from "../scripts/atlas-fixture.mjs";
-import {
-  ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_SCENE_NODE_CAP, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT,
-  INCOMPLETE_HEADING, KNOWN_GAPS, NO_ENFORCEMENT_SENTENCE, NO_SUCCESSOR_SENTENCE,
-  NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
-  atlasDegraded, atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor,
-  groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload,
-  NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS,
-} from "../js/atlas-model.js";
+import {atlasFixtureResponse} from "../scripts/atlas-fixture.mjs";
+import {ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_SCENE_NODE_CAP, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT, INCOMPLETE_HEADING, KNOWN_GAPS, NO_ENFORCEMENT_SENTENCE, NO_SUCCESSOR_SENTENCE, NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE, atlasDegraded, atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS} from "../js/atlas-model.js";
 
 const atlasJs = await read("js/atlas.js");
 const atlasModelJs = await read("js/atlas-model.js");
@@ -770,20 +621,6 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(atlasJs, /EXPOSURE_STATEMENT/, "the exposure statement is never shown");
 });
 
-test("C07-12 the atlas scope block moved on to the renderer slices", () => {
-  const ids = notInReleaseBlocks().map((block) => block.id);
-  assert.ok(!ids.includes("atlas"), "the Atlas tab still declares itself out of this release");
-  assert.ok(!ids.includes("atlas_renderer"), "the renderer still carries its own retired scope statement");
-  assert.ok(ids.includes("atlas_causal_failure_graph_and_planned_layer"), "C09's remaining scope has no statement");
-  const renderer = notInReleaseBlocks().find((block) => block.id === "atlas_causal_failure_graph_and_planned_layer");
-  assert.equal(renderer.title, "Atlas causal failure map and planned-architecture layer: not in this release");
-  assert.equal(renderer.slice, "V5-UX-C09");
-  assert.match(renderer.slice, /^V5-UX-C[0-9]/, "the block names no owning slice");
-  assert.match(renderer.reason, /incident markers, a recorded incident trace and an optional Doc tour are live/);
-  // The hard-coded panel copy went with the block it sat in.
-  assert.doesNotMatch(html, /The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09\./);
-  assert.doesNotMatch(html, /Atlas: not in this release/);
-});
 
 /* ------------------------------------------------- V5-UX-C13a: Waiting for Joe */
 

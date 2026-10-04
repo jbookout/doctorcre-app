@@ -27,26 +27,24 @@ async function open(t,width,{snapshot=true}={}){
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
   if(url.pathname==='/app-release'||url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:'{}'});
-  let path=url.pathname==='/control-room/progress'?'control-room.html':url.pathname.slice(1);
+  let path=url.pathname==='/control-room/progress'?'progress-board.html':url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:/\.m?js$/.test(path)?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto('http://localhost/control-room/progress?mode=live');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
+ await page.goto('http://localhost/control-room/progress');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
  return {page,calls,errors};
 }
 test('all source cards and ten recent Live nodes fit phone and desktop; library finds old completion',async t=>{
  for(const width of [320,390,1440])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);assert.equal(await page.locator('.work-source').count(),19);
-  // The v2 Live column shows the newest five and expands to all ten recent Live nodes.
-  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),5);
-  assert.match(await page.locator('.column[data-stage="live"] .live-summary').textContent(),/^10 live/);
-  await page.locator('#live-toggle').click();
-  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),10);
+  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),10);
+  assert.equal(await page.locator('#board-stages .board-card').count(),0,'the empty published snapshot stays independent of the census');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Live Library',exact:true}).click();
-  if(width<=760)await page.getByLabel('Workspace sidebar',{exact:true}).click();
-  await page.locator('#system-work-filters [name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
+  await page.locator('[name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
   await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===1);
   assert.match(await page.locator('.work-card').textContent(),/older completed/);
+  assert.equal(await page.locator('#system-work-flow .pipeline-node').count(),1);
+  assert.equal(await page.locator('#system-work-count').textContent(),'1 TASK');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
   if(width!==320){await mkdir('test-artifacts/w1',{recursive:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`test-artifacts/w1/progress-${width===390?'phone':'desktop'}.png`,fullPage:true});}
  });

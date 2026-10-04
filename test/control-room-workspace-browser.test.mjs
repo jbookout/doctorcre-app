@@ -7,7 +7,7 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 const root=new URL('../',import.meta.url);
 const reads={'list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','list-notifications':'listNotifications'};
-async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false,countIncidentClicks=false}={}){
+async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false,countIncidentClicks=false,unboundBoard=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});
  if(countIncidentClicks)await page.addInitScript(()=>{
@@ -26,17 +26,25 @@ async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=
  });
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[]};page.on('pageerror',e=>errors.push(e.message));
+ const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[],boardFailure:null,scheduleFailure:false,scheduleUnknown:false,partialSchedule:false,duplicateJobs:false,bindingOnly:false,boardUnpublished:false};page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/mcp'){
    const rpc=request.postDataJSON().params;calls.push(rpc.name);if(state.denied)return route.fulfill({status:401,body:'{}'});
+   if(rpc.name==='read-progress-board'&&state.boardFailure)return route.fulfill({status:state.boardFailure,body:'{}'});
+   if(rpc.name==='schedule-board'&&state.scheduleFailure)return route.fulfill({status:503,body:'{}'});
    if(rpc.name==='governance-queue'&&state.approvalFailure==='http')return route.fulfill({status:503,body:'{}'});
    let payload={};if(reads[rpc.name]&&fixture[reads[rpc.name]])payload=await fixture[reads[rpc.name]](rpc.arguments);
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
+   if(rpc.name==='read-progress-board'&&unboundBoard&&payload.snapshot)for(const task of Object.values(payload.snapshot.snapshot_json.tasks)){delete task.work_request;delete task.work_request_ref;delete task.human_ref;task.related=[];}
+   if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
    if(rpc.name==='incident-board')payload.incidents[0].state=state.incidentState;
+   if(rpc.name==='schedule-board'&&state.scheduleUnknown){payload.overall_state='unknown';payload.jobs=[];payload.sources=payload.sources.map(row=>({...row,state:'unknown',count:null}));}
+   if(rpc.name==='schedule-board'&&state.partialSchedule){payload.jobs=payload.jobs.filter(job=>job.owner===payload.sources[0].owner);payload.sources=payload.sources.map((source,i)=>i===0?source:{...source,state:'unknown',count:null});}
+   if(rpc.name==='schedule-board'&&state.duplicateJobs){payload.jobs=payload.jobs.map((job,i)=>({...job,key:'same',next_due_at:payload.jobs[0].next_due_at,next_due_basis:payload.jobs[0].next_due_basis}));}
    if(rpc.name==='schedule-board'&&state.removeJobs){payload.jobs=[];payload.sources=payload.sources.map(source=>({...source,state:'unknown',count:null}));}
    if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
+   if(rpc.name==='unfinished-work'&&state.bindingOnly)for(const row of payload.items||[]){row.work_request_ref='WR-000999';row.human_ref=null;row.work_request=null;row.related=[];row.pr_url='https://github.com/example/demo/pull/88';row.pr=null;}
    if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;}
    if(rpc.name==='unfinished-work'&&rpc.arguments.live_library)payload.items=state.liveItems;
    if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;if(state.connectionsBad){payload.connections.providers.push(null);payload.connections.devices.items.push(null);}}
@@ -45,6 +53,7 @@ async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=
   }
   if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
+  if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
   const file=routes.routes[url.pathname]||url.pathname.slice(1);
   try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
@@ -229,4 +238,44 @@ test('incident filters and details dispatch once per click after retained and re
  assert.equal(await incident.locator('[data-incident-open]').evaluate(node=>node===document.activeElement),true);
  await all.click();assert.equal(await page.evaluate(()=>window.incidentClickCallbacks.filters),5);
  assert.deepEqual(errors,[]);
+});
+
+
+for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} reconciles shared detail state`,async t=>{
+ const {page,state}=await open(t,{path:'/control-room?mode=live&board=demo-project',unboundBoard:true});
+ const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
+ assert.match(await page.locator('#jobBody').textContent(),/Work Request unavailable/);
+ if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(()=>document.querySelector('#board-error').hidden===false);
+ if(failure!==503){assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#jobBody').textContent(),'');}
+ else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}
+});
+for(const partial of [false,true])test(`PR132 #4: ${partial?'partial':'unknown'} schedule observations remain visible in calendar and List`,async t=>{
+ const {page,state}=await open(t);state[partial?'partialSchedule':'scheduleUnknown']=true;await advanceRoom(page,16001);await page.locator('#tabAutomations').click();
+ assert.match(await page.locator('#panelAutomations').textContent(),partial?/unavailable.*source|source.*unavailable/i:/Automations unavailable/);
+ const calendar=page.locator('#automationCalendar');assert.equal(await calendar.locator('[role="status"]').evaluate(node=>getComputedStyle(node).gridColumn),'1 / -1');
+ const grid=await calendar.boundingBox(),sunday=await calendar.locator('.calendar-weekday').first().boundingBox();assert.ok(sunday.x<grid.x+grid.width/7,'Sunday occupies the first calendar column');
+ await page.getByRole('link',{name:'List',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#automationListState').textContent.includes('unavailable'));
+ assert.match(await page.locator('#automationListState').textContent(),/unavailable/i);assert.doesNotMatch(await page.locator('#automationListState').textContent(),/No automations/);
+});
+test('PR132 #3: failed List read retains unavailable selection state',async t=>{
+ const {page,state}=await open(t);await page.goto('http://localhost/control-room/automations?mode=live');await page.locator('#automationList .automation-job').first().waitFor();
+ state.scheduleFailure=true;await page.clock.runFor(15001);await page.waitForFunction(()=>document.querySelector('#automationListState').textContent.includes('unavailable'));
+ await page.locator('#automationList .automation-job').first().click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);
+});
+test('PR132 #5: paused configured jobs have an unknown next time in both surfaces',async t=>{
+ const {page}=await open(t);await page.locator('#tabAutomations').click();
+ const paused=page.locator('#automationUndated [data-state="paused"]');await paused.waitFor();assert.doesNotMatch(await paused.textContent(),/Unscheduled/);assert.match(await paused.textContent(),/unknown.*paused/i);
+ assert.doesNotMatch(await page.locator('#automationUndated h3').textContent(),/Unscheduled/);
+ await page.getByRole('link',{name:'List',exact:true}).click();await page.locator('#automationList [data-state="paused"]').waitFor();assert.match(await page.locator('#automationList [data-state="paused"]').textContent(),/unknown.*paused/i);
+});
+test('PR132 #7: healthy room seeds coverage-only Status fallback before an outage',async t=>{
+ const {page,state}=await open(t);const snapshot=await page.evaluate(()=>JSON.parse(localStorage.getItem('doctorcre.status-snapshot.v1')));
+ assert.ok(snapshot);assert.ok(snapshot.reads.some(row=>row.id==='incidents'&&row.state==='read'));assert.doesNotMatch(JSON.stringify(snapshot),/Demo|WR-|INC-/);
+ state.denied=true;await page.goto('http://localhost/status?mode=live');await page.locator('#lastKnownBlock').waitFor();
+ assert.match(await page.locator('#lastKnownChips').textContent(),/Incidents/);
+});
+test('PR132 #8: explicit binding fields are visible on pipeline cards as in details',async t=>{
+ const {page,state}=await open(t);state.bindingOnly=true;await page.locator('#system-work-coverage button').click();
+ await page.waitForFunction(()=>document.querySelector('.work-card-links')?.textContent.includes('WR-000999'));
+ const card=page.locator('#board-stages .board-card[data-task-id^="work_request:"]').first();assert.match(await card.textContent(),/WR-000999.*PR #88/);
 });

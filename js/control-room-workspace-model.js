@@ -1,16 +1,4 @@
-import { GOVERNANCE_LANES, validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
-
-export function jobLinks(task) {
-  const candidates = [task.work_request, task.work_request_ref, task.human_ref,
-    task.kind === 'work_request' ? task.id?.replace(/^work_request:/, '') : null, ...(Array.isArray(task.related) ? task.related : []).filter(r => r?.kind === 'work_request').map(r => r.id)];
-  const workRequest = candidates.find(ref => typeof ref === 'string' && /^WR-\d{1,12}$/.test(ref)) || null;
-  const raw = task.pr_url || task.pr;
-  let prUrl = null, prLabel = null;
-  if (typeof raw === 'string' && /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+$/.test(raw)) {
-    prUrl = raw; prLabel = `PR #${raw.split('/').at(-1)}`;
-  } else if (Number.isSafeInteger(Number(raw)) && Number(raw) > 0) prLabel = `PR #${Number(raw)}`;
-  return { workRequest, prUrl, prLabel };
-}
+import { GOVERNANCE_LANES, validGovernanceQueuePayload, validScheduleBoardPayload, formatScheduleDateTime } from './operations-model.js';
 
 export function governanceTasks(payload) {
   if (!validGovernanceQueuePayload(payload)) return null;
@@ -42,12 +30,27 @@ export function withGovernance(board, tasks) {
   return { ...board, stages };
 }
 
+// Both scheduler surfaces carry observation coverage and the same timing words.
+export function automationSchedule(payload) {
+ if(!validScheduleBoardPayload(payload))return {jobs:null,notice:'Automations unavailable'};
+ const unknown=payload.sources.filter(source=>source.state!=='read').map(source=>source.owner);
+ const jobs=payload.jobs.map(job=>({...job,source_state:payload.sources.find(source=>source.owner===job.owner)?.state==='read'?'read':'unknown'}));
+ const notice=unknown.length?jobs.length?`Automations unavailable for sources: ${unknown.join(', ')}`:'Automations unavailable':payload.overall_state==='unknown'?'Automations unavailable':'';
+ return {jobs,notice};
+}
+export function automationTiming(job,{compact=false}={}) {
+ if(!job.next_due_at)return job.schedule?job.state==='paused'?'Next time unknown while paused':'Next time unavailable':'Unscheduled';
+ const prefix=job.next_due_basis==='cadence_deadline'?'Expected by':'Next';
+ const time=compact?new Date(job.next_due_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}):formatScheduleDateTime(job.next_due_at);
+ return `${prefix} ${time}`;
+}
+
 export function automationMonth(payload, year, month) {
-  const jobs = validScheduleBoardPayload(payload) ? payload.jobs : null;
+  const {jobs,notice} = automationSchedule(payload);
   const start = new Date(year, month, 1);
   const days = new Date(year, month + 1, 0).getDate();
   const dateKey = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-  return { label: start.toLocaleDateString('en-US', {month:'long', year:'numeric'}), jobs,
+  return { label: start.toLocaleDateString('en-US', {month:'long', year:'numeric'}), jobs, notice,
     blanks: start.getDay(), days: Array.from({length:days}, (_, i) => {
       const date = new Date(year,month,i+1), key = dateKey(date);
       return { day:i+1, key, jobs: (jobs || []).filter(j => j.next_due_at && dateKey(new Date(j.next_due_at)) === key) };

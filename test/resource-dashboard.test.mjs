@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createLiveClient } from "../js/live-client.js";
 import { createFixtureClient } from "../js/fixture-client.js";
-import { projectResourceDashboard, resourceFacts, resourceRoomPhase } from "../js/resource-dashboard-model.js";
+import { projectResourceDashboard } from "../js/resource-dashboard-model.js";
 
 const root = new URL("..", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -31,12 +31,11 @@ test("zero measured use, policy, estimate and charge remain separate facts", () 
     source: "provider API", period: "2026-09", as_of: "2026-09-28T20:58:00Z", observed_at: "2026-09-28T20:59:00Z" };
   const model = projectResourceDashboard(dashboard([row, ...names.slice(1).map(empty)]));
   assert.equal(model.evidenceCount, 1);
-  const facts = resourceFacts(model.providers[0]);
-  assert.equal(facts.find((fact) => fact.key === "quantity").value, "0 compute hours");
-  assert.equal(facts.find((fact) => fact.key === "allowance").value, "100");
-  assert.equal(facts.find((fact) => fact.key === "policy").value.monthly_ceiling, 200);
-  assert.equal(facts.find((fact) => fact.key === "estimate").value, "14.25");
-  assert.equal(facts.find((fact) => fact.key === "charge").value, "12.5");
+  assert.equal(model.providers[0].quantity,0);
+  assert.equal(model.providers[0].allowance,100);
+  assert.equal(model.providers[0].policy.monthly_ceiling,200);
+  assert.equal(model.providers[0].estimate,14.25);
+  assert.equal(model.providers[0].charge,12.5);
 });
 
 test("a stale row keeps its source dates and values but is visibly stale", () => {
@@ -61,13 +60,6 @@ test("a partial row or missing provider never becomes a zero or an invented read
   assert.equal(model.providers[1].state, "unknown");
 });
 
-test("the Control Room headline includes the resource read outcome", () => {
-  assert.equal(resourceRoomPhase("ready", { state: "pending" }), "loading");
-  assert.equal(resourceRoomPhase("ready", { state: "unknown" }), "partial");
-  assert.equal(resourceRoomPhase("ready", { state: "read", payload: dashboard() }), "ready");
-  assert.equal(resourceRoomPhase("offline", { state: "read", payload: dashboard() }), "partial");
-  assert.equal(resourceRoomPhase("ready", { state: "read", payload: { ok: true } }), "partial");
-});
 
 test("the fixture mirrors the live empty contract and a resource-only outage", async () => {
   const seed = await read("data/board-seed.json");

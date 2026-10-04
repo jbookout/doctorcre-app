@@ -7,12 +7,6 @@
       "gatePath": "/control-room"
     },
     {
-      "path": "/control-room/progress",
-      "asset": "control-room.html",
-      "order": 2,
-      "gatePath": "/control-room"
-    },
-    {
       "path": "/control-room/automations",
       "asset": "automations.html",
       "order": 22,

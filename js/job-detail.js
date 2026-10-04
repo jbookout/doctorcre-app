@@ -1,19 +1,13 @@
-import {taskSummary} from './progress-board-model.js';
-import {jobLinks} from './control-room-workspace-model.js';
+import {taskSummary,jobLinks} from './progress-board-model.js';
 import {readWithDeadline} from './auto-refresh.mjs';
 import {escapeText as escape} from './change-receipts.mjs';
 import {workDetailUrl} from './progress-work-model.js';
 
 // Source facts stay independent from a linked Work Request. Structured source
 // content is displayed verbatim as data, without unrelated transport fields.
-const fields = ['name','statement','human_quote','desired_outcome','body','note','reason','admission_reason','description',
- 'owner','owner_actor','proposer_actor_id','state','status','schedule','last_run','next_due_at','next_due_basis','freshness',
- 'enforcement_class','binding_moment','enforcement_status','scope','taught_at','admitted_at','fixture_refs',
- 'staging_key','manifest_digest','entry_count','staged_at','proposal_type','payload','version','proposed_at',
- 'severity','business_impact','impact','next_action','recommended_next_action','blocked_by','blockers','detected_at','occurrences'];
-const originalEntry=entry=>fields.flatMap(key=>{
- const value=entry?.[key];
- if(value==null||value===''||Array.isArray(value)&&!value.length)return [];
+const transportFields = new Set(['ok','schema','projection_state','next_human_action']);
+const originalEntry=entry=>Object.entries(entry||{}).flatMap(([key,value])=>{
+ if(transportFields.has(key)||value==null||value===''||Array.isArray(value)&&!value.length)return [];
  return [`${key.replaceAll('_',' ')}: ${typeof value==='object'?JSON.stringify(value,null,2):value}`];
 }).join('\n\n');
 const sourceEntry=task=>task.governance?.entry||task;
@@ -32,14 +26,14 @@ function currentTrigger(document, trigger) {
  const node=trigger?.node;
  if(node?.isConnected)return node;
  if(!trigger?.attribute)return null;
- const record=[...document.querySelectorAll(`[${trigger.attribute}]`)].find(row=>row.getAttribute(trigger.attribute)===trigger.value && (!trigger.container || row.closest(trigger.container)));
+ const record=[...document.querySelectorAll(`[${trigger.attribute}]`)].find(row=>row.getAttribute(trigger.attribute)===trigger.value && (trigger.owner==null || row.dataset.owner===trigger.owner) && (!trigger.container || row.closest(trigger.container)));
  return trigger.control?record?.querySelector(trigger.control):record;
 }
 function rememberTrigger(document) {
  const node=document.activeElement;
  for(const attribute of ['data-task-id','data-work-id','data-automation-id','data-automation','data-incident']){
   const record=node?.closest(`[${attribute}]`);
-  if(record)return {node,attribute,value:record.getAttribute(attribute),container:record.closest('#automationCalendar')?'#automationCalendar':record.closest('#automationAgenda')?'#automationAgenda':null,
+  if(record)return {node,attribute,value:record.getAttribute(attribute),owner:record.dataset.owner,container:record.closest('#automationCalendar')?'#automationCalendar':record.closest('#automationAgenda')?'#automationAgenda':null,
    control:record===node?null:node.matches('h4 a')?'h4 a':node.matches('.work-actions a')?'.work-actions a':node.tagName.toLowerCase()};
  }
  return {node};
@@ -75,9 +69,10 @@ export function mountJobDetail({client,document}) {
  dialog.addEventListener('close',()=>{selected=null;workRequest=null;++generation;currentTrigger(document,trigger)?.focus();});
  document.getElementById('jobClose').onclick=()=>dialog.close();
  return {
-  open(task,{source:readSource='board'}={}){trigger=rememberTrigger(document);selected=task;source=readSource;sourceState='read';workRequest=null;++generation;paint(Boolean(jobLinks(task).workRequest));if(!dialog.open)dialog.showModal();refresh();},refresh,
+  open(task,{source:readSource='board'}={}){trigger=rememberTrigger(document);selected=task;source=readSource;sourceState=task.source_state||'read';workRequest=null;++generation;paint(Boolean(jobLinks(task).workRequest));if(!dialog.open)dialog.showModal();refresh();},refresh,
   update(tasks,{source:readSource='board',state='read'}={}){
    if(!selected||!dialog.open||readSource!==source)return;
+   if(['unauthorized','signed-out','unpublished'].includes(state)){this.clear();return;}
    const latest=tasks.find(task=>task.id===selected.id),nextState=state==='read'?(latest?(latest.source_state||'read'):'removed'):'unknown';
    if(nextState!==sourceState||latest&&JSON.stringify(latest)!==JSON.stringify(selected))++generation;
    sourceState=nextState;

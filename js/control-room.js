@@ -9,11 +9,12 @@ import { mountModelRoom } from './model-room.js';
 import { mountNotificationBadge, wireTabs } from './shell.js';
 import { validIncidentBoardPayload, incidentFilters, groupedIncidents } from './control-room-model.js';
 import { mountBoard } from './progress-board.js';
-import { automationMonth } from './control-room-workspace-model.js';
+import { automationMonth, automationTiming } from './control-room-workspace-model.js';
 import { connectionView, meteredSpend } from './connections-model.js';
 import { mountJobDetail } from './job-detail.js';
 import { escapeText as escapeHtml } from './change-receipts.mjs';
 import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
+import {snapshotFromReads,writeSnapshot} from './status-model.js';
 const $=id=>document.getElementById(id);
 export { escapeHtml };
 export const view={status:'loading',sequence:0,severity:'all',reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
@@ -73,13 +74,13 @@ function renderConnections(){
  $('connectionDevices').innerHTML=(projection.devices||[]).map(row=>`<article class="connection-card" data-device="${escapeHtml(row.id)}" data-state="${row.status}"><h3>${escapeHtml(row.name)}</h3><span>${{connected:'Connected',offline:'Not connected',unknown:'Status unavailable'}[row.status]}</span><time>${escapeHtml(updatedLabel(row.checked_at))}</time></article>`).join('');
  $('devicesState').textContent=projection.devices?projection.devices.length?'':'No devices':'Device status unavailable';
 }
-function automationButton(job){return `<button type="button" class="automation-job" aria-label="${escapeHtml(job.name)}" data-room-control="${escapeHtml(JSON.stringify([job.owner,job.key]))}" data-automation="${escapeHtml(job.key)}" data-owner="${escapeHtml(job.owner)}" data-state="${escapeHtml(job.state)}"><span>${escapeHtml(job.name)}</span><time>${job.next_due_at?escapeHtml(new Date(job.next_due_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})):'Unscheduled'}</time>${job.next_due_basis==='cadence_deadline'?'<small>Expected by</small>':''}</button>`;}
+function automationButton(job){return `<button type="button" class="automation-job" aria-label="${escapeHtml(job.name)}" data-room-control="${escapeHtml(JSON.stringify([job.owner,job.key]))}" data-automation="${escapeHtml(job.key)}" data-owner="${escapeHtml(job.owner)}" data-state="${escapeHtml(job.state)}"><span>${escapeHtml(job.name)}</span><time>${escapeHtml(automationTiming(job,{compact:true}))}</time></button>`;}
 function renderAutomations(){
  const data=automationMonth(payloadOf('schedule'),year,month);$('automationMonth').textContent=data.label;
  details?.update((data.jobs||[]).map(job=>({...job,id:`automation:${job.owner}:${job.key}`,title:job.name})),{source:'schedule',state:view.reads.schedule.state});
- const calendar=$('automationCalendar');replaceHtml(calendar,data.jobs?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'<p role="status">Automations unavailable</p>');
+ const calendar=$('automationCalendar');replaceHtml(calendar,data.jobs?(data.notice?`<p role="status">${escapeHtml(data.notice)}</p>`:'')+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'<p role="status">Automations unavailable</p>');
  replaceHtml($('automationAgenda'),data.jobs?data.days.flatMap(day=>day.jobs.map(job=>`<div><time datetime="${day.key}">${day.day} ${data.label}</time>${automationButton(job)}</div>`)).join(''):'');
- replaceHtml($('automationUndated'),data.undated.length?`<h3>Unscheduled</h3><div class="automation-undated-grid">${data.undated.map(automationButton).join('')}</div>`:'');
+ replaceHtml($('automationUndated'),data.undated.length?`<h3>Next time unavailable</h3><div class="automation-undated-grid">${data.undated.map(automationButton).join('')}</div>`:'');
  document.querySelectorAll('[data-automation]').forEach(button=>button.onclick=()=>{const job=data.jobs.find(j=>j.key===button.dataset.automation&&j.owner===button.dataset.owner);if(job)details.open({...job,id:`automation:${job.owner}:${job.key}`,title:job.name},{source:'schedule'});});
 }
 function renderRead(id){
@@ -111,6 +112,7 @@ async function load(){
  view.sequence++;view.status='loading';
  await Promise.all([take('incidents',()=>client.incidentBoard({state:'open'})),take('approvals',()=>client.governanceQueue()),take('schedule',()=>client.scheduleBoard()),take('connections',()=>client.readConnections())]);
  await details.refresh();view.status='ready';
+ if(view.reads.incidents.state==='read'){try{writeSnapshot(window.localStorage,snapshotFromReads(view.reads,Date.now()));}catch{ /* Device storage may be unavailable. */ }}
  announce(Object.values(view.reads).every(read=>read.state==='read')?'Control Room updated':'Control Room updates unavailable');
 }
 
@@ -120,7 +122,7 @@ function openModelRoom(){mountModelRoom({});}
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  $("jobDialog").addEventListener("close",()=>selectDocRecord(null,null));
- details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),onTasks:tasks=>details.update(tasks)});board.start();
+ details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),onTasks:(tasks,observation)=>details.update(tasks,observation)});board.start();
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
   if(chip){view.severity=chip.dataset.severity;renderIncidents();}

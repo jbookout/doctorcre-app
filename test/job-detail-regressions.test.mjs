@@ -58,3 +58,25 @@ test('finding 12: activity destinations use supported source/WR identities only'
  assert.equal(new URL(body.querySelector('details a').href).searchParams.get('task'),'governance_item:demo-ref');
  detail.open({id:'automation:demo:key',work_request:'WR-1'});const url=new URL(body.querySelector('details a').href);assert.equal(url.searchParams.get('task'),null);assert.equal(url.searchParams.get('work_request'),'WR-1');
 });
+
+
+test('PR132 #2: expanded source and linked WR preserve substantive fields and escape them',async()=>{
+ const linked={ok:true,human_ref:'WR-9',acceptance_criteria:['Demo acceptance'],incident_evidence:{receipt:'Demo incident receipt'},projection_state:'transport-only'};
+ const {detail,body}=setup({workRequestCard:async()=>linked});
+ const full='Demo long summary '+ 'x'.repeat(260)+' SUMMARY END';
+ detail.open({id:'demo',work_request_ref:'WR-9',summary:full,evidence:'<img src=x onerror=alert(1)>',stage_history:[{stage:'review',note:'Demo stage history'}],projection_state:'transport-only'});await tick();
+ for(const text of [full,'<img src=x onerror=alert(1)>','Demo stage history','Demo acceptance','Demo incident receipt'])assert.ok(body.querySelector('pre').textContent.includes(text),text);
+ assert.equal(body.querySelector('img'),null);assert.doesNotMatch(body.querySelector('pre').textContent,/transport-only/);
+});
+test('PR132 #3: retained unknown selections remain unavailable on open',()=>{
+ const {detail,body}=setup();detail.open({id:'governance:demo',source_state:'unknown',status:'proposed'});
+ assert.match(body.textContent,/Source unavailable.*Last-known/);assert.doesNotMatch(body.querySelector('.job-summary').textContent,/proposed/);
+});
+test('PR132 #6: replaced calendar trigger returns focus to its owner and originating container',()=>{
+ const {document,detail}=setup();
+ const calendar=document.createElement('div');calendar.id='automationCalendar';calendar.innerHTML='<button data-automation="same" data-owner="one">One</button><button data-automation="same" data-owner="two">Two</button>';
+ const agenda=calendar.cloneNode(true);agenda.id='automationAgenda';document.body.prepend(calendar,agenda);
+ calendar.lastElementChild.focus();detail.open({id:'automation:two:same'});
+ calendar.innerHTML=calendar.innerHTML;agenda.innerHTML=agenda.innerHTML;document.getElementById('jobClose').click();
+ assert.equal(document.activeElement,calendar.lastElementChild);
+});

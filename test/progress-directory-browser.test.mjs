@@ -11,7 +11,6 @@ const boards = [
 ];
 
 async function open(t, { width = 390, path = "/control-room/progress?board=demo-project", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
-  path += path.includes('?') ? '&mode=live' : '?mode=live';
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
   if (publicationTime) await pausedClock(page, NOW);
@@ -20,7 +19,7 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
-    if (url.origin !== "https://app.doctorcre.com") return route.abort();
+    if (url.origin !== "http://localhost") return route.abort();
     if (url.pathname === "/mcp") {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params);
       if (onRpc && await onRpc(route, rpc.params)) return;
@@ -38,14 +37,14 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
       } }) });
     }
     if (url.pathname === "/app-release" || url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "application/json", body: "{}" });
-    const path = url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "control-room.html"
+    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
       : url.pathname === "/control-room" ? "control-room.html" : url.pathname.slice(1);
     try {
       const body = await readFile(new URL("../" + path, import.meta.url));
       return route.fulfill({ body, contentType: /\.m?js$/.test(path) ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/html" });
     } catch { return route.fulfill({ status: 404, body: "" }); }
   });
-  await page.goto(`https://app.doctorcre.com${path}`);
+  await page.goto(`http://localhost${path}`);
   return { page, calls, errors };
 }
 
@@ -66,7 +65,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
     assert.equal(await page.locator(selector).isVisible(), true);
     await page.locator(selector).click();
     await page.waitForURL("**/control-room/progress");
-    await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []);
   });
@@ -74,7 +73,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
 
 test("no-param load shows system board, counts, timestamps and stale project; selection opens it", async t => {
   const { page, calls, errors } = await open(t, { path: "/control-room/progress" });
-  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
   assert.equal(await page.locator(".board-link").first().getAttribute("data-board-id"), "carr-v5");
   const project = page.locator('[data-board-id="demo-project"]');
   assert.match(await project.textContent(), /1 running · 1 blocked/);
@@ -83,10 +82,10 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "carr-v5");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(await page.locator("#board-stages .column").count(), 6);
-  await page.getByLabel("Workspace sidebar", {exact:true}).click();
+  await project.evaluate(node => node.removeAttribute("target"));
   await project.click();
-  await page.waitForURL("**/control-room/progress?board=demo-project");
-  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+  await page.waitForURL("**/control-room/progress/board/demo-project");
+  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
   assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.deepEqual(errors, []);
@@ -95,10 +94,10 @@ test("no-param load shows system board, counts, timestamps and stale project; se
 test("project deep links work on canonical and legacy routes even when discovery fails", async t => {
   for (const route of ["/control-room/progress", "/progress-board"]) await t.test(route, async t => {
     const { page, calls, errors } = await open(t, { path: `${route}?board=demo-project`, directoryFails: true });
-    await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
     assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "demo-project");
     assert.equal(await page.locator("#board-error").isVisible(), false);
-    assert.equal(await page.locator("#directory-error").evaluate(e=>!e.hidden), true);
+    assert.equal(await page.locator("#directory-error").isVisible(), true);
     assert.deepEqual(errors, []);
   });
 });
@@ -111,8 +110,9 @@ test("normal motion flows; reduced motion stops animation while preserving stale
   for (const selector of [".rail-line", ".halo", ".freshness-badge"])
     assert.equal(await page.locator(selector).first().evaluate(node => getComputedStyle(node, node.classList.contains("freshness-badge") ? "::before" : null).animationName), "none");
   assert.equal(await page.locator('[data-freshness="stale"]').first().evaluate(node => getComputedStyle(node, "::before").borderRadius), "1px");
+  assert.equal(await page.locator("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
   await page.locator(".board-card").click();
-  await page.waitForFunction(() => document.querySelector("#jobDialog").open);
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
 });
 
 function holdRequests(t, name) {
@@ -133,12 +133,12 @@ test("ready project boards render while discovery stays pending on both deep lin
   for (const path of ["/control-room/progress", "/progress-board"]) await t.test(path, async t => {
     const held = holdRequests(t, "list-progress-boards");
     const { page } = await open(t, { path: `${path}?board=demo-project`, onRpc: held.onRpc });
-    await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+    await page.waitForFunction(() => document.querySelector("#board-title").textContent === "Demo project");
     assert.ok(held.pending.length);
     assert.equal(await page.locator("#board-error").isVisible(), false);
     await page.clock.runFor(10001);
     await page.waitForFunction(() => !document.querySelector("#directory-error").hidden);
-    assert.equal(await page.locator("#board-title").textContent(), "System Job Board");
+    assert.equal(await page.locator("#board-title").textContent(), "Demo project");
   });
 });
 
@@ -204,18 +204,18 @@ for (const failed of [false, true]) test(`answer refresh supersedes an older pol
   const { page, errors } = await open(t, { onRpc: reads.onRpc });
   await reads.reply(page, "list-progress-boards", 0, listing("Initial directory"));
   await reads.reply(page, "read-progress-board", 0, snapshot());
-  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 1");
   await page.clock.runFor(15000);
   await reads.request("read-progress-board", 1);
   await page.locator(".answer-form textarea").fill("Ship it");
   await page.locator('.answer-form button[type="submit"]').click();
   await reads.reply(page, "read-progress-board", 2, snapshot(2, "Sent"));
   await reads.reply(page, "list-progress-boards", 2, listing("New directory"));
-  await page.waitForFunction(() => document.querySelector("#board-meta").textContent.includes("Version 2"));
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   const old = failed ? { error: "old request failed" } : snapshot();
   await reads.reply(page, "read-progress-board", 1, old, failed);
   await reads.reply(page, "list-progress-boards", 1, failed ? old : listing("Old directory"), failed);
-  assert.equal(await page.locator("#board-title").textContent(), "System Job Board");
+  assert.equal(await page.locator("#board-title").textContent(), "System version 2");
   assert.equal(await page.locator(".board-link h3").textContent(), "New directory");
   assert.equal(await page.locator(".question-card .status").textContent(), "Sent");
   assert.equal(await page.locator(".answer-form").count(), 0);
@@ -232,7 +232,7 @@ test("an unchanged polled question retains its draft while focused questions def
   await page.locator(".answer-form textarea").fill("Unsent draft");
   await page.clock.runFor(15000);
   assert.equal(calls.filter(call => call.name === "read-progress-board").length, 1);
-  await page.locator("#board-title").focus();
+  await page.locator("#board-title").click();
   await page.clock.runFor(15000);
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   await reads.reply(page, "list-progress-boards", 1, listing("New directory"));
@@ -268,7 +268,6 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     });
     await page.waitForFunction(() => document.querySelector(".board-card"));
     const target = state === "directory focus" ? ".board-link" : ".answer-form textarea";
-    if (state === "directory focus") await page.getByLabel("Workspace sidebar", {exact:true}).click();
     if (state.includes("focus")) await page.locator(target).first().focus();
     if (state === "answer focus") await page.locator(target).fill("Synthetic unsent draft");
     await page.evaluate(selector => {
@@ -288,7 +287,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(unavailable|offline)/i));
+    if (fail) await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i));
     assert.deepEqual(errors, []);
   });
 
@@ -297,23 +296,25 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   const { page, errors } = await open(t, { onRpc: async (route, rpc) => {
     if (rpc.name !== "read-progress-board") return false;
     const read = snapshot(version);
-    read.snapshot.snapshot_json.tasks = { build: { title: `Synthetic task ${version}`, status: "running" } };
+    read.snapshot.snapshot_json.tasks = { build: { title: `Synthetic task ${version}`, status: "running",
+      summary: `Synthetic summary ${version}`, provider: "Synthetic provider", model: `Synthetic model ${version}`, effort: "high" } };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { content: [{ text: JSON.stringify(read) }] } }) });
     return true;
   } });
   const task = page.locator('.board-card[data-card-id="build"]');
   await task.focus();
+  assert.match(await task.textContent(), /Synthetic summary 1.*Synthetic provider.*Synthetic model 1 · high/);
   await page.evaluate(() => window.retainedTask = document.activeElement);
   await page.clock.runFor(15000);
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   version = 2;
   await page.clock.runFor(15000);
-  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
+  await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);
   await task.press("Enter");
-  await page.waitForFunction(() => document.querySelector("#jobDialog").open);
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
   assert.deepEqual(errors, []);
 });
 
@@ -334,7 +335,7 @@ for (const state of ["unpublished", "unauthorized", "signed-out"])
     assert.equal(await page.locator(".board-card").count(), 0);
     assert.equal(await page.locator(".answer-form").count(), 0);
     assert.equal(await page.locator("#board-freshness").textContent(), "");
-    assert.equal(await page.locator("#board-title").textContent(), "System Job Board");
+    assert.equal(await page.locator("#board-title").textContent(), "Progress");
     assert.equal(await page.locator("#board-retry").isVisible(), true);
     assert.equal(await page.locator("#board-sign-in").isVisible(), state === "signed-out");
     if (state === "signed-out") assert.equal(await page.locator(".board-link").count(), 0);
@@ -357,7 +358,7 @@ test("published empty, unpublished, timeout and partial discovery have distinct 
   await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
   assert.equal(await page.locator("#task-count").textContent(), "0 OF 0 CARDS");
   assert.equal(await page.locator("#board-error").isVisible(), false);
-  assert.equal(await page.locator("#directory-error").evaluate(e=>!e.hidden), true);
+  assert.equal(await page.locator("#directory-error").isVisible(), true);
   assert.equal(await page.locator("#directory-error").getAttribute("data-read-state"), "unavailable");
   assert.match(await page.locator("#board-questions").textContent(), /No questions/);
 });
@@ -375,7 +376,7 @@ test("timeout retains and ages last-known data; Retry preserves the draft and co
   await page.waitForFunction(() => document.querySelector(".answer-form textarea"));
   await page.locator(".answer-form textarea").fill("Retained synthetic draft");
   await page.evaluate(() => window.retainedAnswer = document.activeElement);
-  await page.locator("#board-title").focus();
+  await page.locator("#board-title").click();
   stalled = true;
   await page.clock.runFor(15000);
   // A routed request may start after the virtual clock returns; wait for it.
@@ -388,8 +389,8 @@ test("timeout retains and ages last-known data; Retry preserves the draft and co
   stalled = false;
   await page.locator("#board-retry").click();
   await page.waitForFunction(() => document.querySelector("#board-meta").dataset.readState === "published");
-  assert.equal(await page.locator(".answer-form textarea").inputValue(), "Retained synthetic draft");
-  assert.equal(await page.evaluate(() => window.retainedAnswer === document.querySelector(".answer-form textarea")), true);
+  assert.equal(await page.locator("textarea").inputValue(), "Retained synthetic draft");
+  assert.equal(await page.evaluate(() => window.retainedAnswer === document.querySelector("textarea")), true);
   assert.deepEqual(errors, []);
 });
 
@@ -400,11 +401,11 @@ test("an in-flight poll preserves a refocused unchanged answer card when tasks c
   await reads.reply(page, "read-progress-board", 0, snapshot());
   await page.clock.runFor(15000);
   await reads.request("read-progress-board", 1);
-  await page.locator(".answer-form textarea").fill("Synthetic retained focus");
+  await page.locator("textarea").fill("Synthetic retained focus");
   await page.evaluate(() => window.focusedAnswer = document.activeElement);
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   assert.equal(await page.evaluate(() => window.focusedAnswer === document.activeElement), true);
-  assert.equal(await page.locator(".answer-form textarea").inputValue(), "Synthetic retained focus");
+  assert.equal(await page.locator("textarea").inputValue(), "Synthetic retained focus");
 });
 
 
@@ -428,24 +429,20 @@ test("summary and model cards retain routed detail on desktop and phone", async 
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     unauthorized = true;
     await page.locator('#board-retry').evaluate(button => button.click());
-    await page.waitForFunction(() => document.querySelector('#completed-list').childElementCount === 0);
+    await page.waitForFunction(() => document.querySelector('#board-completed').childElementCount === 0);
     assert.equal(await page.locator('#completed-count').textContent(), '—');
     assert.deepEqual(errors, []);
   });
 });
 
-test("completed card keyboard opens the embedded popup with current model and work references", async t => {
+test("completed card keyboard opens the current routed task detail", async t => {
   const {page,errors} = await open(t, {onRpc: async(route,rpc) => {
     if(rpc.name !== 'read-progress-board') return false;
-    const payload={ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',tasks:{released:{title:'Synthetic completed',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery',summary:'Synthetic delivery summary',provider:'Codex',model:'gpt-6-sol',effort:'high',work_request:'WR-000901',pr:17}}}},questions:[]};
+    const payload={ok:true,snapshot:{board_id:'demo-project',version:2,updated_at:NOW.toISOString(),snapshot_json:{title:'Demo project',tasks:{released:{title:'Synthetic completed',status:'done',stage:'live',evidence:'https://example.com/synthetic-delivery'}}}},questions:[]};
     await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});return true;
   }});
   await page.locator('.completed-card').focus();
-  assert.match(await page.locator('.completed-card').textContent(), /Synthetic delivery summary.*Codex.*gpt-6-sol · high.*WR-000901.*carr-system #17/);
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector('#jobDialog').open);
-  assert.match(await page.locator('#jobDialog').textContent(), /WR-000901.*PR #17/s);
-  assert.match(await page.locator('#jobBody .job-summary').textContent(), /Synthetic delivery summary/);
-  assert.equal(new URL(page.url()).pathname, '/control-room/progress');
+  await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released');
   assert.deepEqual(errors,[]);
 });

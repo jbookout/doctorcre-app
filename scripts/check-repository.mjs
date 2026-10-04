@@ -49,7 +49,7 @@ assert.equal(routes.routes["/deals"], "pipeline.html", "the Deal Room must stay 
 assert.equal(routes.redirects["/pipeline"], "/deals?view=board", "the old board bookmark must reach the Deals board");
 assert.equal(routes.redirects["/business"], "/", "the old business bookmark must reach Home");
 assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");
-assert.equal(routes.routes["/control-room/progress"], "control-room.html", "the signed-in progress board must stay under Control Room");
+assert.equal(routes.routes["/control-room/progress"], "progress-board.html", "the signed-in progress board must stay under Control Room");
 for (const verb of ["read-progress-board", "answer-board-question"]) assert.ok(contract.mcp_operations.includes(verb), `the progress board needs ${verb} pinned`);
 assert.equal(routes.routes["/status"], "status.html", "the independent status route must stay in the route contract");
 for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);

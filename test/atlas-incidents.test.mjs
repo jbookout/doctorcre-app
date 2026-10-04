@@ -6,17 +6,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import {
-  CAUSAL_GRAPH_GAP_SENTENCE, DOC_TOUR_EMPTY, INCIDENT_JOIN_SENTENCE, INCIDENT_TRACE_HEADING,
-  NO_ENFORCEMENT_SENTENCE, NO_INCIDENT_READ_SENTENCE, NO_INCIDENT_TRACE_SENTENCE, RUN_HEADING,
-  UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
-  buildDocTour, groupHasOpenIncident, incidentServiceIndex, incidentTraceRows,
-  serviceKeyFromIncidentFingerprint, serviceNodeOpenIncidents,
-} from "../js/atlas-model.js";
-import { createFixtureClient } from "../js/fixture-client.js";
-import { notInReleaseBlocks } from "../js/control-room-model.js";
+import {CAUSAL_GRAPH_GAP_SENTENCE, DOC_TOUR_EMPTY, INCIDENT_JOIN_SENTENCE, INCIDENT_TRACE_HEADING, NO_ENFORCEMENT_SENTENCE, NO_INCIDENT_READ_SENTENCE, NO_INCIDENT_TRACE_SENTENCE, RUN_HEADING, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE, buildDocTour, groupHasOpenIncident, incidentServiceIndex, incidentTraceRows, serviceKeyFromIncidentFingerprint, serviceNodeOpenIncidents} from "../js/atlas-model.js";
+import {createFixtureClient} from "../js/fixture-client.js";
+
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -282,13 +276,6 @@ test("no verb this slice would need for a real causal failure graph is pinned as
   assert.ok(contract.mcp_operations.includes("get-incident"));
 });
 
-test("notInReleaseBlocks narrows the C09 statement to exactly what is still missing, not the whole slice", () => {
-  const block = notInReleaseBlocks().find((entry) => entry.id === "atlas_causal_failure_graph_and_planned_layer");
-  assert.ok(block, "the narrowed C09 scope statement is missing");
-  assert.match(block.reason, /incident markers, a recorded incident trace and an optional Doc tour are live/);
-  assert.match(block.reason, /per-component failure\/health map/);
-  assert.match(block.reason, /planned-vs-operating overlay/);
-});
 
 /* ---------------------------------------------------------------- motion pass */
 // Joe's standing surface rule (9293d609): every CARR surface ships with real

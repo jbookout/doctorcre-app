@@ -1,24 +1,4 @@
-// V5-UX-C14 — the Control Room's Operations cards, decided without a DOM.
-//
-// Two cards, held to the same rules as the rest of ./control-room-model.js:
-//
-//   1. Approvals come from ONE read, `governance-queue` (mcp-server/src/tools.js
-//      over ops.read_governance_queue(), migration 0345), in the producer's own
-//      lane and field names. An unanswered or malformed read is `unknown`, never
-//      0; an answered empty queue is a real 0.
-//   2. The card says what it is NOT. governance-queue lists rules awaiting
-//      approve-rule, guidance import batches awaiting
-//      decide-guidance-import-batch and retrieval proposals awaiting
-//      approve-retrieval-proposals. It does not list approvals of production
-//      effects, and no read does, so none is claimed.
-//   3. Scheduled automation reads schedule-board/v1. A cadence deadline is
-//      labelled "expected by"; an absent native observation is unknown.
-//   4. Motion is driven by the data that landed and nothing else: the count
-//      climbs to the verified total, and the only ambient clock is the real age
-//      of the oldest waiting decision. Reduced motion lands every value in one
-//      frame and drops the ticking seconds.
-import { STUCK_SILENCE_HOURS } from "./control-room-model.js";
-
+// Governance and scheduler contracts shared by the Control Room and Home.
 const isText = (value) => typeof value === "string" && value.length > 0;
 const isTime = (value) => typeof value === "string" && Number.isFinite(Date.parse(value));
 const orNull = (value, check) => value === null || value === undefined || check(value);
@@ -29,14 +9,6 @@ export const GOVERNANCE_LANES = Object.freeze([
   { id: "pending_guidance_import_batches", label: "Guidance import batches awaiting a decision", verb: "decide-guidance-import-batch", idField: "batch_id", sinceField: "staged_at" },
   { id: "pending_retrieval_proposals", label: "Retrieval proposals awaiting approval", verb: "approve-retrieval-proposals", idField: "proposal_id", sinceField: "proposed_at" },
 ]);
-
-export const APPROVALS_OUT_OF_SCOPE = "Approvals of production effects are not in this card. Their verbs (accept-ready-plan, accept-workflow, issue-execution-envelope) are partner-only and hash-pinned, and no read lists what is pending, so none is claimed here.";
-
-const APPROVALS_AUTHORITY = "";
-
-// Kept verbatim from the placeholder it replaces: a statement about behaviour
-// already true of every command on this app (CR-AC-22, C23), not a promise.
-const RECONCILE_RULE = "Reconcile before retry is already how every command on this app behaves: an unknown outcome is re-checked under its own key before anything is sent again.";
 
 /** `governance-queue`'s own shape: three lanes and counts that agree with them. */
 export function validGovernanceQueuePayload(payload) {
@@ -54,100 +26,6 @@ export function validGovernanceQueuePayload(payload) {
   return Number.isInteger(counts.total) && counts.total === total;
 }
 
-const detailRow = (label, value) => (isText(value) ? { label, value } : null);
-
-/** One waiting decision, carrying only what the read said. */
-function laneItem(lane, row) {
-  let title;
-  let detail;
-  if (lane.id === "pending_rule_approvals") {
-    title = isText(row.statement) ? row.statement : "rule (no statement recorded)";
-    detail = [
-      detailRow("partner words", row.human_quote),
-      detailRow("enforcement", row.enforcement_class),
-      detailRow("binding moment", row.binding_moment),
-      detailRow("admission reason", row.admission_reason),
-      detailRow("scope", row.scope),
-    ];
-  } else if (lane.id === "pending_guidance_import_batches") {
-    title = isText(row.reason) ? row.reason
-      : isText(row.staging_key) ? `import batch ${row.staging_key} (no reason recorded)` : "import batch (no reason recorded)";
-    detail = [
-      detailRow("staging key", row.staging_key),
-      detailRow("entries", Number.isInteger(row.entry_count) ? String(row.entry_count) : null),
-      detailRow("manifest", row.manifest_digest),
-    ];
-  } else {
-    title = isText(row.reason) ? row.reason : `${row.proposal_type || "retrieval"} proposal (no reason recorded)`;
-    detail = [
-      detailRow("type", row.proposal_type),
-      detailRow("proposed by", row.proposer_actor_id),
-      detailRow("version", Number.isInteger(row.version) ? String(row.version) : null),
-    ];
-  }
-  return { key: row[lane.idField], title, since: isTime(row[lane.sinceField]) ? row[lane.sinceField] : null, detail: detail.filter(Boolean) };
-}
-
-/**
- * The approvals card. `read` is {state: "read", payload} or {state: "unknown", reason}.
- * @returns {{id:string, title:string, state:"read"|"unknown", value:number|null, word:string,
- *   sentence:string, lanes:Object[], oldest:{at:string, lane:string, key:string}|null,
- *   scope:string, authority:string, rule:string}}
- */
-export function approvalsCard(read) {
-  const base = {
-    id: "approvals", title: "Approvals waiting on a partner",
-    scope: APPROVALS_OUT_OF_SCOPE, authority: APPROVALS_AUTHORITY, rule: RECONCILE_RULE,
-  };
-  if (read?.state !== "read" || !validGovernanceQueuePayload(read.payload)) {
-    const reason = read?.state === "read"
-      ? "the governance queue answered in a shape this page does not recognise"
-      : read?.reason || "the governance queue did not answer";
-    return { ...base, state: "unknown", value: null, word: "unknown", sentence: `This is unknown: ${reason}.`, lanes: [], oldest: null };
-  }
-  const payload = read.payload;
-  const lanes = GOVERNANCE_LANES.map((lane) => ({
-    id: lane.id, label: lane.label, verb: lane.verb, count: payload[lane.id].length,
-    items: payload[lane.id].map((row) => laneItem(lane, row)),
-  }));
-  let oldest = null;
-  for (const lane of lanes) {
-    for (const item of lane.items) {
-      if (item.since && (!oldest || Date.parse(item.since) < Date.parse(oldest.at))) {
-        oldest = { at: item.since, lane: lane.id, key: item.key };
-      }
-    }
-  }
-  const total = payload.counts.total;
-  return {
-    ...base, state: "read", value: total, word: String(total),
-    sentence: total === 0
-      ? "Nothing is waiting on a partner's governance decision."
-      : total === 1 ? "One governance decision is waiting on a partner." : `${total} governance decisions are waiting on a partner.`,
-    lanes, oldest,
-  };
-}
-
-/**
- * How long the oldest decision has waited, as words (never a clock face), and
- * the tempo its ambient pulse breathes at. Urgent starts at the approved
- * silence cadence the Stuck tile already uses, so no second threshold is made
- * up here.
- */
-export function waitingAge(sinceIso, now = Date.now(), { seconds = true } = {}) {
-  const since = typeof sinceIso === "string" ? Date.parse(sinceIso) : NaN;
-  if (!Number.isFinite(since) || !Number.isFinite(now)) return { known: false, ms: null, text: "unknown", tempo: null };
-  const ms = Math.max(0, now - since);
-  const total = Math.floor(ms / 1000);
-  const d = Math.floor(total / 86400);
-  const h = Math.floor((total % 86400) / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, "0");
-  const hours = ms / 3_600_000;
-  const tempo = hours >= STUCK_SILENCE_HOURS ? "urgent" : hours >= 24 ? "attention" : "calm";
-  return { known: true, ms, text: seconds ? `waiting ${d}d ${h}h ${m}m ${s}s` : `waiting ${d}d ${h}h ${m}m`, tempo };
-}
-
 const SCHEDULE_OWNERS = ["launchd", "claude-code", "control-plane", "cron"];
 const SCHEDULE_STATES = ["healthy", "missed", "failed", "paused", "running", "unknown"];
 
@@ -159,20 +37,6 @@ export function formatScheduleDateTime(at, options = {}) {
     hour: "numeric", minute: "2-digit", hour12: true,
     ...options,
   }).format(new Date(at));
-}
-
-/** Chronological positions for the run, due time and observation marker. */
-export function scheduleTimeline(job, observedAt) {
-  const markers = [{ name: "now", at: Date.parse(observedAt) }];
-  if (isTime(job?.last_run?.at)) markers.push({ name: "last", at: Date.parse(job.last_run.at) });
-  if (isTime(job?.next_due_at)) markers.push({ name: "due", at: Date.parse(job.next_due_at) });
-  markers.sort((a, b) => a.at - b.at || ["last", "due", "now"].indexOf(a.name) - ["last", "due", "now"].indexOf(b.name));
-  const positions = markers.length === 1 ? [150] : markers.length === 2 ? [32, 266] : [32, 150, 266];
-  const x = Object.fromEntries(markers.map((marker, index) => [marker.name, positions[index]]));
-  return {
-    lastX: x.last ?? null, dueX: x.due ?? null, nowX: x.now,
-    dueOverdue: x.due !== undefined && Date.parse(job.next_due_at) < Date.parse(observedAt),
-  };
 }
 
 /** The pinned schedule-board/v1 read, including source coverage. */
@@ -200,61 +64,4 @@ export function validScheduleBoardPayload(payload) {
     keys.add(`${job.owner}:${job.key}`);
   }
   return true;
-}
-
-export function scheduleCard(read) {
-  const base = { id: "automation", title: "Scheduled automation" };
-  if (read?.state !== "read" || !validScheduleBoardPayload(read.payload)) {
-    return { ...base, state: "unknown", word: "unknown",
-      body: "The schedule read is unavailable. Last runs and next due times cannot be confirmed.",
-      sources: [], jobs: [], observed_at: null };
-  }
-  const payload = read.payload;
-  const jobs = payload.jobs.map((job) => ({
-    ...job,
-    nextLabel: job.next_due_at
-      ? job.next_due_basis === "cadence_deadline" ? "Expected by" : "Next queued"
-      : job.state === "paused" ? "Unknown while paused" : "Unknown",
-  }));
-  const missed = jobs.filter((job) => job.state === "missed").length;
-  const failed = jobs.filter((job) => job.state === "failed").length;
-  const paused = jobs.filter((job) => job.state === "paused").length;
-  const word = [missed && `${missed} missed`, failed && `${failed} failed`, paused && `${paused} paused`]
-    .filter(Boolean).join(" · ") || (jobs.length ? `${jobs.length} known jobs` : "unknown");
-  return { ...base, state: payload.overall_state, word,
-    body: "Times marked expected by are cadence deadlines, not confirmed scheduler fire times. Pause, run and stop are unavailable until a job has an authorized operation.",
-    sources: payload.sources, jobs, observed_at: payload.observed_at };
-}
-
-/* ------------------------------------------------------------------ motion */
-
-export const ENTRANCE_STEP_MS = 60;
-export const ENTRANCE_MAX_STEPS = 8;
-
-/** The stagger for the Nth entering element, capped so a long list never delays its tail. */
-export function entranceDelay(index) {
-  const step = Number.isInteger(index) && index > 0 ? Math.min(index, ENTRANCE_MAX_STEPS) : 0;
-  return step * ENTRANCE_STEP_MS;
-}
-
-/** Integer frames from one verified value to the next, landing exactly on it. */
-export function countUpFrames(from, to, { reduced = false, steps = 12 } = {}) {
-  if (reduced || !Number.isFinite(from) || !Number.isFinite(to) || from === to) return [to];
-  const frames = [];
-  for (let i = 1; i <= steps; i += 1) {
-    const t = i / steps;
-    const eased = 1 - (1 - t) ** 3;
-    frames.push(i === steps ? to : Math.round(from + (to - from) * eased));
-  }
-  return frames;
-}
-
-/** Either the operating-system setting or the app's own motion preference turns motion off. */
-export function prefersReducedMotion(env = globalThis) {
-  try {
-    if (env?.document?.documentElement?.dataset?.motion === "reduced") return true;
-    return env?.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
-  } catch {
-    return false;
-  }
 }
