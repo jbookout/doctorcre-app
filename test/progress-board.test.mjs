@@ -99,8 +99,9 @@ test("/progress-board?board=all-repos keeps its board through the redirect and i
 });
 
 test("the static page is gone: the app page renders every section from a full fixture", async () => {
-  const { $, $$, doc, opened } = await mount(FULL.project);
-  assert.equal($("#board-title").textContent, "CARR v5 delivery");
+  const { board, $, $$, doc, opened } = await mount(FULL.project);
+  assert.equal(board.view.title, "CARR v5 delivery");
+  assert.equal($("#board-title").textContent, "System Job Board");
   assert.equal($$("#board-stages .column").length, 6, "pipeline");
   assert.ok($$("#board-blocked .blocked-card").length >= 3, "blocked cards with reason and next action");
   assert.match($("#board-blocked").textContent, /Why: Waiting on the production database key/);

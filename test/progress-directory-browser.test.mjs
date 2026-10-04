@@ -67,7 +67,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
     assert.equal(await page.locator(selector).isVisible(), true);
     await page.locator(selector).click();
     await page.waitForURL("**/control-room/progress");
-    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+    await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []);
   });
@@ -75,7 +75,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
 
 test("no-param load shows system board, counts, timestamps and stale project; selection opens it", async t => {
   const { page, calls, errors } = await open(t, { path: "/control-room/progress" });
-  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
   assert.equal(await page.locator(".board-link").first().getAttribute("data-board-id"), "carr-v5");
   const project = page.locator('[data-board-id="demo-project"]');
   assert.match(await project.textContent(), /1 running · 1 blocked/);
@@ -87,7 +87,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   await page.getByLabel("Workspace sidebar", {exact:true}).click();
   await project.click();
   await page.waitForURL("**/control-room/progress?board=demo-project");
-  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
   assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.deepEqual(errors, []);
@@ -96,7 +96,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
 test("project deep links work on canonical and legacy routes even when discovery fails", async t => {
   for (const route of ["/control-room/progress", "/progress-board"]) await t.test(route, async t => {
     const { page, calls, errors } = await open(t, { path: `${route}?board=demo-project`, directoryFails: true });
-    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+    await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
     assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "demo-project");
     assert.equal(await page.locator("#board-error").isVisible(), false);
     assert.equal(await page.locator("#directory-error").evaluate(e=>!e.hidden), true);
@@ -134,7 +134,7 @@ test("ready project boards render while discovery stays pending on both deep lin
   for (const path of ["/control-room/progress", "/progress-board"]) await t.test(path, async t => {
     const held = holdRequests(t, "list-progress-boards");
     const { page } = await open(t, { path: `${path}?board=demo-project`, onRpc: held.onRpc });
-    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+    await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
     assert.ok(held.pending.length);
     assert.equal(await page.locator("#board-error").isVisible(), false);
     await page.clock.runFor(10001);
@@ -205,14 +205,14 @@ for (const failed of [false, true]) test(`answer refresh supersedes an older pol
   const { page, errors } = await open(t, { onRpc: reads.onRpc });
   await reads.reply(page, "list-progress-boards", 0, listing("Initial directory"));
   await reads.reply(page, "read-progress-board", 0, snapshot());
-  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
   await page.clock.runFor(15000);
   await reads.request("read-progress-board", 1);
   await page.locator(".answer-form textarea").fill("Ship it");
   await page.locator('.answer-form button[type="submit"]').click();
   await reads.reply(page, "read-progress-board", 2, snapshot(2, "Sent"));
   await reads.reply(page, "list-progress-boards", 2, listing("New directory"));
-  await page.waitForFunction(() => document.querySelector("#board-meta").dataset.version === "2");
+  await page.waitForFunction(() => document.querySelector("#board-meta").textContent.includes("Version 2"));
   const old = failed ? { error: "old request failed" } : snapshot();
   await reads.reply(page, "read-progress-board", 1, old, failed);
   await reads.reply(page, "list-progress-boards", 1, failed ? old : listing("Old directory"), failed);
@@ -310,7 +310,7 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   version = 2;
   await page.clock.runFor(15000);
-  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
+  await page.waitForFunction(() => document.querySelector("#board-meta")?.dataset.readState === "published");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);
   await task.press("Enter");
@@ -442,7 +442,7 @@ test("completed card keyboard opens the embedded popup with current model and wo
     await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});return true;
   }});
   await page.locator('.completed-card').focus();
-  assert.match(await page.locator('.completed-card').textContent(), /Synthetic delivery summary.*Codex.*gpt-6-sol · high.*WR-000901.*PR #17/);
+  assert.match(await page.locator('.completed-card').textContent(), /Synthetic delivery summary.*Codex.*gpt-6-sol · high.*WR-000901.*carr-system #17/);
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.querySelector('#jobDialog').open);
   assert.match(await page.locator('#jobDialog').textContent(), /WR-000901.*PR #17/s);

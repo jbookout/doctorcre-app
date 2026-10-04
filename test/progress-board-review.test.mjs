@@ -147,7 +147,7 @@ test("a superseded read never overwrites a newer one", async () => {
   await b;
   first.resolve(snapshotRead(v2({ title: "Version one" }), { version: 1 }));
   await a;
-  assert.equal(page.$("#board-title").textContent, "Version two");
+  assert.equal(page.board.view.title, "Version two");
 });
 
 test("a read that lands while an answer is being typed keeps the draft and focus", async () => {
@@ -160,7 +160,7 @@ test("a read that lands while an answer is being typed keeps the draft and focus
   page.$("#free-q-open").value = "SYNTHETIC DRAFT";
   late.resolve(snapshotRead(v2({ title: "Later" }), { version: 2, questions: [OPEN_QUESTION] }));
   await pending;
-  assert.equal(page.$("#board-title").textContent, "Later");
+  assert.equal(page.board.view.title, "Later");
   assert.equal(page.$("#free-q-open").value, "SYNTHETIC DRAFT");
   assert.equal(page.doc.activeElement, page.$("#free-q-open"));
 });

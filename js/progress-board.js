@@ -571,9 +571,10 @@ export function mountBoard(deps = {}) {
         el("time", "", formatTime(card.completed_at || card.updated_at)));
       const model = modelLine(card);
       const summary = taskSummary(card);
-      item.append(top, el("p", "card-pr", prLabel(card)), el("p", "card-summary", summary, { title: summary }),
+      item.append(top, el("p", "card-summary", summary, { title: summary }),
         el("p", "completed-evidence", card.evidence || ""),
-        el("p", "card-model", model, { title: model }));
+        el("p", "card-model", model, { title: model }),
+        el("p", "card-wr", card.work_request || card.human_ref || ""), el("p", "card-pr", prLabel(card)));
       clickable(item, () => openWork(card.id));
       const kept = completedNodes.get(card.id);
       if (kept) { kept.replaceChildren(...item.childNodes); box.append(kept); }
@@ -819,9 +820,9 @@ export function mountBoard(deps = {}) {
 
   function render(view) {
     currentView = view;
-    byId("board-title").textContent = view.title;
+    byId("board-title").textContent = "System Job Board";
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "DELIVERY / ALL REPOSITORIES" : "DELIVERY / PROGRESS BOARD";
-    doc.title = `${view.title} · DoctorCRE`;
+    doc.title = "Control Room · DoctorCRE";
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
     renderSync(view);
     renderHeadline(view);
@@ -863,8 +864,8 @@ export function mountBoard(deps = {}) {
     for (const id of BOARD_COUNTS) byId(id).textContent = "—";
     byId("repos-panel").hidden = true;
     byId("board-sync").hidden = true;
-    byId("board-title").textContent = "Progress";
-    doc.title = "Progress · DoctorCRE";
+    byId("board-title").textContent = "System Job Board";
+    doc.title = "Control Room · DoctorCRE";
     const meta = byId("board-meta");
     meta.textContent = state === "unpublished" ? "No published snapshot" : "Board access unavailable";
     meta.setAttribute("data-read-state", state);

@@ -11,6 +11,8 @@ test('merged renderer mounts in Control Room and keeps card popup and governance
  const opened=[];
  const board=mountBoard({window:dom.window, document:dom.window.document, client:{readProgressBoard:async()=>read}, openTask:row=>opened.push(row), storage:null, setInterval:()=>0, setTimeout:()=>0, clearTimeout:()=>{}});
  await board.refresh();
+ assert.equal(dom.window.document.querySelector("#board-title").textContent,"System Job Board");
+ assert.equal(dom.window.document.title,"Control Room · DoctorCRE");
  const card=dom.window.document.querySelector('.board-card');card.click();
  assert.equal(opened[0].id,'demo');assert.equal(opened[0].summary,'Demo summary');
  const queue={ok:true,counts:{total:1,pending_rule_approvals:1,pending_guidance_import_batches:0,pending_retrieval_proposals:0},pending_rule_approvals:[{rule_id:'demo-rule',statement:'Demo original',status:'proposed',taught_at:'2026-10-02T12:00:00Z'}],pending_guidance_import_batches:[],pending_retrieval_proposals:[]};

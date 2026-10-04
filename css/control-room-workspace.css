@@ -11,13 +11,7 @@
 .control-room-sidebar .work-filters label {display:grid;gap:4px;font-size:12px;color:var(--muted)}
 .control-room-sidebar input,.control-room-sidebar select {width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:#0a182a;color:var(--ink)}
 .room-name {font-family:'Barlow Condensed',sans-serif;font-size:24px;text-decoration:none}
-.board-clock {display:flex;justify-content:flex-end;align-items:center;gap:8px;min-height:28px;color:var(--muted);font-size:12px}
-.board-clock .error {margin:0;padding:5px}
-.board-clock .read-recovery {margin:0}
 .read-recovery button {min-width:36px;min-height:36px;background:none;border:0;color:var(--orange)}
-.node-links {fill:#dce9f6;font:600 9px 'DM Sans',sans-serif}
-.pipeline-node {transition:transform 120ms ease-out;transform-box:fill-box;transform-origin:center}
-.pipeline-node:hover {transform:translateY(-2px)}
 .connection-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,215px),1fr));gap:12px;margin-top:16px}
 .connection-card {border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;background:rgba(10,25,43,.85);transition:transform 120ms,border-color 120ms}
 .connection-card:hover {transform:translateY(-2px);border-color:var(--orange)}
@@ -58,7 +52,7 @@
 .job-update {font-size:12px;color:var(--muted);margin:8px 0 0}
 @keyframes connection-breathe {50% {opacity:.4}}
 @media(max-width:760px){.control-room-workspace{padding:10px!important}.control-room-workspace .panel{padding:12px}.panel-heading{flex-wrap:wrap}.calendar-day{min-height:70px;padding:3px}.automation-job{font-size:10px;padding:4px}.automation-job time{font-size:9px}.job-dialog{width:calc(100vw - 20px);padding:18px}.job-summary{grid-template-columns:1fr;gap:20px}.job-dialog h2{font-size:28px}}
-@media(prefers-reduced-motion:reduce){.pipeline-node,.connection-card,.automation-job{transition:none!important;transform:none!important}.connection-dot{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.connection-card,.automation-job{transition:none!important;transform:none!important}.connection-dot{animation:none!important}}
 .automation-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;margin-top:16px}
 .automation-list .automation-job {padding:16px;gap:12px;margin:0}
 
