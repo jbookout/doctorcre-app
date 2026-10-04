@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
-import { webkit } from 'playwright';
+import { chromium, webkit } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 // Chromium stands in for Chrome and the installed app (same engine, same

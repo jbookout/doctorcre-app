@@ -195,3 +195,20 @@ test('a page never waits on the outside network', async () => {
     assert.deepEqual(refused, ['fonts.googleapis.com']);
   } finally { await browser.close(); }
 });
+
+test('WebKit shares the harness while isolating contexts and blocking external requests', async t => {
+  const { webkit } = await import('./browser-harness.mjs');
+  assert.equal(typeof webkit?.launch, 'function');
+  const first = await webkit.launch(), second = await webkit.launch();
+  t.after(() => Promise.all([first.close(), second.close()]));
+  const a = await first.newPage(), b = await second.newPage();
+  for (const page of [a, b]) {
+    await page.route('http://localhost/**', route => route.fulfill({ body: '<p>synthetic</p>' }));
+    await page.goto('http://localhost/');
+  }
+  await a.evaluate(() => localStorage.setItem('synthetic', 'first'));
+  assert.equal(await b.evaluate(() => localStorage.getItem('synthetic')), null);
+  await second.close();
+  assert.equal(await a.evaluate(() => localStorage.getItem('synthetic')), 'first');
+  await assert.rejects(a.goto('https://outside.invalid/'));
+});

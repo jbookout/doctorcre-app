@@ -83,8 +83,6 @@
     "test/auto-refresh-script.mjs",
     "test/boot-mode.test.mjs",
     "test/browser-harness.mjs",
-    "test/browser-state.mjs",
-    "test/browser-state.test.mjs",
     "test/ci-workflows.test.mjs",
     "test/client-data-check.test.mjs",
     "test/client-interface.test.mjs",

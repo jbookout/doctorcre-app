@@ -1,4 +1,4 @@
-// The one way browser tests get Chromium, a wait budget and a fake clock.
+// Shared browser engines, a wait budget and a fake clock.
 //
 // Hosted CI runs three test files at once on a four-vCPU runner. Launching a
 // fresh Chromium for every test and giving each file its own 1-7 s wait budget
@@ -7,13 +7,13 @@
 //    browser contexts, so storage, routes, clock and viewport stay per test;
 //  - every page waits up to WAIT_MS for a condition before it fails, and no
 //    request leaves the machine unless the test routes it;
-//  - BROWSER_CPU_THROTTLE=<n> slows every page n times (CDP emulation) and
+//  - BROWSER_CPU_THROTTLE=<n> slows Chromium pages n times (CDP emulation) and
 //    BROWSER_ROUTE_JITTER_MS=<ms> answers each routed request up to <ms> late,
 //    so a CI-starved runner can be reproduced locally.
 import { after } from 'node:test';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium as playwright } from 'playwright';
+import { chromium as playwright, webkit as playwrightWebkit } from 'playwright';
 
 export const WAIT_MS = 30_000;
 const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
@@ -28,37 +28,42 @@ after(async () => {
     .map(result => result.value.close()));
 });
 
-export const chromium = {
-  async launch(options = {}) {
-    const key = JSON.stringify(options);
-    if (!launched.has(key)) launched.set(key, playwright.launch(options));
-    const browser = await launched.get(key);
-    const contexts = new Set();
-    return {
-      async newPage(options = {}) {
-        const context = await browser.newContext(options);
-        contexts.add(context);
-        context.setDefaultTimeout(WAIT_MS);
-        // Tests never reach the network. A page's Google Fonts link held its
-        // load event, and so page.goto, until an outside server answered. A
-        // request a test does not route itself and that leaves this machine is refused.
-        await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
-        const page = await context.newPage();
-        if (throttle > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
-        if (jitter > 0) {
-          const route = page.route.bind(page);
-          page.route = (url, handler, options) => route(url, async (...args) => { await delay(Math.random() * jitter); return handler(...args); }, options);
-        }
-        return page;
-      },
-      async close() {
-        const open = [...contexts];
-        contexts.clear();
-        await Promise.all(open.map(context => context.close()));
-      },
-    };
-  },
-};
+export const chromium = browserHarness(playwright);
+export const webkit = browserHarness(playwrightWebkit);
+
+function browserHarness(browserType) {
+  return {
+    async launch(options = {}) {
+      const key = JSON.stringify([browserType.name(), options]);
+      if (!launched.has(key)) launched.set(key, browserType.launch(options));
+      const browser = await launched.get(key);
+      const contexts = new Set();
+      return {
+        async newPage(options = {}) {
+          const context = await browser.newContext(options);
+          contexts.add(context);
+          context.setDefaultTimeout(WAIT_MS);
+          // Tests never reach the network. A page's Google Fonts link held its
+          // load event, and so page.goto, until an outside server answered. A
+          // request a test does not route itself and that leaves this machine is refused.
+          await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
+          const page = await context.newPage();
+          if (throttle > 1 && browserType.name() === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
+          if (jitter > 0) {
+            const route = page.route.bind(page);
+            page.route = (url, handler, options) => route(url, async (...args) => { await delay(Math.random() * jitter); return handler(...args); }, options);
+          }
+          return page;
+        },
+        async close() {
+          const open = [...contexts];
+          contexts.clear();
+          await Promise.all(open.map(context => context.close()));
+        },
+      };
+    },
+  };
+}
 
 // Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
 // a fixed range can be taken by a parallel run or an ephemeral connection.

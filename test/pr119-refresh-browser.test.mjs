@@ -157,13 +157,21 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
  assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
 });
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
- const hooks=`const read=c.getBoard;window.homeReads=0;c.getBoard=async args=>{const p=await read(args);if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
- const {page,errors}=await open(t,{clientHooks:hooks});
- await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ const {page,errors}=await open(t);
+ await page.goto(origin+'/', {waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ await page.waitForFunction(()=>document.querySelector('#refreshHome')?.getAttribute('aria-busy')==='false');
+ // Home forwards its read signal; sidebar reads use their own outer deadline.
+ await page.evaluate(async()=>{
+  const {getAppClient}=await import('/js/client.js');const {resolveDealroomBoot}=await import('/js/boot-mode.js');
+  const boot=resolveDealroomBoot(location),c=await getAppClient(boot.mode,{...boot.options,docContext:false}),read=c.getBoard;
+  window.homeReads=0;window.holdHome=true;
+  c.getBoard=async args=>{const p=await read(args);++window.homeReads;if(args?.signal && window.holdHome && !window.homeWaiting){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};
+ });
  const expected=await page.locator('#dealCounts').textContent();
  await online(page);await page.waitForFunction(()=>window.homeWaiting);
- await page.clock.fastForward(120_000);await online(page);
- await page.waitForFunction(expected=>window.homeReads>=3 && document.querySelector('#dealCounts')?.textContent===expected,expected);
+ await page.clock.fastForward(120_000);await page.evaluate(()=>window.holdHome=false);await online(page);
+ await page.waitForFunction(expected=>window.homeReads>=2 && document.querySelector('#dealCounts')?.textContent===expected,expected);
  await page.evaluate(()=>window.releaseHome());
  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
  assert.equal(await page.locator('#dealCounts').textContent(),expected);
