@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-visual-system.v1",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "slice": "V5-UX-S01",
   "stylesheet": "css/system.css",
   "model": "js/visual-system.js",
@@ -408,25 +408,6 @@
         ".dialog::backdrop"
       ]
     },
-    "doc_chat": {
-      "selectors": [
-        ".doc-fab",
-        ".doc-chat",
-        ".doc-chat-head",
-        ".doc-reading",
-        ".doc-transcript",
-        ".doc-turn",
-        ".doc-composer",
-        ".doc-mic"
-      ],
-      "states": [
-        ".doc-fab[aria-expanded=\"true\"]",
-        ".doc-turn[data-from=\"you\"]",
-        ".doc-turn[data-from=\"doc\"]",
-        ".doc-mic[aria-pressed=\"true\"]"
-      ],
-      "rule": "Doc is one floating round icon fixed at the bottom right of every surface, at least 44px and clear of the mobile navigation. It opens a nonmodal chat anchored bottom-right that names the page it is reading, with a transcript, a text input, Send, and a microphone labelled \"Dictate with Quill\" that toggles a visible listening state. Escape closes it and focus returns. There is no per-tile Ask Doc control and no panel at the top of a page."
-    },
     "toast": {
       "selectors": [
         ".toast"
@@ -565,6 +546,20 @@
         ".accomplishment"
       ],
       "states": []
+    },
+    "doc_agent": {
+      "selectors": [
+        ".doc-presence",
+        ".doc-detail",
+        ".doc-identity",
+        ".doc-orb",
+        ".doc-action",
+        ".doc-activity"
+      ],
+      "states": [
+        ".doc-detail[open]"
+      ],
+      "rule": "Doc stays visible at the top of the shared main region on every authenticated page. A wide modal shows exact page records, the open record and short recent entries with Details. Current suggestions require evaluated context and exact identity/revision binding. Approve discussion records the staged decision; outward, client-visible, money and irreversible actions always require approval and a supported execution contract."
     }
   },
   "state_vocabulary": {
@@ -665,5 +660,9 @@
       "applied": "keyboard move path beside every drag, motion pause, reduced-motion floor"
     }
   ],
-  "review_gate": "Joe reviews the interactive business and operations prototypes; the exact reviewed source commit and every unresolved palette or layout choice are recorded with the review. Technical checks alone do not close this slice."
+  "review_gate": "Joe reviews the interactive business and operations prototypes; the exact reviewed source commit and every unresolved palette or layout choice are recorded with the review. Technical checks alone do not close this slice.",
+  "stylesheets": [
+    "css/system.css",
+    "css/doc-presence.css"
+  ]
 }

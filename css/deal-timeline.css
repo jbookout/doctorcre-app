@@ -10,7 +10,8 @@
 .phase-rail li span { border:0; padding:0; color:inherit; }
 .phase-rail time { display:block; color:var(--quiet); font-size:10px; margin-top:6px; }
 .critical-dates { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:24px; }
-.critical-date { min-width:0; padding:16px; border:1px solid #26354a; border-radius:12px; background:linear-gradient(140deg,#142338d9,#09121ee8); color:var(--text); display:flex; flex-direction:column; gap:8px; text-align:left; overflow-wrap:anywhere; transition:transform 180ms ease-out,border-color 180ms ease-out; }
+.critical-dates,.deal-timeline { --quiet:var(--muted); }
+.critical-date { min-width:0; padding:16px; border:1px solid var(--line); border-radius:12px; background:linear-gradient(140deg,var(--ground-2),var(--ground-0)); color:var(--text); display:flex; flex-direction:column; gap:8px; text-align:left; overflow-wrap:anywhere; transition:transform 180ms ease-out,border-color 180ms ease-out; }
 .critical-date:hover,.timeline-entry:hover { transform:translateY(-2px); border-color:#a66438; }
 .critical-date > span { color:var(--quiet); font-size:12px; }
 .critical-date strong { font-family:'Barlow Condensed',sans-serif; font-size:28px; line-height:1.1; font-weight:600; }
@@ -22,9 +23,9 @@
 .critical-date[data-state='overdue'] { animation:deadline-glow 1s ease-in-out infinite; }
 .critical-date summary { cursor:pointer; color:var(--quiet); min-height:44px; display:flex; align-items:center; font-size:12px; }
 .critical-date p { font-size:12px; }
-.add-date { cursor:pointer; border-style:dashed; background:#0b1520; }
+.add-date { cursor:pointer; border-style:dashed; background:var(--ground-0); }
 .add-date strong { font-family:inherit; font-size:14px; color:var(--orange-text); margin-top:8px; }
-.deal-timeline { border:1px solid var(--line); border-radius:14px; background:linear-gradient(120deg,#111f32c9,#060c15); padding:20px; margin-bottom:28px; min-width:0; }
+.deal-timeline { border:1px solid var(--line); border-radius:14px; background:linear-gradient(120deg,var(--ground-1),var(--ground-0)); color:var(--text); padding:20px; margin-bottom:28px; min-width:0; }
 .timeline-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .timeline-heading h3 { margin:0; font-family:'Barlow Condensed',sans-serif; font-size:28px; }
 .timeline-heading select { max-width:100%; }
@@ -38,16 +39,16 @@
 .timeline-chart .timeline-count { fill:#07111f; font-size:11px; font-weight:700; }
 .timeline-chart .timeline-today-label { fill:var(--orange-text); }
 .timeline-date-links { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
-.timeline-date-links button { cursor:pointer; background:#111f30; border:1px solid var(--line); border-radius:8px; color:var(--quiet); min-height:44px; padding:8px 12px; font-size:11px; }
+.timeline-date-links button { cursor:pointer; background:var(--ground-1); border:1px solid var(--line); border-radius:8px; color:var(--quiet); min-height:44px; padding:8px 12px; font-size:11px; }
 .timeline-entries { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
-.timeline-entry { min-width:0; border:1px solid var(--line); border-radius:10px; padding:14px; background:#0c1625e8; transition:transform 180ms ease-out,border-color 180ms ease-out; }
+.timeline-entry { min-width:0; border:1px solid var(--line); border-radius:10px; padding:14px; background:var(--ground-0); transition:transform 180ms ease-out,border-color 180ms ease-out; }
 .timeline-entry-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px; }
 .timeline-entry b { font-size:11px; color:var(--orange-text); text-transform:capitalize; }
 .timeline-entry p { font-size:13px; overflow-wrap:anywhere; }
 .timeline-entry summary { min-height:44px; display:flex; align-items:center; }
 .deal-timeline :focus-visible,.critical-dates :focus-visible { outline:2px solid var(--orange); outline-offset:3px; }
 .deal-detail .full-record { margin-top:0; }
-#dealDateDialog input { width:100%; min-width:0; color:var(--text); background:#0c1625; padding:12px; border:1px solid var(--line); border-radius:8px; color-scheme:dark; }
+#dealDateDialog input { width:100%; min-width:0; color:var(--text); background:var(--ground-0); padding:12px; border:1px solid var(--line); border-radius:8px; }
 @keyframes deadline-glow { 50% { border-color:#b7693c; } }
 @media(max-width:760px) { .timeline-entries { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:500px) {
@@ -62,7 +63,7 @@
 }
 @media(prefers-reduced-motion:reduce) { .critical-date,.timeline-entry,.critical-date:hover,.timeline-entry:hover { transition:none; transform:none; animation:none; } }
 
-.deal-detail > header { position:sticky; top:0; z-index:2; background:#091725f5; backdrop-filter:blur(16px); }
+.deal-detail > header { position:sticky; top:0; z-index:2; background:var(--ground-0); backdrop-filter:blur(16px); }
 .detail-actions { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:22px; }
 .detail-actions > .detail-controls { flex:1; max-width:560px; margin:0; }
 .detail-actions .park-control { margin-top:0; }

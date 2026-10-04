@@ -1,0 +1,52 @@
+.doc-presence { position:sticky; top:0; z-index:8; display:flex; align-items:center; gap:16px; min-width:0; margin:0 0 18px; padding:12px 16px; border:1px solid #8bb6eb24; border-radius:16px; background:linear-gradient(110deg,#002f6c50,#070d17ed 42%,#f2692412); backdrop-filter:blur(22px); box-shadow:0 12px 38px #0005; color:#edf2fc; }
+.doc-presence button,.doc-detail button { cursor:pointer; border:1px solid #7eafff30; border-radius:10px; background:#14213670; color:inherit; min-height:44px; min-width:44px; padding:8px 12px; font:inherit; transition:transform 180ms,background 180ms,box-shadow 180ms; }
+.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover { transform:translateY(-2px); background-color:#20345e70; box-shadow:0 7px 20px #0004; }
+.doc-presence button:focus-visible,.doc-detail :is(button,select,a,summary):focus-visible { outline:2px solid #ff8a48; outline-offset:3px; }
+.doc-identity { flex:none; display:flex; align-items:center; gap:10px; text-align:left; border:0!important; background:transparent!important; }
+.doc-identity b { font:700 24px/1 'Barlow Condensed','Arial Narrow',sans-serif; letter-spacing:.04em; }
+.doc-identity>span:nth-child(2) { display:grid; gap:4px; max-width:220px; }
+#docPageLabel { color:#b0c5e5; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.doc-orb { display:inline-grid; place-items:center; width:40px; height:40px; border-radius:50%; color:#ffa466; background:radial-gradient(circle at 35% 30%,#f2692445,#002f6c 60%,#06101e); box-shadow:0 0 18px #f2692436,inset 0 0 12px #87b9ff4a; animation:doc-breathe 4s ease-in-out infinite; font-size:26px; }
+.doc-suggestion-strip { display:flex; flex:1; min-width:0; gap:10px; }
+.doc-suggestion-strip button { display:flex; align-items:center; gap:9px; min-width:0; font-size:13px; text-align:left; overflow-wrap:anywhere; }
+.doc-suggestion-strip button>span { color:#ff9a61; }
+.doc-quiet { font-size:13px; color:#99aec9; align-self:center; }
+.doc-updated { display:flex; gap:6px; flex:none; align-items:center; color:#94a8c5; font-size:11px; }
+.doc-updated button { border:0; background:transparent; font-size:20px; }
+.doc-detail { width:min(1120px,calc(100vw - 32px)); max-width:1120px; max-height:calc(100dvh - 40px); padding:24px; border:1px solid #809bc33d; border-radius:22px; color:#edf2fc; background:radial-gradient(ellipse at 0 0,#002f6c60,transparent 55%),radial-gradient(ellipse at 100% 100%,#f2692414,transparent 60%),#080e19f7; box-shadow:0 28px 120px #000b; font-family:'DM Sans',sans-serif; }
+.doc-detail[open] { animation:doc-arrive 200ms ease-out; }
+.doc-detail::backdrop { background:#01050ccc; backdrop-filter:blur(8px); }
+.doc-detail>header,.doc-detail>header>div { display:flex; align-items:center; gap:12px; }
+.doc-detail>header { justify-content:space-between; margin-bottom:24px; }
+.doc-detail h2 { font:700 32px 'Barlow Condensed','Arial Narrow',sans-serif; margin:0; }
+.doc-detail h3 { margin:18px 0 14px; font:600 24px 'Barlow Condensed','Arial Narrow',sans-serif; }
+.doc-detail-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:28px; }
+.doc-detail-grid>section { min-width:0; }
+.doc-detail label { display:grid; gap:8px; color:#aebfd9; font-size:12px; }
+.doc-detail select { width:100%; min-height:44px; border:1px solid #738aae45; border-radius:10px; padding:10px; background:#101c31; color:#eef5ff; font:inherit; }
+.doc-detail dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:0; }
+.doc-detail dl>div { padding:14px; border:1px solid #a0bcdf15; border-radius:12px; background:#101b2b60; overflow-wrap:anywhere; }
+.doc-detail dt { font-size:11px; color:#a7bad5; margin-bottom:6px; }
+.doc-detail dd { margin:0; font-size:14px; }
+.doc-action,.doc-activity { margin:12px 0; padding:16px; border:1px solid #f2692428; border-radius:14px; background:#17223560; overflow-wrap:anywhere; transition:transform 180ms,background 180ms,box-shadow 180ms; }
+.doc-action h4 { margin:10px 0; font-size:16px; line-height:1.5; }
+.doc-action p,.doc-activity p { font-size:13px; color:#b4c3dc; line-height:1.6; }
+.doc-action>button { margin-top:16px; background:#f2692426; border-color:#f2692460; }
+.doc-detail details { margin-top:12px; font-size:12px; }
+.doc-detail summary { box-sizing:border-box; min-height:44px; padding:12px 0; cursor:pointer; color:#93baf4; }
+.doc-detail .entry-original { white-space:pre-wrap; }
+.doc-spark { color:#ff9855; }.doc-chats-link { display:inline-flex; align-items:center; min-height:44px; margin-top:20px; color:#a6c9ff; font-size:13px; }
+#docApprovalStatus { min-height:20px; color:#ffb185; font-size:13px; }
+@keyframes doc-breathe { 50% { box-shadow:0 0 24px #f2692450,inset 0 0 16px #87b9ff70; } }
+@keyframes doc-arrive { from { opacity:0; transform:translateY(10px) scale(.99); } }
+@media(max-width:760px) { .doc-presence { gap:8px; padding:8px; flex-wrap:wrap; border-radius:12px; } .doc-identity { flex:1; } .doc-identity>span:nth-child(2) { max-width:180px; } .doc-suggestion-strip { order:3; flex-basis:100%; } .doc-suggestion-strip button { flex:1; } .doc-suggestion-strip button:nth-child(n+2) { display:none; } .doc-detail { padding:18px; width:calc(100vw - 20px); max-height:calc(100dvh - 24px); } .doc-detail-grid { grid-template-columns:minmax(0,1fr); gap:12px; } }
+@media(prefers-reduced-motion:reduce) { .doc-orb,.doc-detail[open] { animation:none; } .doc-presence button,.doc-detail button,.doc-action,.doc-activity { transition:none; } .doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover { transform:none; } }
+:root[data-motion="reduced"] :is(.doc-orb,.doc-detail[open]) { animation:none; }
+:root[data-motion="reduced"] :is(.doc-presence button,.doc-detail button,.doc-action,.doc-activity) { transition:none; }
+:root[data-motion="reduced"] :is(.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover) { transform:none; }
+@media(max-width:760px) { .doc-detail-grid>section:last-child { order:-1; } }
+
+.doc-presence { top:70px; }
+html:has(.doc-presence) { scroll-padding-top:160px; }
+
+.doc-presence.doc-in-detail { top:0; flex-shrink:0; }

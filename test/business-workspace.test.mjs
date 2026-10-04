@@ -113,7 +113,7 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
   assert.match(html, /<p class="caption freshness" id="homeFreshness">/, "one freshness line, under the hero");
   assert.match(pageJs, /updatedLabel\(payload\.source\.observed_at\)/, "the line displays the successful update clock");
   assert.match(html, /id="receiptDock" class="receipt-dock"/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
   assert.match(html, /<a class="btn btn-primary" id="signInAgain" href="\/auth\/login\?return_to=%2F"/, "an expired session is offered the way back in");
 
   const tabs = /<div data-layout-slot="tabs" class="page-views" id="businessTabs"[\s\S]*?<\/div>/.exec(html)?.[0] || "";

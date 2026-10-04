@@ -218,8 +218,8 @@ test("the page is the shared shell: titles not descriptions, one Doc, a mono ref
     /data-section="hypotheses"/.exec(html).index,
     "facts and hypotheses share one region",
   );
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "the dock is not mounted");
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
   assert.doesNotMatch(html, /\bTODO\b/);
