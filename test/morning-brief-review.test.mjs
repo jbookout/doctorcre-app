@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { mountMorningBrief } from '../js/morning-brief.js';
 import { composeMorningBrief } from '../js/morning-brief-model.js';
 import { dealHref } from '../js/home-dashboard-model.js';
+import { createLiveClient } from '../js/live-client.js';
 
 const now = new Date(2026, 9, 3, 8);
 const since = new Date(2026, 9, 2, 18).toISOString();
@@ -32,6 +33,34 @@ function mount(t, { client={}, getClient, stored, speech=false, clock=()=>now, t
 for(const status of [503,401,403]) test(`#1 failed board HTTP ${status} clears actions and visibly reports unavailable`,async t=>{
  let fail=false; const h=mount(t,{client:{getBoard:async()=>{if(fail) throw {status};return board();}}});await settle();fail=true;h.click('docBriefRefresh');await settle();
  assert.equal(h.panel.dataset.state,'unavailable');assert.match(h.panel.textContent,/Unavailable/);assert.equal(h.panel.querySelectorAll('a').length,0);assert.doesNotMatch(h.panel.textContent,/Review old action/);
+});
+for (const status of [401, 403, 503]) test(`#1 live feed HTTP ${status} invalidates authorization refusals and preserves partial availability otherwise`, async t => {
+ let fail = false;
+ const client = createLiveClient({ fetchImpl: async (path, init) => {
+  if (path.startsWith('/pipeline/changes')) return new Response(JSON.stringify({ events: [], cursor: 'c0' }), { status: fail ? status : 200 });
+  assert.equal(path, '/mcp');
+  const { params: { name } } = JSON.parse(init.body);
+  assert.ok(['deal-room-board', 'today-triage'].includes(name));
+  const payload = name === 'deal-room-board' ? board() : { items: [] };
+  return new Response(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }));
+ } });
+ const h = mount(t, { getClient: () => client });
+ await settle();
+ assert.equal(h.panel.dataset.state, 'ready');
+ assert.match(h.panel.querySelector('#docBriefFirst a').textContent, /Review old action/);
+ fail = true;
+ h.click('docBriefRefresh');
+ await settle();
+ if (status === 503) {
+  assert.equal(h.panel.dataset.state, 'ready');
+  assert.match(h.panel.querySelector('#docBriefFirst a').textContent, /Review old action/);
+  assert.match(h.panel.querySelector('#docBriefOvernight').textContent, /Unavailable/);
+ } else {
+  assert.equal(h.panel.dataset.state, 'unavailable');
+  assert.equal(h.panel.querySelectorAll('a').length, 0);
+  assert.doesNotMatch(h.panel.textContent, /Review old action|Synthetic d1/);
+  assert.match(h.doc.querySelector('[role="status"]').textContent, /Morning brief unavailable/);
+ }
 });
 for(const kind of ['rejection','hung creation','hung aggregate','malformed board']) test(`#1 ${kind} has a visible terminal error`,async t=>{
  const options=kind==='rejection'?{getClient:async()=>{throw new Error('offline');}}:kind==='hung creation'?{getClient:()=>new Promise(()=>{})}:kind==='hung aggregate'?{client:{getChanges:()=>new Promise(()=>{})}}:{client:{getBoard:async()=>({actor:'joe',deals:[null]})}};

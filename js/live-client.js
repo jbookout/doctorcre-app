@@ -287,7 +287,7 @@ export function createLiveClient(opts = {}) {
     async getChanges(cursor) {
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
       const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error(`live changes -> ${res.status}`);
+      if (!res.ok) throw Object.assign(new Error(`live changes -> ${res.status}`), { status: res.status });
       const data = await res.json();
       for (const e of data.events || []) {
         // The event log stores values wrapped as {field: value}; the app (and
