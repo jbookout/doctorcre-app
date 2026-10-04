@@ -12,6 +12,8 @@ The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
+Local development and the e2e runner require Node.js 22.12.0 or newer.
+
 ```bash
 npm ci
 npx playwright install chromium
@@ -22,6 +24,22 @@ npm run artifact:verify
 npm run serve
 npm run dev:staging
 ```
+
+### End-to-end journeys
+
+The [e2e](https://www.npmjs.com/package/e2e) runner starts the fixture server
+itself and drives Chromium through the merged V1 journeys on synthetic data.
+Telemetry is off in `e2e.config.ts`.
+
+```bash
+npx e2e run tests/journeys   # deterministic, no model; the CI e2e job runs this
+npx e2e run tests/agent      # agent.act/agent.assert variants, local only
+```
+
+The agent suite uses Joe's ChatGPT subscription, never an API key. Sign in once
+per machine with `npx e2e login openai` (add `--device` to use a code instead of
+a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
+lists the ids the login serves. CI configures no model and never runs it.
 
 `npm run release:staging` accepts only a clean checkout whose `HEAD` exactly
 matches `origin/main`, builds with that commit identity, creates the staging
