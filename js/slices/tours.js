@@ -1,6 +1,19 @@
 export default {
   "id": "tours",
   "files": [
+    "js/offline-tour-session.js",
+    "scripts/offline-tour-shell.mjs",
+    "test/offline-tour-shell.test.mjs",
+    "test/tour-day.test.mjs",
+    "test/tour-day-browser.test.mjs",
+    "test/tour-day-regressions.test.mjs",
+    "tours/day.html",
+    "tours/day.css",
+    "tours/day.js",
+    "tours/day-client.js",
+    "tours/day-store.js",
+    "tours/day-recorder.js",
+    "tours/day-sw.js",
     "test/tour-client-feedback.test.mjs",
     "test/tour-composer.test.mjs",
     "test/tour-itinerary-browser.test.mjs",
@@ -33,6 +46,7 @@ export default {
     }
   ],
   "activeRoutes": {
+    "/tours/day.html": "/tours",
     "/share": "/tours"
   },
   "sections": []
