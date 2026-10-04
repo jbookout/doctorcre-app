@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
- const browser=await chromium.launch();t.after(()=>browser.close());const context=await browser.newContext({viewport:{width,height:960},reducedMotion:motion});const page=await context.newPage();page.setDefaultTimeout(10000);
+ const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});const context=page.context();
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  let scope='joe',fail=false,ready=brief,revision=0,thread=[{id:'demo-note',kind:'note',text:'Demo short summary. Original synthetic entry with additional details.',recorded_at:new Date().toISOString()}];const calls=[],errors=[];
  const day=new Date().toLocaleDateString('en-CA');
@@ -89,4 +89,22 @@ test('refresh retains Details on stable note identity and uses Back when it leav
  assert.equal(await original.evaluate(node=>node.open),true);assert.equal(await original.locator('summary').evaluate(node=>document.activeElement===node),true);assert.equal(await page.locator('#morningContent details').first().evaluate(node=>node.open),false);
  state.thread=Array.from({length:5},(_,index)=>({id:`new-note-${index}`,text:`Demo replacement note ${index}.`}));await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('replacement'));
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
+});
+
+for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking brief to the command bar with one modal`, async t => {
+ const { page, goto } = await setup(t);
+ await goto(); await page.locator('#docMorningBrief[open]').waitFor();
+ await page.locator('#morningSpeech').click(); await page.locator('#morningListen').click();
+ await page.keyboard.press(`Control+${key}`);
+ await page.locator('#docDetail[open]').waitFor();
+ assert.equal(await page.locator('dialog[open]').count(), 1);
+ assert.equal(await page.locator('#docCommandInput').evaluate(node => document.activeElement === node), true);
+ await page.waitForFunction(() => window.speechStops > 0);
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(() => document.activeElement?.id === 'docOpen');
+ assert.equal(await page.locator('dialog[open]').count(), 0);
+ assert.equal(await page.locator('#docOpen').evaluate(node => document.activeElement === node), true);
+ await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
+ assert.equal(await page.locator('dialog[open]').count(), 1);
+ assert.equal(await page.locator('#docMorningBrief').evaluate(node => node.open), true);
 });

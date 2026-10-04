@@ -1,4 +1,8 @@
 import { mountMorningBrief } from './morning-brief.js';
+import { createPlannerClient } from '../tours/planner-client.js';
+import { mountDocCommandBar } from './doc-command-bar.js';
+import { slices } from './slices.generated.js';
+import { registerSlices } from './slice-registration.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { pageDocContext } from './doc-context.js';
@@ -17,10 +21,13 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
   const briefStyle = root.createElement('link'); briefStyle.rel = 'stylesheet'; briefStyle.href = '/css/morning-brief.css'; root.head.append(briefStyle);
   const strip = root.createElement('section'); strip.id = 'docPresence'; strip.className = 'doc-presence'; strip.setAttribute('aria-label', 'Doc');
-  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span><span><b>Doc</b><span id="docPageLabel"></span></span><span aria-hidden="true">↗</span></button><div id="docSuggestions" class="doc-suggestion-strip" aria-live="polite"></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button></div>';
-  main.prepend(strip);
+  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-label="Open Doc" title="Doc · ⌘D / Ctrl+D · ⌘K / Ctrl+K" aria-keyshortcuts="Meta+D Control+D Meta+K Control+K" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span></button>';
+  root.body.append(strip);
   const dialog = root.createElement('dialog'); dialog.id = 'docDetail'; dialog.className = 'doc-detail'; dialog.setAttribute('aria-labelledby','docTitle');
   dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><button id="docMorning" type="button">Morning brief</button><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a></section></div>';
+  const suggestionsHost = root.createElement('div'); suggestionsHost.className = 'doc-context-tools';
+  suggestionsHost.innerHTML = '<div id="docSuggestions" class="doc-suggestion-strip" aria-live="polite"></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button></div>';
+  dialog.querySelector('header').after(suggestionsHost);
   root.body.append(dialog);
   const $ = id => root.getElementById(id);
   let snapshot = context.snapshot(), suggestions = null, suggestionState = 'updating', client = supplied, approval, shown = [], chosen = null, disposed = false, readEpoch = 0, lastScope = '';
@@ -36,13 +43,11 @@ export function mountDocPresence({ document: root = document, window: win = wind
   // controls placement only; record identity still comes from the page read.
   function placePresence() {
     const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden])')];
-    const host = hosts.at(-1) || main;
-    strip.classList.toggle('doc-in-detail', host !== main);
+    const host = hosts.at(-1) || root.body;
     if (strip.parentElement !== host) host.prepend(strip);
   }
   const render = () => {
     placePresence();
-    $('docPageLabel').textContent = snapshot.active?.title || snapshot.label;
     strip.dataset.state = snapshot.state;
     $('docUpdated').textContent = updatedLabel(snapshot.observedAt);
     if (snapshot.observedAt) $('docUpdated').dateTime = snapshot.observedAt; else $('docUpdated').removeAttribute('datetime');
@@ -80,10 +85,22 @@ export function mountDocPresence({ document: root = document, window: win = wind
     finally { if (epoch === readEpoch && !disposed) render(); }
   };
   const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs });
-  const open = () => { if (!dialog.open) dialog.showModal(); render(); };
+  const command = mountDocCommandBar({ dialog, window:win, context,
+    pages: registerSlices(slices).navigationItems, onOpen:() => {
+      const brief = root.getElementById('docMorningBrief');
+      if (brief?.open) brief.close();
+      render();
+    },
+    client: async () => client ||= await createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }),
+    tours: async () => {
+      if (resolveDealroomBoot(win.location).mode !== 'live') return [];
+      return createPlannerClient().library();
+    }, intervalMs,
+  });
+  const open = command.open;
   $('docOpen').onclick = open;
   $('docClose').onclick = () => dialog.close();
-  dialog.addEventListener('close', () => $('docOpen').focus());
+
   dialog.addEventListener('click', async event => {
     const button = event.target.closest('[data-doc-approve]'); if (!button || !approval || approval.busy || DOC_PAGES[snapshot.page].approvals === false) return;
     const row = shown.find(item => item.id === button.dataset.docApprove); if (!row) return;
@@ -112,7 +129,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
   const morning = mountMorningBrief({ document:root, window:win, automatic:resolveDealroomBoot(win.location).mode === 'live', intervalMs, getClient:async () => client ||= await createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }) });
-  const dispose = () => { morning.dispose(); disposed = true; ++readEpoch; auto.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); command.dispose(); morning.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };
 }

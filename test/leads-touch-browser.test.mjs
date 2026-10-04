@@ -1,18 +1,12 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {chromium} from 'playwright';
+import test from 'node:test';import assert from 'node:assert/strict';import { chromium, pausedClock } from './browser-harness.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
-import {setTimeout as delay} from 'node:timers/promises';
 
 test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens its review',async t=>{
  const browser=await chromium.launch({args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width:390,height:960},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
  const writes=[];await routeLeads(page,{onWrite:p=>writes.push(p)});await page.goto('http://localhost/leads');
  await page.locator('.market-marker').first().waitFor({state:'attached'});
- const now=new Date('2026-10-03T18:00:00Z');
- // Install before the pause target, with headroom beyond the CI job's timeout.
- await page.clock.install({time:new Date(now.getTime()-60*60*1000)});
- // Reproduce a scheduler gap between clock calls, as on the contended CI worker.
- await delay(250);await page.clock.pauseAt(now);
- assert.equal(await page.evaluate(()=>Date.now()),now.getTime(),'gesture starts at the paused time');
+ await pausedClock(page,new Date('2026-10-03T18:00:00Z'));
  const handle=page.locator('.lead-card [data-drag-handle]').first();await handle.scrollIntoViewIfNeeded();
  const initial=await page.evaluate(()=>scrollY);const box=await handle.boundingBox();const cdp=await page.context().newCDPSession(page);
  const touch=(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,radiusX:3,radiusY:3,id:1}]});

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { animationsSettled, chromium, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { workspace, detail, id } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
@@ -9,7 +9,7 @@ const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height},hasTouch,timezoneId,reducedMotion:clock?'reduce':motion});page.setDefaultTimeout(5000);
+  const page=await browser.newPage({viewport:{width,height},hasTouch,timezoneId,reducedMotion:clock?'reduce':motion});
   if(clock) await page.clock.install({time:new Date(now)});
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -64,7 +64,8 @@ test('Leads drag and keyboard moves review evidence before using the same stage 
  const{page,goto,writes,errors}=await open(t);await goto('/leads');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
- await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
+ // dragTo presses at the card's measured centre; mid-entrance the card has moved and no drag starts.
+ await animationsSettled(page);await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
  await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
@@ -112,7 +113,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
  const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
- await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
+ await waitForAsync(page, async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
  assert.deepEqual(errors,[]);
 });
 
@@ -154,7 +155,7 @@ test('Home, Leads and Local Deals fit desktop and phone; capture the six review 
  const{page,goto,errors}=await open(t);
  for(const width of[1440,390]){await page.setViewportSize({width,height:960});for(const[name,path]of[['home','/'],['leads','/leads'],['local-deals','/deals?view=board']]){
   await goto(path);if(name==='leads')await page.waitForSelector('.lead-card');if(name==='local-deals')await page.waitForSelector('.kanban-card');
-  await fits(page,`${name} ${width}`);await page.screenshot({timeout:15000,animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
+  await fits(page,`${name} ${width}`);await page.screenshot({animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
  }}assert.deepEqual(errors,[]);
 });
 
@@ -235,13 +236,15 @@ test('PR129 #4 parked and normalized Closed records stay out of both attention l
 });
 test('PR129 #7 closing Lead detail after polling resolves the current card by identity',async t=>{
  const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
- await card.focus();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();await page.clock.fastForward(31_000);await page.keyboard.press('Escape');
+ await card.focus();const original=await card.elementHandle();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();
+ // The poll's read is async: close only once it has re-rendered the card behind the open detail.
+ await page.clock.fastForward(31_000);await page.waitForFunction(node=>!node.isConnected,original);await page.keyboard.press('Escape');
  await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
  assert.equal(await card.evaluate(n=>n===document.activeElement),true);
 });
 test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
  const {page,goto,writes}=await open(t,{width:390,hasTouch:true});await goto('/leads');await page.locator('.lead-card').first().tap();await page.locator('#detailStage').selectOption('engaged');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);await page.locator('#saveStage').tap();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();assert.deepEqual(writes,['update-lead']);
- await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
+ await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
  assert.equal(await page.locator('#detailPhase').inputValue(),'legal');
 });
 for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain pointer actionable at ${width}x390`,async t=>{
