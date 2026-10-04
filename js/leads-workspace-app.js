@@ -42,11 +42,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       .find(node => node.getAttribute(identity.attr) === identity.value && node.dataset.clientId === identity.client);
     (node || $("refreshBoard")).focus({ preventScroll: true });
   }
-  let boardHtml = null;
-  function paintBoard(html) {
-    if (boardHtml === html) return;
-    $("leadBoard").innerHTML = html; boardHtml = html;
-  }
   function render() {
     const focused = focusIdentity(doc.activeElement);
     const leads = state.board?.leads || [];
@@ -70,12 +65,12 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("hotLeads").innerHTML = hottestLeads(leads).map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span><button data-claim="${esc(lead.id)}">Claim</button></article>`).join("") || '<p class="empty">No New leads</p>';
     $("hotLeads").setAttribute("aria-busy", "false");
     if (state.filters.stage === "archived") {
-      paintBoard(`<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`);
+      $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
-      paintBoard(`<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
+      $("leadBoard").innerHTML = `<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
         const rows = shown.filter(lead => normalizedStage(lead) === key);
         return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || '<p class="stage-empty">—</p>'}</div></section>`;
-      }).join("")}</div>`);
+      }).join("")}</div>`;
     }
     $("boardUpdated").textContent = updatedLabel(state.board?.generated_at);
     $("boardUpdated").dateTime = state.board?.generated_at || "";

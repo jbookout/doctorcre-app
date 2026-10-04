@@ -21,7 +21,7 @@ export function mountMorningBrief({ document: root, window: win, strip, getClien
   opener.setAttribute('aria-label', 'Morning brief'); opener.title = 'Morning brief';
   opener.setAttribute('aria-controls', 'docBrief'); opener.setAttribute('aria-expanded', 'false');
   opener.innerHTML = '<span aria-hidden="true">☀</span>';
-  strip.querySelector('.doc-updated').before(opener);
+  strip.append(opener);
   const status = root.createElement('span');
   status.className = 'doc-brief-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   strip.append(status);
@@ -33,7 +33,13 @@ export function mountMorningBrief({ document: root, window: win, strip, getClien
   const $ = selector => panel.querySelector(selector);
   let brief = null, engaged = false, actor = null, dismissedDay = null, windowDay = null, dayWindow = null, decided = false, pendingSpeech = false, cursor = null, events = new Map(), disposed = false;
   const speechOn = () => storage.get(SPEECH_KEY) === 'on';
-  const place = () => { if (strip.parentElement && (panel.parentElement !== strip.parentElement || strip.nextElementSibling !== panel)) strip.after(panel); };
+  const home = root.getElementById('appMainSlot');
+  const place = () => {
+    if (strip.parentElement === root.body && home) {
+      if (panel.parentElement !== home || home.firstElementChild !== panel) home.prepend(panel);
+    } else if (strip.parentElement && (panel.parentElement !== strip.parentElement || strip.nextElementSibling !== panel)) strip.after(panel);
+  };
+  place();
   const placement = new win.MutationObserver(place);
   placement.observe(root.body, { subtree:true, childList:true });
   const render = () => {

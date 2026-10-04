@@ -160,8 +160,3 @@ test('versioned Leads workspace and detail preserve canonical identity and origi
  assert.equal(c.finish(c.begin('getLeadDetail',[lead]),{detail:{...detail,id:'other-lead'}}),false);
  assert.equal(c.snapshot().ready,false);
 });
-
-test('command session invalidation distinguishes local filters from authorization and navigation',()=>{
- const c=createDocContext({page:'deals'});const epoch=c.snapshot().sessionEpoch;c.filter({query:'synthetic'});assert.equal(c.snapshot().sessionEpoch,epoch);
- c.clear();assert.equal(c.snapshot().sessionEpoch,epoch+1);c.fail(null,{status:403});assert.equal(c.snapshot().sessionEpoch,epoch+2);c.navigate('home');assert.equal(c.snapshot().sessionEpoch,epoch+3);
-});

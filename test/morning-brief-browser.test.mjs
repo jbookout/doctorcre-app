@@ -56,6 +56,8 @@ test('Doc shows the brief on the first open of the day, every line opens its rec
   await goto('/?mode=live');
   const brief = page.locator('#docBrief');
   await brief.waitFor({ state: 'visible' });
+  assert.equal(await brief.evaluate(node => document.querySelector('#appMainSlot').firstElementChild === node), true);
+  assert.ok((await brief.boundingBox()).y < 960, 'the automatic brief is in the opening viewport');
   assert.match(await brief.locator('h2').innerText(), /^Good (morning|afternoon|evening), Joe$/);
   await page.locator('#docBriefFirst a').waitFor();
   const links = await brief.locator('a.doc-brief-item').evaluateAll(nodes => nodes.map(n => n.getAttribute('href')));
@@ -149,7 +151,7 @@ for (const width of [1440, 390]) test(`review #7 brief reopening is focusable in
   await page.locator('#docBriefClose').click();
   assert.equal(await page.locator('#docBriefOpen').evaluate(node => node === document.activeElement), true);
   await page.locator('#syntheticClose').click();
-  await page.locator('#appMainSlot #docBriefOpen').waitFor();
+  await page.locator('body > #docPresence #docBriefOpen').waitFor();
   await page.locator('#docBriefOpen').click();
   await page.locator('#appMainSlot #docBrief').waitFor({ state: 'visible' });
 });

@@ -204,7 +204,7 @@ function compareRevision(a,b) {
 const survivesFilters = method => method === 'getWorkspace';
 
 export function createDocContext({ page = 'home', now = () => Date.now() } = {}) {
-  let epoch = 0, sessionEpoch = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map();
+  let epoch = 0, authorizationGeneration = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map();
   const listeners = new Set();
   const emit = () => listeners.forEach(listener => listener(snapshot()));
   function snapshot() {
@@ -221,15 +221,16 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
     const records = [...unique.values()];
     const active = selected ? records.find(row => row.kind === selected.kind && row.id === selected.id) || null : null;
     const ready = valid.length > 0 && valid.length === current.length && (!selected || !!active);
-    return { schema: 'doctorcre-doc-context.v1', page, label: DOC_PAGES[page].label, epoch, sessionEpoch, filters: { ...filters },
+    return { schema: 'doctorcre-doc-context.v1', page, label: DOC_PAGES[page].label, epoch, authorizationGeneration, filters: { ...filters },
       selected: selected ? { ...selected } : null, active, records, ready,
       observedAt: valid.length ? new Date(Math.min(...valid.map(read => read.at))).toISOString() : null,
       recentActivity: active?.activityComplete === false ? [] : active?.activity.slice(0, 5) || [], state: ready ? 'ready' : current.some(read => read.state === 'pending') ? 'updating' : 'unavailable' };
   }
+  const clear = () => { authorizationGeneration++; epoch++; selected = null; reads.clear(); tickets.clear(); emit(); };
   return {
     snapshot,
     subscribe(listener) { listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener); },
-    navigate(next, nextFilters = {}) { page = next; epoch++; sessionEpoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
+    navigate(next, nextFilters = {}) { page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
     filter(next) {
       epoch++; selected = null; filters = { ...next };
       for (const [key, ticket] of tickets) if (!survivesFilters(ticket.method)) tickets.delete(key);
@@ -257,12 +258,12 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at, epoch: ticket.epoch }); emit(); return records !== null;
     },
     fail(ticket, error = {}) {
-      if ([401, 403].includes(error.status) || error.code === 'authentication_required') { epoch++; sessionEpoch++; selected = null; reads.clear(); tickets.clear(); emit(); return; }
+      if ([401, 403].includes(error.status) || error.code === 'authentication_required') { clear(); return; }
       if (!ticket || tickets.get(ticket.key) !== ticket || ticket.epoch !== epoch && !survivesFilters(ticket.method)) return;
       reads.set(ticket.key, { state: 'unavailable', records: [], at: now(), epoch });
       emit();
     },
-    clear() { epoch++; sessionEpoch++; selected = null; reads.clear(); tickets.clear(); emit(); },
+    clear,
     tick: emit,
   };
 }

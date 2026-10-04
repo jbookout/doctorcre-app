@@ -17,8 +17,9 @@ const event = (id='e1', extra={}) => ({ id, subject_type:'deal', subject_id:'d1'
 const compose = extra => composeMorningBrief({ board:board(), triage:{items:[]}, events:[], since, now, ...extra });
 const deferred = () => { let resolve; const promise=new Promise(r=>resolve=r); return {promise,resolve}; };
 async function settle() { for(let i=0;i<12;i++) await delay(2); }
-function mount(t, { client={}, getClient, stored, speech=false, clock=()=>now, timeoutMs=100, intervalMs=60_000 }={}) {
- const dom=new JSDOM('<main><section id="strip"><div class="doc-updated"></div></section></main>',{url:'https://example.test'});
+function mount(t, { client={}, getClient, stored, speech=false, clock=()=>now, timeoutMs=100, intervalMs=60_000, stripHtml='<div class="doc-updated"></div>', floatingStrip=false }={}) {
+ const strip=`<section id="strip">${stripHtml}</section>`;
+ const dom=new JSDOM(floatingStrip ? `<main id="appMainSlot"><p>Page content</p></main>${strip}` : `<main>${strip}</main>`,{url:'https://example.test'});
  const win=dom.window, doc=win.document, spoken=[];
  win.SpeechSynthesisUtterance=class { constructor(text){this.text=text;} };
  win.speechSynthesis={speak:u=>spoken.push(u.text),cancel:()=>{}};
@@ -196,4 +197,27 @@ test('#2 a read completed in a hidden tab neither records presentation nor speak
  Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'hidden'});h.doc.dispatchEvent(new h.win.Event('visibilitychange'));held.resolve({items:[]});await settle();
  assert.equal(h.marker(),null);assert.deepEqual(h.spoken,[]);
  Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'visible'});h.doc.dispatchEvent(new h.win.Event('visibilitychange'));await settle();assert.equal(h.marker().day,'2026-10-03');assert.equal(h.spoken.length,1);
+});
+
+// The shared Doc strip owns only the icon; its update controls live in the dialog.
+test('the brief mounts on the icon-only Doc strip without depending on internal controls', async t => {
+ const h=mount(t,{stripHtml:'<button id="docOpen" type="button">Doc</button>'});
+ await settle();
+ assert.equal(h.panel.dataset.state,'ready');
+ assert.equal(h.doc.querySelector('#docBriefOpen').parentElement.id,'strip');
+ assert.equal(h.doc.querySelector('#docOpen').textContent,'Doc');
+ h.click('docBriefClose');h.click('docBriefOpen');
+ assert.equal(h.panel.hidden,false);
+ assert.equal(h.doc.activeElement.id,'docBriefTitle');
+});
+
+test('a floating Doc keeps the auto-opened brief first in the main region and follows record dialogs', async t => {
+ const h=mount(t,{floatingStrip:true,stripHtml:'<button id="docOpen" type="button">Doc</button>'});
+ await settle();
+ const main=h.doc.querySelector('#appMainSlot'), strip=h.doc.querySelector('#strip');
+ assert.equal(main.firstElementChild,h.panel);
+ assert.equal(h.panel.hidden,false);
+ const dialog=h.doc.createElement('dialog');h.doc.body.append(dialog);dialog.append(strip);
+ await settle();assert.equal(h.panel.parentElement,dialog);
+ h.doc.body.append(strip);await settle();assert.equal(main.firstElementChild,h.panel);
 });

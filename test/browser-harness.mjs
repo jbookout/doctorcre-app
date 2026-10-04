@@ -1,10 +1,9 @@
-// Shared browser engines, a wait budget and a fake clock.
+// The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
-// Hosted CI runs three test files at once on a four-vCPU runner. Launching a
-// fresh Chromium for every test and giving each file its own 1-7 s wait budget
-// made any wait that needed a little longer fail at random. Here:
-//  - each test process keeps one Chromium; every launch() hands out its own
-//    browser contexts, so storage, routes, clock and viewport stay per test;
+// Launching a fresh browser for every test and giving each file its own 1-7 s
+// wait budget made waits fail at random. Here:
+//  - each test process keeps one browser per engine; every launch() hands out
+//    its own contexts, so storage, routes, clock and viewport stay per test;
 //  - every page waits up to WAIT_MS for a condition before it fails, and no
 //    request leaves the machine unless the test routes it;
 //  - BROWSER_CPU_THROTTLE=<n> slows Chromium pages n times (CDP emulation) and
@@ -13,29 +12,29 @@
 import { after } from 'node:test';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium as playwright, webkit as playwrightWebkit } from 'playwright';
+import { chromium as playwrightChromium, webkit as playwrightWebkit } from 'playwright';
 
 export const WAIT_MS = 30_000;
 const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-const launched = new Map();
+const pools = [];
 
 after(async () => {
-  const results = await Promise.allSettled(launched.values());
-  launched.clear();
+  const results = await Promise.allSettled(pools.flatMap(pool => [...pool.values()]));
+  pools.forEach(pool => pool.clear());
   await Promise.all(results.filter(result => result.status === 'fulfilled')
     .map(result => result.value.close()));
 });
 
-export const chromium = browserHarness(playwright);
-export const webkit = browserHarness(playwrightWebkit);
-
-function browserHarness(browserType) {
+function browserEngine(engine) {
+  const launched = new Map();
+  // Keep each engine's launch options in its own pool.
+  pools.push(launched);
   return {
     async launch(options = {}) {
-      const key = JSON.stringify([browserType.name(), options]);
-      if (!launched.has(key)) launched.set(key, browserType.launch(options));
+      const key = JSON.stringify(options);
+      if (!launched.has(key)) launched.set(key, engine.launch(options));
       const browser = await launched.get(key);
       const contexts = new Set();
       return {
@@ -48,7 +47,7 @@ function browserHarness(browserType) {
           // request a test does not route itself and that leaves this machine is refused.
           await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
           const page = await context.newPage();
-          if (throttle > 1 && browserType.name() === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
+          if (throttle > 1 && engine === playwrightChromium) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
           if (jitter > 0) {
             const route = page.route.bind(page);
             page.route = (url, handler, options) => route(url, async (...args) => { await delay(Math.random() * jitter); return handler(...args); }, options);
@@ -64,6 +63,9 @@ function browserHarness(browserType) {
     },
   };
 }
+
+export const chromium = browserEngine(playwrightChromium);
+export const webkit = browserEngine(playwrightWebkit);
 
 // Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
 // a fixed range can be taken by a parallel run or an ephemeral connection.
