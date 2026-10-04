@@ -355,7 +355,8 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
   assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
  } else {
-  assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
+  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
+  assert.match(await page.locator('#panelBody [role="status"]').textContent(),/Unavailable/);
   assert.equal(await page.locator('#panelBody .detail-grid').count(),0);
   assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
