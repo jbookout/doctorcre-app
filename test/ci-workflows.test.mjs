@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { context, policy } from "./workflow-policy.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
@@ -16,7 +17,8 @@ const nodeEngines = [...harnessSource.matchAll(/export const (\w+) = browserEngi
 
 // Execute the workflow's shell steps with instrumented tools. This small reader
 // supports the workflows' run/if forms and refuses unfamiliar conditions.
-function commands(workflow, event) {
+function commands(workflow, event, action = "opened") {
+  if (workflow !== release && !policy(workflow, context(event, action)).runnable.length) return [];
   return workflow.split(/^      - /m).slice(1).flatMap((step) => {
     const run = step.match(/^(?:run:|\s+run:) (.+)$/m)?.[1];
     if (!run) return [];
@@ -60,7 +62,7 @@ esac
   }
   let failed = false;
   let output = "";
-  for (const command of commands(workflow, event)) {
+  for (const command of commands(workflow, event, input.action)) {
     const result = spawnSync("bash", ["-e", "-c", command], { env: {
         ...process.env, PATH: `${directory}:${process.env.PATH}`, TRACE: trace,
         FAIL_COMMAND: failCommand, GITHUB_REF_NAME: "app-v-fixture", GITHUB_SHA: "1".repeat(40),
@@ -75,12 +77,12 @@ esac
     }
   }
   assert.equal(output.toLowerCase().includes(canary.toLowerCase()), false, "validator output must not expose the privacy canary");
-  return { failed, trace: (await readFile(trace, "utf8")).trim().split("\n") };
+  return { failed, trace: (await readFile(trace, "utf8").catch(error => { if (error.code === "ENOENT") return ""; throw error; })).trim().split("\n").filter(Boolean) };
 }
 
-test("PRs retain the unconditional required test job and full suite", async (t) => {
+test("Open PRs retain the required test job and full suite", async (t) => {
   assert.match(ci, /^  pull_request:\s*$/m);
-  assert.match(ci, /^  test:\n    runs-on:/m);
+  assert.match(ci, /^  test:\n(?:    if:.*\n)?    runs-on:/m);
   assert.doesNotMatch(ci, /^\s+(?:paths|paths-ignore|branches-ignore):/m);
   const result = await replay(t, ci, "pull_request", "npm test");
   assert.equal(result.failed, true);
@@ -116,7 +118,7 @@ for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "npx
   });
 
   test(`${name}: missing or cancelled required tests cannot pass`, async (t) => {
-    assert.match(workflow, new RegExp(`^  ${name === "CI" ? "test" : "journeys"}:\\n    runs-on:`, "m"));
+    assert.match(workflow, new RegExp(`^  ${name === "CI" ? "test" : "journeys"}:\\n(?:    if:.*\\n)?    runs-on:`, "m"));
     requireSuite(workflow, suite);
     for (const failCode of [1, 130]) {
       assert.equal((await replay(t, workflow, "pull_request", suite, { failCode })).failed, true);
@@ -135,7 +137,12 @@ function installedEngines(workflow) {
 }
 
 function requireSuite(workflow, suite) {
-  assert.doesNotMatch(workflow, /^    if:|continue-on-error:|^\s+(?:paths|paths-ignore|branches-ignore):/m);
+  if (workflow !== release) {
+    const open = policy(workflow, context());
+    assert.deepEqual(open.runnable, open.jobs, "every open PR job must run");
+    assert.deepEqual(policy(workflow, context("pull_request", "closed")).runnable, []);
+  }
+  assert.doesNotMatch(workflow, /continue-on-error:|^\s+(?:paths|paths-ignore|branches-ignore):/m);
   assert.equal(commands(workflow, "pull_request").filter(command => command === suite).length, 1);
 }
 
@@ -224,3 +231,18 @@ test("release retains full tests and source verification before publication", as
     assert.ok(success.trace.indexOf(command) >= 0 && success.trace.indexOf(command) < publish);
   }
 });
+
+for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {
+  test(`${name}: close runs zero shell commands; invalid edited body still blocks`, async t => {
+    const closed = await replay(t, workflow, "pull_request", "", { action: "closed" });
+    assert.deepEqual(closed.trace, []);
+    for (const action of ["edited", "ready_for_review", "synchronize", "reopened"]) {
+      const bad = await replay(t, workflow, "pull_request", "", { action, body: "<!-- no description -->" });
+      assert.equal(bad.failed, true);
+      assert.ok(bad.trace.includes("node scripts/check-pr-description.mjs"));
+      assert.equal(bad.trace.includes("npm test"), false);
+      const good = await replay(t, workflow, "pull_request", "", { action });
+      assert.equal(good.failed, false);
+    }
+  });
+}
