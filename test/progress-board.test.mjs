@@ -214,6 +214,33 @@ test("Live collapses by default to the newest few, expands with one control, and
   assert.equal(locked.$('.column[data-stage="live"]').querySelectorAll(".board-card").length, 7, "works without storage");
 });
 
+for (const update of ["tick", "refresh"]) {
+  for (const expanded of [false, true]) test(`Live expansion focus survives ${update} when expanded=${expanded}`, async t => {
+    const page = await mount(FULL.project);
+    t.after(() => { page.board.dispose(); page.window.close(); });
+    if (expanded) page.board.toggleLive();
+    page.$("#live-toggle").focus();
+    await page.board[update]();
+    assert.equal(page.doc.activeElement, page.$("#live-toggle"));
+    assert.equal(page.$("#live-toggle").getAttribute("aria-expanded"), String(expanded));
+    // A refresh of the board must not pull focus from a separate control.
+    const outside = page.$("#board-retry");
+    outside.focus();
+    await page.board[update]();
+    assert.equal(page.doc.activeElement, outside);
+  });
+}
+
+test("Live expansion focus falls back to the board title when filtering removes the control", async t => {
+  const page = await mount(FULL.project);
+  t.after(() => { page.board.dispose(); page.window.close(); });
+  page.$("#live-toggle").focus();
+  page.board.filters.stage = "build";
+  page.board.tick();
+  assert.equal(page.$("#live-toggle"), null);
+  assert.equal(page.doc.activeElement, page.$("#board-title"));
+});
+
 test("stage timer reads stage_entered_at, updates live, and the pop-up shows history with durations", async () => {
   const task = { status: "running", stage: "build", stage_entered_at: "2026-09-29T09:46:00Z", updated_at: "2026-09-29T11:59:00Z" };
   assert.equal(stageTimer(task, REF), "build 2h 14m");

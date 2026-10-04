@@ -401,6 +401,7 @@ export function mountBoard(deps = {}) {
     pipelineCards = all;
     const container = byId("board-stages");
     const focusedId = [...cardNodes].find(([, node]) => node === doc.activeElement)?.[0];
+    const focusedControlId = container.contains(doc.activeElement) ? doc.activeElement.id : null;
     container.replaceChildren();
     const visible = filterCards(all, filters);
     const grouped = kind === ALL_REPOS_BOARD;
@@ -435,8 +436,8 @@ export function mountBoard(deps = {}) {
       container.append(column);
     });
     for (const id of [...cardNodes.keys()]) if (!all.some(card => card.id === id)) cardNodes.delete(id);
-    if (focusedId) {
-      const node = cardNodes.get(focusedId);
+    if (focusedId || focusedControlId) {
+      const node = focusedId ? cardNodes.get(focusedId) : byId(focusedControlId);
       (node?.isConnected ? node : byId("board-title")).focus();
     }
     // Cards animate in on the first draw only; later renders (refresh, tick)
