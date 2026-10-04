@@ -8,7 +8,7 @@ const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',ro
 async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());const context=await browser.newContext({viewport:{width,height:960},reducedMotion:motion});const page=await context.newPage();page.setDefaultTimeout(10000);
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- let scope='joe',fail=false,ready=brief,revision=0;const calls=[],errors=[];
+ let scope='joe',fail=false,ready=brief,revision=0,thread=[{id:'demo-note',kind:'note',text:'Demo short summary. Original synthetic entry with additional details.',recorded_at:new Date().toISOString()}];const calls=[],errors=[];
  const day=new Date().toLocaleDateString('en-CA');
  const data=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
  await page.addInitScript(()=>{window.spoken=[];window.speechStops=0;window.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};Object.defineProperty(window,'speechSynthesis',{value:{speak:utterance=>{window.spoken.push(utterance.text);window.lastUtterance=utterance;},cancel:()=>window.speechStops++}});});
@@ -22,7 +22,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
    const {name,arguments:args}=route.request().postDataJSON().params;calls.push({name,args});
    if(name==='morning-brief')return fail ? route.fulfill({status:503,body:''}) : rpc(ready ? data() : {ok:true});
    const methods={'deal-room-board':'getBoard','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','list-doc-conversations':'listDocConversations','notification-feed':'notificationFeed','loop-board':'loopBoard','list-industry-events':'listIndustryEvents'};
-   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,deal_id:value.deal.id,thread:[{kind:'note',text:'Demo short summary. Original synthetic entry with additional details.',recorded_at:new Date().toISOString()}],critical_dates:[],events:[]});}
+   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
    if(methods[name])return rpc(await fixture[methods[name]](args));
    if(name==='lead-board')return rpc({leads:[],stages:[],as_of:new Date().toISOString()});
    return rpc({ok:true});
@@ -31,7 +31,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
   const file=routes.routes[url.pathname]||url.pathname.slice(1);try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  const goto=async(path='/deals?mode=live')=>{await page.goto('http://localhost'+path);await page.locator('#docPresence').waitFor();};
- return {page,goto,calls,errors,set scope(value){scope=value;},set ready(value){ready=value;},set fail(value){fail=value;},change(){revision++;}};
+ return {page,goto,calls,errors,set scope(value){scope=value;},set ready(value){ready=value;},set fail(value){fail=value;},set thread(value){thread=value;},change(){revision++;}};
 }
 const snap=async(page,name)=>{await mkdir(new URL('test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
 
@@ -77,4 +77,16 @@ test('Doc remains reachable with invalid or missing brief without consuming the 
  await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  assert.equal(await page.locator('[data-brief-record]').count(),0);assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
  assert.equal(await page.evaluate(()=>localStorage.getItem('doctorcre:morning:joe')),null);
+});
+
+test('keyboard record entry moves focus into detail and Back restores the invoking card',async t=>{
+ const {page,goto}=await setup(t);await goto();await page.locator('#docMorningBrief[open]').waitFor();const card=page.locator('[data-brief-record="0"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+ assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');await page.keyboard.press('Enter');await card.waitFor();assert.equal(await card.evaluate(node=>document.activeElement===node),true);
+});
+test('refresh retains Details on stable note identity and uses Back when it leaves the visible five',async t=>{
+ const state=await setup(t),{page}=state;await state.goto();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();const original=page.locator('#morningContent details').filter({hasText:'Original synthetic entry'});await original.locator('summary').click();await original.locator('summary').focus();
+ state.thread=[{id:'prepended-note',text:'Demo prepended note.'},{id:'demo-note',text:'Demo short summary. Original synthetic entry with additional details.'}];await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('prepended'));
+ assert.equal(await original.evaluate(node=>node.open),true);assert.equal(await original.locator('summary').evaluate(node=>document.activeElement===node),true);assert.equal(await page.locator('#morningContent details').first().evaluate(node=>node.open),false);
+ state.thread=Array.from({length:5},(_,index)=>({id:`new-note-${index}`,text:`Demo replacement note ${index}.`}));await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('replacement'));
+ assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
 });

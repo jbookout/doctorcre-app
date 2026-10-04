@@ -293,9 +293,15 @@ export function createLiveClient(opts = {}) {
           .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
       }
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal });
-      if (!res.ok) throw new Error(`live changes -> ${res.status}`);
-      const data = await res.json();
+      const data = await readWithDeadline(async currentSignal => {
+        const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal:currentSignal });
+        if (!res.ok) {
+          const error = new Error(`live changes -> HTTP ${res.status}`);
+          error.status = res.status;
+          throw error;
+        }
+        return res.json();
+      }, { signal, timeoutMs:opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.

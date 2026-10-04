@@ -12,23 +12,29 @@ const short = (value, count) => {
   const words = String(value || '').trim().split(/\s+/);
   return words.length > count ? `${words.slice(0,count).join(' ')}…` : words.join(' ');
 };
-const own = (row, sponsor) => !row.owner || row.owner === sponsor;
 
 // A small, deterministic projection of facts. No model guesses, priority scores,
 // synthetic filler, or record writes. Earliest due commitments lead the brief.
 export function morningBriefView(payload, { now = new Date(), since, events = [], caughtUp = false } = {}) {
   if (!validBrief(payload)) return null;
   const { sponsor, sections } = payload, day = localDay(now);
-  const deals = new Map(sections.deals.state === 'unavailable' ? [] : sections.deals.items.filter(row => own(row,sponsor)).map(row => [row.id,row]));
+  // These sections have already been authorized by the authenticated producer.
+  const deals = new Map(sections.deals.state === 'unavailable' ? [] : sections.deals.items.map(row => [row.id,row]));
   const due = [];
   if (sections.today.state !== 'unavailable') for (const row of sections.today.items) {
     const deal = deals.get(row.subject_id);
-    if (row.subject_type !== 'deal' || !deal || !own(row,sponsor) || !text(row.what) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day || deal.operating_state === 'parked' || /^closed$/i.test(deal.phase || '')) continue;
-    due.push({ key:`deal:${row.subject_id}`, kind:'deal', id:row.subject_id, title:deal.name, summary:row.what, due:row.due_on });
+    if (!text(row.what) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
+    if (row.subject_type === 'deal') {
+      if (!deal || deal.operating_state === 'parked' || /^closed$/i.test(deal.phase || '')) continue;
+      due.push({ key:`deal:${row.subject_id}`, kind:'deal', id:row.subject_id, title:deal.name, summary:row.what, due:row.due_on });
+    } else if (row.item_kind === 'next_action' && text(row.id)) {
+      due.push({ key:`action:${row.id}`, kind:'action', id:row.id, action:row, title:row.subject_name || row.what, summary:row.what, due:row.due_on });
+    }
   }
   if (sections.loops.state !== 'unavailable') for (const row of sections.loops.items) {
-    if (!own(row,sponsor) || row.status !== 'open' || row.kind !== 'open_loop' || !text(row.title) || !text(String(row.number || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
-    due.push({ key:`loop:${row.kind}:${row.number}`, kind:'loop', id:String(row.number), loopKind:row.kind, title:row.title, summary:row.blocker_detail || '', due:row.due_on });
+    const title = text(row.title) || text(row.label);
+    if (row.status !== 'open' || row.kind !== 'open_loop' || !title || !text(String(row.number || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
+    due.push({ key:`loop:${row.kind}:${row.number}`, kind:'loop', id:String(row.number), loopKind:row.kind, title, summary:row.blocker_detail || '', due:row.due_on });
   }
   due.sort((a,b) => a.due.localeCompare(b.due) || a.key.localeCompare(b.key));
   const seen = new Set();

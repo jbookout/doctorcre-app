@@ -10,12 +10,12 @@ const now = new Date(2026,9,3,8), day = localDay(now), since = new Date(2026,9,2
 const section = items => ({state:items.length ? 'ready':'empty',items});
 const due = (id='a',owner='joe',date=day) => ({id:`action-${id}`,subject_type:'deal',subject_id:id,what:'Review demo lease comments',owner,due_on:date});
 const deal = (id='a',owner='joe') => ({id,name:`Demo ${id}`,owner,operating_state:'active',phase:'legal'});
-function payload() { return {sponsor:'joe',sections:{today:section([due(),due('b')]),deals:section([deal(),deal('b'),deal('c'),deal('d','dell')]),loops:section([])}}; }
+function payload() { return {sponsor:'joe',sections:{today:section([due(),due('b')]),deals:section([deal(),deal('b'),deal('c')]),loops:section([])}}; }
 const event = (id='c',stamp=now.toISOString()) => ({id:`event-${id}`,subject_type:'deal',subject_id:id,recorded_at:stamp,field:'next_step',new_value:'Review demo terms',old_value:'Wait'});
 const options = {now,since,events:[event()],caughtUp:true};
 
-test('a short evidence-linked first action, overnight change and today item; duplicates and other partner excluded',()=>{
- const data=payload();data.sections.today.items.push(due('d','dell'),due('a'));
+test('a short evidence-linked first action, overnight change and today item; duplicates and unadmitted deals excluded',()=>{
+ const data=payload();data.sections.today.items.push(due('a'));
  const view=morningBriefView(data,options);
  assert.deepEqual(view.groups.map(group=>[group.key,group.row.id]),[['first','a'],['overnight','c'],['today','b']]);
  assert.ok(view.spoken.split(/\s+/).length<=65);
@@ -42,7 +42,6 @@ test('date window, priority ordering, upcoming, closed and paused exclusions, de
 test('due partner tasks carry exact kind/number identity; undated backlog never fills brief',()=>{
  const data=payload();data.sections.today=section([]);data.sections.loops=section([
  {number:'1',kind:'open_loop',owner:'joe',title:'Demo task',status:'open',due_on:day,blocker_detail:'Review demo entry'},
- {number:'2',kind:'open_loop',owner:'dell',title:'Demo other task',status:'open',due_on:day},
  {number:'3',kind:'open_loop',owner:'joe',title:'Demo backlog',status:'open',due_on:null}]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups.map(group=>group.row.key),['loop:open_loop:1']);
 });
@@ -70,7 +69,7 @@ function setup(t,{automatic=true,storage,read}={}) {
  win.HTMLDialogElement.prototype.showModal=function(){this.open=true;};win.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new win.Event('close'));};
  if(storage)for(const [key,value]of storage)win.localStorage.setItem(key,value);
  let data=payload(),count=0,current=now,fail=false;
- const client={morningBrief:async()=>{count++;if(fail)throw Error('Offline');return read ? read():data;},getChanges:async()=>({events:[],cursor:'end'}),getDeal:async id=>({deal:deal(id),thread:[{text:'Demo short note. Original demo note continues.'}]}),readLoop:async args=>({loop:{number:args.number,kind:args.kind,title:'Demo task',status:'open',prose_md:'Demo task entry.'}})};
+ const client={morningBrief:async()=>{count++;if(fail)throw Error('Offline');return read ? read():data;},getChanges:async()=>({events:[],cursor:'end'}),getDeal:async id=>({deal:deal(id),thread:[{id:'demo-note',text:'Demo short note. Original demo note continues.'}]}),readLoop:async args=>({loop:{number:args.number,kind:args.kind,title:'Demo task',status:'open',body:'Demo task entry.'}})};
  const ui=mountMorningBrief({document:root,window:win,getClient:async()=>client,automatic,intervalMs:100000,now:()=>current});t.after(()=>ui.dispose());
  return {ui,root,win,client,get count(){return count;},set data(value){data=value;},set current(value){current=value;},set fail(value){fail=value;}};
 }
@@ -143,7 +142,56 @@ test('late refused detail cannot clear a newer brief after returning to its card
 
 test('task card opens the exact live record directly without a retired route',async t=>{
  const state=setup(t);const data=payload();data.sections.today=section([]);data.sections.loops=section([{number:'7',kind:'open_loop',owner:'joe',title:'Demo due task',status:'open',due_on:day}]);state.data=data;
- const reads=[];state.client.readLoop=async args=>{reads.push(args);return {loop:{...args,title:'Demo due task',status:'open',prose_md:'Demo original task entry.'}};};
+ const reads=[];state.client.readLoop=async args=>{reads.push(args);return {loop:{...args,title:'Demo due task',status:'open',body:'Demo original task entry. <script>demo</script>',blocker_detail:'Demo distinct blocker.'}};};
  await state.ui.refresh();const card=state.root.querySelector('[data-brief-record]');assert.equal(card.tagName,'BUTTON');assert.equal(card.getAttribute('href'),null);card.click();
  await new Promise(resolve=>setTimeout(resolve,10));assert.deepEqual(reads,[{number:'7',kind:'open_loop'}]);assert.match(state.root.getElementById('morningContent').textContent,/Demo original task entry/);
+ assert.equal(state.root.querySelector('.entry-original').textContent,'Demo original task entry. <script>demo</script>');assert.equal(state.root.querySelector('#morningContent script'),null);
+});
+
+test('producer label identifies due tasks with a null title',()=>{
+ const data=payload();data.sections.today=section([]);data.sections.loops=section([{number:'7',kind:'open_loop',status:'open',owner:'joe',title:null,label:'Demo labelled task',due_on:day}]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0]?.row.title,'Demo labelled task');
+});
+test('producer-admitted uppercase owners stay visible and selected across refresh',async t=>{
+ const state=setup(t);const data=payload();data.sections.today=section([due('a','JOE')]);data.sections.deals=section([deal('a','JOE')]);data.sections.loops=section([{number:'7',kind:'open_loop',status:'open',owner:'JOE',title:'Demo admitted task',due_on:day}]);
+ assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups.map(group=>group.row.id),['a','7']);state.data=data;
+ state.client.getDeal=async()=>({deal:deal('a','JOE'),thread:[]});await state.ui.refresh();state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));await state.ui.refresh();assert.ok(state.root.querySelector('.morning-record'));
+ state.root.getElementById('morningBack').click();state.root.querySelectorAll('[data-brief-record]')[1].click();await new Promise(resolve=>setTimeout(resolve,10));await state.ui.refresh();assert.ok(state.root.querySelector('.morning-record'));
+ data.sections.loops=section([]);await state.ui.refresh();assert.equal(state.root.querySelector('.morning-record'),null);
+});
+test('a caught-up poll does not truncate later full pages; each refresh must reach the end',async t=>{
+ const state=setup(t);await state.ui.refresh();let reads=0;
+ const older=event('c',new Date(now.valueOf()-10000).toISOString()),newer={...event('c'),id:'newer',new_value:'Newest demo change'};
+ state.client.getChanges=async()=>({events:[[older],[newer],[]][reads++],cursor:`page-${reads}`});await state.ui.refresh();
+ assert.equal(reads,3);assert.match(state.root.getElementById('morningContent').textContent,/Newest demo change/);assert.equal(state.root.getElementById('morningCoverage').textContent,'');
+ state.client.getChanges=async()=>({events:[{...newer,id:`budget-${reads++}`}],cursor:`page-${reads}`});await state.ui.refresh();
+ assert.equal(reads,7);assert.match(state.root.getElementById('morningCoverage').textContent,/Overnight updates unavailable/);assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Newest demo change/);
+});
+test('earlier non-deal commitments rank first and retain exact action identity',()=>{
+ const data=payload(),action={...due('person-a','JOE','2026-10-01'),item_kind:'next_action',subject_type:'person',subject_name:'Demo Contact',subject_ref:'P-DEMO'};data.sections.today.items.push(action);
+ const first=morningBriefView(data,{...options,events:[]}).groups[0]?.row;assert.equal(first?.kind,'action');assert.equal(first.id,action.id);assert.equal(first.title,'Demo Contact');
+ data.sections.today=section([action]);data.sections.deals=section([]);assert.equal(morningBriefView(data,{...options,events:[]}).groups.length,1);
+});
+test('non-deal action card opens and refreshes its exact admitted record, then exits when removed',async t=>{
+ const state=setup(t),data=payload(),action={...due('person-a','joe','2026-10-01'),item_kind:'next_action',subject_type:'person',subject_name:'Demo Contact',subject_ref:'P-DEMO'};data.sections.today=section([action]);state.data=data;
+ let wrongReads=0;state.client.getDeal=state.client.readLoop=async()=>{wrongReads++;throw Error('Wrong record');};await state.ui.refresh();state.root.querySelector('[data-brief-record]')?.click();await new Promise(resolve=>setTimeout(resolve,10));
+ assert.ok(state.root.querySelector('.morning-record'));assert.match(state.root.querySelector('.entry-original').textContent,/Review demo lease comments/);assert.match(state.root.getElementById('morningContent').textContent,/P-DEMO/);assert.equal(wrongReads,0);
+ action.what='Updated demo personal commitment';await state.ui.refresh();assert.match(state.root.querySelector('.entry-original').textContent,/Updated demo personal commitment/);
+ data.sections.today=section([]);await state.ui.refresh();assert.equal(state.root.querySelector('.morning-record'),null);
+});
+for(const status of [401,403]) {
+ test(`live changes preserves HTTP ${status} without reading a diagnostic body`,async()=>{
+  let bodyRead=false;const response=new Response('Demo diagnostic',{status});const arrayBuffer=response.arrayBuffer.bind(response);response.arrayBuffer=()=>{bodyRead=true;return arrayBuffer();};response.json=()=>{bodyRead=true;return new Promise(()=>{});};const client=createLiveClient({fetchImpl:async()=>response});
+  await assert.rejects(client.getChanges(null),error=>error.status===status);assert.equal(bodyRead,false);
+ });
+ test(`changes HTTP ${status} clears facts and speech and does not consume a daily opening`,async t=>{
+  const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});state.ui.dispose();const calls=[];state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
+  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();
+  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).day,undefined);
+  state.client.getChanges=async()=>({events:[],cursor:'end'});await ui.refresh();state.root.getElementById('morningListen').click();assert.equal(calls.length,1);
+  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await ui.refresh();assert.equal(calls.at(-1),'cancel');assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/Demo/);
+ });
+}
+test('ordinary changes network failure retains supported priorities with unavailable overnight coverage',async t=>{
+ const state=setup(t);state.client.getChanges=async()=>{throw Error('Offline');};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);assert.match(state.root.getElementById('morningCoverage').textContent,/Overnight updates unavailable/);
 });
