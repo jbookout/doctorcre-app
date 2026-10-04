@@ -10,7 +10,7 @@ coverage/
 __pycache__/
 *.pyc
 
-
+test-artifacts/
 # Assembled from slice-owned modules and route fragments.
 /contracts/app-routes.v1.json
 /js/slices.generated.js

@@ -99,7 +99,8 @@ test('W5 session expiry erases a pending trust draft and recovery permits a fres
 async function expireOpenRecord(h) {
  const answered=h.page.waitForResponse(r=>/^\/api\/v1\/business\/vendors\/[^/]+$/.test(new URL(r.url()).pathname)&&r.status()===401);
  h.setExpired(true);await h.page.evaluate(()=>window.dispatchEvent(new Event('online')));
- await h.page.waitForFunction(()=>document.querySelector('#recordTitle')?.textContent==='Your session has ended');await answered;
+ await (await answered).finished();await h.page.clock.runFor(1);
+ await h.page.waitForFunction(()=>document.querySelector('#recordTitle')?.textContent==='Your session has ended');
 }
 async function beginRating(page, reason='Synthetic pending rating') {
  await page.locator('[data-details-key="trust"] summary').click();

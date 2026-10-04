@@ -16,11 +16,23 @@ const dir = new URL('./', import.meta.url);
 const sources = await Promise.all((await readdir(dir)).filter(name => /\.test\.mjs$/.test(name) && name !== 'test-harness.test.mjs')
   .map(async name => ({ name, text: await readFile(new URL(name, dir), 'utf8') })));
 
+function assertSharedBrowserBudget(text, name) {
+  // Non-browser tests bound child processes too; those are not page waits.
+  if (/from ['"].*browser-harness\.mjs['"]/.test(text)) {
+    assert.doesNotMatch(text, /[{,]\s*timeout\s*:\s*\d/, `${name} gives one wait its own budget`);
+  }
+}
+
+test('the browser wait-budget guard permits bounded subprocess tests and rejects a page override', () => {
+  assertSharedBrowserBudget("spawnSync(process.execPath, [], {timeout:3000})", 'subprocess');
+  assert.throws(() => assertSharedBrowserBudget("import { chromium } from './browser-harness.mjs'; page.waitForFunction(() => true, {timeout:3000})", 'browser'), /gives one wait its own budget/);
+});
+
 test('every browser test gets its engine from the harness and waits on its one budget', () => {
   for (const { name, text } of sources) {
     assert.doesNotMatch(text, /from ['"]playwright['"]/, `${name} imports Playwright directly`);
     assert.doesNotMatch(text, /setDefaultTimeout\(/, `${name} sets its own wait budget`);
-    assert.doesNotMatch(text, /[{,]\s*timeout\s*:\s*\d/, `${name} gives one wait its own budget`);
+    assertSharedBrowserBudget(text, name);
     assert.doesNotMatch(text, /waitForFunction\(\s*async/, `${name} waits on an async predicate, which never waits`);
     assert.doesNotMatch(text, /for\s*\(\s*let \w+\s*=\s*0;[^;]*;\s*\w+\+\+\s*\)\s*await page\.waitForTimeout/, `${name} polls with its own fixed budget`);
   }

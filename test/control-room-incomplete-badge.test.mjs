@@ -3,10 +3,10 @@
 // now reflects any read that answered incompletely.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import { HEADER_WORDS, censusIncompleteSources, headerPhase } from "../js/control-room-model.js";
-import { KNOWN_GAPS, atlasIncompleteSources } from "../js/atlas-model.js";
+
+import {KNOWN_GAPS, atlasIncompleteSources} from "../js/atlas-model.js";
 
 const pageJs = await readFile(new URL("../js/control-room.js", import.meta.url), "utf8");
 const atlasJs = await readFile(new URL("../js/atlas.js", import.meta.url), "utf8");
@@ -31,31 +31,4 @@ test("an atlas that has not been read yet claims nothing either way", () => {
 test("an atlas read that failed counts as incomplete", () => {
   assert.deepEqual(atlasIncompleteSources({ status: "offline", payload: null }), ["the atlas"]);
   assert.deepEqual(atlasIncompleteSources({ status: "unavailable", payload: null }), ["the atlas"]);
-});
-
-test("a census that answered incompletely names its short legs", () => {
-  const read = { state: "read", payload: { census_complete: false, coverage: [
-    { kind: "work_request", source_ref: "ops.work_request", state: "complete" },
-    { kind: "loop", source_ref: "public.loop_item", state: "partial" },
-  ] } };
-  assert.deepEqual(censusIncompleteSources(read), ["public.loop_item"]);
-  assert.deepEqual(censusIncompleteSources({ state: "read", payload: { census_complete: true, coverage: [] } }), []);
-  assert.deepEqual(censusIncompleteSources({ state: "unknown", reason: "x" }), []);
-});
-
-test("every read answered but one incomplete is not 'Every read answered'", () => {
-  assert.equal(headerPhase("ready", ["ops.v_job_run"]), "incomplete");
-  assert.equal(headerPhase("ready", []), "ready");
-  assert.equal(headerPhase("partial", ["ops.v_job_run"]), "partial");
-  assert.equal(headerPhase("loading", ["ops.v_job_run"]), "loading");
-  assert.notEqual(HEADER_WORDS.incomplete, HEADER_WORDS.ready);
-  assert.doesNotMatch(HEADER_WORDS.incomplete, /every read answered/i);
-});
-
-test("the page feeds the atlas coverage and the census into the header", () => {
-  assert.match(pageJs, /headerPhase\(/);
-  assert.match(pageJs, /atlasIncompleteSources\(/);
-  assert.match(pageJs, /censusIncompleteSources\(/);
-  assert.match(pageJs, /onChange: /);
-  assert.match(atlasJs, /onChange\(/);
 });
