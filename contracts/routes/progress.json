@@ -5,6 +5,12 @@
       "asset": "progress-board.html",
       "order": 2,
       "gatePath": "/control-room"
+    },
+    {
+      "path": "/control-room/progress/board/:boardId",
+      "asset": "progress-board.html",
+      "order": 2.1,
+      "gatePath": "/control-room"
     }
   ],
   "redirects": [

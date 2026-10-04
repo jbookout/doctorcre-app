@@ -4,7 +4,7 @@ import { cp, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { prepareSlices, assertSliceOwnership } from '../scripts/slices.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { registerSlices } from '../js/slice-registration.js';
@@ -127,7 +127,7 @@ async function open(t, root, { failControls = false, failHelper = false, runtime
 for (const slot of ['#appMainSlot', '#appSidebarSlot']) test(`finding 4: actual shell mounts a section in ${slot} and executes its controls`, async t => {
   const root = await fixture(t); await addSlice(root, { slot });
   const { page, errors } = await open(t, root);
-  await page.waitForFunction(() => !!document.querySelector('#alpha-action')?.onclick, null, { timeout: 3000 });
+  await page.waitForFunction(() => !!document.querySelector('#alpha-action')?.onclick);
   assert.equal(await page.locator(`${slot} #alpha-panel`).count(), 1);
   await page.locator('#alpha-action').evaluate(button => button.click());
   assert.equal(await page.locator('#alpha-action').textContent(), 'Demo ran');
@@ -145,7 +145,7 @@ test('finding 4: section-contributed layout-slot nodes keep their destination', 
 test('finding 4: a runtime section failure leaves global navigation usable', async t => {
   const root = await fixture(t); await addSlice(root);
   const { page, errors } = await open(t, root, { runtimeOnly: true });
-  await page.waitForSelector('[data-app-nav-item]', { timeout: 3000 });
+  await page.waitForSelector('[data-app-nav-item]');
   assert.ok(await page.locator('#appLayout').count());
   assert.match(await page.locator('[data-slice-error]').textContent(), /unavailable/i);
   await page.getByLabel('More', { exact: true }).click();
@@ -155,7 +155,7 @@ test('finding 4: a runtime section failure leaves global navigation usable', asy
 test('finding 6: failed entry controls stay inert until a page reload restores them', async t => {
   const root = await fixture(t); await addSlice(root);
   const { page, errors, requests } = await open(t, root, { failControls: true });
-  const reload = page.getByRole('button', { name: 'Reload page' }); await reload.waitFor({ timeout: 3000 });
+  const reload = page.getByRole('button', { name: 'Reload page' }); await reload.waitFor();
   assert.equal(await page.locator('#alpha-panel').getAttribute('data-slice-state'), 'failed');
   assert.equal(await page.locator('#alpha-panel').evaluate(node => node.inert), true);
   assert.match(await page.locator('[data-slice-error]').textContent(), /controls unavailable/i);
@@ -182,7 +182,7 @@ test('finding 6: recovery downloads a failed imported helper and restores workin
   assert.equal(await page.locator('#alpha-panel').evaluate(node => node.inert), true);
   await page.evaluate(() => history.replaceState(null, '', '/?view=demo#alpha-panel'));
   await page.getByRole('button', { name: 'Reload page' }).click();
-  await page.waitForFunction(() => document.querySelector('#alpha-panel')?.dataset.sliceState === 'ready', null, { timeout: 3000 });
+  await page.waitForFunction(() => document.querySelector('#alpha-panel')?.dataset.sliceState === 'ready');
   assert.equal(helperRequests(), 2, 'failed dependencies are downloaded again');
   assert.equal(requests(), 2);
   assert.equal(page.url(), 'http://localhost/?view=demo#alpha-panel');

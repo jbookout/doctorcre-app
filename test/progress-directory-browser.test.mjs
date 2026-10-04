@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium, pausedClock, settles } from "./browser-harness.mjs";
 import { boardFreshness, boardDirectory } from "../js/progress-board-model.js";
 
 const NOW = new Date("2026-10-01T15:00:00Z");
@@ -13,9 +13,8 @@ const boards = [
 async function open(t, { width = 390, path = "/control-room/progress?board=demo-project", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
-  page.setDefaultTimeout(5000);
-  await page.clock.install({ time: NOW });
-  if (publicationTime) await page.clock.pauseAt(NOW);
+  if (publicationTime) await pausedClock(page, NOW);
+  else await page.clock.install({ time: NOW });
   const calls = [], errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
@@ -38,7 +37,7 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
       } }) });
     }
     if (url.pathname === "/app-release" || url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "application/json", body: "{}" });
-    const path = url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
+    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
       : url.pathname === "/control-room" ? "control-room.html" : url.pathname.slice(1);
     try {
       const body = await readFile(new URL("../" + path, import.meta.url));
@@ -83,8 +82,9 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "carr-v5");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(await page.locator("#board-stages .column").count(), 6);
+  await project.evaluate(node => node.removeAttribute("target"));
   await project.click();
-  await page.waitForURL("**/control-room/progress?board=demo-project");
+  await page.waitForURL("**/control-room/progress/board/demo-project");
   await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
   assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -287,7 +287,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) assert.match(await page.locator("#board-error").textContent(), /(unavailable|offline)/i);
+    if (fail) await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i));
     assert.deepEqual(errors, []);
   });
 
@@ -296,12 +296,14 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   const { page, errors } = await open(t, { onRpc: async (route, rpc) => {
     if (rpc.name !== "read-progress-board") return false;
     const read = snapshot(version);
-    read.snapshot.snapshot_json.tasks = { build: { title: `Synthetic task ${version}`, status: "running" } };
+    read.snapshot.snapshot_json.tasks = { build: { title: `Synthetic task ${version}`, status: "running",
+      summary: `Synthetic summary ${version}`, provider: "Synthetic provider", model: `Synthetic model ${version}`, effort: "high" } };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: { content: [{ text: JSON.stringify(read) }] } }) });
     return true;
   } });
   const task = page.locator('.board-card[data-card-id="build"]');
   await task.focus();
+  assert.match(await task.textContent(), /Synthetic summary 1.*Synthetic provider.*Synthetic model 1 · high/);
   await page.evaluate(() => window.retainedTask = document.activeElement);
   await page.clock.runFor(15000);
   await new Promise(resolve => setTimeout(resolve, 30));

@@ -284,3 +284,34 @@ footer { padding-top: 8px; }
 #work-triage {box-sizing:border-box;width:min(960px,calc(100vw - 24px));max-height:85vh;overflow:auto;background:#06182b;color:var(--ink);border:1px solid var(--blue);border-radius:18px;padding:24px;}
 #work-triage::backdrop {background:rgba(0,5,13,.8);backdrop-filter:blur(8px);}#work-triage-form {display:grid;gap:16px;}#work-triage-form h2 {overflow-wrap:anywhere;}#work-triage-form textarea {min-height:110px;}
 @media(prefers-reduced-motion:reduce) {.work-card {transition:none;}.work-card:hover{transform:none;}}
+
+/* The independent system-work census diagram. */
+.flow-wrap { margin-top: 16px; overflow: hidden; }
+.pipeline-diagram { display: block; width: 100%; height: auto; }
+.pipeline-diagram .flow-stage { --stage-accent: currentColor; }
+.pipeline-diagram .stage-well { fill: rgba(2,13,29,.59); stroke: var(--stage-accent); stroke-width: 1.25; }
+.pipeline-diagram .stage-index { fill: var(--stage-accent); font: 800 12px 'DM Sans', sans-serif; letter-spacing: .1em; }
+.pipeline-diagram .stage-label { fill: var(--stage-accent); font-size: 21px; font-weight: 800; }
+.pipeline-diagram .stage-count { fill: var(--muted); font: 700 12px 'DM Sans', sans-serif; }
+.pipeline-diagram .flow-empty { fill: var(--muted); font: 12px 'DM Sans', sans-serif; }
+.pipeline-diagram .pipeline-connector { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 5 5;
+  animation: flow 4s linear infinite; }
+.pipeline-diagram .pipeline-node { cursor: pointer; outline: none; }
+.pipeline-diagram .node-shape { fill: rgba(10,31,54,.96); stroke: var(--stage-accent); stroke-width: 1.2; transition: fill .2s, stroke-width .2s; }
+.pipeline-diagram .pipeline-node:hover .node-shape, .pipeline-diagram .pipeline-node:focus-visible .node-shape { fill: #174064; stroke-width: 2.5; }
+.pipeline-diagram .pipeline-node:focus-visible .node-shape { stroke: #fff; }
+.pipeline-diagram .node-halo { fill: var(--stage-accent); opacity: .88; transform-box: fill-box; transform-origin: center; }
+.pipeline-diagram .node-pulse { fill: none; stroke: var(--pulse-accent); stroke-width: 1.5; }
+.pipeline-diagram .pipeline-node[data-pulse="healthy"] { --pulse-accent: var(--blue); }
+.pipeline-diagram .pipeline-node[data-pulse="attention"] { --pulse-accent: var(--orange); }
+.pipeline-diagram .pipeline-node[data-pulse="critical"] { --pulse-accent: var(--red); }
+.pipeline-diagram .pipeline-node[data-pulse="still"] { --pulse-accent: var(--green); }
+.pipeline-diagram .pipeline-node[data-pulse="healthy"] .node-halo { animation: pulse 3.5s ease-in-out infinite; }
+.pipeline-diagram .pipeline-node[data-pulse="attention"] .node-halo { animation: pulse 2s ease-in-out infinite; }
+.pipeline-diagram .pipeline-node[data-pulse="critical"] .node-halo { animation: pulse 1s ease-in-out infinite; }
+.pipeline-diagram .pipeline-node[data-pulse="critical"] .node-shape { stroke-dasharray: 5 3; stroke-width: 2; }
+.pipeline-diagram .node-label { fill: var(--ink); font: 700 12px 'DM Sans', sans-serif; }
+.pipeline-diagram .node-meta { fill: #a6bfd2; font: 600 9px 'DM Sans', sans-serif; }
+.pipeline-diagram .node-summary { fill: #afc4d5; font: 500 9px 'DM Sans', sans-serif; }
+@keyframes pulse { 50% { opacity: .35; transform: scale(.72); } }
+@keyframes flow { to { stroke-dashoffset: -20; } }

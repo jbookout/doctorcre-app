@@ -13,6 +13,7 @@ export const navigationItems = registration.navigationItems;
 const sectionForRoute = registration.sectionForRoute;
 
 export function activeDestination(pathname) {
+  if (pathname.startsWith('/control-room/progress/board/')) return '/control-room/progress';
   return sectionForRoute[pathname] || pathname;
 }
 

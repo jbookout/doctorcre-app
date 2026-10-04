@@ -1,3 +1,4 @@
+import { BOARD_ROUTE, boardIdFromPath } from './progress-board-route.js';
 import { routeContract } from "./slices.generated.js";
 // V5-UX-B12a — what the Notifications page shows, decided without a DOM.
 //
@@ -185,7 +186,7 @@ export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   const [pathname, query] = path.split("?");
   const home = LEGACY_ROUTE_HOMES[pathname] || pathname;
   const homePath = home.split("?")[0];
-  const routed = routeList.includes(homePath);
+  const routed = routeList.includes(homePath) || (boardIdFromPath(homePath) !== null && routeList.includes(BOARD_ROUTE));
   const href = routed ? `${home}${query ? `${home.includes("?") ? "&" : "?"}${query}` : ""}` : null;
   return { path, href, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
 }

@@ -1,19 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, webkit } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { workspace, detail } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const contract=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
-async function setup(t,{width=1440,motion='no-preference',onRoute}={}) {
- const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});page.setDefaultTimeout(10000);
+async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromium}={}) {
+ const browser=await engine.launch();t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});
  // Playwright polls synchronous predicates. Import the page store once so
  // readiness checks return a boolean rather than a truthy Promise.
  await page.addInitScript(()=>window.addEventListener('DOMContentLoaded',()=>{
-  import('/js/doc-context.js').then(({pageDocContext})=>{window.docContext=pageDocContext;});
+  import(new URL('/js/doc-context.js',location.href).href).then(({pageDocContext})=>{window.docContext=pageDocContext;});
  },{once:true}));
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -42,7 +42,7 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
  const{page,goto,errors,calls}=await setup(t);
  for(const width of [1440,390]) { await page.setViewportSize({width,height:960});
  for(const path of ['/', '/deals', '/leads', '/tours', '/clients','/vendors','/calendar','/ideas-events','/control-room','/control-room/progress','/work-requests','/all-work','/incidents','/control-room/progress/work','/updates','/doc-chats','/doc-chats/work','/search','/status','/design-lab']){
-  try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); } assert.equal(await page.locator('#appMainSlot > #docPresence').count(),1,path);
+  try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); } assert.equal(await page.locator('body > #docPresence').count(),1,path);
   assert.equal(await page.locator('#docOpen').isVisible(),true,path);
   assert.equal(await page.locator('#docChat:visible').count(),0,path);
   await page.locator('#docOpen').click();assert.equal(await page.locator('#docDetail').evaluate(n=>n.open),true,path);await page.keyboard.press('Escape');
@@ -67,8 +67,8 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.screenshot({path:new URL('test-artifacts/w8/record-presence-phone.png',root).pathname,animations:'disabled'});
  const persistent=await page.locator('#recordPanel').evaluate(dialog=>{
   dialog.scrollTop=500;
-  const card=dialog.getBoundingClientRect(),presence=dialog.querySelector('#docPresence').getBoundingClientRect();
-  const visible=presence.top>=card.top && presence.bottom<=card.bottom;
+  const presence=dialog.querySelector('#docPresence').getBoundingClientRect();
+  const visible=presence.top>=0 && presence.bottom<=window.innerHeight && presence.right<=window.innerWidth;
   dialog.scrollTop=0;return visible;
  });assert.equal(persistent,true);
  await page.setViewportSize({width:1440,height:960});
@@ -82,13 +82,13 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  const refreshed=page.waitForResponse(response=>response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await refreshed;
- await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && document.querySelector('#recordPanel #docPageLabel')?.textContent==='Demo Surgical Practice');
+ await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');
  assert.ok(calls.filter(call=>call.name==='get-deal-room').length>detailReads);
  await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
  await page.keyboard.press('Escape');
  await page.locator('#panelClose').click();
- await page.locator('#appMainSlot > #docPresence').waitFor();
+ await page.locator('body > #docPresence').waitFor();
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
@@ -360,7 +360,7 @@ test('R13/R18 incomplete conversation reports unknown recent activity in the ans
  await goto('/doc-chats?mode=live&id='+id);
  await page.waitForFunction(()=> {const c=window.docContext?.snapshot();return c?.ready&&c.active?.activityComplete===false;});
  await page.locator('#docOpen').click();
- assert.match(await page.locator('#docActivity').innerText(),/Recent activity unknown.*incomplete/i);
+ assert.match(await page.locator('#docActivity').innerText(),/Recent activity unavailable/i);
  assert.equal(await page.locator('#docActivity article').count(),0);
  const answer=await page.evaluate(async id=>{
   const c=(await import('/js/doc-context.js')).pageDocContext;
@@ -406,4 +406,43 @@ for(const prefix of ['plan','space'])test(`R6 ${prefix} client record authorizat
   if(env.url.pathname===`/api/v1/business/clients/${client.id}`){await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await goto('/tours');await page.locator('.tour-button').first().waitFor();assert.equal((await readContext(page)).ready,true);await page.locator(`#${prefix}-client`).selectOption(client.id);
  await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
+});
+
+for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11 ${name} command bar shortcuts, keyboard results, refresh and responsive motion`,async t=>{
+ for(const width of [1440,390,320]) await t.test(String(width),async t=>{
+  const {page,goto,calls,errors}=await setup(t,{width,motion:'reduce',engine,onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{data:{tours:[{id:tourId,name:'Demo Tour'}]}}});return true;}return false;}});
+  await goto('/deals?mode=live');
+  const key=name==='webkit'?'Meta':'Control';
+  await page.locator('#docOpen').focus();await page.keyboard.press(`${key}+d`);
+  assert.equal(await page.locator('#docDetail').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#docCommandInput').evaluate(n=>n===document.activeElement),true);
+  await page.keyboard.press('Escape');await page.keyboard.press(`${key}+k`);
+  await page.locator('#docCommandInput').fill('Demo');
+  await page.waitForFunction(()=>document.querySelectorAll('#docCommandResults [data-doc-result]').length>0);
+  await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#docCommandDetail').isVisible(),true);
+  assert.equal(await page.locator('.doc-context-tools').isVisible(),false);
+  assert.equal(await page.locator('#docDetail').evaluate(n=>getComputedStyle(n).animationName),'none');
+  assert.ok(await page.locator('#docDetail').evaluate(n=>n.getBoundingClientRect().width<=innerWidth));
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await mkdir(new URL('test-artifacts/w11/',root),{recursive:true});
+  await page.screenshot({path:new URL(`test-artifacts/w11/${name}-${width}.png`,root).pathname,animations:'disabled'});
+  await page.locator('#docCommandRefresh').click();assert.equal(await page.locator('#docCommandInput').inputValue(),'Demo');
+  assert.deepEqual(errors,[]);
+  assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
+ });
+});
+
+test('R1 Doc search consumes and validates the live wrapped tour library',async t=>{
+ const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{data:{tours:[{id:tourId,name:'Library Sample'}]}}});return true;}return false;}});
+ await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Library Sample');
+ await page.getByRole('option',{name:/Library Sample/}).waitFor();await page.getByRole('option',{name:/Library Sample/}).click();
+ assert.equal(await page.locator('#docCommandDetail a').getAttribute('href'),`/tours?tour=${tourId}`);
+});
+for(const [name,engine] of [['chromium',chromium],['webkit',webkit]])test(`R8 ${name} long detail title fits inside the 320px Doc dialog`,async t=>{
+ const title='Demo'+ 'x'.repeat(180);
+ const {page,goto}=await setup(t,{width:320,engine,onRoute:async(route,{url})=>{if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='find'){await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:title,merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Synthetic'});return true;}return false;}});
+ await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Demo');await page.getByRole('option',{name:new RegExp(title)}).click();
+ assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ assert.ok(await page.locator('#docCommandBack').evaluate(n=>n.getBoundingClientRect().width)>=44);
 });

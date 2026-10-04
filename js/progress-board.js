@@ -1,3 +1,4 @@
+import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { createLiveClient } from "./live-client.js";
 import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
@@ -30,9 +31,11 @@ export function mountBoard(deps = {}) {
   const setTimer = deps.setTimeout || ((fn, ms) => win.setTimeout(fn, ms));
   const clearTimer = deps.clearTimeout || (id => win.clearTimeout(id));
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
-  const boardId = boardFromSearch(deps.search ?? win.location?.search ?? "");
+  const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
+  const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
   const location = deps.location || win.location;
+  if (pathBoardId) doc.querySelector(".directory-panel").hidden = true;
   byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
   byId("board-parent-name").textContent = boardId === SYSTEM_BOARD_ID ? "System board" : "Project board";
   const pendingRequests = new Map();
@@ -49,16 +52,14 @@ export function mountBoard(deps = {}) {
   // Cards and unchanged question cards keep their nodes across renders, so
   // focus, drafts and the dialog's return target survive every poll.
   const cardNodes = new Map();
+  const completedCards = new Map();
+  const blockedCards = new Map();
   let questionCards = new Map();
   let viewSignature = "";
   let directorySignature = "";
   const badgeTimes = new Map();
   let ageTimer = null;
-  // On the system board the pipeline shows the system-work census (unfinished
-  // work plus recent Live) instead of snapshot tasks; every other panel still
-  // reads the snapshot.
   let systemWork = null;
-  let censusPipeline = null;
   let pipelineCards = [];
 
   function el(tag, className, text, attributes = {}) {
@@ -138,7 +139,7 @@ export function mountBoard(deps = {}) {
     directory.replaceChildren();
     for (const board of boards) {
       const item = el("a", "board-link", undefined,
-        { href: `/control-room/progress?board=${encodeURIComponent(board.board_id)}`, "data-board-id": board.board_id });
+        { href: boardPageUrl(board.board_id), "data-board-id": board.board_id, target: "_blank", rel: "noopener noreferrer" });
       if (board.board_id === boardId) item.setAttribute("aria-current", "page");
       item.append(el("span", "eyebrow", board.board_id === SYSTEM_BOARD_ID ? "System-wide" : "Project"),
         el("h3", "", board.title || board.project || board.board_id));
@@ -159,7 +160,7 @@ export function mountBoard(deps = {}) {
   }
 
   function loadDirectory(seq) {
-    if (typeof client.listProgressBoards !== "function") return;
+    if (pathBoardId || typeof client.listProgressBoards !== "function") return;
     client.listProgressBoards().then(read => {
       if (seq === readSeq) renderDirectory(read);
     }).catch(cause => {
@@ -314,14 +315,6 @@ export function mountBoard(deps = {}) {
   }
 
   // ── pipeline ──────────────────────────────────────────────────────────────
-  function censusCards() {
-    if (!censusPipeline) return null;
-    const tasks = {};
-    for (const stage of censusPipeline.stages)
-      for (const task of stage.tasks) tasks[task.id] = { ...task, stage: stage.id };
-    return boardView({ snapshot: { board_id: SYSTEM_BOARD_ID, version: 1, snapshot_json: { tasks } } }, currentNow()).cards;
-  }
-
   function findCard(cardId) {
     return pipelineCards.find(card => card.id === cardId) || currentView?.cards.find(card => card.id === cardId) || null;
   }
@@ -381,10 +374,9 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
-    const census = censusCards();
-    if (!view && !census) return;
-    const all = census || view.cards;
-    const kind = census ? "project" : view.kind;
+    if (!view) return;
+    const all = view.cards;
+    const kind = view.kind;
     pipelineCards = all;
     const container = byId("board-stages");
     const focusedId = [...cardNodes].find(([, node]) => node === doc.activeElement)?.[0];
@@ -468,20 +460,27 @@ export function mountBoard(deps = {}) {
 
   function renderBlocked(view) {
     const list = byId("board-blocked");
+    const focusedId = [...blockedCards].find(([, node]) => node === doc.activeElement)?.[0];
     list.replaceChildren();
     const blocked = view.cards.filter(card => card.blocked);
     byId("blocked-count").textContent = `${blocked.length} BLOCKED`;
-    if (!blocked.length) { list.append(el("p", "empty", "Nothing is blocked.")); return; }
+    if (!blocked.length) list.append(el("p", "empty", "Nothing is blocked."));
     for (const card of blocked) {
-      const item = el("article", "blocked-card", undefined, { "data-card-id": card.id, style: `--stage-accent:${stageColor(card.stage)}` });
+      const retained = blockedCards.get(card.id);
+      const item = retained || el("article", "blocked-card", undefined, { "data-card-id": card.id });
+      item.style.setProperty("--stage-accent", stageColor(card.stage));
       const top = el("div", "blocked-top");
       top.append(el("strong", "card-title", card.title || card.id, { title: card.title || card.id }),
         el("span", "card-pr", prLabel(card)));
-      item.append(top, el("p", "blocked-why", `Why: ${card.blocked.reason}`),
+      item.replaceChildren(top, el("p", "blocked-why", `Why: ${card.blocked.reason}`),
         el("p", "blocked-next", `Next: ${card.blocked.next}`));
-      clickable(item, () => openWork(card.id));
+      if (!retained) clickable(item, () => openWork(card.id));
+      blockedCards.set(card.id, item);
       list.append(item);
     }
+    const ids = new Set(blocked.map(card => card.id));
+    for (const id of blockedCards.keys()) if (!ids.has(id)) blockedCards.delete(id);
+    if (focusedId) (blockedCards.get(focusedId) || byId("blocked-title")).focus();
   }
 
   function renderLedger(view) {
@@ -546,23 +545,29 @@ export function mountBoard(deps = {}) {
 
   function renderCompleted(view) {
     const box = byId("board-completed");
+    const focusedId = [...completedCards].find(([, node]) => node === doc.activeElement)?.[0];
     box.replaceChildren();
     const live = sortLive(view.cards.filter(card => card.stage === "live"), view.kind);
     byId("completed-count").textContent = `${live.length} LIVE`;
-    if (!live.length) { box.append(el("p", "empty", "No live work yet.")); return; }
+    if (!live.length) box.append(el("p", "empty", "No live work yet."));
     for (const card of live) {
-      const item = el("article", "completed-card", undefined, { "data-card-id": card.id });
+      const retained = completedCards.get(card.id);
+      const item = retained || el("article", "completed-card", undefined, { "data-card-id": card.id });
       const top = el("div", "completed-top");
       top.append(el("strong", "card-title", card.title || card.id, { title: card.title || card.id }),
         el("time", "", formatTime(card.completed_at || card.updated_at)));
       const model = modelLine(card);
       const summary = taskSummary(card);
-      item.append(top, el("p", "card-pr", prLabel(card)), el("p", "card-summary", summary, { title: summary }),
+      item.replaceChildren(top, el("p", "card-pr", prLabel(card)), el("p", "card-summary", summary, { title: summary }),
         el("p", "completed-evidence", card.evidence || ""),
         el("p", "card-model", model, { title: model }));
-      clickable(item, () => openWork(card.id));
+      if (!retained) clickable(item, () => openWork(card.id));
+      completedCards.set(card.id, item);
       box.append(item);
     }
+    const ids = new Set(live.map(card => card.id));
+    for (const id of completedCards.keys()) if (!ids.has(id)) completedCards.delete(id);
+    if (focusedId) (completedCards.get(focusedId) || byId("completed-title")).focus();
   }
 
   // ── work detail ──────────────────────────────────────────────────────────
@@ -772,7 +777,7 @@ export function mountBoard(deps = {}) {
   function renderSwitch() {
     const project = byId("switch-project");
     const all = byId("switch-all");
-    if (boardId && boardId !== ALL_REPOS_BOARD) project.setAttribute("href", `/progress-board?board=${encodeURIComponent(boardId)}`);
+    if (boardId && boardId !== ALL_REPOS_BOARD) project.setAttribute("href", boardPageUrl(boardId));
     project.toggleAttribute("aria-current", Boolean(boardId) && boardId !== ALL_REPOS_BOARD);
     all.toggleAttribute("aria-current", boardId === ALL_REPOS_BOARD);
   }
@@ -838,6 +843,8 @@ export function mountBoard(deps = {}) {
     lastRead = null;
     viewSignature = "";
     cardNodes.clear();
+    completedCards.clear();
+    blockedCards.clear();
     questionCards = new Map();
     fingerprints.clear();
     formState.clear();
@@ -865,11 +872,10 @@ export function mountBoard(deps = {}) {
     let message;
     if (status === 401 || status === 403) {
       message = status === 401 ? "Sign-in required" : "You do not have access to this board.";
-      if (status === 401) { ++readSeq; clearBoard(state); clearDirectory(); }
-      else if (target === "board") clearBoard(state);
-      else clearDirectory();
+      ++readSeq; clearBoard(state); clearDirectory();
+      systemWork?.clearAccess(cause);
     } else {
-      message = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : "Progress temporarily unavailable.";
+      message = state === "timeout" ? "The request timed out." : state === "offline" ? "You are offline." : `Could not load board “${boardId}”. Retry to load its published tasks.`;
     }
     if (target === "directory") {
       const error = byId("directory-error");
@@ -900,7 +906,7 @@ export function mountBoard(deps = {}) {
       return false;
     }
     const seq = ++readSeq;
-    systemWork?.refresh();
+    systemWork?.refresh(false, { force });
     loadDirectory(seq);
     const run = (async () => {
       let read;
@@ -915,13 +921,7 @@ export function mountBoard(deps = {}) {
       const view = boardView(read, currentNow());
       if (view.error) { setError(view.error); return false; }
       if (!view.version) {
-        if (!systemWork) clearBoard("unpublished");
-        else {
-          const meta = byId("board-meta");
-          meta.textContent = "No published system snapshot.";
-          meta.setAttribute("data-read-state", "unpublished");
-          badgeTimes.delete(byId("board-freshness"));
-        }
+        clearBoard("unpublished");
         setError("This board has not been published yet.");
         byId("board-retry").hidden = false;
         return false;
@@ -941,14 +941,20 @@ export function mountBoard(deps = {}) {
       return true;
     })();
     latestRead = run;
+    let awaited = run;
     let result = await run;
-    while (result === "superseded") result = await latestRead;
+    while (result === "superseded") {
+      // Access invalidation can cancel a read without starting a replacement.
+      if (latestRead === awaited) return false;
+      awaited = latestRead;
+      result = await awaited;
+    }
     return result;
   }
 
   function start() {
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
-      systemWork = mountSystemWorkBoard({ client, onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
+      systemWork = mountSystemWorkBoard({ client, onAccessDenied: cause => readFailure(cause, "board") });
     refresh().catch(() => setError("Progress temporarily unavailable."));
     schedule(() => refresh().catch(() => setError("Progress temporarily unavailable.")), REFRESH_MS);
     schedule(tick, TICK_MS);

@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { atlasFixtureResponse } from "./atlas-fixture.mjs";
+import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const routeContract = JSON.parse(await readFile(new URL("../contracts/app-routes.v1.json", import.meta.url), "utf8"));
@@ -137,6 +138,12 @@ createServer(async (request, response) => {
       response.end(JSON.stringify(censusResponse(url)));
       return;
     }
+    const boardDestination = legacyBoardDestination(url);
+    if (boardDestination) {
+      response.writeHead(308, { location: boardDestination.pathname + boardDestination.search, 'cache-control': 'no-store' });
+      response.end();
+      return;
+    }
     if (Object.hasOwn(redirects, url.pathname)) {
       const target = url.pathname === "/business" && url.searchParams.has("q") ? "/search"
         : url.pathname === "/business" && url.searchParams.get("charts") === "1" ? "/?view=charts"
@@ -154,7 +161,7 @@ createServer(async (request, response) => {
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
     const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-      : routes[url.pathname] || url.pathname.replace(/^\//, "");
+      : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : url.pathname] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");
     const repositoryPath = relative(root, path);
     if (repositoryPath.startsWith("..") || isAbsolute(repositoryPath) || !(await stat(path)).isFile()) throw new Error("not found");
@@ -164,4 +171,4 @@ createServer(async (request, response) => {
     response.writeHead(404, {"content-type":"text/plain; charset=utf-8"});
     response.end("Not found\n");
   }
-}).listen(Number(process.env.PORT || 8787), "127.0.0.1", () => console.log(`DoctorCRE fixture server: http://127.0.0.1:${process.env.PORT || 8787}`));
+}).listen(Number(process.env.PORT || 8787), "127.0.0.1", function () { console.log(`DoctorCRE fixture server: http://127.0.0.1:${this.address().port}`); });

@@ -286,9 +286,13 @@ export function createLiveClient(opts = {}) {
 
     async getChanges(cursor) {
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error(`live changes -> ${res.status}`);
-      const data = await res.json();
+      const data = await readWithDeadline(async signal => {
+        const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal });
+        // Refusal is decided by the headers. Its diagnostic body must not
+        // turn a known authorization failure into a statusless read failure.
+        if (!res.ok) throw Object.assign(new Error(`live changes -> ${res.status}`), { status: res.status });
+        return res.json();
+      }, { timeoutMs: opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.
