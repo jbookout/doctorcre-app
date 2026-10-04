@@ -64,6 +64,8 @@
 #docCommandStatus { color:#aebfd9; font-size:13px; }
 #docCommandDetail { margin-top:20px; }
 #docCommandDetail>header { display:flex; align-items:center; gap:12px; }
+#docCommandDetail>header>h3 { min-width:0; overflow-wrap:anywhere; }
+#docCommandDetail>header>:is(button,.doc-result-kind) { flex-shrink:0; }
 #docCommandDetail>header>button { margin-left:auto; }
 #docCommandDetail a { display:inline-flex; align-items:center; min-height:44px; margin-top:12px; color:#a6c9ff; }
 @media(max-width:480px) { .doc-command-meta { align-items:start; } #docCommandForm { gap:6px; padding:6px; } #docCommandInput { font-size:16px; } .doc-context-tools { flex-wrap:wrap; } }

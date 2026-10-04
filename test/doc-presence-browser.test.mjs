@@ -410,7 +410,7 @@ for(const prefix of ['plan','space'])test(`R6 ${prefix} client record authorizat
 
 for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11 ${name} command bar shortcuts, keyboard results, refresh and responsive motion`,async t=>{
  for(const width of [1440,390,320]) await t.test(String(width),async t=>{
-  const {page,goto,calls,errors}=await setup(t,{width,motion:'reduce',engine,onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{tours:[{id:tourId,name:'Demo Tour'}]}});return true;}return false;}});
+  const {page,goto,calls,errors}=await setup(t,{width,motion:'reduce',engine,onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{data:{tours:[{id:tourId,name:'Demo Tour'}]}}});return true;}return false;}});
   await goto('/deals?mode=live');
   const key=name==='webkit'?'Meta':'Control';
   await page.locator('#docOpen').focus();await page.keyboard.press(`${key}+d`);
@@ -431,4 +431,18 @@ for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11
   assert.deepEqual(errors,[]);
   assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
  });
+});
+
+test('R1 Doc search consumes and validates the live wrapped tour library',async t=>{
+ const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{data:{tours:[{id:tourId,name:'Library Sample'}]}}});return true;}return false;}});
+ await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Library Sample');
+ await page.getByRole('option',{name:/Library Sample/}).waitFor();await page.getByRole('option',{name:/Library Sample/}).click();
+ assert.equal(await page.locator('#docCommandDetail a').getAttribute('href'),`/tours?tour=${tourId}`);
+});
+for(const [name,engine] of [['chromium',chromium],['webkit',webkit]])test(`R8 ${name} long detail title fits inside the 320px Doc dialog`,async t=>{
+ const title='Demo'+ 'x'.repeat(180);
+ const {page,goto}=await setup(t,{width:320,engine,onRoute:async(route,{url})=>{if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='find'){await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:title,merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Synthetic'});return true;}return false;}});
+ await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Demo');await page.getByRole('option',{name:new RegExp(title)}).click();
+ assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ assert.ok(await page.locator('#docCommandBack').evaluate(n=>n.getBoundingClientRect().width)>=44);
 });

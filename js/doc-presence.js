@@ -1,3 +1,4 @@
+import { createPlannerClient } from '../tours/planner-client.js';
 import { mountDocCommandBar } from './doc-command-bar.js';
 import { slices } from './slices.generated.js';
 import { registerSlices } from './slice-registration.js';
@@ -7,7 +8,7 @@ import { pageDocContext } from './doc-context.js';
 import { contextualSuggestions, docAnswer, DOC_PAGES } from './doc-context-model.js';
 import { DOC_EVALUATED_PAGES } from './doc-accuracy.js';
 import { createDocApproval } from './doc-approval.js';
-import { fetchRead, mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
+import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { uuidv4 } from './uuid.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -87,11 +88,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     client: async () => client ||= await createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }),
     tours: async () => {
       if (resolveDealroomBoot(win.location).mode !== 'live') return [];
-      const response = await fetchRead('/api/tours/library', { credentials:'same-origin', cache:'no-store' });
-      if (!response.ok) throw Object.assign(new Error('Unavailable'), { status:response.status });
-      const payload = await response.json();
-      if (!Array.isArray(payload.tours)) throw new Error('Unavailable');
-      return payload.tours.map(row => ({ id:row.id, name:row.name || row.title }));
+      return createPlannerClient().library();
     }, intervalMs,
   });
   const open = command.open;
