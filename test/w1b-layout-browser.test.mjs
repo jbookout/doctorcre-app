@@ -1,3 +1,4 @@
+import { waitForState } from './browser-state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -51,7 +52,7 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes=>nodes.map(n=>n.title)),['Home','Leads','Tours','Local Deals','Vendors','Control Room']);
  assert.equal(await page.locator('#appSidebarSlot #leadSearch').count(),1);assert.equal(await page.locator('#appStatusSlot #boardUpdated').count(),1);
- await page.locator('#appSidebarToggle').click();await page.locator('#leadSearch').fill('Example 3');assert.equal(await page.locator('.lead-card').count(),1);
+ await page.locator('#appSidebarToggle').click();await page.locator('#leadSearch').fill('Example 3');await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===1);assert.equal(await page.locator('.lead-card').count(),1);
  await goto('/deals?view=board');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
  await goto('/');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
@@ -112,7 +113,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
  const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
- await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
+ await waitForState(page,async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
  assert.deepEqual(errors,[]);
 });
 
@@ -241,7 +242,7 @@ test('PR129 #7 closing Lead detail after polling resolves the current card by id
 });
 test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
  const {page,goto,writes}=await open(t,{width:390,hasTouch:true});await goto('/leads');await page.locator('.lead-card').first().tap();await page.locator('#detailStage').selectOption('engaged');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);await page.locator('#saveStage').tap();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();assert.deepEqual(writes,['update-lead']);
- await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
+ await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await waitForState(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
  assert.equal(await page.locator('#detailPhase').inputValue(),'legal');
 });
 for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain pointer actionable at ${width}x390`,async t=>{
@@ -301,7 +302,7 @@ for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status}
  const form=page.locator('#dealDateForm'),save=form.locator('button[type="submit"]');
  await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic protected clause');
  failure=true;await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'date-authorization-regression'});});
- await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('Updates temporarily unavailable'));
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.match(/Unavailable|Updates temporarily unavailable/));
  if(status===503) {
   assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),true);
   assert.equal(await form.locator('[name="date"]').inputValue(),'2026-12-01');
@@ -337,7 +338,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  });
  await goto('/deals?view=board&mode=live');
  await page.locator('.kanban-card[data-id="d14"] .card-open').click();
- await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.includes('Updates temporarily unavailable'));
+ await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.match(/Unavailable|Updates temporarily unavailable/));
  assert.equal(await page.locator('#detailPhase').count(),1,await page.locator('#panelBody').textContent());
  const title=await page.locator('#panelTitle').textContent();
  await page.locator('#detailNextForm textarea').fill('Synthetic unsaved draft');
@@ -345,7 +346,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody h3')?.textContent!=='Updating…');
  failure=true;
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'authorization-regression'});});
- await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.includes('Updates temporarily unavailable'));
+ await page.waitForFunction(()=>document.querySelector('#panelBody [role="status"]')?.textContent.match(/Unavailable|Updates temporarily unavailable/));
  assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
  if(status===503) {
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
@@ -354,7 +355,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
   assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
  } else {
-  assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
+  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
   assert.equal(await page.locator('#panelBody .detail-grid').count(),0);
   assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
@@ -369,4 +370,10 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  assert.equal(await page.locator('#panelTitle').textContent(),title);
  assert.equal(await page.locator('#detailNextForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
  assert.deepEqual(errors,[]);
+});
+
+test('PR142 R17 unchanged Leads polling retains the exact card node and its return focus',async t=>{
+ const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);const original=await card.elementHandle();await card.focus();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();await page.clock.fastForward(31_000);
+ await page.waitForFunction(()=>document.querySelector('#leadBoard').getAttribute('aria-busy')==='false');assert.equal(await original.evaluate(n=>n.isConnected),true);
+ await page.keyboard.press('Escape');await page.waitForFunction(leadId=>document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
 });

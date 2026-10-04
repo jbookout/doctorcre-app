@@ -1,4 +1,4 @@
-import { createClient } from './client.js';
+import { getAppClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { pageDocContext } from './doc-context.js';
 import { contextualSuggestions, docAnswer, DOC_PAGES } from './doc-context-model.js';
@@ -64,7 +64,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
       : selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
     keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
   };
-  const ensureClient = async () => client ||= await createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false });
+  const ensureClient = async () => client ||= await getAppClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false });
   const refresh = async ({ signal } = {}) => {
     const epoch = ++readEpoch, captured = context.snapshot();
     const scope = `${captured.epoch}:${captured.page}:${captured.selected?.kind || ''}:${captured.selected?.id || ''}`;
@@ -106,6 +106,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   $('docRefresh').onclick = refreshPage;
   const unsubscribe = context.subscribe(next => {
     const previous = snapshot; snapshot = next;
+    if (next.sessionEpoch !== previous.sessionEpoch) command.invalidate();
     const scope = `${next.epoch}:${next.page}:${next.selected?.kind || ''}:${next.selected?.id || ''}`;
     const changed = lastScope && scope !== lastScope;
     if (changed) { ++readEpoch; suggestions = null; suggestionState = 'updating'; chosen = null; $('docApprovalStatus').textContent = ''; }

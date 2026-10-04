@@ -1,3 +1,4 @@
+import { waitForState } from './browser-state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
@@ -17,7 +18,7 @@ async function open(t,{width=1440,link=false,reducedMotion='no-preference'}={}) 
   try {return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto('http://localhost/deals');
- await page.waitForFunction(async()=> (await import('/js/pipeline.js')).state.deals.size>0);
+ await waitForState(page,async()=> (await import('/js/pipeline.js')).state.deals.size>0);
  await page.evaluate(async()=>{
   const {state}=await import('/js/pipeline.js');const get=state.client.getDeal;
   window.timelineProbe={reads:0,fail:false,changed:false};

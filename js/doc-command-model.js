@@ -54,12 +54,18 @@ const PARTY_KINDS = new Set(['lead', 'client', 'vendor', 'party']);
 export function commandResults({ text, pages = [], deals = [], parties = null, tours = [], invoices = [], today = '' }) {
   const intent = interpretCommand(text);
   if (intent.type === 'move') {
-    return deals.filter(deal => dealMatches(intent.target, deal) && deal.phase !== intent.phase).map(deal => ({
-      id: `move:${deal.id}`, kind: 'action', label: `Move ${deal.name} to ${phaseLabel(intent.phase)}`,
-      detail: `${phaseLabel(deal.phase)} → ${phaseLabel(intent.phase)}`,
-      action: { verb: 'move', deal: deal.id, name: deal.name, from: deal.phase, to: intent.phase,
-        base_event_id: deal.field_base?.phase?.id ?? null, approval: intent.phase === 'Closed' ? 'one-tap' : 'direct' },
-    }));
+    const targets = deals.filter(deal => dealMatches(intent.target, deal));
+    return targets.filter(deal => targets.length > 1 || deal.phase !== intent.phase).map(deal => {
+      if (deal.phase === intent.phase) return { id: `move:${deal.id}`, kind: 'deal', label: deal.name,
+        detail: `Already ${phaseLabel(intent.phase)}`, href: `/deals?deal=${encodeURIComponent(deal.id)}` };
+      return {
+        id: `move:${deal.id}`, kind: 'action', label: `Move ${deal.name} to ${phaseLabel(intent.phase)}`,
+        detail: `${phaseLabel(deal.phase)} → ${phaseLabel(intent.phase)}`,
+        action: { verb: 'move', deal: deal.id, name: deal.name, from: deal.phase, to: intent.phase,
+          base_event_id: deal.field_base?.phase?.id ?? null, approval: intent.phase === 'Closed' ? 'one-tap' : 'direct' },
+        ...(intent.phase === 'Closed' ? { href: `/deals?deal=${encodeURIComponent(deal.id)}&complete=closed` } : {}),
+      };
+    });
   }
   if (intent.type === 'paid') {
     return invoices.filter(row => row.status === 'invoiced' && row.commission_id && matches(intent.target, row.name)).map(row => ({
@@ -76,6 +82,8 @@ export function commandResults({ text, pages = [], deals = [], parties = null, t
   return [
     ...pages.filter(page => matches(query, page.label)).map(page => ({ id: `page:${page.href}`, kind: 'page', label: page.label, href: page.href })),
     ...deals.filter(deal => dealMatches(query, deal)).map(deal => ({ id: `deal:${deal.id}`, kind: 'deal', label: deal.name, detail: phaseLabel(deal.phase), href: `/deals?deal=${encodeURIComponent(deal.id)}` })),
+    ...(parties?.deals || []).filter(row => matches(query, row.name) && !deals.some(deal => deal.name === row.name)).map(row => ({
+      id: `canonical-deal:${row.name}`, kind: 'deal', label: row.name, detail: phaseLabel(row.phase), href: searchAddress({ query: row.name }) })),
     ...(parties?.parties || []).filter(row => row.merged === false && PARTY_KINDS.has(row.kind) && matches(query, row.name)).map(row => ({
       id: `${row.kind}:${row.name}`, kind: row.kind, label: row.name, href: deepLinkFor(row) || searchAddress({ query: row.name }) })),
     ...tours.filter(tour => matches(query, tour.name)).map(tour => ({ id: `tour:${tour.id}`, kind: 'tour', label: tour.name, href: `/tours?tour=${encodeURIComponent(tour.id)}` })),

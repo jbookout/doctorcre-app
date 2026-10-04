@@ -103,7 +103,7 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]]) {
     await page.locator('#docResults [data-doc-result]').first().waitFor();
     await page.keyboard.press('Enter');
     await page.locator('#docStagedApprove').waitFor();
-    assert.match(await page.locator('#docStaged').innerText(), /Mark Demo Oak Purchase paid[\s\S]*\$18,500 · received [A-Z][a-z]{2} \d{1,2}, \d{4}/);
+    assert.match(await page.locator('#docStaged').innerText(), /Mark Demo Oak Purchase paid[\s\S]*\$18,500\.00 · received [A-Z][a-z]{2} \d{1,2}, \d{4}/);
     assert.equal(await page.locator('#docResults').isVisible(), false);
     assert.equal(calls.filter(call => call.name === 'record-commission-receipt').length, 0);
     await page.locator('#docStagedApprove').click();
@@ -132,4 +132,16 @@ test('command bar renders wide on desktop and fits a phone without horizontal sc
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(await page.locator('#docDetail').evaluate(node => node.scrollWidth <= node.clientWidth), true);
   await page.screenshot({ path: new URL('test-artifacts/w11/command-search-phone.png', root).pathname, animations: 'disabled' });
+});
+
+test('PR142 R14 phone results retain visible and accessible type names',async t=>{
+ const {page,mod}=await setup(t,chromium,{width:390});await page.keyboard.press(`${mod}+KeyD`);await page.locator('#docAsk').fill('surgical');await page.locator('#docResults [data-doc-result]').first().waitFor();
+ assert.equal(await page.locator('.doc-result-kind').first().isVisible(),true);assert.match(await page.locator('#docResults').ariaSnapshot(),/Deal/);
+});
+test('PR142 R16 fixture command writes reach the displayed board client',async t=>{
+ const {page,mod}=await setup(t,chromium);await page.goto('http://localhost/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').waitFor();await page.keyboard.press(`${mod}+KeyD`);await page.locator('#docAsk').fill('move surgical practice to LOI');await page.locator('#docResults [data-doc-result]').first().waitFor();await page.keyboard.press('Enter');await page.waitForFunction(()=>/moved to/.test(document.querySelector('#docCommandStatus').textContent));
+ const phase=await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');return (await state.client.getBoard()).deals.find(d=>d.id==='d14').phase;});assert.equal(phase,'Negotiation');
+});
+test('PR142 R1 closing destination uses required outcome and date completion flow',async t=>{
+ const {page}=await setup(t,chromium);await page.goto('http://localhost/deals?deal=d14&complete=closed');await page.locator('#completionDialog[open]').waitFor();assert.equal(await page.locator('#completionOutcomeField').isVisible(),true);assert.ok(await page.locator('#completionClosedOn').inputValue());await page.locator('#completionConfirm').click();assert.match(await page.locator('#completionErrors').innerText(),/Choose the outcome/);
 });

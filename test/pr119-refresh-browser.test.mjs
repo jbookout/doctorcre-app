@@ -1,3 +1,4 @@
+import { waitForState } from './browser-state.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -162,13 +163,21 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
  assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
 });
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
- const hooks=`const read=c.getBoard;window.homeReads=0;c.getBoard=async args=>{const p=await read(args);if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
- const {page,errors}=await open(t,{clientHooks:hooks});
- await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ const {page,errors}=await open(t);
+ await page.goto(origin+'/', {waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ await page.waitForFunction(()=>document.querySelector('#refreshHome')?.getAttribute('aria-busy')==='false');
+ // Home forwards its read signal; sidebar reads use their own outer deadline.
+ await page.evaluate(async()=>{
+  const {getAppClient}=await import('/js/client.js');const {resolveDealroomBoot}=await import('/js/boot-mode.js');
+  const boot=resolveDealroomBoot(location),c=await getAppClient(boot.mode,{...boot.options,docContext:false}),read=c.getBoard;
+  window.homeReads=0;window.holdHome=true;
+  c.getBoard=async args=>{const p=await read(args);++window.homeReads;if(args?.signal && window.holdHome && !window.homeWaiting){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};
+ });
  const expected=await page.locator('#dealCounts').textContent();
  await online(page);await page.waitForFunction(()=>window.homeWaiting);
- await page.clock.fastForward(120_000);await online(page);
- await page.waitForFunction(expected=>window.homeReads>=3 && document.querySelector('#dealCounts')?.textContent===expected,expected);
+ await page.clock.fastForward(120_000);await page.evaluate(()=>window.holdHome=false);await online(page);
+ await page.waitForFunction(expected=>window.homeReads>=2 && document.querySelector('#dealCounts')?.textContent===expected,expected);
  await page.evaluate(()=>window.releaseHome());
  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
  assert.equal(await page.locator('#dealCounts').textContent(),expected);
@@ -216,7 +225,7 @@ for(const trigger of ['online','timer','resume'])test('PR119 finding 6: '+trigge
 test('PR119 finding 6: a cleared snooze date stays cleared after focus leaves the editor',async t=>{
  const {page,errors}=await open(t);await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const date=page.locator('[data-snooze-date]').first();await date.fill('');await date.evaluate(e=>{window.dateEditor=e;e.blur();});
- await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.list.state==='read');
+ await online(page);await waitForState(page,async()=> (await import('/js/conversations.js')).view.list.state==='read');
  assert.equal(await date.inputValue(),'');assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: All Work rereads its loaded extent',async t=>{
@@ -228,17 +237,17 @@ test('PR119 finding 5: All Work rereads its loaded extent',async t=>{
 test('PR119 finding 5: Doc Chats refresh keeps loaded conversations and turns',async t=>{
  const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  await page.locator('#showMoreConversations').click();await page.waitForFunction(()=>document.querySelectorAll('#conversationList [data-conversation]').length===2);
- await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.list.state==='read');
+ await online(page);await waitForState(page,async()=> (await import('/js/conversations.js')).view.list.state==='read');
  assert.equal(await page.locator('#conversationList [data-conversation]').count(),2);
  await page.locator('#conversationList [data-conversation] button[data-open]').first().click();
  await page.locator('#showMore').click();await page.waitForFunction(()=>document.querySelectorAll('#turnList .turn').length===2);
- await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.conversation.state==='read');
+ await online(page);await waitForState(page,async()=> (await import('/js/conversations.js')).view.conversation.state==='read');
  assert.equal(await page.locator('#turnList .turn').count(),2);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: Doc Chats rereads the loaded outcome-card extent',async t=>{
  const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
- await page.locator('#outcomeCardsShowMore').click();await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.outcomeCards.rows.length===2);
- await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.outcomeCards.state==='read');
+ await page.locator('#outcomeCardsShowMore').click();await waitForState(page,async()=> (await import('/js/conversations.js')).view.outcomeCards.rows.length===2);
+ await online(page);await waitForState(page,async()=> (await import('/js/conversations.js')).view.outcomeCards.state==='read');
  assert.equal(await page.evaluate(async()=> (await import('/js/conversations.js')).view.outcomeCards.rows.length),2);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 6: editing started during a pending read defers the suggestion repaint',async t=>{
@@ -247,16 +256,16 @@ test('PR119 finding 6: editing started during a pending read defers the suggesti
  await page.evaluate(()=>window.holdSuggestions=true);await online(page);await page.waitForFunction(()=>window.suggestionsWaiting);
  const card=page.locator('.suggestion-card').first();await card.locator('[data-snooze-date]').fill('2026-12-01');await card.locator('[data-correction]').fill('Synthetic mid-read draft');await card.locator('[data-correction]').focus();
  await card.locator('[data-correction]').evaluate(e=>window.editor=e);await page.evaluate(()=>window.releaseSuggestions());
- await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.list.state==='read');
+ await waitForState(page,async()=> (await import('/js/conversations.js')).view.list.state==='read');
  assert.equal(await page.evaluate(()=>window.editor.isConnected && document.activeElement===window.editor),true);assert.equal(await card.locator('[data-snooze-date]').inputValue(),'2026-12-01');assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: Atlas refresh keeps the loaded second page and selected component',async t=>{
  const {page,errors}=await open(t);await page.goto(origin+'/control-room?tab=system-map', {waitUntil:'domcontentloaded'});
- await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.payload?.nodes.length===2);
- await page.locator('#atlasMore').click();await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.payload?.nodes.length===4);
+ await waitForState(page,async()=> (await import('/js/atlas.js')).view.payload?.nodes.length===2);
+ await page.locator('#atlasMore').click();await waitForState(page,async()=> (await import('/js/atlas.js')).view.payload?.nodes.length===4);
  const selected=await page.evaluate(async()=> (await import('/js/atlas.js')).view.payload.nodes[3].id);
  await page.locator(`[data-atlas-select="${selected}"]`).first().click();
- await online(page);await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.status==='ready');
+ await online(page);await waitForState(page,async()=> (await import('/js/atlas.js')).view.status==='ready');
  const state=await page.evaluate(async()=>{const v=(await import('/js/atlas.js')).view;return {count:v.payload.nodes.length,selected:v.selected,present:v.payload.nodes.some(n=>n.id===v.selected)};});
  assert.equal(state.count,4);assert.equal(state.selected,selected);assert.equal(state.present,true);assert.deepEqual(errors,[]);
 });

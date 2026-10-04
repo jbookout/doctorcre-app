@@ -1,3 +1,4 @@
+import { waitForState } from './browser-state.mjs';
 import { navigationItems } from "../js/app-shell.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -121,7 +122,7 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   const selected = await page.evaluate(async () => (await import('/js/atlas.js')).view.selected);
   const reads = calls.filter(call => call.url === '/api/v1/atlas-graph').length;
   await page.clock.fastForward(31_000);
-  await page.waitForFunction(async reads => (await import('/js/atlas.js')).view.status === 'ready', reads);
+  await waitForState(page,async reads => (await import('/js/atlas.js')).view.status === 'ready', reads);
   assert.ok(calls.filter(call => call.url === '/api/v1/atlas-graph').length > reads);
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
   assert.deepEqual(errors, []);

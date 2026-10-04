@@ -76,7 +76,7 @@ html:has(.doc-presence) { scroll-padding-top:160px; }
 .doc-detail.doc-commanding .doc-detail-grid { display:none; }
 .doc-detail.doc-busy .doc-command>span { animation:doc-ring 1.6s ease-out infinite; border-radius:50%; }
 @keyframes doc-ring { from { box-shadow:0 0 0 0 #ff8a4870; } to { box-shadow:0 0 0 14px #ff8a4800; } }
-@media(max-width:760px) { .doc-command input { min-height:52px; font-size:19px; } .doc-result-kind { display:none; } .doc-staged { flex-wrap:wrap; } .doc-staged>div { flex-basis:calc(100% - 40px); } #docStagedApprove { flex:1; } }
+@media(max-width:760px) { .doc-command input { min-height:52px; font-size:19px; } .doc-result-kind { font-size:10px; letter-spacing:.03em; } .doc-staged { flex-wrap:wrap; } .doc-staged>div { flex-basis:calc(100% - 40px); } #docStagedApprove { flex:1; } }
 @media(prefers-reduced-motion:reduce) { .doc-result,.doc-command { transition:none; } .doc-staged,.doc-detail.doc-busy .doc-command>span { animation:none; } }
 :root[data-motion="reduced"] :is(.doc-result,.doc-command) { transition:none; }
 :root[data-motion="reduced"] :is(.doc-staged,.doc-detail.doc-busy .doc-command>span) { animation:none; }

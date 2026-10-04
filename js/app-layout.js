@@ -2,7 +2,7 @@ import { mountSliceSections } from './slice-registration.js';
 import { scopedDeals } from './home-dashboard-model.js';
 import { toDay } from './calendar-model.js';
 import { radarToday } from './lease-radar-model.js';
-import { createClient } from './client.js';
+import { getAppClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews } from './change-receipts.mjs';
@@ -161,7 +161,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const refresh = async ({ signal } = {}) => {
-    try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
+    try { client ||= await getAppClient(boot.mode, { ...boot.options, docContext:false }); }
     catch { resetFeed(); connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),

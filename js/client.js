@@ -369,3 +369,24 @@ export async function createClient(mode = 'fixture', opts = {}) {
   const { createFixtureClient } = await import('./fixture-client.js');
   return createFixtureClient(opts);
 }
+
+// A document has one app adapter/store. Background Doc/layout reads use its
+// unobserved interface; page reads use the observed view of that same adapter.
+// createClient remains the constructor for independent tests and consumers.
+const appClients = new WeakMap();
+export async function getAppClient(mode = 'fixture', opts = {}, root = globalThis.document) {
+  if (!root) return createClient(mode, opts);
+  let clients = appClients.get(root);
+  if (!clients) { clients = new Map(); appClients.set(root, clients); }
+  const key = JSON.stringify([mode, opts.selfActor || null, opts.seedUrl || null]);
+  if (!clients.has(key)) {
+    const pending = createClient(mode, { ...opts, docContext:false }).then(async raw => {
+      const { observeDocClient } = await import('./doc-context.js');
+      return { raw, observed:observeDocClient(Object.create(raw)) };
+    });
+    clients.set(key, pending);
+    pending.catch(() => { if (clients.get(key) === pending) clients.delete(key); });
+  }
+  const adapter = await clients.get(key);
+  return opts.docContext === false ? adapter.raw : adapter.observed;
+}

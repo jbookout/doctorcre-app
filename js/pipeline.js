@@ -30,11 +30,9 @@ import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand, pendingCommand } from './command-feedback.mjs';
-import { createFixtureClient } from './fixture-client.js';
-import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
-import { ACTOR_LABEL } from './client.js';
+import { ACTOR_LABEL, getAppClient } from './client.js';
 import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
@@ -691,14 +689,6 @@ async function settleConflictChoice(conflictId, result) {
 
 let disposeEvidence = null;
 let dateDraft = null;
-function closeDateEditor() {
-  dateDraft = null;
-  const form = $('dealDateForm');
-  form.reset();
-  form.querySelector('button[type="submit"]').disabled = true;
-  $('dealDateStatus').textContent = '';
-  $('dealDateDialog').close();
-}
 let panelReadSequence = 0;
 let contextReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
@@ -710,6 +700,7 @@ function clearDateDraft() {
   dateDraft = null;
   $('dealDateDialog').close();
   $('dealDateForm').reset();
+  $('dealDateForm').querySelector('button[type="submit"]').disabled = true;
   $('dealDateTitle').textContent = 'Add date';
   $('dealDateStatus').textContent = '';
 }
@@ -889,7 +880,7 @@ async function refreshPanel() {
     setContextOpenVisible(false);
     if (error.status === 401 || error.status === 403) {
       state.panelDetail = null; nextDraft = null;
-      closeDateEditor();
+      clearDateDraft();
       disposeEvidence?.(); disposeEvidence = null;
       $('panelTitle').textContent = 'Unavailable';
       $('panelBody').replaceChildren();
@@ -1334,7 +1325,7 @@ async function boot() {
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
-  state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  state.client = await getAppClient(resolved.mode, resolved.options);
   mountNotificationBadge(state.client);
   state.mode = state.client.mode;
   const identity = deploymentIdentity(state.mode);
@@ -1361,7 +1352,11 @@ async function boot() {
   // current board scope. The existing detail read enforces identity and shows
   // failures; its outcome must not hold up board/feed polling.
   const linkedDeal = incomingScope.get('deal');
-  if (linkedDeal) openPanel(linkedDeal);
+  if (linkedDeal && incomingScope.get('complete') === 'closed') {
+    // Doc enters the same reviewed completion form as drag/keyboard moves.
+    const url = new URL(location.href); url.searchParams.delete('complete'); history.replaceState({}, '', url);
+    beginMove(linkedDeal, 'closed');
+  } else if (linkedDeal) openPanel(linkedDeal);
 }
 
 if (globalThis.document) boot();
