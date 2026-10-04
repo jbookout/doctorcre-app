@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22.12.0
@@ -38,15 +39,17 @@ jobs:
       - run: node --test test/e2e-suite.test.mjs
       - run: npx playwright install --with-deps chromium
       # Deterministic journeys only: CI configures no model, so agent steps stay local.
-      - run: npx e2e run tests/journeys --retries 0 --reporter list,junit
+      - run: node scripts/browser-product-proof.mjs
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: e2e-report
+          name: e2e-report-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          include-hidden-files: true
           path: |
             .e2e/report.json
             .e2e/junit.xml
             .e2e/artifacts
             .e2e/logs
-          if-no-files-found: warn
+            .e2e/proof
+          if-no-files-found: error
           retention-days: 7
