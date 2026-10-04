@@ -416,3 +416,29 @@ test("explicitly entered suggestion text becomes an override even when its value
   draft.set("area", "Demo area"); draft.refreshSuggestions({ area: "New source area" });
   assert.equal(draft.values.area, "Demo area");
 });
+
+test("Doc's tour request selects the one matching client and leaves an ambiguous name unchosen", async t => {
+  const one = harness({}, window => window.history.replaceState({}, "", "/tours?plan_for=practice%20b")); t.after(one.close);
+  await one.view.ready;
+  assert.equal(one.doc.querySelector("#plan-client").value, clientB);
+  assert.equal(one.doc.activeElement, one.doc.querySelector("#plan-name"));
+  assert.equal(one.dom.window.location.search, "");
+  const many = harness({}, window => window.history.replaceState({}, "", "/tours?plan_for=Demo%20Practice")); t.after(many.close);
+  await many.view.ready;
+  assert.equal(many.doc.querySelector("#plan-client").value, "");
+  assert.equal(many.doc.activeElement, many.doc.querySelector("#plan-client"));
+});
+
+test('PR142 R11 tour address opens the selected detail destination',async t=>{
+ const h=harness({},w=>w.history.replaceState({},'',`/tours?tour=${clientB}`));t.after(h.close);await h.view.ready;await waitFor(()=>h.doc.querySelector('#tour-dialog').open);
+ assert.equal(h.doc.querySelector('#detail-title').textContent,'Demo tour');assert.equal(new URL(h.dom.window.location.href).searchParams.has('tour'),false);
+});
+for(const name of ['Missing Name','Demo Practice']) test(`PR142 R12 unresolved ${name} detaches a restored client and draft`,async t=>{
+ const h=harness({},w=>{w.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1',JSON.stringify({scope:'synthetic-scope',planClient:clientA,searchClient:'',plan:{name:'Previous draft',notes:'Previous client notes'},search:{}}));w.history.replaceState({},'',`/tours?plan_for=${encodeURIComponent(name)}`);});t.after(h.close);await h.view.ready;
+ assert.equal(h.doc.querySelector('#plan-client').value,'');assert.equal(h.doc.querySelector('#plan-name').value,'');assert.equal(h.doc.querySelector('#plan-notes').value,'');assert.match(h.doc.querySelector('#plan-message').textContent,/choose|match/i);
+});
+test('PR142 R12 delayed plan request never resets intervening edits',async t=>{
+ let release;const pending=new Promise(r=>release=r);const h=harness({clients:()=>pending},w=>w.history.replaceState({},'', '/tours?plan_for=practice%20b'));t.after(h.close);
+ h.change('#plan-name','Typed while loading');release([record(clientA),record(clientB)]);await h.view.ready;
+ assert.equal(h.doc.querySelector('#plan-name').value,'Typed while loading');assert.equal(h.doc.querySelector('#plan-client').value,'');
+});

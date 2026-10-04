@@ -71,12 +71,39 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const field of Object.keys(draft.values)) $(`#${prefix}-${field}`).addEventListener("input", event => {
       const value = event.target.value;
       if (scope !== null) restoreOrClear();
+      if (prefix === "plan") ++planInteraction;
       draft.set(field, value); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
     });
     $(`#${prefix}-undo`).addEventListener("click", () => {
+      if (prefix === "plan") ++planInteraction;
       const field = draft.undo(); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
       if (field) { $(`#${prefix}-${field}`).focus(); message(prefix === "plan" ? "#plan-message" : "#space-message", "Change undone."); }
     });
+  }
+  // Doc's "plan a tour for …" arrives once as ?plan_for=; only an exact single
+  // match is chosen, so a vague name never binds another client's record.
+  let planInteraction = 0;
+  let planRequest = new URLSearchParams(window.location.search).get("plan_for");
+  const planRequestRevision = planInteraction;
+  let tourRequest = new URLSearchParams(window.location.search).get("tour");
+  function applyTourRequest() {
+    if (!tourRequest) return;
+    const id = tourRequest; tourRequest = null;
+    const url = new URL(window.location.href); url.searchParams.delete("tour"); window.history.replaceState(window.history.state, "", url);
+    void openTour(id, $("#tour-filter"));
+  }
+  function applyPlanRequest() {
+    if (!planRequest) return;
+    const words = planRequest.toLowerCase().split(/\s+/).filter(Boolean); planRequest = null;
+    const url = new URL(window.location.href); url.searchParams.delete("plan_for"); window.history.replaceState(window.history.state, "", url);
+    if (disposed || planInteraction !== planRequestRevision) return;
+    const found = clients.filter(client => words.every(word => String(client.name || "").toLowerCase().includes(word)));
+    if (found.length !== 1) {
+      void prefill("plan", ""); fillClients();
+      message("#plan-message", found.length ? "Choose a client for this tour." : "No matching client. Choose a client for this tour.");
+      $("#plan-client").focus(); return;
+    }
+    $("#plan-client").value = found[0].id; void prefill("plan", found[0].id); $("#plan-name").focus();
   }
   function fillClients() {
     for (const [prefix, selected, research] of [["plan", planClient, false], ["space", searchClient, true]]) {
@@ -214,10 +241,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     restoreOrClear();
     if (!active()) return;
-    if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); }
+    if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); applyTourRequest(); }
     else { pageDocContext?.fail(docTicket,results[0].reason); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
     if (results[1].status === "fulfilled") {
-      clients = results[1].value; fillClients();
+      clients = results[1].value; fillClients(); applyPlanRequest();
       for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === "Clients temporarily unavailable.") message(target, "");
     }
     else { for (const target of ["#plan-message", "#space-message"]) message(target, unavailable(results[1].reason) || "Clients temporarily unavailable."); }
@@ -252,7 +279,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     $(".freshness").classList.toggle("current", current);
   }
   wireDraft("plan", plan); wireDraft("space", search);
-  $("#plan-client").addEventListener("change", event => void prefill("plan", event.target.value));
+  $("#plan-client").addEventListener("change", event => { ++planInteraction; void prefill("plan", event.target.value); });
   $("#space-client").addEventListener("change", event => void prefill("space", event.target.value));
   $("#tour-filter").addEventListener("input", renderLibrary);
   $("#plan-form").addEventListener("submit", event => { event.preventDefault(); save("#plan-message"); reviewDraft($("#review-packet")); });

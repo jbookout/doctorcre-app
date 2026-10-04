@@ -1,3 +1,4 @@
+import { waitForState } from './browser-state.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -32,7 +33,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto('http://localhost/deals' + query);
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.size > 0);
+  await waitForState(page,async () => (await import('/js/pipeline.js')).state.deals.size > 0);
   return { page, errors };
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
@@ -74,7 +75,7 @@ async function liveDetailRead(page) {
    state.client.getDeal=createLiveClient().getDeal;
  });
  await readPanel(page);
- await page.waitForFunction(async()=>{
+ await waitForState(page,async()=>{
    const {state}=await import('/js/pipeline.js');
    return state.panelDetail!==window.beforeLiveDetail&&state.panelDetail?.deal.id==='d14';
  });
@@ -228,7 +229,7 @@ test('PR129 R1 a context read survives an authorized detail poll but not a refus
  await page.waitForFunction(()=>contextReads.length===1);
  await page.evaluate(async()=>{window.beforeContextPoll=(await import('/js/pipeline.js')).state.panelDetail;});
  await readPanel(page);
- await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.panelDetail!==window.beforeContextPoll);
+ await waitForState(page,async()=>(await import('/js/pipeline.js')).state.panelDetail!==window.beforeContextPoll);
  await page.evaluate(()=>contextReads[0]({record:{name:'Authorized client'}}));
  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody').textContent.includes('Authorized client'));
  await page.locator('#contextDrawerClose').click();
@@ -369,7 +370,7 @@ for(const width of [1440,390]) test('R8 list Undo is visible and clickable at '+
  const {page}=await open(t,{width});await page.locator('#listView').click();
  const undo=page.locator('[data-id="d14"] [data-undo]');
  const boxes=await undo.evaluate(e=>{const a=e.getBoundingClientRect(),b=e.closest('article').getBoundingClientRect();return {button:a.bottom,row:b.bottom};});assert.ok(boxes.button<=boxes.row);
- await undo.click();await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Research');
+ await undo.click();await waitForState(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Research');
 });
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);

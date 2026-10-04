@@ -1,4 +1,4 @@
-import { createClient } from './client.js';
+import { getAppClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
 import { localToday, isCalendarDay } from './calendar-model.js';
@@ -154,5 +154,5 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
 }
 if(typeof document!=='undefined'&&document.getElementById('invoiceRows')){
   const boot=resolveDealroomBoot(window.location);
-  createClient(boot.mode,boot.options).then(client=>mountInvoiceTracker({document,window,client})).catch(()=>{document.getElementById('invoiceRows').textContent='Invoices unavailable';});
+  getAppClient(boot.mode,boot.options).then(client=>mountInvoiceTracker({document,window,client})).catch(()=>{document.getElementById('invoiceRows').textContent='Invoices unavailable';});
 }
