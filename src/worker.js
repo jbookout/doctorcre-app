@@ -1,5 +1,6 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
+import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -22,8 +23,8 @@ const UNGATED_PAGES = new Set(["/status"]);
 const GATE_PATHS = new Map(Object.entries(routeContract.gatePaths));
 
 function gateRequestFor(request, pathname) {
-  const gatePath = GATE_PATHS.get(pathname);
-  if (gatePath === pathname) return request;
+  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+  if (!gatePath || gatePath === pathname) return request;
   const url = new URL(request.url);
   url.pathname = gatePath;
   url.search = "";
@@ -133,6 +134,9 @@ function release(env) {
 export async function handleDoctorcreRequest(request, env) {
   const url = new URL(request.url);
   const pathname = url.pathname;
+  const boardDestination = legacyBoardDestination(url);
+  if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
+    ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
   if (pathname === "/share") return Response.redirect(`https://reports.doctorcre.com/share${url.search}`, 302);
   if (REDIRECTS.has(pathname)) {
@@ -153,7 +157,7 @@ export async function handleDoctorcreRequest(request, env) {
 
   const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
     : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-    : APP_ROUTES.get(pathname);
+    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     const gateRequest = gateRequestFor(request, pathname);

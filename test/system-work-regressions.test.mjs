@@ -10,16 +10,16 @@ const envelope=(items=[row()],extra={})=>({schema:'unfinished-work.v1',items,cov
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
 async function setup(t,{read,write}={}){
- const dom=new JSDOM(readFileSync(new URL('../progress-board.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm};
- Object.assign(globalThis,{document:dom.window.document,FormData:dom.window.FormData,confirm:()=>true});t.after(()=>{Object.assign(globalThis,previous);dom.window.close();});
+ const dom=new JSDOM(readFileSync(new URL('../progress-board.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm,matchMedia:globalThis.matchMedia};
+ Object.assign(globalThis,{document:dom.window.document,FormData:dom.window.FormData,confirm:()=>true,matchMedia:()=>({matches:false,addEventListener(){}})});t.after(()=>{Object.assign(globalThis,previous);dom.window.close();});
  const d=dom.window.document,dialog=d.querySelector('#work-triage');let restore;
  dialog.showModal=()=>{restore=d.activeElement;dialog.open=true;};dialog.close=()=>{dialog.open=false;restore?.focus();};
- const calls=[],writes=[],pipelines=[];const client={unfinishedWork:async args=>{calls.push(args);return read?read(args):envelope(args.live_library?[]:[row(),row('b')]);},triageSystemWork:async(verb,args)=>{writes.push({verb,args:structuredClone(args)});return write?write(verb,args):{ok:true,message:'Source updated'};}};
- const board=mountSystemWorkBoard({client,onPipeline:p=>pipelines.push(p)});await settle();
+ const calls=[],writes=[];const client={unfinishedWork:async args=>{calls.push(args);return read?read(args):envelope(args.live_library?[]:[row(),row('b')]);},triageSystemWork:async(verb,args)=>{writes.push({verb,args:structuredClone(args)});return write?write(verb,args):{ok:true,message:'Source updated'};}};
+ const board=mountSystemWorkBoard({client});await settle();
  const click=selector=>d.querySelector(selector).click();
  const open=id=>click(`.work-card[data-work-id="${id}"] button`);
  const submit=value=>{d.querySelector('#work-triage textarea').value=value;d.querySelector('#work-triage-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));};
- return {d,dom,board,calls,writes,pipelines,click,open,submit};
+ return {d,dom,board,calls,writes,click,open,submit};
 }
 test('finding 1: structured non-confirmation displays outcomes, counts and source state',async t=>{
  for(const outcome of ['not_proven','held','stale','superseded']){
@@ -31,6 +31,43 @@ test('finding 2: uncertain write replays immutable key, body and version after r
  let attempt=0;const h=await setup(t,{read:args=>envelope(args.live_library?[]:[{...row(),version:args.id?3:2}]),write:()=>{if(++attempt===1)throw Object.assign(new Error('Unknown outcome'),{payload:{error:'unhandled_verb_failure'}});return {ok:true,message:'Source updated'};}});
  h.open('a');h.submit('Original progress');await settle();assert.match(h.d.querySelector('.triage-status').textContent,/unconfirmed/i);assert.doesNotMatch(h.d.querySelector('.triage-status').textContent,/refused/);
  h.click('#work-triage-close');h.open('a');h.submit('Replacement progress');await settle();assert.equal(h.writes.length,2);assert.deepEqual(h.writes[1],h.writes[0]);
+});
+for(const denialStatus of [401,403])for(const pendingAtDenial of [false,true])test(`access denial ${denialStatus} preserves ${pendingAtDenial?'pending':'uncertain'} write replay through recovery`,async t=>{
+ let denied=false,version=2,commits=0;const receipts=new Map(),lostResponse=deferred();
+ const h=await setup(t,{
+  read:args=>{if(denied)throw Object.assign(new Error('Access denied'),{status:denialStatus});return envelope(args.live_library?[]:[{...row(),version}]);},
+  write:(_verb,args)=>{
+   if(receipts.has(args.idempotency_key))return receipts.get(args.idempotency_key);
+   assert.equal(args.base_version,version);version++;commits++;
+   receipts.set(args.idempotency_key,{ok:true,message:'Original request confirmed'});
+   return lostResponse.promise;
+  },
+ });
+ h.open('a');h.submit('Original progress');await settle();assert.equal(commits,1);
+ if(!pendingAtDenial){lostResponse.reject(new Error('Response lost'));await settle();}
+ h.click('#work-triage-close');denied=true;await h.board.refresh();
+ assert.equal(h.d.querySelector('#work-triage').open,false);
+ assert.equal(h.d.querySelector('#work-triage-form').textContent,'');
+ assert.equal(h.d.querySelectorAll('.work-card, #system-work-flow [data-task-id]').length,0);
+ assert.equal(h.d.querySelector('#system-work-coverage').textContent,'');
+ assert.match(h.d.querySelector('#system-work-error').textContent,denialStatus===401?/Sign in/:/access unavailable/);
+ denied=false;await h.board.refresh();h.open('a');
+ if(pendingAtDenial){
+  h.submit('Replacement progress');await settle();assert.equal(h.writes.length,1,'a pending operation cannot start another write');
+  lostResponse.reject(new Error('Response lost'));await settle();
+ }
+ assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').textContent,'Reconcile original request');
+ assert.equal(h.d.querySelector('#work-triage textarea').value,'Original progress');
+ assert.equal(h.d.querySelector('#work-triage textarea').disabled,true);
+ const freshReads=h.calls.filter(call=>call.id==='a').length;
+ h.submit('Replacement progress');await settle();
+ assert.equal(h.writes.length,2);assert.deepEqual(h.writes[1],h.writes[0]);
+ assert.equal(h.calls.filter(call=>call.id==='a').length,freshReads,'reconciliation skips preparing a fresh request');
+ assert.equal(commits,1,'the producer commits only the original operation');
+ assert.match(h.d.querySelector('.triage-status').textContent,/Original request confirmed/);
+ h.click('[data-receipt-close]');await settle();h.open('a');
+ assert.equal(h.d.querySelector('#work-triage textarea').value,'');
+ assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').textContent,'Review and confirm');
 });
 test('finding 3: late action receipt stays with its operation and never modifies another dialog',async t=>{
  const result=deferred();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('First progress');await settle();h.click('#work-triage-close');h.open('b');result.resolve({ok:true,message:'First receipt'});await settle();
@@ -103,4 +140,12 @@ test('W1: background work updates recover without prompting and do not overlap',
  fail=false;slow=true;const pending=h.board.refresh();const count=h.calls.length;await h.board.refresh();assert.equal(h.calls.length,count);
  next.resolve(envelope([{...row(),title:'Automatically updated'}]));await pending;assert.equal(h.d.querySelector('#system-work-error').hidden,true);assert.equal(h.d.querySelector('.work-card h4').textContent,'Automatically updated');assert.equal(h.writes.length,0);
  assert.equal(h.d.querySelector('#system-work-coverage button').getAttribute('aria-label'),'Refresh');assert.doesNotMatch(h.d.querySelector('#system-work-coverage').textContent,/source|census|items|read|retry/i);
+});
+
+
+test('unsupported source navigation displays its absence without a directory fallback', async t => {
+ const item={...row(),link:null,navigation:{state:'unavailable'}};
+ const h=await setup(t,{read:args=>envelope(args.live_library?[]:[item])});
+ assert.match(h.d.querySelector('#system-work-cards').textContent,/Source page unavailable/);
+ assert.equal(h.d.querySelectorAll('#system-work-cards .work-actions a').length,0);
 });
