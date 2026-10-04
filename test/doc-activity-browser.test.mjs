@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, mkdtemp } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, settles } from './browser-harness.mjs';
 import { createDocActivityFixture } from '../js/doc-activity-fixture.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ const site=pathToFileURL(join(artifactDir,'site')+'/');
 const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=false,limit=50,holdUndos=false,readTransform=answer=>answer}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:960},reducedMotion}); page.setDefaultTimeout(5000);
+  const page=await browser.newPage({viewport:{width,height:960},reducedMotion});
   const fixture=createDocActivityFixture(()=>new Date('2026-10-01T15:00:00Z')), calls=[],errors=[];
   const undoHolds=new Map(),undoReady=new Map();
   let fail=undoFailure, reads=0, failRead=false, staleRead=null, heldRead=null, refusal=false;
@@ -112,8 +112,7 @@ test('earlier activity traverses keyset pages and remains complete after refresh
 test('late filter responses never replace the current partner',async t=>{
   const {page,holdPartner,releaseHeld,hasHeld}=await open(t);
   holdPartner('joe'); await page.locator('[name=partner]').selectOption('joe');
-  for(let i=0;i<40&&!hasHeld();i++)await new Promise(resolve=>setTimeout(resolve,10));
-  assert.ok(hasHeld()); await page.locator('[name=partner]').selectOption('dell');
+  await settles(()=>assert.ok(hasHeld())); await page.locator('[name=partner]').selectOption('dell');
   await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===2);
   releaseHeld(); await page.clock.runFor(100);
   assert.equal(await page.locator('[name=partner]').inputValue(),'dell'); assert.equal(await page.locator('.activity-row').count(),2);
