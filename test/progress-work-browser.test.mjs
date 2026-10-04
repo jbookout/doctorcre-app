@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, settles } from './browser-harness.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
@@ -12,17 +12,14 @@ const NOW = new Date('2026-08-24T12:20:00Z');
 const taskId = 't_demo0001';
 const taskPath = `/control-room/progress/work?board=demo-project&task=${taskId}`;
 const kinds = {projection:'observatory_projection',portfolio:'eval_portfolio',spatial:'spatial_surface',elapsed:'telemetry_measurement',cost:'telemetry_measurement',engineering:'engineering_passport',activation:'attempt_receipt'};
-async function assertEventually(predicate) {
-  for(let attempt=0;attempt<100;attempt++) { if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20)); }
-  assert.equal(predicate(),true,'Expected the asynchronous mock operation to finish');
-}
+const assertEventually = predicate => settles(() => assert.equal(predicate(), true, 'Expected the asynchronous mock read to finish'));
 function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
 async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:900}}); page.setDefaultTimeout(7000); await page.clock.install({time:NOW});
+  const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   const errors=[],calls=[],posts=[]; page.on('pageerror',error=>errors.push(error.message));
   const state={rpcReply,offline:false,authLost:false,postFailure:false,turns:empty?[]:receipts(),queueReads:0,turnReads:0};
   if(!empty) state.turns.push({seq:8,msg_id:'review',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`${taskId} Fix round one; independent review requested.`},
@@ -525,7 +522,7 @@ test('baseline Observatory controls all remain mounted in layer 3',async()=>{
   const before=await readFile(new URL('../_to_delete/room.html',import.meta.url),'utf8');
   const after=await readFile(new URL('../progress-work.html',import.meta.url),'utf8');
   const ids=source=>[...source.matchAll(/id="([^"]+)"/g)].map(match=>match[1]);
-  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard']);
+  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard','queueDrawer','drawerClose','drawerTitle','drawerSummary','drawerMeta']);
   assert.deepEqual(ids(before).filter(id=>!relocated.has(id)&&!ids(after).includes(id)),[]);
   assert.match(after,/id="workTasks"/);assert.match(after,/id="queueColumns"/);
 });

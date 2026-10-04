@@ -2,18 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
 async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390 } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const context = await browser.newContext({ viewport: { width, height: 900 } });
-  const page = await context.newPage(); page.setDefaultTimeout(7000);
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const context = page.context();
   await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
-  context.on('page', p => { p.setDefaultTimeout(7000); p.on('pageerror', e => errors.push(e.message)); });
+  context.on('page', p => { p.on('pageerror', e => errors.push(e.message)); });
   page.on('pageerror', e => errors.push(e.message));
   const env = {
     CARR: { fetch: async request => {

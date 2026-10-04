@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, settles } from './browser-harness.mjs';
 import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
@@ -16,11 +16,13 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
-  await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
+  // Virtual time pauses CSS transitions. Data journeys use reduced motion so
+  // actionability cannot wait on a hover transition the clock never advances.
+  await page.clock.install({ time: NOW });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   let boardMalformed = malformedBoard;
   let releaseInitialFeed;
@@ -130,7 +132,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'read-invoice-tracker': 1, 'today-triage': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'read-invoice-tracker':1, 'today-triage':1,'list-doc-suggestions': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -152,7 +154,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
 });
 
 test('reduced motion stops ambient and hover motion without hiding data', async t => {
-  const { page } = await open(t);
+  const { page } = await open(t, { motion: 'no-preference' });
   await page.locator('.home-radar').waitFor();
   assert.ok(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName !== 'none'));
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -172,7 +174,8 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
   assert.equal(await page.locator('#homeLeads').isVisible(), false);
   state.failBoard(true);
   await page.clock.fastForward(31_000);
-  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —'));
+  // Recover only after the failing refresh ends: a resume during it joins that read.
+  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeCalendar').isVisible(), false);
   assert.doesNotMatch(await page.locator('main').textContent(), /retry|read again/i);
   state.failBoard(false);
@@ -228,7 +231,7 @@ test('R5 whole refresh deadline preserves completed widgets across multiple hung
   assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: 12/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.equal(await page.locator('#homeControl').isVisible(), true);
-  assert.equal(calls.filter(name => name === 'get-deal-room').length, 12);
+  await settles(() => assert.equal(calls.filter(name => name === 'get-deal-room').length, 12));
 });
 
 test('R6 settled board failure shows unavailable rather than Updating and automatic recovery clears it', async t => {

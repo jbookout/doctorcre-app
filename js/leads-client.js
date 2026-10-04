@@ -1,3 +1,4 @@
+import { observeDocClient } from './doc-context.js';
 import { readWithDeadline } from "./auto-refresh.mjs";
 
 /** A deliberately small MCP client for Home reads and the versioned Leads workspace.
@@ -80,7 +81,7 @@ export function createLeadBoardClient(options = {}) {
     return payload;
   }
 
-  return {
+  return observeDocClient({
     async getActor() {
       const board = await rpc("deal-room-board", { workspace: "team" });
       return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
@@ -104,7 +105,7 @@ export function createLeadBoardClient(options = {}) {
       return rpc("link-lead-client", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
         expected_actor: actor, client_id: clientId, confirmed: true, idempotency_key: key }, true);
     },
-  };
+  }, options.docContext === false ? null : undefined);
 }
 
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);

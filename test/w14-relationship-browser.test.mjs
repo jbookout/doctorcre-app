@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 const root = new URL("../", import.meta.url);
 async function open(t, width = 1440) {
@@ -10,7 +10,6 @@ async function open(t, width = 1440) {
   const page = await browser.newPage({
     viewport: { width, height: width === 390 ? 844 : 1000 },
   });
-  page.setDefaultTimeout(10000);
   await page.clock.install({ time: new Date() });
   const errors = [],
     verbs = [];
@@ -169,6 +168,7 @@ for (const width of [1440, 390])
           "deal-room-changes",
           "unread-count",
           "correspondence-readiness",
+          "list-doc-suggestions",
         ].includes(v),
       ),
     );

@@ -171,4 +171,4 @@ createServer(async (request, response) => {
     response.writeHead(404, {"content-type":"text/plain; charset=utf-8"});
     response.end("Not found\n");
   }
-}).listen(Number(process.env.PORT || 8787), "127.0.0.1", () => console.log(`DoctorCRE fixture server: http://127.0.0.1:${process.env.PORT || 8787}`));
+}).listen(Number(process.env.PORT || 8787), "127.0.0.1", function () { console.log(`DoctorCRE fixture server: http://127.0.0.1:${this.address().port}`); });

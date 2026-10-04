@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { animationsSettled, chromium, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { workspace, detail, id } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
 const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
-async function open(t,{width=1440,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
+async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:960},timezoneId,reducedMotion:clock?'reduce':motion});page.setDefaultTimeout(5000);
+  const page=await browser.newPage({viewport:{width,height},hasTouch,timezoneId,reducedMotion:clock?'reduce':motion});
   if(clock) await page.clock.install({time:new Date(now)});
   if(deniedStorage) await page.addInitScript(()=>{Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Unavailable','SecurityError');}});});
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -64,7 +64,8 @@ test('Leads drag and keyboard moves review evidence before using the same stage 
  const{page,goto,writes,errors}=await open(t);await goto('/leads');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
- await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
+ // dragTo presses at the card's measured centre; mid-entrance the card has moved and no drag starts.
+ await animationsSettled(page);await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
  await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
@@ -112,7 +113,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
  const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
- await page.waitForFunction(async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
+ await waitForAsync(page, async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
  assert.deepEqual(errors,[]);
 });
 
@@ -154,7 +155,7 @@ test('Home, Leads and Local Deals fit desktop and phone; capture the six review 
  const{page,goto,errors}=await open(t);
  for(const width of[1440,390]){await page.setViewportSize({width,height:960});for(const[name,path]of[['home','/'],['leads','/leads'],['local-deals','/deals?view=board']]){
   await goto(path);if(name==='leads')await page.waitForSelector('.lead-card');if(name==='local-deals')await page.waitForSelector('.kanban-card');
-  await fits(page,`${name} ${width}`);await page.screenshot({timeout:15000,animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
+  await fits(page,`${name} ${width}`);await page.screenshot({animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
  }}assert.deepEqual(errors,[]);
 });
 
@@ -176,8 +177,8 @@ test('R1 Lead detail clears immediately while resume revalidation is delayed',as
  await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);
  assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.equal(await page.locator('#detailBody').textContent(),'');await requested;release();
 });
-test('R3 Today excludes normalized Closed deals and uses the local calendar day',async t=>{
- const {page,goto,errors}=await open(t,{clock:true,now:'2026-10-02T00:30:00Z'});
+for(const timezoneId of ['America/Chicago','Europe/Paris']) test(`R3 Today excludes normalized Closed deals and uses the Chicago business day in ${timezoneId}`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true,timezoneId,now:'2026-10-02T00:30:00Z'});
  await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board' ? route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'joe',deals:[{id:'closed',name:'Closed Demo',phase:'closed',owner:'joe',attention:true},{id:'tomorrow',name:'Tomorrow Demo',phase:'research',owner:'joe',attention:false,next_date:'2026-10-02'},{id:'due',name:'Due Demo',phase:'research',owner:'joe',next_date:'2026-10-01'}]})}]}}}) : route.fallback());
  await goto('/leads?mode=live');assert.deepEqual(await page.locator('#appTodayNeeds [data-layout-deal]').evaluateAll(ns=>ns.map(n=>n.dataset.layoutDeal)),['due']);
  assert.equal(await page.locator('#appWorkingList [data-layout-deal]').count(),0);assert.deepEqual(errors,[]);
@@ -213,4 +214,164 @@ test('R9 Recent changes transfers phone focus into Today and keeps its keyboard 
  assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Shift+Tab');assert.equal(await page.locator('#appToday').evaluate(n=>n.contains(document.activeElement)),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#appTodayToggle').evaluate(n=>n===document.activeElement),true);
+});
+
+// PR 129 numbered review regressions. All data is synthetic.
+for (const transition of ['actor', 'scope', 'refusal']) test(`PR129 #2 recent moves discard retained private rows on ${transition}`, async t => {
+ const events=[{id:'review-private-move',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Synthetic private value',recorded_at:'2026-10-01T15:00:00Z'}];
+ const {page,goto}=await open(t,{clock:true,events});let changed=false;
+ await page.route('**/mcp',route=>{
+  if(changed && route.request().postDataJSON().params.name==='deal-room-board') return transition==='refusal'?route.fulfill({status:401,body:'Denied'}):route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:transition==='actor'?'dell':'joe',deals:[]})}]}}});
+  return route.fallback();
+ });
+ await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
+ changed=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
+ assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value|Demo Specialty Clinic/);
+ if(transition==='refusal') { events.length=0;changed=false;await page.clock.fastForward(31_000);await page.waitForFunction(()=>document.querySelector('#appConnection').dataset.state==='healthy');assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value/); }
+});
+test('PR129 #4 parked and normalized Closed records stay out of both attention lists',async t=>{
+ const {page,goto}=await open(t);
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'joe',deals:[{id:'closed',name:'Closed Example',phase:'closed',owner:'joe',attention:true},{id:'parked',name:'Parked Example',phase:'research',operating_state:'parked',owner:'joe',attention:true}]})}]}}}):route.fallback());
+ await goto('/leads?mode=live');assert.equal(await page.locator('#appTodayNeeds [data-layout-deal],#appWorkingList [data-layout-deal]').count(),0);
+});
+test('PR129 #7 closing Lead detail after polling resolves the current card by identity',async t=>{
+ const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
+ await card.focus();const original=await card.elementHandle();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();
+ // The poll's read is async: close only once it has re-rendered the card behind the open detail.
+ await page.clock.fastForward(31_000);await page.waitForFunction(node=>!node.isConnected,original);await page.keyboard.press('Escape');
+ await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
+ assert.equal(await card.evaluate(n=>n===document.activeElement),true);
+});
+test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
+ const {page,goto,writes}=await open(t,{width:390,hasTouch:true});await goto('/leads');await page.locator('.lead-card').first().tap();await page.locator('#detailStage').selectOption('engaged');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);await page.locator('#saveStage').tap();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();assert.deepEqual(writes,['update-lead']);
+ await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
+ assert.equal(await page.locator('#detailPhase').inputValue(),'legal');
+});
+for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain pointer actionable at ${width}x390`,async t=>{
+ const {page,goto}=await open(t,{width,height:390});await goto('/leads');
+ for(const link of await page.locator('.app-shell-navigation>a').all()) await link.click({trial:true});
+ await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('Progress',{exact:true}).isVisible(),true);
+});
+test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
+ const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();
+ const luminance=rgb=>{const c=rgb.match(/[\d.]+/g).slice(0,3).map(n=>{const x=Number(n)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2];};
+ const colors=await page.locator('#appSidebarSlot').evaluate(n=>({background:getComputedStyle(n.closest('aside')).backgroundColor,text:getComputedStyle(n).color}));
+ assert.ok((Math.max(luminance(colors.background),luminance(colors.text))+.05)/(Math.min(luminance(colors.background),luminance(colors.text))+.05)>=4.5,JSON.stringify(colors));
+ const labelColor=await page.locator('#appSidebarSlot label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
+ await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailPhase').waitFor();
+ const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
+ assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
+ assert.equal(await page.locator('#recordPanel input[type="date"]').evaluate(n=>getComputedStyle(n).colorScheme),'light');
+ const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
+ for(const field of fields)assert.ok((Math.max(luminance(field.background),luminance(field.text))+.05)/(Math.min(luminance(field.background),luminance(field.text))+.05)>=4.5,JSON.stringify(field));
+ const summaryColor=await page.locator('#recordPanel summary').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(pair.background)+.05)/(luminance(summaryColor)+.05)>=4.5,summaryColor);
+ await page.screenshot({animations:'disabled',path:new URL('test-artifacts/w1b/light-detail.png',root).pathname});
+ await page.setViewportSize({width:390,height:960});await fits(page,'light detail phone');await page.screenshot({animations:'disabled',path:new URL('test-artifacts/w1b/light-detail-390.png',root).pathname});
+});
+
+for(const width of [1440,390]) test(`PR129 #3 sync failure is visibly distinct from shared connection health at ${width}`,async t=>{
+ const {page,goto}=await open(t,{width});await goto('/deals?view=board');
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getChanges=async()=>{throw new Error('Synthetic feed failure')};await state.boardSync.pollChanges({force:true});});
+ await page.waitForFunction(()=>document.querySelector('#boardStatusLabel').textContent==='Reconnecting');
+ const visible=await page.locator('#boardStatus').evaluate(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return r.width>20&&r.height>10&&s.clipPath==='none'});
+ assert.equal(visible,true);assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
+ await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture: failed';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
+});
+
+test('PR129 #2 account transition removes prior receipts before a delayed feed answers',async t=>{
+ const events=[{id:'old-private',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Synthetic private value',recorded_at:'2026-10-01T15:00:00Z'}];
+ const {page,goto}=await open(t,{clock:true,events});await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
+ let release;const pending=new Promise(r=>release=r);t.after(()=>release());
+ await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'dell',deals:[]})}]}}}):route.fallback());
+ await page.route('**/pipeline/changes*',async route=>{await pending;return route.fulfill({json:{events:[],cursor:'1'}})});
+ await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
+ assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value|Demo Specialty Clinic/);release();
+});
+
+for(const width of [1440,390]) test(`PR129 #3 Leads freshness feedback fits the visible status bar at ${width}`,async t=>{
+ const {page,goto}=await open(t,{width});await goto('/leads');
+ const item=await page.locator('#boardUpdated').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(item.y>=bar.y && item.y+item.height<=bar.y+bar.height,JSON.stringify({item,bar}));
+});
+
+for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status} during a deal refresh`,async t=>{
+ const {page,goto,writes,errors}=await open(t,{clock:true});let failure=false;
+ await page.route('**/mcp',route=>{
+  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
+  if(failure) return route.fulfill({status,body:'Unavailable'});
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',thread:[],events:[],critical_dates:[]})}]}}});
+ });
+ await goto('/deals?view=board&mode=live');await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.locator('[data-add-date="loi_expiry"]').click();
+ const form=page.locator('#dealDateForm'),save=form.locator('button[type="submit"]');
+ await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic protected clause');
+ failure=true;await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'date-authorization-regression'});});
+ await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('#panelBody [role="status"]')?.textContent));
+ if(status===503) {
+  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),true);
+  assert.equal(await form.locator('[name="date"]').inputValue(),'2026-12-01');
+  assert.equal(await form.locator('[name="evidence"]').inputValue(),'Synthetic protected clause');assert.equal(await save.isEnabled(),true);
+ } else {
+  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),false,'refused read closes the date editor');
+  assert.equal(await form.locator('[name="date"]').inputValue(),'');assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
+  assert.equal(await save.isDisabled(),true);
+  // A queued submit cannot use the invalidated draft, even with a closed dialog.
+  await form.dispatchEvent('submit');assert.deepEqual(writes,[]);
+ }
+ failure=false;await page.clock.fastForward(16000);await page.locator('#detailPhase').waitFor();
+ if(status!==503) {
+  assert.equal(await save.isDisabled(),true,'recovery requires opening a new editor');
+  await page.locator('[data-add-date="loi_expiry"]').click();assert.equal(await save.isEnabled(),true);
+  assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
+  await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic fresh clause');
+ }
+ const posted=page.waitForRequest(r=>r.url().endsWith('/mcp') && r.postDataJSON().params.name==='add-critical-date');
+ await save.click();const args=(await posted).postDataJSON().params.arguments;
+ assert.equal(args.deal,'d14');assert.equal(args.due_on,'2026-12-01');
+ assert.equal(args.source,status===503?'Synthetic protected clause':'Synthetic fresh clause');
+ await page.waitForFunction(()=>!document.querySelector('#dealDateDialog').open);
+ assert.deepEqual(writes,['add-critical-date']);assert.deepEqual(errors,[]);
+});
+
+for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP ${status} from authorization refusal`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true});let failure=false,failedReads=0;
+ await page.route('**/mcp',route=>{
+  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
+  if(failure) {failedReads++;return route.fulfill({status,body:'Unavailable'});}
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',next_step:'Synthetic recorded next step',thread:[{id:'synthetic-note',kind:'note',text:'Synthetic protected note',actor:'joe',recorded_at:'2026-10-01T12:00:00Z'}],events:[],critical_dates:[]})}]}}});
+ });
+ await goto('/deals?view=board&mode=live');
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.waitForFunction(()=>document.querySelector('#detailPhase') || document.querySelector('#panelBody')?.textContent.includes('Updates temporarily unavailable'));
+ assert.equal(await page.locator('#detailPhase').count(),1,await page.locator('#panelBody').textContent());
+ const title=await page.locator('#panelTitle').textContent();
+ await page.locator('#detailNextForm textarea').fill('Synthetic unsaved draft');
+ await page.locator('#panelContextOpen').click();
+ await page.waitForFunction(()=>document.querySelector('#contextDrawerBody h3')?.textContent!=='Updating…');
+ failure=true;
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'authorization-regression'});});
+ await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('#panelBody [role="status"]')?.textContent));
+ assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
+ if(status===503) {
+  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#panelTitle').textContent(),title);
+  assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Synthetic unsaved draft');
+  assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
+  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
+ } else {
+  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
+  assert.match(await page.locator('#panelBody [role="status"]').textContent(),/Unavailable/);
+  assert.equal(await page.locator('#panelBody .detail-grid').count(),0);
+  assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
+  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  assert.equal(await page.locator('#contextDrawerBody').textContent(),'');
+ }
+ if(status===503) await page.locator('#contextDrawerClose').click();
+ assert.equal(await page.locator('[data-retry-detail]').count(),0);
+ failure=false;await page.clock.fastForward(16000);
+ await page.locator('#detailPhase').waitFor();
+ assert.equal(await page.locator('#panelTitle').textContent(),title);
+ assert.equal(await page.locator('#detailNextForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
+ assert.deepEqual(errors,[]);
 });

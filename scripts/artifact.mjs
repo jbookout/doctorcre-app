@@ -99,8 +99,8 @@ function parseTar(archive) {
 }
 
 async function inputPaths(root, sliceRegistration) {
-  const pageAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => path.endsWith('.html'));
-  const paths = [...ROOT_FILES, ...pageAssets];
+  const sliceAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => !path.startsWith('test/'));
+  const paths = [...ROOT_FILES, ...sliceAssets];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));

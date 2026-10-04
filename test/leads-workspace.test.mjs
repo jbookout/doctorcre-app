@@ -219,7 +219,7 @@ test('blocking 6: initial detail cannot resurrect a lead excluded by the latest 
  const stale=detail(s.board.leads[0]);s.client.getLeadDetail=()=>new Promise(r=>release=r);const reading=s.app.readDetail(id(1));
  if(change==='removed')s.board.leads.shift();else if(change==='linked')s.board.leads[0].client_id=id(900);else s.board.leads[0].suppressed=true;
  await s.app.refresh();release({detail:stale});await reading;
- assert.equal(s.d.getElementById('leadDetail').open,false,change);assert.equal(s.app.state.detail,null);
+ assert.equal(s.d.getElementById('leadDetail').open,change==='removed',change);assert.equal(s.app.state.detail,null);if(change==='removed')assert.match(s.d.getElementById('detailBody').textContent,/Unavailable/);
  }finally{s.close()}
  }
 });
@@ -320,5 +320,16 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
  const s=await setup();try{
   await s.app.readDetail(id(1));const original=s.d.querySelector('#detailBody details');original.open=true;original.querySelector('summary').focus();const key=original.dataset.entryKey;s.board.leads[0].score++;
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
+ }finally{s.close()}
+});
+
+for (const surface of ['actor','workspace']) test(`PR129 #1 failed ${surface} verification clears loaded private details`,async()=>{
+ const s=await setup();try{await s.app.readDetail(id(1));s.client[surface==='actor'?'getActor':'getWorkspace']=async()=>{throw Object.assign(new Error('Unavailable'),{status:503})};await s.app.refresh();
+ assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');if(surface==='actor')assert.equal(s.d.querySelectorAll('.lead-card').length,0);
+ }finally{s.close()}
+});
+test('PR129 #8 an open missing lead recovers with the identical detail on the next successful board',async()=>{
+ const s=await setup();try{await s.app.readDetail(id(1));const lead=s.board.leads.shift();await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Unavailable/);
+ s.board.leads.unshift(lead);await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,true);assert.ok(s.d.querySelector('#detailStage'));assert.match(s.d.getElementById('detailBody').textContent,/example@example.test/);
  }finally{s.close()}
 });

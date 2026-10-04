@@ -36,7 +36,7 @@ export function partnerName(slug) {
  * showing it would offer a handover this page could not honestly send.
  */
 const ROW_REQUIRED = Object.freeze(["number", "kind", "status", "owner", "marker", "title", "version"]);
-const ROW_OPTIONAL = Object.freeze(["domain", "label", "joint_owner", "blocker_class", "blocker_detail", "since_text", "due_on"]);
+const ROW_OPTIONAL = Object.freeze(["loop_id", "domain", "label", "joint_owner", "blocker_class", "blocker_detail", "since_text", "due_on"]);
 
 /** Every key this surface reads off a board row, and nothing else. */
 export const BOARD_ROW_KEYS = Object.freeze([...ROW_REQUIRED, ...ROW_OPTIONAL]);
@@ -60,6 +60,7 @@ export function normalizeBoardRow(row) {
   }
   if (!KIND_SET.has(row.kind)) return null;
   const normalized = {
+    loop_id: typeof row.loop_id === "string" && row.loop_id ? row.loop_id : null,
     number: String(row.number),
     kind: row.kind,
     status: String(row.status),

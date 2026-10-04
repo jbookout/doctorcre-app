@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { chromium } from "playwright";
+import { chromium, pausedClock, settles } from "./browser-harness.mjs";
 import { boardFreshness, boardDirectory } from "../js/progress-board-model.js";
 
 const NOW = new Date("2026-10-01T15:00:00Z");
@@ -13,9 +13,8 @@ const boards = [
 async function open(t, { width = 390, path = "/control-room/progress?board=demo-project", directoryFails = false, publicationTime, withQuestion = false, onRpc } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
-  page.setDefaultTimeout(5000);
-  await page.clock.install({ time: NOW });
-  if (publicationTime) await page.clock.pauseAt(NOW);
+  if (publicationTime) await pausedClock(page, NOW);
+  else await page.clock.install({ time: NOW });
   const calls = [], errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
@@ -288,7 +287,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i);
+    if (fail) await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i));
     assert.deepEqual(errors, []);
   });
 
