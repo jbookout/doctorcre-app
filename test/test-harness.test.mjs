@@ -8,7 +8,7 @@ import { pbkdf2, webcrypto } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { animationsSettled, chromium, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
+import { animationsSettled, chromium, webkit, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
 import { openDom } from './jsdom-harness.mjs';
 
 const dir = new URL('./', import.meta.url);
@@ -16,7 +16,7 @@ const dir = new URL('./', import.meta.url);
 const sources = await Promise.all((await readdir(dir)).filter(name => /\.test\.mjs$/.test(name) && name !== 'test-harness.test.mjs')
   .map(async name => ({ name, text: await readFile(new URL(name, dir), 'utf8') })));
 
-test('every browser test gets Chromium from the harness and waits on its one budget', () => {
+test('every browser test gets its engine from the harness and waits on its one budget', () => {
   for (const { name, text } of sources) {
     assert.doesNotMatch(text, /from ['"]playwright['"]/, `${name} imports Playwright directly`);
     assert.doesNotMatch(text, /setDefaultTimeout\(/, `${name} sets its own wait budget`);
@@ -67,6 +67,30 @@ test('launches share one Chromium while each test keeps its own storage', async 
   assert.equal(pageA.isClosed(), true);
   assert.equal(await pageB.evaluate(() => 1 + 1), 2);
   await b.close();
+});
+
+test('WebKit leases share their engine while keeping contexts and Chromium separate', async t => {
+  const [a, b, chrome] = await Promise.all([webkit.launch(), webkit.launch(), chromium.launch()]);
+  t.after(() => Promise.all([a.close(), b.close(), chrome.close()]));
+  const [pageA, pageB, pageChrome] = await Promise.all([a.newPage(), b.newPage(), chrome.newPage()]);
+  assert.equal(pageA.context().browser(), pageB.context().browser());
+  assert.notEqual(pageA.context().browser(), pageChrome.context().browser());
+  assert.notEqual(pageA.context(), pageB.context());
+  await a.close();
+  assert.equal(pageA.isClosed(), true);
+  assert.equal(await pageB.evaluate(() => 1 + 1), 2);
+});
+
+test('WebKit pages refuse outside requests and retain test fixture routes', async t => {
+  const browser = await webkit.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const refused = [];
+  page.on('requestfailed', request => refused.push(new URL(request.url()).hostname));
+  await page.route('http://localhost/', route => route.fulfill({ contentType: 'text/html', body: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans"><p>loaded</p>' }));
+  await page.goto('http://localhost/');
+  assert.deepEqual(refused, ['fonts.googleapis.com']);
+  assert.equal(await page.locator('p').innerText(), 'loaded');
 });
 
 test('a paused clock lands exactly on its time however long the runner stalls', async () => {
