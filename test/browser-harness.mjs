@@ -4,8 +4,9 @@
 // wait budget made waits fail at random. Here:
 //  - each test process keeps one browser per engine; every launch() hands out
 //    its own contexts, so storage, routes, clock and viewport stay per test;
-//  - every page waits up to WAIT_MS for a condition before it fails, and no
-//    request leaves the machine unless the test routes it;
+//  - every page waits up to WAIT_MS for a condition before it fails, no
+//    request leaves the machine unless the test routes it, and no page
+//    captures from the host's microphones;
 //  - BROWSER_CPU_THROTTLE=<n> slows Chromium pages n times (CDP emulation) and
 //    BROWSER_ROUTE_JITTER_MS=<ms> answers each routed request up to <ms> late,
 //    so a CI-starved runner can be reproduced locally.
@@ -46,6 +47,16 @@ function browserEngine(engine) {
           // load event, and so page.goto, until an outside server answered. A
           // request a test does not route itself and that leaves this machine is refused.
           await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
+          // Nor do they reach the host's microphones. On a Mac the browser's own
+          // getUserMedia, fake capture device or not, can wait forever on the
+          // host audio stack, and that stuck request starved every later
+          // recording in the shared browser. Linux CI has no such stack. A test
+          // that records installs its own synthetic stream after this one.
+          await context.addInitScript(() => {
+            if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => {
+              throw new DOMException('Browser tests never capture from host devices', 'NotAllowedError');
+            };
+          });
           const page = await context.newPage();
           if (throttle > 1 && engine === playwrightChromium) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
           if (jitter > 0) {

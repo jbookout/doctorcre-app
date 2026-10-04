@@ -231,3 +231,20 @@ test('a page never waits on the outside network', async () => {
     assert.deepEqual(refused, ['fonts.googleapis.com']);
   } finally { await browser.close(); }
 });
+
+test('a page never waits on the host capture devices', async () => {
+  for (const engine of [chromium, webkit]) {
+    const browser = await engine.launch();
+    try {
+      const page = await browser.newPage();
+      await page.route('http://localhost/', route => route.fulfill({ contentType: 'text/html', body: '<p>loaded</p>' }));
+      await page.goto('http://localhost/');
+      // A regression would hang here forever on a Mac, so the page bounds it.
+      const outcome = await page.evaluate(() => Promise.race([
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(() => 'captured', error => error.name),
+        new Promise(resolve => setTimeout(resolve, 5_000, 'waiting on host capture')),
+      ]));
+      assert.equal(outcome, 'NotAllowedError');
+    } finally { await browser.close(); }
+  }
+});
