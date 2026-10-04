@@ -11,7 +11,7 @@ import { boardView, deliveryDetail } from "../js/progress-board-model.js";
 import { mountBoard } from "../js/progress-board.js";
 import { prepareSlices } from "../scripts/slices.mjs";
 
-const PAGE = await readFile(new URL("../progress-board.html", import.meta.url), "utf8");
+const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
 
 function snapshotRead(snapshot_json, { version = 1, questions = [] } = {}) {
   return { snapshot: { board_id: "carr-v5", version, updated_at: "2026-09-30T12:00:00Z", snapshot_json }, questions };
@@ -147,7 +147,7 @@ test("a superseded read never overwrites a newer one", async () => {
   await b;
   first.resolve(snapshotRead(v2({ title: "Version one" }), { version: 1 }));
   await a;
-  assert.equal(page.$("#board-title").textContent, "Version two");
+  assert.equal(page.board.view.title, "Version two");
 });
 
 test("a read that lands while an answer is being typed keeps the draft and focus", async () => {
@@ -160,7 +160,7 @@ test("a read that lands while an answer is being typed keeps the draft and focus
   page.$("#free-q-open").value = "SYNTHETIC DRAFT";
   late.resolve(snapshotRead(v2({ title: "Later" }), { version: 2, questions: [OPEN_QUESTION] }));
   await pending;
-  assert.equal(page.$("#board-title").textContent, "Later");
+  assert.equal(page.board.view.title, "Later");
   assert.equal(page.$("#free-q-open").value, "SYNTHETIC DRAFT");
   assert.equal(page.doc.activeElement, page.$("#free-q-open"));
 });
@@ -280,4 +280,27 @@ test("all-repos outage marks have a matching Key sample and clear when the repos
   assert.equal(page.$('[data-legend-id="flag-unrefreshed"] .flag-unrefreshed').textContent, "not refreshed",
     "Key keeps explaining the mark after recovery");
   assert.equal(boardView(snapshotRead(v2())).sync.state, null);
+});
+
+test('a directory auth refusal settles its concurrent board read without a self-wait', async () => {
+  const {spawnSync} = await import('node:child_process');
+  const script = `
+    import {readFile} from 'node:fs/promises';
+    import {JSDOM} from 'jsdom';
+    import {mountBoard} from './js/progress-board.js';
+    const dom=new JSDOM(await readFile('control-room.html','utf8'),{url:'https://example.test/control-room/progress?board=demo'});
+    const denied=()=>Object.assign(new Error('Sign in required'),{status:401});
+    const board=mountBoard({window:dom.window,document:dom.window.document,storage:null,setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{},client:{
+      listProgressBoards:()=>Promise.reject(denied()),
+      readProgressBoard:()=>new Promise((resolve,reject)=>setImmediate(()=>reject(denied())))
+    }});
+    console.log('settled:'+await board.refresh());
+    console.log('cards:'+dom.window.document.querySelectorAll('.board-card').length);
+    board.dispose();dom.window.close();
+  `;
+  const run=spawnSync(process.execPath,['--input-type=module','-e',script],{cwd:fileURLToPath(new URL('../',import.meta.url)),encoding:'utf8',timeout:3000});
+  assert.equal(run.error,undefined,'directory denial must not starve the event loop');
+  assert.equal(run.status,0,run.stderr);
+  assert.match(run.stdout,/settled:false/);
+  assert.match(run.stdout,/cards:0/);
 });

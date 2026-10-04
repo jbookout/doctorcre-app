@@ -5,6 +5,7 @@ import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
  */
+import { CONNECTION_NAMES } from './connections-model.js';
 import { uuidv4 } from './uuid.js';
 import { observeDocClient } from './doc-context.js';
 import { PHASES } from './client.js';
@@ -2694,6 +2695,13 @@ export async function createFixtureClient(opts = {}) {
     // batch or proposal is copied here. The timestamps are relative to the
     // current clock so the approvals card's ambient waiting clock exercises all
     // three tempos (under a day, a day or more, past the 48-hour cadence).
+    async readConnections() {
+      const checked_at=nowIso();
+      return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
+    },
+    async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
+    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},
+    async unfinishedWork({live_library=false}={}){if(live_library)return {schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};return {schema:'unfinished-work.v1',items:[{id:'WR-000901',kind:'work_request',human_ref:'WR-000901',title:'Demo dashboard refresh',state:'verification',source:'demo',source_ref:'demo',last_activity_at:nowIso(),age:0,owner:'Demo builder',pr:17,available_triage_actions:[]}],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};},
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();

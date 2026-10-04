@@ -64,8 +64,12 @@ test('Leads drag and keyboard moves review evidence before using the same stage 
  const{page,goto,writes,errors}=await open(t,{motion:'reduce'});await goto('/leads');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
- // dragTo presses at the card's measured centre; mid-entrance the card has moved and no drag starts.
- await animationsSettled(page);await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
+ // Wait for the entrance animation and expose both endpoints before mouse-down.
+ // A second scroll during dragTo can move the source and cancel dragstart.
+ await animationsSettled(page);
+ const target=page.locator('.stage-column[data-stage="engaged"] .stage-head');
+ await target.scrollIntoViewIfNeeded();await card().scrollIntoViewIfNeeded();
+ await card().dragTo(target);
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
  await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
@@ -83,7 +87,7 @@ test('phone rail is a bottom bar; drawers close by Escape and scrim with focus r
  await page.keyboard.press('Escape');assert.equal(await page.locator('#appSidebarToggle').evaluate(n=>n===document.activeElement),true);
  await page.locator('#appTodayToggle').click();assert.equal(await page.locator('#appTodayToggle').getAttribute('aria-expanded'),'true');
  await page.locator('#appDrawerScrim').click({position:{x:5,y:5}});assert.equal(await page.locator('#appLayout').getAttribute('data-drawer'),'');
- await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('Progress',{exact:true}).isVisible(),true);await page.keyboard.press('Escape');
+ await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('System Job Board',{exact:true}).isVisible(),true);await page.keyboard.press('Escape');
  assert.equal(await page.getByLabel('More',{exact:true}).getAttribute('aria-expanded'),'false');
  await fits(page,'phone drawers and menus');
  const reduced=await page.locator('#appToday,.app-layout-item,.app-shell-flow').evaluateAll(nodes=>nodes.map(n=>({transition:getComputedStyle(n).transitionDuration,animation:getComputedStyle(n).animationName})));
@@ -250,7 +254,7 @@ test('PR129 #9 touch taps open the existing reviewed stage and phase commands',a
 for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain pointer actionable at ${width}x390`,async t=>{
  const {page,goto}=await open(t,{width,height:390});await goto('/leads');
  for(const link of await page.locator('.app-shell-navigation>a').all()) await link.click({trial:true});
- await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('Progress',{exact:true}).isVisible(),true);
+ await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('System Job Board',{exact:true}).isVisible(),true);
 });
 test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();

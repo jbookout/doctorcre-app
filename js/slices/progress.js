@@ -3,9 +3,9 @@ export default {
   "files": [
     "css/progress-board.css",
     "js/progress-board.js",
+    "progress-board.html",
     "js/progress-pipeline.js",
     "js/system-work-board.js",
-    "progress-board.html",
     "test/progress-board-form.test.mjs",
     "test/progress-board-layout.test.mjs",
     "test/progress-board-review.test.mjs",
@@ -18,7 +18,7 @@ export default {
   ],
   "navigation": [
     {
-      "label": "Progress",
+      "label": "System Job Board",
       "href": "/control-room/progress",
       "group": "Operations",
       "order": 12
