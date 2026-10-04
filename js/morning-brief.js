@@ -62,7 +62,7 @@ export function mountMorningBrief({ document: root, window: win, strip, getClien
     render();
   };
   const presented = () => {
-    if (panel.hidden || !brief || !dayWindow?.due) return;
+    if (root.visibilityState === 'hidden' || panel.hidden || !brief || !dayWindow?.due) return;
     storage.set(`doctorcre:brief:${actor}`, JSON.stringify({ ...dayWindow.record, shownAt:now().toISOString() }));
     dayWindow.due = false;
   };
@@ -120,7 +120,7 @@ export function mountMorningBrief({ document: root, window: win, strip, getClien
     const changed = render(); presented();
     if (waiting) status.textContent = 'Morning brief ready';
     else if (changed || priorState !== 'ready') status.textContent = brief.today === null || brief.overnight === null ? 'Morning brief updated; some sections unavailable or incomplete' : 'Morning brief updated';
-    if (pendingSpeech && !panel.hidden) {
+    if (pendingSpeech && !panel.hidden && root.visibilityState !== 'hidden') {
       pendingSpeech = false;
       if (synth && speechOn()) { synth.cancel(); synth.speak(new win.SpeechSynthesisUtterance(brief.speech)); }
     }

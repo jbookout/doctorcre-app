@@ -123,3 +123,10 @@ test('#1 a timed-out feed cannot mutate the next refresh when its transport igno
 for(const state of [{phase:'Closed'},{operating_state:'parked'}]) test('#4 personal open commitments use visible record identity independently of deal lifecycle',()=>{
  const b=compose({board:{actor:'joe',deals:[deal('d1',{owner:'dell',...state})]},triage:{items:[action()]}});assert.equal(b.first?.text,'Review commitment');
 });
+
+test('#2 a read completed in a hidden tab neither records presentation nor speaks until resume',async t=>{
+ const held=deferred();const h=mount(t,{speech:true,client:{todayTriage:()=>held.promise}});await settle();
+ Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'hidden'});held.resolve({items:[]});await settle();
+ assert.equal(h.marker(),null);assert.deepEqual(h.spoken,[]);
+ Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'visible'});h.doc.dispatchEvent(new h.win.Event('visibilitychange'));await settle();assert.equal(h.marker().day,'2026-10-03');assert.equal(h.spoken.length,1);
+});
