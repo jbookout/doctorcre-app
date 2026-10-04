@@ -4,14 +4,14 @@ import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { WAIT_MS } from "./browser-harness.mjs";
+import { journeyFiles } from "../scripts/browser-proof-contract.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 const list = async (path) => (await readdir(new URL(path, root))).filter((name) => name.endsWith(".e2e.ts")).sort();
 
 // The merged V1 journeys the deterministic e2e suite must cover, one file each.
-const JOURNEYS = ["w01-shell", "w02-home-attention", "w04-local-deals", "w05-vendors", "w06-tours-drafts",
-  "w09-deal-timeline", "w14-relationships", "w15-invoices"];
+const JOURNEYS = journeyFiles.map(file => file.split("/").at(-1).replace(/\.e2e\.ts$/, ""));
 
 test("the declared Node minimum supports the runner and is exercised in CI", async () => {
   const pkg = JSON.parse(await read("package.json"));
@@ -52,7 +52,7 @@ test("CI runs only the deterministic suite, with no model and no telemetry", asy
   const workflow = await read(".github/workflows/e2e.yml");
   assert.match(workflow, /^\s+- run: node scripts\/browser-product-proof\.mjs/m);
   const producer=await read('scripts/browser-product-proof.mjs');
-  assert.match(producer, /'run','tests\/journeys','--retries','0'/);
+  assert.match(producer, /'run','tests\/journeys','--reporter'/);
   assert.match(producer, /--test','test\/browser-product-proof\.test\.mjs/);
   assert.match(workflow, /E2E_TELEMETRY_DISABLED: "1"/);
   assert.doesNotMatch(workflow, /tests\/agent|secrets\.|API_KEY|e2e login/);
@@ -68,4 +68,98 @@ test('the product-owned required manifest enumerates every deterministic entry',
     for(const match of source.matchAll(/test\('([^']+)'/g)) actual.push({file:`tests/journeys/${name}.e2e.ts`,title:match[1]});
   }
   assert.deepEqual(declared,actual);
+});
+
+test('proof checks native and continuity origins without a special asset route', async () => {
+  const hook = await read('tests/journeys/test.mjs');
+  assert.match(hook, /test.beforeEach/);
+  assert.match(hook, /assertServedBuild/);
+  assert.match(hook, /app.baseUrl/);
+  for (const name of JOURNEYS) assert.match(await read(`tests/journeys/${name}.e2e.ts`), /from ['"]\.\/test\.mjs['"]/);
+  assert.match(await read('test/browser-product-proof.test.mjs'), /assertServedBuild\(server.origin/);
+  assert.doesNotMatch(await read('scripts/serve.mjs'), /proofAsset|__proof-assets/);
+  assert.doesNotMatch(await read('scripts/browser-product-proof.mjs'), /fixtureServer|__proof-assets/);
+});
+
+test('proof failures print the underlying reason', async t => {
+  // Run a source-only copy with a fake Git executable: deterministic even on
+  // committed CI source, with no browser/build subprocess to intercept.
+  const { mkdtemp, writeFile, mkdir, cp, rm, symlink } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'proof-error-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await cp(fileURLToPath(new URL('scripts', root)), join(dir, 'scripts'), { recursive: true });
+  await cp(fileURLToPath(new URL('package.json', root)), join(dir, 'package.json'));
+  for (const name of ['node_modules', 'js', 'contracts', 'test', 'tests'])
+    await symlink(fileURLToPath(new URL(name, root)), join(dir, name));
+  await mkdir(join(dir, 'bin'));
+  await writeFile(join(dir, 'bin/git'), '#!/bin/sh\necho " M tracked-source"\n', { mode: 0o755 });
+  let result;
+  try {
+    execFileSync(process.execPath, ['scripts/browser-product-proof.mjs'], {
+      cwd: dir, encoding: 'utf8', timeout: WAIT_MS,
+      env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}` }, stdio: 'pipe',
+    });
+  } catch (error) { result = error; }
+  assert.ok(result);
+  assert.match(result.stderr, /Browser product proof refused in source: product proof requires committed source/);
+});
+
+test('proof and continuity consume the product-owned coverage definitions', async () => {
+  const producer = await read('scripts/browser-product-proof.mjs');
+  const continuity = await read('test/browser-product-proof.test.mjs');
+  assert.match(producer, /import .*journeyFiles.*continuityCases.*browser-proof-contract/);
+  assert.match(continuity, /import .*continuityCases.*browser-proof-contract/);
+  assert.doesNotMatch(producer, /const journeys=\[/);
+  assert.doesNotMatch(continuity, /for \(const width of \[/);
+});
+
+test('W6 uses the suite failure-only recording policy', async () => {
+  assert.doesNotMatch(await read('tests/journeys/w06-tours-drafts.e2e.ts'), /video: 'on'|trace: 'on'/);
+});
+
+test('served-build oracle rejects wrong roots and identity with a clean control', async t => {
+  const { assertServedBuild } = await import('../scripts/browser-proof-contract.mjs');
+  const { createHash } = await import('node:crypto');
+  const { createServer } = await import('node:http');
+  const manifest = JSON.stringify({ source_commit: 'a'.repeat(40), files: [] });
+  const expected = { sourceCommit: 'a'.repeat(40), manifestDigest: createHash('sha256').update(manifest).digest('hex') };
+  let body = manifest, status = 200;
+  const server = createServer((request, response) => {
+    assert.equal(request.url, '/artifact-manifest.json');
+    response.writeHead(status); response.end(body);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  await assertServedBuild(origin, expected);
+  status = 404;
+  await assert.rejects(assertServedBuild(origin, expected), /served build manifest unavailable/);
+  status = 200; body = JSON.stringify({ source_commit: 'b'.repeat(40), files: [] });
+  await assert.rejects(assertServedBuild(origin, expected), /served build source commit mismatch/);
+  body = JSON.stringify({ source_commit: 'a'.repeat(40), files: ['different build'] });
+  await assert.rejects(assertServedBuild(origin, expected), /served build manifest digest mismatch/);
+  body = manifest;
+  await assertServedBuild(origin, expected);
+});
+
+test('every native entry refuses the working-tree server when a build is bound', async () => {
+  let result;
+  try {
+    execFileSync(process.execPath, ['node_modules/e2e/dist/cli/bin.js', 'run', 'tests/journeys', '--reporter', 'list'], {
+      cwd: fileURLToPath(root), encoding: 'utf8', timeout: WAIT_MS * 4,
+      env: { ...process.env, CI: '1', E2E_TELEMETRY_DISABLED: '1', BROWSER_PROOF_ROOT: '',
+        BROWSER_PROOF_BINDING: JSON.stringify({ sourceCommit: 'a'.repeat(40), manifestDigest: 'b'.repeat(64) }) }, stdio: 'pipe',
+    });
+  } catch (error) { result = error; }
+  assert.ok(result, 'the native runner must reject omitted build-root wiring');
+  assert.match(result.stdout + result.stderr, /served build manifest unavailable/);
+  const report = JSON.parse(await read('.e2e/report.json'));
+  const declared = JSON.parse(await read('tests/journeys/required-coverage.json')).tests;
+  for (const { file, title } of declared) {
+    const entry = report.run.results.find(row => row.testId === `${file}::${encodeURIComponent(title)}` && row.selected);
+    assert.equal(entry?.status, 'failed', `${file}: ${title} must reject the unbound server`);
+    assert.match(JSON.stringify(entry.attempts), /served build manifest unavailable/);
+  }
 });

@@ -1,4 +1,5 @@
-import { test } from '@e2e-dev/web';
+import { productTest } from './test.mjs';
+const test = productTest();
 import { expect } from 'e2e';
 
 // W9: a deal's addressable popup shows its recorded phase dates and accepts a

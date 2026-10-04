@@ -88,7 +88,7 @@ test("PRs retain the unconditional required test job and full suite", async (t) 
   assert.equal(result.trace.includes("npm run build"), false, "failed tests cannot yield a green job");
 });
 
-for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "npx e2e run tests/journeys --retries 0 --reporter list,junit"]]) {
+for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "node scripts/browser-product-proof.mjs"]]) {
   test(`${name}: invalid privacy/body/repository input starts zero browser downloads`, async (t) => {
     for (const input of [{ privacyText: "Synthetic privacy canary" }, { body: "## What changed\n<!-- empty -->" },
       { event: "{" }, { event: "{}" }]) {
@@ -107,7 +107,7 @@ for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "npx
     }
     assert.equal(healthy.trace.filter(command => command === suite).length, 1);
     const testCommands = name === "CI" ? ["npm test"] : ["node --test test/e2e-suite.test.mjs", suite];
-    assert.deepEqual(healthy.trace.filter(command => command === "npm test" || command.startsWith("node --test ") || command.startsWith("npx e2e run ")), testCommands,
+    assert.deepEqual(healthy.trace.filter(command => command === suite || command === "npm test" || command.startsWith("node --test ") || command.startsWith("npx e2e run ")), testCommands,
       "healthy heads retain the complete test command inventory");
     const push = await replay(t, workflow, "push", "npm run privacy:check");
     assert.equal(push.failed, true);

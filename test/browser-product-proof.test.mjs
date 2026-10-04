@@ -5,12 +5,13 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { exerciseContinuity, exerciseReload } from '../tests/journeys/browser-continuity.mjs';
+import { continuityCases, assertServedBuild } from '../scripts/browser-proof-contract.mjs';
 
-for (const width of [320,390,844]) for (const motion of ['reduce','no-preference']) test(`product continuity ${width}px ${motion}`,async t=>{
+for (const {width,motion,id} of continuityCases) test(`product continuity ${width}px ${motion}`,async t=>{
   const server=await fixtureServer(); t.after(()=>server.close());
+  if(process.env.BROWSER_PROOF_BINDING) await assertServedBuild(server.origin,JSON.parse(process.env.BROWSER_PROOF_BINDING));
   const browser=await chromium.launch(); t.after(()=>browser.close());
   const output=process.env.BROWSER_PROOF_DIR;
-  const id=`continuity-${width}-${motion}`;
   const recording=output && width===390 && motion==='reduce';
   if(output) await mkdir(join(output,'raw'),{recursive:true});
   const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion,...(recording?{recordVideo:{dir:join(output,'raw'),size:{width,height:960}}}:{})});
@@ -40,6 +41,7 @@ for (const width of [320,390,844]) for (const motion of ['reduce','no-preference
 
 test('a dropped storage write shows saved but the independent reload oracle fails',async t=>{
   const server=await fixtureServer();t.after(()=>server.close());
+  if(process.env.BROWSER_PROOF_BINDING) await assertServedBuild(server.origin,JSON.parse(process.env.BROWSER_PROOF_BINDING));
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage();
   await assert.rejects(exerciseReload(page,server.origin,{dropWrite:true}),/draft missing after independent reload/);

@@ -1,4 +1,5 @@
-import { test } from '@e2e-dev/web';
+import { productTest } from './test.mjs';
+const test = productTest();
 import { expect } from 'e2e';
 
 // W1: the shell names the signed-in viewer, shows when data last synced, keeps
