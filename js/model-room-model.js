@@ -559,8 +559,7 @@ export function workItemLedger(card) {
 }
 
 /**
- * C13a clause 2 — the enriched "Waiting for Joe" fields, extending
- * `needsJoeAdvisoryLabel` rather than replacing it. Every field is present
+ * C13a clause 2 — the enriched "Waiting for Joe" fields. Every field is present
  * ONLY where `work-request-card` actually carries it; an absent field says so
  * by name and is never synthesized from the title, the summary or the Jev
  * advisory.

@@ -61,7 +61,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
     const { page, errors } = await open(t, { width, path: "/control-room" });
 
     await page.locator(".app-shell-more-toggle").click();
-    const selector = '[data-app-nav-item][aria-label="Progress"]';
+    const selector = '[data-app-nav-item][aria-label="System Job Board"]';
     assert.equal(await page.locator(selector).isVisible(), true);
     await page.locator(selector).click();
     await page.waitForURL("**/control-room/progress");

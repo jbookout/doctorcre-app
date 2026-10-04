@@ -12,14 +12,7 @@ export const EDGE_LABELS = Object.freeze({
   worked: "Worked on",
   client_deal: "Client deal",
 });
-export const escapeHtml = (value) =>
-  String(value ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
+export { escapeText as escapeHtml } from './change-receipts.mjs';
 export function validNetwork(value) {
   if (
     value?.schema !== NETWORK_SCHEMA ||

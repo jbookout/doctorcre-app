@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium } from "./browser-harness.mjs";
+import { setTimeout as delay } from "node:timers/promises";
+import { animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 const root = new URL("../", import.meta.url);
 async function open(t, width = 1440) {
@@ -92,12 +93,41 @@ async function open(t, width = 1440) {
     },
   };
 }
+async function dragLender(page) {
+  // Let the shared harness finish layout motion and retry false samples.
+  await animationsSettled(page);
+  await waitForAsync(
+    page,
+    () =>
+      new Promise((resolve) => {
+        const read = () => {
+          const r = document
+            .querySelector('[data-node="party:demo-lender"]')
+            .getBoundingClientRect();
+          return `${document.querySelector("#networkScene").getAttribute("transform")} ${r.x} ${r.y} ${r.width} ${r.height}`;
+        };
+        const first = read();
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => resolve(read() === first)),
+        );
+      }),
+  );
+  const dragged = page.locator('[data-node="party:demo-lender"]').first();
+  const box = await dragged.boundingBox();
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 35, y + 25, { steps: 4 });
+  await page.mouse.up();
+}
+
 for (const width of [1440, 390])
   test(`W14 graph, referrals and evidence popup at ${width}px`, async (t) => {
     const h = await open(t, width),
       { page } = h;
     await page.goto("http://localhost/relationships?mode=live");
     await page.waitForSelector(".relationship-node");
+    await page.waitForSelector("#appTabsSlot #graphTab");
     assert.equal(await page.locator("#appLayout").count(), 1);
     assert.equal(await page.locator("#appTabsSlot #graphTab").count(), 1);
     assert.equal(
@@ -241,11 +271,8 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
     /scale\(1\)/,
   );
   const dragged = page.locator('[data-node="party:demo-lender"]').first();
-  const before = await dragged.getAttribute('transform'), box = await dragged.boundingBox();
-  await page.mouse.move(box.x + 40, box.y + 25);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 75, box.y + 50, { steps: 4 });
-  await page.mouse.up();
+  const before = await dragged.getAttribute('transform');
+  await dragLender(page);
   assert.notEqual(await dragged.getAttribute('transform'), before);
   assert.equal(await page.locator('.relationship-dialog').isVisible(), false);
   assert.ok(
@@ -319,4 +346,47 @@ test('R7 malformed optional field is rejected without poisoning retained snapsho
  const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await page.clock.fastForward(31000);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
  assert.equal(await page.locator('#networkCanvas').textContent(),before);await page.locator('#networkReset').click();await page.setViewportSize({width:1000,height:900});await page.locator('#networkZoomIn').click();assert.deepEqual(h.errors,[]);
  assert.equal(await page.locator('.relationship-node').count(),8);assert.equal(await page.locator('#networkUpdated').isVisible(),true);
+});
+
+test("W14 drag stays pending during graph resizing and uses the settled center", async (t) => {
+  const browser = await chromium.launch();
+  let dragging;
+  // Drain input before closing its page, including on assertion failure.
+  t.after(async () => {
+    try { await dragging; } finally { await browser.close(); }
+  });
+  const page = await browser.newPage();
+  await page.clock.install({ time: new Date() });
+  await page.setContent(`
+    <style>
+      #canvas { width: 820px; transition: width 2s linear; }
+      svg { display: block; width: 100%; height: 200px; }
+    </style>
+    <div id="canvas"><svg viewBox="0 0 820 200">
+      <g id="networkScene" transform="translate(0 0)">
+        <rect data-node="party:demo-lender" x="300" y="50" width="100" height="100" />
+      </g>
+    </svg></div>
+  `);
+  await page.evaluate(() => {
+    window.dragInputs = [];
+    document.querySelector('[data-node="party:demo-lender"]').addEventListener("pointerdown", event => {
+      window.dragInputs.push({ x: event.clientX, y: event.clientY, width: document.querySelector("#canvas").getBoundingClientRect().width });
+    });
+    document.querySelector("#canvas").getBoundingClientRect();
+    document.querySelector("#canvas").style.width = "320px";
+  });
+  await page.waitForFunction(() => document.getAnimations().some(animation => animation.playState === "running"));
+  let completed = false;
+  dragging = dragLender(page).then(() => { completed = true; });
+  await delay(150);
+  assert.equal(completed, false, "drag must stay pending while the target is moving");
+  assert.deepEqual(await page.evaluate(() => window.dragInputs), [], "no input before geometry settles");
+  await dragging;
+  const box = await page.locator('[data-node="party:demo-lender"]').boundingBox();
+  const inputs = await page.evaluate(() => window.dragInputs);
+  assert.equal(inputs.length, 1);
+  assert.equal(inputs[0].width, 320, "measure only after the resize finishes");
+  assert.ok(Math.abs(inputs[0].x - (box.x + box.width / 2)) <= 1);
+  assert.ok(Math.abs(inputs[0].y - (box.y + box.height / 2)) <= 1);
 });

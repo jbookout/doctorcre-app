@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<html lang="en" data-theme="dark" data-motion="full">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -14,130 +14,109 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/control-room.css">
+  <link rel="stylesheet" href="/css/progress-board.css">
   <link rel="stylesheet" href="/css/app-shell.css">
+  <link rel="stylesheet" href="/css/control-room-workspace.css">
 </head>
 <body>
-  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-  <a class="skip" href="#main">Skip to the Control Room</a>
-  <div data-layout-slot="status">
+<div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+<div data-layout-slot="sidebar" class="control-room-sidebar"><a class="room-name" href="/control-room">Control Room</a><h3>System Job Boards</h3>      <section class="panel directory-panel" aria-labelledby="directory-title">
+        <div class="panel-heading"><h2 id="directory-title">Published boards</h2></div>
+        <p id="directory-error" class="error" role="alert" hidden></p>
+        <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
+      </section>
+        <form id="system-work-filters" class="work-filters">
+          <label>Search<input name="text" type="search" maxlength="200"></label>
+          <label>Category<select name="source"><option value="">All categories</option></select></label>
+          <label>Kind<select name="kind"><option value="">All kinds</option></select></label>
+          <label>Minimum age in days<input name="age" type="number" min="0" value="0"></label>
+          <button type="submit">Search</button>
+        </form>
+<a href="/control-room/progress/work">Project activity</a></div>
+<div class="tabs" id="controlRoomTabs" data-layout-slot="tabs" role="tablist" aria-label="Control Room sections">
+<button class="tab" type="button" role="tab" id="tabDashboard" data-tab-key="overview" aria-controls="panelDashboard" aria-selected="true">System Job Board</button>
+<button class="tab" type="button" role="tab" id="tabConnections" data-tab-key="connections" aria-controls="panelConnections" aria-selected="false">Connections</button>
+<button class="tab" type="button" role="tab" id="tabAutomations" data-tab-key="automations" aria-controls="panelAutomations" aria-selected="false">Automations</button>
+<button class="tab" type="button" role="tab" id="tabAttention" data-tab-key="attention" aria-controls="panelAttention" aria-selected="false">Action Items</button>
+<button class="tab" type="button" role="tab" id="tabModelRoom" data-tab-key="agents" aria-controls="panelModelRoom" aria-selected="false">Agents</button>
+<button class="tab" type="button" role="tab" id="tabAtlas" data-tab-key="system-map" aria-controls="panelAtlas" aria-selected="false">System Map</button>
+<button class="tab" type="button" role="tab" id="tabSessions" data-tab-key="sessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
+</div>
+<main id="main" class="shell control-room-workspace" data-board-embedded>
+<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">KEY</p><h2 id="legend-title">What every mark means</h2></div></div>
+      <div id="legend-body" class="legend-body"></div>
+    </aside>
 
-
-
-    <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <p id="prefsLive" class="sr-only" aria-live="polite"></p>
-    </div>
-  </div>
-
-  <main id="main" class="shell">
-    <section class="card glass hero-card" aria-labelledby="pageTitle">
-      <div data-layout-slot="sidebar" class="hero">
-        <div>
-          <p class="eyebrow"><span class="orb" data-state="still" id="roomOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
-          <h1 id="pageTitle">Control Room</h1>
-          <a class="btn" href="/control-room/progress">Progress</a>
-          <div data-layout-slot="tabs" class="page-views" id="controlRoomTabs" role="tablist" aria-label="Control Room sections">
-            <button class="tab" type="button" role="tab" id="tabDashboard" data-tab-key="overview" aria-controls="panelDashboard" aria-selected="true">Overview</button>
-            <button class="tab" type="button" role="tab" id="tabAttention" data-tab-key="attention" aria-controls="panelAttention" aria-selected="false">Attention</button>
-            <button class="tab" type="button" role="tab" id="tabModelRoom" data-tab-key="agents" aria-controls="panelModelRoom" aria-selected="false">Agents</button>
-            <button class="tab" type="button" role="tab" id="tabAtlas" data-tab-key="system-map" aria-controls="panelAtlas" aria-selected="false">System Map</button>
-            <button class="tab" type="button" role="tab" id="tabSessions" data-tab-key="sessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
-          </div>
-        </div>
-        <div class="hero-meta">
-          <span class="status" data-state="unknown" id="roomStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="roomStatusLabel">Updating…</span></span>
-          <button class="btn" type="button" data-layout-refresh id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
-        </div>
+      <nav aria-label="Breadcrumb"><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
+      <section class="intro" aria-labelledby="board-title">
+        <p class="eyebrow" id="board-eyebrow">DELIVERY / PROGRESS BOARD</p>
+        <h1 id="board-title" class="sr-only" tabindex="-1">System Job Board</h1>
+        <p id="board-meta" class="board-meta">Loading published board…</p>
+        <span id="board-freshness" class="freshness-badge"></span>
+        <p id="board-sync" class="board-sync" role="status" hidden></p>
+        <p id="board-error" class="error" role="alert" hidden></p>
+        <div class="read-recovery"><button data-layout-refresh id="board-retry" type="button" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
+        <div id="board-headline" class="headline" aria-label="Board summary"></div>
+      </section>
+      <section id="repos-panel" class="panel repos-panel" aria-labelledby="repos-title" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">00 / REPOSITORIES</p><h2 id="repos-title">Every jbookout repository</h2></div><span id="repo-count" class="panel-count">—</span></div>
+        <div id="board-repos" class="repo-list"></div>
+      </section>
+      <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
+      <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
+        <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
+        <form id="board-filters" class="filters" aria-label="Filter cards">
+          <label>Repository <select id="filter-repo"><option value="">All</option></select></label>
+          <label>Stage <select id="filter-stage"><option value="">All</option></select></label>
+          <label class="check"><input id="filter-blocked" type="checkbox"> Blocked only</label>
+        </form>
+        <svg id="board-rail" class="pipeline-rail" viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="board-stages" class="columns" aria-live="polite"></div>
+      </section>
+      <section class="panel blocked-panel" aria-labelledby="blocked-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / BLOCKED</p><h2 id="blocked-title">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
+        <div id="board-blocked" class="blocked-list"></div>
+      </section>
+      <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
+        <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
+        <p id="system-work-coverage" class="caption" role="status"></p>
+        <p id="system-work-error" class="error" role="alert" hidden></p>
+        <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
+      </section>
+      <section class="panel questions-panel" aria-labelledby="questions-title">
+        <div class="panel-heading"><div><p class="eyebrow">03 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
+        <div id="board-questions" class="questions" aria-live="polite"></div>
+      </section>
+      <div class="lower-grid">
+        <section class="panel" aria-labelledby="ledger-title">
+          <div class="panel-heading"><div><p class="eyebrow">04 / EXECUTORS</p><h2 id="ledger-title">Executor ledger</h2></div></div>
+          <div id="board-ledger" class="ledger"></div>
+        </section>
+        <section class="panel" aria-labelledby="delivery-title">
+          <div class="panel-heading"><div><p class="eyebrow">05 / DELIVERY</p><h2 id="delivery-title">Latest deliverables</h2></div><span id="deliverable-count" class="panel-count">—</span></div>
+          <div id="board-deliverables" class="link-list"></div>
+        </section>
+        <section class="panel" aria-labelledby="decisions-title">
+          <div class="panel-heading"><div><p class="eyebrow">06 / DECISIONS</p><h2 id="decisions-title">Decisions made</h2></div><span id="decision-count" class="panel-count">—</span></div>
+          <div id="board-decisions" class="decision-list"></div>
+        </section>
+        <section class="panel" aria-labelledby="notes-title">
+          <div class="panel-heading"><div><p class="eyebrow">07 / NOTES</p><h2 id="notes-title">Notes</h2></div></div>
+          <div id="board-notes" class="note-list"></div>
+        </section>
       </div>
-      <p class="caption freshness" id="roomFreshness">Updating…</p>
-    </section>
-
-    <p class="sr-only" id="roomLive" aria-live="polite" role="status">Updating…</p>
-
-    <section class="tabpanel" id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard" tabindex="0">
-      <section class="card glass" data-section="coverage" aria-labelledby="coverageTitle">
-        <div class="card-heading"><div><p class="eyebrow">Coverage</p><h2 id="coverageTitle">Last updated</h2></div></div>
-        <div class="chip-bar" id="coverageChips" aria-label="Coverage by read">
-          <span class="chip-label">Last updated</span>
-        </div>
+      <section class="panel completed-panel" aria-labelledby="completed-title">
+        <div class="panel-heading"><div><p class="eyebrow">08 / COMPLETED</p><h2 id="completed-title">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div id="completed-list" class="completed-list"></div>
       </section>
-
-      <div class="five-grid" id="questionTiles" aria-label="The five operational questions"></div>
-
-      <section class="card glass resource-card" id="resourceDashboard" data-section="resources" aria-labelledby="resourceTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Provider coverage</p><h2 id="resourceTitle">Resources</h2></div>
-          <span class="as-of" id="resourceAsOf">unknown</span>
-        </div>
-        <p class="resource-summary" id="resourceSummary">Loading providers…</p>
-        <div id="resourceCoverageVisual" class="resource-visual" role="img" aria-label="Provider coverage"></div>
-        <div class="resource-provider-list" id="resourceProviders" aria-label="Resource providers"></div>
-        <p class="caption" id="resourceReadState"></p>
-      </section>
-
-      <section class="card glass" data-section="activeWork" id="activeWork" aria-labelledby="activeWorkTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Held now</p><h2 id="activeWorkTitle">Active work</h2></div>
-          <span class="as-of" id="activeWorkAsOf">unknown</span>
-        </div>
-        <p class="count-line" id="wipLine" data-state="unavailable">unknown</p>
-        <ul class="work-list" id="activeWorkList"></ul>
-        <div class="state-block" id="activeWorkState" data-state="unknown" hidden><h3>Held work could not be verified</h3></div>
-      </section>
-
-      <section class="card glass" data-section="longestSinceChange" id="longestSinceChange" aria-labelledby="longestTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Facts</p><h2 id="longestTitle">Longest since change</h2></div>
-          <span class="as-of" id="longestAsOf">unknown</span>
-        </div>
-        <ul class="work-list" id="longestList"></ul>
-        <div class="state-block" id="longestState" data-state="unknown" hidden><h3>Held work could not be verified</h3></div>
-      </section>
-
-      <section class="card glass" data-section="needsJoe" id="needsJoe" aria-labelledby="needsJoeTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Shared requests</p><h2 id="needsJoeTitle">Waiting on a partner</h2></div>
-          <span class="as-of" id="needsJoeAsOf">unknown</span>
-        </div>
-        <ul class="work-list" id="needsJoeList"></ul>
-        <div class="state-block" id="needsJoeState" data-state="unknown" hidden><h3>Shared requests could not be verified</h3></div>
-        <!-- V5-UX-C13a: on-demand detail, extending the row above rather than
-             replacing it. One shared panel, filled by work-request-card only
-             when a row's own button is pressed — never fetched for every row
-             on dashboard load. -->
-        <div class="needs-joe-detail" id="needsJoeDetail" hidden>
-          <h3 id="needsJoeDetailTitle"></h3>
-          <p class="caption" id="needsJoeDetailAsOf"></p>
-          <dl class="detail-rows" id="needsJoeDetailRows"></dl>
-        </div>
-      </section>
-
-      <section class="card glass" data-section="delivery" aria-labelledby="deliveryTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Delivery evidence</p><h2 id="deliveryTitle">Work request coverage</h2></div>
-          <span class="as-of" id="deliveryAsOf">unknown</span>
-        </div>
-        <p class="count-line" id="deliveryValue" data-state="unavailable">unknown</p>
-        <p class="small" id="deliveryReason">Coverage unknown until the census answers.</p>
-        <div class="row-wrap"><a class="btn" href="/all-work">Open All Work</a></div>
-        <div class="state-block" id="deliveryState" data-state="unknown" hidden><h3>The census could not be verified</h3></div>
-      </section>
-
-      <section class="card glass" data-section="operations" aria-labelledby="operationsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Operations</p><h2 id="operationsTitle">Operations</h2></div></div>
-        <div class="row-wrap"><a class="btn" href="/updates">Open Updates</a></div>
-        <div id="operationsBlocks"></div>
-      </section>
-
-      <section class="card glass" data-section="not_in_release" aria-labelledby="scopeTitle">
-        <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="scopeTitle">Not in this release</h2></div></div>
-        <div id="dashboardScopeBlocks"></div>
-      </section>
-    </section>
-
-    <section class="tabpanel" id="panelAttention" role="tabpanel" aria-labelledby="tabAttention" tabindex="0" hidden>
+<p id="governanceState" class="state-block" role="status" hidden></p></section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
+<section class="panel"><div class="panel-heading"><h2>Connections</h2><time id="connectionsUpdated">Updating…</time></div><div id="connectionsProviders" class="connection-grid"></div></section>
+<section class="panel"><h2>Devices</h2><div id="connectionDevices" class="connection-grid"></div><p id="devicesState" role="status"></p></section></section>
+<section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button><a class="btn" href="/control-room/automations">List</a></div></div><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelAttention" role="tabpanel" aria-labelledby="tabAttention" tabindex="0" hidden>
       <section class="card glass" data-section="incidents" aria-labelledby="attentionTitle">
         <div class="card-heading">
-          <div><p class="eyebrow">Operational ledger</p><h2 id="attentionTitle">Incidents</h2></div>
+          <div><p class="eyebrow">Operational ledger</p><h2 id="attentionTitle">Action Items</h2></div>
           <span class="as-of" id="attentionAsOf">unknown</span>
         </div>
         <div class="chip-bar" id="severityChips" role="group" aria-label="Severity">
@@ -439,30 +418,10 @@
       <p class="session-empty" id="sessionsEmpty" hidden></p>
       <div id="sessionsList"></div>
     </section>
-  </main>
+</main>
+<dialog id="work-triage" aria-label="Review system work action"><button id="work-triage-close" type="button" aria-label="Close">×</button><form id="work-triage-form"></form></dialog>
+<dialog id="jobDialog" class="job-dialog" aria-labelledby="jobTitle"><header><h2 id="jobTitle"></h2><button id="jobClose" type="button" aria-label="Close job details">×</button></header><div id="jobBody"></div></dialog>
 
-  <dialog id="resourceDetailDialog" class="dialog" aria-labelledby="resourceDetailTitle">
-    <article>
-      <header><div><p class="eyebrow">Resource evidence</p><h2 id="resourceDetailTitle">Provider</h2></div><button class="btn icon-btn" type="button" id="resourceDetailClose" aria-label="Close resource detail">×</button></header>
-      <div class="dialog-body">
-        <p class="resource-detail-state" id="resourceDetailState"></p>
-        <dl class="detail-rows" id="resourceDetailRows"></dl>
-      </div>
-    </article>
-  </dialog>
-
-  <dialog id="incidentDialog" class="dialog" aria-labelledby="incidentDialogTitle">
-    <article>
-      <header><div><p class="eyebrow">Incident</p><h2 id="incidentDialogTitle">Record</h2></div><button class="btn icon-btn" type="button" id="incidentClose" aria-label="Close">×</button></header>
-      <div class="dialog-body">
-        <dl class="detail-rows" id="incidentRows"></dl>
-        <p class="small" id="incidentRecordLine">This record has no page in this application yet.</p>
-        <p class="small"></p>
-      </div>
-    </article>
-  </dialog>
-
-  <footer class="shell"><p class="small">DoctorCRE · Control Room · </p></footer>
 
 
   <script type="module" src="/js/control-room.js"></script>
