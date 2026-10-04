@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
 async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
-  page.setDefaultTimeout(6000);
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
@@ -30,7 +29,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto('http://localhost/deals');
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.size > 0);
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.size > 0);
   return { page, errors };
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
@@ -98,27 +97,27 @@ test('board refresh preserves a native drag until its drop is reviewed', async t
 test('W4 drag and keyboard phase writes, manual phase, park, revive and undo record history', async t => {
   const { page, errors } = await open(t);
   await page.locator('.kanban-column [data-id="d14"] [data-undo]').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Research');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Research');
   assert.equal(await page.locator('.kanban-column [data-id="d14"] .auto-move').count(), 0);
   assert.equal(await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(e => e.verb === 'revert-deal-field').length), 1);
   await page.locator('[data-id="d20"] [data-undo]').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d20').phase === 'Closing');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d20').phase === 'Closing');
   await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'));
   await page.waitForFunction(() => document.querySelector('#completionDialog').open);
   await page.locator('#completionConfirm').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
   await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
   await page.locator('#detailPhase').selectOption('site_selection');
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Site selection');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Site selection');
   await page.locator('.park-options summary').click(); await page.locator('#detailParkForm input').fill('Demo unverified import'); await page.locator('#detailParkForm button').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');
   assert.equal(await page.locator('.kanban-column [data-id="d14"]').count(), 0);
   await page.locator('#parkedToggle').click(); await page.locator('.parked-lane [data-id="d14"] [data-revive]').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
   const revived = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(e => e.field === 'operating_state').at(-1));
   assert.equal(revived.actor, 'joe'); assert.equal(revived.new_value.state, 'active');
   await page.locator('[data-id="d14"]').focus(); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter'); await page.locator('#completionConfirm').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
   assert.deepEqual(errors, []);
 });
 
@@ -137,7 +136,7 @@ test('W4 list attention order, whole-row detail, timed scroll and draft preserva
   await page.clock.fastForward(16000); assert.equal(await page.evaluate(() => scrollY), before);
   await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); const get = state.client.getBoard; let fail = true; state.client.getBoard = async (...a) => { if (fail) { fail = false; throw new Error('synthetic outage'); } return get(...a); }; });
   await refresh(page); await page.clock.fastForward(16000);
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.boardSync.status().state === 'ready');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.boardSync.status().state === 'ready');
   assert.deepEqual(errors, []);
 });
 
@@ -159,12 +158,12 @@ test('W4 lost park response retries the original field exactly once; next-step e
   await page.locator('#detailParkForm button').click();
   await page.getByLabel('Close deal', { exact: true }).click();
   await page.locator('[data-retry-write]').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');
   const changes = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events);
   assert.equal(changes.filter(e => e.field === 'operating_state' && e.subject_id === 'd14').length, 1);
   assert.equal(changes.filter(e => e.field === 'phase' && e.subject_id === 'd14').length, 1);
   await page.locator('#parkedToggle').click(); await page.locator('.parked-lane [data-id="d14"] [data-revive]').click();
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
   await page.locator('[data-id="d14"] .card-open').click();
   for (const text of ['Demo first next step', 'Demo second next step']) {
     await page.locator('#detailNextForm textarea').fill(text); await page.locator('#detailNextForm button').click();

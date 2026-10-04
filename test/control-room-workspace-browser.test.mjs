@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
-import {chromium} from 'playwright';
+import {chromium,waitForAsync} from './browser-harness.mjs';
 import {createFixtureClient} from '../js/fixture-client.js';
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
@@ -9,7 +9,7 @@ const root=new URL('../',import.meta.url);
 const reads={'list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','list-notifications':'listNotifications'};
 async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false,countIncidentClicks=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});page.setDefaultTimeout(5000);
+ const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});
  if(countIncidentClicks)await page.addInitScript(()=>{
   window.incidentClickCallbacks={filters:0,incidents:0};
   const add=EventTarget.prototype.addEventListener;
@@ -189,9 +189,9 @@ test('finding 9: persisted pagehide/pageshow continues Control Room polling',asy
 });
 test('finding 10: System Map restores selected node on initial load and history navigation',async t=>{
  const {page}=await open(t,{path:'/control-room?mode=live&tab=system-map&node=service%3Ademo-worker'});
- await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.status==='ready');assert.equal(await page.evaluate(async()=> (await import('/js/atlas.js')).view.selected),'service:demo-worker');
+ await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.status==='ready');assert.equal(await page.evaluate(async()=> (await import('/js/atlas.js')).view.selected),'service:demo-worker');
  await page.evaluate(()=>{history.pushState({},'', '/control-room?mode=live&tab=system-map&node=service%3Ademo-exporter');dispatchEvent(new PopStateEvent('popstate'));});
- await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.selected==='service:demo-exporter');
+ await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.selected==='service:demo-exporter');
 });
 test('finding 11: sidebar shares active-deal scope including adapter-normalized Closed and inactive states',async t=>{
  const {page,state}=await open(t);state.dealStates=true;await page.locator('#appSyncRefresh').click();
@@ -203,7 +203,7 @@ test('incident filters and details dispatch once per click after retained and re
  const all=page.locator('#severityChips [data-severity="all"]');await all.waitFor();await all.focus();
  for(const sequence of [2,3]){
   await advanceRoom(page,15001);
-  await page.waitForFunction(async sequence=>{const {view}=await import('/js/control-room.js');return view.sequence===sequence&&view.reads.incidents.state==='read';},sequence);
+  await waitForAsync(page,async sequence=>{const {view}=await import('/js/control-room.js');return view.sequence===sequence&&view.reads.incidents.state==='read';},sequence);
  }
  assert.equal(await all.evaluate(node=>node===document.activeElement),true);
  for(let click=1;click<=3;click++){
