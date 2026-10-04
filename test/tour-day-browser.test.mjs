@@ -7,7 +7,7 @@ import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
 
-async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false, realMic = false } = {}) {
+async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false } = {}) {
   const requests = [], errors = [], current = structuredClone(detail);
   let actor = "joe", refuse = false;
   const server = createServer(async (request, response) => {
@@ -32,13 +32,13 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://localhost:${server.address().port}`;
-  const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
-  const page = await browser.newPage({ viewport: { width, height: 844 }, reducedMotion, permissions: denied ? [] : ["microphone"] });
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width, height: 844 }, reducedMotion });
   const context = page.context(); page.on("pageerror", e => errors.push(e.message));
   // All tests stay on the local synthetic server. Call/navigation links are
   // inspected as strings and never activated.
   await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  await context.addInitScript(({ realMic }) => {
+  await context.addInitScript(() => {
     window.syntheticRecorders = [];
     window.syntheticRecordingErrors = [];
     window.syntheticMicEvents = [];
@@ -48,7 +48,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
     URL.createObjectURL = function(blob) { const url = createURL.call(this, blob); window.syntheticAudioBlobs[url] = blob; return url; };
     // A local oscillator feeds the real MediaRecorder encoder. No system
     // microphone, OS consent, live conversation or speaker output is involved.
-    if (!realMic) navigator.mediaDevices.getUserMedia = async () => {
+    navigator.mediaDevices.getUserMedia = async () => {
       window.syntheticMicEvents.push("requested");
       const audio = new AudioContext(), oscillator = audio.createOscillator(), destination = audio.createMediaStreamDestination();
       oscillator.connect(destination); oscillator.start();
@@ -60,7 +60,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
       this.addEventListener('dataavailable', event => { if (event.data.size) window.syntheticChunks.push(event.data); });
       try { return start.apply(this, args); } catch (error) { window.syntheticRecordingErrors.push(error.message); throw error; }
     };
-  }, { realMic });
+  });
   if (denied) await page.addInitScript(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("denied", "NotAllowedError"); }; });
   t.after(async () => { await browser.close(); await new Promise(r => server.close(r)); });
   await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
@@ -137,12 +137,17 @@ test("browser MediaRecorder audio is durable per property and Details preserves 
   assert.deepEqual(errors, []); assert.equal(requests.some(r => r.method !== "GET"), false);
 });
 
-test('R3: real synthetic microphone capture works under Worker headers, other documents deny it', async t => {
-  const { page } = await open(t, { workerHeaders: true, realMic: true });
+test('R3: real synthetic audio encodes under Worker headers; other documents deny microphone policy', async t => {
+  const { page, origin } = await open(t, { workerHeaders: true });
   assert.equal(await page.evaluate(() => document.featurePolicy.allowsFeature('microphone')), true);
   await record(page);
+  assert.deepEqual(await page.evaluate(() => window.syntheticMicEvents), ['requested', 'granted']);
+  assert.equal(await page.evaluate(() => window.syntheticRecorders[0].stream.getAudioTracks().length), 1);
+  assert.ok(await page.evaluate(() => new Blob(window.syntheticChunks).size > 100), 'the browser encoder must produce audio');
   const other = await handleDoctorcreRequest(new Request('https://doctorcre.com/tours/index.html'), { ASSETS: { fetch: async () => new Response('synthetic') } });
   assert.match(other.headers.get('permissions-policy'), /microphone=\(\)/);
+  await page.goto(`${origin}/tours/index.html`);
+  assert.equal(await page.evaluate(() => document.featurePolicy.allowsFeature('microphone')), false);
 });
 
 test('R2: shared shell sign-out revokes the offline account binding', async t => {
