@@ -46,13 +46,19 @@ try {
     }
   } finally {server.close();}
   const runtime={e2e:JSON.parse(await readFile(join(root,'node_modules/e2e/package.json'))).version,web:JSON.parse(await readFile(join(root,'node_modules/@e2e-dev/web/package.json'))).version,playwright:JSON.parse(await readFile(join(root,'node_modules/playwright/package.json'))).version,node:process.versions.node,browser:'chromium'};
-  const buildConfigDigest=await filesDigest(['e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/browser-continuity.mjs',...journeys.map(id=>`tests/journeys/${id}.e2e.ts`)]);
+  const required=JSON.parse(await readFile(join(root,'tests/journeys/required-coverage.json'))).tests;
+  const requiredNativeTests=required.map(row=>`${row.file}::${encodeURIComponent(row.title)}`);
+  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/browser-continuity.mjs',...journeys.map(id=>`tests/journeys/${id}.e2e.ts`)]);
   const fixtureDigest=await filesDigest(['data/board-seed.json','tests/journeys/browser-continuity.mjs']);
   // Run from this invocation's extracted archive. Old reports cannot satisfy it.
   phase='native-journeys';
   run(['node_modules/e2e/dist/cli/bin.js','run','tests/journeys','--retries','0','--reporter','list,junit'],{BROWSER_PROOF_ROOT:buildRoot});
   const native=JSON.parse(await readFile(join(root,'.e2e/report.json')));
   if(native.run?.vcs?.commit!==sourceCommit || native.run.vcs.dirty!==false || native.run.exitCode!==0 || native.run.status!=='passed') throw Error('native runner failed or source identity changed');
+  for(const id of requiredNativeTests) {
+    const row=native.run.results.find(row=>row.testId===id && row.selected);
+    if(!row || row.status!=='passed' || row.attempts.length!==1) throw Error('required native entry point incomplete');
+  }
   const binding={repo:'jbookout/doctorcre-app',sourceCommit,buildDigest:built.archiveSha256,buildConfigDigest,fixtureDigest,runtime,runId:native.run.id,attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   await writeFile(join(output,'binding.json'),JSON.stringify(binding));
   phase='continuity';
@@ -83,8 +89,7 @@ try {
   await writeFile(join(output,'packet.json'),JSON.stringify(packet,null,2)+'\n');
   // This is a producer template for local qualification. Delivery intake must
   // authenticate these fields from the orchestrator's exact source/build inputs.
-  const {runId,attempt,...identity}=binding;
-  await writeFile(join(output,'expected-template.json'),JSON.stringify({...identity,requiredCoverage:[...journeys,...continuity],requiredPersistence:['draft-reload'],requiredRecordings:[{id:'draft-reload',operation:'save-reload'}]},null,2)+'\n');
+  await writeFile(join(output,'expected-template.json'),JSON.stringify({...binding,requiredNativeTests,requiredCoverage:[...journeys,...continuity],requiredPersistence:['draft-reload'],requiredRecordings:[{id:'draft-reload',operation:'save-reload'}]},null,2)+'\n');
   if(process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY,`Browser proof for ${sourceCommit}: ${rows.length} required paths.\n\n[Run and downloadable video/trace packet](${link})\n\nFirst-review UI findings and reproduction minutes remain unmeasured.\n`,{flag:'a'});
   console.log('Candidate browser proof written to .e2e/proof/packet.json');
 } catch { console.error(`Browser product proof refused in ${phase}: inspect foreground test output and retained artifacts.`);process.exitCode=1; }

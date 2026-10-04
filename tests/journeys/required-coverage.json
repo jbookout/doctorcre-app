@@ -1,0 +1,45 @@
+{
+  "schema": "browser-journey-coverage.v1",
+  "tests": [
+    {
+      "file": "tests/journeys/w01-shell.e2e.ts",
+      "title": "W1 shell shows freshness and keeps its controls across a reload"
+    },
+    {
+      "file": "tests/journeys/w01-shell.e2e.ts",
+      "title": "W1 a live session signs in as its partner and signs out with its token"
+    },
+    {
+      "file": "tests/journeys/w02-home-attention.e2e.ts",
+      "title": "W2 Home attention lists flagged deals, scopes to the viewer and opens the exact deal"
+    },
+    {
+      "file": "tests/journeys/w04-local-deals.e2e.ts",
+      "title": "W4 Local Deals board drags a phase change and undoes an automatic move"
+    },
+    {
+      "file": "tests/journeys/w05-vendors.e2e.ts",
+      "title": "W5 Vendors filters by owner and opens a vendor with its original entries"
+    },
+    {
+      "file": "tests/journeys/w06-tours-drafts.e2e.ts",
+      "title": "W6 Tours drafts prefill from a client, undo an edit and survive a reload"
+    },
+    {
+      "file": "tests/journeys/w09-deal-timeline.e2e.ts",
+      "title": "W9 deal timeline shows recorded phase dates and adds a contract date"
+    },
+    {
+      "file": "tests/journeys/w14-relationships.e2e.ts",
+      "title": "W14 relationship graph opens a party with its evidence and filters by territory"
+    },
+    {
+      "file": "tests/journeys/w15-invoices.e2e.ts",
+      "title": "W15 invoice tracker filters by age and status and records a payment"
+    },
+    {
+      "file": "tests/journeys/w15-invoices.e2e.ts",
+      "title": "W15 Home invoice attention lists overdue invoices for the chosen scope"
+    }
+  ]
+}

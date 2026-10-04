@@ -52,7 +52,6 @@
     "js/pipeline-model.js",
     "js/post-call-client.js",
     "js/progress-board-model.js",
-    "js/progress-board-route.js",
     "js/progress-work-model.js",
     "js/read-on-resume.mjs",
     "js/relationship-dialog.js",
@@ -142,6 +141,7 @@
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
-    "tours/vendor/tour-map-route-state.js"
+    "tours/vendor/tour-map-route-state.js",
+    "js/progress-board-route.js"
   ]
 }

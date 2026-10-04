@@ -58,3 +58,14 @@ test("CI runs only the deterministic suite, with no model and no telemetry", asy
   assert.doesNotMatch(workflow, /tests\/agent|secrets\.|API_KEY|e2e login/);
   assert.doesNotMatch(await read(".github/workflows/ci.yml"), /e2e run/, "e2e stays out of the required test job");
 });
+
+// A file-level pass cannot hide a skipped shell entry or invoice write path.
+test('the product-owned required manifest enumerates every deterministic entry',async()=>{
+  const declared=JSON.parse(await read('tests/journeys/required-coverage.json')).tests;
+  const actual=[];
+  for(const name of JOURNEYS) {
+    const source=await read(`tests/journeys/${name}.e2e.ts`);
+    for(const match of source.matchAll(/test\('([^']+)'/g)) actual.push({file:`tests/journeys/${name}.e2e.ts`,title:match[1]});
+  }
+  assert.deepEqual(declared,actual);
+});
