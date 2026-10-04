@@ -106,6 +106,8 @@ function censusResponse(url) {
 createServer(async (request, response) => {
   try {
     const url = new URL(request.url, "http://127.0.0.1");
+    const proofAsset = Boolean(process.env.DOCTORCRE_FIXTURE_ROOT) && url.pathname.startsWith("/__proof-assets/");
+    if (proofAsset) url.pathname = url.pathname.slice("/__proof-assets".length);
     // V5-UX-C15: the fixture's own /app-release, so the independent status page
     // can be exercised here. `?outage=release` (and `all`) refuses it, which is
     // the only way to see the "the app itself did not answer" path in a browser.
@@ -138,13 +140,13 @@ createServer(async (request, response) => {
       response.end(JSON.stringify(censusResponse(url)));
       return;
     }
-    const boardDestination = legacyBoardDestination(url);
+    const boardDestination = proofAsset ? null : legacyBoardDestination(url);
     if (boardDestination) {
       response.writeHead(308, { location: boardDestination.pathname + boardDestination.search, 'cache-control': 'no-store' });
       response.end();
       return;
     }
-    if (Object.hasOwn(redirects, url.pathname)) {
+    if (!proofAsset && Object.hasOwn(redirects, url.pathname)) {
       const target = url.pathname === "/business" && url.searchParams.has("q") ? "/search"
         : url.pathname === "/business" && url.searchParams.get("charts") === "1" ? "/?view=charts"
         : redirects[url.pathname];
@@ -159,7 +161,7 @@ createServer(async (request, response) => {
     // so a browser's automatic request is not a 404 on every page.
     if (url.pathname.startsWith("/icons/")) url.pathname = `/public-shell${url.pathname}`;
     if (url.pathname === "/favicon.ico") url.pathname = "/public-shell/icons/dealroom.svg";
-    const requested = url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
+    const requested = proofAsset ? url.pathname.slice(1) : url.pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
       : url.pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
       : routes[boardIdFromPath(url.pathname) ? BOARD_ROUTE : url.pathname] || url.pathname.replace(/^\//, "");
     const path = resolve(root, requested || "workspace.html");

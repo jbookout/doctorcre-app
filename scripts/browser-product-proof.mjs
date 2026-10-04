@@ -16,6 +16,7 @@ const run=(args,env={})=>execFileSync(process.execPath,args,{cwd:root,env:{...pr
 async function filesDigest(paths) {
   return sha(JSON.stringify(await Promise.all(paths.sort().map(async path=>[path,sha(await readFile(join(root,path)))]))));
 }
+let phase='source';
 const journeys=['w01-shell','w02-home-attention','w04-local-deals','w05-vendors','w06-tours-drafts','w09-deal-timeline','w14-relationships','w15-invoices'];
 const continuity=[320,390,844].flatMap(width=>['reduce','no-preference'].map(motion=>`continuity-${width}-${motion}`));
 
@@ -26,17 +27,19 @@ try {
   await mkdir(output,{recursive:true});
   await mkdir(buildRoot,{recursive:true});
   const sourceCommit=git('rev-parse','HEAD');
+  phase='build';
   const built=await buildArtifact({root,outDir:join(root,'dist'),commit:sourceCommit});
   verifyArtifact(built.archive,built.archiveSha256);
   // Build is generated here, verified before extraction, and contains only files.
   execFileSync('tar',['-xf',join(root,'dist/doctorcre-app.tar'),'-C',buildRoot],{cwd:root,timeout:30_000});
   // Read every served payload, including generated/bundled assets, against the
   // archive manifest before any browser assertion uses this fixture server.
+  phase='served-build';
   const server=await fixtureServer({root:buildRoot});
   const servedFiles=[];
   try {
     for(const file of built.manifest.files) {
-      const response=await fetch(`${server.origin}/${file.path}`,{signal:AbortSignal.timeout(30_000)});
+      const response=await fetch(`${server.origin}/__proof-assets/${file.path}`,{signal:AbortSignal.timeout(30_000)});
       const bytes=Buffer.from(await response.arrayBuffer());
       if(!response.ok || sha(bytes)!==file.sha256) throw Error('fixture serves a different build');
       servedFiles.push({...file});
@@ -46,12 +49,15 @@ try {
   const buildConfigDigest=await filesDigest(['e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/browser-continuity.mjs',...journeys.map(id=>`tests/journeys/${id}.e2e.ts`)]);
   const fixtureDigest=await filesDigest(['data/board-seed.json','tests/journeys/browser-continuity.mjs']);
   // Run from this invocation's extracted archive. Old reports cannot satisfy it.
+  phase='native-journeys';
   run(['node_modules/e2e/dist/cli/bin.js','run','tests/journeys','--retries','0','--reporter','list,junit'],{BROWSER_PROOF_ROOT:buildRoot});
   const native=JSON.parse(await readFile(join(root,'.e2e/report.json')));
   if(native.run?.vcs?.commit!==sourceCommit || native.run.vcs.dirty!==false || native.run.exitCode!==0 || native.run.status!=='passed') throw Error('native runner failed or source identity changed');
   const binding={repo:'jbookout/doctorcre-app',sourceCommit,buildDigest:built.archiveSha256,buildConfigDigest,fixtureDigest,runtime,runId:native.run.id,attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   await writeFile(join(output,'binding.json'),JSON.stringify(binding));
+  phase='continuity';
   run(['--test','test/browser-product-proof.test.mjs'],{BROWSER_PROOF_DIR:output,DOCTORCRE_FIXTURE_ROOT:buildRoot});
+  phase='packet';
   const rows=[];
   for(const id of journeys) {
     const matches=native.run.results.filter(row=>row.selected && row.file===`tests/journeys/${id}.e2e.ts`);
@@ -81,4 +87,4 @@ try {
   await writeFile(join(output,'expected-template.json'),JSON.stringify({...identity,requiredCoverage:[...journeys,...continuity],requiredPersistence:['draft-reload'],requiredRecordings:[{id:'draft-reload',operation:'save-reload'}]},null,2)+'\n');
   if(process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY,`Browser proof for ${sourceCommit}: ${rows.length} required paths.\n\n[Run and downloadable video/trace packet](${link})\n\nFirst-review UI findings and reproduction minutes remain unmeasured.\n`,{flag:'a'});
   console.log('Candidate browser proof written to .e2e/proof/packet.json');
-} catch { console.error('Browser product proof refused: inspect foreground test output and retained artifacts.');process.exitCode=1; }
+} catch { console.error(`Browser product proof refused in ${phase}: inspect foreground test output and retained artifacts.`);process.exitCode=1; }
