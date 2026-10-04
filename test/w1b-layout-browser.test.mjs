@@ -47,6 +47,20 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
 }
 const fits=async(page,label)=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,label);
 
+async function dragLead(page,card,target) {
+ // Start in the card's padding, then cross the native drag threshold before
+ // moving to the destination. A single dragTo move can end without dragstart.
+ await card.hover({position:{x:8,y:8}});
+ const box=await card.boundingBox();
+ await page.mouse.down();
+ try {
+  await page.mouse.move(box.x+20,box.y+8,{steps:3});
+  await page.locator('#leadBoard .dragging').waitFor();
+  // Two destination moves dispatch dragover consistently across browsers.
+  await target.hover();await target.hover();
+ } finally { await page.mouse.up(); }
+}
+
 test('five regions, rail destinations, Leads filters and per-page sidebar memory',async t=>{
  const{page,goto,errors}=await open(t);
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
@@ -65,7 +79,7 @@ test('Leads drag and keyboard moves review evidence before using the same stage 
  const{page,goto,writes,errors}=await open(t);await goto('/leads');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
- await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
+ await dragLead(page,card(),page.locator('.stage-column[data-stage="engaged"] .stage-head'));
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
  await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
@@ -376,4 +390,23 @@ test('PR142 R17 unchanged Leads polling retains the exact card node and its retu
  const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);const original=await card.elementHandle();await card.focus();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();await page.clock.fastForward(31_000);
  await page.waitForFunction(()=>document.querySelector('#leadBoard').getAttribute('aria-busy')==='false');assert.equal(await original.evaluate(n=>n.isConnected),true);
  await page.keyboard.press('Escape');await page.waitForFunction(leadId=>document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
+});
+
+test('PR142 R17 repeated mouse drags open the selected stage review',async t=>{
+ const {page,goto,writes}=await open(t);await goto('/leads');
+ await page.evaluate(()=>{
+  window.dragEvents=[];
+  for(const type of ['dragstart','drop']) document.addEventListener(type,e=>{
+   window.dragEvents.push({type,id:e.target.closest('[data-lead-id]')?.dataset.leadId || null,stage:e.target.closest('[data-stage]')?.dataset.stage});
+  });
+ });
+ for(let attempt=0;attempt<20;attempt++) {
+  await dragLead(page,page.locator(`#leadBoard [data-lead-id="${id(1)}"]`),page.locator('.stage-column[data-stage="engaged"] .stage-head'));
+  await page.locator('#stageDialog[open] .stage-proposal').waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.dragEvents.slice(-2)),[
+   {type:'dragstart',id:id(1),stage:'new'}, {type:'drop',id:null,stage:'engaged'},
+  ],`gesture ${attempt} reaches the selected stage`);
+  await page.locator('#closeStage').click();
+ }
+ assert.deepEqual(writes,[]);
 });
