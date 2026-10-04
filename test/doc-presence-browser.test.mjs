@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { workspace, detail } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
@@ -9,7 +9,7 @@ const root=new URL('../',import.meta.url);
 const contract=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 async function setup(t,{width=1440,motion='no-preference',onRoute}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});page.setDefaultTimeout(10000);
+ const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});
  // Playwright polls synchronous predicates. Import the page store once so
  // readiness checks return a boolean rather than a truthy Promise.
  await page.addInitScript(()=>window.addEventListener('DOMContentLoaded',()=>{

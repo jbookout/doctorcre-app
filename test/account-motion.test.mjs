@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { renderAccountCards } from '../js/account-cards.js';
 
 const helpers = { esc: String, relative: () => 'not captured', actorName: () => 'Demo owner' };
