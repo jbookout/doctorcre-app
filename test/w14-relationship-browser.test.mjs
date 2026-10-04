@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium } from "./browser-harness.mjs";
+import { chromium, animationsSettled } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 const root = new URL("../", import.meta.url);
 async function open(t, width = 1440) {
@@ -241,8 +241,11 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
     /scale\(1\)/,
   );
   const dragged = page.locator('[data-node="party:demo-lender"]').first();
+  // The layout's column transition rescales the graph while it mounts. Measure
+  // after it ends, and hover so the pointer is proven to land on the node.
+  await animationsSettled(page);
+  await dragged.hover({ position: { x: 40, y: 25 } });
   const before = await dragged.getAttribute('transform'), box = await dragged.boundingBox();
-  await page.mouse.move(box.x + 40, box.y + 25);
   await page.mouse.down();
   await page.mouse.move(box.x + 75, box.y + 50, { steps: 4 });
   await page.mouse.up();

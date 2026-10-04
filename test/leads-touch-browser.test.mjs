@@ -2,10 +2,15 @@ import test from 'node:test';import assert from 'node:assert/strict';import { ch
 import {routeLeads} from './leads-browser-fixture.mjs';
 
 test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens its review',async t=>{
- const browser=await chromium.launch({args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());
+ const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width:390,height:960},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
- const writes=[];await routeLeads(page,{onWrite:p=>writes.push(p)});await page.goto('http://localhost/leads');
- await page.locator('.market-marker').first().waitFor({state:'attached'});
+ const writes=[];await routeLeads(page,{onWrite:p=>writes.push(p)});
+ // The territory map plays no part in this gesture. Its WebGL start-up held the
+ // board's last render past the wait budget on a busy release host, so the map
+ // fails fast here and the board renders once (leads-render covers the map).
+ await page.route('**/tours/vendor/maplibre-gl-*/**',route=>route.abort());
+ await page.goto('http://localhost/leads');
+ await page.locator('#territoryMap .empty').waitFor();
  await pausedClock(page,new Date('2026-10-03T18:00:00Z'));
  const handle=page.locator('.lead-card [data-drag-handle]').first();await handle.scrollIntoViewIfNeeded();
  const initial=await page.evaluate(()=>scrollY);const box=await handle.boundingBox();const cdp=await page.context().newCDPSession(page);
