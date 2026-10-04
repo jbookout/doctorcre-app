@@ -5,7 +5,7 @@ import { createDocActivityFixture } from '../js/doc-activity-fixture.js';
 import { createLiveClient } from '../js/live-client.js';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
-import { mountDocDock } from '../js/doc-dock.js';
+import { mountDocPresence } from '../js/doc-presence.js';
 
 test('activity filters have inclusive local calendar days and no caller identity', () => {
   const args = activityFilters({ partner:'joe', record_type:'deal', from:'2026-10-01', to:'2026-10-01' });
@@ -48,17 +48,17 @@ test('live read uses pinned scoped verb, cancellation and stable undo request', 
   assert.ok(contract.mcp_operations.includes('read-doc-activity'));
 });
 
-test('Doc popup exposes one activity destination when mounted repeatedly', t => {
-  const dom = new JSDOM('<button id="docFab"></button><section id="docChat" hidden><header class="doc-chat-head"></header></section>');
-  const priorDocument = globalThis.document, priorElement = globalThis.HTMLElement;
-  globalThis.document = dom.window.document; globalThis.HTMLElement = dom.window.HTMLElement;
-  t.after(() => { globalThis.document = priorDocument; globalThis.HTMLElement = priorElement; dom.window.close(); });
-  mountDocDock('Demo workspace');
-  dom.window.document.getElementById('docFab').click();
-  mountDocDock('Demo workspace');
-  const links = dom.window.document.querySelectorAll('[data-doc-activity-link]');
+test('Doc detail exposes one activity destination when mounted repeatedly', t => {
+  const dom = new JSDOM('<main id="appMainSlot"></main>');
+  const snapshot = { state:'updating', ready:false, page:'home', epoch:0, label:'Home', records:[], observedAt:null };
+  const context = { snapshot:() => snapshot, subscribe:() => () => {}, tick() {}, clear() {} };
+  const client = { listDocSuggestions:() => new Promise(() => {}) };
+  const options = { document:dom.window.document, window:dom.window, context, client };
+  const first = mountDocPresence(options), second = mountDocPresence(options);
+  t.after(() => { first.dispose(); dom.window.close(); });
+  assert.equal(second, null);
+  const links = dom.window.document.querySelectorAll('#docDetail [data-doc-activity-link]');
   assert.equal(links.length, 1); assert.equal(links[0].getAttribute('href'), '/doc-activity');
-  assert.equal(dom.window.document.getElementById('docChat').hidden, false);
 });
 
 test('malformed or partial feed rows are unavailable rather than verified empty; incompatible inverses cannot execute',async()=>{

@@ -202,7 +202,7 @@ test("the Ideas page carries the shared shell, tabs, a detail popup and the Even
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/ideas\.css">/);
   assert.match(html, /id="appShell"/);
-  assert.match(html, /id="docReading">Doc is reading: Ideas</);
+  assert.doesNotMatch(html, /id="docReading"/, "shared Doc presence owns page identity");
   assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="ideaTabs" role="tablist"/);
   assert.match(html, /role="tab"[^>]*>Ideas</);
   assert.match(html, /role="tab"[^>]*>Events</);

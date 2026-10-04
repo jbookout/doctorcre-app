@@ -69,7 +69,6 @@ test('account and Doc entry points, filters, date range, wide evidence popup and
   await page.locator('[name=from]').fill(''); await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===5);
   await page.locator('[data-undo]').first().click(); await page.getByText('Undone',{exact:true}).first().waitFor();
   assert.equal(calls.filter(c=>c.name==='revert-deal-field').length,1); assert.deepEqual(errors,[]);
-  const doc=await readFile(new URL('js/doc-dock.js',root),'utf8'); assert.match(doc,/link.href = "\/doc-activity"/);
   assert.match(await readFile(new URL('conversations.html',root),'utf8'),/href="\/doc-activity"/);
 });
 test('an invalid date range is labelled and never sent to the server',async t=>{

@@ -121,6 +121,54 @@ test('W9 Add date records an explicit contract reference and lost answers never 
  assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
  assert.deepEqual(errors,[]);
 });
+test('PR129 finding 11 header, timeline, date cards and inputs retain readable theme pairs',async t=>{
+ for (const theme of ['light','dark']) for (const width of [1440,390]) await t.test(`${theme} ${width}`,async t=>{
+  const {page,errors}=await open(t,{width,reducedMotion:'reduce'});
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  const pairs=[
+   ['#panelTitle','#recordPanel > header'],
+   ['.timeline-heading h3','.deal-timeline'],
+   ['.timeline-entry[data-kind="email"] > p','.timeline-entry[data-kind="email"]'],
+   ['.timeline-entry[data-kind="email"] summary','.timeline-entry[data-kind="email"]'],
+   ['.timeline-actor','.timeline-entry'],
+   ['.timeline-date-links button','.timeline-date-links button'],
+   ['[data-date-id="loi"] > span','[data-date-id="loi"]'],
+   ['[data-date-id="loi"] strong','[data-date-id="loi"]'],
+   ['[data-add-date="rent_start"] strong','[data-add-date="rent_start"]'],
+  ];
+  const contrasts=await page.evaluate(pairs=>{
+   const rgba=s=>s.match(/[\d.]+/g).map(Number);
+   const over=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*(fg[3]??1)+bg[i]*(1-(fg[3]??1)));
+   const background=e=>e?over(rgba(getComputedStyle(e).backgroundColor),background(e.parentElement)):[255,255,255];
+   const luminance=rgb=>rgb.map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
+   return pairs.map(([text,surface])=>{
+    const node=document.querySelector(text),panel=document.querySelector(surface),style=getComputedStyle(panel);
+    const base=background(panel);
+    const stops=style.backgroundImage.match(/rgba?\([^)]+\)/g)||[];
+    const backgrounds=stops.length?stops.map(s=>over(rgba(s),base)):[base];
+    const foreground=rgba(getComputedStyle(node).color);
+    const ratio=Math.min(...backgrounds.map(bg=>{
+     const a=luminance(over(foreground,bg)),b=luminance(bg);
+     return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+    }));
+    return {text,ratio};
+   });
+  },pairs);
+  for(const {text,ratio} of contrasts) assert.ok(ratio>=4.5,`${theme} ${width} ${text}: ${ratio.toFixed(2)}:1`);
+  await page.locator('[data-add-date="rent_start"]').click();
+  const inputPair=await page.locator('#dealDateForm [name="evidence"]').evaluate(e=>{
+   const s=getComputedStyle(e);return {color:s.color,background:s.backgroundColor,colorScheme:s.colorScheme};
+  });
+  // The entry field follows the same semantic text/ground pair as its dialog.
+  assert.equal(inputPair.colorScheme,theme);
+  const inputContrast=await page.locator('#dealDateForm [name="evidence"]').evaluate(e=>{
+   const l=s=>s.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
+   const s=getComputedStyle(e),a=l(s.color),b=l(s.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+  });
+  assert.ok(inputContrast>=4.5,`${theme} input: ${inputContrast.toFixed(2)}:1`);
+  assert.deepEqual(errors,[]);
+ });
+});
 test('W9 board/list use the same addressable popup and Home href opens it directly',async t=>{
  const {page,errors}=await open(t,{link:true});
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
@@ -148,12 +196,14 @@ test('review 3: an old date submission cannot disable, close or change a later d
  await page.locator('[data-add-date="rent_start"]').click();
  await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
  await page.locator('#dealDateForm [name="evidence"]').fill('Demo lease clause 4');
- // The invocation owns the deal captured when opened, even if the panel changes.
+ // A date command requires the captured deal to remain the authorized detail.
  await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.panelDeal='d21';});
+ await page.locator('#dealDateForm button[type="submit"]').click();
+ assert.equal(await page.evaluate(()=>window.dateRequests.length),0);
+ await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.panelDeal='d14';});
  await page.locator('#dealDateForm button[type="submit"]').click();
  await page.waitForFunction(()=>window.dateRequests.length===1);
  assert.equal(await page.evaluate(()=>window.dateRequests[0].deal),'d14');
- await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.panelDeal='d14';});
  await page.locator('#dealDateCancel').click();
  await page.locator('[data-add-date="option_window"]').click();
  await page.locator('#dealDateForm [name="date"]').fill('2027-01-15');

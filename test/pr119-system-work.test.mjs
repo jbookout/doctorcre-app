@@ -18,8 +18,8 @@ async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), inde
  else data={human_ref:card.human_ref,challenge:'synthetic'};
  if(data instanceof Response)return data;
  return new Response(JSON.stringify({ok:true,data}));};
- const files=['uuid.js','system-work-view.js','system-work-client.js','system-work-app.js'];
- w.eval(autoRefreshScript+'\n'+files.map(name=>{const raw=readFileSync(new URL('../js/'+name,import.meta.url),'utf8');const names=[...raw.matchAll(/^export (?:function|const) (\w+)/gm)].map(m=>m[1]);return '(function(){'+raw.replace(/^import [^\n]*\n/gm,'').replace(/^export /gm,'')+';Object.assign(window,{'+names.join(',')+'});})();';}).join('\n'));
+ const files=['doc-context-model.js','doc-context.js','uuid.js','system-work-view.js','system-work-client.js','system-work-app.js'];
+ w.eval(autoRefreshScript+'\n'+files.map(name=>{const raw=readFileSync(new URL('../js/'+name,import.meta.url),'utf8');const names=[...raw.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map(m=>m[1]);return '(function(){'+raw.replace(/^import [^\n]*\n/gm,'').replace(/^export /gm,'')+';Object.assign(window,{'+names.join(',')+'});})();';}).join('\n'));
  await settle();return {w,d,calls,online:async()=>{w.dispatchEvent(new w.Event('online'));await settle();},submit:async()=>{d.querySelector('#systemWorkForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();}};
 }
 for(const [kind,card] of [
