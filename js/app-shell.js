@@ -5,6 +5,7 @@ import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
+import { offlineTourSession } from "./offline-tour-session.js";
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this module owns the shared rail and layout.
 const registration = registerSlices(slices);
@@ -154,6 +155,7 @@ function mountAccount(root, host, pathname) {
     try {
       const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
       if (!response.ok) throw new Error();
+      offlineTourSession(globalThis.window).revoke();
       globalThis.location.assign("/auth/login");
     } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };
