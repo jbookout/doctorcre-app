@@ -41,8 +41,13 @@ per machine with `npx e2e login openai` (add `--device` to use a code instead of
 a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
 lists the ids the login serves. CI configures no model and never runs it.
 
+`npm run release:prepare` runs checks, tests, build and source-bound artifact
+verification with a credential-free child environment. Run it before either
+publication command. The CARR pipeline invokes this entrypoint separately from
+the provider step.
+
 `npm run release:staging` accepts only a clean checkout whose `HEAD` exactly
-matches `origin/main`, builds with that commit identity, creates the staging
+matches `origin/main`, verifies the prepared artifact, creates the staging
 Worker on first use, and otherwise uploads and promotes an immutable version.
 `npm run rollback:staging -- <version-id>` restores one explicit earlier staging
 version.
@@ -51,8 +56,11 @@ The production Worker configuration deliberately has no route. It binds only to
 the production `carr-mcp` service and enables version preview URLs, so a release
 can be built, uploaded, and verified before any public hostname moves. Run
 `npm run deployment:check:production` to validate that configuration locally.
-`npm run release:production`, run from a clean checkout at exactly `origin/main`
-under Joe's explicit instruction for that release, uploads and promotes an
+`npm run release:production` consumes the prepared artifact, replaces `dist/site`
+from its verified source bytes, and runs only provider upload, promotion and
+readback commands. It refuses a missing `CLOUDFLARE_API_TOKEN`. Run publication from a clean
+checkout at exactly `origin/main`
+under the authorized release workflow. It uploads and promotes an
 immutable production version through the same checks as staging; it never
 creates a Worker on first use. `npm run rollback:production -- <version-id>`
 restores one explicit earlier production version. Attaching `app.doctorcre.com`

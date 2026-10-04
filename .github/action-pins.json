@@ -1,0 +1,43 @@
+{
+  "schema": "workflow-action-provenance.v1",
+  "verified_at": "2026-10-04",
+  "method": "canonical GitHub REST published release + tag commit, independent canonical git ls-remote and action.yml runtime",
+  "actions": {
+    "actions/checkout": {
+      "sha": "11bd71901bbe5b1630ceea73d27597364c9af683",
+      "tag": "v4.2.2",
+      "release_url": "https://github.com/actions/checkout/releases/tag/v4.2.2",
+      "runtime": "node20",
+      "canonical_tag_sha": "11bd71901bbe5b1630ceea73d27597364c9af683",
+      "tag_url": "https://api.github.com/repos/actions/checkout/git/refs/tags/v4.2.2",
+      "metadata_blob": "6842eb843b7258993656f41f9c358f5c5331fbe7"
+    },
+    "actions/setup-node": {
+      "sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "tag": "v4.4.0",
+      "release_url": "https://github.com/actions/setup-node/releases/tag/v4.4.0",
+      "runtime": "node20",
+      "canonical_tag_sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "tag_url": "https://api.github.com/repos/actions/setup-node/git/refs/tags/v4.4.0",
+      "metadata_blob": "ef58e69919a94e6a823d333159fad95e2720c896"
+    },
+    "actions/upload-artifact": {
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "tag": "v4.6.2",
+      "release_url": "https://github.com/actions/upload-artifact/releases/tag/v4.6.2",
+      "runtime": "node20",
+      "canonical_tag_sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "tag_url": "https://api.github.com/repos/actions/upload-artifact/git/refs/tags/v4.6.2",
+      "metadata_blob": "2a0ecf19e8d0087dd2e5d1785dcf764811e79fae"
+    },
+    "actions/download-artifact": {
+      "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "tag": "v4.3.0",
+      "release_url": "https://github.com/actions/download-artifact/releases/tag/v4.3.0",
+      "runtime": "node20",
+      "canonical_tag_sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "tag_url": "https://api.github.com/repos/actions/download-artifact/git/refs/tags/v4.3.0",
+      "metadata_blob": "7fc4fb55c7d0c7b198b1c7466e1efd7c7d05fb26"
+    }
+  }
+}
