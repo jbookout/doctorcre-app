@@ -21,9 +21,9 @@ jobs:
       - run: npm ci
       - if: github.event_name == 'pull_request'
         run: node scripts/check-pr-description.mjs
-      - run: npx playwright install --with-deps chromium webkit
       - run: npm run privacy:check
       - run: npm run check
+      - run: npx playwright install --with-deps chromium webkit
       # PRs test the merge candidate under the strict required `test` context.
       # Main retains build/input checks; tag releases still run the full suite.
       - run: npm test
