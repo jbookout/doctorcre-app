@@ -126,7 +126,7 @@ for(const state of [{phase:'Closed'},{operating_state:'parked'}]) test('#4 perso
 
 test('#2 a read completed in a hidden tab neither records presentation nor speaks until resume',async t=>{
  const held=deferred();const h=mount(t,{speech:true,client:{todayTriage:()=>held.promise}});await settle();
- Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'hidden'});held.resolve({items:[]});await settle();
+ Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'hidden'});h.doc.dispatchEvent(new h.win.Event('visibilitychange'));held.resolve({items:[]});await settle();
  assert.equal(h.marker(),null);assert.deepEqual(h.spoken,[]);
  Object.defineProperty(h.doc,'visibilityState',{configurable:true,value:'visible'});h.doc.dispatchEvent(new h.win.Event('visibilitychange'));await settle();assert.equal(h.marker().day,'2026-10-03');assert.equal(h.spoken.length,1);
 });
