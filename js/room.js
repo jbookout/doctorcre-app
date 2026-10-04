@@ -1,3 +1,4 @@
+import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { authGeneration, authReadable, invalidateAuth } from './progress-auth.js';
 import { deriveJobPassports, jobPassportStatusLabel } from "./job-passport.js?v=job-passport-spatial-v1";
 import { scopedTurn } from './progress-work-model.js';
@@ -1961,6 +1962,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
   function render(fresh = []) {
     if (!authReadable(authGeneration())) return;
+    setDocFilters({ ...scope, refs:scope.refs || [], sourceSeqs:scope.sourceSeqs || [], seats:[...state.filters.seats], text:state.filters.text, turns:state.filters.turns, system:state.filters.system });
+    publishDocRead('roomTurns', { turns:state.turns.filter(turn => scopedTurn(turn,scope) && turnPasses(turn,state.filters)) }, []);
     const model = deriveModel(state.turns, { now: Date.now(), viewer: state.viewer });
     const scoped = deriveModel(state.turns.filter(turn => scopedTurn(turn, scope)), { now: model.now, viewer: state.viewer });
     state.model = model;
@@ -1995,6 +1998,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   }
 
   async function poll() {
+    const docTicket = pageDocContext?.begin('roomTurns');
     const epoch = authGeneration();
     if (!authReadable(epoch)) { schedule(); return; }
     try {
@@ -2019,7 +2023,10 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
       $("composerInput").placeholder = `Speak into the room as ${PARTNER_LABEL[state.viewer] || "a partner"}…`;
+      state.docObservedAt = Date.now();
+
       const fresh = absorb(payload);
+      pageDocContext?.finish(docTicket, { turns:state.turns },{at:state.docObservedAt});
       if (state.backoffMs) {
         // Recovery announces itself by counting the missed turns in, rather
         // than silently resuming as if nothing had happened.
@@ -2037,6 +2044,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
         $("wireResume").textContent = `Resume live · ${state.missed} new`;
       }
     } catch (error) {
+      pageDocContext?.fail(docTicket, error);
       if (!authReadable(epoch) || String(error?.message) === "sign_in_required") return;
       state.backoffMs = Math.min(POLL_BACKOFF_CEILING_MS, (state.backoffMs || POLL_VISIBLE_MS) * 2);
       setState($("healthCycleDot"), "urgent");
@@ -2119,6 +2127,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   $("wireFilters").dataset.mode = "conversation";
 
   document.addEventListener('progress-auth-lost', () => {
+    pageDocContext?.clear();
     state.turns = []; state.byMsgId.clear(); state.pending.clear(); state.historyTurns = null;
     state.historyGeneration = (state.historyGeneration || 0) + 1;
     state.cursor = 0; state.csrf = null; state.model = null;
@@ -2187,6 +2196,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     $("railToggle").setAttribute("aria-expanded", "false");
   }
   updateCounter();
+  render();
   poll();
   let scopeSignature = JSON.stringify(scope);
   return { refreshScope: () => {

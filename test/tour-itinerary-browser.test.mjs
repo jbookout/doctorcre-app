@@ -96,7 +96,7 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
         await mkdir(process.env.TOUR_MAP_SCREENSHOTS, { recursive: true });
         // Hide unrelated sticky shell overlays for the component capture. Style
         // properties work under the production CSP; an injected sheet does not.
-        await page.evaluate(() => { document.querySelector("#appShell").style.visibility = "hidden"; document.querySelector(".app-shell-doc").style.visibility = "hidden"; });
+        await page.evaluate(() => { document.querySelector("#appShell").style.visibility = "hidden"; });
         await root.screenshot({ path: `${process.env.TOUR_MAP_SCREENSHOTS}/${name}.png`, animations: "disabled" });
       }
       await page.context().setOffline(true);

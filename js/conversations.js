@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
 //
@@ -34,7 +35,7 @@ import { createCommandState, performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
   COMPOSER_ABSENT, DOC_REPLY_PENDING, EXPOSURE_STATEMENT, LIST_EMPTY, LIST_SCOPE,
@@ -596,6 +597,7 @@ async function takeSuggestions({ background = false, signal } = {}) {
 }
 
 async function load({ background = false, signal } = {}) {
+  selectDocRecord('conversation', view.route.state === 'ok' ? view.route.id : null);
   if (background && suggestionEditorActive()) return;
   if (background) backgroundReads++;
   try {
@@ -609,6 +611,7 @@ async function load({ background = false, signal } = {}) {
 
 /** Opening one sets `?id=` so Back restores the list this page came from. */
 function open(id) {
+  selectDocRecord('conversation', id);
   const route = idFromSearch(`?id=${id}`);
   view.route = route;
   view.conversation = { state: "pending" };
@@ -784,7 +787,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Conversations");
+
   mountDock();
   $("listScope").textContent = LIST_SCOPE;
   $("sharingCaveat").textContent = SHARING_CAVEAT;

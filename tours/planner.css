@@ -81,3 +81,8 @@
 @media(max-width:640px){.planner-grid{grid-template-columns:minmax(0,1fr);gap:14px}.planner-grid>.card{padding:18px}.planner-header{padding:18px 16px}.planner-header h1{font-size:2.5rem}.freshness{gap:0}.widget-heading h2{font-size:1.45rem}.form-pair{gap:10px}.drop-heading{flex-wrap:wrap}.territory-map{height:150px}.map-market text{font-size:21px}.map-state{font-size:18px}.market-buttons button{flex:1 1 42%}.tour-dialog{padding:18px;width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.detail-stops{grid-template-columns:minmax(0,1fr)}.draft-facts{grid-template-columns:100px 1fr;gap:12px}.dialog-heading h2{font-size:1.5rem}}
 @media(prefers-reduced-motion:reduce){.planner-page *, .planner-page *::before,.planner-page *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.planner-grid>.card:hover,.library-card .tour-button:hover{transform:none}}
 @media print{.planner-page{background:white}.planner-header,.library-card,.widget-actions,.market-buttons{display:none}.planner-grid{display:block}.planner-grid>.card{background:white;color:#14243a;break-inside:avoid}.tour-dialog{background:white;color:#14243a}}
+
+/* The shared regions determine workspace width, independent of the viewport. */
+.planner-page .app-layout-main { container-type:inline-size; }
+@container (max-width:1100px) { .planner-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .planner-grid>.library-card { grid-column:1/-1; } }
+@container (max-width:640px) { .planner-grid { grid-template-columns:minmax(0,1fr); } }

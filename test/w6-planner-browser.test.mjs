@@ -18,6 +18,10 @@ async function open(t, width) {
   await page.route("**/*", async route => {
     const request = route.request(), url = new URL(request.url()); calls.push({ path: url.pathname, method: request.method(), body: request.postData() });
     if (url.origin !== "http://localhost") return route.abort();
+    if(url.pathname === "/mcp") {
+      const {name}=request.postDataJSON().params; assert.equal(name,"list-doc-suggestions");
+      return route.fulfill({json:{result:{content:[{type:"text",text:JSON.stringify({ok:true,suggestions:[]})}]}}});
+    }
     if (url.pathname.startsWith("/api/")) {
       if (unavailable && url.pathname === "/api/tours/library") return route.fulfill({ status: 503, body: "{}", contentType: "application/json" });
       let data;
@@ -85,8 +89,8 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const small = await page.locator(".planner-grid").evaluate(el => [...el.querySelectorAll("button,input,select")].filter(node => node.getClientRects().length).filter(node => { const b = node.getBoundingClientRect(); return b.width < 44 || b.height < 44; }).map(node => node.id));
     assert.deepEqual(small, []); assert.deepEqual(app.errors, []);
-    assert.ok(app.calls.every(call => call.method === "GET")); assert.ok(app.calls.every(call => !call.body));
-    assert.ok(app.calls.every(call => call.path.startsWith("/js/") || call.path.startsWith("/css/") || !/search|upload|render|share|mcp/.test(call.path)));
+    assert.ok(app.calls.every(call => call.method === "GET" || call.path === "/mcp")); assert.ok(app.calls.every(call => !call.body || call.path === "/mcp"));
+    assert.ok(app.calls.filter(call=>call.path.startsWith("/api/")).every(call => !/search|upload|render|share/.test(call.path)));
   });
 });
 

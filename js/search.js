@@ -1,3 +1,4 @@
+import { setDocFilters } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
@@ -196,6 +197,7 @@ function render() {
  */
 async function read({ push = true } = {}) {
   const sequence = ++view.sequence;
+  setDocFilters({query:view.query,kinds:view.kinds});
   if (!queryIsSendable(view.query)) {
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
