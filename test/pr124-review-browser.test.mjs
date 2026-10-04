@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
 async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false, query = '' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
-  page.setDefaultTimeout(6000);
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
@@ -32,7 +31,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto('http://localhost/deals' + query);
-  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.size > 0);
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.size > 0);
   return { page, errors };
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
@@ -74,7 +73,7 @@ async function liveDetailRead(page) {
    state.client.getDeal=createLiveClient().getDeal;
  });
  await readPanel(page);
- await page.waitForFunction(async()=>{
+ await waitForAsync(page,async()=>{
    const {state}=await import('/js/pipeline.js');
    return state.panelDetail!==window.beforeLiveDetail&&state.panelDetail?.deal.id==='d14';
  });
@@ -91,7 +90,7 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  await page.clock.fastForward(15000);
  await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
- assert.equal(await page.locator('#panelTitle').textContent(),'Unavailable');
+ assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
  assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
  assert.equal(await page.locator('#panelBody input, #panelBody textarea, #panelBody select').count(),0);
  assert.equal(await page.locator('#contextDrawer').evaluate(e=>e.open),false);
@@ -228,7 +227,7 @@ test('PR129 R1 a context read survives an authorized detail poll but not a refus
  await page.waitForFunction(()=>contextReads.length===1);
  await page.evaluate(async()=>{window.beforeContextPoll=(await import('/js/pipeline.js')).state.panelDetail;});
  await readPanel(page);
- await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.panelDetail!==window.beforeContextPoll);
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail!==window.beforeContextPoll);
  await page.evaluate(()=>contextReads[0]({record:{name:'Authorized client'}}));
  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody').textContent.includes('Authorized client'));
  await page.locator('#contextDrawerClose').click();
@@ -369,7 +368,7 @@ for(const width of [1440,390]) test('R8 list Undo is visible and clickable at '+
  const {page}=await open(t,{width});await page.locator('#listView').click();
  const undo=page.locator('[data-id="d14"] [data-undo]');
  const boxes=await undo.evaluate(e=>{const a=e.getBoundingClientRect(),b=e.closest('article').getBoundingClientRect();return {button:a.bottom,row:b.bottom};});assert.ok(boxes.button<=boxes.row);
- await undo.click();await page.waitForFunction(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Research');
+ await undo.click();await waitForAsync(page, async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Research');
 });
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);

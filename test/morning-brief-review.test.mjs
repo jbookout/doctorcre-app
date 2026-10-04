@@ -62,6 +62,44 @@ for (const status of [401, 403, 503]) test(`#1 live feed HTTP ${status} invalida
   assert.match(h.doc.querySelector('[role="status"]').textContent, /Morning brief unavailable/);
  }
 });
+for (const status of [401, 403]) for (const bodyFailure of ['stalled', 'failed']) {
+ test(`#1 live feed HTTP ${status} with ${bodyFailure} refusal body clears protected actions`, async t => {
+  let fail = false, response;
+  const client = createLiveClient({ readTimeoutMs: 25, fetchImpl: async (path, init) => {
+   if (path.startsWith('/pipeline/changes')) {
+    if (!fail) return new Response(JSON.stringify({ events: [], cursor: 'c0' }));
+    response = new Response(new ReadableStream({ start(controller) {
+     if (bodyFailure === 'failed') controller.error(new Error('Synthetic body failure'));
+    } }), { status });
+    return response;
+   }
+   assert.equal(path, '/mcp');
+   const { params: { name } } = JSON.parse(init.body);
+   assert.ok(['deal-room-board', 'today-triage'].includes(name));
+   const payload = name === 'deal-room-board' ? board() : { items: [] };
+   return new Response(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }));
+  } });
+  const h = mount(t, { getClient: () => client, timeoutMs: 200 });
+  await settle();
+  assert.equal(h.panel.dataset.state, 'ready');
+  assert.match(h.panel.querySelector('#docBriefFirst a').textContent, /Review old action/);
+  fail = true;
+  h.click('docBriefRefresh');
+  await delay(60);
+  assert.equal(h.panel.dataset.state, 'unavailable');
+  assert.equal(h.panel.querySelectorAll('a').length, 0);
+  assert.doesNotMatch(h.panel.textContent, /Review old action|Synthetic d1/);
+  assert.match(h.doc.querySelector('[role="status"]').textContent, /Morning brief unavailable/);
+  assert.equal(response.bodyUsed, false, 'refusal does not depend on reading its body');
+ });
+ test(`#1 live feed HTTP ${status} with ${bodyFailure} body preserves status at the client seam`, async () => {
+  const client = createLiveClient({ readTimeoutMs: 25, fetchImpl: async () =>
+   new Response(new ReadableStream({ start(controller) {
+    if (bodyFailure === 'failed') controller.error(new Error('Synthetic body failure'));
+   } }), { status }) });
+  await assert.rejects(client.getChanges('previous'), error => error.status === status);
+ });
+}
 for(const kind of ['rejection','hung creation','hung aggregate','malformed board']) test(`#1 ${kind} has a visible terminal error`,async t=>{
  const options=kind==='rejection'?{getClient:async()=>{throw new Error('offline');}}:kind==='hung creation'?{getClient:()=>new Promise(()=>{})}:kind==='hung aggregate'?{client:{getChanges:()=>new Promise(()=>{})}}:{client:{getBoard:async()=>({actor:'joe',deals:[null]})}};
  const h=mount(t,{...options,timeoutMs:15});h.click('docBriefOpen');await delay(60);

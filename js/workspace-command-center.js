@@ -147,7 +147,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const pastWidget = $('homePastClients') && client.readLeaseRadar ? mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope}) : null;
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
   const select = value => {
-    scope = value; pastWidget?.render(); setDocFilters({ scope });
+    scope = value; setDocFilters({ scope }); pastWidget?.render();
     if (!snapshot?.unauthorized) for (const [key,method] of docSources) {
       if (snapshot?.reads?.[key]?.state === 'read') publishDocRead(method,docPayload(key,snapshot));
     }

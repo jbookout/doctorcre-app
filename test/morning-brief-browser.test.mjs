@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const root = new URL('../', import.meta.url);
@@ -13,7 +13,7 @@ const reply = (route, value) => route.fulfill({ contentType: 'application/json',
 // one partner change from an hour ago so "overnight" has something to say.
 async function setup(t, { width = 1440, triage, changes, boardMap = board => board, held = Promise.resolve() } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 } }); page.setDefaultTimeout(10_000);
+  const page = await browser.newPage({ viewport: { width, height: 960 } });
   await page.addInitScript(() => {
     window.spoken = []; window.speechCancels = 0;
     window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };

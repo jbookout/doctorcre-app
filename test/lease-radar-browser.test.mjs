@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
@@ -18,7 +18,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'America/Chicago', reducedMotion: motion });
-  await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
+  await page.clock.install({ time: NOW });
   const payload = leaseRadarFixture('2026-10-01'), errors = [], calls = [];
   let failure = null, reads = 0;
   if (long) payload.leases[0].client_name = `Demo${'Practice'.repeat(30)}`;
@@ -29,8 +29,8 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     'current-work-item': () => client.currentWorkItem(), 'read-resource-dashboard': () => client.readResourceDashboard(),
     'schedule-board': () => client.scheduleBoard(), 'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }), 'today-triage': async () => ({ items: [] }),
-    'list-doc-suggestions': args => client.listDocSuggestions(args),
     'read-invoice-tracker': async () => invoiceTrackerFixture('2026-10-01'),
+    'list-doc-suggestions': args => client.listDocSuggestions(args),
   };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -47,7 +47,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
       return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await handlers[rpc.params.name](rpc.params.arguments)) }] } } });
     }
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
-    if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { events: [], cursor: null } });
+    if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { changes: [], cursor: null } });
     if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
