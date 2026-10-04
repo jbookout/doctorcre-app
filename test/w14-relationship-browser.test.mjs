@@ -241,9 +241,11 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
     await page.locator("#networkScene").getAttribute("transform"),
     /scale\(1\)/,
   );
-  const dragged = page.locator('[data-node="party:demo-lender"]').first();
+  const dragged = page.locator('.relationship-node[data-node="party:demo-lender"]');
+  // Hover waits for a stable, visible hit target and scrolls it into view.
+  // Raw mouse coordinates taken before that can miss the graph under load.
+  await dragged.hover({ position: { x: 40, y: 25 } });
   const before = await dragged.getAttribute('transform'), box = await dragged.boundingBox();
-  await page.mouse.move(box.x + 40, box.y + 25);
   await page.mouse.down();
   await page.mouse.move(box.x + 75, box.y + 50, { steps: 4 });
   await page.mouse.up();
