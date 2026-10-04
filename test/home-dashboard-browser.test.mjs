@@ -16,10 +16,12 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC' });
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
+  // Virtual time pauses CSS transitions. Data journeys use reduced motion so
+  // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW }); page.setDefaultTimeout(5000);
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   let boardMalformed = malformedBoard;
@@ -152,7 +154,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
 });
 
 test('reduced motion stops ambient and hover motion without hiding data', async t => {
-  const { page } = await open(t);
+  const { page } = await open(t, { motion: 'no-preference' });
   await page.locator('.home-radar').waitFor();
   assert.ok(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName !== 'none'));
   await page.emulateMedia({ reducedMotion: 'reduce' });

@@ -691,6 +691,15 @@ async function settleConflictChoice(conflictId, result) {
 
 let disposeEvidence = null;
 let dateDraft = null;
+function closeDateEditor() {
+  dateDraft = null;
+  const form = $('dealDateForm');
+  form.reset();
+  form.querySelector('button[type="submit"]').disabled = true;
+  $('dealDateTitle').textContent = 'Add date';
+  $('dealDateStatus').textContent = '';
+  $('dealDateDialog').close();
+}
 let panelReadSequence = 0;
 let contextReadSequence = 0;
 // The next-step draft remembers the read behind each edited field. Pristine
@@ -698,20 +707,13 @@ let contextReadSequence = 0;
 let nextDraft = null;
 const nextReads = new Set();
 const stepValues = deal => ({text:noteText(deal.next_step),date:deal.next_date || ''});
-function clearDateDraft() {
-  dateDraft = null;
-  $('dealDateDialog').close();
-  $('dealDateForm').reset();
-  $('dealDateTitle').textContent = 'Add date';
-  $('dealDateStatus').textContent = '';
-}
 function refusePanelDetail(error) {
   if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
   ++panelReadSequence;
   ++contextReadSequence;
   state.panelDetail = null;
   nextDraft = null;
-  clearDateDraft();
+  closeDateEditor();
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
   $('contextDrawer').close();
@@ -922,7 +924,7 @@ function closePanel() {
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');
   ++panelReadSequence;
-  clearDateDraft();
+  closeDateEditor();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url);
@@ -1152,8 +1154,8 @@ function wire() {
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
-  $('dealDateCancel').onclick = clearDateDraft;
-  $('dealDateDialog').addEventListener('cancel', clearDateDraft);
+  $('dealDateCancel').onclick = closeDateEditor;
+  $('dealDateDialog').addEventListener('cancel', closeDateEditor);
   $('dealDateForm').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget, values = new FormData(form);
@@ -1166,7 +1168,7 @@ function wire() {
     const result = await runFollowUp(`critical-date:${id}:${kind}`,{verb:'add-critical-date',args,summary:'Date added'});
     if (dateDraft === draft && $('dealDateDialog').open) {
       form.querySelector('button[type="submit"]').disabled = false;
-      if (result?.status === 'ok') clearDateDraft();
+      if (result?.status === 'ok') closeDateEditor();
       else $('dealDateStatus').textContent = 'Date not confirmed';
     }
     if (result?.status === 'ok' && state.panelDeal === id && state.panelDetail?.deal.id === id) await refreshPanel();

@@ -14,6 +14,7 @@ before(async()=>{
 after(()=>server?.kill());
 async function open(t,{smallChats=false,clientHooks=''}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();page.setDefaultTimeout(10000);await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
+ await page.route('https://**',r=>r.abort());
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/api/system-work/session',r=>r.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic'}}));
  await page.route('**/api/v1/atlas-graph**',r=>{const u=new URL(r.request().url());u.searchParams.set('limit','2');const a=atlasFixtureResponse(u,'GET');return r.fulfill({status:a.status,json:a.body});});
@@ -37,7 +38,7 @@ test('PR119 finding 8: loaded Doc Chats traversal expires as a whole and can rec
   if(window.holdChats)await new Promise(resolve=>window.chatResponses.push(resolve));
   return p;
  };`;
- const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  for(let count=2;count<=4;count++){
   await page.locator('#showMoreConversations').click();
   await page.waitForFunction(n=>document.querySelectorAll('#conversationList [data-conversation]').length===n,count);
@@ -68,7 +69,7 @@ test('PR119 finding 8: loaded All Work traversal expires as a whole and can reco
  };
  const {page,errors}=await open(t);let pending,hold=false;
  await page.route('**/api/v1/work-inventory**',route=>hold?(pending=route):route.fulfill({json:answer(route.request().url())}));
- await page.goto(origin+'/all-work');
+ await page.goto(origin+'/all-work', {waitUntil:'domcontentloaded'});
  for(let count=8;count<=14;count+=4){
   await page.locator('#loadMore').click();
   await page.waitForFunction(n=>document.querySelector('#itemsCount')?.textContent.startsWith(String(Math.min(n,14))),count);
@@ -92,7 +93,7 @@ test('PR119 finding 8: loaded All Work traversal expires as a whole and can reco
 });
 for(const trigger of ['online','timer','resume'])test('PR119 dismissed-draft regression: '+trigger+' still refreshes after dismissing an edited suggestion',async t=>{
  const hooks=`window.chatReads={list:0,suggestions:0};for(const [name,key] of [['listDocConversations','list'],['listDocSuggestions','suggestions']]){const read=c[name];c[name]=async args=>{window.chatReads[key]++;return read(args);};}`;
- const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const card=page.locator('.suggestion-card').first();await card.waitFor();
  const id=await card.getAttribute('data-suggestion');
  await card.locator('[data-correction]').fill('Synthetic correction to a dismissed suggestion');
@@ -114,7 +115,7 @@ for(const trigger of ['online','timer','resume'])test('PR119 dismissed-draft reg
 });
 test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects their late result',async t=>{
  const {page,errors}=await open(t);
- await page.goto(origin+'/control-room?tab=system-map');
+ await page.goto(origin+'/control-room?tab=system-map', {waitUntil:'domcontentloaded'});
  await page.evaluate(async()=>{window.atlasView=(await import('/js/atlas.js')).view;});
  await page.waitForFunction(()=>window.atlasView.status==='ready');
  for(let pages=2;pages<=4;pages++){
@@ -163,7 +164,7 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
  const hooks=`const read=c.getBoard;window.homeReads=0;c.getBoard=async args=>{const p=await read(args);if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
  const {page,errors}=await open(t,{clientHooks:hooks});
- await page.goto(origin+'/');await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
  const expected=await page.locator('#dealCounts').textContent();
  await online(page);await page.waitForFunction(()=>window.homeWaiting);
  await page.clock.fastForward(120_000);await online(page);
@@ -174,7 +175,7 @@ test('PR119 finding 8: a hung Home read expires and a late response cannot overw
  assert.equal(await page.locator('#retryHome').count(),0);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 10: retained Act caller reaches a supported work lookup and create flow',async t=>{
- const {page,errors}=await open(t);await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t);await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const link=page.locator('.suggestion-card a').filter({hasText:/Open Tasks|Choose work/}).first();
  const popupPromise=page.waitForEvent('popup');await link.click();const popup=await popupPromise;await popup.waitForLoadState();
  await popup.waitForFunction(()=>document.querySelector('#quickAddForm')?.hidden===false);
@@ -183,7 +184,7 @@ test('PR119 finding 10: retained Act caller reaches a supported work lookup and 
 });
 test('PR119 finding 7: a pending Deal poll cannot detach a later Jev reading',async t=>{
  const hooks=`const get=c.getDeal;c.getDeal=async id=>{const d=await get(id);if(window.holdDeal){window.dealWaiting=true;await new Promise(r=>window.releaseDeal=r);}return d;};c.getJevDealReading=async()=>{window.jevWaiting=true;await new Promise(r=>window.releaseJev=r);return {judged:true,movement_rung:2,movement_rungs:5,movement_label:'Synthetic movement',waiting_on:'partner',silence_is_bad:0.2};};`;
- const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/index.html');await page.locator('.deal-link').first().click();await page.waitForFunction(()=>document.querySelector('#dealDialog')?.open);
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/index.html', {waitUntil:'domcontentloaded'});await page.locator('.deal-link').first().click();await page.waitForFunction(()=>document.querySelector('#dealDialog')?.open);
  await page.evaluate(()=>window.holdDeal=true);await online(page);await page.waitForFunction(()=>window.dealWaiting);
  await page.locator('[data-jev-deal]').click();await page.waitForFunction(()=>window.jevWaiting);
  assert.match(await page.locator('[data-jev-result]').innerText(),/Reviewing/);
@@ -205,7 +206,7 @@ for(const [result,label] of [
  assert.equal(await page.locator('[data-jev-deal]').isEnabled(),true);assert.deepEqual(errors,[]);
 });
 for(const trigger of ['online','timer','resume'])test('PR119 finding 6: '+trigger+' preserves the active suggestion editor and snooze date',async t=>{
- const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const card=page.locator('.suggestion-card').first();await card.locator('[data-correction]').fill('Synthetic correction');await card.locator('[data-snooze-date]').fill('2026-12-01');
  await card.locator('[data-correction]').focus();await card.locator('[data-correction]').evaluate(e=>{window.editor=e;e.setSelectionRange(3,8);});
  if(trigger==='timer')await page.clock.fastForward(31_000);else if(trigger==='resume')await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));else await online(page);
@@ -213,19 +214,19 @@ for(const trigger of ['online','timer','resume'])test('PR119 finding 6: '+trigge
  assert.deepEqual(editor,{connected:true,focused:true,start:3,end:8,date:'2026-12-01'});assert.deepEqual(errors,[]);
 });
 test('PR119 finding 6: a cleared snooze date stays cleared after focus leaves the editor',async t=>{
- const {page,errors}=await open(t);await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t);await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const date=page.locator('[data-snooze-date]').first();await date.fill('');await date.evaluate(e=>{window.dateEditor=e;e.blur();});
  await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.list.state==='read');
  assert.equal(await date.inputValue(),'');assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: All Work rereads its loaded extent',async t=>{
- const {page,errors}=await open(t);await page.goto(origin+'/all-work');
+ const {page,errors}=await open(t);await page.goto(origin+'/all-work', {waitUntil:'domcontentloaded'});
  await page.locator('#loadMore').click();await page.waitForFunction(()=>document.querySelector('#itemsCount')?.textContent.includes('14'));
  await online(page);await page.waitForFunction(()=>/\d+ items/.test(document.querySelector('#itemsCount')?.textContent));
  assert.match(await page.locator('#itemsCount').textContent(),/14/);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: Doc Chats refresh keeps loaded conversations and turns',async t=>{
- const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  await page.locator('#showMoreConversations').click();await page.waitForFunction(()=>document.querySelectorAll('#conversationList [data-conversation]').length===2);
  await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.list.state==='read');
  assert.equal(await page.locator('#conversationList [data-conversation]').count(),2);
@@ -235,14 +236,14 @@ test('PR119 finding 5: Doc Chats refresh keeps loaded conversations and turns',a
  assert.equal(await page.locator('#turnList .turn').count(),2);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: Doc Chats rereads the loaded outcome-card extent',async t=>{
- const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats');
+ const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  await page.locator('#outcomeCardsShowMore').click();await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.outcomeCards.rows.length===2);
  await online(page);await page.waitForFunction(async()=> (await import('/js/conversations.js')).view.outcomeCards.state==='read');
  assert.equal(await page.evaluate(async()=> (await import('/js/conversations.js')).view.outcomeCards.rows.length),2);assert.deepEqual(errors,[]);
 });
 test('PR119 finding 6: editing started during a pending read defers the suggestion repaint',async t=>{
  const hooks=`const read=c.listDocSuggestions;c.listDocSuggestions=async args=>{const p=await read(args);if(window.holdSuggestions){window.suggestionsWaiting=true;await new Promise(r=>window.releaseSuggestions=r);}return p;};`;
- const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats');await page.locator('.suggestion-card').first().waitFor();
+ const {page,errors}=await open(t,{clientHooks:hooks});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});await page.locator('.suggestion-card').first().waitFor();
  await page.evaluate(()=>window.holdSuggestions=true);await online(page);await page.waitForFunction(()=>window.suggestionsWaiting);
  const card=page.locator('.suggestion-card').first();await card.locator('[data-snooze-date]').fill('2026-12-01');await card.locator('[data-correction]').fill('Synthetic mid-read draft');await card.locator('[data-correction]').focus();
  await card.locator('[data-correction]').evaluate(e=>window.editor=e);await page.evaluate(()=>window.releaseSuggestions());
@@ -250,7 +251,7 @@ test('PR119 finding 6: editing started during a pending read defers the suggesti
  assert.equal(await page.evaluate(()=>window.editor.isConnected && document.activeElement===window.editor),true);assert.equal(await card.locator('[data-snooze-date]').inputValue(),'2026-12-01');assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: Atlas refresh keeps the loaded second page and selected component',async t=>{
- const {page,errors}=await open(t);await page.goto(origin+'/control-room?tab=system-map');
+ const {page,errors}=await open(t);await page.goto(origin+'/control-room?tab=system-map', {waitUntil:'domcontentloaded'});
  await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.payload?.nodes.length===2);
  await page.locator('#atlasMore').click();await page.waitForFunction(async()=> (await import('/js/atlas.js')).view.payload?.nodes.length===4);
  const selected=await page.evaluate(async()=> (await import('/js/atlas.js')).view.payload.nodes[3].id);

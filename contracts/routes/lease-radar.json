@@ -1,0 +1,4 @@
+{
+  "routes": [{ "path": "/leases", "asset": "lease-radar.html", "order": 25, "gatePath": "/business" }],
+  "redirects": []
+}
