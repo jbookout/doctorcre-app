@@ -83,6 +83,8 @@
     "test/boot-mode.test.mjs",
     "test/browser-harness.mjs",
     "test/ci-workflows.test.mjs",
+    "test/pr-validation-workflows.test.mjs",
+    "test/workflow-policy.mjs",
     "test/client-data-check.test.mjs",
     "test/client-interface.test.mjs",
     "test/command-feedback.test.mjs",
