@@ -9,6 +9,7 @@ import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
+import { observeDocClient } from './doc-context.js';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -84,7 +85,7 @@ export function createLiveClient(opts = {}) {
     return payload;
   }
 
-  async function write(verb, args) {
+  async function write(verb, args, timeoutMs) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
     if (!online()) {
@@ -92,7 +93,8 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    return rawRpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
+    const request = { ...args, idempotency_key: args.idempotency_key || uuidv4() };
+    return timeoutMs ? readWithDeadline(signal => rawRpc(verb, request, signal), { timeoutMs }) : rawRpc(verb, request);
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -160,6 +162,8 @@ export function createLiveClient(opts = {}) {
     // to. It passes through untouched: it is the record layer's own identity for
     // an event, in the record layer's own field vocabulary, and translating or
     // rebuilding it would be inventing one.
+    async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
+    async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
@@ -214,6 +218,8 @@ export function createLiveClient(opts = {}) {
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
+        lease: page.lease ?? null,
+        schema_version: page.schema_version,
       };
     },
 
@@ -645,5 +651,5 @@ export function createLiveClient(opts = {}) {
     async createNationalMarketDeal(args) { return write('create-national-market-deal', args); },
     async revertDealField(args) { return write('revert-deal-field', args); },
   };
-  return client;
+  return opts.docContext === false ? client : observeDocClient(client);
 }

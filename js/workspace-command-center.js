@@ -1,3 +1,8 @@
+import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
+import { mountPastClientWidget } from './lease-radar.js';
+import { createLeaseRadarClient } from './lease-radar-client.js';
+import { leaseRadarFixture } from './lease-radar-fixture.js';
+import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountRelationshipDialog } from './relationship-dialog.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
@@ -6,7 +11,7 @@ import { createLiveClient } from './live-client.js';
 import { createLeadBoardClient } from './leads-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { localToday } from './calendar-model.js';
-import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
+import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeDashboard, scopedDeals, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -16,8 +21,13 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
+  let snapshotDocObservedAt = null;
   const relationshipDialog = $('homeIntroductions') ? mountRelationshipDialog({document}) : null;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
+  const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
+    : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
+    : view?.control?.[source];
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
     const key = target.contains(document.activeElement) ? document.activeElement?.dataset.homeKey : null;
@@ -38,6 +48,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('dealCounts').innerHTML = `Active Deals: ${count(summary?.active ?? null)} <span>Deals in Market: ${count(summary?.inMarket ?? null)}</span> <span>National Account Deals: ${count(summary?.national ?? null)}</span>`;
     paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No deal flags</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
+    if ($('homeInvoices')) {
+      const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
+      const overdue = invoices?.filter(row => row.overdue) || [];
+      const invoiceUnavailable = snapshot?.reads?.invoices?.state === 'error';
+      widget('homeInvoices', overdue.length ? `<header class="home-panel-head"><h2>Invoice attention · ${overdue.length}</h2><a class="home-outline" href="/invoices">Invoices ↗</a></header><div class="home-flags">${overdue.map(row => `<a class="home-flag" data-home-key="invoice:${E(row.key)}" href="${E(invoiceHref(row.key))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(row.name)}</strong><span>${E(invoiceMoney(row.amount))} · overdue since ${E(invoiceDate(row.due_on))}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('')}</div>` : invoiceUnavailable && !signedOut ? '<header class="home-panel-head"><h2>Invoice attention</h2></header><p class="home-empty">Invoices unavailable</p>' : null);
+    }
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
@@ -62,12 +78,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const refresh = async ({ signal } = {}) => {
+    const docTickets = new Map(docSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
     const previous = snapshot;
     let latest = null;
     const project = result => {
       const view = { ...result, control: { ...result.control }, details: new Map(result.details) };
-      for (const key of ['board', 'leads', 'relationships']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
+      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
       for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key].state === 'loading') view.control[key] = previous?.control[key] ?? null;
       for (const [id, detail] of previous?.details || []) if (result.reads.board.state === 'loading' || result.reads[id]?.state === 'loading') view.details.set(id, detail);
       return view;
@@ -85,7 +102,16 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         for (const read of Object.values(latest.reads)) if (read.state === 'loading') { read.state = 'error'; read.code = 'read_timeout'; }
       }
     }
-    finally { if (epoch === sequence && !disposed) { if (latest) { latest.loading = false; snapshot = project(latest); } render(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
+    finally { if (epoch === sequence && !disposed) {
+      if (latest?.unauthorized) { snapshotDocObservedAt=null; pageDocContext?.clear(); }
+      else {
+        snapshotDocObservedAt = latest?.updatedAt ? Date.parse(latest.updatedAt) : null;
+        for (const [key] of docSources) {
+          const payload = docPayload(key,latest);
+          if (latest?.reads?.[key]?.state === 'read') pageDocContext?.finish(docTickets.get(key),payload,{at:snapshotDocObservedAt});
+          else pageDocContext?.fail(docTickets.get(key));
+        }
+      } if (latest) { latest.loading = false; snapshot = project(latest); } render(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
   };
   const paintLeadDetail = lead => {
     const expanded = $('homeDetail').querySelector('details')?.open;
@@ -97,12 +123,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
     if (focused) ([...$('homeDetail').querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === focused) || $('homeDetail').querySelector('[data-close-detail]'))?.focus();
   };
-  $('homeDetail').addEventListener('close', () => { selectedLead = null; });
+  $('homeDetail').addEventListener('close', () => { selectedLead = null; selectDocRecord(null,null); });
   $('homeLeads').addEventListener('click', event => {
     const button = event.target.closest('[data-lead]');
     const lead = leadEntries.get(button?.dataset.lead);
     if (!lead) return;
-    selectedLead = lead.id;
+    selectedLead = lead.id; selectDocRecord('lead', lead.id);
     paintLeadDetail(lead);
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
@@ -118,20 +144,29 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   }, 1000);
   $('refreshHome').addEventListener('click', auto.refresh);
+  const pastWidget = $('homePastClients') && client.readLeaseRadar ? mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope}) : null;
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
-  const select = value => { scope = value; buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); }); render(); };
+  const select = value => {
+    scope = value; setDocFilters({ scope }); pastWidget?.render();
+    if (!snapshot?.unauthorized) for (const [key,method] of docSources) {
+      if (snapshot?.reads?.[key]?.state === 'read') publishDocRead(method,docPayload(key,snapshot));
+    }
+    buttons.forEach(button => { const selected = button.dataset.scope === scope; button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected); });
+    render();
+  };
   buttons.forEach(button => {
     button.addEventListener('click', () => select(button.dataset.scope));
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
   const boot = resolveDealroomBoot(location);
-  const client = boot.mode === 'live' ? createLiveClient() : await createFixtureClient(boot.options);
-  client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient().getLeadBoard : async () => ({ leads: [] });
+  const client = boot.mode === 'live' ? createLiveClient({docContext:false}) : await createFixtureClient({...boot.options,docContext:false});
+  client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient({docContext:false}).getLeadBoard : async () => ({ leads: [] });
+  client.readLeaseRadar = boot.mode === 'live' ? createLeaseRadarClient().readLeaseRadar : async()=>leaseRadarFixture();
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
 }

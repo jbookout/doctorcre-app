@@ -1,0 +1,37 @@
+{
+  "routes": [
+    {
+      "path": "/",
+      "asset": "workspace.html",
+      "order": 0,
+      "gatePath": "/"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/workspace",
+      "to": "/",
+      "order": 1
+    },
+    {
+      "path": "/business",
+      "to": "/",
+      "order": 5
+    },
+    {
+      "path": "/tasks",
+      "to": "/",
+      "order": 16
+    },
+    {
+      "path": "/work",
+      "to": "/",
+      "order": 17
+    },
+    {
+      "path": "/tasks.html",
+      "to": "/",
+      "order": 18
+    }
+  ]
+}

@@ -3,6 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { observeDocRead, selectDocRecord, setDocFilters } from "../js/doc-context.js";
+import { createDocContext } from "../js/doc-context-model.js";
 import { createLiveClient } from "../js/live-client.js";
 import { createSystemWorkClient } from "../js/system-work-client.js";
 import { mountPrefs } from "../js/shell.js";
@@ -22,7 +24,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -398,15 +400,12 @@ test("Dot 26: replaying a conflicted version cannot restore verified completion"
 });
 
 test("Dot 27: automatic board refresh preserves an unchanged questions answer draft", async () => {
-  const {workDetailUrl}=await import("../js/progress-work-model.js");
-  const {boardView,answerRequest,taskPulse,taskIdentity,taskSummary,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange}=await import("../js/progress-board-model.js");
+  const {mountBoard}=await import("../js/progress-board.js");
   const dom=new JSDOM(source("control-room.html"));
   const payload={snapshot:{board_id:"demo-board",version:1,snapshot_json:{title:"Demo board",tasks:{}}},questions:[{question_id:"demo-question",revision:1,prompt:"Demo question",choices:[],allow_free_text:true,status:null}]};
-  const {withGovernance,governanceTasks,jobLinks}=await import("../js/control-room-workspace-model.js");
-  const h=handlers("js/progress-board.js","export function mountProgressBoard",null,{withGovernance,governanceTasks,jobLinks,mountAutoRefresh:()=>({dispose:noop}),...{document:dom.window.document,location:{search:"?board=demo-board"},matchMedia:()=>({matches:false,addEventListener:noop}),setInterval:()=>0,createLiveClient:()=>({listProgressBoards:async()=>({schema:"progress-board-directory.v1",boards:[]}),readProgressBoard:async()=>payload}),workDetailUrl,boardView,answerRequest,taskPulse,taskIdentity,taskSummary,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange,uuidv4:()=>"key"}},["mountProgressBoard"]);
-  const board=h.mountProgressBoard();
-  await tick();const input=dom.window.document.querySelector(".answer-form textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await board.refresh();
-  assert.equal(dom.window.document.querySelector(".answer-form textarea").value,"Unsaved answer");dom.window.close();
+  const board=mountBoard({window:dom.window,document:dom.window.document,client:{readProgressBoard:async()=>payload},storage:null,search:"?board=demo-board",setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{}});
+  board.start();await tick();const input=dom.window.document.querySelector("textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await board.refresh();
+  assert.equal(dom.window.document.querySelector("textarea").value,"Unsaved answer");dom.window.close();
 });
 
 test("Dot 28: queue assets resolve on its nested route through the Worker", async () => {
@@ -436,8 +435,8 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
   const {completionPlan,moveIntent}=await import("../js/pipeline-model.js");const {cellKey,pendingFieldWrite}=await import("../js/field-write-reconciliation.mjs");
   const operations=new Map(),followUps=[];let phaseCalls=0;
   const state={fieldWrites:{},deals:new Map([["demo",{name:"Demo"}]]),boardSync:{requestRefresh:noop}};
-  const request={deal:"demo",value:"Legal"};
-  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingFieldWrite,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
+  const request={deal:"demo",field:"phase",value:"Legal"};
+  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingFieldWrite,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,refreshPanel:noop,fieldPatch:(field,value)=>({[field]:value}),sendFieldWrite:async()=>({status:"ok",request}),uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
   const intent=moveIntent({id:"demo",name:"Demo",phase:"On Deck"},"legal");
   await h.runMove(intent,{evidence:"Demo note",nextStep:"Demo follow-up",nextWhen:"2026-10-01",effectiveDate:"2026-09-30",recordCriticalDate:true,dateSource:"Demo source"});
   assert.equal(followUps.length,0);await h.retryFieldWrite(cellKey("demo","phase"));
@@ -445,8 +444,9 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 });
 
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
+  const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);

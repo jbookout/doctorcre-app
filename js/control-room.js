@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel, readWithDeadline } from './auto-refresh.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
@@ -5,9 +6,9 @@ import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAtlas } from './atlas.js';
 import { mountSessions } from './sessions.js';
 import { mountModelRoom } from './model-room.js';
-import { mountDocDock, mountNotificationBadge, wireTabs } from './shell.js';
+import { mountNotificationBadge, wireTabs } from './shell.js';
 import { validIncidentBoardPayload, incidentFilters, groupedIncidents } from './control-room-model.js';
-import { mountProgressBoard } from './progress-board.js';
+import { mountBoard } from './progress-board.js';
 import { automationMonth } from './control-room-workspace-model.js';
 import { connectionView, meteredSpend } from './connections-model.js';
 import { mountJobDetail } from './job-detail.js';
@@ -63,7 +64,7 @@ function renderIncidents() {
     </section>`).join("") || `<div class="state-block" data-state="empty"><h3>No incident matches this severity</h3></div>`);
 }
 
-function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(item=>item.ref===ref);if(row)details.open({...row,id:row.ref},{source:'incidents'}); }
+function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(item=>item.ref===ref);if(row){selectDocRecord("incident", row.ref);details.open({...row,id:row.ref},{source:'incidents'});} }
 
 function renderConnections(){
  const projection=connectionView(payloadOf('connections'));
@@ -107,9 +108,9 @@ async function take(id,run){
  }
 }
 async function load(){
- view.sequence++;
+ view.sequence++;view.status='loading';
  await Promise.all([take('incidents',()=>client.incidentBoard({state:'open'})),take('approvals',()=>client.governanceQueue()),take('schedule',()=>client.scheduleBoard()),take('connections',()=>client.readConnections())]);
- view.status='ready';await details.refresh();
+ await details.refresh();view.status='ready';
  announce(Object.values(view.reads).every(read=>read.state==='read')?'Control Room updated':'Control Room updates unavailable');
 }
 
@@ -118,7 +119,8 @@ function openSessions(){mountSessions({});}
 function openModelRoom(){mountModelRoom({});}
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
- details=mountJobDetail({client,document});board=mountProgressBoard({client,openTask:task=>details.open(task),onTasks:tasks=>details.update(tasks)});
+ $("jobDialog").addEventListener("close",()=>selectDocRecord(null,null));
+ details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),onTasks:tasks=>details.update(tasks)});board.start();
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
   if(chip){view.severity=chip.dataset.severity;renderIncidents();}
@@ -127,7 +129,7 @@ async function boot(){
   const row=event.target.closest('[data-incident]');
   if(row)openIncident(row.dataset.incident);
  });
- mountDocDock('Control Room');mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
+ mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
  const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')openSessions();if(selected.id==='tabModelRoom')openModelRoom();};
  document.getElementById('controlRoomTabs')?.addEventListener('click',event=>{const selected=event.target.closest('[data-tab-key]');if(!selected)return;const next=new URL(location.href);next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);activate(selected);},true);
  const restoreTab=()=>{const requested=new URLSearchParams(location.search).get('tab');const key={atlas:'system-map','model-room':'agents',dashboard:'overview'}[requested]||requested||'overview';const selected=[...document.querySelectorAll('#controlRoomTabs [data-tab-key]')].find(t=>t.dataset.tabKey===key);if(selected){tabs.select(selected.id);activate(selected);}};

@@ -1,0 +1,10 @@
+{
+  "routes": [],
+  "redirects": [
+    {
+      "path": "/progress-board",
+      "to": "/control-room/progress",
+      "order": 0
+    }
+  ]
+}

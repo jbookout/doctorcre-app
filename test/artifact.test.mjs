@@ -1,15 +1,33 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { chromium } from 'playwright';
 
 import { buildArtifact, runCli, verifyArtifact } from "../scripts/artifact.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const COMMIT = "1".repeat(40);
+
+test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
+  const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
+  await buildArtifact({root:ROOT,outDir,commit:COMMIT});
+  const browser=await chromium.launch();t.after(()=>browser.close());
+  const page=await browser.newPage({viewport:{width:820,height:900}});
+  await page.route('**/*',async route=>{
+    const url=new URL(route.request().url());
+    const name=url.pathname==='/'?'share.html':url.pathname.slice(1);
+    try{await route.fulfill({body:await readFile(join(outDir,'site','reports',name)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}
+    catch{await route.fulfill({status:404,body:''});}
+  });
+  await page.goto('https://reports.doctorcre.com/');await page.locator('.app-shell-header').waitFor();
+  assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('report-shell')),true);
+  const rail=await page.locator('.app-shell-header').boundingBox(), main=await page.locator('main').boundingBox();
+  assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
+});
 
 test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   const first = await mkdtemp(join(tmpdir(), "doctorcre-artifact-a-"));
@@ -25,6 +43,7 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.deepEqual(await readFile(join(first, "site", "control-room.html")), await readFile(join(ROOT, "control-room.html")));
   assert.equal(a.manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.equal(verifyArtifact(a.archive, a.archiveSha256).manifest.files.some((file) => file.path === "control-room.html"), true);
+  assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
 });
 
 test("the deployment directory is rebuilt without stale files", async () => {
@@ -60,6 +79,7 @@ async function committedFixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
+  await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   // Exercise the code under test, including edits not yet committed by the maker.
   for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
   git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs"]);
@@ -80,10 +100,10 @@ test("one contract path declaration drives both assembly and committed-source ve
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
+  await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
-    ["route_contract", "contracts/app-routes.v1.json", "contracts/synthetic-routes.v1.json"],
   ];
   let source = await readFile(join(root, "scripts/artifact.mjs"), "utf8");
   for (const [, oldPath, newPath] of contracts) {
@@ -140,6 +160,11 @@ test("changed contract source bytes are rejected even when payload bytes are unc
 test("an untracked artifact input cannot be smuggled into a source-bound build", async (t) => {
   const { root, outDir, commit } = await committedFixture(t);
   await writeFile(join(root, "js", "synthetic-extra.js"), "// synthetic extra input\n");
+  await assert.rejects(buildArtifact({ root, outDir, commit }), /file needs a slice owner or shared declaration/);
+  const ownershipPath = join(root, 'contracts/slice-ownership.v1.json');
+  const ownership = JSON.parse(await readFile(ownershipPath));
+  ownership.shared.push('js/synthetic-extra.js');
+  await writeFile(ownershipPath, JSON.stringify(ownership));
   await buildArtifact({ root, outDir, commit });
   await assert.rejects(runCli(root, ["verify"]), /source input set mismatch/);
 });
@@ -156,4 +181,17 @@ test("an empty or misnamed digest sidecar cannot turn off digest verification", 
     await writeFile(join(outDir, "doctorcre-app.tar.sha256"), content);
     await assert.rejects(runCli(root, ["verify"]), /artifact digest sidecar is invalid/);
   }
+});
+
+
+test("slice fragments and generated registry stay bound to committed source", async t => {
+  const { root } = await committedFixture(t);
+  const fragment = join(root, "contracts/routes/home.json");
+  const original = await readFile(fragment, "utf8");
+  await writeFile(fragment, original + "\n");
+  await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
+  await writeFile(fragment, original);
+  const registry = join(root, "js/slices.generated.js");
+  await writeFile(registry, (await readFile(registry, "utf8")) + "// Demo tampered registry\n");
+  await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
 });

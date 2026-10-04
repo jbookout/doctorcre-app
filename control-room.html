@@ -43,25 +43,40 @@
 <button class="tab" type="button" role="tab" id="tabSessions" data-tab-key="sessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
 </div>
 <main id="main" class="shell control-room-workspace" data-board-embedded>
-<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><span id="board-parent-name" hidden></span><a id="board-activity" hidden></a><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard">      <section class="board-clock" aria-labelledby="board-title">
+<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">KEY</p><h2 id="legend-title">What every mark means</h2></div></div>
+      <div id="legend-body" class="legend-body"></div>
+    </aside>
 
+      <nav aria-label="Breadcrumb"><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
+      <section class="intro" aria-labelledby="board-title">
+        <p class="eyebrow" id="board-eyebrow">DELIVERY / PROGRESS BOARD</p>
         <h1 id="board-title" class="sr-only" tabindex="-1">System Job Board</h1>
-        <p id="board-meta" class="sr-only">Updating…</p>
+        <p id="board-meta" class="board-meta">Loading published board…</p>
         <span id="board-freshness" class="freshness-badge"></span>
+        <p id="board-sync" class="board-sync" role="status" hidden></p>
         <p id="board-error" class="error" role="alert" hidden></p>
-        <p id="governanceState" class="state-block" role="status" hidden></p>
-        <div class="read-recovery"><button id="board-retry" type="button" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
+        <div class="read-recovery"><button data-layout-refresh id="board-retry" type="button" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
+        <div id="board-headline" class="headline" aria-label="Board summary"></div>
+      </section>
+      <section id="repos-panel" class="panel repos-panel" aria-labelledby="repos-title" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">00 / REPOSITORIES</p><h2 id="repos-title">Every jbookout repository</h2></div><span id="repo-count" class="panel-count">—</span></div>
+        <div id="board-repos" class="repo-list"></div>
       </section>
       <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
       <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
-        <div class="panel-heading"><div><p class="eyebrow"></p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
-        <div id="board-stages" class="flow-wrap" aria-live="polite">
-          <svg id="board-flow" class="pipeline-diagram" role="group" aria-label="Tasks positioned along the six delivery stages"></svg>
-        </div>
+        <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
+        <form id="board-filters" class="filters" aria-label="Filter cards">
+          <label>Repository <select id="filter-repo"><option value="">All</option></select></label>
+          <label>Stage <select id="filter-stage"><option value="">All</option></select></label>
+          <label class="check"><input id="filter-blocked" type="checkbox"> Blocked only</label>
+        </form>
+        <svg id="board-rail" class="pipeline-rail" viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="board-stages" class="columns" aria-live="polite"></div>
       </section>
-      <section class="panel" aria-labelledby="completed-title">
-        <div class="panel-heading"><h2 id="completed-title">Live work</h2><span id="completed-count" class="panel-count">—</span></div>
-        <div id="completed-list" class="completed-list"></div>
+      <section class="panel blocked-panel" aria-labelledby="blocked-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / BLOCKED</p><h2 id="blocked-title">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
+        <div id="board-blocked" class="blocked-list"></div>
       </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
         <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
@@ -69,12 +84,33 @@
         <p id="system-work-error" class="error" role="alert" hidden></p>
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
       </section>
-      <section class="panel questions-panel" data-action-items aria-labelledby="questions-title">
-        <div class="panel-heading"><div><p class="eyebrow"></p><h2 id="questions-title">Action Items</h2></div><span id="question-count" class="panel-count">—</span></div>
-
+      <section class="panel questions-panel" aria-labelledby="questions-title">
+        <div class="panel-heading"><div><p class="eyebrow">03 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
         <div id="board-questions" class="questions" aria-live="polite"></div>
       </section>
-</section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
+      <div class="lower-grid">
+        <section class="panel" aria-labelledby="ledger-title">
+          <div class="panel-heading"><div><p class="eyebrow">04 / EXECUTORS</p><h2 id="ledger-title">Executor ledger</h2></div></div>
+          <div id="board-ledger" class="ledger"></div>
+        </section>
+        <section class="panel" aria-labelledby="delivery-title">
+          <div class="panel-heading"><div><p class="eyebrow">05 / DELIVERY</p><h2 id="delivery-title">Latest deliverables</h2></div><span id="deliverable-count" class="panel-count">—</span></div>
+          <div id="board-deliverables" class="link-list"></div>
+        </section>
+        <section class="panel" aria-labelledby="decisions-title">
+          <div class="panel-heading"><div><p class="eyebrow">06 / DECISIONS</p><h2 id="decisions-title">Decisions made</h2></div><span id="decision-count" class="panel-count">—</span></div>
+          <div id="board-decisions" class="decision-list"></div>
+        </section>
+        <section class="panel" aria-labelledby="notes-title">
+          <div class="panel-heading"><div><p class="eyebrow">07 / NOTES</p><h2 id="notes-title">Notes</h2></div></div>
+          <div id="board-notes" class="note-list"></div>
+        </section>
+      </div>
+      <section class="panel completed-panel" aria-labelledby="completed-title">
+        <div class="panel-heading"><div><p class="eyebrow">08 / COMPLETED</p><h2 id="completed-title">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div id="completed-list" class="completed-list"></div>
+      </section>
+<p id="governanceState" class="state-block" role="status" hidden></p></section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
 <section class="panel"><div class="panel-heading"><h2>Connections</h2><time id="connectionsUpdated">Updating…</time></div><div id="connectionsProviders" class="connection-grid"></div></section>
 <section class="panel"><h2>Devices</h2><div id="connectionDevices" class="connection-grid"></div><p id="devicesState" role="status"></p></section></section>
 <section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button><a class="btn" href="/control-room/automations">List</a></div></div><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelAttention" role="tabpanel" aria-labelledby="tabAttention" tabindex="0" hidden>
@@ -385,19 +421,7 @@
 </main>
 <dialog id="work-triage" aria-label="Review system work action"><button id="work-triage-close" type="button" aria-label="Close">×</button><form id="work-triage-form"></form></dialog>
 <dialog id="jobDialog" class="job-dialog" aria-labelledby="jobTitle"><header><h2 id="jobTitle"></h2><button id="jobClose" type="button" aria-label="Close job details">×</button></header><div id="jobBody"></div></dialog>
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Control Room</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
+
 
 
   <script type="module" src="/js/control-room.js"></script>

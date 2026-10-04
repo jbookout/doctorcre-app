@@ -258,3 +258,6 @@ button.primary:hover:not(:disabled){background:linear-gradient(135deg,#ff984c,#f
 .itinerary-pin.diamond.selected::before{background:#002f6c;border-color:var(--orange)}
 .itinerary-pin-source{opacity:0}
 .itinerary-pin.selected .itinerary-pin-source,.itinerary-pin:hover .itinerary-pin-source,.itinerary-pin:focus-visible .itinerary-pin-source{opacity:1}
+
+.has-app-layout .layout{display:block;min-width:0}.has-app-layout .workspace{min-width:0;container-type:inline-size}
+@container(max-width:900px){.workspace-grid{grid-template-columns:minmax(0,1fr)}}

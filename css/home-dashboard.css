@@ -9,3 +9,9 @@
 
 .home-shell .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;border:0}.home-updated .observed::after{content:none}
 .home-detail h2,.home-detail h3,.home-detail p,.home-detail dt,.home-detail dd{min-width:0;overflow-wrap:anywhere}.home-detail .home-panel-head h2{flex:1}.home-detail .home-panel-head button{flex:none}.home-detail-summary>div{min-width:0;flex:1}.home-detail-score{flex:none}.home-detail dl{grid-template-columns:minmax(0,1fr) minmax(0,3fr)}@media(max-width:767px){.home-detail-summary{flex-wrap:wrap}.home-detail-summary>div{flex-basis:100%}}
+/* Invoice attention shares the dashboard card grid at every viewport. */
+#homeInvoices{margin-bottom:22px}
+#homeInvoices .home-panel-head{flex-wrap:wrap}
+#homeInvoices .home-panel-head h2{min-width:0;overflow-wrap:anywhere}
+
+#homeInvoices .home-flag-light{animation-duration:1s}

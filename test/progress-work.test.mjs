@@ -13,7 +13,7 @@ test('System Job Board task selection opens the shared popup', async () => {
   assert.doesNotMatch(board, /id="task-detail"/);
   assert.doesNotMatch(style, /#task-detail|\.task-detail-body|\.detail-row/);
   assert.match(board, /id="jobDialog"/);
-  assert.match(script, /openTask\?\.\(task, stage\)/);
+  assert.match(script, /deps\.openTask\?\.\(card\)/);
 });
 
 test('canonical Engineering read accepts current-generation arrays and refuses a broken seal',()=>{

@@ -113,7 +113,7 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
   assert.match(html, /<p class="caption freshness" id="homeFreshness">/, "one freshness line, under the hero");
   assert.match(pageJs, /updatedLabel\(payload\.source\.observed_at\)/, "the line displays the successful update clock");
   assert.match(html, /id="receiptDock" class="receipt-dock"/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
   assert.match(html, /<a class="btn btn-primary" id="signInAgain" href="\/auth\/login\?return_to=%2F"/, "an expired session is offered the way back in");
 
   const tabs = /<div data-layout-slot="tabs" class="page-views" id="businessTabs"[\s\S]*?<\/div>/.exec(html)?.[0] || "";
@@ -555,7 +555,7 @@ test("today-triage is pinned in the CARR interface as an additive minor bump", (
   assert.ok(carrInterface.mcp_operations.includes("today-triage"));
   assert.ok(carrInterface.mcp_operations.includes("loop-board"));
   assert.deepEqual([...carrInterface.mcp_operations], [...carrInterface.mcp_operations].sort(), "the list stays alphabetical");
-  assert.equal(carrInterface.version, "1.40.0");
+  assert.equal(carrInterface.version, "1.42.0");
 });
 
 test("Home enters in a stagger under a second, answers hover and press, and draws its ambient life from shared keyframes", () => {

@@ -340,8 +340,8 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.19.0");
-  assert.equal(contract.version, "1.40.0");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(contract.version, "1.42.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -731,7 +731,7 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
 test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(html, /<section class="tabpanel" id="panelAtlas"[\s\S]*?id="atlasIndex"/, "the Atlas panel holds no index");
   assert.match(html, /role="tab"[^>]*>System Map</, "the System Map tab owns the atlas");
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "a second Doc control appeared");
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "Doc is owned by the shared shell");
   assert.doesNotMatch(html, /atlas\.css/, "the atlas added its own stylesheet");
   assert.ok(html.includes("control-room-workspace.css"));
   // Mobile first at 360px: no fixed pixel width of three digits or more.
@@ -751,7 +751,7 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(pageJs, /export \{ escapeHtml \}/, "the shared escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.19.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.20.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
   assert.match(pageJs, /parameters\.has\("tab"\)\) restoreTab\(\)/, "the deep link is read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");

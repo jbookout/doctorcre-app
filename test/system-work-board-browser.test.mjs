@@ -36,7 +36,11 @@ async function open(t,width,{snapshot=true}={}){
 test('all source cards and ten recent Live nodes fit phone and desktop; library finds old completion',async t=>{
  for(const width of [320,390,1440])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);assert.equal(await page.locator('.work-source').count(),19);
-  assert.equal(await page.locator('.flow-stage[data-stage="live"] .pipeline-node').count(),10);
+  // The v2 Live column shows the newest five and expands to all ten recent Live nodes.
+  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),5);
+  assert.match(await page.locator('.column[data-stage="live"] .live-summary').textContent(),/^10 live/);
+  await page.locator('#live-toggle').click();
+  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),10);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Live Library',exact:true}).click();
   if(width<=760)await page.getByLabel('Workspace sidebar',{exact:true}).click();

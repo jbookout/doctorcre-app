@@ -3,8 +3,6 @@
 import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from "./visual-system.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 
-export { mountDocDock } from "./doc-dock.js";
-
 export const PREFERENCES_KEY = "doctorcre.visual-preferences";
 export const LEGACY_PREFERENCE_KEYS = Object.freeze(["doctorcre.presentation.v1"]);
 
