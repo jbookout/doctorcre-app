@@ -30,11 +30,9 @@ import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { createCommandState, performCommand, pendingCommand } from './command-feedback.mjs';
-import { createFixtureClient } from './fixture-client.js';
-import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
-import { ACTOR_LABEL } from './client.js';
+import { ACTOR_LABEL, getAppClient } from './client.js';
 import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
@@ -1319,7 +1317,7 @@ async function boot() {
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
-  state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  state.client = await getAppClient(resolved.mode, resolved.options);
   mountNotificationBadge(state.client);
   state.mode = state.client.mode;
   const identity = deploymentIdentity(state.mode);
@@ -1346,7 +1344,11 @@ async function boot() {
   // current board scope. The existing detail read enforces identity and shows
   // failures; its outcome must not hold up board/feed polling.
   const linkedDeal = incomingScope.get('deal');
-  if (linkedDeal) openPanel(linkedDeal);
+  if (linkedDeal && incomingScope.get('complete') === 'closed') {
+    // Doc enters the same reviewed completion form as drag/keyboard moves.
+    const url = new URL(location.href); url.searchParams.delete('complete'); history.replaceState({}, '', url);
+    beginMove(linkedDeal, 'closed');
+  } else if (linkedDeal) openPanel(linkedDeal);
 }
 
 if (globalThis.document) boot();

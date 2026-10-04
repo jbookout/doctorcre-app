@@ -1,6 +1,6 @@
 import { dealInsightLines } from './pipeline-model.js';
 import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
-import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
+import { getAppClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
@@ -1359,7 +1359,7 @@ async function boot() {
   badge.dataset.mode = identity.mode;
   badge.title = identity.detail;
   badge.setAttribute('aria-label', identity.detail);
-  state.client = await createClient(bootConfig.mode, bootConfig.options);
+  state.client = await getAppClient(bootConfig.mode, bootConfig.options);
   mountAutoRefresh({ document, window, shouldRefresh: () => $('#dealDialog').open && !$('#formDialog').open && !$('#dealDialog').querySelector('[data-jev-deal]:disabled'), refresh: () => openDeal($('#dealDialog').dataset.dealId, { background: true }) });
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace:'all' }),

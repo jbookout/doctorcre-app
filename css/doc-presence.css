@@ -51,6 +51,36 @@ html:has(.doc-presence) { scroll-padding-top:160px; }
 
 .doc-presence.doc-in-detail { top:0; flex-shrink:0; }
 
+.doc-command { display:flex; align-items:center; gap:12px; margin:0 0 14px; padding:0 18px; border:1px solid #f2692440; border-radius:16px; background:linear-gradient(100deg,#002f6c55,#0b1424e6 55%,#f269241a); box-shadow:0 0 0 1px #87b9ff12 inset,0 14px 40px #0006; transition:border-color 220ms,box-shadow 220ms; }
+.doc-command:focus-within { border-color:#ff8a48a0; box-shadow:0 0 0 1px #ff8a4840 inset,0 0 32px #f2692430,0 14px 40px #0006; }
+.doc-command>span { color:#ffa466; font-size:22px; }
+.doc-command input { flex:1; min-width:0; min-height:58px; border:0; outline:0; background:transparent; color:#f4f7fd; font:600 22px 'Barlow Condensed','Arial Narrow',sans-serif; letter-spacing:.02em; }
+.doc-command input::placeholder { color:#8fa4c4; }
+.doc-results { display:grid; overflow-x:hidden; gap:6px; margin:0 0 14px; padding:0; list-style:none; max-height:min(52dvh,460px); overflow-y:auto; overscroll-behavior:contain; }
+.doc-result { box-sizing:border-box; min-width:0; display:flex; align-items:center; gap:14px; min-height:52px; padding:10px 14px; border:1px solid #8bb6eb1c; border-radius:12px; background:#101b2b80; cursor:pointer; transition:background 260ms ease,border-color 260ms ease,box-shadow 260ms ease; }
+.doc-result[aria-selected="true"] { background:linear-gradient(100deg,#002f6c90,#14213690); border-color:#ff8a4870; box-shadow:inset 3px 0 0 #ff8a48,0 8px 24px #0005; }
+.doc-result-glyph { display:inline-grid; place-items:center; flex:none; width:34px; height:34px; border-radius:50%; color:#ffa466; background:radial-gradient(circle at 35% 30%,#f2692430,#002f6c 70%); }
+.doc-result-text { display:grid; gap:2px; flex:1; min-width:0; }
+.doc-result-text b { font-weight:600; font-size:15px; overflow-wrap:anywhere; }
+.doc-result-text span { color:#a7bad5; font-size:12px; }
+.doc-result-kind { flex:none; color:#93baf4; font:600 12px 'Barlow Condensed','Arial Narrow',sans-serif; letter-spacing:.08em; text-transform:uppercase; }
+.doc-result-staged .doc-result-kind { color:#ffb185; }
+.doc-staged { display:flex; align-items:center; gap:14px; margin:0 0 14px; padding:16px 18px; border:1px solid #f2692470; border-radius:16px; background:linear-gradient(100deg,#f2692422,#0b1424f0 60%); animation:doc-arrive 320ms ease-out; }
+.doc-staged[hidden] { display:none; }
+.doc-staged>div { flex:1; min-width:0; }
+.doc-staged h3 { margin:0 0 4px!important; font-size:22px!important; overflow-wrap:anywhere; }
+.doc-staged p { margin:0; color:#c3d1e6; font-size:13px; }
+#docStagedApprove { background:#f2692440; border-color:#ff8a48a0; font-weight:600; }
+#docCommandStatus { margin:0 0 10px; min-height:0; color:#ffb185; font-size:13px; }
+#docCommandStatus:empty { display:none; }
+.doc-detail.doc-commanding .doc-detail-grid { display:none; }
+.doc-detail.doc-busy .doc-command>span { animation:doc-ring 1.6s ease-out infinite; border-radius:50%; }
+@keyframes doc-ring { from { box-shadow:0 0 0 0 #ff8a4870; } to { box-shadow:0 0 0 14px #ff8a4800; } }
+@media(max-width:760px) { .doc-command input { min-height:52px; font-size:19px; } .doc-result-kind { font-size:10px; letter-spacing:.03em; } .doc-staged { flex-wrap:wrap; } .doc-staged>div { flex-basis:calc(100% - 40px); } #docStagedApprove { flex:1; } }
+@media(prefers-reduced-motion:reduce) { .doc-result,.doc-command { transition:none; } .doc-staged,.doc-detail.doc-busy .doc-command>span { animation:none; } }
+:root[data-motion="reduced"] :is(.doc-result,.doc-command) { transition:none; }
+:root[data-motion="reduced"] :is(.doc-staged,.doc-detail.doc-busy .doc-command>span) { animation:none; }
+
 .doc-brief-open { position:relative; flex:none; font-size:20px; color:#ffa466; }
 .doc-brief-open[data-ready="true"] { border-color:#f2692490!important; box-shadow:0 0 0 0 #f2692466; animation:doc-brief-ready 2.4s ease-out infinite; }
 .doc-brief-open[data-ready="true"]::after { content:''; position:absolute; top:6px; right:6px; width:8px; height:8px; border-radius:50%; background:#ff8a48; }

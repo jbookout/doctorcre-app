@@ -6,8 +6,7 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountRelationshipDialog } from './relationship-dialog.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
-import { createFixtureClient } from './fixture-client.js';
-import { createLiveClient } from './live-client.js';
+import { getAppClient } from './client.js';
 import { createLeadBoardClient } from './leads-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { localToday } from './calendar-model.js';
@@ -164,7 +163,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
   const boot = resolveDealroomBoot(location);
-  const client = boot.mode === 'live' ? createLiveClient({docContext:false}) : await createFixtureClient({...boot.options,docContext:false});
+  const client = await getAppClient(boot.mode, {...boot.options,docContext:false});
   client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient({docContext:false}).getLeadBoard : async () => ({ leads: [] });
   client.readLeaseRadar = boot.mode === 'live' ? createLeaseRadarClient().readLeaseRadar : async()=>leaseRadarFixture();
   mountHomeDashboard({ document, window, client });

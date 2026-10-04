@@ -1,4 +1,4 @@
-import { createClient } from './client.js';
+import { getAppClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { pageDocContext } from './doc-context.js';
 import { contextualSuggestions, docAnswer, DOC_PAGES } from './doc-context-model.js';
@@ -8,18 +8,21 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh
 import { entryDetailsHtml } from './entry-details.mjs';
 import { uuidv4 } from './uuid.js';
 import { mountMorningBrief } from './morning-brief.js';
+import { mountDocCommand } from './doc-command.js';
+import { docShortcut, shortcutPlatform } from './doc-command-model.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const display = value => value === null ? 'Unknown' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
 
-export function mountDocPresence({ document: root = document, window: win = window, context = pageDocContext, client: supplied, intervalMs = 30_000 } = {}) {
+export function mountDocPresence({ document: root = document, window: win = window, context = pageDocContext, client: supplied, intervalMs = 30_000, pages = [], navigate = href => win.location.assign(href) } = {}) {
   const main = root.getElementById('appMainSlot');
   if (!main || !context || root.getElementById('docPresence')) return null;
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
+  const platform = shortcutPlatform(win.navigator);
   const strip = root.createElement('section'); strip.id = 'docPresence'; strip.className = 'doc-presence'; strip.setAttribute('aria-label', 'Doc');
-  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span><span><b>Doc</b><span id="docPageLabel"></span></span><span aria-hidden="true">↗</span></button><div id="docSuggestions" class="doc-suggestion-strip" aria-live="polite"></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button></div>';
+  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-haspopup="dialog" aria-controls="docDetail" aria-keyshortcuts="' + (platform === 'mac' ? 'Meta+D Meta+K' : 'Control+D Control+K') + '" title="Doc · ' + (platform === 'mac' ? '⌘D' : 'Ctrl+D') + '"><span class="doc-orb" aria-hidden="true">◍</span><span><b>Doc</b><span id="docPageLabel"></span></span><span aria-hidden="true">↗</span></button><div id="docSuggestions" class="doc-suggestion-strip" aria-live="polite"></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button></div>';
   main.prepend(strip);
   const dialog = root.createElement('dialog'); dialog.id = 'docDetail'; dialog.className = 'doc-detail'; dialog.setAttribute('aria-labelledby','docTitle');
-  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a></section></div>';
+  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><form id="docCommand" class="doc-command" role="search"><span aria-hidden="true">⌕</span><input id="docAsk" type="text" role="combobox" aria-label="Search or act" placeholder="Search or act" aria-controls="docResults" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false" maxlength="200"></form><ul id="docResults" class="doc-results" role="listbox" aria-label="Doc results" hidden></ul><div id="docStaged" class="doc-staged" hidden></div><p id="docCommandStatus" role="status"></p><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a></section></div>';
   root.body.append(dialog);
   const $ = id => root.getElementById(id);
   let snapshot = context.snapshot(), suggestions = null, suggestionState = 'updating', client = supplied, approval, shown = [], chosen = null, disposed = false, readEpoch = 0, lastScope = '';
@@ -62,10 +65,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
       : selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
     keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
   };
-  // Doc and its brief share one client; concurrent first reads share one creation.
-  let clientReady = null;
-  const ensureClient = () => clientReady ||= (client ? Promise.resolve(client) : createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }))
-    .then(value => client = value, error => { clientReady = null; throw error; });
+  const ensureClient = async () => client ||= await getAppClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false });
   const refresh = async ({ signal } = {}) => {
     const epoch = ++readEpoch, captured = context.snapshot();
     const scope = `${captured.epoch}:${captured.page}:${captured.selected?.kind || ''}:${captured.selected?.id || ''}`;
@@ -83,7 +83,12 @@ export function mountDocPresence({ document: root = document, window: win = wind
     finally { if (epoch === readEpoch && !disposed) render(); }
   };
   const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs });
-  const open = () => { if (!dialog.open) dialog.showModal(); render(); };
+  const refreshPage = () => { context.tick(); auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
+  const command = mountDocCommand({ dialog, getClient:ensureClient, pages, uuid:uuidv4, navigate, afterWrite:refreshPage });
+  const open = () => { if (!dialog.open) dialog.showModal(); render(); command.focus(); };
+  // Cmd/Ctrl+D (bookmark by default) and Cmd/Ctrl+K open this same Doc while the app has focus.
+  const onShortcut = event => { if (docShortcut(event, platform)) { event.preventDefault(); open(); } };
+  win.addEventListener('keydown', onShortcut, true);
   $('docOpen').onclick = open;
   $('docClose').onclick = () => dialog.close();
   dialog.addEventListener('close', () => $('docOpen').focus());
@@ -99,9 +104,10 @@ export function mountDocPresence({ document: root = document, window: win = wind
   });
   $('docSuggestions').addEventListener('click', event => { if (event.target.closest('[data-doc-suggestion]')) open(); });
   $('docRecord').onchange = () => { chosen = $('docRecord').value || null; render(); };
-  $('docRefresh').onclick = () => { context.tick(); auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
+  $('docRefresh').onclick = refreshPage;
   const unsubscribe = context.subscribe(next => {
     const previous = snapshot; snapshot = next;
+    if (next.sessionEpoch !== previous.sessionEpoch) command.invalidate();
     const scope = `${next.epoch}:${next.page}:${next.selected?.kind || ''}:${next.selected?.id || ''}`;
     const changed = lastScope && scope !== lastScope;
     if (changed) { ++readEpoch; suggestions = null; suggestionState = 'updating'; chosen = null; $('docApprovalStatus').textContent = ''; }
@@ -115,7 +121,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
   const brief = mountMorningBrief({ document:root, window:win, strip, getClient:ensureClient, intervalMs });
-  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); brief.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); brief.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); win.removeEventListener('keydown', onShortcut, true); command.dispose(); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };
 }
