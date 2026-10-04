@@ -240,11 +240,29 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
     await page.locator("#networkScene").getAttribute("transform"),
     /scale\(1\)/,
   );
+  // The canvas sits in the app layout, whose columns animate; measure only
+  // once the scene and node hold still across two consecutive frames.
+  await page.waitForFunction(
+    () =>
+      new Promise((resolve) => {
+        const read = () => {
+          const r = document
+            .querySelector('[data-node="party:demo-lender"]')
+            .getBoundingClientRect();
+          return `${document.querySelector("#networkScene").getAttribute("transform")} ${r.x} ${r.y} ${r.width} ${r.height}`;
+        };
+        const first = read();
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => resolve(read() === first)),
+        );
+      }),
+  );
   const dragged = page.locator('[data-node="party:demo-lender"]').first();
   const before = await dragged.getAttribute('transform'), box = await dragged.boundingBox();
-  await page.mouse.move(box.x + 40, box.y + 25);
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + 75, box.y + 50, { steps: 4 });
+  await page.mouse.move(x + 35, y + 25, { steps: 4 });
   await page.mouse.up();
   assert.notEqual(await dragged.getAttribute('transform'), before);
   assert.equal(await page.locator('.relationship-dialog').isVisible(), false);
