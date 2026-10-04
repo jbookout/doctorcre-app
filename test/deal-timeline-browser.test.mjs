@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
-import {chromium} from 'playwright';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
 async function open(t,{width=1440,link=false,reducedMotion='no-preference'}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},reducedMotion});page.setDefaultTimeout(7000);
+ const page=await browser.newPage({viewport:{width,height:960},reducedMotion});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-04T17:00:00Z')});
  await page.route('**/*',async route=>{
@@ -17,7 +17,7 @@ async function open(t,{width=1440,link=false,reducedMotion='no-preference'}={}) 
   try {return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto('http://localhost/deals');
- await page.waitForFunction(async()=> (await import('/js/pipeline.js')).state.deals.size>0);
+ await waitForAsync(page, async()=> (await import('/js/pipeline.js')).state.deals.size>0);
  await page.evaluate(async()=>{
   const {state}=await import('/js/pipeline.js');const get=state.client.getDeal;
   window.timelineProbe={reads:0,fail:false,changed:false};

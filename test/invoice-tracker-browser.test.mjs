@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 const root = new URL('../', import.meta.url), today = '2026-10-02';
 async function open(t, { width = 1440, reducedMotion = 'no-preference', query = '', home = false, receipt = 'ok' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'UTC', reducedMotion }); page.setDefaultTimeout(6000);
+  const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'UTC', reducedMotion });
   await page.clock.install({ time: new Date(today + 'T17:00:00Z') });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const data = invoiceTrackerFixture(today); let failed = false, denied = false, reads = 0, writes = 0; const attempts = [];

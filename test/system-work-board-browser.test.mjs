@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
-import {chromium} from 'playwright';
+import { chromium } from './browser-harness.mjs';
 const kinds=['work_request','portfolio_node','loop','work_shape','slice_plan','governance_item','capability_session','slice_proposal','investigation','incident','cutover_plan','retrieval_proposal','ready_plan_amendment','defect','builder_brief','progress_task','pull_request','remote_branch','builder_brief_file'];
 const items=kinds.map((kind,index)=>({id:`synthetic-${index}`,source:`synthetic.${kind}`,kind,title:`Synthetic ${kind} concept`,state:'open',completed:false,
  opened_at:'2026-08-01T12:00:00Z',last_activity_at:'2026-09-01T12:00:00Z',age:61,owner:null,version:'3',link:'/system-work.html',

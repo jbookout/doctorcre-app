@@ -3,8 +3,8 @@ import { mapScript } from "./tours-map-script.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { webcrypto } from "node:crypto";
 import { JSDOM } from "jsdom";
+import { openDom } from "./jsdom-harness.mjs";
 
 const share = readFileSync(new URL("../reports/share.js", import.meta.url), "utf8");
 const html = readFileSync(new URL("../reports/share.html", import.meta.url), "utf8");
@@ -25,8 +25,7 @@ function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
 }
 async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) {
-  const dom = new JSDOM(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
-  Object.defineProperty(dom.window, "crypto", { value: webcrypto });
+  const dom = openDom(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
   dom.window.TextEncoder = TextEncoder;
   const counts = [0, 0], reads = [];
   dom.window.fetch = async path => {
@@ -54,7 +53,6 @@ async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) 
 test("a late feedback Refresh cannot replace the selected Tour's responses", async t => {
   const held = deferred();
   const app = await openBroker((i, count) => i === 0 && count === 2 ? held.promise : feedbackResponse(i ? "B response" : "A response"));
-  t.after(() => app.dom.window.close());
   const buttons = app.doc.querySelectorAll(".tour-button");
   buttons[0].click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
@@ -69,7 +67,6 @@ test("a late feedback Refresh cannot replace the selected Tour's responses", asy
 test("a late earlier Refresh cannot replace newer feedback for the same projection", async t => {
   const held = deferred();
   const app = await openBroker((i, count) => count === 2 ? held.promise : feedbackResponse(count === 3 ? "Newest response" : "Initial response"));
-  t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
@@ -82,7 +79,6 @@ test("a failed initial feedback read shows unavailable and Refresh can confirm a
   const app = await openBroker((i, count) => count === 1
     ? { ok: false, json: async () => ({ error: "unavailable" }) }
     : { ok: true, json: async () => ({ data: { feedback: { items: [] } } }) });
-  t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
   assert.match(app.doc.querySelector("#client-feedback").textContent, /Client responses temporarily unavailable/);
@@ -95,7 +91,6 @@ test("a failed initial feedback read shows unavailable and Refresh can confirm a
 test("loading and a failed feedback Refresh never claim a successful empty read", async t => {
   const held = deferred();
   const app = await openBroker((i, count) => count === 2 ? held.promise : feedbackResponse("Confirmed response"));
-  t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
   assert.match(app.doc.querySelector("#feedback-state")?.textContent || "", /Loading client responses/);
@@ -115,7 +110,6 @@ test("reordering draft stops retains the sealed projection's loaded client respo
   const app = await openBroker(() => feedbackResponse("Confirmed response"), { stops: [
     { id: tourIds[0], label: "Demo stop A" }, { id: tourIds[1], label: "Demo stop B" },
   ] });
-  t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   [...app.doc.querySelectorAll("#route-stops button")].find(button => button.textContent === "Down").click();
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Confirmed response/);
@@ -126,7 +120,6 @@ test("automatic refresh updates selected Tour details and preserves unsaved note
   const app = await openBroker(() => feedbackResponse("Updated response"), {
     detailRead: data => ({ ...data, name: `Demo Tour revision ${revision}` }),
   });
-  t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   revision = 2;
   app.dom.window.dispatchEvent(new app.dom.window.Event("online")); await settle(); await settle();
@@ -142,8 +135,7 @@ test("automatic refresh updates selected Tour details and preserves unsaved note
 });
 
 async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
-  const dom = new JSDOM(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
-  Object.defineProperty(dom.window, "crypto", { value: webcrypto });
+  const dom = openDom(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
   const writes = [];
   const reads = [];
   dom.window.fetch = async (path, options = {}) => {
@@ -180,12 +172,10 @@ test("reopening a private saved shortlist offers deliberate add and remove witho
   // returns only property_ref in each item, even when shortlisted is saved true.
   const responseItems = [{ property_ref: propertyRef }];
   const first = await openShare({ items: responseItems });
-  t.after(() => first.dom.window.close());
   shortlistAction(first.doc).click(); await settle();
   assert.equal(first.writes[0].shortlisted, true);
 
   const reopened = await openShare({ items: responseItems });
-  t.after(() => reopened.dom.window.close());
   assert.match(reopened.doc.querySelector(".shortlist-state")?.textContent || "", /Previous shortlist choices are not shown/);
   assert.equal(reopened.doc.querySelectorAll("button[aria-pressed]").length, 0);
   assert.ok(shortlistAction(reopened.doc));
@@ -197,7 +187,6 @@ test("reopening a private saved shortlist offers deliberate add and remove witho
 
 test("acknowledged explicit shortlist choices update only this visit's choice", async t => {
   const app = await openShare();
-  t.after(() => app.dom.window.close());
   const choice = () => app.doc.querySelector(".shortlist-state").textContent;
   assert.equal(choice(), "Previous shortlist choices are not shown.");
   shortlistAction(app.doc).click();
@@ -216,7 +205,6 @@ test("shortlist saves preserve unsaved comments on every property", async t => {
     { property_ref: propertyRef, name: "Demo office A" },
     { property_ref: "property:public:synthetic_property_02", name: "Demo office B" },
   ] });
-  t.after(() => app.dom.window.close());
   const inputs = app.doc.querySelectorAll("textarea");
   inputs[0].value = "Draft for A"; inputs[1].value = "Draft for B";
   shortlistAction(app.doc).click(); await settle();
@@ -230,7 +218,6 @@ test("saving another property's feedback retains in-flight controls and newer co
     { property_ref: propertyRef, name: "Demo office A" },
     { property_ref: "property:public:synthetic_property_02", name: "Demo office B" },
   ], holdWrite: path => path === "/api/share/comment" ? held.promise : Promise.resolve() });
-  t.after(() => app.dom.window.close());
   const rows = () => app.doc.querySelectorAll(".report-item");
   const commentButton = row => [...row.querySelectorAll("button")].find(button => button.textContent === "Save comment");
   rows()[0].querySelector("textarea").value = "Submitted A comment";
@@ -248,7 +235,6 @@ test("saving another property's feedback retains in-flight controls and newer co
 
 test("a refused shortlist save retains the unknown choice and retries the same logical write", async t => {
   const app = await openShare({ refuseOnce: true });
-  t.after(() => app.dom.window.close());
   const button = () => shortlistAction(app.doc);
   button().click();
   await settle();
@@ -267,7 +253,6 @@ test("a partial feedback outage is visible and retry restores scoped controls wi
   const app = await openShare({ feedbackRead: () => ++attempts === 1
     ? { ok: false, json: async () => ({ error: "unavailable" }) }
     : attempts === 2 ? held.promise : null });
-  t.after(() => app.dom.window.close());
   const row = app.doc.querySelector(".report-item");
   assert.match(row.textContent, /Demo medical office/);
   assert.match(app.doc.querySelector("#status").textContent, /Feedback unavailable/);
@@ -298,7 +283,6 @@ test("a partial feedback outage is visible and retry restores scoped controls wi
 
 test("a successful grant without feedback scopes stays read-only without an outage or retry", async t => {
   const app = await openShare({ permissionScopes: [] });
-  t.after(() => app.dom.window.close());
   assert.equal(app.doc.querySelectorAll(".feedback-controls").length, 0);
   assert.equal(app.doc.querySelector("#status").textContent, "Report and map loaded.");
   assert.equal(app.doc.querySelector("#feedback-status").textContent, "");
@@ -307,7 +291,6 @@ test("a successful grant without feedback scopes stays read-only without an outa
 
 test("a first comment appears even when the feedback response omits property rows", async t => {
   const app = await openShare({ items: null });
-  t.after(() => app.dom.window.close());
   const input = app.doc.querySelector("textarea");
   const comment = "Demo: please check the parking.";
   input.value = comment;
@@ -372,7 +355,6 @@ test("Dot Tour: broker Refresh renders CARR data.feedback comments and shortlist
   const app = await openBroker(() => ({ ok: true, json: async () => ({ data: { feedback: {
     items: [{ route_label: "A", shortlisted: true, comments: [{ comment: "Synthetic reviewed response" }] }],
   } } }) }));
-  t.after(() => app.dom.window.close());
   app.doc.querySelector(".tour-button").click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Synthetic reviewed response/);
@@ -388,7 +370,6 @@ for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stal
     if (!hang) return null;
     return stalled === "fetch" ? new Promise(() => {}) : { ok: true, json: () => new Promise(() => {}) };
   } });
-  t.after(() => app.dom.window.close());
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(app.doc.querySelectorAll(".report-item").length, 1);
   assert.match(app.doc.querySelector("#status").textContent, /Report and map loaded.*Feedback unavailable/);
