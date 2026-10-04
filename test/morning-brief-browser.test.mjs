@@ -1,15 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
-async function setup(t,{width=1440,motion='no-preference',brief=true,baseline=false}={}) {
+async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());const context=await browser.newContext({viewport:{width,height:960},reducedMotion:motion});const page=await context.newPage();page.setDefaultTimeout(10000);
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- let scope='joe',fail=false,ready=brief,revision=0,changeReads=0;const calls=[],errors=[];
+ let scope='joe',fail=false,ready=brief,revision=0;const calls=[],errors=[];
  const day=new Date().toLocaleDateString('en-CA');
  const data=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
  await page.addInitScript(()=>{window.spoken=[];window.speechStops=0;window.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};Object.defineProperty(window,'speechSynthesis',{value:{speak:utterance=>{window.spoken.push(utterance.text);window.lastUtterance=utterance;},cancel:()=>window.speechStops++}});});
@@ -18,7 +17,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,baseline=fa
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   const rpc=value=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(value)}]}}});
   if(url.pathname==='/api/system-work/session')return route.fulfill({json:{actor:{slug:scope}}});
-  if(url.pathname==='/pipeline/changes') {changeReads++;return route.fulfill({json:{events:url.searchParams.get('cursor')!=='demo-end' ? [{id:'demo-event',subject_type:'deal',subject_id:'d20',field:'next_step',new_value:'Review revised demo terms',recorded_at:new Date().toISOString()}]:[],cursor:'demo-end'}});}
+  if(url.pathname==='/pipeline/changes') {return route.fulfill({json:{events:url.searchParams.get('cursor')!=='demo-end' ? [{id:'demo-event',subject_type:'deal',subject_id:'d20',field:'next_step',new_value:'Review revised demo terms',recorded_at:new Date().toISOString()}]:[],cursor:'demo-end'}});}
   if(url.pathname==='/mcp') {
    const {name,arguments:args}=route.request().postDataJSON().params;calls.push({name,args});
    if(name==='morning-brief')return fail ? route.fulfill({status:503,body:''}) : rpc(ready ? data() : {ok:true});
@@ -29,7 +28,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,baseline=fa
    return rpc({ok:true});
   }
   if(url.pathname.startsWith('/api/'))return route.fulfill({json:{}});
-  const file=routes.routes[url.pathname]||url.pathname.slice(1);try{return route.fulfill({body:baseline && file==='js/doc-presence.js' ? execFileSync('git',['show','origin/main:js/doc-presence.js'],{cwd:root}) : await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+  const file=routes.routes[url.pathname]||url.pathname.slice(1);try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  const goto=async(path='/deals?mode=live')=>{await page.goto('http://localhost'+path);await page.locator('#docPresence').waitFor();};
  return {page,goto,calls,errors,set scope(value){scope=value;},set ready(value){ready=value;},set fail(value){fail=value;},change(){revision++;}};
@@ -73,6 +72,9 @@ test('motion includes hover and ambient pulse; reduced motion is measured at des
   if(motion==='reduce')await snap(page,`reduced-${width}`);
  }
 });
-test('baseline Doc remains reachable with invalid/missing brief; screenshot before new flow',async t=>{
- const {page,goto}=await setup(t,{brief:false,baseline:true});await goto();await page.locator('#docOpen').click();await snap(page,'baseline-doc-desktop');await page.setViewportSize({width:390,height:844});await snap(page,'baseline-doc-phone');
+test('Doc remains reachable with invalid or missing brief without consuming the daily opening',async t=>{
+ const {page,goto}=await setup(t,{brief:false});await goto();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);
+ await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ assert.equal(await page.locator('[data-brief-record]').count(),0);assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('doctorcre:morning:joe')),null);
 });

@@ -140,3 +140,10 @@ test('late refused detail cannot clear a newer brief after returning to its card
  reject(Object.assign(Error('Refused'),{status:403}));await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);assert.match(state.root.getElementById('morningTitle').textContent,/Joe/);
 });
+
+test('task card opens the exact live record directly without a retired route',async t=>{
+ const state=setup(t);const data=payload();data.sections.today=section([]);data.sections.loops=section([{number:'7',kind:'open_loop',owner:'joe',title:'Demo due task',status:'open',due_on:day}]);state.data=data;
+ const reads=[];state.client.readLoop=async args=>{reads.push(args);return {loop:{...args,title:'Demo due task',status:'open',prose_md:'Demo original task entry.'}};};
+ await state.ui.refresh();const card=state.root.querySelector('[data-brief-record]');assert.equal(card.tagName,'BUTTON');assert.equal(card.getAttribute('href'),null);card.click();
+ await new Promise(resolve=>setTimeout(resolve,10));assert.deepEqual(reads,[{number:'7',kind:'open_loop'}]);assert.match(state.root.getElementById('morningContent').textContent,/Demo original task entry/);
+});

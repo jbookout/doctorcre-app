@@ -26,7 +26,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
     const title = view ? `Morning brief · ${view.sponsor === 'joe' ? 'Joe' : 'Dell'}` : 'Morning brief';
     $('morningTitle').textContent = title;
     $('morningBack').hidden = true;
-    const html = view?.groups.map(({label,row},index) => `<section><h3>${label}</h3><a class="morning-card" data-urgency="${row.due && row.due < localDay(now()) ? 'overdue' : 'today'}" data-brief-record="${index}" href="${row.kind === 'deal' ? `/deals?deal=${encodeURIComponent(row.id)}` : `/doc-chats/work?number=${encodeURIComponent(row.id)}&kind=${encodeURIComponent(row.loopKind)}`}"><span class="morning-marker" aria-hidden="true">${index === 0 ? '↗' : '◇'}</span><div><strong>${escapeText(row.title)}</strong>${row.summary ? `<span>${escapeText(row.summary)}</span>` : ''}${row.due ? `<time datetime="${escapeText(row.due)}">Due ${escapeText(row.due)}</time>` : ''}</div><span aria-hidden="true">↗</span></a></section>`).join('') || '';
+    const html = view?.groups.map(({label,row},index) => `<section><h3>${label}</h3><button type="button" class="morning-card" data-urgency="${row.due && row.due < localDay(now()) ? 'overdue' : 'today'}" data-brief-record="${index}"><span class="morning-marker" aria-hidden="true">${index === 0 ? '↗' : '◇'}</span><div><strong>${escapeText(row.title)}</strong>${row.summary ? `<span>${escapeText(row.summary)}</span>` : ''}${row.due ? `<time datetime="${escapeText(row.due)}">Due ${escapeText(row.due)}</time>` : ''}</div><span aria-hidden="true">↗</span></button></section>`).join('') || '';
     if ($('morningContent').innerHTML !== html) {
       const focus = root.activeElement?.dataset.briefRecord;
       $('morningContent').innerHTML = html;
