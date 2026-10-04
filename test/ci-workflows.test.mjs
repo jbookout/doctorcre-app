@@ -59,7 +59,7 @@ async function replay(t, workflow, event, failCommand = "") {
   const directory = await mkdtemp(join(tmpdir(), "doctorcre-workflow-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const trace = join(directory, "trace");
-  for (const tool of ["npm", "node", "gh"]) {
+  for (const tool of ["npm", "node", "gh", "npx"]) {
     const path = join(directory, tool);
     await writeFile(path, `#!/bin/sh\nprintf '%s\\n' '${tool}'\" $*\" >> \"$TRACE\"\n[ '${tool}'\" $*\" != \"$FAIL_COMMAND\" ]\n`);
     await chmod(path, 0o755);
@@ -148,5 +148,12 @@ test("release retains full tests and source verification before publication", as
   const publish = success.trace.findIndex((command) => command.startsWith("gh release create "));
   for (const command of ["npm test", "npm run build", "npm run artifact:verify"]) {
     assert.ok(success.trace.indexOf(command) >= 0 && success.trace.indexOf(command) < publish);
+  }
+});
+
+
+test("CI and release install both engines exercised by Doc shortcut tests", () => {
+  for (const workflow of [ci, release]) {
+    assert.ok(commands(workflow, "pull_request").concat(commands(workflow, "push")).includes("npx playwright install --with-deps chromium webkit"));
   }
 });

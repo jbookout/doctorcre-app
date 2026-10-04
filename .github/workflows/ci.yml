@@ -43,7 +43,7 @@ jobs:
         name: Verify the exact CARR runtime interface
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run privacy:check
       - run: npm run check
       # PRs test the merge candidate under the strict required `test` context.

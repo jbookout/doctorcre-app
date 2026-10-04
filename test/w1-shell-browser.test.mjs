@@ -2,7 +2,7 @@ import { navigationItems } from "../js/app-shell.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
@@ -12,7 +12,7 @@ const secondary = navigationItems.filter(item => item.group).map(item => item.la
 
 async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion }); page.setDefaultTimeout(15000);
+  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
   if (simulatedClock) await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   const fixture = await createFixtureClient({ selfActor: actor, seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
   const errors = [], calls = []; page.on('pageerror', error => errors.push(error.message));
@@ -84,7 +84,7 @@ test('all authenticated pages have global controls and fit desktop and phone', a
     await page.setViewportSize({width,height:960});
     for (const path of Object.keys(contract.routes).filter(path => path !== '/share')) {
       await page.goto(`http://localhost${path}`);
-      await page.waitForFunction(() => document.querySelector('#selfAvatar')?.textContent === 'J', null, { timeout:15000 }).catch(error => { error.message = `${path} ${width}px identity: ${error.message}`; throw error; });
+      await page.waitForFunction(() => document.querySelector('#selfAvatar')?.textContent === 'J').catch(error => { error.message = `${path} ${width}px identity: ${error.message}`; throw error; });
       assert.equal(await page.getByLabel('Dark mode',{exact:true}).count(),1,path); assert.equal(await page.locator('#callModeButton').count(),1,path); assert.equal(await page.locator('#colorAssistButton').count(),1,path);
       assert.equal(await page.locator('[data-pref="density"], [data-pref="motion"]').count(),0,path);
       const layout = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, textOverflow: [...document.querySelectorAll("body *")].flatMap(e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => { const r = document.createRange(); r.selectNodeContents(n); return { text:n.textContent, right:r.getBoundingClientRect().right, id:e.id, class:e.className }; })).filter(n=>n.right>innerWidth+1), offenders: [...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => ({ id: e.id, class: e.className, right: e.getBoundingClientRect().right })).slice(0,8) }));
@@ -121,7 +121,7 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   const selected = await page.evaluate(async () => (await import('/js/atlas.js')).view.selected);
   const reads = calls.filter(call => call.url === '/api/v1/atlas-graph').length;
   await page.clock.fastForward(31_000);
-  await page.waitForFunction(async reads => (await import('/js/atlas.js')).view.status === 'ready', reads);
+  await waitForAsync(page, async reads => (await import('/js/atlas.js')).view.status === 'ready', reads);
   assert.ok(calls.filter(call => call.url === '/api/v1/atlas-graph').length > reads);
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
   assert.deepEqual(errors, []);

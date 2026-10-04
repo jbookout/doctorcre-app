@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
 import { extname } from "node:path";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { route as canonical } from "./fixtures/tour-map.synthetic.mjs";
 
@@ -41,10 +41,8 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
   try {
     for (const [name, width, height] of [["phone", 390, 844], ["ipad", 820, 1180], ["desktop", 1440, 1000]]) {
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
-      page.setDefaultTimeout(30000);
-      await page.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
       const errors = []; page.on("pageerror", e => errors.push(e.message));
-      await page.goto(`${base}/tours`, {waitUntil:"domcontentloaded"}); if (width <= 760) await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
+      await page.goto(`${base}/tours`); if (width <= 760) await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
       const root = page.locator("#accepted-itinerary"); await root.waitFor({ state: "visible" });
       await page.waitForFunction(() => document.querySelector("#accepted-itinerary .maplibregl-canvas"));
       await page.waitForFunction(() => document.querySelectorAll("#accepted-itinerary .itinerary-pin").length === 2);
