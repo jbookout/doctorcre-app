@@ -61,7 +61,8 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
 });
 
 test('Leads drag and keyboard moves review evidence before using the same stage command',async t=>{
- const{page,goto,writes,errors}=await open(t);await goto('/leads');
+ const{page,goto,writes,errors}=await open(t,{motion:'reduce'});await goto('/leads');
+ await page.locator('#docBrief[data-state="ready"]').waitFor({state:'attached'});
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
  await card().dragTo(page.locator('.stage-column[data-stage="engaged"] .stage-head'));
