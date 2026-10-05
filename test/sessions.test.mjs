@@ -377,7 +377,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
   assert.equal(contract.mcp_operations[dispatch - 1], "read-correspondence-thread");
-  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-conversation");
+  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-activity");
   const identity = contract.mcp_operations.indexOf("read-session-identity");
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.
@@ -391,7 +391,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");

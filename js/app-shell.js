@@ -63,6 +63,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
           <a href="${base}/updates#prefForm">Notification preferences</a>
+          <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
           <button type="button" id="accountSignOut">Sign out</button>
           <p id="accountStatus" role="status"></p>
         </div>

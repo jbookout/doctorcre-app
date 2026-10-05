@@ -20,17 +20,38 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: doctorcre-app
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          path: doctorcre-app
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
       - if: github.event_name == 'pull_request'
         run: node scripts/check-pr-description.mjs
+      - id: producer
+        name: Read the CARR runtime revision from the consumer contract
+        run: >-
+          node -e 'const fs = require("node:fs"); const { producer } = JSON.parse(fs.readFileSync("contracts/carr-interface.v1.json", "utf8")); if (producer.repository !== "jbookout/carr-system" || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error("Invalid CARR runtime pin"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + producer.source_commit + "\n");'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: jbookout/carr-system
+          ref: ${{ steps.producer.outputs.commit }}
+          path: carr-producer
+          fetch-depth: 0
+          persist-credentials: false
+      - run: npm run slices:check
+      - run: node --test test/property-producer.test.mjs
+        name: Verify the exact CARR runtime interface
+        env:
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - run: npm run privacy:check
       - run: npm run check
       - run: npx playwright install --with-deps chromium webkit

@@ -32,7 +32,7 @@
 .doc-detail details { margin-top:12px; font-size:12px; }
 .doc-detail summary { box-sizing:border-box; min-height:44px; padding:12px 0; cursor:pointer; color:#93baf4; }
 .doc-detail .entry-original { white-space:pre-wrap; }
-.doc-spark { color:#ff9855; }.doc-chats-link { display:inline-flex; align-items:center; min-height:44px; margin-top:20px; color:#a6c9ff; font-size:13px; }
+.doc-spark { color:#ff9855; }.doc-chats-link { display:inline-flex; align-items:center; min-height:44px; margin-top:20px; color:#a6c9ff; font-size:13px; }.doc-chats-link + .doc-chats-link { margin-left:20px; }
 #docApprovalStatus { min-height:20px; color:#ffb185; font-size:13px; }
 @keyframes doc-breathe { 50% { box-shadow:0 0 24px #f2692450,inset 0 0 16px #87b9ff70; } }
 @keyframes doc-arrive { from { opacity:0; transform:translateY(10px) scale(.99); } }

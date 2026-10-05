@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f"><title>Doc Activity · DoctorCRE</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/doc-activity.css">
+</head><body><div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+  <a class="activity-skip" href="#main">Skip to activity</a>
+  <main id="main" class="activity-page">
+    <header class="activity-heading"><div><span class="activity-mark" aria-hidden="true">◍</span><h1>Doc Activity</h1></div>
+      <div class="activity-updated"><time id="activityUpdated">Updating…</time><button id="activityRefresh" aria-label="Refresh activity" title="Refresh activity">↻</button></div>
+    </header>
+    <form id="activityFilters" class="activity-filters">
+      <label>Partner<select name="partner"><option value="">Everyone</option><option value="joe">Joe</option><option value="dell">Dell</option></select></label>
+      <label>Record type<select name="record_type"><option value="">All records</option></select></label>
+      <label>From<input type="date" name="from"></label><label>Through<input type="date" name="to"></label>
+      <button type="reset">Clear filters</button>
+    </form>
+    <p id="activityStatus" role="status" aria-live="polite"></p>
+    <ol id="activityFeed" class="activity-feed" aria-label="Doc and automation activity"></ol>
+    <button id="activityMore" hidden>Earlier activity</button>
+  </main>
+  <dialog id="activityDetail" class="activity-detail" aria-labelledby="detailTitle">
+    <header><div><p id="detailWho"></p><h2 id="detailTitle"></h2></div><button id="detailClose" aria-label="Close activity">×</button></header>
+    <div class="activity-detail-grid"><section><h3>What changed</h3><p id="detailWhat"></p><div id="detailChange" class="activity-change"></div></section>
+      <section><h3>Why</h3><p id="detailWhy"></p><h3>Evidence</h3><p id="detailEvidence"></p></section></div>
+    <details id="detailOriginal"><summary>Details</summary><h3>Original entry</h3><time id="detailOriginalAt"></time><p id="detailOriginalText"></p><blockquote id="detailQuote" hidden></blockquote></details>
+    <footer><span id="detailResult" role="status"></span><button id="detailUndo">Undo</button></footer>
+  </dialog><script type="module" src="/js/doc-activity.js"></script>
+</body></html>
