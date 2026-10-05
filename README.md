@@ -83,3 +83,28 @@ fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
 
 The repository is publicly visible. No open-source license has been selected;
 public visibility alone does not grant reuse rights.
+
+Every PR runs `npm run performance:check` after the build in the required CI
+`test` job. It measures Home, Local Deals, Vendors, Tours, Relationships, and
+Invoices from `dist/site`, with synthetic records and cold Chromium contexts:
+390×844 mobile viewport, 4× CPU slowdown, 150 ms latency, 1.6 Mbps download.
+Three runs produce median LCP and scripted interaction latency; screen JS is
+the largest unique script-byte total loaded through that interaction. Total
+shipped JS includes every `.js`/`.mjs` in the static artifact; gzip is reported
+as the sum of per-file compressed sizes.
+
+`contracts/performance-budget.v1.json` records the measured baseline, source
+commit, build digest, and headroom. A breach fails with screen, metric, before,
+after, and budget. PR authors reduce the failing metric and rerun the check;
+budget increases require visible review in the budget diff. This is a lab
+regression guard: interaction latency runs from the browser pointer timestamp
+to the verified UI change plus two animation frames, and is not field INP.
+The baseline preserves existing slow screens; it does not certify speed.
+
+CI keeps JSON, the table, and Playwright traces for seven days. The trusted
+`Performance report comment` workflow updates one marked PR comment, including
+bundle size, only while its head commit still matches. It reads artifact data
+and runs code from `main`; fork code receives no comment-writing token. The
+comment workflow becomes active after this workflow is present on `main`.
+Measurement references: [Playwright tracing](https://playwright.dev/docs/api/class-tracing)
+and [LCP timing](https://web.dev/articles/lcp).
