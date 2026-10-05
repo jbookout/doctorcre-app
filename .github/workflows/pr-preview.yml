@@ -1,0 +1,158 @@
+name: PR preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+
+# Finish each mutation before closure cleanup; never cancel an upload halfway.
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      url: ${{ steps.upload.outputs.url }}
+      version_url: ${{ steps.upload.outputs.version_url }}
+      binding: ${{ steps.upload.outputs.binding }}
+      expires_at: ${{ steps.upload.outputs.expires_at }}
+      available: ${{ steps.credentials.outputs.available }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          DOCTORCRE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha }}
+      - run: npm run artifact:verify
+      - id: credentials
+        name: Check preview credential availability without printing its value
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Preview skipped: add repository secret CLOUDFLARE_API_TOKEN" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: upload
+        if: steps.credentials.outputs.available == 'true'
+        name: Upload fixture preview version (no deployment or production route)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/pr-preview.mjs upload "$PR_NUMBER" "$SOURCE_COMMIT"
+      - if: steps.upload.outputs.url != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: preview-receipt-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          include-hidden-files: true
+          path: .e2e/preview/receipt.json
+          retention-days: 7
+
+  journeys:
+    needs: preview
+    if: needs.preview.outputs.version_url != '' && vars.PR_PREVIEW_E2E != 'false'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      verdict: ${{ steps.suite.outcome }}
+    env:
+      CI: '1'
+      E2E_TELEMETRY_DISABLED: '1'
+      E2E_PREVIEW_URL: ${{ needs.preview.outputs.version_url }}
+      BROWSER_PROOF_BINDING: ${{ needs.preview.outputs.binding }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - id: suite
+        run: npx e2e run tests/journeys --reporter list,junit
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: preview-journeys-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .e2e/report.json
+            .e2e/junit.xml
+            .e2e/artifacts
+            .e2e/logs
+          if-no-files-found: error
+          retention-days: 7
+
+  report:
+    needs: [preview, journeys]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.12.0
+      - id: cleanup
+        if: github.event.action == 'closed'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "status=Cleanup skipped: add repository secret CLOUDFLARE_API_TOKEN. Any uploaded version expires seven days after upload." >> "$GITHUB_OUTPUT"
+          else
+            node scripts/pr-preview.mjs cleanup "$PR_NUMBER"
+            echo "status=Preview removed: PR closed." >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          PREVIEW_URL: ${{ needs.preview.outputs.url }}
+          PREVIEW_EXPIRES: ${{ needs.preview.outputs.expires_at }}
+          PREVIEW_AVAILABLE: ${{ needs.preview.outputs.available }}
+          PREVIEW_RESULT: ${{ needs.preview.result }}
+          JOURNEYS_RESULT: ${{ needs.journeys.outputs.verdict || needs.journeys.result }}
+          CLEANUP_STATUS: ${{ steps.cleanup.outputs.status }}
+        with:
+          script: |
+            const { upsertPreviewComment } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/preview-comment.mjs`);
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let status;
+            if (context.payload.action === 'closed') status = process.env.CLEANUP_STATUS || 'Cleanup failed; uploaded versions expire seven days after upload.';
+            else if (process.env.PREVIEW_URL) status = `[Open preview](${process.env.PREVIEW_URL}) · expires ${process.env.PREVIEW_EXPIRES}\n\n[Deterministic journeys and build logs](${run}): ${process.env.JOURNEYS_RESULT}`;
+            else if (process.env.PREVIEW_AVAILABLE === 'false') status = 'Preview skipped: add repository secret **CLOUDFLARE_API_TOKEN** (Workers Scripts Write for the configured account).';
+            else status = `Preview ${process.env.PREVIEW_RESULT}. [Build/upload logs](${run})`;
+            await upsertPreviewComment(github, context.repo, context.issue.number, status);
+            await core.summary.addRaw(status).write();
+
+  fork-notice:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Preview skipped for fork PRs because GitHub withholds repository secrets and comment write permissions.' >> "$GITHUB_STEP_SUMMARY"
