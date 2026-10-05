@@ -11,13 +11,17 @@ process.env.E2E_TELEMETRY_DISABLED = '1';
 const ci = !['', '0', 'false'].includes(process.env.CI ?? '');
 
 export default {
+  workers: 1,
+  retries: 0,
+  trace: 'retain-on-failure',
+  video: 'retain-on-failure',
   targets: [{
     name: 'chromium',
     engine: web({ browser: 'chromium', viewport: { width: 1440, height: 960 } }),
     app: {
       url: 'http://127.0.0.1:0',
       // The synthetic fixture server; on localhost the app boots fixture mode.
-      command: { executable: 'npm', args: ['run', 'serve'], env: { PORT: '{port}' }, log: '.e2e/logs/app.log' },
+      command: { executable: 'npm', args: ['run', 'serve'], env: { PORT: '{port}', DOCTORCRE_FIXTURE_ROOT: process.env.BROWSER_PROOF_ROOT ?? '' }, log: '.e2e/logs/app.log' },
     },
   }],
   ...(ci ? {} : { agents: { default: { model: chatgpt(process.env.E2E_AGENT_MODEL ?? 'gpt-6-luna') } } }),

@@ -1,4 +1,5 @@
-import { test } from '@e2e-dev/web';
+import { productTest } from './test.mjs';
+const test = productTest();
 import { expect } from 'e2e';
 
 // W2: Home lists the deals that need attention; a flag opens that exact deal.

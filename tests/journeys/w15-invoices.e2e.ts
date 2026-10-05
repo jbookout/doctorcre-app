@@ -1,4 +1,5 @@
-import { test } from '@e2e-dev/web';
+import { productTest } from './test.mjs';
+const test = productTest();
 import { expect } from 'e2e';
 
 // The fixture ages invoices from today, so a payment date must be today too.

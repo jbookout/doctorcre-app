@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { atlasFixtureResponse } from "./atlas-fixture.mjs";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL("../", import.meta.url));
 const routeContract = JSON.parse(await readFile(new URL("../contracts/app-routes.v1.json", import.meta.url), "utf8"));
 const carrContract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const routes = routeContract.routes;

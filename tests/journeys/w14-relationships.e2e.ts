@@ -1,4 +1,5 @@
-import { test } from '@e2e-dev/web';
+import { productTest } from './test.mjs';
+const test = productTest();
 import { expect } from 'e2e';
 
 // W14: the relationship graph opens a party's evidence and filters by territory.
