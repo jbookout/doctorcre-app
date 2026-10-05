@@ -60,11 +60,11 @@ Both are installed at `~/.agents/skills/` (sources: github.com/mattpocock/skills
 
 ### Issue tracker
 
-Issues are CARR Work Requests in the carr-system record layer (`report-problem`, `work-request-card`), not GitHub Issues; this repo is public. See `docs/agents/issue-tracker.md`.
+Issues are GitHub Issues in `jbookout/doctorcre-app`, via the `gh` CLI; the repo is public, so keep client and CARR data out of them. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-The five triage roles map to Work Request states and `review-and-triage` classes; triage itself is human-only. See `docs/agents/triage-labels.md`.
+The five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

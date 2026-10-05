@@ -1,49 +1,47 @@
-# Issue tracker: CARR Work Requests
+# Issue tracker: GitHub
 
-**This repo is public: never put client data or CARR record detail in GitHub issues, PR bodies or commits. The Work Request holds it.**
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
-Issues and specs for DoctorCRE product work are CARR Work Requests in the record layer. They are
-not GitHub Issues: this repo has never used them, it is public, and the CARR engineering
-policy tracks DoctorCRE product tasks in the carr-system record layer. Reach the verbs through the CARR
-connector, or through `./run.sh call <verb> '<json>'` when the connector is not loaded. That fallback
-runs from the carr-system checkout, not from this repo.
-
-Every write takes a fresh UUID `idempotency_key`. Every change to an existing
-request takes `base_version` from a fresh `work-request-card` read.
+This repository is public. Client and CARR data live in their own database, never here: keep client data, CARR business records, deal detail and credentials out of every issue, comment, label and PR body.
 
 ## Conventions
 
-- **Create an issue**: `report-problem` with `situation` (a short description of
-  the work, matched against shared doctrine to source the request), `title`,
-  `desired_outcome`, and `acceptance_criteria`, given as `[{id, text}]` with ids
-  like `AC-1`. The request lands in state `captured` and gets a ref like `WR-123`.
-- **Read an issue**: `work-request-card` with the `WR-` ref.
-- **List issues**: `current-work-requests`. It returns at most 20 shared requests
-  that still need a bounded human action, and it takes no filters.
-- **Triage**: `review-and-triage`, which is **human-only**. An agent proposes the
-  classification and Joe records it. See `triage-labels.md`.
-- **Withdraw**: `decline-work-request` with an `exit_reason`, or
-  `supersede-work-request` naming the replacement request. Both work only from
-  `captured`.
-- **Plan**: `propose-ready-plan` on a triaged request. Heavy work goes through the
-  full research, review and acceptance path.
+- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
+- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Close**: `gh issue close <number> --comment "..."`
 
-There is no comment verb. Discussion belongs in the PR that delivers the work.
-
-## Before filing
-
-Follow the Work Request priority policy at the top of carr-system's
-[AGENTS.md](https://github.com/jbookout/carr-system/blob/main/AGENTS.md).
-Work this session can finish now is done, not filed.
+Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.**
+**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+
+When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
+
+- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
+- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
+- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
+
+GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
 ## When a skill says "publish to the issue tracker"
 
-Call `report-problem`.
+Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Call `work-request-card` with the `WR-` ref.
+Run `gh issue view <number> --comments`.
+
+## Wayfinding operations
+
+Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+
+- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
+- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
+- **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only, the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
+- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
+- **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
+- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
