@@ -13,7 +13,7 @@ const repo = fileURLToPath(new URL('../', import.meta.url));
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-slice-review-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await cp(repo, root, { recursive: true, filter: path => !['.git', 'node_modules', 'dist', 'test-artifacts'].includes(relative(repo, path).split('/')[0]) });
+  await cp(repo, root, { recursive: true, filter: path => !['.git', 'node_modules', 'dist', 'test-artifacts', 'out'].includes(relative(repo, path).split('/')[0]) });
   return root;
 }
 async function addSlice(root, { slot = 'main', id = 'alpha-panel', html = `<section id="${id}"><button id="alpha-action">Run demo</button></section>`, module = '/js/alpha-controls.js', page = '/' } = {}) {

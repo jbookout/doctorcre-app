@@ -255,7 +255,7 @@ test("every external action is immutable, and checkout never persists credential
 
 test('publisher handoff rejects tampering, missing digests, fork identity and symlinks; malicious ref stays inert', async t => {
   const verify = release.match(/      - name: Verify handoff[\s\S]*?        run: \|\n([\s\S]*?)      - name: Publish/)[1].replace(/^          /gm, '');
-  const publish = commands(release.split('      - name: Publish')[1] ? '      - name: Publish'+release.split('      - name: Publish')[1] : '', 'push')[0];
+  const publish = commands(release, 'push').find(command => command.includes('gh release create'));
   assert.ok(publish.includes('gh release create'));
   const directory=await mkdtemp(join(tmpdir(),'release-handoff-'));
   t.after(()=>rm(directory,{recursive:true,force:true}));

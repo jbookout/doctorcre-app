@@ -7,17 +7,17 @@
 // Run only from a clean checkout at exactly origin/main, under Joe's explicit
 // instruction for that release. `versions deploy ... @100%` is the one
 // irreversible step; undo it with `npm run rollback:production -- <id>`.
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 import { credentialFreeEnv } from "./release-environment.mjs";
+import { providerRelease } from "./provider-release.mjs";
 import { uploadedVersionId } from "./provider-version.mjs";
 
-const run = (command, args, { capture = false, ...options } = {}) => execFileSync(command, args, {
+const run = (command, args, { capture = false } = {}) => execFileSync(command, args, {
   cwd: new URL("../", import.meta.url),
   encoding: "utf8",
   stdio: capture ? "pipe" : "inherit",
-  env: command === "npx" ? { ...credentialFreeEnv(), CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN } : credentialFreeEnv(),
-  ...options,
+  env: credentialFreeEnv(),
 });
 
 const sourceCommit = run("git", ["rev-parse", "HEAD"], { capture: true }).trim();
@@ -30,23 +30,21 @@ if (status) throw new Error("production releases require a clean checkout");
 
 // Verification also replaces dist/site from the verified archive, so restored
 // workspace/cache output can never become the provider's deployment input.
-run("node", ["scripts/build-artifact.mjs", "prepare-deployment"], { env: credentialFreeEnv() });
-if (!process.env.CLOUDFLARE_API_TOKEN) throw new Error("publication requires CLOUDFLARE_API_TOKEN");
+run("node", ["scripts/build-artifact.mjs", "prepare-deployment"]);
+const provider = providerRelease();
 
 // The tag mirrors the live convention: production- plus the first 12 characters
 // of the full SHA, which is what /app-release reports back.
 const versionTag = `production-${sourceCommit.slice(0, 12)}`;
 const message = `DoctorCRE production ${sourceCommit}`;
-const deploymentStatus = spawnSync("npx", ["--no-install", "wrangler", "deployments", "status", "--env", "", "--json"], {
-  cwd: new URL("../", import.meta.url), encoding: "utf8", env: { ...credentialFreeEnv(), CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN, NO_COLOR: "1" },
-});
+const deploymentStatus = provider(["deployments", "status", "--env", "", "--json"], { capture: true, allowFailure: true });
 if (deploymentStatus.status !== 0) {
   throw new Error("could not establish the current DoctorCRE production deployment state");
 }
-const uploadOutput = run("npx", ["--no-install", "wrangler", "versions", "upload", "--env", "", "--strict",
+const uploadOutput = provider(["versions", "upload", "--env", "", "--strict",
   "--tag", versionTag, "--message", message, "--var", `GIT_SHA:${sourceCommit}`], { capture: true });
 process.stdout.write(uploadOutput);
 const providerVersionId = uploadedVersionId(uploadOutput);
-run("npx", ["--no-install", "wrangler", "versions", "deploy", `${providerVersionId}@100%`, "--env", "",
+provider(["versions", "deploy", `${providerVersionId}@100%`, "--env", "",
   "--message", message, "--yes"]);
-run("npx", ["--no-install", "wrangler", "deployments", "status", "--env", "", "--json"]);
+provider(["deployments", "status", "--env", "", "--json"]);

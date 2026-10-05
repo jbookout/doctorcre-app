@@ -46,9 +46,9 @@ for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${
   await page.locator('[data-invoice]').first().click(); await page.waitForFunction(() => document.querySelector('#invoiceDetail').open);
   const box = await page.locator('#invoiceDetail').boundingBox(); assert.ok(box.width <= width); if (width === 1440) assert.ok(box.width > 850);
   await page.locator('#invoiceOriginal summary').click();
-  await mkdir(new URL('test-artifacts/w15/', root), { recursive: true }); await page.screenshot({ path: new URL(`test-artifacts/w15/detail-${width}.png`, root).pathname });
+  await mkdir(new URL('out/test-artifacts/w15/', root), { recursive: true }); await page.screenshot({ path: new URL(`out/test-artifacts/w15/detail-${width}.png`, root).pathname });
   await page.locator('#closeInvoiceDetail').click(); assert.ok(await page.locator('[data-invoice]').first().evaluate(node => node === document.activeElement));
-  await page.screenshot({ path: new URL(`test-artifacts/w15/invoices-${width}.png`, root).pathname });
+  await page.screenshot({ path: new URL(`out/test-artifacts/w15/invoices-${width}.png`, root).pathname });
   await page.locator('[data-status="awaiting"]').click(); assert.equal(await page.locator('[data-invoice]').count(), 1); await page.locator('[data-invoice]').click(); assert.match(await page.locator('#invoiceDetailFacts').innerText(), /Awaiting invoice/); assert.equal(await page.locator('#invoicePayment').isVisible(), false);
   await page.locator('#closeInvoiceDetail').click(); await page.locator('[data-status="unpaid"]').click(); await page.locator('[data-invoice]').first().click(); await page.locator('#invoicePaidDate').fill('2026-10-01'); await page.locator('#markInvoicePaid').click(); await page.waitForFunction(() => /Paid/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.equal(await page.locator('#invoicePayment').isVisible(), false); assert.deepEqual(errors, []);
 });
@@ -69,7 +69,7 @@ test('Home attention shares invoice identity, scope and refreshed paid state', a
   await page.locator('[data-scope="mine"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 2);
   h.update(data => { for (const row of data.entries) if (row.owner === 'joe' && row.status === 'invoiced') { row.status = 'received'; row.received_on = today; } });
   await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
-  await page.screenshot({ path: new URL('test-artifacts/w15/home-attention-1440.png', root).pathname });
+  await page.screenshot({ path: new URL('out/test-artifacts/w15/home-attention-1440.png', root).pathname });
 });
 test('pending receipt confirmations remain attached to each invoice across popup changes', async t => {
   const h = await open(t, { receipt: 'pending' }), page = h.page;
@@ -92,13 +92,13 @@ test('pending receipt confirmations remain attached to each invoice across popup
 test('deep link, reduced motion and authentication loss keep the screen contract', async t => {
   const h = await open(t, { width: 390, reducedMotion: 'reduce', query: '&invoice=00000000-0000-4000-8000-000000000002' }); await h.page.waitForFunction(() => document.querySelector('#invoiceDetail').open); assert.equal(await h.page.locator('#invoiceDetailTitle').innerText(), 'Demo Oak Purchase');
   await h.page.locator('#closeInvoiceDetail').click(); assert.equal(await h.page.locator('.invoice-row.overdue .invoice-state').first().evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
-  await h.page.screenshot({ path: new URL('test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForFunction(() => document.querySelector('#invoiceNotice a')); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
+  await h.page.screenshot({ path: new URL('out/test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForFunction(() => document.querySelector('#invoiceNotice a')); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
 });
 for (const width of [1440, 390]) test(`Home invoice attention fits ${width}px`, async t => {
   const h = await open(t, { home: true, width });
   const overflow = await h.page.evaluate(() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('body *')].filter(node=>node.getBoundingClientRect().right>innerWidth+1).map(node=>({id:node.id,cls:String(node.className),right:node.getBoundingClientRect().right})).slice(0,12)}));
   assert.ok(overflow.scroll<=overflow.width, JSON.stringify(overflow));
-  await h.page.screenshot({ path: new URL(`test-artifacts/w15/home-attention-${width}.png`, root).pathname });
+  await h.page.screenshot({ path: new URL(`out/test-artifacts/w15/home-attention-${width}.png`, root).pathname });
   assert.deepEqual(h.errors, []);
 });
 
