@@ -1,0 +1,402 @@
+{
+  "schema": "doctorcre-verification-proof.v1",
+  "source_commit": "2308d929c700ad766c654ff34d54db5823feaa11",
+  "archive": {
+    "file": "verified-runs.tar.gz",
+    "bytes": 47081770,
+    "sha256": "4fb971091d426e1910f19134040a34f3bdf301bfb5311b15db45e4d0189d4b61"
+  },
+  "runs": [
+    {
+      "run": "committed-lifecycle",
+      "source_commit": "2308d929c700ad766c654ff34d54db5823feaa11",
+      "source_digest": "74a57a395ec18faa8643dea79e2f66c2e1733496a833239e5f9593bddc03d609",
+      "helper_digests": {
+        "verify-doctorcre.mjs": "66aac48ede7d075b3a34b12b7dbf0b6ccd0f83c9f7497db724d0157c64f5da2c",
+        "recipes.mjs": "6da0ae4546a79321251bbb8048c46af13dce8bb090d3034ddb32ae8b6890ba75"
+      },
+      "cleanup": {
+        "stopped": true,
+        "pid": 51827,
+        "source_commit": "2308d929c700ad766c654ff34d54db5823feaa11",
+        "scratch_retired": true,
+        "evidence_preserved": true
+      },
+      "retained_files": 78,
+      "results": [
+        {
+          "feature": "home",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/"
+            },
+            {
+              "id": "shared-navigation",
+              "route": "/"
+            },
+            {
+              "id": "local-deals:home-attention",
+              "route": "/deals?deal=d01"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Synthetic Team View has four flags",
+              "passed": true
+            },
+            {
+              "label": "Just Me scopes deal attention to two flags",
+              "passed": true
+            },
+            {
+              "label": "Team View restores all four deal flags",
+              "passed": true
+            },
+            {
+              "label": "Flag opens its addressed deal",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        },
+        {
+          "feature": "leads",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/leads"
+            },
+            {
+              "id": "shared-navigation",
+              "route": "/leads"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Qualified stage shows only Gulf Breeze lead",
+              "passed": true
+            },
+            {
+              "label": "All stages restores the fourteen eligible board cards",
+              "passed": true
+            },
+            {
+              "label": "Pensacola market shows its twelve board cards and keeps the map",
+              "passed": true
+            },
+            {
+              "label": "Lead detail matches selected card and has originals",
+              "passed": true
+            },
+            {
+              "label": "Lead detail closes and returns focus",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        },
+        {
+          "feature": "local-deals",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/deals"
+            },
+            {
+              "id": "shared-navigation",
+              "route": "/deals"
+            },
+            {
+              "id": "home-attention",
+              "route": "/deals?deal=d23"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Drag opens review before mutation",
+              "passed": true
+            },
+            {
+              "label": "Second user view confirms Legal",
+              "passed": true
+            },
+            {
+              "label": "Home attention opens local deal detail",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        },
+        {
+          "feature": "progress-navigation",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/control-room/progress"
+            },
+            {
+              "id": "directory-tile",
+              "route": "http://127.0.0.1:59144/control-room/progress/board/carr-v5"
+            },
+            {
+              "id": "legacy-bookmark",
+              "route": "/control-room/progress?board=carr-v5"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Board tile opens a separate tab",
+              "passed": true
+            },
+            {
+              "label": "Board tile opens its dedicated board page",
+              "passed": true
+            },
+            {
+              "label": "Dedicated board shows its published task",
+              "passed": true
+            },
+            {
+              "label": "Legacy bookmark resolves dedicated board",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        },
+        {
+          "feature": "tours",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/tours"
+            },
+            {
+              "id": "shared-navigation",
+              "route": "/tours"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Undo restores client area",
+              "passed": true
+            },
+            {
+              "label": "Draft save confirmed",
+              "passed": true
+            },
+            {
+              "label": "Saved tab draft survives reload",
+              "passed": true
+            },
+            {
+              "label": "Tour detail closes with Escape",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        },
+        {
+          "feature": "vendors",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/vendors"
+            },
+            {
+              "id": "shared-navigation",
+              "route": "/vendors"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Owner read reports Dell subset",
+              "passed": true
+            },
+            {
+              "label": "Record view shows original synthetic email",
+              "passed": true
+            },
+            {
+              "label": "Introduction has its original entry",
+              "passed": true
+            },
+            {
+              "label": "Vendor detail closes with Escape",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "historical-before",
+      "source_commit": "a6ffa341cf577dd40a72031a4a8bbd0d1d31cf90",
+      "source_digest": "fc30b5ff60fb785fdc6d93bf13d3318a3b77e9236b7f56bd6305e8fac8358ebf",
+      "helper_digests": {
+        "verify-doctorcre.mjs": "66aac48ede7d075b3a34b12b7dbf0b6ccd0f83c9f7497db724d0157c64f5da2c",
+        "recipes.mjs": "6da0ae4546a79321251bbb8048c46af13dce8bb090d3034ddb32ae8b6890ba75"
+      },
+      "cleanup": {
+        "stopped": true,
+        "pid": 62464,
+        "source_commit": "a6ffa341cf577dd40a72031a4a8bbd0d1d31cf90",
+        "scratch_retired": true,
+        "evidence_preserved": true
+      },
+      "retained_files": 10,
+      "results": [
+        {
+          "feature": "progress-navigation",
+          "status": "failed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/control-room/progress"
+            },
+            {
+              "id": "directory-tile",
+              "route": "http://127.0.0.1:59452/control-room/progress?board=carr-v5"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Board tile opens a separate tab",
+              "passed": false,
+              "error": "Expected values to be strictly equal:\n\nnull !== '_blank'\n"
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "historical-fixed",
+      "source_commit": "7cdb47c9cca4ee2c72dcc56e01c461c3c250b5f5",
+      "source_digest": "b50403452df9fae681858e268b65068295444f7a30416822e2460e347218eec7",
+      "helper_digests": {
+        "verify-doctorcre.mjs": "66aac48ede7d075b3a34b12b7dbf0b6ccd0f83c9f7497db724d0157c64f5da2c",
+        "recipes.mjs": "6da0ae4546a79321251bbb8048c46af13dce8bb090d3034ddb32ae8b6890ba75"
+      },
+      "cleanup": {
+        "stopped": true,
+        "pid": 64544,
+        "source_commit": "7cdb47c9cca4ee2c72dcc56e01c461c3c250b5f5",
+        "scratch_retired": true,
+        "evidence_preserved": true
+      },
+      "retained_files": 12,
+      "results": [
+        {
+          "feature": "progress-navigation",
+          "status": "passed",
+          "entry_points": [
+            {
+              "id": "bookmark",
+              "route": "/control-room/progress"
+            },
+            {
+              "id": "directory-tile",
+              "route": "http://127.0.0.1:59515/control-room/progress/board/carr-v5"
+            },
+            {
+              "id": "legacy-bookmark",
+              "route": "/control-room/progress?board=carr-v5"
+            }
+          ],
+          "assertions": [
+            {
+              "label": "Board tile opens a separate tab",
+              "passed": true
+            },
+            {
+              "label": "Board tile opens its dedicated board page",
+              "passed": true
+            },
+            {
+              "label": "Dedicated board shows its published task",
+              "passed": true
+            },
+            {
+              "label": "Legacy bookmark resolves dedicated board",
+              "passed": true
+            },
+            {
+              "label": "No unhandled browser errors",
+              "passed": true
+            }
+          ],
+          "blocked_external_origins": [
+            "https://fonts.googleapis.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "checks": {
+    "npm_test": {
+      "passed": 2293,
+      "skipped": 4,
+      "failed": 0
+    },
+    "cli_tests": {
+      "passed": 2,
+      "failed": 0
+    },
+    "repository": "passed",
+    "privacy": "passed",
+    "build": "passed",
+    "artifact_verification": "passed",
+    "feature_map_original_schema": "passed"
+  },
+  "limits": [
+    "Loopback fixture instances only; no live CARR persistence or partner data.",
+    "Browser blocks external font/map requests; blocked origins are recorded per result.",
+    "Hosted CI status is reported separately in the PR."
+  ]
+}

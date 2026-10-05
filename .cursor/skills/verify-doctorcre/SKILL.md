@@ -89,6 +89,11 @@ binds file bytes with SHA-256; `evidence` reads the files and checks their hashe
 A valid manifest for a failed drive proves the failure was preserved; it does not
 turn that drive into a passing behavior check. Read the drive's `result.json` verdict.
 
+The checked-in [proof record](proof/verification.json) binds the initial six-feature
+lifecycle and the historical regression comparison to source and helper hashes.
+`proof/verified-runs.tar.gz` retains those runs' complete evidence directories,
+including manifests, traces, screenshots, ARIA snapshots, and lifecycle output.
+
 Proof standards:
 
 - Exercise the user path, including every entry point listed for the feature.
