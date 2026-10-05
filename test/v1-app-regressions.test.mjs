@@ -129,16 +129,26 @@ test("QA-003 failed Deals board has a visible explanation", async (t) => {
 });
 test("QA-005 last phone lead can scroll clear of Doc", async (t) => {
   const page = await open(t, "/leads", 390);
-  await page.locator("[data-lead-id]").first().waitFor();
-  await page.evaluate(() =>
-    window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" }),
-  );
-  const card = page.locator(".lead-card").last();
-  const score = await card.locator(".score").boundingBox();
-  const doc = await page
-    .getByRole("button", { name: "Open Doc", exact: true })
-    .boundingBox();
-  assert.ok(score.y + score.height <= doc.y || score.x + score.width <= doc.x);
+  await page.locator(".lead-card").last().waitFor();
+  await page.getByRole("button", { name: "Open Doc", exact: true }).waitFor();
+  await settles(async () => {
+    // Map startup and background reads can replace cards. Measure one DOM
+    // snapshot after scrolling, rather than retaining a detached rectangle.
+    const { score, doc } = await page.evaluate(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
+      const score = [...document.querySelectorAll(".lead-card")]
+        .at(-1)
+        ?.querySelector(".score");
+      const doc = document.querySelector("#docOpen");
+      const rect = (node) =>
+        node ? JSON.parse(JSON.stringify(node.getBoundingClientRect())) : null;
+      return { score: rect(score), doc: rect(doc) };
+    });
+    assert.ok(score?.width > 0 && doc?.width > 0, "both controls are rendered");
+    assert.ok(
+      score.y + score.height <= doc.y || score.x + score.width <= doc.x,
+    );
+  });
 });
 test("QA-006 scope keyboard focus survives render on desktop and phone", async (t) => {
   for (const width of [1440, 390]) {
