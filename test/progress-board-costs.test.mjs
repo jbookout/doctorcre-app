@@ -46,6 +46,37 @@ test('malformed optional cost data cannot stop the board render', async () => {
   assert.equal(app.view.title, 'Progress board');
 });
 
+test('finite amounts on a partial aggregate are labeled as known lower bounds', async () => {
+  const fixture = structuredClone(costs);
+  fixture.providers[1] = { ...fixture.providers[1], state: 'partial', mtd_usd: 5, projection_usd: 38.75 };
+  fixture.months[0] = { month: '2026-09', usd: 55, providers: { jev: 50, neon: 5 } };
+  const { panel, dom } = await board(fixture);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to date\$17\.00/);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known projection · incomplete\$131\.75/);
+  assert.match(panel.textContent, /Coverage incomplete/);
+  const month = panel.querySelector('[aria-label="Cost month"]');
+  month.value = '2026-09'; month.dispatchEvent(new dom.window.Event('change'));
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known monthly spend\$55\.00/);
+});
+
+test('an unconfirmed subscription zero stays a known lower bound and an unavailable zero stays unavailable', async () => {
+  const fixture = structuredClone(costs);
+  fixture.providers[1] = { ...fixture.providers[1], state: 'partial', plan: 'Unconfirmed',
+    reason: 'subscription plan/price unconfirmed', mtd_usd: 0, projection_usd: 0 };
+  const { panel, dom, app } = await board(fixture);
+  const provider = panel.querySelector('[aria-label="Cost provider"]');
+  provider.value = 'neon'; provider.dispatchEvent(new dom.window.Event('change'));
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to date\$0\.00/);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known projection · incomplete\$0\.00/);
+  assert.match(panel.textContent, /subscription plan\/price unconfirmed/);
+  assert.match(panel.textContent, /Amounts exclude unknown costs/);
+  assert.match(panel.querySelector('[data-day="2026-10-01"]').getAttribute('aria-label'), /Unavailable/);
+  fixture.providers[1].state = 'unavailable';
+  await app.refresh();
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to dateUnavailable/);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known projection · incompleteUnavailable/);
+});
+
 test('provider and month controls retain selection on refresh and never render provider text as HTML', async () => {
   const fixture = structuredClone(costs);
   fixture.providers[0].label = '<img src=x onerror=alert(1)>';

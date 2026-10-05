@@ -3,6 +3,7 @@ const usd = value => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { s
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const monthId = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const money = value => value === null || Number.isFinite(value);
+const hasCoverage = row => ['ready', 'partial'].includes(row.state);
 
 function validCosts(value) {
   return record(value) && value.schema === 'carr-system-costs.v1' && monthId(value.month)
@@ -59,14 +60,20 @@ export function mountCostView(root) {
     content.append(meta);
     const metrics = el('div', undefined, 'cost-metrics');
     const total = key => chosen.every(row => Number.isFinite(row[key])) ? chosen.reduce((sum, row) => sum + row[key], 0) : null;
-    const known = chosen.filter(row => Number.isFinite(row.mtd_usd)).reduce((sum, row) => sum + row.mtd_usd, 0);
+    const complete = chosen.length > 0 && chosen.every(row => row.state === 'ready') && (provider.value !== '' || data.state === 'ready');
+    const known = key => {
+      const rows = chosen.filter(row => hasCoverage(row) && Number.isFinite(row[key]));
+      return rows.length ? rows.reduce((sum, row) => sum + row[key], 0) : null;
+    };
     const history = data.months.find(row => row.month === month.value);
     const monthSpend = provider.value === '' ? history?.usd : history?.providers?.[provider.value];
-    for (const [title, value] of current ? [['Month to date', total('mtd_usd')], ['Projected month', total('projection_usd')], ['Monthly budget', total('budget_usd')]] : [['Monthly spend', monthSpend]]) {
+    for (const [title, value] of current ? [[complete ? 'Month to date' : 'Known month to date', known('mtd_usd')],
+      [complete ? 'Projected month' : 'Known projection · incomplete', known('projection_usd')], ['Monthly budget', total('budget_usd')]]
+      : [[complete ? 'Monthly spend' : 'Known monthly spend', chosen.some(hasCoverage) ? monthSpend : null]]) {
       const metric = el('div'); metric.append(el('span', title), el('strong', usd(value))); metrics.append(metric);
     }
     content.append(metrics);
-    if (current && total('mtd_usd') === null) content.append(el('p', `${usd(known)} known spend · Coverage incomplete`, 'cost-warning'));
+    if (!complete) content.append(el('p', 'Coverage incomplete · Amounts exclude unknown costs.', 'cost-warning'));
     const coverage = el('ul', undefined, 'cost-coverage');
     for (const row of chosen) coverage.append(el('li', `${row.label} · ${row.plan} · ${row.state}${row.reason ? ` · ${row.reason}` : ''}`));
     content.append(coverage);
@@ -77,9 +84,9 @@ export function mountCostView(root) {
       const count = current ? Number(data.through.slice(-2)) : new Date(Date.UTC(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(-2)), 0)).getUTCDate();
       const days = Array.from({ length: count }, (_, i) => {
         const day = `${selectedMonth}-${String(i + 1).padStart(2, '0')}`;
-        const rows = chosen.map(row => row.daily?.find(item => item.day === day));
+        const rows = chosen.map(row => hasCoverage(row) ? row.daily?.find(item => item.day === day) : null);
         const knownRows = rows.filter(row => Number.isFinite(row?.usd));
-        return { day, usd: knownRows.length ? knownRows.reduce((sum, row) => sum + row.usd, 0) : null, complete: knownRows.length === chosen.length && chosen.length > 0,
+        return { day, usd: knownRows.length ? knownRows.reduce((sum, row) => sum + row.usd, 0) : null, complete: complete && knownRows.length === chosen.length,
           drivers: knownRows.flatMap(row => Object.entries(row.drivers || {}).map(([driver, amount]) => `${driver} ${usd(amount)}`)) };
       });
       const graph = svg('svg', { viewBox: '0 0 700 210', role: 'group', 'aria-label': `Daily spend for ${provider.selectedOptions[0]?.textContent}, ${selectedMonth}`, class: 'cost-chart' });
