@@ -66,6 +66,6 @@ jobs:
         with:
           include-hidden-files: true
           name: full-main-app-e2e-receipt
-          path: .e2e/full-main-app-e2e-receipt.json
+          path: .e2e/full-main-app-e2e/receipt.json
           if-no-files-found: error
           retention-days: 7

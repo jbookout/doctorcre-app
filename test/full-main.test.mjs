@@ -23,6 +23,7 @@ test('scheduled paths execute full suites without changing PR or main-push gates
     assert.match(workflow,/schedule:\n    - cron:/);assert.match(workflow,/workflow_dispatch:/);
     assert.match(workflow,new RegExp(`node scripts/full-main.mjs ${suite}\\b`));
     assert.match(workflow,new RegExp(`name: full-main-${suite}-receipt`));
+    assert.match(workflow,new RegExp(`path: .*full-main-${suite}/receipt\\.json`));
     assert.doesNotMatch(workflow,/continue-on-error:/);
   }
 });
@@ -37,7 +38,7 @@ test('canonical full-suite clean control and seeded failure publish bound counts
   await writeFile(join(root,'test/seeded.test.mjs'),"import test from 'node:test'; test('SyntheticPrivateClient canary',()=>{throw Error('synthetic-secret-canary');});\n");
   git('add','test/seeded.test.mjs');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','seed failure');
   receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
-  assert.equal(receipt.status,'failed');assert.equal(receipt.counts.failed,1);
+  assert.equal(receipt.status,'failed');assert.equal(receipt.counts.failed,1);assert.equal(receipt.failures[0]?.file,'test/seeded.test.mjs');
   assert.doesNotMatch(JSON.stringify(receipt),/SyntheticPrivateClient|synthetic-secret-canary/);
 });
 test('empty exit-zero, nonzero, partial, exception, and deadline never certify a full suite',async t=>{
@@ -50,11 +51,20 @@ test('empty exit-zero, nonzero, partial, exception, and deadline never certify a
     assert.doesNotMatch(JSON.stringify(receipt),/synthetic-secret-canary/);
   }
 });
+test('execution cannot mutate source and still claim the initial tree passed',async t=>{
+  assert.ok(runner,'full-main runner must exist');
+  const {root,git}=await fixture(t,clean);
+  await writeFile(join(root,'package.json'),JSON.stringify({type:'module',scripts:{test:`node -e "require('fs').appendFileSync('test/seeded.test.mjs','// synthetic mutation')" && node --test test/*.test.mjs`}}));
+  git('add','package.json');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','source mutation fixture');
+  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
+  assert.equal(receipt.status,'failed');assert.equal(receipt.reason,'source_changed');
+});
 test('e2e acknowledgement must bind the native runner and complete packet to this source',async t=>{
   assert.ok(runner,'full-main runner must exist');
   const {root,git}=await fixture(t,clean);
-  const script=`import {mkdir,writeFile} from 'node:fs/promises'; import {execFileSync} from 'node:child_process'; import {createHash} from 'node:crypto'; const source=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); await mkdir('.e2e/proof',{recursive:true}); const coverage=JSON.stringify({binding:{sourceCommit:source},rows:[{id:'synthetic',status:'passed',attempts:1}]}); await writeFile('.e2e/report.json',JSON.stringify({run:{vcs:{commit:source,dirty:false},status:'passed',exitCode:0,results:[{selected:true,status:'passed',attempts:[{}]}]}})); await writeFile('.e2e/proof/packet.json',JSON.stringify({schema:'browser-product-proof.v1',binding:{sourceCommit:source},coverage:{ref:'coverage.json',digest:createHash('sha256').update(coverage).digest('hex')}})); await writeFile('.e2e/proof/coverage.json',coverage);`;
-  const commit=()=>{git('add','scripts/browser-product-proof.mjs');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','proof fixture');};
+  const script=`import {mkdir,writeFile} from 'node:fs/promises'; import {execFileSync} from 'node:child_process'; import {createHash} from 'node:crypto'; const source=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(); await mkdir('.e2e/proof',{recursive:true}); const coverage=JSON.stringify({binding:{sourceCommit:source},rows:[{id:'synthetic',status:'passed',attempts:1}]}); await writeFile('.e2e/report.json',JSON.stringify({run:{vcs:{commit:source,dirty:false},status:'passed',exitCode:0,results:[{selected:true,status:'passed',attempts:[{}]}]}})); await writeFile('.e2e/proof/packet.json',JSON.stringify({schema:'browser-product-proof.v1',binding:{sourceCommit:source},coverage:{ref:'coverage.json',digest:createHash('sha256').update(coverage).digest('hex')}})); await writeFile('.e2e/proof/coverage.json',coverage); console.log('# tests 1\\n# pass 1\\n# fail 0\\n# cancelled 0\\n# skipped 0\\n# todo 0');`;
+  await mkdir(join(root,'tests/journeys'),{recursive:true}); await writeFile(join(root,'tests/journeys/synthetic.e2e.ts'),'// synthetic native entry');
+  const commit=()=>{git('add','scripts/browser-product-proof.mjs','tests/journeys/synthetic.e2e.ts');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','proof fixture');};
   await writeFile(join(root,'scripts/browser-product-proof.mjs'),script);
   commit();
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'passed');
@@ -62,4 +72,14 @@ test('e2e acknowledgement must bind the native runner and complete packet to thi
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'unknown','old acknowledgement is removed before rerun');
   await writeFile(join(root,'scripts/browser-product-proof.mjs'),script.replace(/status:'passed'/g,"status:'failed'")); commit();
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'unknown');
+  for(const broken of [
+    script.replace('results:[{selected:true', 'results:[{selected:false'),
+    script.replace('attempts:[{}]', 'attempts:[{},{}]'),
+    script.replace('vcs:{commit:source', "vcs:{commit:'a'.repeat(40)"),
+    script.replace("digest:createHash('sha256').update(coverage).digest('hex')", "digest:'a'.repeat(64)"),
+    script.replace('# pass 1', '# pass 0'),
+  ]) {
+    await writeFile(join(root,'scripts/browser-product-proof.mjs'),broken);commit();
+    assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'unknown');
+  }
 });

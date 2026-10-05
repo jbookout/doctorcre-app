@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: doctorcre-app
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -75,6 +76,6 @@ jobs:
         with:
           include-hidden-files: true
           name: full-main-app-receipt
-          path: doctorcre-app/.e2e/full-main-app-receipt.json
+          path: doctorcre-app/.e2e/full-main-app/receipt.json
           if-no-files-found: error
           retention-days: 7
