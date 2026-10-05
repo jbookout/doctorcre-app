@@ -47,7 +47,7 @@ async function open(t, width) {
 }
 
 test("W6 desktop and phone render, client prefill/undo, private files, wide popup and measured reduced motion", async t => {
-  await mkdir(new URL("test-artifacts/w6/", root), { recursive: true });
+  await mkdir(new URL("out/test-artifacts/w6/", root), { recursive: true });
   for (const width of [1440, 390]) await t.test(String(width), async t => {
     const app = await open(t, width), { page } = app; const name = width === 1440 ? "desktop" : "phone";
     await page.locator("#plan-client").selectOption(clientId);
@@ -65,7 +65,7 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     assert.equal(await page.locator("#property-search-form").count(), 0);
     assert.ok(await page.locator(".territory-map").evaluate(el => el.getAnimations({ subtree: true }).length > 0));
     await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
-    await page.screenshot({ path: new URL(`test-artifacts/w6/${name}.png`, root).pathname, fullPage: true, animations: "disabled" });
+    await page.screenshot({ path: new URL(`out/test-artifacts/w6/${name}.png`, root).pathname, fullPage: true, animations: "disabled" });
     await page.locator("#review-packet").click(); await page.locator("#tour-dialog").waitFor({ state: "visible" });
     assert.match(await page.locator("#detail-content").textContent(), /demo-report/);
     const box = await page.locator("#tour-dialog").boundingBox(); assert.ok(box.width >= Math.min(1000, width - 32));
@@ -75,7 +75,7 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     assert.ok((await page.locator("#detail-content > p").first().textContent()).length <= 180);
     await page.locator("#detail-content details summary").click(); assert.equal(await page.locator("#detail-content details p").textContent(), original);
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: new URL(`test-artifacts/w6/${name}-detail.png`, root).pathname, fullPage: false, animations: "disabled" });
+    await page.screenshot({ path: new URL(`out/test-artifacts/w6/${name}-detail.png`, root).pathname, fullPage: false, animations: "disabled" });
     await page.keyboard.press("Escape");
     assert.equal(await page.locator("#tour-dialog").evaluate(n => n.open), false, "R5 one Escape closes the top modal");
     if (width <= 760) {
