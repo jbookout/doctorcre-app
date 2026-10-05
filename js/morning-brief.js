@@ -1,158 +1,144 @@
-import { briefWindow, composeMorningBrief, validBriefEvents } from './morning-brief-model.js';
-import { localToday } from './calendar-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
-import { escapeText as escape } from './change-receipts.mjs';
+import { escapeText } from './change-receipts.mjs';
+import { entryDetailsHtml } from './entry-details.mjs';
+import { localDay, validBrief, morningBriefView, briefPreferences } from './morning-brief-model.js';
 
-const SPEECH_KEY = 'doctorcre:brief-speech';
-const FEED_PAGES = 20;
-const speaker = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="doc-brief-wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>';
-const item = row => `<a class="doc-brief-item" href="${escape(row.href)}" data-brief-key="${escape(row.key)}" data-tone="${escape(row.tone || 'change')}"><strong>${escape(row.name)}</strong><span>${escape(row.text)}</span><small>${escape(row.when)}</small></a>`;
-const section = (id, title, rows, state = 'unavailable') => rows === null
-  ? `<section id="${id}"><h3>${title}</h3><p class="doc-quiet">${state === 'incomplete' ? 'Incomplete' : 'Unavailable'}</p></section>`
-  : rows.length ? `<section id="${id}"><h3>${title}</h3>${rows.map(item).join('')}</section>` : '';
-
-// The mounted module owns presentation, read lifetime and speech intent.
-// App-only memory advances only when a current brief is visibly presented.
-export function mountMorningBrief({ document: root, window: win, strip, getClient, intervalMs = 30_000, timeoutMs = 10_000, now = () => new Date() }) {
-  const storage = { get: key => { try { return win.localStorage.getItem(key); } catch { return null; } }, set: (key, value) => { try { win.localStorage.setItem(key, value); } catch {} } };
-  const synth = win.speechSynthesis && win.SpeechSynthesisUtterance ? win.speechSynthesis : null;
-  const opener = root.createElement('button');
-  opener.id = 'docBriefOpen'; opener.type = 'button'; opener.className = 'doc-brief-open';
-  opener.setAttribute('aria-label', 'Morning brief'); opener.title = 'Morning brief';
-  opener.setAttribute('aria-controls', 'docBrief'); opener.setAttribute('aria-expanded', 'false');
-  opener.innerHTML = '<span aria-hidden="true">☀</span>';
-  strip.append(opener);
-  const status = root.createElement('span');
-  status.className = 'doc-brief-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-  strip.append(status);
-  const panel = root.createElement('section');
-  panel.id = 'docBrief'; panel.className = 'doc-brief'; panel.hidden = true; panel.dataset.state = 'updating';
-  panel.setAttribute('aria-labelledby', 'docBriefTitle');
-  panel.innerHTML = `<header><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docBriefTitle" tabindex="-1">Doc</h2><div class="doc-brief-tools"><button id="docBriefSpeech" type="button" aria-pressed="false" aria-label="Speak brief" title="Speak brief"${synth ? '' : ' hidden'}>${speaker}</button><time id="docBriefUpdated">Updating…</time><button id="docBriefRefresh" type="button" aria-label="Refresh brief" title="Refresh brief">↻</button><button id="docBriefClose" type="button" aria-label="Dismiss brief" title="Dismiss brief">×</button></div></header><div id="docBriefBody"><p class="doc-quiet">Updating…</p></div>`;
-  strip.after(panel);
-  const $ = selector => panel.querySelector(selector);
-  let brief = null, engaged = false, actor = null, dismissedDay = null, windowDay = null, dayWindow = null, decided = false, pendingSpeech = false, cursor = null, events = new Map(), disposed = false;
-  const speechOn = () => storage.get(SPEECH_KEY) === 'on';
-  const home = root.getElementById('appMainSlot');
-  const place = () => {
-    if (strip.parentElement === root.body && home) {
-      if (panel.parentElement !== home || home.firstElementChild !== panel) home.prepend(panel);
-    } else if (strip.parentElement && (panel.parentElement !== strip.parentElement || strip.nextElementSibling !== panel)) strip.after(panel);
+export function mountMorningBrief({ document:root, window:win, getClient, automatic = true, intervalMs = 30_000, now = () => new Date() }) {
+  const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
+  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="morningTitle">Morning brief</h2></div><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button><button id="morningSpeech" type="button" aria-label="Brief speech" title="Brief speech" aria-pressed="false">◖))</button><button id="morningListen" type="button" aria-label="Listen to morning brief" title="Listen to morning brief" disabled>▶</button></div><div id="morningCoverage" role="status"></div><div id="morningContent"></div>';
+  root.body.append(dialog);
+  const $ = id => dialog.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
+  let client, view = null, sponsor = null, preferences, since, windowDay, events = [], cursor = null, disposed = false, selected = null, detailEpoch = 0, opener, speaking = false, speechEpoch = 0;
+  let storage; try { storage = win.localStorage; } catch {}
+  const speechAvailable = !!win.speechSynthesis && !!win.SpeechSynthesisUtterance;
+  const stop = () => { const active = speaking; speaking = false; ++speechEpoch; if (active) win.speechSynthesis?.cancel(); $('morningListen').textContent = '▶'; $('morningListen').setAttribute('aria-label','Listen to morning brief'); };
+  const controls = () => {
+    const enabled = preferences?.value.speech === true;
+    $('morningSpeech').setAttribute('aria-pressed',String(enabled)); $('morningSpeech').disabled = !speechAvailable || !sponsor;
+    $('morningListen').disabled = !speechAvailable || !enabled || !view?.spoken || selected !== null;
   };
-  place();
-  const placement = new win.MutationObserver(place);
-  placement.observe(root.body, { subtree:true, childList:true });
   const render = () => {
-    place();
-    $('#docBriefSpeech').setAttribute('aria-pressed', String(speechOn()));
-    opener.setAttribute('aria-expanded', String(!panel.hidden));
-    const body = $('#docBriefBody');
-    const html = !brief ? `<p class="doc-quiet">${panel.dataset.state === 'updating' ? 'Updating…' : 'Unavailable'}</p>`
-      : (brief.first ? `<section id="docBriefFirst" class="doc-brief-first"><h3>First</h3>${item(brief.first)}</section>` : '')
-        + `<div class="doc-brief-grid">${section('docBriefOvernight', 'Overnight', brief.overnight)}${section('docBriefToday', 'Today', brief.today, brief.todayState)}</div>`;
-    if (brief) $('#docBriefTitle').textContent = brief.greeting;
-    else $('#docBriefTitle').textContent = 'Doc';
-    if (body.innerHTML === html) return false;
-    const focus = body.contains(root.activeElement) ? { key:root.activeElement.dataset.briefKey, section:root.activeElement.closest('section')?.id } : null;
-    body.innerHTML = html;
-    if (focus) ([...body.querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === focus.key && node.closest('section')?.id === focus.section) || $('#docBriefTitle')).focus({ preventScroll:true });
-    return true;
-  };
-  const resetWindow = date => {
-    if (!actor || windowDay === localToday(date)) return;
-    let stored = null; try { stored = JSON.parse(storage.get(`doctorcre:brief:${actor}`)); } catch {}
-    dayWindow = briefWindow(stored, date); windowDay = localToday(date);
-    decided = !dayWindow.due || dismissedDay === windowDay; cursor = null; events = new Map(); brief = null;
-    delete opener.dataset.ready;
-    panel.dataset.state = 'updating'; $('#docBriefUpdated').textContent = 'Updating…';
-    render();
-  };
-  const presented = () => {
-    if (root.visibilityState === 'hidden' || panel.hidden || !brief || !dayWindow?.due) return;
-    storage.set(`doctorcre:brief:${actor}`, JSON.stringify({ ...dayWindow.record, shownAt:now().toISOString() }));
-    dayWindow.due = false;
-  };
-  // Each poll drains its own backlog to an empty terminal page. A historical
-  // caught-up flag cannot establish that a later burst has been exhausted.
-  const readChanges = async (client, signal) => {
-    for (let page = 0; page < FEED_PAGES; page++) {
-      const changes = await client.getChanges(cursor, { signal });
-      if (signal.aborted || disposed) throw new Error('Read cancelled');
-      if (!validBriefEvents(changes?.events)) throw new Error('Invalid change response');
-      for (const event of changes.events) if (Date.parse(event.recorded_at) > Date.parse(dayWindow.since)) events.set(event.id, event);
-      const next = changes.cursor ?? cursor;
-      if (!changes.events.length) { cursor = next; return [...events.values()]; }
-      if (next === cursor || next == null) throw new Error('Change feed did not advance');
-      cursor = next;
-    }
-    return null;
-  };
-  const unavailable = () => {
-    brief = null; events = new Map(); cursor = null; pendingSpeech = false; synth?.cancel();
-    panel.dataset.state = 'unavailable'; $('#docBriefUpdated').textContent = 'Unavailable'; $('#docBriefUpdated').removeAttribute('datetime');
-    status.textContent = 'Morning brief unavailable'; delete opener.dataset.ready; render();
-  };
-  const load = async signal => {
-    resetWindow(now());
-    const client = await getClient();
-    if (signal.aborted || disposed) return;
-    const [board, triage] = await Promise.allSettled([
-      client.getBoard({ workspace:'all', signal }), client.todayTriage({ signal }),
-    ]);
-    if (signal.aborted || disposed) return;
-    if (board.status !== 'fulfilled' || !composeMorningBrief({board:board.value,triage:null,events:null,since:null,now:now()})) throw new Error('Board unavailable');
-    if (triage.status === 'rejected' && [401,403].includes(triage.reason?.status)) throw triage.reason;
-    if (board.value.actor !== actor) {
-      actor = board.value.actor; windowDay = null; decided = false; resetWindow(now());
-    }
-    let changes = null;
-    try { changes = await readChanges(client, signal); }
-    catch (error) { if ([401,403].includes(error?.status)) throw error; }
-    if (signal.aborted || disposed) return;
-    const date = now();
-    // A midnight crossed during the read needs a new window, not yesterday's
-    // rows stamped with today's presentation marker.
-    if (localToday(date) !== windowDay) { resetWindow(date); throw new Error('Day changed during read'); }
-    brief = composeMorningBrief({ board:board.value, triage:triage.status === 'fulfilled' ? triage.value : null, events:changes, since:dayWindow.since, now:date });
-    const priorState = panel.dataset.state;
-    panel.dataset.state = 'ready';
-    const observed = date.toISOString(); $('#docBriefUpdated').textContent = updatedLabel(observed); $('#docBriefUpdated').dateTime = observed;
-    let waiting = false;
-    if (dayWindow.due && !decided) {
-      decided = true;
-      if (!engaged || !panel.hidden) { panel.hidden = false; pendingSpeech = true; }
-      else { opener.dataset.ready = 'true'; waiting = true; }
-    }
-    const changed = render(); presented();
-    if (waiting) status.textContent = 'Morning brief ready';
-    else if (changed || priorState !== 'ready') status.textContent = brief.today === null || brief.overnight === null ? 'Morning brief updated; some sections unavailable or incomplete' : 'Morning brief updated';
-    if (pendingSpeech && !panel.hidden && root.visibilityState !== 'hidden') {
-      pendingSpeech = false;
-      if (synth && speechOn()) { synth.cancel(); synth.speak(new win.SpeechSynthesisUtterance(brief.speech)); }
+    $('morningUpdated').textContent = updatedLabel(view?.observedAt);
+    if (view?.observedAt) $('morningUpdated').dateTime = view.observedAt; else $('morningUpdated').removeAttribute('datetime');
+    $('morningCoverage').textContent = view ? view.unavailable.join(' · ') : 'Brief unavailable';
+    controls();
+    if (selected) return;
+    const title = view ? `Morning brief · ${view.sponsor === 'joe' ? 'Joe' : 'Dell'}` : 'Morning brief';
+    $('morningTitle').textContent = title;
+    $('morningBack').hidden = true;
+    const html = view?.groups.map(({label,row},index) => `<section><h3>${label}</h3><button type="button" class="morning-card" data-urgency="${row.due && row.due < localDay(now()) ? 'overdue' : 'today'}" data-brief-record="${index}" data-brief-key="${escapeText(row.key)}"><span class="morning-marker" aria-hidden="true">${index === 0 ? '↗' : '◇'}</span><div><strong>${escapeText(row.title)}</strong>${row.summary ? `<span>${escapeText(row.summary)}</span>` : ''}${row.due ? `<time datetime="${escapeText(row.due)}">Due ${escapeText(row.due)}</time>` : ''}</div><span aria-hidden="true">↗</span></button></section>`).join('') || '';
+    if ($('morningContent').innerHTML !== html) {
+      const focus = root.activeElement?.dataset.briefKey;
+      $('morningContent').innerHTML = html;
+      if (focus !== undefined) focusCard(focus);
     }
   };
-  const refresh = async ({ signal } = {}) => {
-    try { await readWithDeadline(load, { signal, timeoutMs, clock:win }); }
-    catch { if (!disposed) unavailable(); }
-  };
-  const engage = () => { engaged = true; };
-  for (const type of ['pointerdown', 'keydown']) root.addEventListener(type, engage, { capture:true, once:true });
-  const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs, timeoutMs:timeoutMs + 1_000,
-    shouldRefresh: () => windowDay !== localToday(now()) || !decided || !panel.hidden });
+  const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); };
+  const close = () => { stop(); dialog.close(); };
   const open = () => {
-    decided = true; dismissedDay = null; delete opener.dataset.ready; panel.hidden = false; pendingSpeech = true;
-    render(); $('#docBriefTitle').focus({ preventScroll:true }); panel.scrollIntoView?.({ block:'nearest' }); auto.refresh();
+    opener = root.activeElement;
+    const doc = $('docDetail'); if (doc?.open) doc.close();
+    selected = null; ++detailEpoch; stop(); render();
+    if (!dialog.open) dialog.showModal();
+    if (sponsor && view) {
+      // Keep the current briefing window across page navigation. Only metadata
+      // survives; every page must re-read the facts before opening its brief.
+      remember();
+    }
   };
-  const close = () => { dismissedDay = localToday(now()); decided = true; panel.hidden = true; pendingSpeech = false; synth?.cancel(); render(); opener.focus(); };
-  opener.onclick = () => panel.hidden ? open() : close();
-  $('#docBriefClose').onclick = close;
-  $('#docBriefRefresh').onclick = () => auto.refresh();
-  $('#docBriefSpeech').onclick = () => {
-    const on = !speechOn(); storage.set(SPEECH_KEY, on ? 'on' : 'off');
-    pendingSpeech = on && !panel.hidden;
-    if (pendingSpeech) auto.refresh(); else synth?.cancel();
-    render();
+  const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
+  const back = () => { const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
+  const clear = () => { stop(); ++detailEpoch; selected = null; view = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); };
+  const showRecord = async (row, { background = false } = {}) => {
+    selected = row; const epoch = ++detailEpoch, owner = sponsor;
+    stop(); controls(); $('morningBack').hidden = false; $('morningTitle').textContent = row.title;
+    if (!background) { $('morningBack').focus(); $('morningContent').innerHTML = '<span class="morning-pending" role="status">Updating…</span>'; }
+    try {
+      const value = await readWithDeadline(() => row.kind === 'action' ? {action:row.action} : row.kind === 'deal' ? client.getDeal(row.id) : client.readLoop({ number:row.id,kind:row.loopKind }));
+      if (disposed || epoch !== detailEpoch || owner !== sponsor) return;
+      const record = row.kind === 'action' ? value?.action : row.kind === 'deal' ? value?.deal : value?.loop;
+      if (!record || (row.kind === 'loop' ? String(record.number) !== row.id || record.kind !== row.loopKind : record.id !== row.id)) throw new Error('Invalid record');
+      $('morningTitle').textContent = record.name || record.title || record.subject_name || row.title;
+      const facts = row.kind === 'deal' ? [['Next step',record.next_step],['Due',record.next_date],['Phase',record.phase]] : row.kind === 'action' ? [['For',record.subject_name],['Reference',record.subject_ref],['Due',record.due_on],['Owner',record.owner]] : [['Due',record.due_on],['Status',record.status],['Blocker',record.blocker_detail]];
+      const entries = row.kind === 'deal' ? value.thread || [] : [{ id:row.key, text:row.kind === 'action' ? record.what : record.body }];
+      const expanded = [...$('morningContent').querySelectorAll('details[open]')].map(node => node.dataset.entry);
+      const focusedEntry = root.activeElement?.closest('details')?.dataset.entry;
+      const html = `<div class="morning-record"><dl>${facts.filter(([,value]) => value).map(([label,value]) => `<div><dt>${label}</dt><dd>${escapeText(value)}</dd></div>`).join('')}</dl><section>${entries.filter(entry => entry.text).slice(0,5).map(entry => `<article>${entryDetailsHtml(entry.text).replace('<details>',`<details${entry.id ? ` data-entry="${escapeText(entry.id)}"` : ''}>`)}</article>`).join('')}</section></div>`;
+      if ($('morningContent').innerHTML !== html) {
+        $('morningContent').innerHTML = html;
+        const details = [...$('morningContent').querySelectorAll('details')];
+        for (const detail of details) if (detail.dataset.entry !== undefined && expanded.includes(detail.dataset.entry)) detail.open = true;
+        if (focusedEntry !== undefined) (details.find(detail => detail.dataset.entry === focusedEntry)?.querySelector('summary') || $('morningBack')).focus();
+      }
+    } catch (error) {
+      if (disposed || epoch !== detailEpoch || owner !== sponsor) return;
+      if ([401,403].includes(error.status)) clear();
+      if (epoch === detailEpoch && !disposed) $('morningContent').innerHTML = '<span role="status">Record unavailable</span>';
+    }
   };
+  const refresh = async ({signal} = {}) => {
+    try {
+      client ||= await getClient();
+      const payload = await readWithDeadline(() => client.morningBrief({signal}), {signal});
+      if (disposed || signal?.aborted) return;
+      if (!validBrief(payload)) throw new Error('Invalid brief');
+      if (sponsor !== payload.sponsor || windowDay !== localDay(now())) {
+        clear(); sponsor = payload.sponsor; preferences = briefPreferences(storage,sponsor); windowDay = localDay(now());
+        const currentDay = localDay(now());
+        if (preferences.value.day === currentDay && Number.isFinite(Date.parse(preferences.value.since))) since = preferences.value.since;
+        else if (Number.isFinite(Date.parse(preferences.value.lastShownAt))) since = preferences.value.lastShownAt;
+        else { const previous = new Date(now()); previous.setDate(previous.getDate()-1); previous.setHours(17,0,0,0); since = previous.toISOString(); }
+      }
+      let caughtUp = false;
+      try {
+        for (let page=0; page<4; page++) {
+          const changes = await readWithDeadline(() => client.getChanges(cursor,{signal,since}),{signal});
+          if (!Array.isArray(changes?.events)) throw new Error('Invalid changes');
+          if (disposed || signal?.aborted) return;
+          const ids = new Set(events.map(event => event.id));
+          events = [...events,...changes.events.filter(event => !ids.has(event.id))].filter(event => Date.parse(event.recorded_at) >= Date.parse(since));
+          cursor = changes.cursor ?? cursor;
+          // An empty page establishes completion for this refresh only. A
+          // previous poll's completion says nothing about new oldest-first pages.
+          if (changes.events.length === 0) { caughtUp = true; break; }
+        }
+      } catch (error) {
+        if ([401,403].includes(error.status)) throw error;
+        // Ordinary read failures retain supported priorities, with coverage missing.
+      }
+      if (disposed || signal?.aborted) return;
+      const next = morningBriefView(payload,{ now:now(),since,events,caughtUp });
+      if (view?.spoken !== next.spoken) stop();
+      view = next; render();
+      if (dialog.open && preferences.value.day !== localDay(now())) remember();
+      if (selected) {
+        // Removed or reassigned records leave the popup immediately.
+        const source = payload.sections[selected.kind === 'deal' ? 'deals' : selected.kind === 'action' ? 'today' : 'loops'];
+        const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === selected.id && (selected.kind !== 'action' || row.item_kind === 'next_action'));
+        if (admitted) await showRecord(selected.kind === 'action' ? {...selected,action:admitted} : selected,{background:true}); else back();
+      }
+      if (automatic && preferences.value.day !== localDay(now()) && !root.querySelector('dialog[open]')) open();
+    } catch { if (!disposed) clear(); }
+  };
+  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:stop,intervalMs });
+  control.onclick = () => { open(); auto.refresh(); };
+  $('morningClose').onclick = close;
+  dialog.addEventListener('close', () => { stop(); ++detailEpoch; selected = null; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
+  $('morningBack').onclick = back;
+  $('morningRefresh').onclick = () => auto.refresh();
+  $('morningContent').onclick = event => { const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
+  $('morningSpeech').onclick = () => { preferences?.save({speech:preferences.value.speech !== true}); stop(); controls(); };
+  $('morningListen').onclick = () => {
+    if (speaking) { stop(); return; }
+    if ($('morningListen').disabled) return;
+    const utterance = new win.SpeechSynthesisUtterance(view.spoken);
+    const epoch = ++speechEpoch;
+    utterance.rate = 1; utterance.onend = utterance.onerror = () => { if (epoch === speechEpoch) stop(); };
+    speaking = true; $('morningListen').textContent = '■'; $('morningListen').setAttribute('aria-label','Stop morning brief');
+    win.speechSynthesis.speak(utterance);
+  };
+  const hidden = () => { if (root.visibilityState === 'hidden') stop(); };
+  root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { dispose: () => { disposed = true; pendingSpeech = false; auto.dispose(); placement.disconnect(); synth?.cancel(); for (const type of ['pointerdown', 'keydown']) root.removeEventListener(type, engage, { capture:true }); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; stop(); ++detailEpoch; auto.dispose(); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }

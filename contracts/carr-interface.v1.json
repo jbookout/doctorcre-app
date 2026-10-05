@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.42.0",
+  "version": "1.43.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "993f6e630aca20175b92a0475b2dda3dd51bdba9"
@@ -62,6 +62,7 @@
     "list-progress-boards",
     "loop-board",
     "loop-headers",
+    "morning-brief",
     "new-deal",
     "notification-feed",
     "patch-deal-field",
@@ -595,5 +596,27 @@
       "lane",
       "outcome"
     ]
+  },
+  "morning_brief": {
+    "version": "1.0.0",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "6c346181d75fd54cef4f1d29e1341b8536fbaf5f"
+    },
+    "read": "morning-brief",
+    "arguments": {},
+    "audience": "authenticated sponsor; no caller-selected audience",
+    "sections_consumed": [
+      "today",
+      "deals",
+      "loops"
+    ],
+    "section_states": [
+      "ready",
+      "empty",
+      "unavailable"
+    ],
+    "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
+    "content_storage": "memory only"
   }
 }

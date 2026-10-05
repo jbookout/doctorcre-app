@@ -50,13 +50,13 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   await page.locator('#selfAvatar').click(); await page.getByText('Profile', {exact:true}).click();
   assert.ok((await page.locator('.app-shell-profile').boundingBox()).width > 900);
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
-  assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
+  assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
   await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click(); await page.waitForURL('**/auth/login');
-  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
+  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
 });
 
 test('desktop and phone navigation, account and Call mode work with reduced motion', async t => {
-  await mkdir(new URL('test-artifacts/w1b/regression/', root), { recursive: true });
+  await mkdir(new URL('out/test-artifacts/w1b/regression/', root), { recursive: true });
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors, calls } = await open(t, { width, minimal: true, reducedMotion: 'reduce' });
     assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), primary);
@@ -69,7 +69,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     await page.keyboard.press('Escape');
     await page.getByLabel('Call mode', {exact:true}).click(); await page.waitForFunction(() => document.querySelector('#callModeDialog')?.open);
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
-    assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
+    assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
     const box = await page.locator('#callModeDialog').boundingBox(); assert.ok(box.width >= Math.min(900, width - 40));
     await page.locator('#callModeDialog #docPresence').waitFor();
     await page.locator('#callModeClose').scrollIntoViewIfNeeded();
@@ -95,7 +95,7 @@ test('all authenticated pages have global controls and fit desktop and phone', a
       assert.equal(await page.locator('[data-pref="density"], [data-pref="motion"]').count(),0,path);
       const layout = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, textOverflow: [...document.querySelectorAll("body *")].flatMap(e => [...e.childNodes].filter(n => n.nodeType === 3).map(n => { const r = document.createRange(); r.selectNodeContents(n); return { text:n.textContent, right:r.getBoundingClientRect().right, id:e.id, class:e.className }; })).filter(n=>n.right>innerWidth+1), offenders: [...document.querySelectorAll("body *")].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => ({ id: e.id, class: e.className, right: e.getBoundingClientRect().right })).slice(0,8) }));
       assert.ok(layout.scroll <= layout.width, `${path} ${width}px overflow: ${JSON.stringify(layout)}`);
-      if (path === '/') { assert.equal(await page.locator('[href="/tasks"]').count(),0); await page.screenshot({path:new URL(`test-artifacts/w1b/regression/${width === 1440 ? 'desktop' : 'phone'}.png`,root).pathname,fullPage:true}); await page.locator('#selfAvatar').click(); await page.screenshot({path:new URL(`test-artifacts/w1b/regression/${width === 1440 ? 'desktop' : 'phone'}-account.png`,root).pathname,fullPage:true}); await page.locator('#selfAvatar').click(); }
+      if (path === '/') { assert.equal(await page.locator('[href="/tasks"]').count(),0); await page.screenshot({path:new URL(`out/test-artifacts/w1b/regression/${width === 1440 ? 'desktop' : 'phone'}.png`,root).pathname,fullPage:true}); await page.locator('#selfAvatar').click(); await page.screenshot({path:new URL(`out/test-artifacts/w1b/regression/${width === 1440 ? 'desktop' : 'phone'}-account.png`,root).pathname,fullPage:true}); await page.locator('#selfAvatar').click(); }
     }
   }
   assert.deepEqual(errors, []);

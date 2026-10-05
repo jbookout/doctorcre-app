@@ -39,6 +39,25 @@ for (const {width,motion,id} of continuityCases) test(`product continuity ${widt
   }
 });
 
+test('continuity waits for a queued outer-dialog close and focus restoration', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  if(process.env.BROWSER_PROOF_BINDING) await assertServedBuild(server.origin,JSON.parse(process.env.BROWSER_PROOF_BINDING));
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({viewport:{width:390,height:960},reducedMotion:'reduce'});
+  // Deliver the close on a later browser task, as on a busy runner. The
+  // oracle must read the completed close, not the return from input delivery.
+  await page.addInitScript(() => {
+    document.addEventListener('click', event => {
+      const button = event.target.closest('#panelClose');
+      if (!button || button.dataset.queuedClose) return;
+      event.stopImmediatePropagation();
+      button.dataset.queuedClose = 'true';
+      setTimeout(() => button.click(), 100);
+    }, true);
+  });
+  await exerciseContinuity(page, server.origin);
+});
+
 test('a dropped storage write shows saved but the independent reload oracle fails',async t=>{
   const server=await fixtureServer();t.after(()=>server.close());
   if(process.env.BROWSER_PROOF_BINDING) await assertServedBuild(server.origin,JSON.parse(process.env.BROWSER_PROOF_BINDING));

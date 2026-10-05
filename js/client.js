@@ -1,11 +1,17 @@
 /**
  * Deal Room client interface (WO-1 contract).
  *
+ * `morningBrief({signal})` returns MorningBriefResponse without audience arguments.
  * Both FixtureClient and LiveClient implement this shape. The fixture adapter
  * is in-memory; the live adapter uses authenticated same-origin CARR routes.
  *
  * @typedef {'joe'|'dell'|string} Actor
  * @typedef {'phase'|'owner'|'attention'|'next_date'|'next_step'|'operating_state'} DealField
+ *
+ * Morning brief: CARR derives sponsor from the authenticated session. Each
+ * section independently reports ready/empty/unavailable. Browser preferences
+ * contain only day/cutoff/speech; brief contents are never cached on disk.
+ * @typedef {{state:string,sponsor:string,sections:Object}} MorningBriefResponse
  *
  * @typedef {Object} PipelineEvent
  * @property {string} id

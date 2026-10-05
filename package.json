@@ -14,6 +14,7 @@
     "deployment:check:staging": "wrangler versions upload --env staging --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",
     "deployment:check:production": "wrangler versions upload --env \"\" --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",
     "dev:staging": "npm run build && wrangler dev --env staging",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "release:staging": "node scripts/release-staging.mjs",
     "rollback:staging": "node scripts/rollback-staging.mjs",
     "release:production": "node scripts/release-production.mjs",

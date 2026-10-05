@@ -34,7 +34,7 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       else if(name==='today-triage') body=await fixture.todayTriage();
       else if(name==='get-deal-room') body=await fixture.getDeal(args.deal || args.deal_id);
       else if(name==='deal-room-changes') body=await fixture.getChanges(args.cursor);
-      else { if(!/^(read-|list-|get-|notification-|correspondence-)/.test(name)) writes.push(name); body={ok:true}; }
+      else { if(!/^(morning-brief$|read-|list-|get-|notification-|correspondence-)/.test(name)) writes.push(name); body={ok:true}; }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{type:'text',text:JSON.stringify(body)}]}})});
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release') return route.fulfill({contentType:'application/json',body:'{}'});
@@ -62,7 +62,6 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
 
 test('Leads drag and keyboard moves review evidence before using the same stage command',async t=>{
  const{page,goto,writes,errors}=await open(t,{motion:'reduce'});await goto('/leads');
- await page.waitForFunction(()=>document.querySelector('#docBrief')?.dataset.state==='ready');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
  // Wait for the entrance animation and expose both endpoints before mouse-down.
@@ -156,11 +155,11 @@ test('Today clears unavailable data and recovers automatically after a failed re
 });
 
 test('Home, Leads and Local Deals fit desktop and phone; capture the six review renders',async t=>{
- await mkdir(new URL('test-artifacts/w1b/',root),{recursive:true});
+ await mkdir(new URL('out/test-artifacts/w1b/',root),{recursive:true});
  const{page,goto,errors}=await open(t);
  for(const width of[1440,390]){await page.setViewportSize({width,height:960});for(const[name,path]of[['home','/'],['leads','/leads'],['local-deals','/deals?view=board']]){
   await goto(path);if(name==='leads')await page.waitForSelector('.lead-card');if(name==='local-deals')await page.waitForSelector('.kanban-card');
-  await fits(page,`${name} ${width}`);await page.screenshot({animations:'disabled',path:new URL(`test-artifacts/w1b/${name}-${width}.png`,root).pathname});
+  await fits(page,`${name} ${width}`);await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/w1b/${name}-${width}.png`,root).pathname});
  }}assert.deepEqual(errors,[]);
 });
 
@@ -207,7 +206,7 @@ test('R8 page environment capture and freshness feedback stays visible in the st
   assert.equal(await page.locator('#deploymentBadge').isVisible(),true);assert.equal(await page.locator('#syncStatus').isVisible(),true);
   await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture active';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
   const badge=await page.locator('#deploymentBadge').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(badge.y>=bar.y && badge.y+badge.height<=bar.y+bar.height);
-  await page.screenshot({animations:'disabled',path:new URL(`test-artifacts/w1b/environment-${width}.png`,root).pathname});
+  await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/w1b/environment-${width}.png`,root).pathname});
   await goto('/');assert.equal(await page.locator('#observedAt').isVisible(),true);
  }
  await page.route('**/mcp',route=>route.request().postDataJSON().params.name==='deal-room-board'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
@@ -270,8 +269,8 @@ test('PR129 #11 light theme pairs popup and filter text with light surfaces',asy
  const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
  for(const field of fields)assert.ok((Math.max(luminance(field.background),luminance(field.text))+.05)/(Math.min(luminance(field.background),luminance(field.text))+.05)>=4.5,JSON.stringify(field));
  const summaryColor=await page.locator('#recordPanel summary').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(pair.background)+.05)/(luminance(summaryColor)+.05)>=4.5,summaryColor);
- await page.screenshot({animations:'disabled',path:new URL('test-artifacts/w1b/light-detail.png',root).pathname});
- await page.setViewportSize({width:390,height:960});await fits(page,'light detail phone');await page.screenshot({animations:'disabled',path:new URL('test-artifacts/w1b/light-detail-390.png',root).pathname});
+ await page.screenshot({animations:'disabled',path:new URL('out/test-artifacts/w1b/light-detail.png',root).pathname});
+ await page.setViewportSize({width:390,height:960});await fits(page,'light detail phone');await page.screenshot({animations:'disabled',path:new URL('out/test-artifacts/w1b/light-detail-390.png',root).pathname});
 });
 
 for(const width of [1440,390]) test(`PR129 #3 sync failure is visibly distinct from shared connection health at ${width}`,async t=>{

@@ -49,7 +49,7 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
  }
  }
  assert.deepEqual(errors,[]);
- assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
+ assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|morning-brief|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
 });
 
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
@@ -61,10 +61,10 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  assert.equal(await page.getByRole('button',{name:'Deal outlook',exact:true}).count(),1);
  assert.ok(await page.locator('[data-jev-deal]').evaluate(n=>n.getBoundingClientRect().height)>=44);
  assert.doesNotMatch(await page.locator('#recordPanel').innerText(),/Jev|Read this deal|lint|leak check/);
- await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
- await page.screenshot({path:new URL('test-artifacts/w8/record-presence-desktop.png',root).pathname,animations:'disabled'});
+ await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
+ await page.screenshot({path:new URL('out/test-artifacts/w8/record-presence-desktop.png',root).pathname,animations:'disabled'});
  await page.setViewportSize({width:390,height:844});
- await page.screenshot({path:new URL('test-artifacts/w8/record-presence-phone.png',root).pathname,animations:'disabled'});
+ await page.screenshot({path:new URL('out/test-artifacts/w8/record-presence-phone.png',root).pathname,animations:'disabled'});
  const persistent=await page.locator('#recordPanel').evaluate(dialog=>{
   dialog.scrollTop=500;
   const presence=dialog.querySelector('#docPresence').getBoundingClientRect();
@@ -92,10 +92,10 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
- await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
- await page.screenshot({path:new URL('test-artifacts/w8/staged-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
+ await page.screenshot({path:new URL('out/test-artifacts/w8/staged-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.setViewportSize({width:390,height:844});
- await page.screenshot({path:new URL('test-artifacts/w8/staged-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await page.screenshot({path:new URL('out/test-artifacts/w8/staged-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.setViewportSize({width:1440,height:960});
  await page.locator('[data-doc-approve]').click();await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Discussion approved');
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,1);
@@ -103,14 +103,14 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  assert.equal(await page.locator('[data-doc-approve]').count(),0);
  assert.ok(await page.locator('#docDetail').evaluate(n=>n.getBoundingClientRect().width)>900);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- await mkdir(new URL('test-artifacts/w8/',root),{recursive:true});
- await page.screenshot({path:new URL('test-artifacts/w8/doc-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
- await page.keyboard.press('Escape');await page.screenshot({path:new URL('test-artifacts/w8/presence-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
+ await page.screenshot({path:new URL('out/test-artifacts/w8/doc-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await page.keyboard.press('Escape');await page.screenshot({path:new URL('out/test-artifacts/w8/presence-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.setViewportSize({width:390,height:844});await page.locator('#docOpen').click();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
- await page.screenshot({path:new URL('test-artifacts/w8/doc-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
- await page.keyboard.press('Escape');await page.screenshot({path:new URL('test-artifacts/w8/presence-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await page.screenshot({path:new URL('out/test-artifacts/w8/doc-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
+ await page.keyboard.press('Escape');await page.screenshot({path:new URL('out/test-artifacts/w8/presence-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await page.locator('.doc-presence .doc-orb').evaluate(n=>getComputedStyle(n).animationName),'none');
  await page.locator('#docOpen').focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');
@@ -360,7 +360,8 @@ test('R13/R18 incomplete conversation reports unknown recent activity in the ans
  await goto('/doc-chats?mode=live&id='+id);
  await page.waitForFunction(()=> {const c=window.docContext?.snapshot();return c?.ready&&c.active?.activityComplete===false;});
  await page.locator('#docOpen').click();
- assert.match(await page.locator('#docActivity').innerText(),/Recent activity unavailable/i);
+ assert.equal(await page.locator('#docActivity').innerText(),'Recent activity unavailable.');
+ assert.doesNotMatch(await page.locator('#docActivity').innerText(),/read|source|incomplete/i);
  assert.equal(await page.locator('#docActivity article').count(),0);
  const answer=await page.evaluate(async id=>{
   const c=(await import('/js/doc-context.js')).pageDocContext;
@@ -425,11 +426,11 @@ for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11
   assert.equal(await page.locator('#docDetail').evaluate(n=>getComputedStyle(n).animationName),'none');
   assert.ok(await page.locator('#docDetail').evaluate(n=>n.getBoundingClientRect().width<=innerWidth));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  await mkdir(new URL('test-artifacts/w11/',root),{recursive:true});
-  await page.screenshot({path:new URL(`test-artifacts/w11/${name}-${width}.png`,root).pathname,animations:'disabled'});
+  await mkdir(new URL('out/test-artifacts/w11/',root),{recursive:true});
+  await page.screenshot({path:new URL(`out/test-artifacts/w11/${name}-${width}.png`,root).pathname,animations:'disabled'});
   await page.locator('#docCommandRefresh').click();assert.equal(await page.locator('#docCommandInput').inputValue(),'Demo');
   assert.deepEqual(errors,[]);
-  assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
+  assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|morning-brief|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
  });
 });
 
