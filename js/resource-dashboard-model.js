@@ -54,28 +54,3 @@ export function projectResourceDashboard(payload) {
     collectorAbsentCount: providers.filter((row) => row.state === "collector_absent").length,
   };
 }
-
-export function resourceRoomPhase(corePhase, resourceRead) {
-  if (corePhase === "no_access" || corePhase === "loading") return corePhase;
-  if (resourceRead?.state === "pending") return corePhase === "ready" ? "loading" : corePhase;
-  const resourceAnswered = resourceRead?.state === "read"
-    && projectResourceDashboard(resourceRead.payload).schema !== null;
-  if (resourceAnswered) return corePhase === "offline" ? "partial" : corePhase;
-  return corePhase === "ready" ? "partial" : corePhase;
-}
-
-// Each slot is named for the fact the server supplied. An empty slot says
-// unknown, including when another slot happens to contain zero.
-export function resourceFacts(row) {
-  const shown = (value) => value === null || value === undefined ? "unknown" : String(value);
-  return [
-    { key: "quantity", label: "Measured use", value: row.quantity === null ? "unknown" : `${row.quantity}${row.quantity_unit ? ` ${row.quantity_unit}` : ""}` },
-    { key: "allowance", label: "Allowance", value: shown(row.allowance) },
-    { key: "policy", label: "Policy limits", value: row.policy || "unknown" },
-    { key: "estimate", label: "Estimate", value: shown(row.estimate) },
-    { key: "charge", label: "Charge", value: shown(row.charge) },
-    { key: "measured_capacity", label: "Measured capacity", value: row.measured_capacity || "unknown" },
-    { key: "configured_capacity", label: "Configured capacity", value: row.configured_capacity || "unknown" },
-    { key: "model_route", label: "Model route", value: row.model_route || "unknown" },
-  ];
-}

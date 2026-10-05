@@ -2,36 +2,66 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review, closed]
   push:
     branches: [main]
+
+concurrency:
+  # PR validation supersedes by workflow + PR. Non-PR verdicts are independent:
+  # sharing a non-cancelling group would still replace older pending runs.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   test:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: doctorcre-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+          path: doctorcre-app
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
-      - name: Check changed files for identifying data
-        env:
-          PRIVACY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [ -n "$PRIVACY_BASE" ] && [ "$PRIVACY_BASE" != "0000000000000000000000000000000000000000" ]; then
-            npm run privacy:check -- --base "$PRIVACY_BASE"
-          else
-            npm run privacy:check
-          fi
+          cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - if: github.event_name == 'pull_request'
+        run: node scripts/check-pr-description.mjs
+      - id: producer
+        name: Read the CARR runtime revision from the consumer contract
+        run: >-
+          node -e 'const fs = require("node:fs"); const { producer } = JSON.parse(fs.readFileSync("contracts/carr-interface.v1.json", "utf8")); if (producer.repository !== "jbookout/carr-system" || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error("Invalid CARR runtime pin"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + producer.source_commit + "\n");'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: jbookout/carr-system
+          ref: ${{ steps.producer.outputs.commit }}
+          path: carr-producer
+          fetch-depth: 0
+          persist-credentials: false
+      - run: npm run slices:check
+      - run: node --test test/property-producer.test.mjs
+        name: Verify the exact CARR runtime interface
+        env:
+          CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
+      - run: npm run privacy:check
+        env:
+          DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
       - run: npm run check
+      - run: npx playwright install --with-deps chromium webkit
+      # PRs test the merge candidate under the strict required `test` context.
+      # Main retains build/input checks; tag releases still run the full suite.
       - run: npm test
+        if: github.event_name == 'pull_request'
+      - run: node --test test/artifact.test.mjs test/ci-workflows.test.mjs
+        if: github.event_name == 'push'
       - run: npm run build
       - run: npm run artifact:verify

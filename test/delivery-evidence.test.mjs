@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { JSDOM } from "jsdom";
 
 import {
   NO_PORTFOLIO_REASON, STAGES, STALE_REASON, availableActions, deliveryStages, dispositionArgs,
@@ -10,7 +11,7 @@ import {
 } from "../js/delivery-evidence-model.js";
 import { dispositionState } from "../js/work-inventory-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
-import { createCommandState, performCommand } from "../js/command-feedback.mjs";
+import { performCommand } from "../js/command-feedback.mjs";
 import { uuidv4 } from "../js/uuid.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -90,26 +91,26 @@ test("a null count_total renders unknown, never 0 and never a percentage", () =>
   assert.equal(renderCount(0, known), "0 of 12 (0%)");
 });
 
-test("the three CR-AC examples each render a non-operational token, never complete", () => {
+test("source closure examples cannot prove downstream delivery", () => {
   // built-unmerged: every slice verified, closure still unresolved.
   const built = deliveryStages(passport());
   assert.equal(stageOf(built, "source_verified").state, "complete");
   assert.equal(stageOf(built, "merged").state, "unknown");
   assert.notEqual(stageOf(built, "merged").state, "complete");
 
-  // merged-unactivated: the work facet is complete, release is not.
+  // A completed work facet proves source closure, not a merge.
   const merged = deliveryStages(passport({ closure: { work: facet("complete", "demo-merge") } }));
-  assert.equal(stageOf(merged, "merged").state, "complete");
-  assert.equal(stageOf(merged, "merged").evidence_ref, "demo-merge");
+  assert.equal(stageOf(merged, "merged").state, "unknown");
+  assert.equal(stageOf(merged, "merged").evidence_ref, null);
   assert.equal(stageOf(merged, "activated").state, "unknown");
   assert.notEqual(stageOf(merged, "activated").state, "complete");
 
-  // active-unproven: closure complete and released, consumer proof still open.
+  // Source closure release also cannot prove product activation.
   const active = deliveryStages(passport({
     closure_state: "complete",
     closure: { work: facet("complete", "demo-merge"), release: facet("complete", "demo-release") },
   }));
-  assert.equal(stageOf(active, "activated").state, "complete");
+  assert.equal(stageOf(active, "activated").state, "unknown");
   assert.equal(stageOf(active, "consumer_proven").state, "unknown");
   assert.notEqual(stageOf(active, "consumer_proven").state, "complete");
 
@@ -198,9 +199,9 @@ test("verb arguments are built from the fresh card and refuse a missing part in 
   assert.equal(validWorkRequestCard({ ok: true, human_ref: "WR-1", state: "captured", version: 0 }), false);
 });
 
-test("a refused write keeps the draft, a re-read moves the base, and the replay is confirmed", async () => {
+test("a refused write moves the base on re-read and the replay is confirmed", async () => {
   const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
-  let state = createCommandState();
+  let state = {};
   const operationKey = operationKeys.decline("WR-000904");
   const run = (args) => performCommand({
     operationKey, args,
@@ -213,9 +214,7 @@ test("a refused write keeps the draft, a re-read moves the base, and the replay 
   const stale = await run({ human_ref: "WR-000904", base_version: 99, exit_reason: draft });
   assert.equal(stale.status, "conflict");
   assert.equal(stale.reason, "version_conflict");
-  assert.match(refusalMessage("version_conflict", { ref: "WR-000904" }), /read again/);
-  // The draft is still the caller's; nothing in the kernel consumed or changed it.
-  assert.equal(draft, "captured twice by the intake");
+  assert.match(refusalMessage("version_conflict", { ref: "WR-000904" }), /changed elsewhere/);
 
   // Re-read, then decide from what the record holds now.
   const fresh = await fixture.workRequestCard({ work_request: "WR-000904" });
@@ -239,6 +238,104 @@ test("a refused write keeps the draft, a re-read moves the base, and the replay 
   assert.deepEqual(availableActions(after).filter((action) => action.available), []);
 });
 
+test("a refused disposition preserves the typed dialog draft through re-read", async (t) => {
+  const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
+  const dom = new JSDOM(await readFile(`${ROOT}/work-inventory.html`, "utf8"), {
+    url: "https://app.doctorcre.com/all-work",
+  });
+  const { window } = dom;
+  const document = window.document;
+  // jsdom has no native modal implementation; only supply that browser API.
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  const calls = [];
+  let serverVersion = 1;
+  const fetch = async (path, options = {}) => {
+    if (path.startsWith("/api/v1/work-inventory")) {
+      const kinds = ["work_request", "portfolio_node", "loop", "work_shape", "slice_plan", "governance_item"];
+      return Response.json({
+        viewer: "joe", tenant: "carr-internal", kinds, statuses: null, limit: 100, next_cursor: null,
+        items: [{ kind: "work_request", id: "WR-000904", version: "1", title: "Demo captured request",
+          status: "captured", source_ref: "ops.work_request", updated_at: "2026-09-01T00:00:00Z",
+          related: [], unlinked: true, open: null }],
+        coverage: kinds.map((kind) => ({ kind, source_ref: kind, state: "complete",
+          count_returned: kind === "work_request" ? 1 : 0, count_total: kind === "work_request" ? 1 : 0,
+          reason: null, excluded_other_tenant: 0, page_capped: false })),
+        census_complete: true,
+        source: { source: "work_inventory_census", source_ref: "synthetic-census",
+          observed_at: "2026-09-01T00:00:00Z", valid_until: "2026-09-01T00:01:00Z",
+          freshness: "fresh", correlation_id: "draft-retention", safe_explanation: "Synthetic census." },
+      });
+    }
+    assert.equal(path, "/mcp");
+    const rpc = JSON.parse(options.body);
+    const { name, arguments: args } = rpc.params;
+    calls.push({ name, args });
+    let payload;
+    let isError = false;
+    if (name === "work-request-card") payload = { ...await fixture.workRequestCard(args), version: serverVersion };
+    else if (name === "notification-feed") payload = await fixture.notificationFeed(args);
+    else if (name === "decline-work-request") {
+      // The synthetic server models a competing edit after the fresh read.
+      // The separate fixture test owns the version guard and replay contract.
+      serverVersion += 1;
+      payload = { error: "version_conflict", human_ref: args.human_ref,
+        resolution: "re-read the Work Request card" };
+      isError = true;
+    } else assert.fail(`Unexpected MCP operation: ${name}`);
+    return Response.json({ jsonrpc: "2.0", id: rpc.id,
+      result: { isError, content: [{ type: "text", text: JSON.stringify(payload) }] } });
+  };
+  const globals = { window, document, location: window.location, localStorage: window.localStorage,
+    navigator: window.navigator, HTMLElement: window.HTMLElement, fetch };
+  const prior = new Map(Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  t.after(() => {
+    window.close();
+    for (const [key, descriptor] of prior) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+  for (const [key, value] of Object.entries(globals)) {
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const until = async (condition, message) => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (condition()) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.fail(message);
+  };
+  // Import the untouched application entry and its real dependencies.
+  await import("../js/work-inventory.js");
+  await until(() => document.querySelector('[data-open-card="WR-000904"]'), "census must render the record");
+  document.querySelector('[data-open-card="WR-000904"]').click();
+  await until(() => document.querySelector('[data-action="decline"]'), "card must offer decline");
+  document.querySelector('[data-action="decline"]').click();
+  const dialog = document.querySelector("#dispositionDialog");
+  const input = document.querySelector("#dispositionReason");
+  const draft = "Captured twice. Keep my explanation & punctuation.";
+  input.value = draft;
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.equal(dialog.open, true);
+  assert.equal(input.value, draft);
+  document.querySelector("#dispositionForm").requestSubmit();
+  const refusal = document.querySelector("#dispositionRefusal");
+  await until(() => !refusal.hidden, "a version refusal must be visible");
+  assert.match(refusal.textContent, /Changed elsewhere/);
+  assert.equal(dialog.open, true, "refusal keeps the dialog open");
+  assert.equal(input.value, draft, "refusal must preserve the typed dialog draft");
+  const writes = calls.filter((call) => call.name === "decline-work-request");
+  assert.equal(writes.length, 1, "refusal must not retry the write");
+  assert.equal(writes[0].args.exit_reason, draft);
+  assert.equal(writes[0].args.base_version, 1);
+  document.querySelector("#dispositionReread").click();
+  await until(() => /now reads captured at version 2/.test(refusal.textContent), "re-read must show the competing version");
+  assert.equal(input.value, draft, "re-read must preserve the typed dialog draft");
+  assert.equal(dialog.open, true);
+  assert.equal(calls.filter((call) => call.name === "decline-work-request").length, 1);
+});
+
 test("the fixture carries the three delivery examples plus a stale plan, and refuses a miss", async () => {
   const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
   const stages = async (ref, portfolioRef = null) => {
@@ -248,9 +345,9 @@ test("the fixture carries the three delivery examples plus a stale plan, and ref
     return deliveryStages(held, portfolio);
   };
   assert.equal(stageOf(await stages("WR-000901"), "merged").state, "unknown");
-  assert.equal(stageOf(await stages("WR-000902"), "merged").state, "complete");
+  assert.equal(stageOf(await stages("WR-000902"), "merged").state, "unknown");
   assert.equal(stageOf(await stages("WR-000902"), "activated").state, "unknown");
-  assert.equal(stageOf(await stages("WR-000903"), "activated").state, "complete");
+  assert.equal(stageOf(await stages("WR-000903"), "activated").state, "unknown");
   assert.equal(stageOf(await stages("WR-000903"), "consumer_proven").state, "unknown");
   assert.ok((await stages("WR-000905", "PF-DEMO-1")).every((cell) => cell.state === "unknown"), "a stale plan proves nothing");
   assert.equal(stageOf(await stages("WR-000901", "PF-DEMO-1"), "approved").state, "complete");
@@ -276,8 +373,8 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // NO new page and NO new route: this slice lives on the surface that already
   // reads the census, at the route the census already owns.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.15.0", "the Control Room route moved this additive contract on");
-  assert.equal(carr.version, "1.34.0", "the current interface retains the delivery evidence verbs");
+  assert.equal(routes.version, "1.20.0", "the Control Room route moved this additive contract on");
+  assert.equal(carr.version, "1.43.0", "the current interface retains the delivery evidence verbs");
   for (const verb of ["engineering-passport", "read-portfolio", "work-request-card", "decline-work-request", "supersede-work-request", "set-work-shape-disposition"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }
@@ -287,15 +384,15 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   for (const word of ["combine", "shelve", "investigate", "finish shipping"]) {
     assert.doesNotMatch(html, new RegExp(`<button[^>]*>[^<]*${word}`, "i"), `${word} must not be a control`);
   }
-  assert.match(html, /No supported disposition command exists for combine, shelve, investigate or finish shipping\./);
-  assert.match(html, /Independent review is recorded by the reviewing seat, not from this page\./);
+  assert.doesNotMatch(html, /No supported disposition command exists/);
+  assert.doesNotMatch(html, /Independent review is recorded/);
 
   // Both popups are real dialog elements, and the dock is on the page.
   for (const id of ["evidenceDialog", "dispositionDialog", "receiptDock", "stageRows", "dispositionRows", "stageDenominatorLine"]) {
     assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
   }
   assert.equal((html.match(/<dialog /g) || []).length, 2);
-  assert.match(html, /Counts have a known denominator; N\/A carries a reason\./, "the prototype's caption travels with the table");
+  assert.doesNotMatch(html, /Counts have a known denominator/);
 
   // Titles only under a card title, and the 44px floor on every new control.
   assert.match(css, /#dispositionRows \.btn,\n\.dialog \.row-wrap \.btn \{ min-height: var\(--touch\); \}/);
@@ -320,7 +417,7 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   // The disposition row shows the census status before any card is read, and
   // marks it as the census's word rather than the card's.
   assert.match(js, /dispositionState\(item, card\)/);
-  assert.match(js, /from the census read/);
+  assert.doesNotMatch(js, /from the census read/);
 });
 
 test("a disposition row states what it knows, and says which read it came from", () => {

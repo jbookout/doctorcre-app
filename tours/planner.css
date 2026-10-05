@@ -1,0 +1,88 @@
+.planner-page{--ink-0:#05090f;background:radial-gradient(ellipse at 12% 0,#002f6c44,transparent 50%),radial-gradient(ellipse at 82% 28%,#f28a3910,transparent 40%),var(--ink-0)}
+.planner-page h1,.planner-page h2,.planner-page h3{font-family:var(--display);margin:0}
+.planner-header{display:flex;justify-content:space-between;align-items:center;padding:24px clamp(16px,2vw,32px) 20px}
+.planner-header h1{font-size:clamp(2.4rem,4vw,3.5rem);letter-spacing:-.035em}
+.freshness{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.75rem}
+.freshness button{border:0;background:transparent;font-size:1.4rem}
+.freshness.current::before{content:"";width:5px;height:5px;border-radius:50%;background:#7dd3fc;margin-right:8px;animation:status-breathe 3.6s ease-in-out infinite}
+.planner-page{--display:"Avenir Next Condensed","Arial Narrow",sans-serif}
+.planner-page .skip-link{top:-100px}.planner-page .skip-link:focus{top:12px}
+.planner-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(240px,.62fr);gap:18px;padding:0 clamp(16px,2vw,32px) 40px;width:100%;align-items:start}
+.planner-grid>.card{padding:22px;background:linear-gradient(145deg,#122139cc,#090e18e8);backdrop-filter:blur(16px);border:1px solid #7792b22a;position:relative;overflow:hidden;box-shadow:0 18px 55px #0005,inset 0 1px #c0d4e914;transition:transform .16s ease,border-color .16s ease;animation:planner-enter .4s ease both}
+.planner-grid>.card:hover{transform:translateY(-2px);border-color:#f28a3955}
+.plan-card::before,.space-card::before{content:"";height:2px;position:absolute;left:20px;right:20px;top:0;background:linear-gradient(90deg,#f28a39aa,transparent)}
+.widget-heading{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.widget-heading h2{font-size:1.6rem;flex:1;letter-spacing:-.02em}
+.widget-heading>button{border:0;background:transparent;font-size:1.5rem;padding:4px}
+.widget-icon{color:var(--orange);font-size:1.5rem;display:grid;place-items:center;width:40px;height:40px;border:1px solid #f28a392a;border-radius:12px;background:#f28a390a}
+.planner-page label{font-size:.75rem;color:#b4c1d1;margin-top:12px;font-weight:600}
+.planner-page input,.planner-page select,.planner-page textarea{background:#070c15b8;border-color:#6f8aa52c;font-size:.85rem;min-width:0}
+.form-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.planner-page textarea{min-height:72px}
+.drop-heading,.results-heading{display:flex;gap:12px;justify-content:space-between;align-items:center;margin-top:24px;margin-bottom:10px}
+.drop-heading h3,.results-heading h3,.library-card h3{font-size:1rem;letter-spacing:.025em}
+.pill{display:inline-flex;align-items:center;padding:5px 9px;border:1px solid #82b4e42b;border-radius:20px;font-size:.65rem;color:#a1b5cb;background:#12365c33;white-space:nowrap}
+.planner-page .packet-drop{position:relative;display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:9px;padding:20px 10px;border:1px dashed #7293b155;border-radius:12px;cursor:pointer;background:radial-gradient(ellipse at top,#002f6c22,transparent)}
+.packet-drop:focus-within,.packet-drop:hover,.packet-drop.dragging{border-color:var(--orange);background:#f28a3912}
+.packet-drop .upload-icon{color:var(--orange);font-size:1.8rem}
+.packet-drop strong{color:var(--text);font-size:.84rem;font-weight:500}
+.packet-drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.packet-drop #file-count{color:var(--muted);font-size:.7rem}
+.packet-files{list-style:none;padding:0;margin:8px 0;display:grid;gap:4px}
+.packet-files li{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid var(--line);font-size:.75rem}
+.packet-files span{overflow-wrap:anywhere;min-width:0}
+.packet-files button{background:transparent;border:0;font-size:1.2rem}
+.widget-actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.widget-actions button{flex:1;font-size:.8rem;min-width:140px}
+.form-message{color:#b9c9dc;font-size:.76rem;line-height:1.5;overflow-wrap:anywhere}
+.form-message:not(:empty){margin-top:12px}
+.capability-state{color:#a8b6c9;font-size:.7rem}
+.empty-options{display:grid;place-items:center;height:114px;border:1px solid #637b9625;border-radius:12px;background:#070d1733;color:#8094af}
+.empty-options h4{font-weight:500;font-size:.85rem}
+.library-filter{margin-bottom:26px}
+.library-scroll{max-height:275px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;margin:12px 0 26px;padding:2px 6px 2px 2px}
+.library-card .tour-button{display:flex;flex-direction:column;gap:7px;min-height:80px;padding:14px;border-radius:12px;transition:background .16s,transform .16s}
+.library-card .tour-button:hover{transform:translateX(2px);background:#f28a3910}
+.tour-button strong{font-size:.86rem;font-weight:600;overflow-wrap:anywhere}
+.tour-button span{font-size:.69rem;color:#97abc1;text-transform:capitalize}
+.empty-library{padding:14px 2px;color:#8295ae;font-size:.8rem}
+.planner-grid .territory-card{grid-column:1/-1;padding:20px 24px 16px;background:linear-gradient(155deg,#0d1e35aa,#080f1bbb)}
+.territory-heading{display:flex;align-items:center;justify-content:space-between}
+.territory-heading h2{font-size:1.3rem}
+.territory-caption{color:#7b96b5;font-size:.7rem;letter-spacing:.12em;text-transform:uppercase}
+.territory-map{display:block;width:100%;height:clamp(140px,19vw,230px);margin:0 auto}
+.territory-land{fill:url(#land-light);stroke:#7dd3fc33;stroke-width:1}
+.territory-state-line{fill:none;stroke:#89c2ea36;stroke-dasharray:3 6}
+.territory-map .territory-coast{stroke:#f28a3977;stroke-width:1.8;stroke-dasharray:4 20;animation:coast-flow 18s linear infinite}
+.map-market circle{fill:#f28a39;stroke:#ffc694;stroke-width:2}
+.map-market text{fill:#bdcce0;font:14px var(--body)}
+.map-state,.map-water{fill:#7297be;font:11px var(--body);letter-spacing:.15em}
+.map-water{fill:#668ba5;opacity:.7}
+.market-buttons{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.market-buttons button{font-size:.73rem;background:#15294355;transition:border-color .15s,background .15s}
+.market-buttons button[aria-pressed=true]{border-color:var(--orange);color:var(--orange);background:#f28a3914}
+.tour-dialog{width:min(1100px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 40px);padding:26px;border:1px solid #8db0d64c;border-radius:18px;background:#0b1422ed;backdrop-filter:blur(22px);color:var(--text);box-shadow:0 30px 120px #000b;overflow:auto;animation:planner-enter .22s ease}
+.tour-dialog::backdrop{background:#02070dc4;backdrop-filter:blur(6px)}
+.dialog-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+.dialog-heading h2{font-size:2rem}
+.dialog-heading button{font-size:1.5rem;background:transparent;border:0}
+.detail-summary{display:flex;gap:8px;margin-bottom:22px}
+.detail-stops{list-style:none;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;counter-reset:stops}
+.detail-stops li{counter-increment:stops;border:1px solid var(--line);border-radius:12px;padding:18px;display:grid;gap:8px;background:#15335133}
+.detail-stops li::before{content:counter(stops,upper-alpha);color:var(--orange);font-size:1.2rem}
+.detail-stops span,.detail-stops time{font-size:.8rem;color:var(--muted)}
+#detail-content{overflow-wrap:anywhere}#detail-content p{font-size:.87rem;line-height:1.6;color:#b5c5d9}
+#detail-content details{margin:16px 0 24px;border:1px solid var(--line);border-radius:10px;padding:12px}
+#detail-content summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:.85rem}
+.draft-facts{display:grid;grid-template-columns:150px 1fr 150px 1fr;gap:16px 12px;margin:22px 0;font-size:.85rem}
+.draft-facts dt{color:var(--muted)}.draft-facts dd{margin:0}
+@keyframes planner-enter{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:1100px){.planner-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.library-card{grid-column:1/-1}.library-scroll{max-height:210px}.draft-facts{grid-template-columns:150px 1fr}}
+@media(max-width:640px){.planner-grid{grid-template-columns:minmax(0,1fr);gap:14px}.planner-grid>.card{padding:18px}.planner-header{padding:18px 16px}.planner-header h1{font-size:2.5rem}.freshness{gap:0}.widget-heading h2{font-size:1.45rem}.form-pair{gap:10px}.drop-heading{flex-wrap:wrap}.territory-map{height:150px}.map-market text{font-size:21px}.map-state{font-size:18px}.market-buttons button{flex:1 1 42%}.tour-dialog{padding:18px;width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.detail-stops{grid-template-columns:minmax(0,1fr)}.draft-facts{grid-template-columns:100px 1fr;gap:12px}.dialog-heading h2{font-size:1.5rem}}
+@media(prefers-reduced-motion:reduce){.planner-page *, .planner-page *::before,.planner-page *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.planner-grid>.card:hover,.library-card .tour-button:hover{transform:none}}
+@media print{.planner-page{background:white}.planner-header,.library-card,.widget-actions,.market-buttons{display:none}.planner-grid{display:block}.planner-grid>.card{background:white;color:#14243a;break-inside:avoid}.tour-dialog{background:white;color:#14243a}}
+
+/* The shared regions determine workspace width, independent of the viewport. */
+.planner-page .app-layout-main { container-type:inline-size; }
+@container (max-width:1100px) { .planner-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .planner-grid>.library-card { grid-column:1/-1; } }
+@container (max-width:640px) { .planner-grid { grid-template-columns:minmax(0,1fr); } }

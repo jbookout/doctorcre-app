@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B01 — the business workspace: DOM wiring only.
 //
 // Two models decide everything this file paints. The canonical command-center
@@ -27,11 +28,11 @@
 // Calls has no read at all: its absence is literal markup, and nothing here
 // writes to it.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { mountSearch } from "./search.js";
 import { mountCharts } from "./charts.js";
 import { parseChartsAddress } from "./charts-model.js";
@@ -79,7 +80,7 @@ let draftViewer = null;
 let restoredDraftId = null;
 const draftBoardReadiness = createDraftBoardReadiness();
 const draftOperations = new Map();
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -146,13 +147,13 @@ function renderFreshness(payload) {
   const line = $("homeFreshness");
   if (!line) return;
   if (!payload) {
-    line.textContent = view.status === "unauthorized" ? "No verified read · your session has ended" : "No verified read";
+    line.textContent = view.status === "unauthorized" ? "Unavailable · your session has ended" : "Unavailable";
     line.setAttribute("data-freshness", "missing");
     return;
   }
   const freshness = displayedFreshness(payload.source);
   const clock = formatClock(payload.source.observed_at);
-  line.textContent = `As of ${clock || "an unreadable time"} · ${freshness}`;
+  line.textContent = updatedLabel(payload.source.observed_at);
   line.setAttribute("data-freshness", freshness);
 }
 
@@ -281,10 +282,6 @@ function setValue(id, value, format) {
   countTo(node, value, format);
 }
 
-function readCaption(read, detail) {
-  const clock = formatClock(read.readAt);
-  return `Read at ${clock || "an unreadable time"} · ${detail}`;
-}
 
 function railHtml(rail) {
   const dots = (count) => "<i></i>".repeat(Math.min(count, 4));
@@ -335,8 +332,8 @@ function renderThisWeek() {
   setOwnState("thisWeekState", week.rows.length ? null : "empty", "Nothing due this week");
   const caption = $("thisWeekCaption");
   if (caption) {
-    caption.textContent = readCaption(read, "critical dates for the next seven days, and follow-ups due today or overdue")
-      + (week.capped ? " · the read stopped at its row limit, so later dates may be missing" : "");
+    caption.textContent = updatedLabel(read.readAt)
+      + (week.capped ? " · More dates available" : "");
   }
 }
 
@@ -347,7 +344,7 @@ function renderWaiting() {
   if (waiting.state !== "read") {
     paintIfChanged($("waitingList"), "");
     setValue("waitingValue", null);
-    setOwnState("waitingState", waiting.state === "loading" ? "loading" : "offline", waiting.state === "loading" ? "Reading waiting work…" : unavailableCopy("waiting_on_others"));
+    setOwnState("waitingState", waiting.state === "loading" ? "loading" : "offline", waiting.state === "loading" ? "Loading work…" : unavailableCopy("waiting_on_others"));
     const caption = $("waitingCaption");
     if (caption) caption.textContent = "";
     return;
@@ -357,9 +354,9 @@ function renderWaiting() {
   setOwnState("waitingState", waiting.rows.length ? null : "empty", "Nothing waiting on a counterparty");
   const caption = $("waitingCaption");
   if (caption) {
-    caption.textContent = readCaption(read, "open work whose blocker is a named counterparty")
+    caption.textContent = updatedLabel(read.readAt)
       + (waiting.held ? ` · ${waiting.held} more ${waiting.held === 1 ? "is" : "are"} held jointly or by the system, on Tasks` : "")
-      + (waiting.capped ? " · the read stopped at its row limit, so some may be missing" : "");
+      + (waiting.capped ? " · More work available" : "");
   }
 }
 
@@ -403,10 +400,10 @@ function render() {
   const label = $("viewerLabel");
   if (label) label.textContent = payload ? viewerWorkspaceLabel(payload.viewer) : "Partner workspace";
 
-  if (phase === "loading") setStatus("refreshing", "Reading the command centre…");
+  if (phase === "loading") setStatus("refreshing", "Loading…");
   else if (unauthorized) setStatus("unknown", "Session ended");
-  else if (!verified) setStatus("urgent", "Command centre read unavailable");
-  else setStatus("healthy", `Read from the command centre · ${deploymentIdentity(client?.mode).detail}`);
+  else if (!verified) setStatus("urgent", "Updates unavailable.");
+  else setStatus("healthy", updatedLabel(payload.source.observed_at));
 
   renderFreshness(payload);
   renderNeedsAction(payload, verified);
@@ -416,7 +413,7 @@ function render() {
   renderTeamReview(payload, verified);
 
   if (unauthorized) announce("Sign in again to read the command centre. Nothing is shown from a session that has ended.");
-  else if (phase === "loading") announce("Reading the command centre…");
+  else if (phase === "loading") announce("Loading…");
   else if (!verified) announce(view.message || unavailableCopy("needs_action"));
   else announce(`${payload.needs_you_now.filter((item) => item.count > 0).length} flagged group(s) shown.`);
 }
@@ -431,14 +428,14 @@ async function load() {
     const payload = await client.commandCenter();
     if (!acceptsResponse(view.sequence, sequence)) return;
     if (!validWorkspacePayload(payload)) {
-      return settle({ status: "error", message: "The canonical read returned an unexpected shape, so no count is shown as current." }, sequence);
+      return settle({ status: "error", message: "Workspace temporarily unavailable." }, sequence);
     }
     settle({ status: "ready", payload }, sequence);
   } catch (error) {
     if (!acceptsResponse(view.sequence, sequence)) return;
     const status = Number(error?.status || 0);
     if (status === 401 || status === 403) return settle({ status: "unauthorized" }, sequence);
-    settle({ status: "error", message: "The workspace could not reach the canonical read. Nothing here has been inferred." }, sequence);
+    settle({ status: "error", message: "Temporarily unavailable" }, sequence);
   }
 }
 
@@ -474,8 +471,8 @@ async function loadBoardRecords(boardRead) {
   const verified = draftBoardReadiness.complete(sequence, board);
   view.boardStatus = verified ? "ready" : "error";
   if (readStatus) readStatus.textContent = verified
-    ? "Current record list verified. Quick add is ready."
-    : "Current record list could not be verified. Use Retry read before filing.";
+    ? ""
+    : "Updates unavailable. Draft retained.";
   const actor = verified ? board.actor : null;
   if (actor && actor !== draftViewer) {
       const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: actor });
@@ -613,9 +610,9 @@ function renderQuickAdd() {
   const question = $("quickAddQuestion");
   if (question) {
     question.textContent = view.boardStatus === "error"
-      ? "The current record list could not be verified. Retry read before filing, or keep this as a draft."
+      ? "Updates unavailable. Draft retained."
       : view.boardStatus === "loading"
-        ? "Checking the current record list. Keep this as a draft until it is ready."
+        ? "Updating…"
         : plan.args
           ? `${plan.summary} · files as ${plan.kind === "team_loop" ? "a team record" : "a personal record"}`
           : `Keep it as a draft, or answer: ${plan.questions.join(" ")}`;
@@ -709,7 +706,7 @@ function wire() {
       return;
     }
     if (!draftBoardReadiness.canFile(draftViewer, globalThis.navigator?.onLine !== false)) {
-      announce("The current record list has not been verified. Keep this entry as a draft and use Retry read if needed.");
+      announce("Updates unavailable. Draft retained.");
       return;
     }
     const current = renderQuickAdd();
@@ -763,14 +760,12 @@ function wire() {
 
 async function boot() {
   mountPrefs();
-  const doc = mountDocDock("Business home");
   const tabs = wireTabs("businessTabs");
   // Doc history is Doc's own history view. Doc owns that surface, so the tab
   // asks Doc for it and never renders a second copy of it here.
   const openDocHistory = (event) => {
     event?.preventDefault?.();
-    if (typeof doc?.openHistory === "function") doc.openHistory();
-    else doc?.open?.("Doc history");
+    window.location.href = "/doc-chats";
   };
   $("tabDocHistory")?.addEventListener("click", openDocHistory);
   $("mobileDocHistory")?.addEventListener("click", openDocHistory);
@@ -796,6 +791,7 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(client);
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await readSections(); await loadBoardRecords(readBoard()); } });
   // V5-UX-B05 — the Search tab. It is a tab on an already-admitted path, so no
   // route moves and no sign-in gate entry is needed: its address is a query
   // (?q= and ?kinds=) on /business, which the gate does not inspect. The tab is

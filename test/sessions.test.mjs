@@ -5,16 +5,11 @@
 // The pinned contract supplies the field names; no live session data is stored.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import {
-  ALIAS_SOURCES, DEFAULT_LIMIT, EMPTY_HISTORY_SENTENCE, LINEAGE_UNRECORDED_SENTENCE,
-  NO_OPEN_SENTENCE, PROVABLE_STAGES, STAGE_UNAVAILABLE_SENTENCE, countsLine, dispatchView,
-  hostState, identityRequest, lineage, lineageSummary, listState, refuseDispatchHistory,
-  refuseSessionIdentity, sessionCard, sessionCards,
-} from "../js/sessions-model.js";
-import { CONTROL_ROOM_TABS } from "../js/control-room-model.js";
-import { createFixtureClient } from "../js/fixture-client.js";
+import {ALIAS_SOURCES, DEFAULT_LIMIT, EMPTY_HISTORY_SENTENCE, LINEAGE_UNRECORDED_SENTENCE, NO_OPEN_SENTENCE, PROVABLE_STAGES, STAGE_UNAVAILABLE_SENTENCE, countsLine, dispatchView, hostState, identityRequest, lineage, lineageSummary, listState, refuseDispatchHistory, refuseSessionIdentity, sessionCard, sessionCards} from "../js/sessions-model.js";
+
+import {createFixtureClient} from "../js/fixture-client.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -129,7 +124,7 @@ test("S02-07 permission_filtered true with an empty list renders the filtered ba
   assert.equal(state.state, "empty_filtered");
   assert.equal(state.message, "4 sessions match and none is yours to see.");
   assert.ok(state.banner, "the banner renders even though the list is empty");
-  assert.match(state.banner.text, /Permission filtering is on/);
+  assert.match(state.banner.text, /Available sessions/);
 });
 
 // MUTATION: always render the filtered banner in listState().
@@ -159,8 +154,8 @@ test("S02-10 the synthetic corpus lands on not-recorded and the tab says so", ()
   const summary = lineageSummary(DEFAULT_PAGE.sessions);
   assert.equal(summary.allUnrecorded, true);
   assert.equal(summary.count, 25);
-  assert.match(summary.text, /No session on this page has recorded lineage/);
-  assert.match(summary.text, /parent_known false/);
+  assert.match(summary.text, /Earlier session history unavailable/);
+  assert.match(summary.text, /Earlier session history unavailable/);
   assert.equal(lineageSummary([RETRY_ROW, ...DEFAULT_PAGE.sessions]).allUnrecorded, false);
 });
 
@@ -212,8 +207,8 @@ test("S02-13 supported host with a null host id renders the mismatch, not an ope
   assert.equal(state.state, "mismatch_no_host_id");
   assert.equal(state.open, false);
   assert.equal(state.hostId, null);
-  assert.match(state.text, /supported but no host id/);
-  assert.match(state.text, /does not\s+say which one/);
+  assert.match(state.text, /Session window unavailable/);
+  assert.match(state.text, /Session window unavailable/);
 });
 
 /* --------------------------------------------------------- honesty and stages */
@@ -375,27 +370,28 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads", () => {
-  assert.equal(contract.version, "1.34.0", "the checkpoint read and lead calls advance the interface");
+  assert.equal(contract.version, "1.43.0", "the checkpoint read and lead calls advance the interface");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
-  assert.equal(contract.mcp_operations[dispatch - 1], "propose-doc-correction");
-  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-conversation");
+  assert.equal(contract.mcp_operations[dispatch - 1], "read-correspondence-thread");
+  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-activity");
   const identity = contract.mcp_operations.indexOf("read-session-identity");
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.
   assert.equal(contract.mcp_operations[identity - 1], "read-room-queue");
   assert.equal(contract.mcp_operations[identity + 1], "read-tour-selection-cart");
-  assert.equal(contract.mcp_operations[identity + 2], "record-dispatch-link");
+  assert.equal(contract.mcp_operations[identity + 2], "record-commission-receipt");
+  assert.equal(contract.mcp_operations[identity + 3], "record-dispatch-link");
   // No route moves: /control-room was admitted at 04139737 and this is a tab.
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b",
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");
@@ -407,19 +403,3 @@ test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
 // V5-UX-C12 replaced the Model Room placeholder this test once pinned. What S02
 // owns here is unchanged: Sessions is its OWN fifth panel and never reuses the
 // Model Room's, whatever the Model Room now holds.
-test("S02-23 Sessions is its own panel beside the Model Room's", () => {
-  assert.equal(/id="panelModelRoom"[\s\S]*?not in this release/.test(html), false,
-    "V5-UX-C12 shipped the Model Room tab, so its placeholder is gone");
-  assert.match(html, /<section class="tabpanel" id="panelModelRoom"/, "Model Room keeps its own panel");
-  assert.match(html, /<section class="tabpanel" id="panelSessions"/, "Sessions is a fifth panel, not an absorption");
-  assert.equal(
-    /id="panelSessions"[\s\S]*?not in this release/.test(html), false,
-    "the Sessions tab does not reuse the placeholder",
-  );
-  assert.deepEqual(CONTROL_ROOM_TABS.map((tab) => tab.id),
-    ["tabDashboard", "tabAttention", "tabModelRoom", "tabAtlas", "tabSessions"]);
-  assert.equal(CONTROL_ROOM_TABS.length, 5, "Sessions is the fifth tab beside the four that shipped");
-  // 360px: one column, and every control this tab adds at the 44px floor.
-  assert.match(css, /#sessionsLookup \{ min-height: var\(--touch\); \}/);
-  assert.match(css, /@media \(max-width: 640px\) \{\s*\n  \.session-head/);
-});

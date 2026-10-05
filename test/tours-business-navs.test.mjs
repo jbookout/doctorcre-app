@@ -12,7 +12,7 @@ const PAGES = [
   "business.html",
   "index.html",
   "leads.html",
-  "queue.html",
+  "progress-work.html",
   "system-work.html",
   "tasks.html",
   "work-inventory.html",
@@ -28,13 +28,13 @@ for (const page of PAGES) {
   test(`${page} nav links Tours`, () => {
     const html = readFileSync(new URL(`../${page}`, import.meta.url), "utf8");
     assert.match(html, /id="appShell"/, `${page} mounts the common navigation`);
-    assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">Tours<\/a>/);
+    assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">[\s\S]*?Tours[\s\S]*?<\/a>/);
   });
 }
 
-test("Home Tours card carries no sentence under its title", () => {
+test("Home removes the repeated Tours action tile; shared navigation still offers Tours", () => {
   const html = readFileSync(new URL("../workspace.html", import.meta.url), "utf8");
   const card = /<a class="module-card[^"]*" href="\/tours">[\s\S]*?<\/a>/.exec(html)?.[0] || "";
-  assert.notEqual(card, "", "Home has a Tours module card");
+  assert.equal(card, "", "Home has no repeated Tours module card");
   assert.doesNotMatch(card, /<p>/);
 });

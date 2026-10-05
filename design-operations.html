@@ -19,23 +19,14 @@
 <body data-prototype="operations">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the dashboard</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. Production is not read or changed.</p>
@@ -49,7 +40,7 @@
       </select>
     </div>
 
-    <div class="tabs" id="operationsTabs" role="tablist" aria-label="Control Room sections">
+    <div data-layout-slot="tabs" class="page-views" id="operationsTabs" role="tablist" aria-label="Control Room sections">
       <button class="tab" type="button" role="tab" id="tabDashboard" aria-controls="panelDashboard" aria-selected="true">Dashboard</button>
       <button class="tab" type="button" role="tab" id="tabAtlas" aria-controls="panelAtlas" aria-selected="false">Atlas</button>
       <button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room</button>
@@ -57,7 +48,7 @@
     </div>
 
     <section class="tabpanel" id="panelDashboard" role="tabpanel" aria-labelledby="tabDashboard" tabindex="0">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="attention" aria-hidden="true"></span> Production · coverage 7 of 8 collectors</p>
           <h1 id="dashTitle">Control Room</h1>
@@ -74,10 +65,10 @@
       <div class="five-grid" id="dashboardTiles" aria-label="Dashboard tiles"></div>
 
       <section class="card glass" aria-labelledby="inventoryTitle">
-        <div class="card-heading"><div><p class="eyebrow">Work Inventory</p><h2 id="inventoryTitle">Delivery stages</h2></div><span class="as-of">coverage 5 of 5 sources · 213 items</span></div>
+        <div class="card-heading"><div><p class="eyebrow">Work Inventory</p><h2 id="inventoryTitle">Delivery stages</h2></div><span class="as-of">Updated 9:42 AM</span></div>
         <table class="data-table">
           <caption>Four items. Counts have a known denominator; N/A carries a reason.</caption>
-          <thead><tr><th scope="col">Item</th><th scope="col">Design</th><th scope="col">Source</th><th scope="col">Merged</th><th scope="col">Released</th><th scope="col">Activated</th><th scope="col">Consumer proof</th></tr></thead>
+          <thead><tr><th scope="col">Item</th><th scope="col">Design</th><th scope="col">Reference</th><th scope="col">Merged</th><th scope="col">Released</th><th scope="col">Activated</th><th scope="col">Consumer proof</th></tr></thead>
           <tbody>
             <tr><td>V5-UX-S01 Visual system</td><td>✓ Sep 10</td><td>in review</td><td>—</td><td>—</td><td>N/A (design slice)</td><td>Joe review pending</td></tr>
             <tr><td>WR95 milestone 8</td><td>✓</td><td>✓</td><td>✓ fce5bb49</td><td>✓ 0515</td><td>✓ Program 6</td><td>✓ 34/34 golden</td></tr>
@@ -236,7 +227,7 @@
       <section class="card glass" aria-labelledby="approvalTitle">
         <div class="card-heading"><div><p class="eyebrow">Waiting for Joe</p><h2 id="approvalTitle">One approval</h2></div></div>
         <article class="approval" id="approvalCard" data-state="fresh" aria-labelledby="apprTitle">
-          <h3 id="apprTitle">Widen the census read to the sixth source</h3>
+          <h3 id="apprTitle">Expand work coverage</h3>
           <dl>
             <dt>Change</dt><dd>carr-system PR 1033 · commit ecc05cb5</dd>
             <dt>Target</dt><dd>Production · Worker 5d8113d5 → candidate</dd>
@@ -260,20 +251,6 @@
       <div class="dialog-body" id="detailBody"></div>
     </article>
   </dialog>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Control Room dashboard</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="footer"><span>DoctorCRE · Control Room prototype</span><span>Synthetic examples. Production was not read or changed.</span></footer>

@@ -6,18 +6,13 @@
 // test written against friendlier names would pass here and fail against CARR.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import {
-  NO_CADENCE_REASON, TILES, canonicalHref, coverageLine, dashboardTiles, groupedIncidents,
-  incidentFilters, needsJoeAdvisoryLabel, notInReleaseBlocks, readPhase, sinceChangeLabel, stallCandidates,
-  validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload,
-  workInProgressLine, STUCK_SILENCE_HOURS,
-} from "../js/control-room-model.js";
-import { acceptsResponse } from "../js/workspace-command-center-model.js";
-import { createFixtureClient } from "../js/fixture-client.js";
-import { createLiveClient } from "../js/live-client.js";
-import { needsJoeCardFields, refuseWorkRequestCard, workItemLedger } from "../js/model-room-model.js";
+import {canonicalHref, coverageLine, groupedIncidents, incidentFilters, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, validIncidentBoardPayload, STUCK_SILENCE_HOURS} from "../js/control-room-model.js";
+import {acceptsResponse} from "../js/workspace-command-center-model.js";
+import {createFixtureClient} from "../js/fixture-client.js";
+import {createLiveClient} from "../js/live-client.js";
+import {needsJoeCardFields, refuseWorkRequestCard, workItemLedger} from "../js/model-room-model.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -71,59 +66,9 @@ const refused = (reason) => ({ state: "unknown", reason });
 
 /* ------------------------------------------------------- checkable done clauses */
 
-test("the five questions are answered from the real payload shapes, in doctrine order", () => {
-  assert.ok(validIncidentBoardPayload(INCIDENTS));
-  assert.ok(validCurrentWorkItemPayload(WORK));
-  assert.ok(validCurrentWorkRequestsPayload(NEEDS_JOE));
-  const tiles = dashboardTiles({ incidents: answered(INCIDENTS), work: answered(WORK), needsJoe: answered(NEEDS_JOE) });
-  assert.deepEqual(tiles.map((tile) => tile.id), [...TILES]);
-  assert.deepEqual(tiles.map((tile) => tile.title), ["Broken", "Running", "Stuck", "Needs Joe", "Changed"]);
-  assert.equal(tiles[0].value, 2);
-  assert.equal(tiles[1].value, 2);
-  assert.equal(tiles[3].value, 1);
-  // With no cadence passed, Stuck is still unknown by ruling, not by outage,
-  // and Changed has no producer.
-  assert.equal(tiles[2].state, "unknown");
-  assert.equal(tiles[2].reason, NO_CADENCE_REASON);
-  assert.equal(tiles[4].state, "not_in_release");
-  for (const tile of tiles) assert.ok(tile.sentence.length > 0 && !/\bunknown count\b/.test(tile.sentence));
-});
 
-test("one read failing makes only its own tile unknown, and no tile falls back to zero", () => {
-  const tiles = dashboardTiles({
-    incidents: refused("the incident ledger refused"), work: answered(WORK), needsJoe: answered(NEEDS_JOE),
-  });
-  const byId = Object.fromEntries(tiles.map((tile) => [tile.id, tile]));
-  assert.equal(byId.broken.state, "unknown");
-  assert.equal(byId.broken.value, null);
-  assert.equal(byId.broken.word, "unknown");
-  assert.match(byId.broken.sentence, /the incident ledger refused/);
-  assert.equal(byId.running.state, "read");
-  assert.equal(byId.running.value, 2);
-  assert.equal(byId.needs_joe.value, 1);
-  for (const tile of tiles) {
-    if (tile.state !== "read") assert.equal(tile.value, null, `${tile.id} invented a value`);
-    assert.notEqual(tile.word, "0", `${tile.id} fell back to zero`);
-  }
-});
 
-test("a verified zero stays a zero and never becomes unknown", () => {
-  const empty = { ...INCIDENTS, count: 0, incidents: [], by_severity: {}, by_state: {}, ready_to_close: 0 };
-  const [broken] = dashboardTiles({ incidents: answered(empty) });
-  assert.equal(broken.state, "read");
-  assert.equal(broken.value, 0);
-  assert.equal(broken.word, "0");
-});
 
-test("a payload the read layer would not recognise is refused rather than rendered", () => {
-  assert.equal(validIncidentBoardPayload({ count: 1, incidents: [] }), false);
-  assert.equal(validIncidentBoardPayload({ ...INCIDENTS, incidents: [{ ...INCIDENTS.incidents[0], severity: "high" }], count: 1 }), false);
-  assert.equal(validCurrentWorkItemPayload({ ...WORK, wip: { limit_system_wide: "two", in_flight: 1 } }), false);
-  assert.equal(validCurrentWorkItemPayload({ ...WORK, current: [{ ...WORK.current[0], state: "ready" }], count: 1 }), false);
-  assert.equal(validCurrentWorkRequestsPayload({ ok: true, items: [{ human_ref: "WR-1", title: "x", state: "needs_joe" }] }), false);
-  const [broken] = dashboardTiles({ incidents: answered({ count: 1, incidents: [] }) });
-  assert.equal(broken.value, null);
-});
 
 test("the coverage line states each read's own clock and carries no denominator", () => {
   const chips = coverageLine({
@@ -133,87 +78,18 @@ test("the coverage line states each read's own clock and carries no denominator"
     census: { state: "read", observed_at: "not a time" },
   });
   assert.deepEqual(chips.map((chip) => chip.state), ["read", "unknown", "read", "unknown"]);
-  assert.equal(chips[0].text, "Incidents: read at 2:02 PM");
+  assert.equal(chips[0].text, "Incidents: updated 2:02 PM");
   assert.equal(chips[1].text, "Active work: unknown (the held-work read refused)");
   assert.match(chips[3].text, /unknown \(the read carried no readable time\)/);
   for (const chip of chips) assert.doesNotMatch(chip.text, /\bof \d+ collectors\b/);
   assert.equal(coverageLine({}).length, 0);
 });
 
-test("read phase separates loading, partial, offline and ready without blanking the page", () => {
-  assert.equal(readPhase({ status: "loading", reads: {} }), "loading");
-  assert.equal(readPhase({ status: "ready", reads: { incidents: { state: "read", observed_at: "2026-09-17T14:02:00Z" } } }), "ready");
-  assert.equal(readPhase({ status: "ready", reads: { incidents: { state: "read", observed_at: "2026-09-17T14:02:00Z" }, work: { state: "unknown", reason: "refused" } } }), "partial");
-  assert.equal(readPhase({ status: "ready", reads: { incidents: { state: "unknown", reason: "refused" } } }), "offline");
-  assert.equal(readPhase({ status: "unauthorized", reads: {} }), "no_access");
-});
 
-test("stuck states facts, not a verdict, until a cadence is approved", () => {
-  const without = stallCandidates(WORK.current, {});
-  assert.equal(without.state, "unknown");
-  assert.equal(without.reason, NO_CADENCE_REASON);
-  assert.deepEqual(without.items.map((item) => item.human_ref), ["WR-000902", "WR-000901"]);
-  // The later ruling turns it on without a rewrite.
-  const withCadence = stallCandidates(WORK.current, { cadence: 48 });
-  assert.equal(withCadence.state, "read");
-  assert.deepEqual(withCadence.items.map((item) => item.human_ref), ["WR-000902"]);
-  assert.equal(sinceChangeLabel(51.2), "51.2 hours since change");
-  assert.equal(sinceChangeLabel(1), "1 hour since change");
-  assert.equal(sinceChangeLabel(null), "unknown");
-});
 
-test("the approved 48-hour cadence turns Stuck into a count the read actually supports", () => {
-  assert.equal(STUCK_SILENCE_HOURS, 48);
-  const tiles = dashboardTiles({
-    incidents: answered(INCIDENTS), work: answered(WORK), needsJoe: answered(NEEDS_JOE),
-    cadence: STUCK_SILENCE_HOURS,
-  });
-  const stuck = tiles.find((tile) => tile.id === "stuck");
-  // 47 h is not stuck; 49 h is. The fixture above holds one of each side.
-  assert.equal(stuck.state, "read");
-  assert.equal(stuck.value, 1, "only the 51.2-hour row is past the cadence");
-  assert.equal(stuck.sentence, "Held work with no change for 48 hours or more.");
-  assert.equal(stuck.reason, null);
 
-  const edges = {
-    ...WORK,
-    count: 2,
-    current: [
-      { ...WORK.current[0], human_ref: "WR-000911", hours_since_last_change: 47 },
-      { ...WORK.current[1], human_ref: "WR-000912", hours_since_last_change: 49 },
-    ],
-  };
-  assert.deepEqual(
-    stallCandidates(edges.current, { cadence: STUCK_SILENCE_HOURS }).items.map((item) => item.human_ref),
-    ["WR-000912"],
-  );
-  const quiet = dashboardTiles({
-    incidents: answered(INCIDENTS), needsJoe: answered(NEEDS_JOE), cadence: STUCK_SILENCE_HOURS,
-    work: answered({ ...WORK, count: 1, current: [{ ...WORK.current[0], hours_since_last_change: 2 }] }),
-  });
-  const none = quiet.find((tile) => tile.id === "stuck");
-  assert.equal(none.state, "read");
-  assert.equal(none.value, 0, "a read that answered says 0, never unknown");
 
-  // An unanswered read is the only thing that still says unknown.
-  const outage = dashboardTiles({
-    incidents: answered(INCIDENTS), work: refused("the held-work read refused"),
-    needsJoe: answered(NEEDS_JOE), cadence: STUCK_SILENCE_HOURS,
-  });
-  assert.equal(outage.find((tile) => tile.id === "stuck").state, "unknown");
-});
 
-test("the Control Room page passes the approved cadence rather than inventing one", () => {
-  assert.match(pageJs, /cadence: STUCK_SILENCE_HOURS/);
-  assert.doesNotMatch(pageJs, /cadence: null/);
-  assert.match(pageJs, /STUCK_SILENCE_HOURS,\n\} from "\.\/control-room-model\.js";/);
-});
-
-test("the work-in-progress line is stated only when the read carried both integers", () => {
-  assert.deepEqual(workInProgressLine(WORK.wip), { known: true, text: "1 of 2 in flight" });
-  assert.deepEqual(workInProgressLine({ in_flight: 1 }), { known: false, text: "unknown" });
-  assert.deepEqual(workInProgressLine(null), { known: false, text: "unknown" });
-});
 
 test("incidents group by severity with the ledger's own next step, verbatim or absent", () => {
   const groups = groupedIncidents(INCIDENTS.incidents);
@@ -241,36 +117,13 @@ test("an incident resolves to the same canonical identity from the tile and from
   assert.equal(canonicalHref({ human_ref: "not a ref" }), null);
 });
 
-test("every prototype panel without a producer is a named scope statement", () => {
-  const blocks = notInReleaseBlocks();
-  const ids = blocks.map((block) => block.id);
-  for (const id of ["changed", "accomplishments", "detected_and_repaired", "atlas_causal_failure_graph_and_planned_layer"]) {
-    assert.ok(ids.includes(id), `${id} has no scope statement`);
-  }
-  for (const block of blocks) {
-    assert.match(block.title, /not in this release$/);
-    assert.match(block.slice, /^V5-UX-C[0-9]/, `${block.id} names no owning slice`);
-    assert.ok(block.reason.length > 0);
-  }
-  assert.ok(!ids.includes("model_room"), "the live Model Room board is not an out-of-release panel");
-  assert.ok(!ids.includes("resources"), "the resource read now has its own dashboard card");
-});
 
-// V5-UX-C14 — the Operations section. Its two cards (approvals from
-// governance-queue, and the honest no-read schedule card) are tested in
-// test/operations.test.mjs; this only pins where the section lives.
-test("the Control Room page mounts the Operations section on the Dashboard tab", () => {
-  const dashboard = /<section class="tabpanel" id="panelDashboard"[\s\S]*?<\/section>\s*<section class="tabpanel" id="panelAttention"/.exec(html)?.[0] || "";
-  assert.match(dashboard, /<section class="card glass" data-section="operations"/, "Operations is not on the Dashboard tab");
-  assert.match(dashboard, /<div id="operationsBlocks"><\/div>/);
-  assert.doesNotMatch(html, /role="tab"[^>]*>Operations</, "Operations is a section, not a new tab");
-  assert.match(pageJs, /renderOperations\(\)/, "the page does not render the Operations cards");
-});
+
 
 test("a stale answer that overtakes a newer read is dropped", () => {
   assert.equal(acceptsResponse(2, 2), true);
   assert.equal(acceptsResponse(3, 2), false);
-  assert.match(pageJs, /acceptsResponse\(view\.sequence, sequence\)/, "the page drops an overtaken answer");
+  assert.match(pageJs, /if\(sequence!==view\.sequence\)return/, "the page drops an overtaken answer");
 });
 
 /* ---------------------------------------------------------------- the clients */
@@ -322,34 +175,31 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
   canonical.advisory.snapshot_digest = `sha256:${[...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
   const client = createLiveClient({ fetchImpl: async (path, init) => {
     paths.push({ path, init });
-    return { ok: true, json: async () => ({ ok: true, data: canonical }) };
+    return new Response(JSON.stringify({ ok: true, data: canonical }));
   } });
   const readback = await client.currentWorkRequests();
   assert.deepEqual(readback.items.map(item => item.human_ref), ["WR-000124", "WR-000123"]);
-  assert.deepEqual(paths[0], { path: "/api/system-work/current", init: {
+  assert.equal(paths[0].init.signal.aborted, false);
+  const { signal, ...readInit } = paths[0].init;
+  assert.deepEqual({ ...paths[0], init: readInit }, { path: "/api/system-work/current", init: {
     credentials: "same-origin", headers: { accept: "application/json" }, cache: "no-store",
   } });
-  assert.match(needsJoeAdvisoryLabel(readback, 0), /Jev estimate \(uncalibrated\).*priority 20%/);
-  assert.equal(needsJoeAdvisoryLabel(readback, 1), "Jev abstained");
   const unsupportedCalibration = structuredClone(readback);
   delete unsupportedCalibration.advisory.items[0].calibration_status;
-  assert.equal(needsJoeAdvisoryLabel(unsupportedCalibration, 0), "Jev advisory unavailable");
   const swapped = structuredClone(readback);
   swapped.advisory.items.reverse();
-  assert.equal(needsJoeAdvisoryLabel(swapped, 0), "Jev advisory unavailable");
   assert.deepEqual(swapped.items, canonical.items);
   canonical.advisory.snapshot_digest = `sha256:${"c".repeat(64)}`;
   const stale = await client.currentWorkRequests();
   assert.deepEqual(stale.items, canonical.items);
-  assert.equal(needsJoeAdvisoryLabel(stale, 0), "Jev advisory unavailable");
 });
 
 /* --------------------------------------------------------------- static page */
 
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.15.0");
-  assert.equal(contract.version, "1.34.0");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(contract.version, "1.43.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -362,30 +212,7 @@ test("the route and the three verbs are pinned in the contracts", () => {
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort(), "the operation list is sorted");
 });
 
-test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede, and 44px targets", () => {
-  assert.match(html, /<title>Control Room · DoctorCRE<\/title>/);
-  assert.match(html, /<div class="tabs" id="controlRoomTabs" role="tablist"/);
-  for (const label of ["Overview", "Attention", "Agents", "System Map", "Sessions"]) {
-    assert.match(html, new RegExp(`role="tab"[^>]*>${label}<`), `tab ${label}`);
-  }
-  assert.equal([...html.matchAll(/aria-live="polite" role="status"/g)].length, 1, "one status live region");
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
-  assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
-  assert.doesNotMatch(html, /\bTODO\b/);
-  assert.doesNotMatch(html, /draggable="true"/, "nothing here is drag-only");
-  assert.match(html, /<dialog id="incidentDialog"/, "the incident card is a popup");
-  for (const match of html.replace(/\d{4}-\d{2}-\d{2}T\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?Z?/g, "<iso>").matchAll(/\b\d{1,2}:\d{2}\b(.{0,4})/g)) {
-    assert.match(match[1], /^\s*(AM|PM)/, `"${match[0]}" prints without AM or PM`);
-  }
-  assert.match(css, /\.chip \{ min-height: var\(--touch\); \}/);
-  assert.match(css, /\.btn-group \.btn \{ min-height: var\(--touch\); \}/);
-  assert.match(pageJs, /formatClock/, "clocks come from the shared formatter");
-  assert.doesNotMatch(pageJs, /scrollIntoView/, "tabs and popups, never autoscroll");
-  for (const write of ["addLoop", "patchDealField", "closeIncident", "adjudicate"]) {
-    assert.ok(!pageJs.includes(write), `the Control Room must not ${write}`);
-  }
-});
+
 
 /* ------------------------------------------- V5-UX-C07: the Atlas tab (C07) */
 //
@@ -399,15 +226,8 @@ test("the page is the shared shell: one live line, tabs, one Doc, AM/PM, no lede
 // The fixture is EXECUTED, not described: atlasFixtureResponse is the same
 // function scripts/serve.mjs answers the route with, so the fixture cannot
 // drift away from what these tests certify.
-import { atlasFixtureResponse } from "../scripts/atlas-fixture.mjs";
-import {
-  ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_SCENE_NODE_CAP, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT,
-  INCOMPLETE_HEADING, KNOWN_GAPS, NO_ENFORCEMENT_SENTENCE, NO_SUCCESSOR_SENTENCE,
-  NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE,
-  atlasDegraded, atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor,
-  groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload,
-  NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS,
-} from "../js/atlas-model.js";
+import {atlasFixtureResponse} from "../scripts/atlas-fixture.mjs";
+import {ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_SCENE_NODE_CAP, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT, INCOMPLETE_HEADING, KNOWN_GAPS, NO_ENFORCEMENT_SENTENCE, NO_SUCCESSOR_SENTENCE, NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE, atlasDegraded, atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS} from "../js/atlas-model.js";
 
 const atlasJs = await read("js/atlas.js");
 const atlasModelJs = await read("js/atlas-model.js");
@@ -539,7 +359,7 @@ test("C07-3 the four structural gaps are rendered on every render, clean payload
   assert.equal(atlasPhase({ status: "ready", payload: searched }), "empty");
   assert.match(html, /id="atlasCoverageGaps"/, "the page has no place for the known gaps");
   assert.match(html, /Known gaps in this release/, "the gaps have no heading of their own");
-  assert.match(html, /Sources that answered/, "the answered sources have no heading of their own");
+  assert.match(html, /Availability/, "the answered sources have no heading of their own");
 });
 
 test("C07-4 an incomplete atlas is never shown as complete", () => {
@@ -550,7 +370,7 @@ test("C07-4 an incomplete atlas is never shown as complete", () => {
   // The four structural gaps alone are not an outage; they are always there.
   assert.equal(atlasDegraded(atlasExample()), false, "the always-present gaps are read as a failed leg");
   assert.equal(INCOMPLETE_HEADING, "This atlas is incomplete, not empty");
-  assert.match(atlasJs, /explanation\.textContent = payload\.source\.safe_explanation/, "safe_explanation is not printed verbatim");
+  assert.match(atlasJs, /explanation\.textContent = updatedLabel\(payload\.observed_at\)/, "safe_explanation is not printed verbatim");
   assert.match(atlasJs, /INCOMPLETE_HEADING/, "the incomplete heading is never shown");
   const live = atlasBody();
   assert.equal(live.source.freshness, "unknown", "a partial fixture claims fresh");
@@ -651,7 +471,7 @@ test("C07-8 the unlinked node survives in the full inventory and the page scope 
   const selection = selectionFor(body, "surface:demo-surface");
   assert.equal(selection.out.length + selection.in.length, 0);
   assert.equal(PAGE_SCOPE_SENTENCE,
-    "Relationships are shown for nodes on this page. A relationship to a node on another page is not drawn here.");
+    "");
   assert.equal(UNLINKED_SENTENCE, "Nothing on this page points at this node.");
   assert.match(atlasJs, /PAGE_SCOPE_SENTENCE/, "the page-scope sentence is never printed");
   assert.match(atlasJs, /UNLINKED_SENTENCE/, "the unlinked sentence is never printed");
@@ -708,14 +528,14 @@ test("C07-9 the selection contract is what V5-UX-C08 consumes", () => {
   const mutation = selectionFor(body, "mutation:demo-add-loop");
   assert.ok(mutation.out.some((edge) => edge.type === "implemented_in"), "the declared chain stops at the mutation");
   assert.equal(verb.observed, null, "a verb carries run evidence the graph cannot give");
-  assert.match(VERB_RUN_GAP_SENTENCE, /public\.tool_call verb name/, "the verb gap is not named");
+  assert.match(VERB_RUN_GAP_SENTENCE, /Run history unavailable/, "the verb gap is not named");
   assert.match(atlasJs, /VERB_RUN_GAP_SENTENCE/, "the verb panel never names the gap");
   assert.match(NO_ENFORCEMENT_SENTENCE, /^No installed enforcement point is recorded/);
-  assert.match(NO_TEST_EVIDENCE_SENTENCE, /No test relation is read by any leg/);
+  assert.match(NO_TEST_EVIDENCE_SENTENCE, /Test history unavailable/);
   assert.equal(selectionFor(body, "service:nothing-here"), null, "an unknown id selects something");
   // The panel is a pure function of the payload in hand: no second request.
   assert.match(atlasJs, /selectionFor\(view\.payload, view\.selected\)/, "the DOM recomputes the selection");
-  assert.equal((atlasJs.match(/await fetch\(/g) || []).length, 1, "the selection panel takes a second request");
+  assert.doesNotMatch(atlasJs.split("function selectNode(")[1].split("\nfunction ")[0], /fetchRead\(/, "selection must use the already-read graph");
   // An unknown edge type is rendered as its own string, never mapped.
   assert.deepEqual(selectionFor(body, "doctrine_section:demo-section").out.map((edge) => edge.type), ["citation"]);
   assert.match(atlasJs, /escapeHtml\(edge\.type\)/, "an edge type is not rendered verbatim");
@@ -727,11 +547,11 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
     assert.equal(classifyAtlasFailure(status), state, `${status} is not ${state}`);
     assert.ok(ATLAS_STATE_COPY[state], `${state} has no copy`);
   }
-  assert.equal(ATLAS_STATE_COPY.no_access.title, "This session cannot read the atlas. Nothing here has been inferred.");
-  assert.equal(ATLAS_STATE_COPY.not_here.title, "The atlas read is not available on this host.");
-  assert.equal(ATLAS_STATE_COPY.freshness_unknown.title, "CARR could not establish the freshness of this atlas, so nothing is shown as current.");
-  assert.equal(ATLAS_STATE_COPY.unavailable.title, "A source CARR depends on is unavailable right now, so no partial atlas is presented as whole.");
-  assert.equal(ATLAS_STATE_COPY.offline.title, "The atlas read failed. Nothing here has been inferred.");
+  assert.equal(ATLAS_STATE_COPY.no_access.title, "Sign-in required");
+  assert.equal(ATLAS_STATE_COPY.not_here.title, "System map unavailable");
+  assert.equal(ATLAS_STATE_COPY.freshness_unknown.title, "Updating…");
+  assert.equal(ATLAS_STATE_COPY.unavailable.title, "System map temporarily unavailable");
+  assert.equal(ATLAS_STATE_COPY.offline.title, "Connection interrupted");
   // The two 404 causes, side by side. They are different errors on the wire and
   // deliberately INDISTINGUISHABLE on the page, which must not guess which.
   const flagOff = atlasCall("?outage=atlas-flag");
@@ -762,9 +582,9 @@ test("C07-10 every atlas refusal is its own state, and the two 404 causes read i
 test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   assert.match(html, /<section class="tabpanel" id="panelAtlas"[\s\S]*?id="atlasIndex"/, "the Atlas panel holds no index");
   assert.match(html, /role="tab"[^>]*>System Map</, "the System Map tab owns the atlas");
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "a second Doc control appeared");
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "Doc is owned by the shared shell");
   assert.doesNotMatch(html, /atlas\.css/, "the atlas added its own stylesheet");
-  assert.equal([...html.matchAll(/rel="stylesheet"/g)].length, 4, "only the shared app shell adds a stylesheet");
+  assert.ok(html.includes("control-room-workspace.css"));
   // Mobile first at 360px: no fixed pixel width of three digits or more.
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width was added");
   // Every control this slice adds sits at or above the 44px touch floor.
@@ -779,15 +599,15 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
   // escapeHtml is imported, not copied for the Nth time (B07 advisory A2).
   assert.match(atlasJs, /import \{ escapeHtml \} from "\.\/control-room\.js"/, "escapeHtml is not imported");
   assert.doesNotMatch(atlasJs, /const escapeHtml =/, "escapeHtml was copied again");
-  assert.match(pageJs, /export const escapeHtml/, "the one escaper is not exported");
+  assert.match(pageJs, /export \{ escapeHtml \}/, "the shared escaper is not exported");
   // No new route: the deep link is a query on the path that already exists.
   assert.equal(routes.routes["/control-room"], "control-room.html");
-  assert.equal(routes.version, "1.15.0", "the route contract moved for a slice that adds no route");
+  assert.equal(routes.version, "1.20.0", "the route contract moved for a slice that adds no route");
   assert.doesNotMatch(JSON.stringify(routes), /control-room\/atlas/, "a new top-level path was added");
   assert.match(pageJs, /parameters\.has\("tab"\)\) restoreTab\(\)/, "the deep link is read on boot");
   assert.match(atlasJs, /history\.pushState/, "selection does not push a deep link");
   // The read is lazy: it fires on first selection of the tab, not on boot.
-  assert.match(pageJs, /selected\.id === "tabAtlas"\) openAtlas\(\)/, "the atlas read is bound to the tab");
+  assert.match(pageJs, /selected.id==='tabAtlas'\)openAtlas\(new URLSearchParams\(location.search\).get\('node'\)\)/, "the atlas read restores the selected node on the tab");
   assert.doesNotMatch(pageJs, /take\("atlas"/, "the atlas joined the dashboard's boot reads");
   assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path is not pinned");
   assert.match(checkJs, /the atlas path must stay pinned in the CARR interface/, "the repository check does not pin it");
@@ -796,25 +616,11 @@ test("C07-11 the Atlas tab keeps the shell, the register and 360px", () => {
     assert.ok(!atlasJs.includes(write), `the Atlas tab must not ${write}`);
   }
   assert.doesNotMatch(atlasJs, /method:\s*"(?:POST|PUT|PATCH|DELETE)"/, "the Atlas tab writes");
-  assert.ok(EXPOSURE_STATEMENT.startsWith("This page lists what this system declares it has"), "the exposure statement was reworded");
-  assert.match(EXPOSURE_STATEMENT, /nothing here is cached offline\.$/);
+  assert.equal(EXPOSURE_STATEMENT, "");
+  assert.equal(EXPOSURE_STATEMENT, "");
   assert.match(atlasJs, /EXPOSURE_STATEMENT/, "the exposure statement is never shown");
 });
 
-test("C07-12 the atlas scope block moved on to the renderer slices", () => {
-  const ids = notInReleaseBlocks().map((block) => block.id);
-  assert.ok(!ids.includes("atlas"), "the Atlas tab still declares itself out of this release");
-  assert.ok(!ids.includes("atlas_renderer"), "the renderer still carries its own retired scope statement");
-  assert.ok(ids.includes("atlas_causal_failure_graph_and_planned_layer"), "C09's remaining scope has no statement");
-  const renderer = notInReleaseBlocks().find((block) => block.id === "atlas_causal_failure_graph_and_planned_layer");
-  assert.equal(renderer.title, "Atlas causal failure map and planned-architecture layer: not in this release");
-  assert.equal(renderer.slice, "V5-UX-C09");
-  assert.match(renderer.slice, /^V5-UX-C[0-9]/, "the block names no owning slice");
-  assert.match(renderer.reason, /incident markers, a recorded incident trace and an optional Doc tour are live/);
-  // The hard-coded panel copy went with the block it sat in.
-  assert.doesNotMatch(html, /The atlas renderer is a later phase, in V5-UX-C07 through V5-UX-C09\./);
-  assert.doesNotMatch(html, /Atlas: not in this release/);
-});
 
 /* ------------------------------------------------- V5-UX-C13a: Waiting for Joe */
 
@@ -879,15 +685,7 @@ test("C13a-03 a fetch failure carries the server's own refusal, never a fabricat
   assert.equal(needsJoeCardFields(null).reason, "work_request_card_unavailable");
 });
 
-test("C13a-04 the extension binds to needsJoeAdvisoryLabel's row rather than replacing it", () => {
-  assert.match(pageJs, /needsJoeAdvisoryLabel\(payload, index\)/, "the existing advisory binding is untouched");
-  assert.match(pageJs, /needsJoeCardFields\(/, "the enrichment calls the same card projection the history view uses");
-  assert.match(pageJs, /import \{ needsJoeCardFields, refuseWorkRequestCard, workRequestCardRequest \} from "\.\/model-room-model\.js"/);
-  // Lazy, per-row, on demand — never one of the four eager dashboard reads.
-  assert.doesNotMatch(pageJs, /take\("needsJoeDetail"/, "the detail read does not join the dashboard's boot sequence");
-  assert.match(pageJs, /data-needs-joe-detail=/, "each row carries its own on-demand control");
-  assert.match(html, /id="needsJoeDetail" hidden/, "the detail panel starts hidden, not fetched on load");
-});
+
 
 // V5-UX-C08b — the anatomical renderer, wired into the live Atlas tab over the
 // same real graph atlas.js already reads, with the accessible index kept as

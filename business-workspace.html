@@ -19,46 +19,37 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to Home</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass hero-card" aria-labelledby="pageTitle">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="still" id="homeOrb" aria-hidden="true"></span> <span id="viewerLabel">Partner workspace</span></p>
           <h1 id="pageTitle">Business</h1>
         </div>
         <div class="hero-meta">
-          <span class="status" data-state="unknown" id="homeStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="homeStatusLabel">Reading the command centre…</span></span>
+          <span class="status" data-state="unknown" id="homeStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="homeStatusLabel">Updating…</span></span>
         </div>
       </div>
-      <p class="caption freshness" id="homeFreshness">Reading the command centre…</p>
-      <div class="row-wrap"><button class="btn" type="button" id="retryRead" hidden>Retry read</button><a class="btn btn-primary" id="signInAgain" href="/auth/login?return_to=%2F" hidden>Sign in again</a></div>
+      <p class="caption freshness" id="homeFreshness"></p>
+      <div class="row-wrap"><button class="btn" type="button" data-layout-refresh id="retryRead" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a class="btn btn-primary" id="signInAgain" href="/auth/login?return_to=%2F" hidden>Sign in again</a></div>
     </section>
 
-    <p class="sr-only" id="homeLive" aria-live="polite" role="status">Reading the command centre…</p>
+    <p class="sr-only" id="homeLive" aria-live="polite" role="status">Updating…</p>
 
-    <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
+    <div data-layout-slot="tabs" class="page-views" id="businessTabs" role="tablist" aria-label="Business sections">
       <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
       <button class="tab" type="button" role="tab" id="tabSearch" aria-controls="panelSearch" aria-selected="false">Search</button>
       <button class="tab" type="button" role="tab" id="tabCharts" aria-controls="panelCharts" aria-selected="false">Charts</button>
-      <a class="tab" href="/tasks">Work</a>
+
       <a class="tab" href="/pipeline">Pipeline</a>
       <button class="tab" type="button" id="tabDocHistory">Doc history</button>
     </div>
@@ -100,7 +91,7 @@
       </section>
 
       <section class="card glass" data-section="changes" aria-labelledby="changesTitle">
-        <div class="card-heading"><div><p class="eyebrow">Record layer</p><h2 id="changesTitle">Changes</h2></div></div>
+        <div class="card-heading"><div><p class="eyebrow">Activity</p><h2 id="changesTitle">Changes</h2></div></div>
         <p class="count-line" id="changesValue">—</p>
         <div class="state-block" id="changesState" data-state="offline" hidden><h3>Recent changes could not be verified</h3></div>
       </section>
@@ -113,7 +104,7 @@
 
       <section class="card glass" data-section="calls" aria-labelledby="callsTitle">
         <div class="card-heading"><div><p class="eyebrow"><span class="orb" data-state="still" aria-hidden="true"></span> Outreach</p><h2 id="callsTitle">Calls</h2></div></div>
-        <div class="state-block" id="callsState" data-state="absent"><h3>Calls: no record-layer read returns logged calls yet</h3></div>
+        <div class="state-block" id="callsState" data-state="absent"><h3>Calls unavailable</h3></div>
       </section>
 
       <section class="card glass" data-section="quick_add" aria-labelledby="quickTitle">
@@ -154,7 +145,7 @@
 
     <section class="tabpanel" id="panelSearch" role="tabpanel" aria-labelledby="tabSearch" tabindex="0" hidden>
       <section class="card glass" data-search="ask" aria-labelledby="searchTitle">
-        <div class="card-heading"><div><p class="eyebrow">Record layer</p><h2 id="searchTitle">Search</h2></div></div>
+        <div class="card-heading"><div><p class="eyebrow">Activity</p><h2 id="searchTitle">Search</h2></div></div>
         <form id="searchForm">
           <div class="field">
             <label for="searchQuery">Name to search</label>
@@ -162,7 +153,7 @@
           </div>
           <div class="row-wrap"><button class="btn btn-primary" type="submit">Search</button><span class="small" id="searchCount"></span></div>
         </form>
-        <p class="caption" id="searchAuthorization">This search shows what the record layer returns to you when you are signed in. This page adds no filter of its own and asks for nobody else's records.</p>
+        <p class="caption" id="searchAuthorization"></p>
       </section>
 
       <p class="sr-only" id="searchLive" aria-live="polite" role="status"></p>
@@ -170,7 +161,7 @@
       <section class="card glass" data-search="scope" aria-labelledby="searchScopeTitle">
         <div class="card-heading"><div><p class="eyebrow">This answer</p><h2 id="searchScopeTitle">Scope</h2></div></div>
         <div class="chip-bar"><span class="chip-list" id="searchChips"></span></div>
-        <p class="caption" id="searchScopeNote">These chips hide rows from the answer you already received. They do not ask the record layer for a narrower search — it has no such door.</p>
+        <p class="caption" id="searchScopeNote"></p>
       </section>
 
       <section class="card glass" data-search="views" aria-labelledby="savedViewTitle">
@@ -194,15 +185,15 @@
 
       <section class="card glass" data-search="not_searched" aria-labelledby="searchNotSearchedTitle">
         <div class="card-heading"><div><p class="eyebrow">Scope</p><h2 id="searchNotSearchedTitle">What this does not search</h2></div></div>
-        <p class="caption" id="searchNotSearched">This searches people, practices, buildings, deals, leads and vendors — the records the record layer can search by name. Tasks, documents and your Doc conversation history are not searched here, because no door exists that searches them yet. This page will not pretend an empty result for those means there is nothing to find.</p>
-        <p class="caption" id="searchExposure">This search names real people, practices and deals, so on a shared or unlocked phone a passer-by reads those names at a glance — and what you typed stays in the address bar until you clear it. The words of a search are kept in this browser only when you save a view; nothing here is cached offline, and closing the page leaves nothing behind but the views you chose to save.</p>
+        <p class="caption" id="searchNotSearched"></p>
+        <p class="caption" id="searchExposure"></p>
       </section>
     </section>
 
     <section class="tabpanel" id="panelCharts" role="tabpanel" aria-labelledby="tabCharts" tabindex="0" hidden>
       <section class="card glass" data-charts="read" aria-labelledby="chartsTitle">
         <div class="card-heading"><div><p class="eyebrow">The open board</p><h2 id="chartsTitle">Charts</h2></div><span class="caption" id="chartsReadAt">Reading the board…</span></div>
-        <p class="caption" id="chartsOneRead">Every number on this tab comes from one read of the board.</p>
+        <p class="caption" id="chartsOneRead"></p>
         <p class="caption" id="chartsSnapshot">This is the open board as it answered a moment ago, not a history.</p>
         <p class="caption" id="chartsForecast">There is no forecast here.</p>
       </section>
@@ -214,20 +205,6 @@
       <div id="chartsCanvas" class="charts-canvas" aria-busy="false"></div>
     </section>
   </main>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Business home</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="shell"><p class="small">DoctorCRE · Business · One record, one owner, one safety key per command.</p></footer>

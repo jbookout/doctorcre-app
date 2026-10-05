@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 // V5-UX-B04 — Ideas and Events browse/detail.
 //
 // Ideas are real records: a loop of kind `idea` (add-loop parks one), read with
@@ -89,7 +90,7 @@ test("the detail distinguishes a recorded value from one that was never recorded
   assert.equal(byLabel.Number.text, "#12");
   assert.equal(byLabel.Owner.text, "Joe");
   assert.equal(byLabel.Domain.text, "Marketing");
-  assert.equal(byLabel.Source.text, "Joe, voice memo");
+  assert.equal(byLabel.Reference.text, "Joe, voice memo");
   assert.equal(byLabel.Due.known, false, "no due date is 'not recorded', never a blank or 'none'");
   assert.equal(byLabel.Due.text, "not recorded");
   assert.equal(byLabel.Opened.known, true);
@@ -179,10 +180,10 @@ test("the Ideas page is routed and uses the pinned idea and event verbs", async 
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(routes.routes["/ideas-events"], "ideas.html");
-  assert.equal(carr.version, "1.34.0");
+  assert.equal(carr.version, "1.43.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
-  assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);
+  assert.equal(await hasArtifactPage("ideas.html"), true, "the page ships in the verified artifact");
   assert.match(await read("scripts/check-repository.mjs"), /"ideas\.html"/);
   assert.match(await read("SUMMARY.md"), /ideas\.html/);
   const js = await read("js/ideas.js");
@@ -201,8 +202,8 @@ test("the Ideas page carries the shared shell, tabs, a detail popup and the Even
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/ideas\.css">/);
   assert.match(html, /id="appShell"/);
-  assert.match(html, /id="docReading">Doc is reading: Ideas</);
-  assert.match(html, /<div class="tabs" id="ideaTabs" role="tablist"/);
+  assert.doesNotMatch(html, /id="docReading"/, "shared Doc presence owns page identity");
+  assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="ideaTabs" role="tablist"/);
   assert.match(html, /role="tab"[^>]*>Ideas</);
   assert.match(html, /role="tab"[^>]*>Events</);
   assert.match(html, /<dialog id="ideaDialog" class="dialog"/);

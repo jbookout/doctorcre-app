@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.34.0",
+  "version": "1.43.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "0cc6fe2538a81521bf8c25b0df58aa4063ed614b"
+    "source_commit": "2f531c295f37757899ca432dfb04a9b95e8d5184"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -14,6 +14,7 @@
     "database_access": "forbidden"
   },
   "mcp_operations": [
+    "accept-ready-plan-amendment",
     "acknowledge-dispatch",
     "acknowledge-notification",
     "add-critical-date",
@@ -21,12 +22,19 @@
     "add-industry-event",
     "add-loop",
     "add-room-turn",
+    "advance-workflow-cutover-stage",
     "answer-board-question",
     "answer-work-request-for-joe",
     "append-tour-selection-cart-version",
+    "approve-retrieval-proposals",
+    "cancel-capability-session",
+    "cancel-workflow-cutover-plan",
     "capture-queue",
-    "claim-card",
+    "claim-lead",
+    "close-investigation",
     "close-loop",
+    "confirm-slice-completions",
+    "correspondence-readiness",
     "create-doc-conversation",
     "create-national-account",
     "create-national-market-deal",
@@ -34,7 +42,6 @@
     "current-work-requests",
     "deal-room-board",
     "decide-doc-suggestion",
-    "decline-candidate",
     "decline-work-request",
     "end-deal-review",
     "engineering-passport",
@@ -47,21 +54,27 @@
     "incident-board",
     "lead-board",
     "link-incident-work-request",
+    "link-lead-client",
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-industry-events",
     "list-my-codex-sessions",
+    "list-progress-boards",
     "loop-board",
     "loop-headers",
+    "morning-brief",
     "new-deal",
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
-    "promote-pool",
     "propose-doc-correction",
+    "read-assurance-health",
+    "read-correspondence-thread",
     "read-dispatch-history",
+    "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
+    "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
@@ -71,12 +84,14 @@
     "read-room-queue",
     "read-session-identity",
     "read-tour-selection-cart",
+    "record-commission-receipt",
     "record-dispatch-link",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
     "resolve-post-call-candidate",
     "revert-deal-field",
+    "review-and-triage",
     "review-deal",
     "schedule-board",
     "search-tour-properties",
@@ -90,10 +105,13 @@
     "start-deal-review",
     "supersede-work-request",
     "today-triage",
+    "triage-incident",
+    "unfinished-work",
     "update-deal",
     "update-industry-event",
     "update-lead",
     "update-loop",
+    "update-vendor",
     "work-request-card"
   ],
   "http_surfaces": [
@@ -106,8 +124,12 @@
     "/api/room/*",
     "/api/system-work/*",
     "/api/share/*",
+    "/api/share/feedback",
+    "/api/share/shortlist",
+    "/api/share/comment",
     "/api/tours/properties/search",
     "/api/tours/selection-cart",
+    "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
     "/api/tours/*"
   ],
@@ -120,5 +142,500 @@
     "One logical operation carries one idempotency key across double click, reconnect and a second device; a re-send under that key replays the stored answer instead of writing again.",
     "The sentence a partner types is sent verbatim as human_quote, or not at all; the app never composes one.",
     "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
-  ]
+  ],
+  "mcp_read_contracts": {
+    "correspondence-readiness": {
+      "write": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "response": {
+        "schema_version": "doctorcre-v5-j103-correspondence-store.v1",
+        "required_keys": [
+          "ok",
+          "schema_version",
+          "readiness",
+          "mailbox_reads_possible",
+          "activation",
+          "owed",
+          "kernel_gaps",
+          "policy",
+          "consentable_operations",
+          "never_consentable_operations",
+          "dispatchable",
+          "provider_operation",
+          "send_authority_holder",
+          "send_authority_seam",
+          "automatic_internal_update",
+          "effects"
+        ],
+        "readiness_keys": [
+          "server_instant",
+          "partners",
+          "read_receipt_writer_granted_to_runtime"
+        ],
+        "partner_keys": [
+          "partner_slug",
+          "consents_in_force",
+          "consents_revoked",
+          "read_receipts",
+          "drafts"
+        ],
+        "evidence_coverage": "Installation counts only; no deal or meeting index."
+      }
+    },
+    "read-correspondence-thread": {
+      "write": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_system": {
+            "type": "string"
+          },
+          "native_id": {
+            "type": "string"
+          },
+          "native_id_epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "source_system",
+          "native_id",
+          "native_id_epoch"
+        ]
+      },
+      "response": {
+        "required_keys": [
+          "ok",
+          "decision",
+          "reason_id",
+          "native_identity",
+          "receipts",
+          "dispatchable",
+          "provider_operation",
+          "send_authority_holder",
+          "send_authority_seam",
+          "automatic_internal_update",
+          "effects"
+        ],
+        "decisions": {
+          "unavailable": {
+            "additional_required_keys": [
+              "owed_seam"
+            ],
+            "receipts": []
+          },
+          "receipts_found": {
+            "receipt_keys": [
+              "read_receipt_id",
+              "partner_slug",
+              "adapter_kind",
+              "account_digest",
+              "native_identity",
+              "thread_metadata",
+              "metadata_digest",
+              "consent_in_force",
+              "recorded_at"
+            ]
+          }
+        },
+        "thread_metadata": "Opaque JSON object. Store enforces related relevance, forbids raw content and returns metadata only; no subject/body/attachment bytes.",
+        "identity_source": "Use only native identity already recorded on the deal activity; this verb does not discover threads by deal."
+      }
+    },
+    "read-assurance-health": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "72bac3e9abc09a5a8e908cefeae0e692c9ec73a5",
+        "module": "mcp-server/src/assurance-health-store.v5.js",
+        "projection_source": "migrations/0717_assurance_health_evidence_store.sql"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "workflow_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "workflow_version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "work_request_id": {
+                "type": "string",
+                "pattern": "^WR-[0-9]{1,12}$"
+              }
+            },
+            "required": [
+              "workflow_key",
+              "workflow_version"
+            ]
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "response": {
+        "schema_version": "assurance-health.v1",
+        "required_keys": [
+          "schema_version",
+          "scope",
+          "state",
+          "green",
+          "state_reason",
+          "capability_stage",
+          "capability_stage_attributable_to_findings",
+          "workflow_truth",
+          "owner",
+          "evidence",
+          "failing_layers",
+          "indeterminate_layers",
+          "missing_layers",
+          "unbindable_layers",
+          "reasons",
+          "impact",
+          "recovery"
+        ],
+        "states": [
+          "healthy",
+          "degraded",
+          "failed",
+          "unknown",
+          "disabled",
+          "not-yet-operational"
+        ],
+        "capability_stages": [
+          "act",
+          "draft",
+          "read",
+          "unavailable"
+        ],
+        "owner_keys": [
+          "kind",
+          "ref"
+        ],
+        "workflow_truth": {
+          "unavailable_keys": [
+            "available",
+            "source",
+            "reason"
+          ],
+          "available_keys": [
+            "available",
+            "source",
+            "state",
+            "enabled",
+            "admissible_modes"
+          ],
+          "states": [
+            "unknown",
+            "conflict",
+            "undeclared",
+            "unregistered",
+            "declared_disabled",
+            "enabled_shadow_only",
+            "enabled_canary_eligible",
+            "enabled_live_eligible",
+            "operational"
+          ]
+        },
+        "evidence_states": [
+          "unreadable",
+          "missing",
+          "mismatched",
+          "unbindable",
+          "conflicting",
+          "refused_substitute",
+          "failed",
+          "error",
+          "skipped",
+          "untested",
+          "self_attested",
+          "indistinct",
+          "stale",
+          "passing"
+        ],
+        "evidence_statuses": [
+          "pass",
+          "fail",
+          "skipped",
+          "untested",
+          "error",
+          "conflicting"
+        ],
+        "absent_evidence_keys": [
+          "layer",
+          "state",
+          "present",
+          "scope"
+        ],
+        "present_evidence_keys": [
+          "layer",
+          "state",
+          "present",
+          "status",
+          "basis",
+          "scope",
+          "subject_ref",
+          "evaluator_ref",
+          "evidence_ref",
+          "evidence_digest",
+          "observed_at",
+          "expires_at",
+          "incident_refs",
+          "recovery_refs"
+        ],
+        "layer_details": {
+          "artifact_assessment": [
+            "repository_commit_sha",
+            "repository_tree_sha",
+            "reviewer_fact_id"
+          ],
+          "execution_assessment": [
+            "attempt_id",
+            "envelope_digest",
+            "plan_hash"
+          ],
+          "controller_assessment": [
+            "controller_state",
+            "readback_source",
+            "readback_at"
+          ],
+          "candidate_outcome_oracle": [
+            "governed_data_ref",
+            "environment",
+            "expected_result_ref",
+            "equivalence_comparator",
+            "component_versions"
+          ],
+          "activation_readback": [
+            "activation_id",
+            "readback_source",
+            "readback_at"
+          ],
+          "actual_business_outcome": [
+            "outcome_feedback_ref",
+            "outcome_feedback_hash",
+            "acceptance_receipt_id"
+          ]
+        },
+        "layer_bases": {
+          "artifact_assessment": "independent_artifact_review",
+          "execution_assessment": "attempt_receipt_execution_evidence",
+          "controller_assessment": "controller_readback",
+          "candidate_outcome_oracle": "candidate_outcome_oracle_receipt",
+          "activation_readback": "activation_readback",
+          "actual_business_outcome": "accepted_sourced_outcome_feedback_receipt"
+        },
+        "impact_keys": [
+          "scope_limited_to",
+          "withdrawn_stages"
+        ],
+        "recovery_keys": [
+          "required_evidence"
+        ]
+      },
+      "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
+    },
+    "doc_activity": {
+      "operation": "read-doc-activity",
+      "schema_version": "doc-activity.v1",
+      "producer_module": "mcp-server/src/doc-activity.js",
+      "undo_operation": "revert-deal-field",
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "f3f57f42a881c103bf3eca14bd69b23bec2b41a1"
+      }
+    },
+    "deal-room-board": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "7214532128a836a84d3e75a584e56facbf6662ba"
+      },
+      "response": {
+        "schema_version": "local-deals-board.v1",
+        "deal_keys": [
+          "operating_state",
+          "parking_note",
+          "invoiced_on",
+          "phase_change",
+          "field_base"
+        ],
+        "phase_change_keys": [
+          "event_id",
+          "prior_phase",
+          "phase",
+          "automatic",
+          "reason",
+          "evidence_date",
+          "recorded_at"
+        ],
+        "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
+        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
+      }
+    },
+    "get-deal-room": {
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+      },
+      "response": {
+        "schema_version": "deal-timeline.v1",
+        "lease_keys": [
+          "id",
+          "version",
+          "status",
+          "executed_on",
+          "commencement_on",
+          "expiration_on",
+          "options_note",
+          "evidence_kind",
+          "evidence_ref",
+          "source"
+        ],
+        "lease_absence": null
+      },
+      "critical_date_write": "add-critical-date",
+      "never_derive": [
+        "rent_start",
+        "option_window"
+      ]
+    }
+  },
+  "vendor_directory": {
+    "schema": "carr-vendor-directory.v1",
+    "version": "1.1.0",
+    "path": "contracts/vendor-directory.v1.json",
+    "sha256": "af68a55a68eca6cf5bb17b786a33308faa2261cc3cdcf51bce73deafff7b5e5b",
+    "request_selector": "contract=vendor-directory.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65"
+    }
+  },
+  "system_work_inventory": {
+    "schema": "unfinished-work.v1",
+    "endpoint": "/api/v1/work-inventory?system=true",
+    "ordering": "opened_at ascending, kind and id in C text order; Live library last_activity_at descending",
+    "personal_scope": "server-derived owner only",
+    "live_limit": 10,
+    "filters": [
+      "source",
+      "kinds",
+      "age",
+      "text",
+      "live_library",
+      "cursor",
+      "id",
+      "limit"
+    ],
+    "cache": "GitHub comes from published producer cache; no GitHub requests per page load",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "ee8fd95ec7b1c82591089b7694fd558bec9034e2"
+    }
+  },
+  "connections": {
+    "schema": "doctorcre-connections.v1",
+    "read_verb": "read-resource-dashboard",
+    "response_field": "connections",
+    "producer": {
+      "repo": "jbookout/carr-system",
+      "source_commit": "495f90283c722065b3f5394a3d0cefd8789a991b"
+    },
+    "missing_observations": "Unknown status and unavailable spend; configuration and capacity do not imply authenticated capability or currency charges."
+  },
+  "relationship_network": {
+    "schema": "carr-relationship-network.v1",
+    "version": "1.0.0",
+    "path": "contracts/relationship-network.v1.json",
+    "sha256": "7984c3b46ca7292e4b70c3e5b716d2d1724e8912a1b8880f2259cf4fe5bd4644",
+    "request_selector": "contract=relationship-network.v1",
+    "endpoint": "/api/v1/business/relationships"
+  },
+  "lead_workspace": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+    },
+    "schema_version": "lead-workspace.v1",
+    "board": {
+      "verb": "lead-board",
+      "arguments": {
+        "workspace": "leads"
+      }
+    },
+    "detail": {
+      "verb": "lead-board",
+      "arguments": {
+        "workspace": "leads",
+        "lead_id": "exact UUID"
+      }
+    },
+    "writes": {
+      "stage": "update-lead (base_version, stage_review evidence IDs, same idempotency key on retry)",
+      "undo": "update-lead (latest exact undo_event_id and prior stage)",
+      "claim": "claim-lead (authenticated human, unowned New, exact base_version)",
+      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)"
+    },
+    "coverage": {
+      "correspondence": "captured_entries_only; Details exposes stored original entry",
+      "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
+      "scores": "existing record score; null shown as missing"
+    }
+  },
+  "invoice_tracker": {
+    "schema_version": "invoice-tracker.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "3a41bd685abedd218b504174b6a240499f77ddaf"
+    },
+    "read": "read-invoice-tracker",
+    "write": "record-commission-receipt",
+    "amount": "commission.gross_amount",
+    "payment": "Full receipt of one commission; dated and version guarded",
+    "due_date": "Explicit due_on; null means unknown",
+    "lifecycle_fields": [
+      "invoiced_on",
+      "closed_on",
+      "lane",
+      "outcome"
+    ]
+  },
+  "morning_brief": {
+    "version": "1.0.0",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "6c346181d75fd54cef4f1d29e1341b8536fbaf5f"
+    },
+    "read": "morning-brief",
+    "arguments": {},
+    "audience": "authenticated sponsor; no caller-selected audience",
+    "sections_consumed": [
+      "today",
+      "deals",
+      "loops"
+    ],
+    "section_states": [
+      "ready",
+      "empty",
+      "unavailable"
+    ],
+    "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
+    "content_storage": "memory only"
+  }
 }

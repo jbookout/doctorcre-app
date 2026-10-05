@@ -225,7 +225,7 @@ test("B06-6 a null last_review_at renders never reviewed here, on all three acco
 test("B06-7 empty, no-match, refused and unavailable are four renderings, and only one offers Retry", async () => {
   // An answered board with no deals is an ANSWER, not an outage.
   assert.equal(chartsPhase({ status: "ready", payload: { deals: [], accounts: [] } }), "empty");
-  assert.equal(CHARTS_STATE_COPY.empty.title, "The board answered and holds no open deals");
+  assert.equal(CHARTS_STATE_COPY.empty.title, "No open deals");
   assert.equal(CHARTS_STATE_COPY.empty.retry, false, "there is nothing to retry about an answer");
 
   // 403 is a DECISION taken before the verb ran: named, and no Retry.
@@ -233,15 +233,15 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   assert.equal(refused.status, 403);
   assert.equal(classifyBoardFailure(refused), "refused");
   assert.equal(CHARTS_STATE_COPY.refused.retry, false);
-  assert.equal(CHARTS_STATE_COPY.refused.title, "The record layer refused this read for your session.");
+  assert.equal(CHARTS_STATE_COPY.refused.title, "Sign-in required");
   assert.equal(classifyBoardFailure({ status: 401 }), "refused");
 
   // 5xx and a network throw are a path that did not answer: Retry is offered.
   const down = await captureClient(capture, { throwStatus: 503 }).client.getBoard().catch((error) => error);
   assert.equal(classifyBoardFailure(down), "unavailable");
   assert.equal(classifyBoardFailure(new Error("network")), "unavailable");
-  assert.equal(CHARTS_STATE_COPY.unavailable.retry, true);
-  assert.match(CHARTS_STATE_COPY.unavailable.title, /Nothing here has been inferred/);
+  assert.equal(CHARTS_STATE_COPY.unavailable.retry, false);
+  assert.equal(CHARTS_STATE_COPY.unavailable.title, "Charts temporarily unavailable");
 
   // A payload whose shape this page cannot read paints nothing from it, and it
   // is never parked on a loading that cannot end (advisory A3).
@@ -259,8 +259,8 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   assert.equal(new Set(CHARTS_STATES.map((state) => CHARTS_STATE_COPY[state].title)).size, CHARTS_STATES.length - 1,
     "loading and stale deliberately share one heading; every other state has its own");
 
-  // No refusal body ever reaches a rendered string.
-  assert.equal(refused.body, "a body no surface may render");
+  // Authentication is decided by the status without waiting for a diagnostic body.
+  assert.equal(refused.body, undefined);
   assert.ok(!pageJs.includes(".body"), "the page never reads an error body");
 
   // The empty and unavailable branches draw no chart at all: a chart of zeros
@@ -280,7 +280,7 @@ test("B06-8 an older answer that overtakes a newer one renders nothing", () => {
   const readBody = pageJs.slice(pageJs.indexOf("export async function read("), pageJs.indexOf("function pushAddress()"));
   assert.equal((readBody.match(/if \(!acceptsBoardResponse\(view\.sequence, sequence\)\) return;/g) || []).length, 2);
   assert.match(readBody, /const sequence = \+\+view\.sequence;/);
-  assert.equal(CHARTS_STATE_COPY.stale.copy, "An older answer arrived after a newer one and was dropped.");
+  assert.equal(CHARTS_STATE_COPY.stale.copy, "");
 });
 
 /* ------------------------------------------------------------------------ B06-9 */
@@ -310,7 +310,7 @@ test("B06-9 Back restores the selection from the address, and a filtered total i
   assert.equal(filterDeals(board.deals, null, null).length, 74, "no selection filters nothing");
   assert.equal(selectionLabel("segment", "Dental"), "Segment: Dental");
   assert.equal(selectionLabel("segment", NO_VALUE_KEY), "Segment: Not segmented");
-  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due diligence");
+  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due Diligence");
 
   // popstate restores and repaints. It reads nothing.
   assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\)\)/);
@@ -404,8 +404,8 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
-  assert.equal(contract.version, "1.34.0", "the current interface retains the Charts read");
-  assert.equal(contract.producer.source_commit, "0cc6fe2538a81521bf8c25b0df58aa4063ed614b");
+  assert.equal(contract.version, "1.43.0", "the current interface retains the Charts read");
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184");
   assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 
   // No route is added. `/business` already resolves, and the gate does not
@@ -453,7 +453,7 @@ test("B06-13 a pick no record carries renders the no-match state and draws no ch
   // It is its OWN state, with its own heading, and it is not `ready`.
   const phase = chartsPhase({ status: "ready", payload: board, group: "segment", pick: "NoSuchSegment" });
   assert.equal(phase, "no_match");
-  assert.equal(CHARTS_STATE_COPY.no_match.title, "Nothing on this board matches that slice");
+  assert.equal(CHARTS_STATE_COPY.no_match.title, "No matches");
   assert.equal(CHARTS_STATE_COPY.no_match.retry, false, "the board answered; there is nothing to retry");
   assert.notEqual(CHARTS_STATE_COPY.no_match.title, CHARTS_STATE_COPY.empty.title, "an empty board and an empty slice say different things");
 
@@ -527,7 +527,7 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
   assert.equal(quickAdd.deals.length, 74);
   const painted = nodes.get("chartsCanvas").innerHTML;
   assert.match(painted, /73 of 74 have no next date on file/, "the tab painted from the page's answer");
-  assert.match(nodes.get("chartsReadAt").textContent, /^Read at \d\d:\d\d$/);
+  assert.match(nodes.get("chartsReadAt").textContent, /^Updated \d\d:\d\d$/);
   assert.equal(nodes.get("chartsState").hidden, true, "a ready paint shows no state block");
 
   // Only a person pressing Retry takes a new one, and that is a new as-of they

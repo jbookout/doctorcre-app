@@ -884,7 +884,7 @@ test("app.js holds a confirmed write and asks for a fresh read rather than await
 test("app.js sends one cell change under one key, and never mints a second one per attempt", async () => {
   const app = await file("js/app.js");
   assert.match(app, /from '\.\/field-write-reconciliation\.mjs'/);
-  assert.match(app, /fieldWrites: createFieldWriteState\(\)/,
+  assert.match(app, /fieldWrites: \{\}/,
     "the retained request per cell sits beside fieldBase, as bookkeeping");
   assert.doesNotMatch(app, /function performFieldWrite|function beginFieldWrite/,
     "the reconciliation rule has one home, and app.js is not a second copy of it");
@@ -1067,12 +1067,12 @@ test("app.js is honest in the badge and refuses to show an empty board it never 
   const detail = app.slice(app.indexOf("function syncDetail("), app.indexOf("function setSync"));
   const setSync = app.slice(app.indexOf("function setSync"), app.indexOf("/**\n * Read the board authoritatively"));
   // Both paths are reported, separately, because they fail separately.
-  assert.match(detail, /Board values are from the last successful read at \$\{at\}/,
+  assert.match(detail, /Updated \$\{at\}/,
     "the detail names the moment the values are from");
-  assert.match(detail, /No board read has succeeded yet in this session\./);
+  assert.match(detail, /Updating/);
   assert.match(detail, /status\.board_health === HEALTH\.RENDER_FAILED/,
     "the health vocabulary has one home, in the coordinator");
-  assert.match(detail, /The change feed is not answering/);
+  assert.match(detail, /Activity temporarily unavailable/);
   assert.doesNotMatch(detail, /=== 'ok'|=== 'failed'/, "no second copy of those strings in app.js");
   assert.doesNotMatch(`${detail}${setSync}`, /up to date|real.?time|instantly|guaranteed|complete/i,
     "no freshness or completeness promise a poll cannot keep");

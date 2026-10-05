@@ -1,0 +1,37 @@
+{
+  "schema": "doctorcre-tour-planning.v1",
+  "version": "1.0.0",
+  "mode": "app-only-drafts",
+  "existing_reads": {
+    "producer": "jbookout/carr-system",
+    "producer_contract": "contracts/carr-interface.v1.json",
+    "client_list": "/api/v1/business/clients?scope=team&sort=name&page=<page>",
+    "client_record": "/api/v1/business/clients/<client-id>",
+    "tour_library": "/api/tours/library",
+    "tour_detail": "/api/tours/detail?tour_id=<tour-id>"
+  },
+  "prefill": {
+    "name": "exact selected client.name plus Tour",
+    "area": "client.city and client.state; never a claimed search preference",
+    "use": "client.vertical or client.specialty",
+    "notes": "short client.notes summary; original entry expands in the draft popup",
+    "missing_fields": ["client space criteria", "preferred tour date", "preferred route endpoints", "appointments"]
+  },
+  "storage": {
+    "drafts": "sessionStorage scoped to the hash of the authenticated Tour session token",
+    "files": "memory only; no file bytes, names or derived contents are persisted or transmitted",
+    "business_writes": "none"
+  },
+  "unavailable_operations": [
+    "private workspace file upload and authorized agent packet compilation",
+    "licensed MLS query and listing matches"
+  ],
+  "safety": [
+    "Unsupported actions stay disabled; catalog search is not MLS search.",
+    "No default date, budget, appointment, listing result or navigation coordinate is invented.",
+    "Selecting another client clears prior-client values; late responses are discarded.",
+    "Background updates refresh the record and tour details without overwriting edited draft fields.",
+    "Files are never included in public projection, share or PDF commands.",
+    "Territory is a schematic overview; no property or native-navigation pins are presented."
+  ]
+}

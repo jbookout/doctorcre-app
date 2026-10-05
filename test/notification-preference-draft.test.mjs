@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { createFixtureClient } from "../js/fixture-client.js";
-import { preferenceView, setPreferenceArgs } from "../js/notifications-model.js";
-import { preferenceSaveView } from "../js/notification-preference-draft.mjs";
+import { preferenceView, setPreferenceArgs, preferenceSaveView } from "../js/notifications-model.js";
 
 const fixture = async () => {
   const seed = await readFile(new URL("../data/board-seed.json", import.meta.url));

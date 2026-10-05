@@ -42,7 +42,7 @@ test("no page or script points Home or sign-in at /business", async () => {
   const markup = shell.appShellMarkup("/search");
   assert.match(markup, /aria-label="DoctorCRE Home"/);
   assert.match(markup, /class="app-shell-brand" href="\/"/);
-  assert.match(markup, /aria-label="Home" href="\/"/);
+  assert.match(markup, /aria-label="Home"[^>]*href="\/"/);
   assert.doesNotMatch(markup, /\/business/);
   assert.match(await read("js/business-workspace.js"), /SIGN_IN_HREF = "\/auth\/login\?return_to=%2F"/);
 });
@@ -51,7 +51,7 @@ test("every Home page control resolves to a real route, never /business", async 
   const html = await read("workspace.html");
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const targets = [...html.matchAll(/<a [^>]*href="(\/[^"?#]*)/g)].map((m) => m[1]);
-  for (const target of targets) assert.ok(target === "/" || routes.routes[target] || target.startsWith("/auth/"), `${target} is a routed path`);
+  for (const target of targets) assert.ok(target === "/" || routes.routes[target] || routes.redirects[target] || target.startsWith("/auth/"), `${target} is a routed path`);
   assert.equal(routes.redirects["/business"], "/");
 });
 
@@ -63,8 +63,8 @@ test("Deal Room phone strips scroll in their own regions with dark scrollbars", 
   assert.match(css, /\.focus\{[^}]*overflow:auto/);
   assert.match(css, /\.filters\{[^}]*overflow:auto/);
   assert.match(css, /@media\(max-width:680px\)\{html,body\{max-width:100%;overflow-x:clip\}/);
-  assert.match(shell, /@media\(max-width:900px\)\{\.app-shell-navigation\{max-height:calc\(100vh - 120px\);overflow:auto/);
-  assert.match(shell, /\.app-shell-navigation::-webkit-scrollbar-thumb/);
+  assert.match(shell, /\.app-shell-more-list[^}]*max-height:calc\(100dvh - 125px\)/);
+  assert.match(shell, /scrollbar-color:#3a5878 #0a1a2e/);
 });
 
 test("Search on a phone caps the candidate list inside its own scroll region", async () => {

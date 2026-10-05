@@ -19,23 +19,14 @@
 <body data-prototype="business">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to Home</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. No record is read or changed.</p>
@@ -49,7 +40,7 @@
       </select>
     </div>
 
-    <div class="tabs" id="businessTabs" role="tablist" aria-label="Business sections">
+    <div data-layout-slot="tabs" class="page-views" id="businessTabs" role="tablist" aria-label="Business sections">
       <button class="tab" type="button" role="tab" id="tabHome" aria-controls="panelHome" aria-selected="true">Home</button>
       <button class="tab" type="button" role="tab" id="tabWork" aria-controls="panelWork" aria-selected="false">Work</button>
       <button class="tab" type="button" role="tab" id="tabPipeline" aria-controls="panelPipeline" aria-selected="false">Pipeline</button>
@@ -57,14 +48,14 @@
     </div>
 
     <section class="tabpanel" id="panelHome" role="tabpanel" aria-labelledby="tabHome" tabindex="0">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
           <p class="eyebrow"><span class="orb" data-state="healthy" aria-hidden="true"></span> Deals</p>
           <h1 id="homeTitle">Priority Items</h1>
         </div>
         <div class="hero-meta">
           <span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Live sync</span>
-          <span class="as-of" id="homeAsOf">Source CARR</span>
+          <span class="as-of" id="homeAsOf">Updated 1:12 PM</span>
         </div>
       </div>
 
@@ -147,7 +138,7 @@
           <div class="panel-section"><h3>Next action</h3><p>Send LOI redline · Joe · due Tue, Sep 15, 2026 · 5:00 PM</p></div>
           <div class="panel-section"><h3>Critical dates</h3><p>Lease expiry Wed, Mar 31, 2027 · LOI response due Sat, Sep 19, 2026 · 2:00 PM</p></div>
           <div class="panel-section"><h3>Blockers</h3><p>None recorded.</p></div>
-          <div class="panel-section"><h3>Latest communication</h3><p>Email from Demo Dr. Avery, 1:12 PM: “Fine with the TI number.” <a class="source-link" href="/work-inventory" target="_blank" rel="noopener">Source (new tab)</a></p></div>
+          <div class="panel-section"><h3>Latest communication</h3><p>Email from Demo Dr. Avery, 1:12 PM: “Fine with the TI number.” <a class="source-link" href="/work-inventory" target="_blank" rel="noopener">Details</a></p></div>
           <div class="panel-section"><h3>Doc work</h3><p>Tour packet request · awaiting your approval.</p></div>
         </aside>
       </div>
@@ -182,20 +173,6 @@
       <footer><button class="btn btn-quiet" type="submit" value="cancel">Cancel, keep phase</button><button class="btn btn-primary" type="submit" value="confirm">Move with this evidence</button></footer>
     </form>
   </dialog>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Business home</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
   <footer class="footer"><span>DoctorCRE · Business prototype</span><span>Synthetic examples. No record was read or changed.</span></footer>

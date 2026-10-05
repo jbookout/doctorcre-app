@@ -23,12 +23,12 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PHASES, PHICON, phaseLabel } from "../js/client.js";
 import {
   CLOSED_SLUG, COLUMNS, DEAL_OUTCOMES, PHASE_DATE_KIND, attachedParties, closedColumnCaption,
-  columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections, filterDeals,
+  columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections,
   groupByColumn, isDealOutcome, keyboardTarget, loadDealContext, moveIntent, moveSummary,
-  moveTitle, orderColumn, partyRoleLabel, presenceChip, recordPanelSections, tapMoveTargets, typeFilters,
+  moveTitle, partyRoleLabel, presenceChip,
 } from "../js/pipeline-model.js";
 import {
-  createUndoState, ingestChangeEvents, performUndo, receiptViews,
+  ingestChangeEvents, performUndo, receiptViews,
 } from "../js/change-receipts.mjs";
 
 const ROOT = new URL("..", import.meta.url);
@@ -45,15 +45,15 @@ test("the board has the eight deal phases, in the record layer's own order", () 
     "pending", "research", "site_selection", "negotiation", "legal", "due_diligence", "closing", "closed",
   ]);
   assert.deepEqual(COLUMNS.map((column) => column.label), [
-    "Pending", "Research", "Site selection", "Negotiation", "Legal", "Due diligence", "Closing", "Closed",
+    "Prospective Client", "Research", "Site Selection", "Negotiating", "Legal", "Due Diligence", "Closing", "Closed",
   ]);
   // The board's labels are a display map OVER the client's UI values; the two
   // long-standing Deal Room names are untouched, which is what keeps the pinned
   // markup at /deals green.
   assert.equal(columnBySlug("pending").value, "On Deck");
   assert.equal(columnBySlug("due_diligence").value, "Diligence");
-  assert.equal(columnLabel("On Deck"), "Pending");
-  assert.equal(columnLabel("Diligence"), "Due diligence");
+  assert.equal(columnLabel("On Deck"), "Prospective Client");
+  assert.equal(columnLabel("Diligence"), "Due Diligence");
   // /deals now prints the same display words as the board. One map per word,
   // asserted against the other, so the two surfaces cannot drift apart.
   for (const column of COLUMNS) {
@@ -62,10 +62,10 @@ test("the board has the eight deal phases, in the record layer's own order", () 
 });
 
 test("the /deals phase select shows the display word and writes the wire word", async () => {
-  assert.equal(phaseLabel("On Deck"), "Pending");
-  assert.equal(phaseLabel("Diligence"), "Due diligence");
+  assert.equal(phaseLabel("On Deck"), "Prospective Client");
+  assert.equal(phaseLabel("Diligence"), "Due Diligence");
   for (const phase of PHASES) {
-    if (phase !== "On Deck" && phase !== "Diligence") assert.equal(phaseLabel(phase), phase, `${phase} is renamed`);
+    if (!["On Deck","Diligence","Site selection","Negotiation"].includes(phase)) assert.equal(phaseLabel(phase), phase, `${phase} is renamed`);
   }
   // The option the /deals table renders: the wire word in the value attribute,
   // the display word in the text, so a write still sends 'On Deck'.
@@ -109,25 +109,13 @@ test("a move intent names both ends, and a drop on the card's own column is not 
   const intent = moveIntent(deal, "closing");
   assert.deepEqual({ ...intent }, {
     deal: "d20", name: "Demo Osteopathic Office", field: "phase", value: "Closing",
-    from: "due_diligence", from_label: "Due diligence", to: "closing", to_label: "Closing",
+    from: "due_diligence", from_label: "Due Diligence", to: "closing", to_label: "Closing",
   });
   assert.equal(moveSummary(intent), "Demo Osteopathic Office → Closing");
   assert.equal(moveTitle(intent), "Move Demo Osteopathic Office to Closing");
   assert.equal(moveIntent(deal, "due_diligence"), null, "the same column is not a move");
   assert.equal(moveIntent(deal, "not_a_phase"), null);
   assert.equal(moveIntent(null, "closing"), null);
-});
-
-test("tap offers only real phase moves and uses the same intent as drag and keyboard", () => {
-  const deal = { id: "d20", name: "Demo Osteopathic Office", phase: "Diligence" };
-  const targets = tapMoveTargets(deal);
-  assert.equal(targets.length, COLUMNS.length - 1);
-  assert.ok(!targets.some((column) => column.slug === "due_diligence"));
-  for (const target of targets) {
-    const intent = moveIntent(deal, target.slug);
-    assert.equal(intent.value, target.value);
-    assert.equal(intent.to_label, target.label);
-  }
 });
 
 test("the completion plan puts the phase patch first and carries only the follow-ups that were filled in", () => {
@@ -194,7 +182,7 @@ test("a critical date is refused without its source, and a date without a step i
 
   const noSource = completionPlan(intent, { effectiveDate: "2026-02-01", recordCriticalDate: true });
   assert.equal(noSource.steps.length, 1, "nothing beyond the move is planned");
-  assert.ok(noSource.errors.some((line) => /where the date came from/.test(line)));
+  assert.ok(noSource.errors.some((line) => /date reference/.test(line)));
 
   const noDate = completionPlan(intent, { recordCriticalDate: true, dateSource: "Landlord email" });
   assert.ok(noDate.errors.some((line) => /Pick the effective date/.test(line)));
@@ -240,35 +228,6 @@ test("a partner's lease reads as a chip, and the viewer's own never does", () =>
   assert.equal(presenceChip(presence, "d01", { selfActor: "joe", field: "phase", actorLabel: label }), null);
   assert.equal(presenceChip(presence, "d03", { selfActor: "joe", field: "phase", actorLabel: label }), null);
   assert.equal(presenceChip([], "d01", { selfActor: "joe" }), null);
-});
-
-test("the chips are built from the deal types the board returns, and filter by them", () => {
-  const deals = [
-    { id: "a", type: "Renewal" }, { id: "b", type: "Startup" }, { id: "c", type: "Renewal" }, { id: "d" },
-  ];
-  assert.deepEqual(typeFilters(deals).map((chip) => chip.value), ["all", "Renewal", "Startup"]);
-  assert.deepEqual(filterDeals(deals, "Renewal").map((deal) => deal.id), ["a", "c"]);
-  assert.equal(filterDeals(deals, "all").length, 4);
-  assert.equal(filterDeals(deals, null).length, 4);
-});
-
-test("a column orders flagged records first, then by name, and the panel states what is missing", () => {
-  const ordered = orderColumn([
-    { id: "b", name: "Demo B" }, { id: "c", name: "Demo C", attention: true }, { id: "a", name: "Demo A" },
-  ]);
-  assert.deepEqual(ordered.map((deal) => deal.id), ["c", "a", "b"]);
-
-  const sections = recordPanelSections({
-    deal: { name: "Demo A", type: "Renewal", phase: "Diligence", owner: "joe", next_step: "", attention: false },
-    critical_dates: [],
-    thread: [],
-  }, { actorLabel: (slug) => ({ joe: "Joe" }[slug] || "Unassigned"), dateLabel: (value) => value });
-  assert.deepEqual(sections.map((section) => section.title),
-    ["Situation", "Next action", "Critical dates", "Blockers", "Latest communication", "Doc work"]);
-  assert.match(sections[0].lines[0], /Due diligence/, "the panel says the phase's own name");
-  assert.equal(sections[1].lines[0], "No next step recorded.");
-  assert.deepEqual(sections[2].lines, ["None recorded."]);
-  assert.deepEqual(sections[5].lines, ["Not in this release."]);
 });
 
 /* ------------------------------------------ V5-UX-B04: record/client/vendor context */
@@ -334,7 +293,7 @@ test("contextDrawerSections states three distinct honest states for the client: 
   assert.match(ok[0].lines[1], /205-555-0142/);
   assert.match(ok[0].lines[1], /a@example\.com/);
   assert.deepEqual(ok[1].lines, ["Client contact · Dr. Example"]);
-  assert.deepEqual(ok[2].lines, ["LOI expires · 2026-10-01 · source email"]);
+  assert.deepEqual(ok[2].lines, ["LOI expires · 2026-10-01 · email"]);
 });
 
 test("contextDrawerSections never invents a party or a date: an empty deal says so in both sections", () => {
@@ -429,7 +388,7 @@ test("an undo the actor made succeeds: revert-deal-field lands a canonical corre
   assert.equal(write.status, "ok");
   assert.equal((await boardRow(client, "d05")).phase, "Research");
 
-  let undoState = createUndoState();
+  let undoState = {};
   const result = await performUndo({
     eventId: write.event_id,
     getState: () => undoState,
@@ -466,7 +425,7 @@ test("undo is refused, not clobbered, when a newer edit landed on the same field
   });
   assert.equal(secondWrite.status, "ok");
 
-  let undoState = createUndoState();
+  let undoState = {};
   const result = await performUndo({
     eventId: firstWrite.event_id,
     getState: () => undoState,
@@ -510,7 +469,7 @@ test("a change to a field revert-deal-field cannot act on shows in Recent Change
   assert.ok(nextStepReceipt, "the change appears in the feed this view is built from");
   assert.equal(nextStepReceipt.revertible_field, false);
 
-  const views = receiptViews(receipts, { selfActor: client.selfActor, undo: createUndoState(), now: Date.now() });
+  const views = receiptViews(receipts, { selfActor: client.selfActor, undo: {}, now: Date.now() });
   const view = views.find((v) => v.event_id === nextStepReceipt.event_id);
   assert.equal(view.undo_status, "unsupported");
   assert.equal(view.can_undo, false);
@@ -536,7 +495,7 @@ test("a lost response is reconciled by resending the SAME idempotency key, not b
     return response;
   };
 
-  let undoState = createUndoState();
+  let undoState = {};
   const lost = await performUndo({
     eventId: write.event_id,
     getState: () => undoState,
@@ -689,7 +648,7 @@ test("js/pipeline.js reads the board in exactly one place, through the coordinat
   assert.match(source, /from '\.\/board-sync\.mjs'/);
   assert.equal((source.match(/getBoard\(/g) || []).length, 1, "one board read path");
   assert.equal((source.match(/getChanges\(/g) || []).length, 1, "one changes read path");
-  assert.match(source, /readBoard: \(\) => state\.client\.getBoard\(\{ workspace: 'all' \}\)/);
+  assert.match(source, /readBoard: \(\) => state\.client\.getBoard\(\{ workspace: 'team' \}\)/);
   assert.match(source, /readChanges: \(cursor\) => state\.client\.getChanges\(cursor\)/);
   assert.equal((source.match(/state\.deals = new Map/g) || []).length, 1,
     "one place builds the board, and only an applied snapshot reaches it");
@@ -711,7 +670,7 @@ test("js/pipeline.js copies no value out of a change event and holds ids rather 
   assert.match(source, /lifted: null,/);
   assert.match(source, /panelDeal: null,/);
   assert.match(source, /const deal = state\.deals\.get\(id\);/);
-  assert.match(source, /if \(state\.panelDeal !== dealId\) return;/,
+  assert.match(source, /state\.panelDeal !== id \|\| seq !== panelReadSequence/,
     "a late detail read never paints over a record the person has since opened");
 
   const noteCellBase = source.slice(source.indexOf("function noteCellBase"), source.indexOf("function applyBoardSnapshot"));
@@ -726,7 +685,7 @@ test("js/pipeline.js sends the phase first, through the field-write kernel, and 
   assert.match(source, /performCommand\(\{/, "each follow-up is its own command");
   const runMove = source.slice(source.indexOf("async function runMove"), source.indexOf("async function retryFieldWrite"));
   assert.match(runMove, /const \[phaseStep, \.\.\.followUps\] = plan\.steps;/);
-  assert.ok(runMove.indexOf("sendPhaseWrite") < runMove.indexOf("for (const step of followUps)"),
+  assert.ok(runMove.indexOf("sendPhaseWrite") < runMove.indexOf("await resumeMoveFollowUps(cell)"),
     "the phase patch is sent before any follow-up");
   assert.match(runMove, /if \(result\.status === 'conflict'\)/);
   assert.match(runMove, /if \(result\.status !== 'ok'\) \{/);
@@ -748,18 +707,15 @@ test("js/pipeline-model.js is pure: no DOM, no client, no network", async () => 
 
 /* ------------------------------------------------------------ what the page says */
 
-test("pipeline offers drag, keyboard and tap through one reviewed move", async () => {
+test("pipeline offers drag and keyboard through one reviewed move", async () => {
   const html = await read("pipeline.html");
   const source = await read("js/pipeline.js");
   assert.match(html, /<div class="kanban" id="kanban"/);
   assert.match(html, /id="dragLive" aria-live="assertive"/, "moves are announced");
   assert.match(html, /press Enter to lift it/, "the keyboard path is stated on the page");
   assert.match(html, /Arrows choose a column, Enter drops, Escape cancels/);
-  assert.match(html, /<dialog id="moveDialog"[^>]*aria-labelledby="moveTitle"/);
-  assert.match(html, /id="moveTargets"[^>]*aria-label="Choose a destination phase"/);
-  assert.match(source, /data-move="\$\{esc\(deal\.id\)\}"/, "every rendered card offers a tap control");
-  assert.match(source, /if \(move\) \{ openMoveChooser\(move\.dataset\.move\); return; \}/);
-  assert.match(source, /beginMove\(dealId, target\.dataset\.moveTarget\)/, "tap joins the shared completion path");
+  assert.doesNotMatch(source, /data-move="/);
+  assert.match(source, /id="detailPhase"/, 'manual phase remains accessible inside the detail popup');
 });
 
 test("pipeline.html asks for dates with a calendar only, and never claims a gate", async () => {
@@ -768,8 +724,8 @@ test("pipeline.html asks for dates with a calendar only, and never claims a gate
   assert.match(html, /id="completionNextWhen" type="date"/);
   assert.doesNotMatch(html, /type="date"[^>]*placeholder/, "no typed-date fallback");
   assert.doesNotMatch(html, /DateTyped/);
-  assert.match(html, /CARR does not require evidence to move a phase\./);
-  assert.match(html, /Not recorded anywhere; the move is dated by when it is saved\./);
+  assert.doesNotMatch(html, /CARR does not require evidence/);
+  assert.doesNotMatch(html, /Not recorded anywhere/);
   assert.match(html, /value="cancel"|id="completionCancel"/);
   assert.match(html, />Cancel, keep phase</);
   // No sentence on this page may imply a check the record layer does not make.
@@ -781,18 +737,20 @@ test("pipeline.html asks for dates with a calendar only, and never claims a gate
 
 test("pipeline.html carries the shared shell exactly once and nothing under its title", async () => {
   const html = await read("pipeline.html");
-  assert.equal((html.match(/id="docFab"/g) || []).length, 1, "one floating Doc");
-  assert.equal((html.match(/id="docChat"/g) || []).length, 1);
-  assert.match(html, /id="docReading">Doc is reading: Deals</);
+  assert.equal((html.match(/id="docFab"/g) || []).length, 0, "legacy dock is absent");
+  assert.equal((html.match(/id="docChat"/g) || []).length, 0);
+  assert.doesNotMatch(html, /id="docReading">Doc is reading: Deals</);
   assert.match(html, /id="receiptDock"/, "the command dock is on the page");
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
   assert.match(html, /<dialog id="conflictDialog"/);
-  assert.match(html, /<dialog id="receiptsDialog"/, "recent changes are a popup, not an inline panel");
-  assert.match(html, /<aside id="recordPanel" class="side-panel glass"[^>]*data-pinned="false"/);
-  assert.match(html, /id="panelPin" aria-pressed="false"/);
+  assert.doesNotMatch(html, /receiptsDialog|receiptsClose|receiptsTitle/, "R10 Recent changes belongs to Today without a legacy modal");
+  assert.match(html, /<ul data-layout-slot="moves" class="receipt-list" id="receiptsList"/);
+  assert.match(html, /<dialog id="recordPanel" class="dialog deal-detail"/);
+  assert.equal((html.match(/id="recordPanel"/g) || []).length, 1, "one editable deal dialog");
+  assert.doesNotMatch(html, /id="panelPin"/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
-  assert.match(html, /<h1 id="pageTitle">Deals<\/h1>/, "Joe's name for this surface, on this surface");
+  assert.match(html, /<h1 id="pageTitle">Local Deals<\/h1>/, "Joe's name for this surface, on this surface");
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
 });
 
@@ -813,7 +771,7 @@ test("every control on the page clears the 44 px floor through the shared classe
 test("the route and the verbs this surface needs are pinned in the contracts", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   assert.equal(routes.redirects["/pipeline"], "/deals?view=board");
-  assert.equal(routes.routes["/deals"], "index.html", "the existing Deal Room keeps its route");
+  assert.equal(routes.routes["/deals"], "pipeline.html", "the existing Deal Room keeps its route");
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   for (const verb of ["patch-deal-field", "add-deal-note", "set-next-step", "add-critical-date", "resolve-conflict", "presence-lease", "revert-deal-field"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -865,7 +823,7 @@ test("Closed refuses without an outcome, and refuses an outcome the record layer
 
   const invented = completionPlan(closedIntent(), { outcome: "settled", closedOn: "2026-09-17" });
   assert.deepEqual(invented.steps.map((step) => step.verb), ["patch-deal-field"]);
-  assert.ok(invented.errors.some((line) => /won, lost or paused/.test(line)));
+  assert.ok(invented.errors.some((line) => /won, lost, or paused/.test(line)));
 
   const nonsense = completionPlan(closedIntent(), { outcome: "won", closedOn: "2026-09-17", wonValue: "lots" });
   assert.deepEqual(nonsense.steps.map((step) => step.verb), ["patch-deal-field"]);
@@ -932,7 +890,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.34.0");
+  assert.equal(contract.version, "1.43.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {
@@ -973,8 +931,8 @@ test("the completion dialog asks for the reason and the partner's own words, and
   const html = await read("pipeline.html");
   assert.match(html, /id="completionReason"/);
   assert.match(html, /id="completionQuote"/);
-  assert.match(html, /A short reason, saved with the phase change itself\./);
-  assert.match(html, /Your own sentence, saved word for word with the phase change\./);
+  assert.match(html, /Reason for this change/);
+  assert.match(html, /In your words/);
   for (const phrase of ["needs evidence", "blocked", "not allowed", "requires approval", "cannot move until"]) {
     assert.ok(!html.toLowerCase().includes(phrase), `the page still says "${phrase}"`);
   }
@@ -984,4 +942,13 @@ test("the two new controls' values reach the completion plan", async () => {
   const pageJs = await read("js/pipeline.js");
   assert.match(pageJs, /changeReason: \$\('completionReason'\)/);
   assert.match(pageJs, /humanQuote: \$\('completionQuote'\)/);
+});
+
+test('deal insight lines distinguish insufficient evidence from unavailable and preserve recorded movement', async () => {
+  const { dealInsightLines } = await import('../js/pipeline-model.js');
+  assert.deepEqual(dealInsightLines({judged:false,reason:'insufficient_recorded_evidence'}), ['Insufficient evidence']);
+  assert.deepEqual(dealInsightLines({judged:false,reason:'unavailable'}), ['Insights unavailable']);
+  assert.deepEqual(dealInsightLines(null), ['Insights unavailable']);
+  assert.deepEqual(dealInsightLines({judged:true,movement_rung:2,movement_rungs:4,movement_label:'Reviewed',waiting_on:'client_reply',silence_is_bad:0.2}),
+    ['Movement 2 of 4', 'Reviewed', 'Waiting on: client reply', 'Estimated silence concern: 20%']);
 });

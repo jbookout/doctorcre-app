@@ -1,3 +1,5 @@
+import { selectDocRecord } from './doc-context.js';
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C14 — the incident page: DOM wiring only.
 //
 // Every decision about a payload, a reference or a sentence lives in
@@ -19,11 +21,11 @@
 //      frozen request; that reconcile is the kernel's and nothing is added to
 //      it here.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import { groupedIncidents, validIncidentBoardPayload } from "./control-room-model.js";
 import {
@@ -48,7 +50,7 @@ const view = {
 };
 
 let client = null;
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -128,21 +130,21 @@ function renderDetail() {
   $("hypothesesEyebrow").textContent = HYPOTHESIS_EYEBROW;
 
   $("factList").innerHTML = factRows(payload.facts).map((fact) => rowHtml({
-    title: fact.statement, meta: `source ${fact.source} · recorded at ${fact.clock}`,
-  })).join("") || rowHtml({ title: "No fact is recorded on this incident yet", meta: "read from the operational ledger" });
+    title: fact.statement, meta: fact.clock,
+  })).join("") || rowHtml({ title: "No fact is recorded on this incident yet", meta: "" });
 
   $("hypothesisList").innerHTML = hypothesisRows(payload.hypotheses).map((row_) => rowHtml({
     title: row_.statement, meta: `${row_.status} · recorded at ${row_.clock}`,
-  })).join("") || rowHtml({ title: "No hypothesis is recorded on this incident yet", meta: "read from the operational ledger" });
+  })).join("") || rowHtml({ title: "No hypothesis is recorded on this incident yet", meta: "" });
 
   $("occurrenceList").innerHTML = occurrenceRows(payload.occurrences).map((row_) => rowHtml({
     title: row_.note, meta: `seen at ${row_.clock}`,
-  })).join("") || rowHtml({ title: "No further occurrence is recorded", meta: "read from the operational ledger" });
+  })).join("") || rowHtml({ title: "No further occurrence is recorded", meta: "" });
 
   $("linkList").innerHTML = linkRows(payload.links).map((link) => rowHtml({
     title: link.label, meta: `${link.ref} · ${link.kind}`,
     end: link.href ? `<a class="btn" href="${escapeHtml(link.href)}">Open</a>` : "",
-  })).join("") || rowHtml({ title: "Nothing is linked to this incident yet", meta: "read from the operational ledger" });
+  })).join("") || rowHtml({ title: "Nothing is linked to this incident yet", meta: "" });
 }
 
 function render() {
@@ -168,6 +170,7 @@ async function take(slot, run) {
 }
 
 async function load() {
+  selectDocRecord('incident', view.refState === 'ok' ? view.ref : null);
   view.sequence += 1;
   if (view.refState === "ok") {
     view.detail = { state: "pending" };
@@ -246,7 +249,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Incident");
+
   mountDock();
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = refFromSearch(location.search || "");
@@ -265,6 +268,7 @@ async function boot() {
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   await load();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: load });
 }
 
 boot();

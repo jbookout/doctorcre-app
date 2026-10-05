@@ -56,7 +56,7 @@ export const SECTION_READ = Object.freeze({
 });
 
 /** The one sentence Calls says. It is literal in the page; no renderer writes it. */
-export const CALLS_ABSENT = "Calls: no record-layer read returns logged calls yet";
+export const CALLS_ABSENT = "Calls unavailable";
 
 /** `today-triage` answers at most this many rows (`limit 50` in its handler). */
 export const TRIAGE_ROW_CAP = 50;

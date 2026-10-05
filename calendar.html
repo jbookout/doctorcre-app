@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
-  <meta name="description" content="DoctorCRE Calendar — every deal's critical dates by month and week, read from the record layer">
+  <meta name="description" content="DoctorCRE Calendar — every deal's critical dates by month and week, ">
   <title>Calendar · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
@@ -19,23 +19,14 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the calendar</a>
-  <header class="topbar">
+  <div data-layout-slot="status">
 
 
 
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">
@@ -44,12 +35,12 @@
         <h1 id="pageTitle">Calendar</h1>
       </div>
       <div class="chip-bar">
-        <span class="status" data-state="unknown" id="calStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="calStatusLabel">Reading the record…</span></span>
-        <span class="as-of" id="calAsOf">Reading the record layer…</span>
+        <span class="status" data-state="unknown" id="calStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="calStatusLabel">Updating…</span></span>
+        <span class="as-of" id="calAsOf">Updating…</span>
       </div>
     </section>
 
-    <p class="sr-only" id="calLive" aria-live="polite" role="status">Reading the record…</p>
+    <p class="sr-only" id="calLive" aria-live="polite" role="status">Updating…</p>
 
     <div class="cal-notices" id="calNotices"></div>
 
@@ -76,8 +67,8 @@
         <div class="state-block" id="calState" data-state="loading"><h3>Reading every deal's critical dates…</h3></div>
         <div class="cal-grid" id="calGrid" role="grid" aria-labelledby="calPeriod" data-view="month"></div>
         <div class="chip-bar">
-          <button class="btn" type="button" id="calRefresh">Check again</button>
-          <p class="small" id="calSource">Source pending</p>
+          <button class="btn" type="button" id="calRefresh" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
+          <p class="small" id="calSource"></p>
         </div>
       </section>
 
@@ -98,22 +89,8 @@
     </section>
   </main>
 
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Calendar</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
-
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small">DoctorCRE · Calendar · Read only: dates are added on the deal itself.</p></footer>
+  <footer class="shell"><p class="small">DoctorCRE · Calendar · </p></footer>
   <script type="module" src="/js/calendar.js"></script>
 </body>
 </html>

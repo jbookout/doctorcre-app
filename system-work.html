@@ -13,12 +13,12 @@
 <body>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#systemWorkMain">Skip to Work Requests</a>
-  <header class="system-work-topbar">
+  <div data-layout-slot="status">
     <a href="/" class="system-work-brand"><span>DoctorCRE</span><strong>Work Requests</strong></a>
     <span id="systemWorkActor">Checking session…</span>
-  </header>
+  </div>
   <main id="systemWorkMain">
-    <section class="system-work-hero">
+    <section data-layout-slot="sidebar" class="system-work-hero">
       <div><p class="eyebrow">Evidence and review</p><h1>Work Requests</h1></div>
       <div class="system-work-open">
         <form id="openWorkRequest"><label for="workRequestRef">Open a Work Request</label>

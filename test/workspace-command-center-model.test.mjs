@@ -104,7 +104,7 @@ test("empty and unavailable are different states with different copy", () => {
   assert.equal(empty.count, 0);
   assert.equal(unavailable.count, "—");
   assert.notEqual(empty.title, unavailable.title);
-  assert.match(unavailable.copy, /cannot verify/);
+  assert.match(unavailable.copy, /temporarily unavailable/);
 });
 
 test("stale aggregate payload withholds counts while preserving the owning destination", () => {
@@ -225,8 +225,8 @@ test("arbitrary array-shaped payloads are not accepted", () => {
 });
 
 test("Home identity comes only from the verified viewer", () => {
-  assert.equal(viewerWorkspaceLabel("joe"), "Joe’s workspace");
-  assert.equal(viewerWorkspaceLabel("dell"), "Dell’s workspace");
+  assert.equal(viewerWorkspaceLabel("joe"), "Joe's Workspace");
+  assert.equal(viewerWorkspaceLabel("dell"), "Dell's Workspace");
   assert.equal(viewerWorkspaceLabel("other"), "Partner workspace");
   assert.match(scopeNote("team"), /combined Deals view/);
   assert.match(scopeNote("mine"), /Team is the default/i);

@@ -1,3 +1,4 @@
+import { prepareSlices } from "./slices.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
@@ -7,6 +8,8 @@ const ROOT = new URL("../", import.meta.url);
 const ROOT_PATH = fileURLToPath(ROOT);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
 const json = async (path) => JSON.parse(await read(path));
+
+await prepareSlices(ROOT_PATH);
 
 const fixture = await json("data/board-seed.json");
 assert.equal(fixture.fixture?.synthetic, true, "the local board fixture must be explicitly synthetic");
@@ -33,16 +36,18 @@ assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 for (const verb of ["list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(contract.mcp_operations.includes(verb), `the Events tab needs ${verb} pinned`);
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["control-room.html", "progress-board.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
+for (const path of ["control-room.html", "automations.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
 const routes = await json("contracts/app-routes.v1.json");
+for (const path of new Set(Object.values(routes.routes))) await read(path);
+assert.equal(routes.routes["/doc-activity"], "activity.html");
 assert.equal(routes.routes["/all-work"], "work-inventory.html", "All Work must stay in the route contract");
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
 assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path must stay pinned in the CARR interface");
-assert.equal(routes.routes["/tasks"], "tasks.html", "the Tasks route must stay in the route contract");
-assert.equal(routes.routes["/deals"], "index.html", "the Deal Room must stay in the route contract");
+assert.equal(routes.redirects["/tasks"], "/", "old Work links must reach Home");
+assert.equal(routes.routes["/deals"], "pipeline.html", "the Deal Room must stay in the route contract");
 assert.equal(routes.redirects["/pipeline"], "/deals?view=board", "the old board bookmark must reach the Deals board");
 assert.equal(routes.redirects["/business"], "/", "the old business bookmark must reach Home");
 assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");

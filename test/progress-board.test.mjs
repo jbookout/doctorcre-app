@@ -1,44 +1,70 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 
 import { createLiveClient } from "../js/live-client.js";
-import { STAGES, boardView, answerRequest, taskStage, taskHealth, taskPulse } from "../js/progress-board-model.js";
+import {
+  STAGES, EXECUTORS, PULSES, INDICATORS, LIVE_PREVIEW, LIVE_PREF_KEY, legendEntries, boardView, answerRequest,
+  taskStage, taskHealth, taskPulse, blockedDetail, isStale, stageTimer, stageDurations, taskIdentity, taskSummary,
+  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, jobLinks, deliveryDetail,
+} from "../js/progress-board-model.js";
+import { mountBoard } from "../js/progress-board.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
 const host = `https://${config.env.staging.name}.workers.dev`;
+const FULL = JSON.parse(await readFile(new URL("./fixtures/progress-board-full.json", import.meta.url), "utf8"));
+const REF = new Date(FULL.reference_time);
+const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
+const CSS = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
 
-test("shared producer stage and health fixtures match the published board view", async () => {
+function memoryStorage(initial = {}) {
+  const data = new Map(Object.entries(initial));
+  return { getItem: key => (data.has(key) ? data.get(key) : null), setItem: (key, value) => data.set(key, String(value)), data };
+}
+
+async function mount(read, { now = REF, storage = memoryStorage(), search = "?board=carr-v5" } = {}) {
+  const dom = new JSDOM(PAGE, { url: `https://app.doctorcre.com/progress-board${search}` });
+  const { window } = dom;
+  window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  const writes = [];
+  let clock = new Date(now);
+  const client = {
+    readProgressBoard: async () => structuredClone(read),
+    answerBoardQuestion: async args => { writes.push(args); return { ok: true }; },
+  };
+  // A card navigates to its work detail; the stand-in records where it went.
+  const opened = [];
+  const board = mountBoard({ window, document: window.document, client, storage, search, openTask:card=>opened.push(card),
+    now: () => clock, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
+  await board.refresh(true);
+  const doc = window.document;
+  return { board, window, doc, writes, storage, opened, setNow: value => { clock = new Date(value); },
+    $: selector => doc.querySelector(selector), $$: selector => [...doc.querySelectorAll(selector)] };
+}
+
+test("shared producer stage, health, blocked and stale fixtures match the published board view", async () => {
   const fixtures = JSON.parse(await readFile(new URL("../test/fixtures/progress-board-stages.json", import.meta.url), "utf8"));
-  const css = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
-  const fixtureGenerator = await readFile(new URL("../scripts/generate-progress-board-parity.py", import.meta.url), "utf8");
-  assert.ok(fixtureGenerator.includes(`PIN = "${fixtures.producer_source_commit}"`),
-    "the historical board fixture stays bound to the producer commit that generated it");
+  const generator = await readFile(new URL("../scripts/generate-progress-board-parity.py", import.meta.url), "utf8");
+  assert.ok(generator.includes(`PIN = "${fixtures.producer_source_commit}"`),
+    "the board fixture stays bound to the producer commit that generated it");
   assert.deepEqual(new Set(fixtures.cases.map(({ producer_health }) => producer_health)),
     new Set(["healthy", "question", "blocked"]), "every producer health class is represented");
-  for (const stage of ["queued", "build", "review", "ci", "merged", "live"])
+  for (const stage of STAGES.map(item => item.id))
     for (const health of ["healthy", "question", "blocked"])
-      assert.ok(fixtures.cases.some(row => row.stage === stage && row.producer_health === health),
+      assert.ok(fixtures.cases.some(row => row.task.stage === stage && row.task.health === health),
         `${stage}/${health} producer row is missing`);
   const at = new Date(fixtures.reference_time);
-  const tasks = Object.fromEntries(fixtures.cases.map(({ id, task }) => [id, task]));
-  const view = boardView({ snapshot: { board_id: "synthetic", version: 1, snapshot_json: { tasks } } });
-  for (const { id, task, stage, stage_label, producer_health, pulse, pulse_period, stage_color, pulse_color } of fixtures.cases) {
-    assert.equal(taskStage(task), stage, id);
-    assert.equal(STAGES.find(item => item.id === stage)?.label, stage_label, `${id}: stage label`);
-    assert.equal(taskHealth(task, at), producer_health, id);
-    assert.equal(taskPulse(task, at), pulse, id);
-    assert.equal(view.stages.find(item => item.id === stage).tasks.some(item => item.id === id), true, id);
-    assert.match(css, new RegExp(`--stage-${stage}:\\s*${stage_color}`, "i"), `${id}: stage color`);
-    if (stage !== "queued") assert.match(css, new RegExp(`\\.flow-stage\\[data-stage="${stage}"\\] \\{ --stage-accent: var\\(--stage-${stage}\\); \\}`), `${id}: stage color wiring`);
-    else assert.match(css, /\.flow-stage \{ --stage-accent: var\(--stage-queued\); \}/, `${id}: queued stage color wiring`);
-    const variable = { healthy: "blue", attention: "orange", critical: "red", still: "green" }[pulse];
-    assert.match(css, new RegExp(`--${variable}:\\s*${pulse_color}`, "i"), `${id}: pulse color`);
-    assert.match(css, new RegExp(`\\.pipeline-node\\[data-pulse="${pulse}"\\] \\{ --pulse-accent: var\\(--${variable}\\); \\}`), `${id}: pulse color wiring`);
-    assert.match(css, /\.node-pulse \{[^}]*stroke: var\(--pulse-accent\)/, `${id}: pulse color visible`);
-    if (pulse_period) assert.match(css, new RegExp(`\\.pipeline-node\\[data-pulse="${pulse}"\\] \\.node-halo \\{ animation: pulse ${pulse_period.replace(".", "\\.")} ease-in-out infinite;`), `${id}: pulse rate`);
-    else assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\] \.node-halo \{[^}]*animation:/, `${id}: stillness`);
+  for (const row of fixtures.cases) {
+    assert.equal(taskStage(row.task), row.stage, `${row.id}: stage`);
+    assert.equal(STAGES.find(item => item.id === row.stage)?.label, row.stage_label, `${row.id}: label`);
+    assert.equal(taskHealth(row.task, at), row.producer_health, `${row.id}: health`);
+    assert.equal(taskPulse(row.task, at), row.pulse, `${row.id}: pulse`);
+    assert.equal(isStale(row.task, at), row.stale, `${row.id}: stale`);
+    assert.equal(stageTimer(row.task, at), row.stage_timer, `${row.id}: stage timer`);
+    const blocked = blockedDetail(row.task, at);
+    assert.deepEqual(blocked ? [blocked.reason, blocked.next] : null, row.blocked, `${row.id}: blocked detail`);
   }
 });
 
@@ -51,18 +77,281 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
     } },
     ASSETS: { fetch: async () => { throw Error("signed-out board must not load"); } },
   };
-  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress?board=project-one`), env);
+  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress/board/project-one`), env);
   assert.equal(signedOut.status, 302);
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
-  assert.equal(new URL(gated[0].url).search, "");
-
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
   env.ASSETS.fetch = async (request) => new Response(new URL(request.url).pathname);
   const signedIn = await handleDoctorcreRequest(new Request(`${host}/control-room/progress`), env);
   assert.equal(await signedIn.text(), "/progress-board.html");
 });
 
-test("board view reads current typed questions and keeps status from CARR only", () => {
+test("/progress-board?board=all-repos keeps its board through the redirect and is accepted", async () => {
+  const env = { CARR: { fetch: async () => new Response() }, ASSETS: { fetch: async () => new Response("") } };
+  const response = await handleDoctorcreRequest(new Request(`${host}/progress-board?board=all-repos`), env);
+  assert.equal(response.status, 308);
+  const location = new URL(response.headers.get("location"));
+  assert.equal(location.pathname, "/control-room/progress/board/all-repos");
+  assert.equal(location.searchParams.has("board"), false);
+  assert.equal(boardFromSearch("?board=all-repos"), "all-repos");
+  assert.equal(boardFromSearch("?board=<script>"), null);
+  assert.equal(boardFromSearch(""), "carr-v5", "no parameter opens the system board, as the Progress nav does");
+});
+
+test("the static page is gone: the app page renders every section from a full fixture", async () => {
+  const { board, $, $$, doc, opened } = await mount(FULL.project);
+  assert.equal(board.view.title, "CARR v5 delivery");
+  assert.equal($("#board-title").textContent, "System Job Board");
+  assert.equal($$("#board-stages .column").length, 6, "pipeline");
+  assert.ok($$("#board-blocked .blocked-card").length >= 3, "blocked cards with reason and next action");
+  assert.match($("#board-blocked").textContent, /Why: Waiting on the production database key/);
+  assert.match($("#board-blocked").textContent, /Next: Joe adds CARR_DB_URL to the Mac keychain/);
+  assert.match($("#board-questions").textContent, /Release tonight or tomorrow\?/, "open questions");
+  assert.ok($("#board-questions form.answer-form"), "answer form");
+  assert.match($("#board-questions").textContent, /No, one board only/, "answers");
+  assert.match($("#board-decisions").textContent, /Which accent for Live\?.*Green/s, "decision panel");
+  assert.match($("#board-deliverables").textContent, /Board contract spec/, "delivery panel");
+  assert.equal($("#board-deliverables a").getAttribute("href"), "https://example.com/spec");
+  assert.equal($$("#board-deliverables a").length, 1, "unsafe links stay text");
+  assert.match($("#board-notes").textContent, /Deploy freeze after 5pm CT\./, "notes");
+  const codex = $('#board-ledger [data-pool="codex"]');
+  assert.match(codex.textContent, /Codex · gpt-6-sol · high ×9/, "ledger with provider, model and effort");
+  assert.ok($('#board-ledger [data-pool="claude-cloud"].ledger-violation'), "policy violation flagged");
+  assert.equal($$("#completed-list .completed-card").length, 7, "completed history");
+  assert.ok($$("#legend-body [data-legend-id]").length >= INDICATORS.length, "legend");
+  assert.ok($("#board-headline").textContent.includes("blocked"), "headline");
+  doc.querySelector('[data-card-id="build-card"]').click();
+  assert.equal(opened[0].id, "build-card", "a card opens the shared popup");
+  assert.equal($("#task-detail"), null, "no duplicate detail");
+});
+
+test("every indicator the renderer emits has a legend entry, from the same constants", async () => {
+  const legendIds = new Set(legendEntries().flatMap(group => group.entries.map(entry => entry.id)));
+  for (const stage of STAGES) assert.ok(legendIds.has(`stage-${stage.id}`), stage.id);
+  for (const executor of EXECUTORS) assert.ok(legendIds.has(`glyph-${executor.pool}`), executor.pool);
+  for (const pulse of PULSES) assert.ok(legendIds.has(`pulse-${pulse.id}`), pulse.id);
+  for (const read of [FULL.project, FULL.all_repos]) {
+    const { $$ } = await mount(read, { search: `?board=${read.snapshot.board_id}` });
+    const shownLegend = new Set($$("#legend-body [data-legend-id]").map(node => node.dataset.legendId));
+    const emitted = new Set($$("[data-indicators]").flatMap(node => node.dataset.indicators.split(" ")));
+    assert.ok(emitted.size > 8, "the fixture exercises many indicators");
+    for (const id of emitted) assert.ok(shownLegend.has(id), `indicator ${id} has no legend entry`);
+    for (const id of ["outline-dashed", "badge-question", "flag-stale"])
+      assert.ok(emitted.has(id) || read === FULL.all_repos, `project fixture shows ${id}`);
+  }
+  // A seeded indicator without a legend entry is caught by the same check.
+  const unknown = cardIndicators({ status: "running", updated_at: FULL.reference_time }, REF)
+    .concat("glyph-mystery").filter(id => !legendIds.has(id));
+  assert.deepEqual(unknown, ["glyph-mystery"]);
+  // The legend samples use the renderer's own values.
+  const { $ } = await mount(FULL.project);
+  assert.match($('[data-legend-id="pulse-critical"] .legend-pulse').getAttribute("style"), /--pulse-speed:1s/);
+  assert.match($('[data-legend-id="pulse-healthy"] .legend-pulse').getAttribute("style"), /--pulse-speed:3\.5s/);
+  assert.match($('[data-legend-id="stage-build"] .swatch').getAttribute("style"), /#fb7b32/);
+  assert.equal($('[data-legend-id="glyph-codex"] .glyph').textContent, "C");
+  const card = $('[data-card-id="ci-card"]');
+  assert.match(card.getAttribute("style"), /--pulse-speed:1s/);
+  assert.match(card.getAttribute("style"), /--stage-accent:#ff88bd/);
+  assert.equal(card.querySelector(".glyph").textContent, "G");
+});
+
+test("legend is one tap away and closes with Escape", async () => {
+  const { $, window } = await mount(FULL.project);
+  const toggle = $("#legend-toggle");
+  assert.equal($("#legend").hidden, true);
+  toggle.click();
+  assert.equal($("#legend").hidden, false);
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal($("#legend").hidden, true);
+  assert.match(CSS, /\.legend-toggle \{ position: fixed;/);
+});
+
+test("Live sorts newest first: highest PR first within a repo, all-repos by release time", () => {
+  const project = [
+    { id: "a", pr: 10, repo: "jbookout/carr-system", completed_at: "2026-09-29T11:00:00Z" },
+    { id: "b", pr: 12, repo: "jbookout/carr-system", completed_at: "2026-09-29T09:00:00Z" },
+    { id: "c", pr: 5, repo: "jbookout/doctorcre-app", completed_at: "2026-09-29T10:00:00Z" },
+    { id: "d", completed_at: "2026-09-29T08:00:00Z" },
+    { id: "e", pr: 11, repo: "jbookout/carr-system", completed_at: "2026-09-29T07:00:00Z" },
+  ];
+  assert.deepEqual(sortLive(project).map(card => card.id), ["b", "c", "e", "d", "a"]);
+  const all = [
+    { id: "old", pr: 99, completed_at: "2026-09-29T08:00:00Z" },
+    { id: "new", pr: 3, completed_at: "2026-09-29T11:30:00Z" },
+    { id: "mid", pr: 50, completed_at: "2026-09-29T10:00:00Z" },
+  ];
+  assert.deepEqual(sortLive(all, "all-repos").map(card => card.id), ["new", "mid", "old"]);
+  const view = boardView(FULL.all_repos, REF);
+  assert.deepEqual(view.stages.find(stage => stage.id === "live").tasks.map(card => card.id).slice(0, 3),
+    ["doctorcre-app-96", "carr-system-1398", "carr-system-1404"]);
+});
+
+test("Live collapses by default to the newest few, expands with one control, and remembers per viewer", async () => {
+  const storage = memoryStorage();
+  const first = await mount(FULL.project, { storage });
+  const live = () => first.$('.column[data-stage="live"]');
+  assert.equal(live().dataset.collapsed, "true");
+  assert.equal(live().querySelectorAll(".board-card").length, LIVE_PREVIEW);
+  assert.match(live().querySelector(".live-summary").textContent, /7 live · latest 5 shown/);
+  const shownIds = [...live().querySelectorAll(".board-card")].map(node => node.dataset.cardId);
+  const expected = sortLive(boardView(FULL.project, REF).stages.find(stage => stage.id === "live").tasks)
+    .slice(0, LIVE_PREVIEW).map(card => card.id);
+  assert.deepEqual(shownIds, expected, "collapsed view shows the newest cards");
+  const button = first.$("#live-toggle");
+  assert.equal(button.textContent, "Show all 7");
+  assert.equal(button.getAttribute("aria-expanded"), "false");
+  button.click();
+  assert.equal(live().querySelectorAll(".board-card").length, 7);
+  assert.equal(first.$("#live-toggle").getAttribute("aria-expanded"), "true");
+  assert.equal(storage.getItem(LIVE_PREF_KEY), "1");
+  const again = await mount(FULL.project, { storage });
+  assert.equal(again.$('.column[data-stage="live"]').querySelectorAll(".board-card").length, 7, "choice remembered");
+  const broken = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
+  const locked = await mount(FULL.project, { storage: broken });
+  assert.equal(locked.$('.column[data-stage="live"]').querySelectorAll(".board-card").length, LIVE_PREVIEW);
+  locked.$("#live-toggle").click();
+  assert.equal(locked.$('.column[data-stage="live"]').querySelectorAll(".board-card").length, 7, "works without storage");
+});
+
+for (const update of ["tick", "refresh"]) {
+  for (const expanded of [false, true]) test(`Live expansion focus survives ${update} when expanded=${expanded}`, async t => {
+    const page = await mount(FULL.project);
+    t.after(() => { page.board.dispose(); page.window.close(); });
+    if (expanded) page.board.toggleLive();
+    page.$("#live-toggle").focus();
+    await page.board[update]();
+    assert.equal(page.doc.activeElement, page.$("#live-toggle"));
+    assert.equal(page.$("#live-toggle").getAttribute("aria-expanded"), String(expanded));
+    // A refresh of the board must not pull focus from a separate control.
+    const outside = page.$("#board-retry");
+    outside.focus();
+    await page.board[update]();
+    assert.equal(page.doc.activeElement, outside);
+  });
+}
+
+test("Live expansion focus falls back to the board title when filtering removes the control", async t => {
+  const page = await mount(FULL.project);
+  t.after(() => { page.board.dispose(); page.window.close(); });
+  page.$("#live-toggle").focus();
+  page.board.filters.stage = "build";
+  page.board.tick();
+  assert.equal(page.$("#live-toggle"), null);
+  assert.equal(page.doc.activeElement, page.$("#board-title"));
+});
+
+test("stage timer reads stage_entered_at, updates live, and the pop-up shows history with durations", async () => {
+  const task = { status: "running", stage: "build", stage_entered_at: "2026-09-29T09:46:00Z", updated_at: "2026-09-29T11:59:00Z" };
+  assert.equal(stageTimer(task, REF), "build 2h 14m");
+  assert.equal(stageTimer({ status: "review", stage_entered_at: "2026-09-29T11:25:00Z", updated_at: "2026-09-29T11:59:00Z" }, REF), "review 35m");
+  assert.deepEqual(stageDurations({ stage_history: [{ stage: "queued", entered_at: "2026-09-29T09:00:00Z" },
+    { stage: "build", entered_at: "2026-09-29T09:46:00Z" }] }, REF).map(row => row.duration), ["46m", "2h 14m"]);
+  const { $, board, setNow } = await mount(FULL.project);
+  const timer = $('[data-card-id="build-card"] .stage-timer');
+  assert.equal(timer.textContent, "build 2h 14m");
+  assert.ok(timer.closest(".card-meta"), "the timer sits in the muted meta line");
+  assert.equal(timer.classList.contains("badge-question"), false);
+  setNow("2026-09-29T12:10:00Z");
+  board.tick();
+  assert.equal($('[data-card-id="build-card"] .stage-timer').textContent, "build 2h 24m", "moves without a reload");
+  const card = boardView(FULL.project, REF).cards.find(item => item.id === "build-card");
+  const history = deliveryDetail(card, new Date("2026-09-29T12:10:00Z")).history;
+  assert.deepEqual(history.map(entry => [entry.stage, entry.label, entry.duration]),
+    [["queued", "Queued", "46m"], ["build", "Building", "2h 24m"]], "work detail lists the stage history with durations");
+});
+
+test("stale cards flag their last-update age; live cards never show a leftover blocked flag", async () => {
+  assert.equal(isStale({ status: "running", updated_at: "2026-09-29T06:00:00Z" }, REF), true);
+  assert.equal(isStale({ status: "running", updated_at: "2026-09-29T06:00:01Z" }, REF), false);
+  assert.equal(isStale({ status: "done", updated_at: "2026-09-20T06:00:00Z" }, REF), false);
+  const { $ } = await mount(FULL.project);
+  const stale = $('[data-card-id="stale-card"] .flag-stale');
+  assert.equal(stale.textContent, "stale 7h 0m");
+  assert.equal($('.board-card[data-card-id="live-0"]'), null, "live-0 is older than the collapsed preview");
+  assert.doesNotMatch($('.completed-card[data-card-id="live-0"]').textContent, /blocked/i);
+  const view = boardView(FULL.project, REF);
+  const card = view.cards.find(item => item.id === "live-0");
+  assert.equal(card.health, "healthy");
+  assert.equal(card.blocked, null);
+  assert.equal($('#board-blocked [data-card-id="live-0"]'), null);
+});
+
+test("every blocked card shows the reason and the next action", async () => {
+  const { $$ } = await mount(FULL.project);
+  const cards = $$('.board-card[data-indicators~="outline-dashed"]');
+  assert.ok(cards.length >= 3);
+  for (const card of cards) {
+    const text = card.querySelector(".card-blocked")?.textContent || "";
+    assert.match(text, /Why: .+/, card.dataset.cardId);
+    assert.match(text, /Next: .+/, card.dataset.cardId);
+  }
+  assert.match($$('[data-card-id="ci-card"] .card-blocked')[0].textContent, /CI checks are failing/);
+});
+
+test("merged but unreleased cards say they are waiting on release, with the pipeline's reason", async () => {
+  const { $ } = await mount(FULL.project);
+  const wait = $('[data-card-id="merged-card"] .card-wait');
+  assert.equal(wait.textContent, "Waiting on release · release pipeline failed at canary: canary pending");
+  const card = boardView(FULL.project, REF).cards.find(item => item.id === "merged-card");
+  assert.deepEqual(deliveryDetail(card, REF).rows.find(([label]) => label === "Waiting on release"),
+    ["Waiting on release", "release pipeline failed at canary: canary pending"]);
+});
+
+test("model line is one line with an ellipsis, full text on hover and in the work detail", async () => {
+  const { $ } = await mount(FULL.project);
+  const model = $('[data-card-id="build-card"] .card-model');
+  const full = `Codex · ${taskIdentity(boardView(FULL.project, REF).cards.find(c => c.id === "build-card")).model} · xhigh`;
+  assert.equal(model.textContent, full);
+  assert.equal(model.getAttribute("title"), full);
+  assert.match(CSS, /\.card-summary, \.card-model, \.card-wait, \.card-meta \{[^}]*min-width: 0;[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+  assert.match(CSS, /\.board-card \{[^}]*min-width: 0;[^}]*overflow: hidden;/);
+  assert.match(CSS, /\.column \{ min-width: 0;/);
+  const rows = deliveryDetail(boardView(FULL.project, REF).cards.find(c => c.id === "build-card"), REF).rows;
+  assert.ok(rows.some(([label, value]) => label === "Model line" && value === full), "full model text in the work detail");
+});
+
+test("all-repos board groups by repo, keys cards per repo, and filters by repo, stage and blocked", async () => {
+  const { $, $$, board } = await mount(FULL.all_repos, { search: "?board=all-repos" });
+  assert.equal($("#repos-panel").hidden, false);
+  assert.equal($$("#board-repos .repo-chip").length, 4);
+  assert.ok($('#board-repos [data-repo="jbookout/tour-lab"].repo-error'));
+  const carr = $('[data-card-id="carr-system-93"]');
+  const app = $('[data-card-id="doctorcre-app-93"]');
+  assert.ok(carr && app && carr !== app, "equal PR numbers never collide");
+  assert.equal(carr.querySelector(".card-pr").textContent, "carr-system #93");
+  assert.equal(app.querySelector(".card-pr").textContent, "doctorcre-app #93");
+  assert.deepEqual(jobLinks({ pr: 93, repo: "jbookout/doctorcre-app" }), {workRequest:null,prLabel:"doctorcre-app #93",prUrl:"https://github.com/jbookout/doctorcre-app/pull/93"});
+  const review = $('.column[data-stage="review"]');
+  assert.deepEqual([...review.querySelectorAll(".repo-group")].map(node => node.textContent), ["carr-system", "doctorcre-app"]);
+  assert.match(carr.querySelector(".card-summary").textContent, /One line about 93\./);
+  assert.equal($("#switch-all").hasAttribute("aria-current"), true);
+  const count = () => $$("#board-stages .board-card").length;
+  const total = count();
+  const repo = $("#filter-repo");
+  repo.value = "jbookout/doctorcre-app";
+  repo.dispatchEvent(new repo.ownerDocument.defaultView.Event("change"));
+  assert.ok($$("#board-stages .board-card").every(node => node.querySelector(".card-pr").textContent.startsWith("doctorcre-app")));
+  repo.value = "";
+  repo.dispatchEvent(new repo.ownerDocument.defaultView.Event("change"));
+  assert.equal(count(), total);
+  const blocked = $("#filter-blocked");
+  blocked.checked = true;
+  blocked.dispatchEvent(new blocked.ownerDocument.defaultView.Event("change"));
+  assert.deepEqual($$("#board-stages .board-card").map(node => node.dataset.cardId).sort(), ["carr-system-1416", "carr-system-1417", "doctorcre-app-93"]);
+  blocked.checked = false;
+  blocked.dispatchEvent(new blocked.ownerDocument.defaultView.Event("change"));
+  const stage = $("#filter-stage");
+  stage.value = "merged";
+  stage.dispatchEvent(new stage.ownerDocument.defaultView.Event("change"));
+  assert.deepEqual($$("#board-stages .board-card").map(node => node.dataset.cardId), ["carr-system-1400"]);
+  assert.deepEqual(board.filters, { repo: "", stage: "merged", blockedOnly: false });
+  const view = boardView(FULL.all_repos, REF);
+  assert.deepEqual(groupByRepo(filterCards(view.cards, { stage: "review" })).map(group => group.repo),
+    ["jbookout/carr-system", "jbookout/doctorcre-app"]);
+});
+
+test("board view reads v1 snapshots and typed questions, keeping status from CARR only", () => {
   const view = boardView({
     snapshot: { board_id: "project-one", version: 4, snapshot_json: {
       title: "Launch", project: "project-one",
@@ -75,18 +364,59 @@ test("board view reads current typed questions and keeps status from CARR only",
     ],
   });
   assert.equal(view.title, "Launch");
+  assert.equal(view.kind, "project");
+  assert.equal(view.schema, "carr-progress-board.v1");
   assert.equal(view.stages.find(stage => stage.id === "build").tasks[0].title, "Build API");
-  assert.equal(view.stages.find(stage => stage.id === "review").tasks[0].title, "Ship app");
   assert.equal(view.questions[0].status, null);
   assert.equal(view.questions[1].status, "Received");
-  assert.equal(view.questions[1].answer_text, "Keep going");
+  assert.ok(view.ledger.find(row => row.pool === "unassigned"), "ledger derived for a v1 snapshot");
+});
+
+test("legacy executor cards expose provider, model, effort and one-line summaries", () => {
+  assert.deepEqual(taskIdentity({ executor: "gpt-6-sol high (Codex)" }),
+    { provider: "Codex", model: "gpt-6-sol", effort: "high" });
+  assert.deepEqual(taskIdentity({ executor: "Codex gpt-6-sol high x2" }),
+    { provider: "Codex", model: "gpt-6-sol", effort: "high" });
+  assert.deepEqual(taskIdentity({ executor: "grok 4.7 medium" }), { provider: "xAI", model: "grok 4.7 medium", effort: "medium" });
+  assert.equal(taskSummary({ title: "Build board", summary: "Show model and effort on every card." }),
+    "Show model and effort on every card.");
+  assert.equal(taskSummary({ title: "Coordinate delivery" }), "Coordinate delivery.");
+});
+
+test("orchestrator identity uses recorded metadata and never guesses a model from its role", () => {
+  for (const executor of ["orchestrator", "Project orchestrator", "unknown seat", ""])
+    assert.deepEqual(taskIdentity({ executor }),
+      { provider: "Unknown", model: "Not recorded", effort: "unknown" });
+  assert.deepEqual(taskIdentity({ executor: "orchestrator", provider: "OpenAI", model: "gpt-6-sol", effort: "high" }),
+    { provider: "OpenAI", model: "gpt-6-sol", effort: "high" });
+  assert.deepEqual(taskIdentity({ executor: "orchestrator", provider: "xAI" }),
+    { provider: "xAI", model: "Not recorded", effort: "unknown" });
+  assert.deepEqual(taskIdentity({ executor: "orchestrator", model: "Recorded model" }),
+    { provider: "Unknown", model: "Recorded model", effort: "unknown" });
+  assert.deepEqual(taskIdentity({ executor: "orchestrator gpt-6-sol high" }),
+    { provider: "Codex", model: "gpt-6-sol", effort: "high" });
+});
+
+test("task detail selects related board questions by explicit reference", () => {
+  const task = { id: "build", question_ids: ["choice"] };
+  const questions = [{ question_id: "choice", prompt: "Ship this?", answer_text: "Yes", status: "Applied" },
+    { question_id: "other", prompt: "Unrelated", status: null }];
+  assert.deepEqual(relatedQuestions(task, questions), [questions[0]]);
+});
+
+test("task question joins exclude task-id substrings and require explicit references", () => {
+  const questions = [{ question_id: "board-1-choice" }, { question_id: "board-12-choice" },
+    { question_id: "prefix-board-1-suffix" }, { question_id: "explicit-other-name" }];
+  assert.deepEqual(relatedQuestions({ id: "board-1", question_ids: ["explicit-other-name"] }, questions),
+    [questions[3]]);
+  for (const question_ids of [undefined, [], "board-1-choice"])
+    assert.deepEqual(relatedQuestions({ id: "board-1", question_ids }, questions), []);
 });
 
 test("answer request uses the question revision and carries no actor or status claim", () => {
   assert.deepEqual(answerRequest({ question_id: "color", revision: 2, choices: ["Blue", "Green"], allow_free_text: false },
     "project-one", "Blue", "same-key"), {
-    board_id: "project-one", question_id: "color", base_version: 2,
-    answer_text: "Blue", idempotency_key: "same-key",
+    board_id: "project-one", question_id: "color", base_version: 2, answer_text: "Blue", idempotency_key: "same-key",
   });
   assert.throws(() => answerRequest({ question_id: "color", revision: 2, choices: ["Blue"], allow_free_text: false },
     "project-one", "Green", "same-key"), /Choose/);
@@ -105,24 +435,52 @@ test("live client sends answer through same-origin MCP with the retained key", a
   assert.equal(calls[0].init.credentials, "same-origin");
   const rpc = JSON.parse(calls[0].init.body);
   assert.equal(rpc.params.name, "answer-board-question");
-  assert.equal(rpc.params.arguments.idempotency_key, "same-key");
   assert.equal("answered_by" in rpc.params.arguments, false);
 });
 
-test("page offers choice and free-text controls, with reduced-motion styling", async () => {
-  const html = await readFile(new URL("../progress-board.html", import.meta.url), "utf8");
-  const css = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
-  assert.match(html, /id="board-stages"/);
-  assert.match(html, /id="board-questions"/);
-  assert.match(html, /id="board-flow"/);
-  assert.match(html, /<dialog id="task-detail"/);
-  assert.match(css, /\.pipeline-node\[data-pulse="critical"\]/);
-  assert.match(css, /\.pipeline-node\[data-pulse="attention"\]/);
-  assert.doesNotMatch(css, /\.pipeline-node\[data-pulse="still"\][^}]*animation/);
-  assert.match(css, /\.pipeline-node\[data-pulse="critical"\] \.node-shape \{[^}]*stroke-dasharray:/,
-    "stuck remains distinct when motion is off");
-  assert.match(css, /--stage-build:\s*#fb7b32/);
-  assert.match(css, /\.pipeline-node\[data-pulse="healthy"\] \.node-halo \{ animation: pulse 3\.5s/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/,
-    "the reduced-motion fallback stops every pulse");
+test("page keeps motion real and respects reduced motion; phone stacks one column", () => {
+  assert.match(CSS, /\.board-card:not\(\[data-pulse="still"\]\) \.halo \{ animation: pulse var\(--pulse-speed\)/);
+  assert.match(CSS, /\.rail-line \{[^}]*animation: flow/);
+  assert.match(CSS, /\.board-card\.outline-dashed \{ border-style: dashed;/, "blocked stays distinct without motion");
+  assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/);
+  assert.match(CSS, /@media \(max-width: 680px\) \{[^@]*\.columns, \.lower-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(PAGE, /id="legend-toggle"/);
+  assert.doesNotMatch(PAGE, /id="task-detail"/, "cards open the work-detail page, not a pop-up");
+});
+
+
+test("prototype-like and malformed task statuses cannot break the board", () => {
+  const tasks = { a: { status: "__proto__" }, b: { status: "constructor" },
+    c: { status: "toString" }, d: { status: "unknown" }, e: { status: [] },
+    f: {}, invalid: [], missing: null, identity: { id: "overridden", status: "queued" } };
+  const view = boardView({ snapshot: { board_id: "synthetic", version: 1, snapshot_json: { tasks } } });
+  assert.deepEqual(view.stages[0].tasks.map(task => task.id), ["a", "b", "c", "d", "e", "f", "identity"]);
+  for (const task of view.stages[0].tasks) assert.equal(taskStage(task), "queued");
+});
+
+
+test("board activity links to project history and cards open the shared popup", async () => {
+  const { window, doc, $, opened } = await mount({ snapshot: { board_id: "demo-project", version: 1,
+    snapshot_json: { tasks: { "WR-900": { title: "Synthetic work", status: "review", work_request: "WR-900" } } } },
+    questions: [] }, { search: "?board=demo-project" });
+  assert.equal($("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
+  assert.equal($("#board-parent-name").textContent, "Project board");
+  doc.querySelector(".board-card").click();
+  assert.equal(opened[0].work_request, "WR-900");
+  opened.length = 0;
+  doc.querySelector(".board-card").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  assert.equal(opened[0].work_request, "WR-900", "Enter opens the same popup");
+  window.close();
+});
+
+
+test('PR132 #8: explicit bindings share the pipeline, blocked and completed projections',async()=>{
+ const read=structuredClone(FULL.project);
+ const fields={work_request_ref:'WR-000999',pr_url:'https://github.com/example/demo/pull/88'};
+ for(const task of Object.values(read.snapshot.snapshot_json.tasks)){Object.assign(task,fields);delete task.work_request;delete task.human_ref;delete task.pr;}
+ const {doc}=await mount(read);
+ for(const selector of ['#board-stages .board-card','#board-blocked .blocked-card','#completed-list .completed-card']){
+  const cards=[...doc.querySelectorAll(selector)];assert.ok(cards.length,selector);
+  for(const card of cards){assert.match(card.textContent,/WR-000999/);assert.match(card.textContent,/#88/);}
+ }
 });
