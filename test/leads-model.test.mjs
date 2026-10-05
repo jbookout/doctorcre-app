@@ -38,7 +38,22 @@ test('Doc evidence checks mail and calendar before asking only unanswered questi
  assert.match(stageReview(d,'archived').question,/ended/);
  assert.equal(stageReview(d,'engaged',Date.parse('2026-09-01')).evidence.length,0);
 });
-test('one-tap undo binds to latest automatic event, restores prior stage, rejects stale/reverted state',()=>{
+for (const connected of [false, null, true]) test(`Engaged call evidence requires connected=true: ${connected}`, () => {
+ const call = { id: '30000000-0000-0000-0000-000000000700', kind: 'call', connected,
+  occurred_at: '2026-10-01T10:00:00Z', summary: 'Synthetic call outcome' };
+ const review = stageReview({ correspondence: [call] }, 'engaged', Date.parse('2026-10-01T16:00:00Z'));
+ assert.deepEqual(review.evidence, connected === true ? [call] : []);
+ assert.equal(review.question, connected === true ? null : 'What contact has taken place?');
+ assert.equal(review.reason, connected === true ? 'Call completed' : null);
+});
+test('Undo review carries the human quote alongside the exact automatic event and prior stage', () => {
+ const row = leads.find(row => row.stage === 'engaged');
+ const quote = 'Synthetic reply was attributed to the wrong lead';
+ assert.deepEqual(undoReview(row, quote).stage_review, {
+  reason: 'Undo automatic stage move', evidence_ids: [], undo_event_id: row.last_stage_move.event_id, human_quote: quote,
+ });
+});
+test('Undo binds to latest automatic event, restores prior stage, rejects stale/reverted state',()=>{
  const l=leads.find(l=>l.stage==='engaged'); assert.equal(undoReview(l).stage,'outreach_active');assert.equal(undoReview(l).stage_review.undo_event_id,l.last_stage_move.event_id);
  assert.equal(undoReview({...l,last_stage_move:{...l.last_stage_move,from:'archived'}}).stage,'archived');
  assert.equal(undoReview({...l,stage:'nurture_drip'}),null);assert.equal(undoReview({...l,last_stage_move:{...l.last_stage_move,undone:true}}),null);
