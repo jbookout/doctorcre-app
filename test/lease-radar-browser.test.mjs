@@ -31,6 +31,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     'schedule-board': () => client.scheduleBoard(), 'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }), 'today-triage': async () => ({ items: [] }),
     'read-invoice-tracker': async () => invoiceTrackerFixture('2026-10-01'),
+    'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
   };
   await page.route('**/*', async route => {

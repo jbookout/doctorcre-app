@@ -454,6 +454,7 @@ export function createLiveClient(opts = {}) {
     async updateIndustryEvent(args) { return write('update-industry-event', args); },
 
     // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
+    async listFeatureSwitches({ signal } = {}) { return rpc('list-feature-switches', {}, signal); },
     async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
 
     // ------------------------------------------------------------- triage

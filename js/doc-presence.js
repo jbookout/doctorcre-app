@@ -12,6 +12,7 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh
 import { entryDetailsHtml } from './entry-details.mjs';
 import { uuidv4 } from './uuid.js';
 import { mountMorningBrief } from './morning-brief.js';
+import { mountFeatureGate } from './feature-switches.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const display = value => value === null ? 'Unknown' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
 
@@ -30,6 +31,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   dialog.querySelector('header').after(suggestionsHost);
   root.body.append(dialog);
   const $ = id => root.getElementById(id);
+  let actionsEnabled=false;
   let snapshot = context.snapshot(), suggestions = null, suggestionState = 'updating', client = supplied, approval, shown = [], chosen = null, disposed = false, readEpoch = 0, lastScope = '';
   const keep = (target, html) => {
     if (target.innerHTML === html) return;
@@ -66,12 +68,16 @@ export function mountDocPresence({ document: root = document, window: win = wind
     keep($('docActivity'), selectedRecord?.activityComplete === false
       ? '<p class="doc-quiet">Recent activity unavailable.</p>'
       : selectedRecord?.activity.length ? '<h3>Recent activity</h3>' + selectedRecord.activity.slice(0, 5).map((item,i) => `<article class="doc-activity">${entryDetailsHtml(item.text).replace('<details>', `<details data-entry="${escape(selectedRecord.id)}:${i}">`)}</article>`).join('') : '');
-    keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
+    keep($('docActionList'), shown.length ? shown.map(row => `<article class="doc-action" data-doc-action="${escape(row.id)}"><span class="doc-spark" aria-hidden="true">✦</span><h4>${escape(row.polished_text || 'Review suggestion')}</h4>${row.uncertainty ? `<p>${escape(row.uncertainty)}</p>` : ''}<details data-entry="suggestion:${escape(row.id)}"><summary>Details</summary><p class="entry-original">${escape(row.original_text || '')}</p></details><button ${actionsEnabled ? '' : 'hidden'} type="button" data-doc-approve="${escape(row.id)}" data-doc-key="approve:${escape(row.id)}" ${approval?.busy ? 'disabled' : ''}>Approve discussion</button></article>`).join('') : `<span class="doc-quiet">${state}</span>`);
   };
   // Doc and its brief share one client; concurrent first reads share one creation.
   let clientReady = null;
   const ensureClient = () => clientReady ||= (client ? Promise.resolve(client) : createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }))
     .then(value => client = value, error => { clientReady = null; throw error; });
+  const actionGate=mountFeatureGate({document:root,window:win,name:'doc-suggestion-actions',
+    read:async signal=>(await ensureClient()).listFeatureSwitches({signal}),
+    onChange:enabled=>{actionsEnabled=enabled;render();},
+  });
   const refresh = async ({ signal } = {}) => {
     const epoch = ++readEpoch, captured = context.snapshot();
     const scope = `${captured.epoch}:${captured.page}:${captured.selected?.kind || ''}:${captured.selected?.id || ''}`;
@@ -106,7 +112,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   $('docClose').onclick = () => dialog.close();
 
   dialog.addEventListener('click', async event => {
-    const button = event.target.closest('[data-doc-approve]'); if (!button || !approval || approval.busy || DOC_PAGES[snapshot.page].approvals === false) return;
+    const button = event.target.closest('[data-doc-approve]'); if (!actionsEnabled || !button || !approval || approval.busy || DOC_PAGES[snapshot.page].approvals === false) return;
     const row = shown.find(item => item.id === button.dataset.docApprove); if (!row) return;
     button.disabled = true; $('docApprovalStatus').textContent = 'Confirming…';
     const originScope=lastScope, originRecord=chosen;
@@ -133,7 +139,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
   const brief = mountMorningBrief({ document:root, window:win, automatic:resolveDealroomBoot(win.location).mode === 'live', getClient:ensureClient, intervalMs });
-  const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); brief.dispose(); command.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const dispose = () => { disposed = true; ++readEpoch; actionGate.dispose(); auto.dispose(); brief.dispose(); command.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };
 }
