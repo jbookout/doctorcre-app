@@ -86,6 +86,70 @@ test('Undo preserves its historical stage, event and quote through resume and an
   s.d.getElementById('checkPending').click();await tick();assert.equal(calls.length,2);assert.deepEqual(calls[1],calls[0]);
  }finally{s.close()}
 });
+test('stale Undo resume cannot copy its draft into another lead review',async()=>{
+ const s=await setup();let release;try{
+  const a=s.board.leads.find(row=>row.id===id(10)),b=s.board.leads.find(row=>row.id===id(9));
+  b.stage='engaged';b.last_stage_move={...a.last_stage_move,event_id:id(502)};await s.app.refresh();
+  await s.app.openReview(a.id,'outreach_active',{undoEventId:id(500)});
+  s.d.querySelector('#stageQuestions textarea').value='Synthetic reason for lead A';
+  const read=s.client.getLeadDetail;
+  s.client.getLeadDetail=l=>l.id===a.id?new Promise(resolve=>{release=resolve}):read(l);
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(typeof release,'function');s.d.getElementById('closeStage').click();
+  await s.app.openReview(b.id,'outreach_active',{undoEventId:id(502)});
+  release({detail:detail(a)});await tick();
+  assert.equal(s.d.querySelector('#stageQuestions textarea').value,'');
+  s.d.querySelector('#stageQuestions textarea').value='Synthetic reason for lead B';
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].l.id,b.id);
+  assert.equal(s.writes[0].review.undo_event_id,id(502));assert.equal(s.writes[0].review.human_quote,'Synthetic reason for lead B');
+ }finally{release?.({detail:detail(s.board.leads.find(row=>row.id===id(10)))});s.close()}
+});
+for(const source of ['board','fresh detail'])test(`Undo restores distinct producer stages within Nurture from ${source}`,async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(row=>row.id===id(10));row.last_stage_move.from='nurture_drip';row.last_stage_move.to='closed_lost';
+  row.stage=source==='board'?'closed_lost':'engaged';row.last_stage_move.to=row.stage;await s.app.refresh();
+  s.client.getLeadDetail=async()=>({detail:detail({...row,stage:'closed_lost',last_stage_move:{...row.last_stage_move,to:'closed_lost'}})});
+  s.d.querySelector(`[data-undo="${row.id}"]`).click();await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.getElementById('saveStage').disabled,false);
+  s.d.querySelector('#stageQuestions textarea').value='Synthetic historical restoration';await s.app.refresh();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic historical restoration');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].stage,'nurture_drip');assert.equal(s.writes[0].review.undo_event_id,id(500));
+ }finally{s.close()}
+});
+test('Undo draft survives a failed detail poll and requires fresh verification before confirmation',async()=>{
+ const s=await setup();try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction retained after read failure';
+  const read=s.client.getLeadDetail;s.client.getLeadDetail=async()=>{throw new Error('Synthetic network failure')};await s.app.refresh();
+  assert.equal(s.d.getElementById('saveStage').disabled,true);assert.equal(s.app.state.proposal,null);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));assert.equal(s.writes.length,0);
+  s.client.getLeadDetail=read;await s.app.refresh();assert.equal(s.d.getElementById('saveStage').disabled,false);
+  assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic correction retained after read failure');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes[0].review.human_quote,'Synthetic correction retained after read failure');
+ }finally{s.close()}
+});
+test('Undo draft survives visibility resume while its detail poll is pending',async()=>{
+ const s=await setup();let release;try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction retained during pending poll';
+  const read=s.client.getLeadDetail;s.client.getLeadDetail=()=>new Promise(resolve=>{release=resolve});const polling=s.app.refresh();await tick();
+  assert.equal(s.app.state.proposal,null);assert.equal(s.d.getElementById('saveStage').disabled,true);
+  Object.defineProperty(s.d,'visibilityState',{value:'hidden',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  s.client.getLeadDetail=read;Object.defineProperty(s.d,'visibilityState',{value:'visible',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));await tick();
+  release({detail:detail(s.board.leads.find(row=>row.id===id(10)))});await polling;await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.getElementById('saveStage').disabled,false);
+  assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic correction retained during pending poll');assert.equal(s.writes.length,0);
+ }finally{release?.({detail:detail(s.board.leads.find(row=>row.id===id(10)))});s.close()}
+});
+test('Undo polling preserves edits made while fresh detail is pending',async()=>{
+ const s=await setup();let release;try{
+  s.d.querySelector('[data-undo]').click();await tick();const input=s.d.querySelector('#stageQuestions textarea');input.value='Synthetic initial draft';
+  s.client.getLeadDetail=()=>new Promise(resolve=>{release=resolve});const polling=s.app.refresh();await tick();
+  input.value='Synthetic revised draft during verification';release({detail:detail(s.board.leads.find(row=>row.id===id(10)))});await polling;
+  assert.equal(s.d.querySelector('#stageQuestions textarea'),input);assert.equal(input.value,'Synthetic revised draft during verification');
+ }finally{release?.({detail:detail(s.board.leads.find(row=>row.id===id(10)))});s.close()}
+});
 test('unknown write retains exact key and payload, never automatically resends; actor change clears it',async()=>{
  const writes=[];const s=await setup({recordStage:async(...args)=>{writes.push(args);throw Object.assign(new Error('network'),{code:'unknown_outcome'})}});
  try{await s.app.openReview(id(1),'engaged');s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();const pending=s.app.state.pending;assert.ok(pending);s.board.leads[0].base_version++;await s.app.refresh();assert.equal(writes.length,1);assert.equal(s.app.state.pending,pending);
