@@ -124,7 +124,6 @@
     "test/property-panel.test.mjs",
     "test/property-producer.test.mjs",
     "test/provider-version.test.mjs",
-    "test/public-fixtures.test.mjs",
     "test/qa-batch-1.test.mjs",
     "test/release-scripts.test.mjs",
     "test/release-publication.test.mjs",

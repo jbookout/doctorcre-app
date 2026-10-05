@@ -1,22 +1,29 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Public salt prevents reuse of unsalted lookup tables; it is not encryption.
-// Corpus generation is local, through the authenticated read-only record API.
 export function normalizeTokens(text) {
   return String(text).replace(/\\u([0-9a-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\[nrtbfv]/g, ' ')
+    .replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_, value) => {
+      const code = value[0].toLowerCase() === 'x' ? parseInt(value.slice(1), 16) : Number(value);
+      return code <= 0x10ffff ? String.fromCodePoint(code) : ' ';
+    })
+    .replace(/&(nbsp|Tab|NewLine|amp|quot|apos|lt|gt);/g, (_, entity) => ({
+      nbsp: ' ', Tab: ' ', NewLine: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>',
+    })[entity])
     .normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().match(/[a-z0-9]+/g) || [];
 }
 
 export function validateCorpus(corpus) {
   if (corpus?.schema !== 'doctorcre-private-name-hashes.v1'
-    || !/^[0-9a-f]{32,128}$/.test(corpus.salt || '')
+    || typeof corpus.salt !== 'string' || !/^[0-9a-f]{32,128}$/.test(corpus.salt)
     || !Number.isInteger(corpus.maxTokens) || corpus.maxTokens < 1 || corpus.maxTokens > 64
     || !Array.isArray(corpus.hashes) || !corpus.hashes.length
-    || !corpus.hashes.every((hash) => /^[0-9a-f]{64}$/.test(hash))) {
+    || !corpus.hashes.every((hash) => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) {
     throw new Error('invalid privacy corpus');
   }
   return corpus;
@@ -52,7 +59,7 @@ export function changedFiles(root, base) {
 
 function main() {
   let root = fileURLToPath(new URL('../../', import.meta.url));
-  let corpusPath = fileURLToPath(new URL('./private-name-hashes.json', import.meta.url));
+  let corpusPath = process.env.DOCTORCRE_PRIVACY_CORPUS_FILE || null;
   let base = null;
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i += 2) {
@@ -62,14 +69,31 @@ function main() {
     else if (args[i] === '--base' && !args[i + 1].startsWith('-')) base = args[i + 1];
     else throw new Error('invalid argument');
   }
-  const corpus = validateCorpus(JSON.parse(readFileSync(corpusPath, 'utf8')));
+  // Private lookup material stays outside source control. CI supplies a secret;
+  // local invocations use the operator's private configuration or --corpus.
+  const corpus = validateCorpus(JSON.parse(corpusPath
+    ? readFileSync(corpusPath, 'utf8')
+    : process.env.DOCTORCRE_PRIVACY_CORPUS_JSON || readFileSync(resolve(homedir(), '.config/doctorcre-app/private-name-hashes.json'), 'utf8')));
   let failed = false;
-  for (const path of changedFiles(root, base)) {
+  for (const [index, path] of changedFiles(root, base).entries()) {
+    const pathFindings = scanText(path, path, corpus);
+    const locator = pathFindings.length ? `[redacted-path:${index + 1}]` : path.replace(/[\r\n\x00-\x1f]/g, '?');
     const bytes = readFileSync(resolve(root, path));
-    if (bytes.includes(0)) continue;
-    for (const finding of scanText(bytes.toString('utf8'), path, corpus)) {
-      // Escape control characters in paths, too. Never print names or excerpts.
-      process.stdout.write(`${finding.path.replace(/[\r\n\x00-\x1f]/g, '?')}:${finding.line}\n`);
+    let text = '';
+    // PNG assets are the repository's only supported binary format. A NUL in
+    // any other input is an unsupported text encoding, never a clean scan.
+    if (extname(path).toLowerCase() === '.png') {
+      if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error('invalid PNG');
+    } else {
+      if (bytes.includes(0)) throw new Error('unsupported text encoding');
+      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      let json;
+      try { json = JSON.parse(text); } catch { /* Most source files are not JSON. */ }
+      if (json?.schema === 'doctorcre-private-name-hashes.v1') throw new Error('public privacy corpus');
+    }
+    const lines = new Set([...pathFindings, ...scanText(text, path, corpus)].map(finding => finding.line));
+    for (const line of lines) {
+      process.stdout.write(`${locator}:${line}\n`);
       failed = true;
     }
   }
