@@ -5,17 +5,22 @@ import { homedir } from 'node:os';
 import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function normalizeTokens(text) {
-  return String(text).replace(/\\u([0-9a-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/\\[nrtbfv]/g, ' ')
+export function normalizeTokens(text, { decodeSource = true } = {}) {
+  text = String(text);
+  if (decodeSource) text = text
+    // Consume literal backslash pairs before considering a source escape.
+    .replace(/\\(\\|[uU][0-9a-fA-F]{4}|[nrtbfv])/g, (_, escape) => {
+      if (escape === '\\') return '\\';
+      return escape[0].toLowerCase() === 'u' ? String.fromCharCode(parseInt(escape.slice(1), 16)) : ' ';
+    })
     .replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_, value) => {
       const code = value[0].toLowerCase() === 'x' ? parseInt(value.slice(1), 16) : Number(value);
       return code <= 0x10ffff ? String.fromCodePoint(code) : ' ';
     })
     .replace(/&(nbsp|Tab|NewLine|amp|quot|apos|lt|gt);/g, (_, entity) => ({
       nbsp: ' ', Tab: ' ', NewLine: ' ', amp: '&', quot: '"', apos: "'", lt: '<', gt: '>',
-    })[entity])
-    .normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().match(/[a-z0-9]+/g) || [];
+    })[entity]);
+  return text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().match(/[a-z0-9]+/g) || [];
 }
 
 export function validateCorpus(corpus) {
@@ -29,13 +34,13 @@ export function validateCorpus(corpus) {
   return corpus;
 }
 
-export function scanText(text, path, corpus) {
+export function scanText(text, path, corpus, options) {
   validateCorpus(corpus);
   const hashes = new Set(corpus.hashes);
   const tokens = [];
   // Preserve original line attribution even when a name spans multiple lines.
   for (const [index, line] of text.split('\n').entries()) {
-    for (const value of normalizeTokens(line)) tokens.push({ value, line: index + 1 });
+    for (const value of normalizeTokens(line, options)) tokens.push({ value, line: index + 1 });
   }
   const findings = new Set();
   for (let start = 0; start < tokens.length; start++) {
@@ -76,7 +81,7 @@ function main() {
     : process.env.DOCTORCRE_PRIVACY_CORPUS_JSON || readFileSync(resolve(homedir(), '.config/doctorcre-app/private-name-hashes.json'), 'utf8')));
   let failed = false;
   for (const [index, path] of changedFiles(root, base).entries()) {
-    const pathFindings = scanText(path, path, corpus);
+    const pathFindings = scanText(path, path, corpus, { decodeSource: false });
     const locator = pathFindings.length ? `[redacted-path:${index + 1}]` : path.replace(/[\r\n\x00-\x1f]/g, '?');
     const bytes = readFileSync(resolve(root, path));
     let text = '';

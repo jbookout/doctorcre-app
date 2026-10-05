@@ -61,6 +61,36 @@ for (const source of [
   assert.equal(result.stdout, 'example.txt:1\n');
 });
 
+const backslashCorpus = {
+  schema: 'doctorcre-private-name-hashes.v1', salt, maxTokens: 2,
+  hashes: [createHash('sha256').update(`${salt}\0syntheticfictional`).digest('hex')],
+};
+
+for (const count of [1, 2, 3]) {
+  test(`CLI preserves name letters after ${count} escaped literal backslashes`, t => {
+    const source = JSON.stringify({ name: `Synthetic ${'\\'.repeat(count)}fictional` });
+    const result = cliFixture(t, { 'example.json': source }, backslashCorpus);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, 'example.json:1\n');
+    assert.equal(result.stderr, '');
+  });
+}
+
+test('CLI preserves uppercase letters after an unrecognized source escape', t => {
+  const result = cliFixture(t, { 'example.txt': 'Synthetic \\Fictional' }, backslashCorpus);
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, 'example.txt:1\n');
+});
+
+for (const contents of ['clean', 'Synthetic fictional']) {
+  test(`CLI scans raw backslashes in identifying paths with ${contents === 'clean' ? 'clean' : 'identifying'} contents`, t => {
+    const result = cliFixture(t, { 'Synthetic \\fictional.txt': contents }, backslashCorpus);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /^\[redacted-path:\d+\]:1\n$/);
+    assert.doesNotMatch(result.stdout + result.stderr, /Synthetic|fictional/);
+  });
+}
+
 for (const contents of ['clean', 'Planted Fictional Dental']) {
   test(`CLI detects identifying filenames and redacts their diagnostics with ${contents === 'clean' ? 'clean' : 'identifying'} contents`, t => {
     const result = cliFixture(t, { 'Planted Fictional Dental.txt': contents });
