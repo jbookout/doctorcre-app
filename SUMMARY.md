@@ -41,9 +41,6 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `pipeline.html` | V5-UX-B03 Deals at `/pipeline`: the eight-phase Kanban, moved by drag or keyboard, with the completion dialog, the crossed-edits chooser and the record panel |
 | `js/pipeline-model.js` | Pure board rules: the eight columns and their one-to-one phase map, grouping, the move intent, the ordered completion plan and the keyboard target |
 | `js/pipeline.js` | Deals DOM wiring over `deal-room-board` and `patch-deal-field`, through the board coordinator, the field-write kernel and the command dock |
-| `business-workspace.html` | V5-UX-B01 Business workspace at `/business`: Home, Work, Pipeline and Doc history over the canonical command-center read, with Team review and Quick add |
-| `js/business-workspace-model.js` | Pure Home rules: the section order, the Team review share arithmetic and the words an unverified section says |
-| `js/business-workspace.js` | Business workspace DOM wiring over `GET /api/v1/command-center` and the Quick add capture |
 | `control-room.html` | V5-UX-C01 Control Room at `/control-room`: the five operational questions — broken, running, stuck, needs Joe, changed — with a coverage line built only from the reads that answered, plus the grouped incident queue |
 | `js/control-room-model.js` | Pure Control Room rules: exact-key validation of `incident-board`, `current-work-item` and `current-work-requests`, the five tiles (never 0 for an unanswered read), the cadence-free stall facts, the coverage line and the named scope statements |
 | `js/control-room.js` | Control Room DOM wiring over those three reads, `governance-queue` and `GET /api/v1/work-inventory`, each read settled on its own so one outage makes only its own areas unknown |

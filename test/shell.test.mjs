@@ -181,7 +181,6 @@ test("an older initial unread response cannot overwrite the returned page's newe
 // test: "free of network calls"): they carry no client at all, so the badge
 // stays in the markup, permanently hidden, wired to nothing.
 const PAGES_WITH_BADGE_JS = [
-  ["business-workspace.html", "js/business-workspace.js"],
   ["control-room.html", "js/control-room.js"],
   ["incidents.html", "js/incidents.js"],
   ["pipeline.html", "js/pipeline.js"],

@@ -245,3 +245,19 @@ test('report assembly is independent of app-shell implementation spelling', asyn
   await buildArtifact({ root, outDir, commit:COMMIT });
   assert.deepEqual(await readFile(join(outDir, 'site/reports/share.js')), before);
 });
+
+test('Home and Tasks retain their routes while retired Home implementation leaves the artifact', async () => {
+  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-retirement-'));
+  const built = await buildArtifact({root:ROOT,outDir,commit:COMMIT});
+  const routes = JSON.parse(await readFile(join(ROOT, 'contracts/app-routes.v1.json')));
+  assert.equal(routes.routes['/'], 'workspace.html');
+  assert.equal(routes.routes['/doc-chats/work'], 'tasks.html');
+  assert.equal(routes.redirects['/business'], '/');
+  const paths = built.manifest.files.map(file => file.path);
+  for (const path of ['business-workspace.html', 'js/business-workspace.js', 'js/business-workspace-model.js']) {
+    assert.equal(paths.includes(path), false, `${path} is retired`);
+  }
+  for (const path of ['workspace.html', 'js/workspace-command-center.js', 'tasks.html', 'js/task-records.js', 'js/task-records-model.js', 'js/local-drafts.mjs', 'js/visual-system.js', 'js/command-feedback.mjs', 'css/business-workspace.css']) {
+    assert.equal(paths.includes(path), true, `${path} still serves live callers`);
+  }
+});

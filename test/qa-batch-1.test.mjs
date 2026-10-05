@@ -34,7 +34,7 @@ test("Search puts candidates and results ahead of Scope and Saved views", async 
 });
 
 test("no page or script points Home or sign-in at /business", async () => {
-  for (const file of ["business-workspace.html", "js/business-workspace.js", "workspace.html", "js/workspace-command-center-model.js", "js/app-shell.js"]) {
+  for (const file of ["workspace.html", "js/workspace-command-center-model.js", "js/app-shell.js"]) {
     const src = await read(file);
     assert.doesNotMatch(src, /href="\/business|return_to=\/business|"\/business"\s*,\s*href/, `${file} must not target /business`);
   }
@@ -44,7 +44,6 @@ test("no page or script points Home or sign-in at /business", async () => {
   assert.match(markup, /class="app-shell-brand" href="\/"/);
   assert.match(markup, /aria-label="Home"[^>]*href="\/"/);
   assert.doesNotMatch(markup, /\/business/);
-  assert.match(await read("js/business-workspace.js"), /SIGN_IN_HREF = "\/auth\/login\?return_to=%2F"/);
 });
 
 test("every Home page control resolves to a real route, never /business", async () => {
