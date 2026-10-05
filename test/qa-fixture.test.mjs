@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { createLiveClient } from '../js/live-client.js';
 import { validListPayload, validRecordPayload, echoesQuery, parseViewState } from '../js/workspace-business-model.js';
@@ -8,8 +12,12 @@ import { validInvoiceTracker } from '../js/invoice-tracker-model.js';
 import { validWorkInventoryPayload } from '../js/work-inventory-model.js';
 import { validCurrentWorkRequestsPayload, validIncidentBoardPayload, validCurrentWorkItemPayload } from '../js/control-room-model.js';
 
+const artifactDir=await mkdtemp(join(tmpdir(),'doctorcre-qa-fixture-artifact-'));
+await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifactDir,commit:'1'.repeat(40)});
+const buildRoot=join(artifactDir,'site');
+
 test('built static app crosses its live seam with isolated synthetic accounts and shared partner writes', async () => {
-  const { dispatch } = await createQaServer();
+  const { dispatch } = await createQaServer({buildRoot});
   const origin = 'http://127.0.0.1:18997';
   const request = (path, init={}) => dispatch(new Request(new URL(path, origin), init));
   const seed = async (namespace, viewer, variant='realistic') => (await request('/api/test/seed', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace,viewer,variant})})).json();
@@ -21,7 +29,7 @@ test('built static app crosses its live seam with isolated synthetic accounts an
   const dellClient=createLiveClient({fetchImpl:caller(dell),docContext:false});
   assert.equal((await joeClient.getBoard()).actor,'joe');assert.equal((await dellClient.getBoard()).actor,'dell');
   const page=await caller(joe)('/?mode=live');assert.equal(page.status,200);
-  assert.equal(await page.text(),await readFile(new URL('../dist/site/workspace.html',import.meta.url),'utf8'));
+  assert.equal(await page.text(),await readFile(join(buildRoot,'workspace.html'),'utf8'));
   const args={deal:'qa-deal-1',field:'owner',value:'dell',base_event_id:null,idempotency_key:'synthetic-handoff-key'};
   const first=await joeClient.patchDealField(args);assert.equal(first.ok,true);
   assert.deepEqual(await joeClient.patchDealField(args),first);
@@ -43,7 +51,7 @@ test('built static app crosses its live seam with isolated synthetic accounts an
 });
 
 test('synthetic directory honors the pinned list/detail contract, identity, pagination and filters', async () => {
-  const {dispatch}=await createQaServer();
+  const {dispatch}=await createQaServer({buildRoot});
   const origin='http://127.0.0.1:18998';
   const seed=async(viewer,variant='realistic')=>(await dispatch(new Request(`${origin}/api/test/seed`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:`directory-${variant}`,viewer,variant})}))).json();
   const joe=await seed('joe'),dell=await seed('dell');
@@ -69,17 +77,17 @@ test('synthetic directory honors the pinned list/detail contract, identity, pagi
 });
 
 test('fixture Share mounts exact built page and local dependencies without live redirect or API proxy', async () => {
-  const {dispatch}=await createQaServer();
+  const {dispatch}=await createQaServer({buildRoot});
   const origin='http://127.0.0.1:18999';
   const response=await dispatch(new Request(`${origin}/share?qa=synthetic`));
   assert.equal(response.status,200);assert.equal(response.headers.get('location'),null);
   assert.match(response.headers.get('content-security-policy'),/connect-src 'self'/);
   const page=Buffer.from(await response.arrayBuffer());
-  assert.deepEqual(page,await readFile(new URL('../dist/site/reports/share.html',import.meta.url)));
+  assert.deepEqual(page,await readFile(join(buildRoot,'reports/share.html')));
   for(const path of ['/share.css','/share-bootstrap.js','/share.js','/vendor/maplibre-gl-6.4.1/maplibre-gl.css','/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs','/vendor/maplibre-gl-6.4.1/maplibre-gl-shared.mjs','/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs']) {
     const asset=await dispatch(new Request(new URL(path,origin)));
     assert.equal(asset.status,200);assert.equal(asset.headers.get('location'),null);
-    assert.deepEqual(Buffer.from(await asset.arrayBuffer()),await readFile(new URL(`../dist/site/reports${path}`,import.meta.url)));
+    assert.deepEqual(Buffer.from(await asset.arrayBuffer()),await readFile(join(buildRoot,'reports',path)));
   }
   for(const path of ['/api/share/report','/api/share/map','/api/share/feedback']) {
     const unavailable=await dispatch(new Request(new URL(path,origin)));
@@ -91,7 +99,7 @@ test('fixture Share mounts exact built page and local dependencies without live 
 });
 
 test('All Work and Status load existing synthetic projections through authenticated HTTP and MCP seams', async () => {
-  const {dispatch}=await createQaServer();const origin='http://127.0.0.1:18999';
+  const {dispatch}=await createQaServer({buildRoot});const origin='http://127.0.0.1:18999';
   for(const path of ['/api/v1/work-inventory','/api/system-work/current'])assert.equal((await dispatch(new Request(new URL(path,origin)))).status,401);
   for(const viewer of ['joe','dell']) {
     const seeded=await (await dispatch(new Request(`${origin}/api/test/seed`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:'work-status-selftest',viewer})}))).json();
@@ -110,7 +118,7 @@ test('All Work and Status load existing synthetic projections through authentica
 });
 
 test('unsupported fixture deal creation refuses through MCP and leaves shared records unchanged', async () => {
-  const {dispatch}=await createQaServer();const origin='http://127.0.0.1:18999';
+  const {dispatch}=await createQaServer({buildRoot});const origin='http://127.0.0.1:18999';
   const seed=async viewer=>(await dispatch(new Request(`${origin}/api/test/seed`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:'unsupported-creation',viewer})}))).json();
   const joe=await seed('joe'),dell=await seed('dell');
   const request=identity=>(path,init={})=>dispatch(new Request(new URL(path,origin),{...init,headers:{...init.headers,cookie:`${identity.cookie.name}=${identity.cookie.value}`}}));
@@ -126,7 +134,7 @@ test('unsupported fixture deal creation refuses through MCP and leaves shared re
 });
 
 test('complete fixture census counts match distinct records across every HTTP page', async () => {
-  const {dispatch}=await createQaServer();const origin='http://127.0.0.1:19000';
+  const {dispatch}=await createQaServer({buildRoot});const origin='http://127.0.0.1:19000';
   const identity=await (await dispatch(new Request(`${origin}/api/test/seed`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:'census-count-selftest',viewer:'joe'})}))).json();
   const read=async query=>(await dispatch(new Request(`${origin}/api/v1/work-inventory${query}`,{headers:{cookie:`${identity.cookie.name}=${identity.cookie.value}`}}))).json();
   const pages=[];let cursor=null;
