@@ -150,5 +150,6 @@ test('the installed GitHub reporter folds reruns and updates one stable comment 
   assert.match(comment, /2 passed/);
   await publishAggregate(aggregateShards([], commit), github({ key: 'DoctorCRE' }), '/fixture');
   assert.match(comment, /CI_EVIDENCE_INVALID/);
+  assert.doesNotMatch(comment, /NaNm|NaNs/, 'blocked runs must publish a finite duration');
   assert.equal(methods.at(-1), 'PATCH');
 });
