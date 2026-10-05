@@ -24,9 +24,10 @@ async function execute(command,root,timeoutMs,allowedFailures) {
     let sawTapHeader=false,tail='',lineBuffer='',timedOut=false,spawnFailed=false,killTimer;
     const failures=new Map();
     const options=process.env.NODE_OPTIONS||'';
-    if(/(?:^|\s|")--test-(?:name-pattern|skip-pattern|only|shard|rerun-failures)(?:=|\s|"|$)/.test(options))
+    const normalized=options.replaceAll('_','-');
+    if(/(?:^|\s|["'])--test-(?:name-pattern|skip-pattern|only|shard|rerun-failures)(?:=|\s|["']|$)/.test(normalized))
       return resolveRun({code:1,selectionFiltered:true,tail:'',sawTapHeader:false,failures:[]});
-    const reporter=/(?:^|\s|")--test-reporter=tap(?:\s|"|$)/.test(options)?options:`${options} --test-reporter=tap`.trim();
+    const reporter=/(?:^|\s|["'])--test-reporter=tap(?:\s|["']|$)/.test(normalized)?options:`${options} --test-reporter=tap`.trim();
     const env={...process.env,CI:'1',E2E_TELEMETRY_DISABLED:'1',NODE_OPTIONS:reporter};
     delete env.NODE_TEST_CONTEXT;
     const child=spawn(command[0],command.slice(1),{cwd:root,detached:true,env,stdio:['ignore','pipe','pipe']});

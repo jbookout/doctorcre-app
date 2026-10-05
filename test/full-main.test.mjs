@@ -42,7 +42,7 @@ test('canonical full-suite clean control and seeded failure publish bound counts
   assert.doesNotMatch(JSON.stringify(receipt),/SyntheticPrivateClient|synthetic-secret-canary/);
   const options=process.env.NODE_OPTIONS;
   try {
-    process.env.NODE_OPTIONS='"--test-name-pattern=unconditional-green"';
+    process.env.NODE_OPTIONS='"--test_name_pattern=unconditional-green"';
     assert.notEqual((await runner.runFullMain({root,suite:'app',timeoutMs:5000})).status,'passed','filtered tests cannot certify a full suite');
   } finally {
     if(options===undefined) delete process.env.NODE_OPTIONS; else process.env.NODE_OPTIONS=options;
