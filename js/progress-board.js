@@ -4,6 +4,7 @@ import { createLiveClient } from "./live-client.js";
 import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
+import { mountCostView } from './progress-board-costs.js';
 import {
   jobLinks, STAGES, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
   answerRequest, taskSummary, modelLine, stageEnteredAt, ageText,
@@ -35,6 +36,7 @@ export function mountBoard(deps = {}) {
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
+  const costs = mountCostView(byId('board-costs'));
   const location = deps.location || win.location;
   if (pathBoardId) doc.querySelector(".directory-panel").hidden = true;
   byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
@@ -833,6 +835,7 @@ export function mountBoard(deps = {}) {
 
   function render(view) {
     currentView = view;
+    costs.update(view.costs);
     byId("board-title").textContent = deps.openTask ? "System Job Board" : view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "DELIVERY / ALL REPOSITORIES" : "DELIVERY / PROGRESS BOARD";
     doc.title = "Control Room · DoctorCRE";
@@ -864,6 +867,7 @@ export function mountBoard(deps = {}) {
 
   // A confirmed unpublished or denied read removes the protected board.
   function clearBoard(state) {
+    costs.update(null);
     boardState = state;
     governanceRead = null;
     deps.onTasks?.([], {state});

@@ -460,6 +460,7 @@ export function boardView(read, at = new Date()) {
     title: typeof data.title === "string" ? data.title : "Progress board",
     updated_at: snapshot?.updated_at || null,
     sync,
+    costs: data.costs,
     cards,
     stages,
     repos: rows(data.repos, row => typeof row.repo === "string"),

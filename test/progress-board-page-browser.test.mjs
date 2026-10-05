@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
+import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390 } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const context = page.context();
@@ -25,7 +26,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
         const board = boards.find(b => b.board_id === rpc.arguments.board_id);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
-          updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: board.title, tasks: {
+          updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: board.title, costs: costData, tasks: {
             build: { title: `${board.title} task`, status: 'running' },
           } } }, questions: [] };
       }
@@ -116,6 +117,37 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+test('cost panel has day popup, month history, provider selection and measured reduced motion on mobile', async t => {
+  const { page, errors } = await open(t, { path: systemPath, costData: costs });
+  const panel = page.locator('#board-costs');
+  await panel.waitFor();
+  assert.match(await panel.textContent(), /Coverage incomplete/);
+  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationDuration), '2s');
+  await panel.getByLabel('Cost provider').selectOption('jev');
+  assert.match(await panel.textContent(), /Projected month\$93\.00/);
+  if (process.env.COST_EVIDENCE_DIR) {
+    await mkdir(process.env.COST_EVIDENCE_DIR, { recursive: true });
+    await page.clock.runFor(450);
+    await panel.screenshot({ path: `${process.env.COST_EVIDENCE_DIR}/cost-panel-mobile.png` });
+    const before = await open(t, { path: systemPath });
+    await before.page.locator('#board-stages').waitFor();
+    await before.page.screenshot({ path: `${process.env.COST_EVIDENCE_DIR}/board-without-costs.png` });
+  }
+  await panel.locator('[data-day="2026-10-04"]').click();
+  await panel.getByRole('dialog').waitFor();
+  assert.match(await panel.getByRole('dialog').textContent(), /review \$9\.00/);
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await panel.getByLabel('Cost month').selectOption('2026-09');
+  assert.equal(await panel.locator('[data-day]').count(), 30);
+  assert.match(await panel.textContent(), /Monthly spend\$50\.00/);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
+  assert.equal(await panel.locator('.cost-bar').first().evaluate(node => getComputedStyle(node).transitionDuration), '0s');
+  assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+  if (process.env.COST_EVIDENCE_DIR) await panel.screenshot({ path: `${process.env.COST_EVIDENCE_DIR}/cost-panel-history-reduced-motion.png` });
+  assert.deepEqual(errors, []);
+});
+
 test('independent census diagram uses the same stage colors as the published board legend', async t => {
   const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
   await page.locator('#system-work-flow .flow-stage').first().waitFor();
