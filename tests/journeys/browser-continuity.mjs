@@ -22,7 +22,8 @@ export async function exerciseContinuity(page, origin) {
   await animationsSettled(page);
   await assertFitsViewport(page,['#recordPanel']);
   await page.getByLabel('Close deal',{exact:true}).click();
-  assert.equal(await page.locator('.kanban-card[data-id="d14"]').evaluate(el=>document.activeElement===el),true,'outer close returns to the current card after polling');
+  await page.waitForFunction(() => !document.querySelector('#recordPanel').open
+    && document.activeElement === document.querySelector('.kanban-card[data-id="d14"]'));
 }
 
 export async function exerciseReload(page, origin, {dropWrite=false}={}) {
