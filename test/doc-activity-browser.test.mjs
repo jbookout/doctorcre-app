@@ -12,9 +12,12 @@ const artifactDir=await mkdtemp(join(tmpdir(),'doctorcre-activity-browser-'));
 await buildArtifact({root:fileURLToPath(root),outDir:artifactDir,commit:'1'.repeat(40)});
 const site=pathToFileURL(join(artifactDir,'site')+'/');
 const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
-async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=false,limit=50,holdUndos=false,readTransform=answer=>answer}={}) {
+async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=false,limit=50,holdUndos=false,readTransform=answer=>answer,firstOpen=false}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:960},reducedMotion});
+  const page=await browser.newPage({viewport:{width,height:960},reducedMotion,timezoneId:'UTC'});
+  if(!firstOpen)await page.addInitScript(()=>{
+    if(!localStorage.getItem('doctorcre:morning:joe'))localStorage.setItem('doctorcre:morning:joe',JSON.stringify({day:'2026-10-01',lastShownAt:'2026-10-01T14:00:00Z',since:'2026-09-30T17:00:00Z'}));
+  });
   const fixture=createDocActivityFixture(()=>new Date('2026-10-01T15:00:00Z')), calls=[],errors=[];
   const undoHolds=new Map(),undoReady=new Map();
   let fail=undoFailure, reads=0, failRead=false, staleRead=null, heldRead=null, refusal=false;
@@ -42,19 +45,47 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
         result={items:[]};
       }else if(params.name==='list-doc-suggestions'){
         result={ok:true,suggestions:[]};
+      }else if(params.name==='morning-brief'){
+        result={state:'ready',sponsor:'joe',sections:{today:{state:'empty',items:[]},deals:{state:'empty',items:[]},loops:{state:'empty',items:[]}}};
       }else { errors.push(`Unexpected MCP operation: ${params.name}`); return route.fulfill({status:500,body:''}); }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(result)}]}})});
     }
     if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'}})});
+    if(url.pathname==='/pipeline/changes')return route.fulfill({json:{events:[],cursor:null}});
     const file=routes.routes[url.pathname]||url.pathname.slice(1);
     try{return route.fulfill({body:await readFile(new URL(file,site)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}
     catch{return route.fulfill({status:404,body:''});}
   });
   await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
   await page.goto('http://localhost/doc-activity?mode=live'); await page.locator('.activity-row').first().waitFor();
+  if(firstOpen){await page.locator('#docMorningBrief[open]').waitFor();await page.locator('#morningClose').click();}
   return {page,calls,errors,fixture,reads:()=>reads,setReadFailure:value=>{failRead=value;},holdPartner:value=>{staleRead=value;},
     waitUndo:id=>undoHolds.has(id)?Promise.resolve():new Promise(resolve=>undoReady.set(id,resolve)),releaseUndo:(id,outcome='success')=>undoHolds.get(id)?.(outcome),releaseHeld:()=>{heldRead?.();},hasHeld:()=>Boolean(heldRead),refuseUndo:()=>{refusal=true;}};
 }
+test('PR123 R1: Activity models the daily morning brief and rejects unknown operations', async t => {
+  const { page, calls, errors } = await open(t, { firstOpen: true });
+  const preference = () => page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:morning:joe')));
+  assert.equal((await preference())?.day, '2026-10-01');
+  assert.ok(calls.some(call => call.name === 'morning-brief'));
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal(await page.locator('#morningCoverage').textContent(), '');
+  const loaded = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
+  await page.reload(); await loaded;
+  await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
+  await page.locator('#docMorningBrief[open]').waitFor();
+  await page.locator('#morningClose').click();
+  await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await page.locator('#docMorningBrief[open]').waitFor();
+  assert.equal((await preference()).day, '2026-10-02');
+  assert.deepEqual(errors, []);
+  const status = await page.evaluate(async () => (await fetch('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'unknown-operation', arguments: {} } }) })).status);
+  assert.equal(status, 500);
+  assert.deepEqual(errors, ['Unexpected MCP operation: unknown-operation']);
+});
+
 test('account and Doc entry points, filters, date range, wide evidence popup and one tap undo',async t=>{
   const {page,calls,errors}=await open(t);
   assert.equal(await page.locator('.activity-row').count(),5);

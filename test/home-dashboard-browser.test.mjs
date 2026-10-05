@@ -16,13 +16,16 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
   // Virtual time pauses CSS transitions. Data journeys use reduced motion so
   // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW });
+  if (!firstOpen) await page.addInitScript(() => {
+    if (!localStorage.getItem('doctorcre:morning:joe')) localStorage.setItem('doctorcre:morning:joe', JSON.stringify({ day: '2026-10-01', lastShownAt: '2026-10-01T14:00:00Z', since: '2026-09-30T17:00:00Z' }));
+  });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
   const responses = new Map();
   let boardMalformed = malformedBoard;
@@ -44,6 +47,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     'correspondence-readiness': args => client.correspondenceReadiness(args),
     'today-triage': () => client.todayTriage(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
+    'morning-brief': () => client.morningBrief(),
     'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:[],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
@@ -65,7 +69,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     if (url.pathname === '/pipeline/changes') {
       feedReads++;
       if (delayInitialFeed && feedReads === 1) await initialFeed;
-      return route.fulfill({ json: { changes: [], cursor: null } });
+      return route.fulfill({ json: { events: [], cursor: null } });
     }
     if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
@@ -81,8 +85,33 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   });
   await page.goto(`${origin}/?mode=live`);
   await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
+  if (firstOpen) { await page.locator('#docMorningBrief[open]').waitFor(); await page.locator('#morningClose').click(); }
   return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
+
+test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
+  const { page, calls, errors } = await open(t, { firstOpen: true });
+  const preference = () => page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:morning:joe')));
+  assert.equal((await preference())?.day, '2026-10-01');
+  assert.ok(calls.includes('morning-brief'));
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal(await page.locator('#morningCoverage').textContent(), '');
+  const loaded = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
+  await page.reload(); await loaded;
+  await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
+  await page.locator('#docMorningBrief[open]').waitFor();
+  await page.locator('#morningClose').click();
+  await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await page.locator('#docMorningBrief[open]').waitFor();
+  assert.equal((await preference()).day, '2026-10-02');
+  assert.deepEqual(errors, []);
+  const status = await page.evaluate(async () => (await fetch('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'unknown-operation', arguments: {} } }) })).status);
+  assert.equal(status, 500);
+  assert.deepEqual(errors, ['Unexpected MCP operation: unknown-operation']);
+});
 
 test('PR123 finding 8: malformed and mixed live reads settle unavailable and recover', async t => {
   const state = await open(t); const { page, responses } = state;
