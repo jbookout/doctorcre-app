@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -72,7 +73,8 @@ test('deadline terminates a SIGTERM-resistant descendant before returning', asyn
   await writeFile(join(root,'package.json'),JSON.stringify({scripts:{test:'node scripts/parent.cjs'}})); commit(git);
   let pid;
   t.after(()=>{if(pid) try {process.kill(pid,'SIGKILL');} catch {}});
-  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:700});
+  // The deadline includes npm startup and both Node processes installing handlers.
+  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
   pid=Number(await readFile(join(root,'.e2e/logs/descendant.log'),'utf8'));
   assert.equal(receipt.reason,'deadline');
   // Allow the OS to reap an orphan after the group has been killed.
@@ -141,13 +143,15 @@ test('untracked executable test inputs cannot borrow the selected source SHA',as
 async function browserFixture(t, change = () => {}) {
   const f = await fixture(t,clean);
   const entries = ['first','second'].map(title=>({file:`tests/journeys/${title}.e2e.ts`,title}));
+  const binding={repo:'jbookout/doctorcre-app',sourceCommit:'SOURCE',runId:'synthetic-native-run',
+    workflowRunId:process.env.GITHUB_RUN_ID||'local',attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   const proof = {
     native:{run:{id:'synthetic-native-run',vcs:{commit:'SOURCE',dirty:false},status:'passed',exitCode:0,
       results:entries.map(({file,title})=>({file,testId:`${file}::${encodeURIComponent(title)}`,selected:true,status:'passed',attempts:[{}]}))}},
-    coverage:{binding:{repo:'jbookout/doctorcre-app',sourceCommit:'SOURCE',runId:'synthetic-native-run',workflowRunId:'local',attempt:1},
+    coverage:{binding:{...binding},
       rows:[...entries.map(({title})=>title),...continuityCases.map(({id})=>id)].map(id=>({id,status:'passed',attempts:1})),
       qualification:{broken:'failed',repaired:'passed'}},
-    packet:{schema:'browser-product-proof.v1',binding:{repo:'jbookout/doctorcre-app',sourceCommit:'SOURCE',runId:'synthetic-native-run',workflowRunId:'local',attempt:1}},
+    packet:{schema:'browser-product-proof.v1',binding:{...binding}},
   };
   change(proof);
   await mkdir(join(f.root,'tests/journeys'),{recursive:true});
@@ -168,6 +172,16 @@ async function browserFixture(t, change = () => {}) {
   commit(f.git);
   return f;
 }
+test('browser fixtures honor hosted invocation bindings on reruns',()=>{
+  const env={...process.env,GITHUB_RUN_ID:'37381471882',GITHUB_RUN_ATTEMPT:'2'};
+  delete env.NODE_TEST_CONTEXT;
+  const result=spawnSync(process.execPath,['--test','--test-reporter=tap','--test-name-pattern=e2e acknowledgement|e2e does not reuse',fileURLToPath(import.meta.url)],{
+    env,
+    encoding:'utf8',timeout:30000,
+  });
+  assert.equal(result.status,0,result.error?.message||`${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout,/^# pass 2$/m);
+});
 test('e2e acknowledgement must bind complete manifest coverage to this invocation',async t=>{
   const {root}=await browserFixture(t);
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'passed');
@@ -179,8 +193,8 @@ test('e2e acknowledgement must bind complete manifest coverage to this invocatio
     ['wrong native run',p=>p.native.run.id='other-run'],
     ['wrong packet run',p=>p.packet.binding.runId='other-run'],
     ['wrong coverage run',p=>p.coverage.binding.runId='other-run'],
-    ['wrong attempt',p=>{p.packet.binding.attempt=2;p.coverage.binding.attempt=2;}],
-    ['wrong workflow run',p=>{p.packet.binding.workflowRunId='123';p.coverage.binding.workflowRunId='123';}],
+    ['wrong attempt',p=>{p.packet.binding.attempt++;p.coverage.binding.attempt++;}],
+    ['wrong workflow run',p=>{p.packet.binding.workflowRunId+='-other';p.coverage.binding.workflowRunId+='-other';}],
     ['failed native entry',p=>p.native.run.results[0].status='failed'],
     ['retried native entry',p=>p.native.run.results[0].attempts.push({})],
     ['wrong source',p=>p.native.run.vcs.commit='a'.repeat(40)],
