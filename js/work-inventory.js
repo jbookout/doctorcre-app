@@ -23,7 +23,7 @@ import {
   validPassportPayload, validPortfolioPayload, validWorkRequestCard,
 } from "./delivery-evidence-model.js";
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -74,11 +74,6 @@ function announce(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
-function formatObserved(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return "Observed time unavailable";
-  return `Observed ${date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
-}
 
 function formatUpdated(value) {
   const date = new Date(value);
@@ -271,7 +266,7 @@ const evidence = new Map();
 const cards = new Map();
 
 let client = null;
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** The popup's own state: what is being decided, and the draft that survives a refusal. */
 const decision = { ref: null, choice: null, refusal: null };

@@ -12,8 +12,8 @@ import { readFile } from "node:fs/promises";
 
 import {
   beginCommand, classifyCommandOutcome, commandDockHtml, commandMessage, commandReceiptView,
-  createCommandState, feedbackStateFor, pendingCommand, performCommand, sameCommandIntent,
-  settleCommand, unresolvedCommands,
+  feedbackStateFor, pendingCommand, performCommand, sameCommandIntent, settleCommand,
+  unresolvedCommands,
 } from "../js/command-feedback.mjs";
 import { DOCK_ENTRY_CAP, createCommandDock } from "../js/command-dock.js";
 import { FEEDBACK_STATES } from "../js/visual-system.js";
@@ -23,7 +23,7 @@ const read = (file) => readFile(new URL(file, root), "utf8");
 
 /** A surface that owns one command state and one scripted transport. */
 function surface(answers = []) {
-  let state = createCommandState();
+  let state = {};
   const sent = [];
   let minted = 0;
   const queue = [...answers];
@@ -104,7 +104,7 @@ test("every answer the record layer can give is a different state, and the ones 
 // --------------------------------------------------------------- 2. one key
 
 test("a double click is one operation: the second send never leaves the page and no second key is minted", async () => {
-  let state = createCommandState();
+  let state = {};
   const sent = [];
   let minted = 0;
   let release;
@@ -244,7 +244,7 @@ test("the kernel adds one field and no more, sends exactly the frozen request, a
   assert.equal(sameCommandIntent({ a: 1, idempotency_key: "k1" }, { a: 1, idempotency_key: "k2" }), true);
   assert.equal(sameCommandIntent({ a: 1 }, { a: 2 }), false);
   // begin and settle are pure: neither writes into the state it was handed.
-  const state = createCommandState();
+  const state = {};
   const claim = beginCommand(state, { operationKey: "x", args: { a: 1 }, newKey: () => "k" });
   assert.deepEqual(state, {}, "begin returns a new state instead of mutating one");
   assert.deepEqual(settleCommand(claim.state, "x", { status: "ok" }), {});

@@ -117,8 +117,6 @@ async function load(){
 }
 
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
-function openSessions(){mountSessions({});}
-function openModelRoom(){mountModelRoom({});}
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  $("jobDialog").addEventListener("close",()=>selectDocRecord(null,null));
@@ -132,7 +130,7 @@ async function boot(){
   if(row)openIncident(row.dataset.incident);
  });
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
- const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')openSessions();if(selected.id==='tabModelRoom')openModelRoom();};
+ const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
  document.getElementById('controlRoomTabs')?.addEventListener('click',event=>{const selected=event.target.closest('[data-tab-key]');if(!selected)return;const next=new URL(location.href);next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);activate(selected);},true);
  const restoreTab=()=>{const requested=new URLSearchParams(location.search).get('tab');const key={atlas:'system-map','model-room':'agents',dashboard:'overview'}[requested]||requested||'overview';const selected=[...document.querySelectorAll('#controlRoomTabs [data-tab-key]')].find(t=>t.dataset.tabKey===key);if(selected){tabs.select(selected.id);activate(selected);}};
  window.addEventListener('popstate',restoreTab);const parameters=new URLSearchParams(location.search);if(parameters.has("tab")) restoreTab();

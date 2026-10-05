@@ -112,10 +112,6 @@ export function sameCommandIntent(a, b) {
   return stableText(strip(a)) === stableText(strip(b));
 }
 
-/** Per-operation write bookkeeping. Plain data so it stays comparable. */
-export function createCommandState() {
-  return {};
-}
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object') return value;

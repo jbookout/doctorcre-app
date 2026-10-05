@@ -240,7 +240,7 @@ test("clause 6: one acknowledgement, one operation key, one idempotency key, rep
   assert.deepEqual(acknowledgeArgs(` ${QUIET} `).args, { notification_id: QUIET });
   assert.equal(acknowledgeArgs("not-a-uuid").ok, false);
 
-  assert.match(pageJs, /import \{ createCommandState, performCommand \} from "\.\/command-feedback\.mjs"/);
+  assert.match(pageJs, /import \{ performCommand \} from "\.\/command-feedback\.mjs"/);
   assert.match(pageJs, /await performCommand\(\{/);
   assert.match(pageJs, /newKey: uuidv4/);
   assert.match(pageJs, /client\.acknowledgeNotification\(request\)/);

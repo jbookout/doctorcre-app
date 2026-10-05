@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { draftIdentityPlan } from "../js/task-draft-identity.mjs";
+import { draftIdentityPlan } from "../js/task-records-model.js";
 
 test("local task drafts stay with their verified actor", () => {
   assert.equal(draftIdentityPlan("joe", "joe"), "reuse");

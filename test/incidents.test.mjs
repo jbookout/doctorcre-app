@@ -144,7 +144,7 @@ test("who can clear this is built from the row, and the page offers no partner a
 /* ------------------------------------------------------------------ the write */
 
 test("the one write goes through the command kernel with one operation key", () => {
-  assert.match(pageJs, /import \{ createCommandState, performCommand \} from "\.\/command-feedback\.mjs"/);
+  assert.match(pageJs, /import \{ performCommand \} from "\.\/command-feedback\.mjs"/);
   assert.match(pageJs, /await performCommand\(\{/);
   assert.match(pageJs, /newKey: uuidv4/);
   assert.match(pageJs, /client\.linkIncidentWorkRequest\(request\)/);

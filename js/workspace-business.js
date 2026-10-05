@@ -142,8 +142,6 @@ function setHealth(state) {
   if (dom.healthLabel) dom.healthLabel.textContent = HEALTH_LABEL[state] || HEALTH_LABEL.unavailable;
 }
 
-/** Where it came from and when, without naming a table. */
-function sourceLabel(source) { return updatedLabel(source?.observed_at); }
 
 // ------------------------------------------------------------- navigation
 
@@ -533,7 +531,7 @@ function renderList() {
     dom.viewer.textContent = payload.viewer === "joe" ? "Joe’s workspace" : payload.viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
   }
   if (dom.observedAt) dom.observedAt.textContent = updatedLabel(payload.source.observed_at);
-  if (dom.source) dom.source.textContent = sourceLabel(payload.source, dataset);
+  if (dom.source) dom.source.textContent = updatedLabel(payload.source?.observed_at);
   if (dom.summary) dom.summary.textContent = `${payload.total} ${DATASET_LABEL[dataset].toLowerCase()}`;
   renderNotices(view.failedPage ? [{ kind: 'unavailable', title: 'Could not load more', copy: 'Retrying automatically.', retry: true }]
     : view.loadingMore ? [{ kind: 'loading', title: 'Loading more…', copy: '' }] : []);
@@ -638,7 +636,7 @@ function renderRecordPanel() {
     `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.filter(field => !['ETL status','What this status means','Version','What this level means','Vendor reference','Client reference','What they offer','Last touch'].includes(field.label) && field.known).map((field) =>
       `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${(section.title === 'Notes' ? `<p class="note-summary">${escapeHtml(shortNote(field.text))}</p><details class="record-details" data-details-key="notes"><summary>Details</summary><p class="entry-detail">${escapeHtml(field.text)}</p></details>` : escapeHtml(field.text))}${field.known && !field.resolved ? '<span class="unresolved-flag">Not recorded</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(sourceLabel(payload.source))}</p>`;
+    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
     dom.panelBody.dataset.recordId = payload.record.id;
     restorePanelState();
 
