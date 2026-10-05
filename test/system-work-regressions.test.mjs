@@ -7,7 +7,7 @@ import {systemPipeline} from '../js/system-work-board-model.js';
 import {taskPulse,taskStage} from '../js/progress-board-model.js';
 const row=(id='a')=>({id,source:'public.loop_item',kind:'loop',title:`Synthetic ${id}`,state:'open',completed:false,age:1,version:2,last_activity_at:'2026-10-01T12:00:00Z',link:'/system-work.html',available_triage_actions:[{action:'progress',verb:'update-loop',args:{loop_id:id},versioned:true,fields:[{name:'body',label:'Progress',required:true}]}]});
 const envelope=(items=[row()],extra={})=>({schema:'unfinished-work.v1',items,coverage:[{kind:'loop',source_ref:'public.loop_item',state:'complete',count_total:items.length}],census_complete:true,next_cursor:null,...extra});
-const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
+
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
 async function setup(t,{read,write}={}){
  const dom=new JSDOM(readFileSync(new URL('../progress-board.html',import.meta.url),'utf8'),{url:'http://localhost/control-room/progress'});const previous={document:globalThis.document,FormData:globalThis.FormData,confirm:globalThis.confirm,matchMedia:globalThis.matchMedia};
@@ -33,7 +33,7 @@ test('finding 2: uncertain write replays immutable key, body and version after r
  h.click('#work-triage-close');h.open('a');h.submit('Replacement progress');await settle();assert.equal(h.writes.length,2);assert.deepEqual(h.writes[1],h.writes[0]);
 });
 for(const denialStatus of [401,403])for(const pendingAtDenial of [false,true])test(`access denial ${denialStatus} preserves ${pendingAtDenial?'pending':'uncertain'} write replay through recovery`,async t=>{
- let denied=false,version=2,commits=0;const receipts=new Map(),lostResponse=deferred();
+ let denied=false,version=2,commits=0;const receipts=new Map(),lostResponse=Promise.withResolvers();
  const h=await setup(t,{
   read:args=>{if(denied)throw Object.assign(new Error('Access denied'),{status:denialStatus});return envelope(args.live_library?[]:[{...row(),version}]);},
   write:(_verb,args)=>{
@@ -70,7 +70,7 @@ for(const denialStatus of [401,403])for(const pendingAtDenial of [false,true])te
  assert.equal(h.d.querySelector('#work-triage-form button[type="submit"]').textContent,'Review and confirm');
 });
 test('finding 3: late action receipt stays with its operation and never modifies another dialog',async t=>{
- const result=deferred();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('First progress');await settle();h.click('#work-triage-close');h.open('b');result.resolve({ok:true,message:'First receipt'});await settle();
+ const result=Promise.withResolvers();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('First progress');await settle();h.click('#work-triage-close');h.open('b');result.resolve({ok:true,message:'First receipt'});await settle();
  assert.equal(h.d.querySelector('#work-triage-form h2').textContent,'Progress · Synthetic b');assert.equal(h.d.querySelectorAll('#work-triage-form button').length,1);assert.equal(h.d.querySelector('.triage-status').textContent,'');
  h.click('#work-triage-close');h.open('a');assert.match(h.d.querySelector('.triage-status').textContent,/First receipt/);
 });
@@ -85,7 +85,7 @@ test('finding 5: successful Close refreshes despite restored card focus',async t
  [...h.d.querySelectorAll('#work-triage-form button')].find(b=>b.textContent==='Close').click();await settle();assert.equal(h.d.querySelectorAll('.work-card').length,0);
 });
 test('finding 6: filter transition invalidates old query cursor and blocks append',async t=>{
- const next=deferred();const h=await setup(t,{read:args=>args.text?next.promise:envelope(args.live_library?[]:[row()],{next_cursor:args.live_library?null:'old-query-cursor'})});
+ const next=Promise.withResolvers();const h=await setup(t,{read:args=>args.text?next.promise:envelope(args.live_library?[]:[row()],{next_cursor:args.live_library?null:'old-query-cursor'})});
  h.d.querySelector('[name="text"]').value='new query';h.click('#system-work-filters button');h.click('#system-work-more');await settle();assert.equal(h.calls.some(c=>c.text==='new query'&&c.cursor),false);
  next.resolve(envelope([row('new')]));await settle();assert.equal(h.d.querySelector('.work-card').dataset.workId,'new');
 });
@@ -94,10 +94,10 @@ test('finding 7: background polling preserves loaded library pages',async t=>{
  revision=2;h.d.querySelector('#live-library').focus();await h.board.refresh();await settle();assert.equal(h.d.querySelectorAll('.work-card').length,2);assert.ok([...h.d.querySelectorAll('.work-card h4')].every(card=>card.textContent==='Library revision 2'));assert.ok(h.calls.filter(call=>call.cursor==='library-page-2').length>=2);
 });
 test('finding 8: focus entering cards during background read survives response',async t=>{
- let slow=false;const next=deferred();const h=await setup(t,{read:args=>slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()])});slow=true;h.d.querySelector('#live-library').focus();const pending=h.board.refresh();const link=h.d.querySelector('.work-card a');link.focus();next.resolve(envelope([row()]));await pending;assert.equal(h.d.activeElement,link);assert.equal(link.isConnected,true);
+ let slow=false;const next=Promise.withResolvers();const h=await setup(t,{read:args=>slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()])});slow=true;h.d.querySelector('#live-library').focus();const pending=h.board.refresh();const link=h.d.querySelector('.work-card a');link.focus();next.resolve(envelope([row()]));await pending;assert.equal(h.d.activeElement,link);assert.equal(link.isConnected,true);
 });
 test('R1: focus-deferred background refresh retains the displayed page continuation',async t=>{
- let slow=false;const next=deferred();const h=await setup(t,{read:args=>{
+ let slow=false;const next=Promise.withResolvers();const h=await setup(t,{read:args=>{
   if(args.live_library)return envelope([]);
   if(args.cursor)return envelope([row('older')]);
   return slow?next.promise:envelope([row()],{next_cursor:'displayed-page-2'});
@@ -123,7 +123,7 @@ test('finding 10: source stages and terminal pulse preserve pipeline contract',(
  for(const state of ['approved','merged']){const task=systemPipeline([],[{...row(),state,completed:true}]).stages.find(s=>s.id==='live').tasks[0];assert.equal(taskPulse(task),'still');}
 });
 test('findings 2 and 3: reopening a pending action cannot replace it and receives its receipt',async t=>{
- const result=deferred();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('Original');await settle();h.click('#work-triage-close');h.open('a');h.submit('Replacement');await settle();assert.equal(h.writes.length,1);
+ const result=Promise.withResolvers();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('Original');await settle();h.click('#work-triage-close');h.open('a');h.submit('Replacement');await settle();assert.equal(h.writes.length,1);
  result.resolve({ok:true,message:'Retained receipt'});await settle();assert.match(h.d.querySelector('.triage-status').textContent,/Retained receipt/);assert.equal(h.d.querySelectorAll('[data-receipt-close]').length,1);
 });
 test('finding 9: pinned producer source metadata and per-source observation age are shown',async t=>{
@@ -135,13 +135,12 @@ test('finding 2: acknowledged receipt allows a later independent progress update
 });
 
 test('W1: background work updates recover without prompting and do not overlap',async t=>{
- let fail=false,slow=false;const next=deferred();const h=await setup(t,{read:args=>{if(fail)throw new Error('Synthetic offline');return slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()]);}});
+ let fail=false,slow=false;const next=Promise.withResolvers();const h=await setup(t,{read:args=>{if(fail)throw new Error('Synthetic offline');return slow&&!args.live_library?next.promise:envelope(args.live_library?[]:[row()]);}});
  fail=true;await h.board.refresh();assert.equal(h.d.querySelector('#system-work-error').textContent,'System work updates unavailable.');
  fail=false;slow=true;const pending=h.board.refresh();const count=h.calls.length;await h.board.refresh();assert.equal(h.calls.length,count);
  next.resolve(envelope([{...row(),title:'Automatically updated'}]));await pending;assert.equal(h.d.querySelector('#system-work-error').hidden,true);assert.equal(h.d.querySelector('.work-card h4').textContent,'Automatically updated');assert.equal(h.writes.length,0);
  assert.equal(h.d.querySelector('#system-work-coverage button').getAttribute('aria-label'),'Refresh');assert.doesNotMatch(h.d.querySelector('#system-work-coverage').textContent,/source|census|items|read|retry/i);
 });
-
 
 test('unsupported source navigation displays its absence without a directory fallback', async t => {
  const item={...row(),link:null,navigation:{state:'unavailable'}};

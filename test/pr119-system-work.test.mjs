@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { autoRefreshScript } from './auto-refresh-script.mjs';
 const settle = async () => { for(let i=0;i<12;i++) await new Promise(r=>setImmediate(r)); };
-const deferred = () => { let resolve; const promise=new Promise(r=>resolve=r); return {promise,resolve}; };
+
 const base = {human_ref:'WR-000123',version:1,state:'captured',title:'Synthetic concern',desired_outcome:'Safe observation',acceptance_criteria:[{id:'criterion-1',text:'Synthetic evidence'}],source:{label:'Synthetic doctrine',freshness:'current',provenance:'shared doctrine'}};
 async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), index=false) {
  const dom=new JSDOM(readFileSync(new URL('../system-work.html',import.meta.url),'utf8'),{url:'http://localhost/work-requests'+(index?'':'?work_request=WR-000123'),runScripts:'outside-only'});
@@ -37,7 +37,7 @@ for(const [kind,card] of [
  assert.match(h.d.querySelector('#systemWorkFormError').textContent,/changed|review/i);
 });
 test('PR119 finding 2: a superseded poll cannot replace a newer selection',async t=>{
- const slow=deferred();let hold=false;
+ const slow=Promise.withResolvers();let hold=false;
  const h=await setup(t,base,path=>path.endsWith('WR-000456')?{...base,human_ref:'WR-000456',title:'Selected B'}:hold?slow.promise:base);
  hold=true;h.w.dispatchEvent(new h.w.Event('online'));await settle();
  h.d.querySelector('#workRequestRef').value='WR-000456';h.d.querySelector('#openWorkRequest').dispatchEvent(new h.w.Event('submit',{bubbles:true,cancelable:true}));await settle();
@@ -56,7 +56,7 @@ test('PR119 finding 4: the index rereads and recovers; late lists cannot overwri
  rows=[base];await h.online();assert.ok(h.d.querySelector('[data-open-work-request]'));
  failure=true;await h.online();assert.equal(h.d.querySelector('#systemWorkAlert').hidden,false);assert.equal(h.d.querySelector('[data-open-work-request]'),null);
  failure=false;await h.online();assert.ok(h.d.querySelector('[data-open-work-request]'));
- held=deferred();h.w.dispatchEvent(new h.w.Event('online'));await settle();
+ held=Promise.withResolvers();h.w.dispatchEvent(new h.w.Event('online'));await settle();
  h.d.querySelector('#workRequestRef').value=base.human_ref;h.d.querySelector('#openWorkRequest').dispatchEvent(new h.w.Event('submit',{bubbles:true,cancelable:true}));await settle();
  held.resolve({items:[]});await settle();assert.ok(h.d.querySelector('[data-system-action]'));
 });

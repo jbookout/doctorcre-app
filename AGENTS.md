@@ -47,6 +47,27 @@ seam, with live HTTP/MCP and in-memory fixture adapters. The repository contains
 synthetic fixtures only; real deal records remain in CARR. Source isolation did
 not change CARR runtime or deployment.
 
+## Review-derived standards
+
+Counts are distinct PR occurrences in the 2026-10-05 review harvest; repeated findings within a PR count once.
+
+- Bind async completions to the actor, record, query and operation that started them; test an obsolete response arriving last with `Promise.withResolvers()` (26 PRs).
+- On authorization loss or actor change, invalidate pending reads and conceal all derived records, dialogs, drafts and offline access before repainting (17 PRs).
+- Retain the exact payload, base version and idempotency key for unknown writes; expose same-request recovery and separate definite refusal (12 PRs).
+- Validate consumed fields before publishing success; keep malformed, partial, unavailable, unknown and verified-empty states distinct (30 PRs).
+- Refresh must preserve drafts, stable selections and loaded pagination; recheck edits and operation identity after each await (25 PRs).
+- Bound transport and body reads, release refresh locks on failure, and show a reachable retry without promoting stale data to current (24 PRs).
+- Exercise the exact contract-pinned producer with producer-shaped fixtures; reject assumed fields, stages, identity joins and undocumented capabilities (28 PRs).
+- Check routed pages and assets through the built artifact and Worker, including CARR admission, CSP and Permissions-Policy (10 PRs).
+- Restore focus by stable identity after repaint; use a visible, focusable fallback and keep Escape/focus inside the top modal (22 PRs).
+- Verify rendered hit targets and legibility at phone widths with the shared shell mounted; check computed reduced-motion behavior (17 PRs).
+- Reuse the existing owner of a shared rule and migrate real callers when retiring a flow; remove unreachable paths and test-only substitutes (14 PRs).
+- Tests must execute the claimed behavior and await observable completion; derive contract expectations from files and use fixture-owned history and shared clocks/budgets (14 PRs; literal contract-pin assertions fail `npm run check`).
+- Choose the required business or viewer time zone explicitly; derive freshness from observation time and test local-day and expiry crossings (6 PRs).
+- When replacing a view, inventory its supported source fields and reachable actions and verify each survives at the new destination (7 PRs).
+- Review against fetched `origin/main` and require green hosted merge-candidate checks after resolving branch drift (4 PRs).
+- Bind proof and publication to the observed source, served artifact and locked tool; revalidate before success and preserve earlier evidence seals (3 PRs).
+
 ## Before every PR: design and debt pass
 
 Before opening or updating any pull request, apply both skills to the diff:

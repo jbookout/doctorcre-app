@@ -50,7 +50,6 @@ test('automatic refresh updates results and preserves query and expanded origina
  let phase='Research';const {bar,win,input}=setup(t,{intervalMs:30,client:{getBoard:async()=>({deals:[{id:'d-demo',name:'Demo Deal',phase,next_step:'Synthetic note. More detail.'}]})}});bar.open();input.value='Demo';input.dispatchEvent(new win.Event('input'));await bar.refresh();win.document.querySelector('[data-doc-result]').click();win.document.querySelector('#docCommandDetail details').open=true;phase='Legal';await new Promise(r=>setTimeout(r,90));assert.match(win.document.querySelector('#docCommandDetail').textContent,/Legal/);assert.equal(input.value,'Demo');assert.equal(win.document.querySelector('#docCommandDetail details').open,true);
 });
 
-const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};
 const party=(ref,name='Demo Practice',kind='client')=>({kind,ref,name,merged:false});
 const search=async(env,query='Demo')=>{env.bar.open();env.input.value=query;env.input.dispatchEvent(new env.win.Event('input'));await env.bar.refresh();};
 const submit=env=>env.win.document.querySelector('#docCommandForm').dispatchEvent(new env.win.Event('submit',{cancelable:true}));
@@ -58,7 +57,7 @@ const heading=env=>env.win.document.querySelector('#docCommandDetail h3')?.textC
 const selectedTitle=env=>env.win.document.querySelector('[aria-selected="true"]')?.textContent;
 
 test('R2 stale query authorization refusal invalidates a later pending success',async t=>{
- const old=deferred(),later=deferred();let calls=0,clears=0;
+ const old=Promise.withResolvers(),later=Promise.withResolvers();let calls=0,clears=0;
  const env=setup(t,{client:{find:()=>++calls===1?old.promise:later.promise}});
  const clear=env.context.clear;env.context.clear=()=>{clears++;clear();};
  env.bar.open();env.input.value='old';env.input.dispatchEvent(new env.win.Event('input'));const first=env.bar.refresh();await settle();
@@ -69,7 +68,7 @@ test('R2 stale query authorization refusal invalidates a later pending success',
  assert.match(env.win.document.querySelector('#docCommandStatus').textContent,/Sign in/);
 });
 test('R2 every protected leg observes authorization after an earlier generic failure',async t=>{
- const board=deferred(),later=deferred();let calls=0,clears=0;
+ const board=Promise.withResolvers(),later=Promise.withResolvers();let calls=0,clears=0;
  const env=setup(t,{client:{find:()=>++calls===1?Promise.reject(new Error('Offline')):later.promise,getBoard:()=>calls===1?board.promise:Promise.resolve({deals:[]})}});
  const clear=env.context.clear;env.context.clear=()=>{clears++;clear();};
  await search(env);const pending=env.bar.refresh();await settle();
@@ -80,7 +79,7 @@ test('R2 every protected leg observes authorization after an earlier generic fai
 for(const source of ['clear','page refusal','suggestion refusal'])test(`R3 shared ${source} clears global detail and rejects a pending pre-refusal success`,async t=>{
  let held=null;const env=setup(t,{client:{find:()=>held?held.promise:Promise.resolve({...empty(),parties:[party('C-DEMO')]})}});
  await search(env);env.win.document.querySelector('[data-doc-result]').click();assert.ok(heading(env));
- held=deferred();const pending=env.bar.refresh();await settle();
+ held=Promise.withResolvers();const pending=env.bar.refresh();await settle();
  if(source==='clear')env.context.clear();else env.context.fail(null,source==='page refusal'?{status:401}:{code:'authentication_required'});
  assert.equal(env.win.document.querySelector('#docCommandDetail').textContent,'');
  assert.equal(env.win.document.querySelectorAll('[data-doc-result]').length,0);

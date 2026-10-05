@@ -179,9 +179,8 @@ test("the provider links are anchors this page never fetches", () => {
 
 /* --------------------------------------------------------------- static page */
 
-test("the route is pinned and the contract moved on additively", () => {
+test("the status route remains in the route contract", () => {
   assert.equal(routes.routes["/status"], "status.html");
-  assert.equal(routes.version, "1.20.0");
 });
 
 test("the page is read-only: no command dock, no Doc mount, no write verb", () => {

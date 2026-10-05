@@ -15,7 +15,6 @@ import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const noop = () => {};
-const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise,resolve,reject}; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 // Execute the real page handlers against isolated transports and DOMs. No
 // production module is rewritten or reimplemented by the harness.
@@ -32,7 +31,7 @@ const rpc = payload => new Response(JSON.stringify({result:{content:[{text:JSON.
 const elements = () => { const rows = new Map(); return key => { if(!rows.has(key)) rows.set(key, {value:"",textContent:"",hidden:false,disabled:false,listeners:{},addEventListener(type,listener){this.listeners[type]=listener;},setAttribute:noop}); return rows.get(key); }; };
 
 for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping slow status reads apply ${terminal}`, async () => {
-  const reply=deferred(); let reads=0, stops=0;
+  const reply=Promise.withResolvers(); let reads=0, stops=0;
   const state={postCall:{session:"A",status:"waiting_for_transcript"}};
   const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
   const first=h.refreshPostCall(),second=h.refreshPostCall();
@@ -41,7 +40,7 @@ for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping s
 });
 
 for (const fails of [false,true]) test(`PR111 #2: late context ${fails ? "failure" : "success"} leaves the newer call alone`, async () => {
-  const read=deferred();const state={postCall:{session:"A",weekly:true},pollTimer:"B-timer"};let stops=0,publishes=0;
+  const read=Promise.withResolvers();const state={postCall:{session:"A",weekly:true},pollTimer:"B-timer"};let stops=0,publishes=0;
   const h=handlers("js/call-mode.js","  async function publishWeeklyCallContext(","  // ----------------------------------------------------------- report poll",{state,readCallContextIndex:()=>read.promise,deps:{client:()=>({}),agendaDeals:()=>[],scope:()=>({}),postCallClient:{publishCallContext:async()=>{publishes++;}}},now:()=>0,renderPostCall:noop,stopPolling:()=>stops++},["publishOrRecord"]);
   const pending=h.publishOrRecord("A");state.postCall={session:"B",status:"waiting_for_transcript"};
   if(fails)read.reject(new Error("old failure"));else read.resolve([]);await pending;
@@ -65,7 +64,7 @@ test("Dot 6: deal dates use calendar-day offsets", () => {
 });
 
 test("Dot 7: double Reviewed advances only one agenda item", async () => {
-  const pending=deferred(); const calls=[];
+  const pending=Promise.withResolvers(); const calls=[];
   const review={deals:[{id:"A"},{id:"B"},{id:"C"}],index:0,reviewed:0,skipped:0,sessionId:"review"};
   const h=handlers("js/app.js","async function advanceAgenda(","async function finishAgenda(",{state:{review,client:{reviewDeal:args=>{calls.push(args);return pending.promise;}}},uuidv4:()=>"key",renderAgenda:noop},["advanceAgenda"]);
   const first=h.advanceAgenda("reviewed"),second=h.advanceAgenda("reviewed"); pending.resolve({ok:true}); await Promise.all([first,second]);
@@ -213,7 +212,7 @@ function tourHarness() {
   return {h,state,$,replies};
 }
 test("Dot 1: current main serializes Tour navigation instead of applying out-of-order loads", async () => {
-  const {h,state,replies}=tourHarness();const a=deferred(),b=deferred(); replies.set("A",a.promise);replies.set("B",b.promise);
+  const {h,state,replies}=tourHarness();const a=Promise.withResolvers(),b=Promise.withResolvers(); replies.set("A",a.promise);replies.set("B",b.promise);
   const first=h.loadTour("A"),second=h.loadTour("B");b.resolve({id:"B"});a.resolve({id:"A"});await Promise.all([first,second]);
   assert.equal(h.tourLoadSeq,1,"PR109 blocks a second navigation while loading");assert.equal(state.tour.id,"A");
 });
@@ -223,7 +222,7 @@ test("Dot 2: switching Tours clears the prior confidential link", async () => {
 });
 
 test("Dot 3: sheet save preserves typing made while saving", async () => {
-  const $=elements();$("#cheat-content").value="First edit";const saved=deferred();
+  const $=elements();$("#cheat-content").value="First edit";const saved=Promise.withResolvers();
   const state={tour:{id:"A",cheat_sheet:{revision_number:1}},cheatDirty:true};
   const h=handlers("tours/app.js","  async function saveSheet(","  async function issueShare(",{state,$,uuid:()=>"key",post:()=>saved.promise,status:noop,loadTour:async()=>{if(!state.cheatDirty)$("#cheat-content").value="First edit";}},["saveSheet"]);
   const pending=h.saveSheet();$("#cheat-content").value="Newer unsaved edit";state.cheatDirty=true;saved.resolve({ok:true});await pending;
@@ -290,7 +289,7 @@ test("Dot 12: Back restores results for the restored query", async () => {
 });
 
 test("Dot 13: clearing Search invalidates its pending query", async () => {
-  const {h,view,replies}=searchHarness();const answer=deferred();replies.set("Alpha",answer.promise);
+  const {h,view,replies}=searchHarness();const answer=Promise.withResolvers();replies.set("Alpha",answer.promise);
   const pending=h.read();view.query="";await h.read();answer.resolve({label:"Alpha results"});await pending;
   assert.equal(view.status,"idle");assert.equal(view.payload,null);
 });
@@ -302,7 +301,7 @@ test("Dot 14: Updates follows the event cursor to current activity", async () =>
 });
 
 test("Dot 15: an old call status cannot replace the new session review pack", async () => {
-  const old=deferred();const state={postCall:{session:"A"}};let stops=0;
+  const old=Promise.withResolvers();const state={postCall:{session:"A"}};let stops=0;
   const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
   const pending=h.refreshPostCall();state.postCall={session:"B",status:"waiting",report:null};old.resolve({status:"review_ready",report:{session:"A"}});await pending;
   assert.equal(state.postCall.session,"B");assert.equal(state.postCall.report,null);assert.equal(stops,0);
@@ -338,7 +337,7 @@ test("PR111 #11: composer accepts the producer's decimal-string sequence receipt
 });
 
 test("Dot 18: a late answer cannot clear another Work Requests draft", async () => {
-  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();const announcements=[];
+  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=Promise.withResolvers();const announcements=[];
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:test",scopeConfirmed:true},answerSend:{state:"idle"}};
   const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise,workRequestCard:async()=>({}),currentWorkRequests:async()=>({})},uuidv4:()=>"key",renderAnswer:noop,announce:message=>announcements.push(message),take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
   const sending=h.submitAnswer();view.historyWorkItemId="WR-2";view.answer={answerText:"Second draft",evidenceRef:"",scopeConfirmed:false};view.answerSend={state:"idle"};pending.resolve({state:"triaged"});await sending;
@@ -346,7 +345,7 @@ test("Dot 18: a late answer cannot clear another Work Requests draft", async () 
 });
 
 test("PR111 #3: successful answer preserves newer edits in the same draft", async () => {
-  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();
+  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=Promise.withResolvers();
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:first",scopeConfirmed:true},answerSend:{state:"idle"}};
   const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise},uuidv4:()=>"key",renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
   const sending=h.submitAnswer();view.answer.answerText="New answer";view.answer.evidenceRef="safe:new";pending.resolve({state:"triaged"});await sending;
@@ -383,7 +382,7 @@ for(const start of [1,301]) test(`PR111 #9: history stays contiguous with buffer
 });
 
 for(const fails of [false,true]) test(`PR111 #10: delayed history ${fails ? "failure" : "success"} respects Resume live`,async()=>{
-  const {h,state}=roomHarness();const reply=deferred();state.historyTurns=[{seq:241,msg_id:"old"}];state.following=false;state.turns=[{seq:600,msg_id:"live"}];h.fetchTurns=()=>reply.promise;
+  const {h,state}=roomHarness();const reply=Promise.withResolvers();state.historyTurns=[{seq:241,msg_id:"old"}];state.following=false;state.turns=[{seq:600,msg_id:"live"}];h.fetchTurns=()=>reply.promise;
   const resume=handlers("js/room.js",'  $("wireResume").addEventListener', '  $("composerInput").addEventListener',{state,$:h.$,render:noop,scrollToBottom:noop},[]);
   const pending=h.loadEarlier();h.$("wireResume").listeners.click();
   if(fails)reply.reject(new Error("old history failure"));else reply.resolve({turns:[{seq:181,msg_id:"earlier"}],latest_seq:181,more:false});
@@ -417,7 +416,7 @@ test("Dot 28: queue assets resolve on its nested route through the Worker", asyn
 });
 
 test("Dot 29: Quick Add completion preserves a newer task draft and date", async () => {
-  const $=elements();$("quickAddInput").value="First task";$("quickAddDate").value="2026-09-30";const pending=deferred();
+  const $=elements();$("quickAddInput").value="First task";$("quickAddDate").value="2026-09-30";const pending=Promise.withResolvers();
   handlers("js/task-records.js",'  $("quickAddForm")?.addEventListener("submit",', '  $("quickAddDraft")?.addEventListener',{$,draftViewer:"joe",viewer:"joe",renderQuickAdd:()=>({sentence:$("quickAddInput").value,plan:{args:{title:$("quickAddInput").value},summary:"Demo task"}}),announce:noop,operationKeys:{quickAdd:()=>"task-key"},matchingDraftId:()=>null,localDrafts:{list:()=>[]},restoredDraftId:null,draftOperations:new Map(),operations:new Map(),client:{addLoop:noop},dispatch:()=>pending.promise,renderDrafts:noop});
   const saving=$("quickAddForm").listeners.submit({preventDefault:noop});$("quickAddInput").value="Second task";$("quickAddDate").value="2026-10-01";pending.resolve({status:"ok"});await saving;
   assert.equal($("quickAddInput").value,"Second task");assert.equal($("quickAddDate").value,"2026-10-01");
@@ -463,10 +462,9 @@ test("PR111 #5: outcome read failure remains retryable from the receipt dock", a
   await dockOptions.onDispatch("close");await tick();assert.equal(writes.length,1);assert.equal(writes[0].base_version,7);assert.equal(writes[0].outcome,"won");
 });
 
-
 test("Dot 2 follow-through: a late confidential link cannot reappear under another Tour", async () => {
   const $=elements();$("#share-expiry").value="2026-10-02";$("#receipt-digest").value="sha256:"+"a".repeat(64);
-  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:"",rawShareToken:""};const pending=deferred();
+  const state={tour:{id:"A"},projectionId:"projection-A",shareGrantId:"",rawShareToken:""};const pending=Promise.withResolvers();
   const h=handlers("tours/app.js","  async function issueShare(","  async function revokeShare(",{state,$,document:{querySelectorAll:()=>[{value:"view_packet"}]},newShareToken:()=>"synthetic-token",sha256:async()=>"digest",digest:()=>true,uuid:()=>"key",post:()=>pending.promise,text:(value,fallback)=>value||fallback,status:noop},["issueShare"]);
   const issuing=h.issueShare();await tick();state.tour={id:"B"};state.projectionId="projection-B";$("#share-link").hidden=true;
   pending.resolve({share_grant_id:"grant-A"});await issuing;
@@ -569,7 +567,6 @@ for(const badAt of [0,1,2]) test(`PR111 #14: malformed room page ${badAt+1} neve
   h.fetchTurns=async from=>{const i=n++;return i===badAt ? {} : {turns:[{seq:from+1,msg_id:`t-${i}`}],latest_seq:from+1,more:true};};
   await h.poll();assert.ok(state.backoffMs>=8000);assert.equal(state.cursor,0);assert.equal(state.turns.length,0);assert.ok(!banners.some(message=>message.includes("Wire back")));
 });
-
 
 test("Dot 23 follow-through: a cleared canonical action stays cleared", async () => {
   const client=createLiveClient({fetchImpl:async()=>rpc({deal_id:"demo",next_step:null,next_action:null,thread:[{kind:"next_step",text:"Historical action"}],events:[]})});

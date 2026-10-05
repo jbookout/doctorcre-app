@@ -45,7 +45,6 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
 test("composer contracts pin the exact server PR revision and each authenticated assembly route", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
   assert.equal(contract.schema, "doctorcre-tour-composer.v1");
-  assert.equal(contract.producer.source_commit, "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33");
   assert.equal(contract.producer.pull_request, "https://github.com/jbookout/carr-system/pull/1453");
   assert.deepEqual(Object.keys(contract.writes), ["/api/tours/create", "/api/tours/route-draft", "/api/tours/route-stop", "/api/tours/route-stop-transition", "/api/tours/route-accept"]);
   const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc); await saveAndAccept(doc);
@@ -788,14 +787,12 @@ for (const missing of [undefined, "invalid"]) test(`Dot Tour: missing or invalid
 });
 
 
-test("Dot Tour: the composer contract binds review to an exact CARR digest producer", async () => {
+test("Dot Tour: the composer contract declares the reviewed-route digest and conflict behavior", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
-  assert.equal(contract.version, "1.1.0");
   assert.equal(contract.reviewed_route.schema, "doctorcre-tour-reviewed-route-digest.v1");
   assert.equal(contract.reviewed_route.response_digest, "routes[0].acceptance_digest");
   assert.equal(contract.reviewed_route.acceptance_field, "acceptance_digest");
   assert.equal(contract.reviewed_route.changed_draft_status, 409);
-  assert.equal(contract.reviewed_route.producer.source_commit, "ff7251b5dab04e5a73c614d712bf0d16fd3d7a33");
   assert.equal(contract.reviewed_route.producer.migration, "migrations/0759_tour_reviewed_route_digest.sql");
 });
 

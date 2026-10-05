@@ -190,9 +190,8 @@ test("HTTP authentication refusal clears private state and requires sign-in inst
   } finally { app.close(); }
 });
 
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 test("manual refresh supersedes delayed boot library and client options", async () => {
-  const oldLibrary = deferred(), oldClients = deferred();
+  const oldLibrary = Promise.withResolvers(), oldClients = Promise.withResolvers();
   const app = harness({ library: () => oldLibrary.promise, clients: () => oldClients.promise });
   try {
     app.service.library = async () => [{ id: clientB, name: "New library", status: "draft" }]; app.service.clients = async () => [record(clientB)];
@@ -203,7 +202,7 @@ test("manual refresh supersedes delayed boot library and client options", async 
   } finally { app.close(); }
 });
 test("new same-tour background detail supersedes delayed popup detail", async () => {
-  const old = deferred(); const app = harness({ tour: () => old.promise });
+  const old = Promise.withResolvers(); const app = harness({ tour: () => old.promise });
   try {
     await app.view.ready; app.doc.querySelector(".tour-button").click();
     app.service.tour = async id => ({ id, name: "New detail", stops: [] }); await app.view.refresh();
@@ -212,7 +211,7 @@ test("new same-tour background detail supersedes delayed popup detail", async ()
   } finally { app.close(); }
 });
 for (const prefix of ["plan", "space"]) test(`new same-client background record settles ${prefix} status and supersedes delayed prefill`, async () => {
-  const old = deferred(); const app = harness({ client: () => old.promise });
+  const old = Promise.withResolvers(); const app = harness({ client: () => old.promise });
   try {
     await app.view.ready; app.change(`#${prefix}-client`, clientA);
     assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "Updating…");
@@ -231,7 +230,7 @@ for (const prefix of ["plan", "space"]) test(`new same-client background record 
   } finally { app.close(); }
 });
 for (const prefix of ["plan", "space"]) test(`settled ${prefix} client refresh preserves an undo message`, async () => {
-  const old = deferred(); const app = harness({ client: () => old.promise });
+  const old = Promise.withResolvers(); const app = harness({ client: () => old.promise });
   try {
     await app.view.ready; app.change(`#${prefix}-client`, clientA);
     app.change(`#${prefix}-area`, "Typed area"); app.doc.querySelector(`#${prefix}-undo`).click();
@@ -242,7 +241,7 @@ for (const prefix of ["plan", "space"]) test(`settled ${prefix} client refresh p
   } finally { app.close(); }
 });
 test("settled search client refresh preserves a save message", async () => {
-  const old = deferred(); const app = harness({ client: () => old.promise });
+  const old = Promise.withResolvers(); const app = harness({ client: () => old.promise });
   try {
     await app.view.ready; app.change("#space-client", clientA); app.change("#space-area", "Typed area");
     app.doc.querySelector("#space-form").dispatchEvent(new app.dom.window.Event("submit", { cancelable: true }));
@@ -253,7 +252,7 @@ test("settled search client refresh preserves a save message", async () => {
   } finally { app.close(); }
 });
 test("cancelled refresh cannot publish its late data or freshness", async () => {
-  const app = harness(); const late = deferred(), controller = new AbortController();
+  const app = harness(); const late = Promise.withResolvers(), controller = new AbortController();
   try {
     await app.view.ready; app.service.library = () => late.promise;
     const pending = app.view.refresh({ signal: controller.signal }); controller.abort();
@@ -264,7 +263,7 @@ test("cancelled refresh cannot publish its late data or freshness", async () => 
 });
 
 test("late transport response cannot roll the adapter back to an earlier session", async () => {
-  const old = deferred(); let body = { csrf_token: "synthetic-A", data: { tours: [] } };
+  const old = Promise.withResolvers(); let body = { csrf_token: "synthetic-A", data: { tours: [] } };
   const api = createPlannerClient({ fetchImpl: async () => ({ ok: true, json: () => body }) });
   await api.library(); body = old.promise; const pending = api.library(); await settle();
   body = { csrf_token: "synthetic-B", data: { tours: [] } }; await api.library(); const scopeB = api.scope;
@@ -272,14 +271,14 @@ test("late transport response cannot roll the adapter back to an earlier session
   assert.equal(api.scope, scopeB);
 });
 test("timed-out decoding cannot later change the adapter session", async () => {
-  const late = deferred(); const api = createPlannerClient({ timeoutMs: 5, fetchImpl: async () => ({ ok: true, json: () => late.promise }) });
+  const late = Promise.withResolvers(); const api = createPlannerClient({ timeoutMs: 5, fetchImpl: async () => ({ ok: true, json: () => late.promise }) });
   await assert.rejects(api.library(), error => error.code === "read_timeout");
   late.resolve({ csrf_token: "late-session", data: { tours: [] } }); await settle(); await settle();
   assert.equal(api.scope, null);
 });
 
 test("delayed boot restore preserves edits and undo in both enabled forms", async () => {
-  const boot = deferred();
+  const boot = Promise.withResolvers();
   const app = harness({ scope: null, library: () => boot.promise }, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", JSON.stringify({ scope: "synthetic-scope", plan: { name: "Saved tour", date: "2026-10-10" }, search: { area: "Saved area", budget: "1200" } })));
   try {
     app.change("#plan-name", "New tour"); app.change("#space-area", "New area");
@@ -291,7 +290,7 @@ test("delayed boot restore preserves edits and undo in both enabled forms", asyn
   } finally { app.close(); }
 });
 test("delayed boot restore never changes a newly selected client binding", async () => {
-  const boot = deferred(); const app = harness({ scope: null, library: () => boot.promise }, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", JSON.stringify({ scope: "synthetic-scope", planClient: clientA, searchClient: clientA, plan: { name: "Saved A" }, search: { area: "Saved A area" } })));
+  const boot = Promise.withResolvers(); const app = harness({ scope: null, library: () => boot.promise }, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", JSON.stringify({ scope: "synthetic-scope", planClient: clientA, searchClient: clientA, plan: { name: "Saved A" }, search: { area: "Saved A area" } })));
   try {
     // Synthetic option represents a client picker already available while boot is pending.
     for (const prefix of ["plan", "space"]) { const option = app.doc.createElement("option"); option.value = clientB; app.doc.querySelector(`#${prefix}-client`).append(option); app.change(`#${prefix}-client`, clientB); }
@@ -303,7 +302,7 @@ test("delayed boot restore never changes a newly selected client binding", async
 
 test("failed initial prefill recovers untouched suggestions in both forms and preserves recovery edits", async () => {
   for (const prefix of ["plan", "space"]) {
-    const recovery = deferred(); const app = harness({ client: async () => { throw new Error("Synthetic first-read outage"); } });
+    const recovery = Promise.withResolvers(); const app = harness({ client: async () => { throw new Error("Synthetic first-read outage"); } });
     try {
       await app.view.ready; app.change(`#${prefix}-client`, clientA); await settle();
       assert.match(app.doc.querySelector(prefix === "plan" ? "#plan-message" : "#space-message").textContent, /unavailable/);
@@ -402,7 +401,7 @@ test("authentication recovery cannot resurrect a saved private draft that invali
   } finally { app.close(); }
 });
 test("first-read HTTP refusal clears an unscoped edit while boot transport outages remain recoverable", async () => {
-  const held = deferred(); const api = createPlannerClient({ fetchImpl: () => held.promise }); const app = harness(api);
+  const held = Promise.withResolvers(); const api = createPlannerClient({ fetchImpl: () => held.promise }); const app = harness(api);
   try {
     app.change("#plan-name", "Private typed during boot"); held.resolve({ ok: false, status: 401 }); await app.view.ready;
     assert.equal(app.doc.querySelector("#plan-name").value, ""); assert.match(app.doc.querySelector("#tour-library-state").textContent, /sign in/i);
@@ -412,7 +411,7 @@ test("first-read HTTP refusal clears an unscoped edit while boot transport outag
 });
 
 test("caller cancellation prevents late decoding from changing the authenticated session", async () => {
-  const late = deferred(); let body = { csrf_token: "synthetic-A", data: { tours: [] } };
+  const late = Promise.withResolvers(); let body = { csrf_token: "synthetic-A", data: { tours: [] } };
   const api = createPlannerClient({ fetchImpl: async () => ({ ok: true, json: () => body }) });
   await api.library(); const original = api.scope, controller = new AbortController(); body = late.promise;
   const pending = api.library({ signal: controller.signal }); await settle(); controller.abort();
