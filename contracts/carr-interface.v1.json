@@ -521,7 +521,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "d9ae1d80845271f5b0f3f11b9415354bd3645995",
+        "source_commit": "bc2bfd89ddffb99f2450a96ed5761f369bf14626",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
