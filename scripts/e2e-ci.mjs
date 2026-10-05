@@ -110,8 +110,9 @@ function prefixed(report, shard) {
 }
 
 function errorReport(commit) {
+  const timestamp = new Date().toISOString();
   return { schemaVersion: 'report-1', run: { id: '01900000-0000-7000-8000-000000000000', specVersion: '0.1', runner: { name: 'e2e', version: '0.17.0' },
-    status: 'error', exitCode: 2, startedAt: new Date().toISOString(), project: { id: 'doctorcre-app', configDigest: '0'.repeat(64) },
+    status: 'error', exitCode: 2, startedAt: timestamp, finishedAt: timestamp, project: { id: 'doctorcre-app', configDigest: '0'.repeat(64) },
     environment: { ci: true, trustNoticeShown: false, os: process.platform, arch: process.arch, runtime: process.version }, vcs: { commit, dirty: false },
     targets: [], serialGroups: [], results: [], errors: [], summary: summary([]), limits: {}, usage: {} } };
 }
