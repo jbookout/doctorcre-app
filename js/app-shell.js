@@ -1,9 +1,11 @@
+import { mountDocPresence } from "./doc-presence.js";
 import { slices } from "./slices.generated.js";
 import { registerSlices, NAVIGATION_GROUPS } from "./slice-registration.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
+import { offlineTourSession } from "./offline-tour-session.js";
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this module owns the shared rail and layout.
 const registration = registerSlices(slices);
@@ -11,6 +13,7 @@ export const navigationItems = registration.navigationItems;
 const sectionForRoute = registration.sectionForRoute;
 
 export function activeDestination(pathname) {
+  if (pathname.startsWith('/control-room/progress/board/')) return '/control-room/progress';
   return sectionForRoute[pathname] || pathname;
 }
 
@@ -60,12 +63,13 @@ export function appShellMarkup(pathname, base = "", search = "") {
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
           <a href="${base}/updates#prefForm">Notification preferences</a>
+          <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
           <button type="button" id="accountSignOut">Sign out</button>
           <p id="accountStatus" role="status"></p>
         </div>
       </div>
     </div>
-  </header><a class="app-shell-doc" href="${base}/doc-chats" aria-label="Doc" title="Open Doc chats"><span aria-hidden="true">◍</span></a>`;
+  </header>`;
 }
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
@@ -73,10 +77,9 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
-  if (root.getElementById("docFab")) host.querySelector(".app-shell-doc").hidden = true;
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);
+  if (!base && pathname !== "/share") { mountAppLayout(root, host, pathname, slices); mountDocPresence({ document:root, window:root.defaultView }); }
   else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");
@@ -153,6 +156,7 @@ function mountAccount(root, host, pathname) {
     try {
       const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
       if (!response.ok) throw new Error();
+      offlineTourSession(globalThis.window).revoke();
       globalThis.location.assign("/auth/login");
     } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };

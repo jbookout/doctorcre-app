@@ -28,11 +28,11 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Calls has no read at all: its absence is literal markup, and nothing here
 // writes to it.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { mountSearch } from "./search.js";
 import { mountCharts } from "./charts.js";
 import { parseChartsAddress } from "./charts-model.js";
@@ -80,7 +80,7 @@ let draftViewer = null;
 let restoredDraftId = null;
 const draftBoardReadiness = createDraftBoardReadiness();
 const draftOperations = new Map();
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -282,10 +282,6 @@ function setValue(id, value, format) {
   countTo(node, value, format);
 }
 
-function readCaption(read, detail) {
-  const clock = formatClock(read.readAt);
-  return updatedLabel(read.readAt);
-}
 
 function railHtml(rail) {
   const dots = (count) => "<i></i>".repeat(Math.min(count, 4));
@@ -336,7 +332,7 @@ function renderThisWeek() {
   setOwnState("thisWeekState", week.rows.length ? null : "empty", "Nothing due this week");
   const caption = $("thisWeekCaption");
   if (caption) {
-    caption.textContent = readCaption(read, "critical dates for the next seven days, and follow-ups due today or overdue")
+    caption.textContent = updatedLabel(read.readAt)
       + (week.capped ? " · More dates available" : "");
   }
 }
@@ -358,7 +354,7 @@ function renderWaiting() {
   setOwnState("waitingState", waiting.rows.length ? null : "empty", "Nothing waiting on a counterparty");
   const caption = $("waitingCaption");
   if (caption) {
-    caption.textContent = readCaption(read, "open work whose blocker is a named counterparty")
+    caption.textContent = updatedLabel(read.readAt)
       + (waiting.held ? ` · ${waiting.held} more ${waiting.held === 1 ? "is" : "are"} held jointly or by the system, on Tasks` : "")
       + (waiting.capped ? " · More work available" : "");
   }
@@ -764,14 +760,12 @@ function wire() {
 
 async function boot() {
   mountPrefs();
-  const doc = mountDocDock("Business home");
   const tabs = wireTabs("businessTabs");
   // Doc history is Doc's own history view. Doc owns that surface, so the tab
   // asks Doc for it and never renders a second copy of it here.
   const openDocHistory = (event) => {
     event?.preventDefault?.();
-    if (typeof doc?.openHistory === "function") doc.openHistory();
-    else doc?.open?.("Doc history");
+    window.location.href = "/doc-chats";
   };
   $("tabDocHistory")?.addEventListener("click", openDocHistory);
   $("mobileDocHistory")?.addEventListener("click", openDocHistory);

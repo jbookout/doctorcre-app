@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "build": "node scripts/build-artifact.mjs build",
@@ -14,11 +14,12 @@
     "deployment:check:staging": "wrangler versions upload --env staging --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",
     "deployment:check:production": "wrangler versions upload --env \"\" --strict --dry-run --var GIT_SHA:0000000000000000000000000000000000000000",
     "dev:staging": "npm run build && wrangler dev --env staging",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "release:staging": "node scripts/release-staging.mjs",
     "rollback:staging": "node scripts/rollback-staging.mjs",
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=2 test/*.test.mjs",
     "serve": "node scripts/serve.mjs",
     "privacy:check": "node scripts/privacy/client-data-check.mjs",
     "privacy:fixtures": "node scripts/privacy/generate-synthetic-fixtures.mjs",
@@ -30,6 +31,10 @@
     "predeployment:check:production": "npm run slices:check"
   },
   "devDependencies": {
+    "@ai-sdk/openai": "4.0.83",
+    "@e2e-dev/web": "0.11.2",
+    "ai": "7.0.127",
+    "e2e": "0.16.0",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
     "wrangler": "4.131.2"

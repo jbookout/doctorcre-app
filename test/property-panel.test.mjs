@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { JSDOM } from "jsdom";
+import { openDom } from "./jsdom-harness.mjs";
 import { propertyPanelView, propertyFactDetail, renderPropertyPanel } from "../tours/property-panel.js";
 
 const source = { locator: "https://county.example.invalid/parcel/17", evidence_class: "direct_source", retrieved_at: "2026-09-20T12:00:00Z" };
@@ -20,16 +20,15 @@ const evidence = { schema: "tour-property-evidence.v1", property_id: "10000000-0
 const panelSource = await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8");
 test("property evidence is an explicit additive CARR contract read above main's 1.33 release", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-  assert.equal(contract.version, "1.42.0");
+  assert.equal(contract.version, "1.43.0");
   assert.ok(contract.http_surfaces.includes("/api/tours/property-evidence/v1"));
 });
 const otherProperty = "10000000-0000-4000-8000-000000000002";
 const tour = { stops: [{ property_id: evidence.property_id, name: "Clinic Plaza" },
   { property_id: otherProperty, name: "Second property" }] };
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
-function openPanel(t, request) {
-  const dom = new JSDOM('<section id="property-evidence"></section>', { runScripts: "outside-only" });
-  t.after(() => dom.window.close());
+function openPanel(request) {
+  const dom = openDom('<section id="property-evidence"></section>', { runScripts: "outside-only" });
   dom.window.eval(`${panelSource.replace(/^export /gm, "")}\nwindow.mount = mountPropertyPanel;`);
   const root = dom.window.document.getElementById("property-evidence");
   return { window: dom.window, root, mount: (value = tour) => dom.window.mount({ tour: value, request }),
@@ -37,9 +36,9 @@ function openPanel(t, request) {
       input.dispatchEvent(new dom.window.Event("change")); } };
 }
 
-test("clearing the date removes reviewed facts through a property switch and remount until a date is supplied", async t => {
+test("clearing the date removes reviewed facts through a property switch and remount until a date is supplied", async () => {
   const calls = [];
-  const panel = openPanel(t, async path => {
+  const panel = openPanel(async path => {
     const url = new URL(path, "https://app.example.invalid");
     calls.push(url);
     return url.searchParams.get("property_id") === otherProperty
@@ -69,9 +68,9 @@ test("clearing the date removes reviewed facts through a property switch and rem
   assert.doesNotMatch(panel.root.textContent, /Escambia/);
 });
 
-test("clearing the date rejects a pending evidence result", async t => {
+test("clearing the date rejects a pending evidence result", async () => {
   let resolve;
-  const panel = openPanel(t, () => new Promise(done => { resolve = done; }));
+  const panel = openPanel(() => new Promise(done => { resolve = done; }));
   panel.mount();
   panel.change("#property-evidence-date", "");
   resolve(evidence); await settle();
@@ -79,9 +78,9 @@ test("clearing the date rejects a pending evidence result", async t => {
   assert.equal(panel.root.querySelectorAll(".property-fact").length, 0);
 });
 
-test("reorder and save remounts preserve the selected property, historical date and loaded evidence without refetching", async t => {
+test("reorder and save remounts preserve the selected property, historical date and loaded evidence without refetching", async () => {
   const calls = [];
-  const panel = openPanel(t, async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
+  const panel = openPanel(async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
   panel.mount(); await settle();
   panel.change("#property-evidence-select", otherProperty); await settle();
   panel.change("#property-evidence-date", "2026-01-15"); await settle();
@@ -101,11 +100,11 @@ test("reorder and save remounts preserve the selected property, historical date 
   assert.equal(calls.at(-1).searchParams.get("property_id"), evidence.property_id);
 });
 
-test("an unchanged remount reuses the pending read and renders its result into the current panel", async t => {
+test("an unchanged remount reuses the pending read and renders its result into the current panel", async () => {
   let resolve;
   const pending = new Promise(done => { resolve = done; });
   const calls = [];
-  const panel = openPanel(t, path => { calls.push(path); return pending; });
+  const panel = openPanel(path => { calls.push(path); return pending; });
   panel.mount();
   panel.mount({ stops: [...tour.stops].reverse() });
   assert.equal(calls.length, 1);
@@ -114,11 +113,11 @@ test("an unchanged remount reuses the pending read and renders its result into t
   assert.match(panel.root.querySelector("#property-evidence-content").textContent, /Escambia/);
 });
 
-test("changed selection rejects a late read; unavailable evidence retries on remount", async t => {
+test("changed selection rejects a late read; unavailable evidence retries on remount", async () => {
   let resolveOld;
   const pending = new Promise(done => { resolveOld = done; });
   let count = 0;
-  const panel = openPanel(t, async () => {
+  const panel = openPanel(async () => {
     count += 1;
     if (count === 1) return pending;
     if (count === 2) throw new Error("unavailable");
@@ -142,7 +141,7 @@ for (const [timezone, instant, today, otherDay] of [
   process.env.TZ = timezone;
   t.after(() => { if (oldTimezone === undefined) delete process.env.TZ; else process.env.TZ = oldTimezone; });
   const calls = [];
-  const panel = openPanel(t, async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
+  const panel = openPanel(async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
   const NativeDate = panel.window.Date;
   panel.window.Date = class extends NativeDate {
     constructor(...args) { super(...(args.length ? args : [instant])); }

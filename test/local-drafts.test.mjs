@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLocalDrafts, matchingDraftId } from '../js/local-drafts.mjs';
 import { createLiveClient } from '../js/live-client.js';
-import { classifyCommandOutcome, commandMessage, createCommandState, performCommand } from '../js/command-feedback.mjs';
+import { classifyCommandOutcome, commandMessage, performCommand } from '../js/command-feedback.mjs';
 import { classifyUndoOutcome } from '../js/change-receipts.mjs';
 
 function memoryStorage() {
@@ -61,7 +61,7 @@ test('offline live writes send no request and stay unconfirmed', async () => {
   });
   assert.equal(calls, 0);
 
-  let state = createCommandState();
+  let state = {};
   const result = await performCommand({
     operationKey: 'quickadd:offline', args: { title: 'Call the CPA' },
     getState: () => state, setState: (next) => { state = next; },

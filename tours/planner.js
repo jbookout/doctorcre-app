@@ -1,3 +1,4 @@
+import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '../js/doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
 import { createPlannerClient, validateTourList, validateClientList, validateClientRecord, validateTourDetail } from "./planner-client.js";
 import { cheatSheetText } from "./tour-format.js";
@@ -31,6 +32,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!refused && api.scope === scope) return;
     const first = !scopeEstablished && !refused; scope = api.scope; scopeEstablished = true;
     if (!first) {
+      pageDocContext?.clear();
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
       savedDraft = null; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
       $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
@@ -106,7 +108,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   function renderLibrary() {
     const focusedId = document.activeElement?.dataset?.tourId;
     const openerId = opener?.dataset?.tourId;
-    const groups = tourGroups(tours, $("#tour-filter").value);
+    const query = $("#tour-filter").value;
+    const groups = tourGroups(tours, query);
+    setDocFilters({query});
+    publishDocRead('tourLibrary',{tours:[...groups.upcoming,...groups.history]});
     for (const group of ["upcoming", "history"]) {
       const list = $(`#${group}-tours`), scroll = list.scrollTop; list.replaceChildren();
       for (const tour of groups[group]) {
@@ -127,7 +132,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     renderedTour = null; opener = trigger || document.activeElement; message("#detail-title", title); $("#detail-content").replaceChildren();
     if (!$("#tour-dialog").open) $("#tour-dialog").showModal();
   }
-  function closeDialog() { ++dialogEpoch; currentTour = null; $("#tour-dialog").close(); opener?.focus?.(); }
+  function closeDialog() { selectDocRecord(null, null); ++dialogEpoch; currentTour = null; $("#tour-dialog").close(); opener?.focus?.(); }
   function renderTour(tour) {
     const signature = JSON.stringify(tour);
     if (signature === renderedTour) return;
@@ -155,19 +160,25 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     }
     const link = element("a", "Edit itinerary", "download-button");
     link.href = `/tours/route-editor.html?tour=${encodeURIComponent(tour.id)}`; link.target = "_blank"; link.rel = "noopener"; body.append(link);
+    if (tour.routes?.some(route => route.accepted === true && route.stops?.some(stop => stop.stop_state === "active"))) {
+      const day = element("a", "Tour day", "download-button");
+      day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`; day.target = "_blank"; day.rel = "noopener noreferrer"; body.append(day);
+    }
     if (focused === "SUMMARY") body.querySelector("summary")?.focus({ preventScroll: true });
     if (focused === "A") link.focus({ preventScroll: true });
     dialog.scrollTop = scroll;
     renderedTour = signature;
   }
   async function openTour(id, trigger) {
+    selectDocRecord('tour', id);
     showDialog("Tour", trigger); const epoch = ++dialogEpoch; currentTour = id;
+    const docTicket = pageDocContext?.begin('tourDetail', [id]);
     message("#detail-message", "Updating…");
     try {
       const tour = await read(async () => validateTourDetail(await api.tour(id), id));
       if (epoch !== dialogEpoch || currentTour !== id || disposed) return;
-      renderTour(tour); message("#detail-message", "");
-    } catch (error) { if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
+      pageDocContext?.finish(docTicket, tour); renderTour(tour); message("#detail-message", "");
+    } catch (error) { pageDocContext?.fail(docTicket, error); if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
   }
   function renderFiles() {
     const list = $("#packet-files"); list.replaceChildren();
@@ -200,14 +211,15 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   }
   async function refresh({ signal } = {}) {
     // Boot, manual and scheduled reads share one generation boundary.
+    const docTicket = pageDocContext?.begin('tourLibrary');
     const revision = ++refreshEpoch;
     const active = () => !disposed && revision === refreshEpoch && !signal?.aborted;
     const results = await Promise.allSettled([read(async () => validateTourList(await api.library({ signal }))), read(async () => validateClientList(await api.clients({ signal })))]);
     if (!active()) return;
     restoreOrClear();
     if (!active()) return;
-    if (results[0].status === "fulfilled") { tours = results[0].value; renderLibrary(); message("#tour-library-state", ""); }
-    else message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable.");
+    if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); }
+    else { pageDocContext?.fail(docTicket,results[0].reason); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
     if (results[1].status === "fulfilled") {
       clients = results[1].value; fillClients();
       for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === "Clients temporarily unavailable.") message(target, "");
@@ -235,8 +247,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     const id = currentTour, epoch = currentTour ? ++dialogEpoch : dialogEpoch;
     if (id && $("#tour-dialog").open) {
-      try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { renderTour(detail); message("#detail-message", ""); } }
-      catch { if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", "Tour temporarily unavailable."); }
+      const detailTicket=pageDocContext?.begin('tourDetail',[id]);
+      try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { pageDocContext?.finish(detailTicket,detail); renderTour(detail); message("#detail-message", ""); } }
+      catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
     }
     if (!active()) return;
     if (current) message("#planner-updated", updatedLabel(new Date().toISOString()));
@@ -254,6 +267,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
   drop.addEventListener("drop", event => { event.preventDefault(); drop.classList.remove("dragging"); acceptFiles([...event.dataTransfer.files]); });
   $("#detail-close").addEventListener("click", closeDialog);
+  $("#tour-dialog").addEventListener("close", () => { selectDocRecord(null,null); pageDocContext?.release('tourDetail'); ++dialogEpoch; currentTour=null; });
   $("#tour-dialog").addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
   for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
     search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");

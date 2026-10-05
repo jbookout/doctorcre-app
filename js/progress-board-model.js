@@ -277,15 +277,20 @@ export function taskRepo(task) {
   return typeof task.repo === "string" && /^[\w.-]+\/[\w.-]+$/.test(task.repo) ? task.repo : DEFAULT_REPO;
 }
 
-// PR numbers are per repository: always name the repo beside the number.
-export function prLabel(task) {
-  if (task.pr == null) return "No PR";
-  return `${taskRepo(task).split("/")[1]} #${task.pr}`;
-}
-
-export function prUrl(task) {
-  if (task.pr == null || !Number.isSafeInteger(Number(task.pr))) return null;
-  return `https://github.com/${taskRepo(task)}/pull/${Number(task.pr)}`;
+// Cards and details resolve only explicit Work Request and PR bindings.
+export function jobLinks(task) {
+  const candidates = [task.work_request, task.work_request_ref, task.human_ref,
+    task.kind === 'work_request' ? task.id?.replace(/^work_request:/, '') : null, ...(Array.isArray(task.related) ? task.related : []).filter(r => r?.kind === 'work_request').map(r => r.id)];
+  const workRequest = candidates.find(ref => typeof ref === 'string' && /^WR-\d{1,12}$/.test(ref)) || null;
+  const raw = task.pr_url || task.pr;
+  let prUrl = null, prLabel = null;
+  if (typeof raw === 'string' && /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+$/.test(raw)) {
+    prUrl = raw; prLabel = task.repo ? `${taskRepo(task).split('/')[1]} #${raw.split('/').at(-1)}` : `PR #${raw.split('/').at(-1)}`;
+  } else if (Number.isSafeInteger(Number(raw)) && Number(raw) > 0) {
+    prLabel = task.repo ? `${taskRepo(task).split('/')[1]} #${Number(raw)}` : `PR #${Number(raw)}`;
+    if (task.repo) prUrl = `https://github.com/${taskRepo(task)}/pull/${Number(raw)}`;
+  }
+  return { workRequest, prUrl, prLabel };
 }
 
 // The indicator ids the renderer puts on this card, all from INDICATORS.

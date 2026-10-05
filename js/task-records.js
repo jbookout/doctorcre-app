@@ -1,3 +1,4 @@
+import { selectDocRecord, publishDocRead, setDocFilters } from './doc-context.js';
 // V5-UX-B02 — Tasks: DOM wiring only.
 //
 // Every decision about a payload, an argument set or a sentence lives in
@@ -18,23 +19,21 @@
 //      record now holds.
 
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatDueStamp, parseQuickAdd } from "./visual-system.js";
 import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
   orderTaskRows, partnerName, quickAddPlan, quickAddRecords, quickAddStartsOpen, scopeRows, taskDetailRows, closeArgs,
-  dueDateArgs, validBoardPayload,
+  dueDateArgs, validBoardPayload, taskDialogTransition, draftIdentityPlan,
+  invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
-import { taskDialogTransition } from "./task-dialog-refresh.mjs";
-import { draftIdentityPlan } from "./task-draft-identity.mjs";
-import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "./task-read-epoch.mjs";
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -59,7 +58,7 @@ let localDrafts = createLocalDrafts({ storage: null, viewer: 'unverified' });
 let draftViewer = null;
 let restoredDraftId = null;
 const draftOperations = new Map();
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -172,6 +171,8 @@ function render() {
   }
 
   const { visible, systemOwned } = scopeRows(view.rows, { scope: view.scope, viewer });
+  setDocFilters({scope:view.scope,viewer});
+  publishDocRead("loopBoard", {loops:[...visible,...systemOwned]}, []);
   const ordered = orderTaskRows(visible, Date.now());
   if (list) list.innerHTML = ordered.map(rowHtml).join("");
   if (systemBlock && systemList) {
@@ -379,6 +380,8 @@ function currentRow() {
 }
 
 function openTask(key, { preserveDraft = false } = {}) {
+  const docRow = view.rows.find(row => `${row.kind}:${row.number}` === key);
+  selectDocRecord('loop', docRow?.loop_id || docRow?.number);
   view.open = key;
   if (!preserveDraft) {
     view.openViewer = viewer;
@@ -414,6 +417,7 @@ function openTask(key, { preserveDraft = false } = {}) {
 function closeDialog() {
   const dialog = $("taskDialog");
   if (dialog?.open) dialog.close();
+  selectDocRecord(null,null);
   view.open = null;
   view.openViewer = null;
   view.closing = null;
@@ -508,7 +512,7 @@ function wire() {
     await refreshVerified();
   });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
-  $("taskDialog")?.addEventListener("close", () => { view.open = null; view.openViewer = null; view.closing = null; });
+  $("taskDialog")?.addEventListener("close", () => { selectDocRecord(null,null); view.open = null; view.openViewer = null; view.closing = null; });
 
   $("taskHandover")?.addEventListener("click", () => {
     const row = currentRow();
@@ -712,7 +716,7 @@ async function refreshVerified() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Tasks");
+
   mountDock();
   wire();
   const quickAddPanel = $("quickAddPanel");

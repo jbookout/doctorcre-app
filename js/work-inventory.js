@@ -1,3 +1,4 @@
+import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C10 — Complete Work Inventory, DOM wiring.
 //
@@ -22,11 +23,11 @@ import {
   validPassportPayload, validPortfolioPayload, validWorkRequestCard,
 } from "./delivery-evidence-model.js";
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { uuidv4 } from "./uuid.js";
 
 const censusOrb = document.querySelector("#censusOrb");
@@ -73,11 +74,6 @@ function announce(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
-function formatObserved(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return "Observed time unavailable";
-  return `Observed ${date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
-}
 
 function formatUpdated(value) {
   const date = new Date(value);
@@ -196,6 +192,8 @@ function renderState(phase, payload) {
 function render() {
   renderFilters();
   const visible = filterItemsByStatusText(view.items, view.statusText);
+  setDocFilters({ kinds:view.kinds, status:view.statusText });
+  if (view.status === 'ready') publishDocRead('workInventory', { items:visible }, []);
   const phase = listPhase({ status: view.status, payload: view.payload, visible: visible.length });
 
   if (view.status === "loading") setCensusStatus("refreshing", "Reading the census…");
@@ -268,7 +266,7 @@ const evidence = new Map();
 const cards = new Map();
 
 let client = null;
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** The popup's own state: what is being decided, and the draft that survives a refusal. */
 const decision = { ref: null, choice: null, refusal: null };
@@ -602,6 +600,7 @@ async function read({ cursor = null, append = false, background = false, signal 
 function settle({ status, payload = null, message = null }, sequence, append) {
   if (!accepts(sequence)) return;
   view.status = status;
+  if (status !== 'ready') pageDocContext?.clear();
   view.message = message;
   if (status === "ready") {
     // The newest page's coverage and source govern; the item list accumulates.
@@ -686,7 +685,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Complete Work Inventory");
+
   mountDock();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
   client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);

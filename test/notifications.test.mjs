@@ -23,6 +23,12 @@ import {
 import { classifyCommandOutcome } from "../js/command-feedback.mjs";
 import { createFixtureClient } from "../js/fixture-client.js";
 
+test('board notifications retain encoded board identity and require the registered board route', () => {
+  const path = '/control-room/progress/board/demo%20project?task=build';
+  assert.equal(deepLinkView(path).href, path);
+  assert.equal(deepLinkView(path, ['/control-room/progress']).href, null);
+});
+
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("notifications.html");
@@ -234,7 +240,7 @@ test("clause 6: one acknowledgement, one operation key, one idempotency key, rep
   assert.deepEqual(acknowledgeArgs(` ${QUIET} `).args, { notification_id: QUIET });
   assert.equal(acknowledgeArgs("not-a-uuid").ok, false);
 
-  assert.match(pageJs, /import \{ createCommandState, performCommand \} from "\.\/command-feedback\.mjs"/);
+  assert.match(pageJs, /import \{ performCommand \} from "\.\/command-feedback\.mjs"/);
   assert.match(pageJs, /await performCommand\(\{/);
   assert.match(pageJs, /newKey: uuidv4/);
   assert.match(pageJs, /client\.acknowledgeNotification\(request\)/);
@@ -365,8 +371,8 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, "1.42.0");
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9");
+  assert.equal(contract.version, "1.43.0");
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184");
   assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -387,8 +393,8 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/notifications\.css">/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "the dock is not mounted");
   assert.match(html, /<p id="prefsLive" class="sr-only" aria-live="polite">/);
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
@@ -745,8 +751,8 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 /* ------------------------------------------------------------- behaviour 9 */
 
 test("B12-9 the current contract still pins both preference verbs and their order", async () => {
-  assert.equal(contract.version, "1.42.0", "the current interface retains notification preferences");
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
+  assert.equal(contract.version, "1.43.0", "the current interface retains notification preferences");
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184",
     "the producer pin includes preference verbs and the Codex checkpoint read");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
 import { extname } from "node:path";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { route as canonical } from "./fixtures/tour-map.synthetic.mjs";
 
@@ -96,7 +96,7 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
         await mkdir(process.env.TOUR_MAP_SCREENSHOTS, { recursive: true });
         // Hide unrelated sticky shell overlays for the component capture. Style
         // properties work under the production CSP; an injected sheet does not.
-        await page.evaluate(() => { document.querySelector("#appShell").style.visibility = "hidden"; document.querySelector(".app-shell-doc").style.visibility = "hidden"; });
+        await page.evaluate(() => { document.querySelector("#appShell").style.visibility = "hidden"; });
         await root.screenshot({ path: `${process.env.TOUR_MAP_SCREENSHOTS}/${name}.png`, animations: "disabled" });
       }
       await page.context().setOffline(true);

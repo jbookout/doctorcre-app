@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, settles } from './browser-harness.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
@@ -12,17 +12,14 @@ const NOW = new Date('2026-08-24T12:20:00Z');
 const taskId = 't_demo0001';
 const taskPath = `/control-room/progress/work?board=demo-project&task=${taskId}`;
 const kinds = {projection:'observatory_projection',portfolio:'eval_portfolio',spatial:'spatial_surface',elapsed:'telemetry_measurement',cost:'telemetry_measurement',engineering:'engineering_passport',activation:'attempt_receipt'};
-async function assertEventually(predicate) {
-  for(let attempt=0;attempt<100;attempt++) { if(predicate())return;await new Promise(resolve=>setTimeout(resolve,20)); }
-  assert.equal(predicate(),true,'Expected the asynchronous mock read to finish');
-}
+const assertEventually = predicate => settles(() => assert.equal(predicate(), true, 'Expected the asynchronous mock read to finish'));
 function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
 async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:900}}); page.setDefaultTimeout(7000); await page.clock.install({time:NOW});
+  const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   const errors=[],calls=[],posts=[]; page.on('pageerror',error=>errors.push(error.message));
   const state={rpcReply,offline:false,authLost:false,postFailure:false,turns:empty?[]:receipts(),queueReads:0,turnReads:0};
   if(!empty) state.turns.push({seq:8,msg_id:'review',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`${taskId} Fix round one; independent review requested.`},
@@ -75,12 +72,89 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
     const legacy=routes.redirects[url.pathname]?.startsWith('/control-room/progress/work');
-    const file=legacy ? (url.pathname.includes('queue')?'queue.html':'room.html') : routes.routes[url.pathname]||url.pathname.slice(1);
+    const file=legacy ? (url.pathname.includes('queue')?'queue.html':'room.html') : routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
     try{const body=await readFile(new URL('../'+file,import.meta.url));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
+
+function reboundPassport() {
+  let value = JSON.parse(JSON.stringify(canonicalFixture()).replaceAll('wr-synthetic-read-only','wr:next').replaceAll('attempt:a','attempt:b').replaceAll('session:fresh','session:next'));
+  const plan = structuredClone(value.slice_plan); delete plan.plan_digest;
+  value = JSON.parse(JSON.stringify(value).replaceAll(value.plan_digest,passportProjectionDigest(plan)));
+  value.receipts[0].envelope_digest = passportProjectionDigest(value.execution_envelopes[0]);
+  value.current_receipts = structuredClone(value.receipts);
+  value.projection_digest = passportProjectionDigest(value);
+  assert.equal(canonicalPassport(value),true);
+  return value;
+}
+
+test('fresh publication reconciles delivery and derived request evidence and removes obsolete references',async t=>{
+  let request = 'WR-900';
+  const next = reboundPassport();
+  const {page,calls,state,errors} = await open(t,{sessions:[
+    {canonical_session_id:'session:fresh',latest_attempt_ref:'attempt:a',display_name:'Prior builder'},
+    {canonical_session_id:'session:next',latest_attempt_ref:'attempt:b',display_name:'Current builder'},
+  ],rpcReply:(rpc,payload)=>{
+    if(rpc.name==='read-progress-board') payload.snapshot.snapshot_json.tasks[taskId] = {title:`Published ${request || 'unbound'}`,status:'blocked',stage:'review',blocked_reason:`Review ${request || 'unbound'}`,next_action:'Read the current request',...(request?{work_request:request}:{})};
+    if(rpc.name==='work-request-card') return {...payload,human_ref:rpc.arguments.work_request,title:`Card ${rpc.arguments.work_request}`};
+    if(rpc.name==='engineering-passport') return rpc.arguments.work_request==='WR-901'?next:payload;
+    return payload;
+  }});
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Prior builder'));
+  assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-900/);
+  await page.locator('[data-session-id="session:fresh"]').click();
+  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('synthetic dispatch'));
+  request='WR-901'; await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published WR-901');
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Card WR-901'));
+  assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-901/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Review WR-900/);
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Current builder'));
+  for(const id of ['workMetadata','workCanonicalBody','workSessionList','workDispatchHistory'])
+    assert.doesNotMatch(await page.locator('#'+id).textContent(),/Card WR-900|wr-synthetic-read-only|attempt:a|Prior builder|synthetic dispatch/);
+  state.turns.push({seq:100,msg_id:'old-attempt-review',seat:'human',kind:'turn',at:NOW.toISOString(),body:JSON.stringify({attempt_id:'attempt:a',review:'Obsolete attempt review'})});
+  await page.clock.runFor(5100);
+  assert.doesNotMatch(await page.locator('#workReviewList').textContent(),/Obsolete attempt review/);
+  assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-901');
+  request=null; await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published unbound');
+  assert.match(await page.locator('#workCanonicalBody').textContent(),/No canonical work-request/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Card WR-/);
+  assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review unbound/);
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Prior builder|Current builder/);
+  assert.deepEqual(errors,[]);
+});
+
+for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{
+  const {page,state} = await open(t);
+  await page.waitForSelector('[data-session-id="session:fresh"]');
+  let release,started=false; const gate=new Promise(resolve=>release=resolve);
+  state.rpcReply=async(rpc,payload)=>{
+    if(rpc.name===late&&!started){started=true;await gate;return late==='read-session-identity'?{sessions:[{canonical_session_id:'session:fresh',display_name:'Obsolete held session'}]}:{events:[{event_id:99,session_id:'session:fresh',stage:'Obsolete held dispatch'}],more:false};}
+    if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Unbound publication',status:'review'};
+    return payload;
+  };
+  if(late==='read-session-identity')await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
+  else await page.locator('[data-session-id="session:fresh"]').click();
+  await assertEventually(()=>started);
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Unbound publication');
+  release(); await new Promise(resolve=>setTimeout(resolve,100));
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Obsolete held session/);
+  assert.doesNotMatch(await page.locator('#workDispatchHistory').textContent(),/Obsolete held dispatch/);
+});
+
+test('explicit URL request remains pinned when the published task changes binding',async t=>{
+  const {page,state,calls}=await open(t,{path:taskPath+'&work_request=WR-900'});
+  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+  state.rpcReply=(rpc,payload)=>{if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Rebound task',status:'review',work_request:'WR-901'};return payload;};
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Rebound task');
+  assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-900');
+  assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
+});
 
 test('published task without a repository shows its PR as plain text', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
@@ -458,13 +532,14 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
 
 test('board → project → task uses one tap each and breadcrumbs return to the parent',async t=>{
   const {page,errors}=await open(t,{path:'/control-room/progress'});
+  await page.locator('[data-board-id="demo-project"]').evaluate(node=>node.removeAttribute("target"));
   await page.locator('[data-board-id="demo-project"]').click();
-  await page.waitForURL('**/control-room/progress?board=demo-project');
+  await page.waitForURL('**/control-room/progress/board/demo-project');
   await page.locator(`.board-card[data-card-id="${taskId}"]`).first().click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
   await page.locator('#workBreadcrumbs a').nth(1).click();
-  await page.waitForURL('**/control-room/progress?board=demo-project');assert.deepEqual(errors,[]);
+  await page.waitForURL('**/control-room/progress/board/demo-project');assert.deepEqual(errors,[]);
 });
 
 test('task detail exposes sessions, reviews, Dot jobs, dispatch pages and every Passport section',async t=>{
@@ -524,7 +599,7 @@ test('baseline Observatory controls all remain mounted in layer 3',async()=>{
   const before=await readFile(new URL('../_to_delete/room.html',import.meta.url),'utf8');
   const after=await readFile(new URL('../progress-work.html',import.meta.url),'utf8');
   const ids=source=>[...source.matchAll(/id="([^"]+)"/g)].map(match=>match[1]);
-  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard']);
+  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard','queueDrawer','drawerClose','drawerTitle','drawerSummary','drawerMeta']);
   assert.deepEqual(ids(before).filter(id=>!relocated.has(id)&&!ids(after).includes(id)),[]);
   assert.match(after,/id="workTasks"/);assert.match(after,/id="queueColumns"/);
 });

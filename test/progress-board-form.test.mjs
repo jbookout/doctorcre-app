@@ -5,7 +5,7 @@ import { JSDOM } from "jsdom";
 
 import { mountBoard } from "../js/progress-board.js";
 
-const PAGE = await readFile(new URL("../progress-board.html", import.meta.url), "utf8");
+const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
 async function board(answers = []) {

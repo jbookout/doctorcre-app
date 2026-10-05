@@ -1,0 +1,11 @@
+{
+  "routes": [
+    {
+      "path": "/doc-activity",
+      "asset": "activity.html",
+      "order": 24,
+      "gatePath": "/control-room"
+    }
+  ],
+  "redirects": []
+}

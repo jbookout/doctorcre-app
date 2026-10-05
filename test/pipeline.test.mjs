@@ -25,10 +25,10 @@ import {
   CLOSED_SLUG, COLUMNS, DEAL_OUTCOMES, PHASE_DATE_KIND, attachedParties, closedColumnCaption,
   columnBySlug, columnByValue, columnLabel, completionPlan, contextDrawerSections,
   groupByColumn, isDealOutcome, keyboardTarget, loadDealContext, moveIntent, moveSummary,
-  moveTitle, partyRoleLabel, presenceChip, tapMoveTargets,
+  moveTitle, partyRoleLabel, presenceChip,
 } from "../js/pipeline-model.js";
 import {
-  createUndoState, ingestChangeEvents, performUndo, receiptViews,
+  ingestChangeEvents, performUndo, receiptViews,
 } from "../js/change-receipts.mjs";
 
 const ROOT = new URL("..", import.meta.url);
@@ -116,18 +116,6 @@ test("a move intent names both ends, and a drop on the card's own column is not 
   assert.equal(moveIntent(deal, "due_diligence"), null, "the same column is not a move");
   assert.equal(moveIntent(deal, "not_a_phase"), null);
   assert.equal(moveIntent(null, "closing"), null);
-});
-
-test("tap offers only real phase moves and uses the same intent as drag and keyboard", () => {
-  const deal = { id: "d20", name: "Demo Osteopathic Office", phase: "Diligence" };
-  const targets = tapMoveTargets(deal);
-  assert.equal(targets.length, COLUMNS.length - 1);
-  assert.ok(!targets.some((column) => column.slug === "due_diligence"));
-  for (const target of targets) {
-    const intent = moveIntent(deal, target.slug);
-    assert.equal(intent.value, target.value);
-    assert.equal(intent.to_label, target.label);
-  }
 });
 
 test("the completion plan puts the phase patch first and carries only the follow-ups that were filled in", () => {
@@ -400,7 +388,7 @@ test("an undo the actor made succeeds: revert-deal-field lands a canonical corre
   assert.equal(write.status, "ok");
   assert.equal((await boardRow(client, "d05")).phase, "Research");
 
-  let undoState = createUndoState();
+  let undoState = {};
   const result = await performUndo({
     eventId: write.event_id,
     getState: () => undoState,
@@ -437,7 +425,7 @@ test("undo is refused, not clobbered, when a newer edit landed on the same field
   });
   assert.equal(secondWrite.status, "ok");
 
-  let undoState = createUndoState();
+  let undoState = {};
   const result = await performUndo({
     eventId: firstWrite.event_id,
     getState: () => undoState,
@@ -481,7 +469,7 @@ test("a change to a field revert-deal-field cannot act on shows in Recent Change
   assert.ok(nextStepReceipt, "the change appears in the feed this view is built from");
   assert.equal(nextStepReceipt.revertible_field, false);
 
-  const views = receiptViews(receipts, { selfActor: client.selfActor, undo: createUndoState(), now: Date.now() });
+  const views = receiptViews(receipts, { selfActor: client.selfActor, undo: {}, now: Date.now() });
   const view = views.find((v) => v.event_id === nextStepReceipt.event_id);
   assert.equal(view.undo_status, "unsupported");
   assert.equal(view.can_undo, false);
@@ -507,7 +495,7 @@ test("a lost response is reconciled by resending the SAME idempotency key, not b
     return response;
   };
 
-  let undoState = createUndoState();
+  let undoState = {};
   const lost = await performUndo({
     eventId: write.event_id,
     getState: () => undoState,
@@ -719,15 +707,13 @@ test("js/pipeline-model.js is pure: no DOM, no client, no network", async () => 
 
 /* ------------------------------------------------------------ what the page says */
 
-test("pipeline offers drag, keyboard and tap through one reviewed move", async () => {
+test("pipeline offers drag and keyboard through one reviewed move", async () => {
   const html = await read("pipeline.html");
   const source = await read("js/pipeline.js");
   assert.match(html, /<div class="kanban" id="kanban"/);
   assert.match(html, /id="dragLive" aria-live="assertive"/, "moves are announced");
   assert.match(html, /press Enter to lift it/, "the keyboard path is stated on the page");
   assert.match(html, /Arrows choose a column, Enter drops, Escape cancels/);
-  assert.match(html, /<dialog id="moveDialog"[^>]*aria-labelledby="moveTitle"/);
-  assert.match(html, /id="moveTargets"[^>]*aria-label="Choose a destination phase"/);
   assert.doesNotMatch(source, /data-move="/);
   assert.match(source, /id="detailPhase"/, 'manual phase remains accessible inside the detail popup');
 });
@@ -751,9 +737,9 @@ test("pipeline.html asks for dates with a calendar only, and never claims a gate
 
 test("pipeline.html carries the shared shell exactly once and nothing under its title", async () => {
   const html = await read("pipeline.html");
-  assert.equal((html.match(/id="docFab"/g) || []).length, 1, "one floating Doc");
-  assert.equal((html.match(/id="docChat"/g) || []).length, 1);
-  assert.match(html, /id="docReading">Doc is reading: Local Deals</);
+  assert.equal((html.match(/id="docFab"/g) || []).length, 0, "legacy dock is absent");
+  assert.equal((html.match(/id="docChat"/g) || []).length, 0);
+  assert.doesNotMatch(html, /id="docReading">Doc is reading: Deals</);
   assert.match(html, /id="receiptDock"/, "the command dock is on the page");
   assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
   assert.match(html, /<dialog id="completionDialog"/);
@@ -904,7 +890,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.42.0");
+  assert.equal(contract.version, "1.43.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {
@@ -956,4 +942,13 @@ test("the two new controls' values reach the completion plan", async () => {
   const pageJs = await read("js/pipeline.js");
   assert.match(pageJs, /changeReason: \$\('completionReason'\)/);
   assert.match(pageJs, /humanQuote: \$\('completionQuote'\)/);
+});
+
+test('deal insight lines distinguish insufficient evidence from unavailable and preserve recorded movement', async () => {
+  const { dealInsightLines } = await import('../js/pipeline-model.js');
+  assert.deepEqual(dealInsightLines({judged:false,reason:'insufficient_recorded_evidence'}), ['Insufficient evidence']);
+  assert.deepEqual(dealInsightLines({judged:false,reason:'unavailable'}), ['Insights unavailable']);
+  assert.deepEqual(dealInsightLines(null), ['Insights unavailable']);
+  assert.deepEqual(dealInsightLines({judged:true,movement_rung:2,movement_rungs:4,movement_label:'Reviewed',waiting_on:'client_reply',silence_is_bad:0.2}),
+    ['Movement 2 of 4', 'Reviewed', 'Waiting on: client reply', 'Estimated silence concern: 20%']);
 });

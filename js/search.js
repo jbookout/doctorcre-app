@@ -1,3 +1,4 @@
+import { setDocFilters } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
@@ -16,12 +17,11 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 //      re-renders without a read of its own.
 import {
   AUTHORIZATION_SENTENCE, EXPOSURE_STATEMENT, FIND_CATCH_UP_LIMIT_DEFAULT, NOT_SEARCHED_SENTENCE,
-  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY,
-  acceptsSearchResponse, applyScope, buildFindAndCatchUpArguments, buildFindArguments,
-  classifySearchFailure, groupSearchResults, parseSearchAddress, queryIsSendable,
-  readSavedViews, refusalDetail, renameView, resetViews, retiredSummary, saveView, scopeChips,
-  searchAddress, searchPhase, truncationNotes, validCatchUpPayload, validSearchPayload,
-  visibleCount, writeSavedViews,
+  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, acceptsSearchResponse, applyScope,
+  buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, groupSearchResults,
+  parseSearchAddress, queryIsSendable, readSavedViews, refusalDetail, renameView, retiredSummary,
+  saveView, scopeChips, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
+  validSearchPayload, visibleCount, writeSavedViews,
 } from "./search-model.js";
 
 const IDLE_REREAD_MS = 300;
@@ -196,6 +196,7 @@ function render() {
  */
 async function read({ push = true } = {}) {
   const sequence = ++view.sequence;
+  setDocFilters({query:view.query,kinds:view.kinds});
   if (!queryIsSendable(view.query)) {
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
@@ -324,7 +325,7 @@ function wire() {
   });
 
   $("resetViewsButton")?.addEventListener("click", () => {
-    view.views = writeSavedViews(storage, resetViews());
+    view.views = writeSavedViews(storage, Object.freeze([]));
     render();
   });
 

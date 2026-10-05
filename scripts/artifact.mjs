@@ -99,8 +99,8 @@ function parseTar(archive) {
 }
 
 async function inputPaths(root, sliceRegistration) {
-  const pageAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => path.endsWith('.html'));
-  const paths = [...ROOT_FILES, ...pageAssets];
+  const sliceAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => !path.startsWith('test/'));
+  const paths = [...ROOT_FILES, ...sliceAssets];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));
@@ -247,7 +247,11 @@ export async function runCli(root, args = process.argv.slice(2)) {
     console.log(`built doctorcre-app.tar: ${result.manifest.files.length} files, sha256:${result.archiveSha256}`);
     return;
   }
-  if (command === "verify") {
+  if (command === "verify" || command === "prepare-deployment") {
+    if (!(await lstat(outDir)).isDirectory()) throw new Error("artifact output must be a directory, never a symlink");
+    for (const name of ["doctorcre-app.tar", "doctorcre-app.tar.sha256", "doctorcre-app.manifest.json"]) {
+      if (!(await lstat(join(outDir, name))).isFile()) throw new Error("artifact handoff must contain regular files");
+    }
     const archive = await readFile(join(outDir, "doctorcre-app.tar"));
     const sidecar = await readFile(join(outDir, "doctorcre-app.tar.sha256"), "utf8");
     const match = sidecar.match(/^([0-9a-f]{64})  doctorcre-app\.tar\n?$/);
@@ -256,6 +260,15 @@ export async function runCli(root, args = process.argv.slice(2)) {
     const expected = await verifyCommittedSource(root, archive, result);
     if (!(await readFile(join(outDir, "doctorcre-app.manifest.json"))).equals(expected.manifestContent)) {
       throw new Error("published manifest mismatch");
+    }
+    if (command === "prepare-deployment") {
+      // Use the reconstructed, committed source bytes, never a restored dist/site.
+      const siteDir = join(outDir, "site");
+      await rm(siteDir, { recursive: true, force: true });
+      for (const [path, bytes] of expected.files) {
+        await mkdir(dirname(join(siteDir, path)), { recursive: true });
+        await writeFile(join(siteDir, path), bytes);
+      }
     }
     console.log(`verified doctorcre-app.tar: ${result.fileCount} files, sha256:${result.archiveSha256}`);
     return;

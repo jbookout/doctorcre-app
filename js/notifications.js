@@ -26,13 +26,12 @@
 //      it is never retried automatically — the value on screen changed, so the
 //      person decides again. A suppressed row is MARKED, never hidden.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
-import { preferenceSaveView } from "./notification-preference-draft.mjs";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
   ACKNOWLEDGE_SCOPE, EXPOSURE_STATEMENT, PREFERENCE_OPERATION_KEY, QUIET_HOURS_EFFECT,
@@ -41,6 +40,7 @@ import {
   classifyPreferenceReadFailure, classifyReadFailure, feedState, notificationCards,
   preferenceOriginSentence, preferenceState, preferenceSummary, preferenceView,
   quietNowBanner, setPreferenceArgs, unreadLine, versionConflictLine,
+  preferenceSaveView,
 } from "./notifications-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -62,7 +62,7 @@ const view = {
 };
 
 let client = null;
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -444,7 +444,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Notifications");
+
   mountDock();
   $("quietHoursEffect").textContent = QUIET_HOURS_EFFECT;
   $("quietHoursScope").textContent = QUIET_HOURS_SCOPE;

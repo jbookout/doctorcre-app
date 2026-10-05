@@ -1,5 +1,6 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
+import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -22,8 +23,8 @@ const UNGATED_PAGES = new Set(["/status"]);
 const GATE_PATHS = new Map(Object.entries(routeContract.gatePaths));
 
 function gateRequestFor(request, pathname) {
-  const gatePath = GATE_PATHS.get(pathname);
-  if (gatePath === pathname) return request;
+  const gatePath = GATE_PATHS.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
+  if (!gatePath || gatePath === pathname) return request;
   const url = new URL(request.url);
   url.pathname = gatePath;
   url.search = "";
@@ -57,19 +58,21 @@ function unavailable(documentRequest) {
   });
 }
 
-function secure(response) {
+function secure(response, path) {
   const headers = new Headers(response.headers);
+  const capture = path === "/tours/day.html";
   headers.set("content-security-policy", [
     "default-src 'self'", "base-uri 'none'", "object-src 'none'", "frame-ancestors 'none'",
     "form-action 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data:",
     "connect-src 'self' http://127.0.0.1:4682", "worker-src 'self'",
+    ...(capture ? ["media-src 'self' blob:"] : []),
   ].join("; "));
   headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");
   headers.set("referrer-policy", "same-origin");
-  headers.set("permissions-policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
+  headers.set("permissions-policy", `camera=(), geolocation=(), microphone=${capture ? "(self)" : "()"}, payment=(), usb=()`);
   headers.set("cross-origin-opener-policy", "same-origin");
   headers.set("cross-origin-resource-policy", "same-origin");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
@@ -94,7 +97,7 @@ async function assetResponse(request, env, path) {
   headers.set("cache-control", path.endsWith(".html") || path.endsWith(".js") || path.endsWith(".css")
     ? "no-cache" : "public, max-age=300");
   if (path === "/public-shell/sw.js") headers.set("service-worker-allowed", "/");
-  return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
+  return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), path);
 }
 
 async function carrResponse(request, env, documentRequest = false) {
@@ -133,6 +136,9 @@ function release(env) {
 export async function handleDoctorcreRequest(request, env) {
   const url = new URL(request.url);
   const pathname = url.pathname;
+  const boardDestination = legacyBoardDestination(url);
+  if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
+    ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
   if (pathname === "/share") return Response.redirect(`https://reports.doctorcre.com/share${url.search}`, 302);
   if (REDIRECTS.has(pathname)) {
@@ -153,7 +159,7 @@ export async function handleDoctorcreRequest(request, env) {
 
   const routeAsset = pathname === "/deals" && url.searchParams.get("view") === "national" ? "index.html"
     : pathname === "/" && url.searchParams.get("view") === "charts" ? "charts.html"
-    : APP_ROUTES.get(pathname);
+    : APP_ROUTES.get(boardIdFromPath(pathname) ? BOARD_ROUTE : pathname);
   if (routeAsset) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
     const gateRequest = gateRequestFor(request, pathname);

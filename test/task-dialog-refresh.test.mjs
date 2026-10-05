@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { taskDialogTransition } from "../js/task-dialog-refresh.mjs";
+import { taskDialogTransition } from "../js/task-records-model.js";
 
 const open = { key: "team_loop:201", viewer: "joe", closing: "done", outcome: "Counsel confirmed" };
 const rows = [{ kind: "team_loop", number: "201" }];

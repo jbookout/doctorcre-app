@@ -347,8 +347,8 @@ test("the Calendar page carries the shared shell, an accessible grid and an agen
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/calendar\.css">/);
   assert.match(html, /id="appShell"/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.match(html, /id="docReading">Doc is reading: Calendar</);
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.doesNotMatch(html, /id="docReading">Doc is reading: Calendar</);
   assert.match(html, /id="receiptDock"/);
   assert.match(html, /id="calGrid"[^>]*role="grid"/);
   assert.match(html, /data-view="month"[^>]*aria-pressed="true"/);
