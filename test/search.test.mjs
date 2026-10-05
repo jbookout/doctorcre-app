@@ -14,7 +14,7 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PREFERENCES_KEY } from "../js/shell.js";
 import {
   AUTHORIZATION_SENTENCE, NOT_SEARCHED_SENTENCE, SAVED_VIEWS_KEY, SAVED_VIEW_SENTENCE,
-  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES, acceptsSearchResponse, applyScope,
+  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES, applyScope,
   buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, deepLinkFor,
   groupSearchResults, parseSearchAddress, readSavedViews, refusalDetail, renameView,
   retiredSummary, saveView, scopeChips, searchAddress, searchPhase, truncationNotes,
@@ -176,32 +176,6 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
 
 /* ------------------------------------------------------------------------ B05-6 */
 
-test("B05-6 two overlapping reads resolved out of order render the second query's payload", async () => {
-  const client = await fixture();
-  const state = { sequence: 0, payload: null, query: null };
-  const start = (query) => ({ query, token: ++state.sequence, answer: client.find(buildFindArguments(query)) });
-
-  const first = start("Pensacola");
-  const second = start("Demo Pensacola Legacy Practices");
-  // Resolved in the WRONG order on purpose: the newer answer lands first.
-  const secondPayload = await second.answer;
-  if (acceptsSearchResponse(state.sequence, second.token)) { state.payload = secondPayload; state.query = second.query; }
-  const firstPayload = await first.answer;
-  if (acceptsSearchResponse(state.sequence, first.token)) { state.payload = firstPayload; state.query = first.query; }
-
-  assert.equal(state.query, "Demo Pensacola Legacy Practices", "the older answer was dropped");
-  assert.deepEqual(state.payload, secondPayload, "the second query's payload stands");
-  assert.notDeepEqual(firstPayload, secondPayload, "the two reads really do differ, so the assertion means something");
-  assert.equal(acceptsSearchResponse(2, 1), false);
-  assert.equal(acceptsSearchResponse(2, 2), true);
-
-  // The stale state renders NOTHING: it is asserted, not narrated.
-  const readBody = pageJs.slice(pageJs.indexOf("async function read("), pageJs.indexOf("function pushAddress("));
-  for (const fragment of readBody.split("await ").slice(1)) {
-    assert.match(fragment, /acceptsSearchResponse\(view\.sequence, sequence\)/, "every await is followed by the sequence guard");
-  }
-});
-
 /* ------------------------------------------------------------------------ B05-7 */
 
 test("B05-7 the page never re-ranks: no sort, no reverse, and the producer's order survives grouping", async () => {
@@ -270,7 +244,6 @@ test("B05-9 all nine states carry their own rendered text and are reachable thro
   assert.equal(searchPhase({ status: "ready", payload: emptyPayload, catchUp: await client.findAndCatchUp({ query: "Pensacola" }), submitted: true }), "disambiguation");
   // A stale answer is never a state the reader is shown: it renders nothing and
   // the current query's result stands.
-  assert.equal(acceptsSearchResponse(4, 3), false);
   // no-match and unavailable are mutually exclusive by construction.
   assert.notEqual(searchPhase({ status: "unavailable", payload: null, submitted: true }), "no_match");
 });

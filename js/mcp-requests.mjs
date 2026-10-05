@@ -1,4 +1,4 @@
-import { readWithDeadline } from './auto-refresh.mjs';
+import { readWithDeadline } from './current-read.mjs';
 
 // Transport facts only. Success and authoritative business refusal belong to
 // the domain client, which knows the command and its versioned contract.

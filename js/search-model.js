@@ -471,15 +471,6 @@ export function searchPhase({ status, payload, catchUp = null, submitted = false
   return "ready";
 }
 
-/**
- * The sequence guard. A response is accepted only when no newer read has been
- * started since it left; an older answer that overtakes a newer one renders
- * NOTHING rather than replacing what is on screen.
- */
-export function acceptsSearchResponse(current, token) {
-  return Number(current) === Number(token);
-}
-
 /* ------------------------------------------------------------------ the address */
 
 /** `?q=` and `?kinds=` on an already-admitted path. The gate reads neither. */

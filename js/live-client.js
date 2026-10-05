@@ -8,7 +8,7 @@
 import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
-import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
+import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 
@@ -417,7 +417,7 @@ export function createLiveClient(opts = {}) {
     // `read-loop` answers a miss IN the payload with `isError` false, so a
     // not_found or an ambiguous number arrives here as an ordinary answer and
     // is returned as one. Only a real refusal throws.
-    async loopBoard(args = {}) { return rpc('loop-board', args); },
+    async loopBoard(args = {}, { signal } = {}) { return rpc('loop-board', args, signal); },
     async readLoop(args = {}) { return rpc('read-loop', args); },
     async loopHeaders(args = {}) { return rpc('loop-headers', args); },
     async addLoop(args) { return write('add-loop', args); },
@@ -630,8 +630,8 @@ export function createLiveClient(opts = {}) {
     // under additionalProperties:false, so a third argument is refused by the
     // gateway with `unregistered_operation_fields` before the handler runs.
     // They go through `rpc` because they carry no idempotency key.
-    async find(args = {}) { return rpc('find', args); },
-    async findAndCatchUp(args = {}) { return rpc('find-and-catch-up', args); },
+    async find(args = {}, { signal } = {}) { return rpc('find', args, signal); },
+    async findAndCatchUp(args = {}, { signal } = {}) { return rpc('find-and-catch-up', args, signal); },
 
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },

@@ -1,4 +1,5 @@
 import { setDocFilters } from './doc-context.js';
+import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
@@ -17,7 +18,7 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 //      re-renders without a read of its own.
 import {
   AUTHORIZATION_SENTENCE, EXPOSURE_STATEMENT, FIND_CATCH_UP_LIMIT_DEFAULT, NOT_SEARCHED_SENTENCE,
-  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, acceptsSearchResponse, applyScope,
+  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, applyScope,
   buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, groupSearchResults,
   parseSearchAddress, queryIsSendable, readSavedViews, refusalDetail, renameView, retiredSummary,
   saveView, scopeChips, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
@@ -34,12 +35,13 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** One place holds what the Search tab believes; nothing else keeps a copy. */
 const view = {
   status: "idle", query: "", kinds: [], payload: null, catchUp: null,
-  refusal: null, submitted: false, sequence: 0, views: [],
+  refusal: null, submitted: false, views: [],
 };
 
 let client = null;
 let storage = null;
 let idleTimer = null;
+const searchReads = createCurrentRead();
 
 /* -------------------------------------------------------------------- painting */
 
@@ -189,15 +191,12 @@ function render() {
 
 /* --------------------------------------------------------------------- reading */
 
-/**
- * One read of `find` and one of `find-and-catch-up`, both carrying the same
- * sequence token. A late answer is dropped without touching `view`, so the
- * current query's result stands.
- */
-async function read({ push = true } = {}) {
-  const sequence = ++view.sequence;
-  setDocFilters({query:view.query,kinds:view.kinds});
-  if (!queryIsSendable(view.query)) {
+// One lifetime covers the result and its optional catch-up context.
+async function read({ push = true, signal } = {}) {
+  const query = view.query;
+  setDocFilters({query, kinds:view.kinds});
+  if (!queryIsSendable(query)) {
+    searchReads.invalidate();
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
     return;
@@ -206,39 +205,27 @@ async function read({ push = true } = {}) {
   view.submitted = true;
   render();
   if (push) pushAddress();
-  let payload = null;
-  let catchUp = null;
-  try {
-    payload = await client.find(buildFindArguments(view.query));
-  } catch (error) {
-    if (!acceptsSearchResponse(view.sequence, sequence)) return;
-    view.status = classifySearchFailure(error);
-    view.refusal = refusalDetail(error);
-    view.payload = null;
-    view.catchUp = null;
-    render();
-    return;
-  }
-  if (!acceptsSearchResponse(view.sequence, sequence)) return;
-  if (!validSearchPayload(payload)) {
-    view.status = "unknown"; view.payload = null; view.catchUp = null; view.refusal = null;
-    render();
-    return;
-  }
-  try {
-    const answer = await client.findAndCatchUp(buildFindAndCatchUpArguments(view.query, FIND_CATCH_UP_LIMIT_DEFAULT));
-    catchUp = validCatchUpPayload(answer) ? answer : null;
-  } catch {
-    // The catch-up leg is context. Its failure never turns a good `find` answer
-    // into an outage, and it never invents a candidate list.
-    catchUp = null;
-  }
-  if (!acceptsSearchResponse(view.sequence, sequence)) return;
-  view.status = "ready";
-  view.payload = payload;
-  view.catchUp = catchUp;
-  view.refusal = null;
-  render();
+  return searchReads.run(async ({ signal, read: step }) => {
+    const payload = await step(client.find(buildFindArguments(query), { signal }));
+    if (!validSearchPayload(payload)) return { status: "unknown", payload: null, catchUp: null };
+    let catchUp = null;
+    try {
+      const answer = await step(client.findAndCatchUp(buildFindAndCatchUpArguments(query, FIND_CATCH_UP_LIMIT_DEFAULT), { signal }));
+      catchUp = validCatchUpPayload(answer) ? answer : null;
+    } catch {
+      // Context failure never turns a good find answer into an outage.
+    }
+    return { status: "ready", payload, catchUp };
+  }, {
+    signal,
+    success(result) { Object.assign(view, result, { refusal: null }); render(); },
+    failure(error) {
+      view.status = classifySearchFailure(error);
+      view.refusal = refusalDetail(error);
+      view.payload = null; view.catchUp = null;
+      render();
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ the address */
@@ -276,11 +263,10 @@ function wire() {
     read({ push: true });
   });
 
-  // Typing does not read on every keystroke: one idle re-read, carrying the
-  // sequence token like every other read.
+  // Typing invalidates the current answer immediately, then reads once idle.
   $("searchQuery")?.addEventListener("input", () => {
     view.query = $("searchQuery")?.value ?? "";
-    view.sequence += 1;
+    searchReads.invalidate();
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => read({ push: false }), IDLE_REREAD_MS);
   });
@@ -353,7 +339,7 @@ export function mountSearch({ client: searchClient, storage: storageImpl } = {})
   }
   wire();
   const address = restoreFromAddress({ reread: true });
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => view.query ? read({ push: false }) : undefined });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: ({ signal }) => view.query ? read({ push: false, signal }) : undefined });
   return { view, address };
 }
 

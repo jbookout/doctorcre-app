@@ -1,3 +1,4 @@
+import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B06 — Commercial charts and linked drilldown: DOM wiring only.
 //
@@ -20,7 +21,7 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import {
   CHARTS_STATE_COPY, NEVER_REVIEWED, NO_FORECAST_SENTENCE, NO_VALUE_KEY,
   ONE_READ_SENTENCE, OWNER_DISCLOSURE_SENTENCE, SNAPSHOT_SENTENCE,
-  accountRows, acceptsBoardResponse, barShare, bucketRows, chartsAddress, chartsPhase,
+  accountRows, barShare, bucketRows, chartsAddress, chartsPhase,
   classifyBoardFailure, dimensionById, filterDeals, nextDateCoverage, ownerRows,
   parseChartsAddress, phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage,
   validBoardPayload, waitingSummary, writeChartsView,
@@ -34,7 +35,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** One place holds what the Charts tab believes; nothing else keeps a copy. */
 const view = {
   status: "loading", payload: null, readAt: null, group: null, pick: null,
-  sequence: 0, ownerOpen: false,
+  ownerOpen: false,
 };
 
 let client = null;
@@ -45,6 +46,7 @@ let storage = null;
  * as-of. It is cleared once consumed, so a Retry is a real, deliberate re-read.
  */
 let sharedBoard = null;
+const boardReads = createCurrentRead();
 let selectTab = null;
 
 /** The clock of the moment the response resolved. The verb returns no time of
@@ -217,44 +219,30 @@ function render() {
 
 /* --------------------------------------------------------------------- reading */
 
-/**
- * ONE `getBoard()`, carrying a sequence token. A late answer is dropped without
- * touching `view`, so the newer answer stands.
- */
-export async function read({ push = false } = {}) {
-  const sequence = ++view.sequence;
+// The workspace's first board promise and later retries share one lifetime.
+export async function read({ push = false, signal } = {}) {
   view.status = "loading";
   render();
   if (push) pushAddress();
-  let payload = null;
-  // The page's read if it has not been consumed yet, and a new one only when a
-  // person asked for one. This is the whole of "one read, one as-of".
-  const pending = sharedBoard || client.getBoard({ workspace: "all" });
+  const pending = sharedBoard;
   sharedBoard = null;
-  try {
-    payload = await pending;
-  } catch (error) {
-    if (!acceptsBoardResponse(view.sequence, sequence)) return;
-    view.status = classifyBoardFailure(error);
-    view.payload = null;
-    view.readAt = null;
-    render();
-    return;
-  }
-  if (!acceptsBoardResponse(view.sequence, sequence)) return;
-  if (!validBoardPayload(payload)) {
-    // §4's own wording: a NON-OBJECT payload is the unanswered path. An object
-    // that is merely the wrong shape is the one this page cannot read.
-    view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
-    view.payload = null;
-    view.readAt = null;
-    render();
-    return;
-  }
-  view.status = "ready";
-  view.payload = payload;
-  view.readAt = clockNow();
-  render();
+  return boardReads.run(({ signal }) => pending || client.getBoard({ workspace: "all", signal }), {
+    signal,
+    success(payload) {
+      if (!validBoardPayload(payload)) {
+        view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
+        view.payload = null; view.readAt = null;
+      } else {
+        view.status = "ready"; view.payload = payload; view.readAt = clockNow();
+      }
+      render();
+    },
+    failure(error) {
+      view.status = classifyBoardFailure(error);
+      view.payload = null; view.readAt = null;
+      render();
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ the address */
@@ -322,7 +310,7 @@ export function mountCharts({ client: boardClient, storage: storageImpl, board =
   }
   wire();
   const address = restoreFromAddress();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => read({ push: false }) });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: ({ signal }) => read({ push: false, signal }) });
   read({ push: false });
   return { view, address };
 }
