@@ -35,11 +35,18 @@ test('canonical full-suite clean control and seeded failure publish bound counts
   assert.equal(receipt.source.sha,git('rev-parse','HEAD').toString().trim());assert.equal(receipt.fileCount,1);
   assert.equal(receipt.gateAuthority,false);assert.equal(receipt.mode,'shadow');
   assert.match(receipt.inventoryDigest,/^[a-f0-9]{64}$/);
-  await writeFile(join(root,'test/seeded.test.mjs'),"import test from 'node:test'; test('SyntheticPrivateClient canary',()=>{throw Error('synthetic-secret-canary');});\n");
+  await writeFile(join(root,'test/seeded.test.mjs'),"import test from 'node:test'; test('SyntheticPrivateClient canary',()=>{throw Error('synthetic-secret-canary');});test('unconditional-green',()=>{});\n");
   git('add','test/seeded.test.mjs');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','seed failure');
   receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
   assert.equal(receipt.status,'failed');assert.equal(receipt.counts.failed,1);assert.equal(receipt.failures[0]?.file,'test/seeded.test.mjs');
   assert.doesNotMatch(JSON.stringify(receipt),/SyntheticPrivateClient|synthetic-secret-canary/);
+  const options=process.env.NODE_OPTIONS;
+  try {
+    process.env.NODE_OPTIONS='"--test-name-pattern=unconditional-green"';
+    assert.notEqual((await runner.runFullMain({root,suite:'app',timeoutMs:5000})).status,'passed','filtered tests cannot certify a full suite');
+  } finally {
+    if(options===undefined) delete process.env.NODE_OPTIONS; else process.env.NODE_OPTIONS=options;
+  }
 });
 test('empty exit-zero, nonzero, partial, exception, and deadline never certify a full suite',async t=>{
   assert.ok(runner,'full-main runner must exist');

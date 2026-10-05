@@ -24,7 +24,9 @@ async function execute(command,root,timeoutMs,allowedFailures) {
     let sawTapHeader=false,tail='',lineBuffer='',timedOut=false,spawnFailed=false,killTimer;
     const failures=new Map();
     const options=process.env.NODE_OPTIONS||'';
-    const reporter=/(?:^|\s)--test-reporter=tap(?:\s|$)/.test(options)?options:`${options} --test-reporter=tap`.trim();
+    if(/(?:^|\s|")--test-(?:name-pattern|skip-pattern|only|shard|rerun-failures)(?:=|\s|"|$)/.test(options))
+      return resolveRun({code:1,selectionFiltered:true,tail:'',sawTapHeader:false,failures:[]});
+    const reporter=/(?:^|\s|")--test-reporter=tap(?:\s|"|$)/.test(options)?options:`${options} --test-reporter=tap`.trim();
     const env={...process.env,CI:'1',E2E_TELEMETRY_DISABLED:'1',NODE_OPTIONS:reporter};
     delete env.NODE_TEST_CONTEXT;
     const child=spawn(command[0],command.slice(1),{cwd:root,detached:true,env,stdio:['ignore','pipe','pipe']});
@@ -84,7 +86,7 @@ export async function runFullMain({root,suite,timeoutMs=suite==='app'?900000:540
   try{counts=suite==='app'?tapCounts(result.tail,result.sawTapHeader):await e2eCounts(root,source,result.tail,result.sawTapHeader);}catch{}
   if(fileCount===0) counts=null;
   const failed=result.sourceChanged||result.code!==0||result.timedOut||result.spawnFailed||Boolean(counts&&(counts.failed||counts.cancelled));
-  const reason=result.sourceChanged?'source_changed':result.timedOut?'deadline':result.spawnFailed?'spawn_failed':result.code!==0?'suite_nonzero':!counts?'missing_completion':failed?'failed_counts':'complete';
+  const reason=result.sourceChanged?'source_changed':result.selectionFiltered?'filtered_selection':result.timedOut?'deadline':result.spawnFailed?'spawn_failed':result.code!==0?'suite_nonzero':!counts?'missing_completion':failed?'failed_counts':'complete';
   return {schema:'full-main-receipt.v1',repository:'jbookout/doctorcre-app',suite,mode:'shadow',gateAuthority:false,source,workflow:{runId:process.env.GITHUB_RUN_ID||'local',attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)},event:process.env.GITHUB_EVENT_NAME||'manual',startedAt,completedAt:new Date().toISOString(),timestampProvenance:'runner wall clock; hosted run timestamps independently authenticated by monitor',cadenceSeconds:86400,deadlineSeconds:timeoutMs/1000,command:suite==='app'?commands.app:['node','scripts/browser-product-proof.mjs'],fileCount,inventoryDigest,environment:{node:process.versions.node,platform:process.platform,arch:process.arch},status:failed?'failed':counts?'passed':'unknown',counts,failures:result.failures??[],reason};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
