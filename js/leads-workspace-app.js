@@ -88,7 +88,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
     box.hidden = !state.pending && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
-    if (state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ` · <a href="/auth/login?return_to=${encodeURIComponent(globalThis.location.pathname + globalThis.location.search)}">Sign in</a>`);
+    if (state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ` · <a href="/auth/login?return_to=${encodeURIComponent(doc.defaultView.location.pathname + doc.defaultView.location.search)}">Sign in</a>`);
     if (state.connectionFeedback) $("boardUpdated").textContent = state.connectionFeedback === "Sign-in required" ? "Sign-in required" : "Leads unavailable";
     $("checkPending")?.addEventListener("click", executePending);
     if (state.pending && $("stageDialog").open) {
