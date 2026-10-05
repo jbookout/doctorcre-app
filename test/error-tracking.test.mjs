@@ -8,7 +8,7 @@ test('browser onerror and unhandledrejection send scrubbed evidence and preserve
   const host = { location: { pathname: '/clients/Alice' }, onerror: () => { prior++; return true; }, fetch: async (_url, options) => { sent.push(JSON.parse(options.body)); return { ok: true }; } };
   const stop = installErrorTracking(host, 'a'.repeat(40));
   const error = new TypeError('Cannot read properties of Alice alice@example.test diagnosis');
-  error.stack = 'TypeError: Alice\n at Alice (https://app/js/client.js?email=alice@example.test:12:3)';
+  error.stack = 'TypeError: Alice record:9876543:1234567\n at Alice (https://app/js/client.js?email=alice@example.test:12:3)';
   assert.equal(host.onerror(error.message, 'private', 12, 3, error), true);
   host.onunhandledrejection({ reason: error });
   await new Promise(resolve => setImmediate(resolve));

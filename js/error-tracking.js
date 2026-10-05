@@ -9,6 +9,7 @@ export function browserError(error, route, releaseSha) {
     : /^(Failed to fetch|Load failed|NetworkError|Script error\.?)$/.test(text) ? text : '[redacted]';
   return { type: TYPES.has(error?.name) ? error.name : 'UnhandledRejection', message,
     stack: String(error?.stack || '').slice(0, 8000).split('\n').slice(0, 20).flatMap(line => {
+      if (!/^\s*(?:at\s|asset:)|^[^\s:]*@(?:https?:\/\/|\/)/.test(line)) return [];
       const match = line.match(/:(\d{1,7}):(\d{1,7})\)?\s*$/); return match ? [`asset:${match[1]}:${match[2]}`] : [];
     }).join('\n'),
     route: String(route || '/').split(/[?#]/)[0].split('/').slice(0, 8).map(part => !part || ROUTES.has(part) ? part : ':value').join('/'),
