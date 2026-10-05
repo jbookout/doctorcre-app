@@ -46,7 +46,10 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
 // supports the workflows' run/if forms and refuses unfamiliar conditions.
 function commands(workflow, event, action = "opened") {
   if (workflow !== release && !policy(workflow, context(event, action)).runnable.length) return [];
-  return workflow.split(/^      - /m).slice(1).flatMap((step) => {
+  // Agent jobs have their own replay; keep this deterministic lane bounded
+  // by its job boundary even when a negative control changes its source.
+  const tested = workflow.split(/^  agent-shards:\n/m)[0];
+  return tested.split(/^      - /m).slice(1).flatMap((step) => {
     const run = step.match(/^(?:run:|\s+run:) (.+)$/m)?.[1];
     if (!run) return [];
     const condition = step.match(/^\s*if: (.+)$/m)?.[1];

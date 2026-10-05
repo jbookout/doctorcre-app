@@ -4,6 +4,10 @@ import { context, policy } from "./workflow-policy.mjs";
 import test from "node:test";
 
 const files = ["ci.yml", "e2e.yml"];
+const expectedContexts = {
+  "ci.yml": ["test"],
+  "e2e.yml": ["journeys", "agent-shards", "agent-gate"],
+};
 const read = name => readFileSync(new URL("../.github/workflows/" + name, import.meta.url), "utf8");
 function replay(source, events) {
   const runs = [];
@@ -26,7 +30,7 @@ function replay(source, events) {
 for (const file of files) {
   const source = read(file);
   test(`${file}: required context identity is retained`, () => {
-    assert.deepEqual(policy(source, context()).jobs, [file === "ci.yml" ? "test" : "journeys"]);
+    assert.deepEqual(policy(source, context()).jobs, expectedContexts[file]);
   });
   test(`${file}: rapid A/B/C supersedes A/B and C runs every job`, () => {
     const runs = replay(source, [context("pull_request", "opened", 9, 1), context("pull_request", "synchronize", 9, 2), context("pull_request", "synchronize", 9, 3)]);
@@ -71,3 +75,11 @@ for (const file of files) {
     assert.equal(replay(source, events)[0].status, "success", "a close event must not erase completed green evidence");
   });
 }
+
+test("e2e.yml: agent gate runs after failed upstream work and never on close", () => {
+  const source = read("e2e.yml");
+  assert.deepEqual(policy(source, context(), false).runnable, ["agent-gate"]);
+  assert.deepEqual(policy(source, context("pull_request", "closed"), false).runnable, []);
+  const withoutAlways = source.replace("always() && ", "");
+  assert.deepEqual(policy(withoutAlways, context(), false).runnable, [], "control removing always loses the failed-evidence gate");
+});
