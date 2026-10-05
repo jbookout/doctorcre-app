@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened, edited, ready_for_review, closed]
   push:
@@ -63,5 +66,15 @@ jobs:
         if: github.event_name == 'pull_request'
       - run: node --test test/artifact.test.mjs test/ci-workflows.test.mjs
         if: github.event_name == 'push'
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: node scripts/full-main.mjs app
       - run: npm run build
       - run: npm run artifact:verify
+      - if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          include-hidden-files: true
+          name: full-main-app-receipt
+          path: doctorcre-app/.e2e/full-main-app-receipt.json
+          if-no-files-found: error
+          retention-days: 7
