@@ -144,6 +144,12 @@
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
     "tours/vendor/tour-map-route-state.js",
-    "js/progress-board-route.js"
+    "js/progress-board-route.js",
+    "js/usage-contract.v1.js",
+    "js/usage-signals.js",
+    "js/weekly-usage.js",
+    "css/usage-signals.css",
+    "test/usage-signals.test.mjs",
+    "test/weekly-usage.test.mjs"
   ]
 }

@@ -6,6 +6,7 @@ import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { offlineTourSession } from "./offline-tour-session.js";
+import { mountUsageCapture } from './usage-signals.js';
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this module owns the shared rail and layout.
 const registration = registerSlices(slices);
@@ -62,6 +63,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
           <strong id="accountWorkspace">Workspace</strong>
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
+          <button type="button" id="usageCaptureToggle" aria-label="Usage capture off" title="Usage capture off" aria-pressed="false">○</button>
           <a href="${base}/updates#prefForm">Notification preferences</a>
           <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
           <button type="button" id="accountSignOut">Sign out</button>
@@ -136,6 +138,7 @@ function mountAccount(root, host, pathname) {
   try { applyAssist(localStorage.getItem("dealroom-color-assist") === "on"); } catch { applyAssist(false); }
   assist.onclick = () => { const enabled = !root.body.classList.contains("color-assist"); applyAssist(enabled); try { localStorage.setItem("dealroom-color-assist", enabled ? "on" : "off"); } catch {} };
   const boot = resolveDealroomBoot(globalThis.location);
+  if (boot.mode === 'live') mountUsageCapture({ document: root, window: root.defaultView });
   const readIdentity = async () => {
     try {
       if (boot.mode === "fixture") session = { actor: { slug: boot.options.selfActor === "dell" ? "dell" : "joe" } };

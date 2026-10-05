@@ -1,4 +1,5 @@
 import { setDocFilters } from './doc-context.js';
+import { emitUsage } from './usage-signals.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
@@ -204,6 +205,7 @@ async function read({ push = true } = {}) {
   }
   view.status = "loading";
   view.submitted = true;
+  if (push) emitUsage(document, 'search_used');
   render();
   if (push) pushAddress();
   let payload = null;
@@ -214,6 +216,7 @@ async function read({ push = true } = {}) {
     if (!acceptsSearchResponse(view.sequence, sequence)) return;
     view.status = classifySearchFailure(error);
     view.refusal = refusalDetail(error);
+    emitUsage(document, 'error_shown');
     view.payload = null;
     view.catchUp = null;
     render();
