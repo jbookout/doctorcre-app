@@ -71,41 +71,5 @@
 @media(max-width:480px) { .doc-command-meta { align-items:start; } #docCommandForm { gap:6px; padding:6px; } #docCommandInput { font-size:16px; } .doc-context-tools { flex-wrap:wrap; } }
 @media(prefers-reduced-motion:reduce) { #docCommandResults>button { transition:none; transform:none; } }
 
-.doc-brief-open { position:relative; flex:none; font-size:20px; color:#ffa466; }
-.doc-brief-open[data-ready="true"] { border-color:#f2692490!important; box-shadow:0 0 0 0 #f2692466; animation:doc-brief-ready 2.4s ease-out infinite; }
-.doc-brief-open[data-ready="true"]::after { content:''; position:absolute; top:6px; right:6px; width:8px; height:8px; border-radius:50%; background:#ff8a48; }
-@keyframes doc-brief-ready { 70% { box-shadow:0 0 0 12px #f2692400; } 100% { box-shadow:0 0 0 0 #f2692400; } }
-.doc-brief { margin:0 0 18px; padding:22px 24px; border:1px solid #f2692430; border-radius:20px; color:#edf2fc; background:radial-gradient(ellipse at 0 0,#002f6c70,transparent 60%),radial-gradient(ellipse at 100% 100%,#f269241c,transparent 55%),#080e19f2; box-shadow:0 18px 60px #0006; animation:doc-arrive 600ms ease-out; }
-.doc-brief>header { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
-.doc-brief h2 { flex:1; min-width:0; margin:0; font:700 34px/1.05 'Barlow Condensed','Arial Narrow',sans-serif; letter-spacing:.02em; }
-.doc-brief h2:focus { outline:none; }
-.doc-brief h3 { margin:0 0 10px; color:#9fb6d6; font:600 14px 'Barlow Condensed','Arial Narrow',sans-serif; letter-spacing:.14em; text-transform:uppercase; }
-.doc-brief-tools { display:flex; align-items:center; gap:6px; color:#94a8c5; font-size:11px; }
-.doc-brief-tools button { cursor:pointer; display:inline-grid; place-items:center; min-width:44px; min-height:44px; border:0; border-radius:10px; background:transparent; color:#cfe0f7; font:inherit; font-size:20px; transition:background 300ms; }
-.doc-brief-tools button:hover { background:#20345e70; }
-.doc-brief-tools button:focus-visible,.doc-brief-item:focus-visible { outline:2px solid #ff8a48; outline-offset:3px; }
-#docBriefSpeech svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linejoin:round; stroke-linecap:round; }
-#docBriefSpeech[aria-pressed="true"] { color:#ffa466; }
-#docBriefSpeech[aria-pressed="true"] svg>path:first-child { fill:currentColor; }
-#docBriefSpeech[aria-pressed="false"] .doc-brief-wave { opacity:.35; }
-.doc-brief-first { margin-bottom:18px; }
-.doc-brief-first .doc-brief-item { padding:18px 20px; border-color:#f2692470; background:linear-gradient(110deg,#f2692426,#14213680); }
-.doc-brief-first .doc-brief-item span { font-size:19px; }
-.doc-brief-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:18px 24px; }
-.doc-brief-grid:empty { display:none; }
-.doc-brief-item { display:grid; gap:4px; margin:0 0 10px; padding:14px 16px; border:1px solid #8bb6eb24; border-radius:14px; background:#14213670; color:inherit; text-decoration:none; overflow-wrap:anywhere; transition:transform 300ms ease,background 300ms ease,box-shadow 300ms ease; }
-.doc-brief-item:hover { transform:translateY(-2px); background:#20345e80; box-shadow:0 8px 24px #0005; }
-.doc-brief-item strong { font:600 13px 'DM Sans',sans-serif; color:#b0c5e5; }
-.doc-brief-item span { font-size:15px; line-height:1.4; }
-.doc-brief-item small { font-size:12px; color:#94a8c5; }
-.doc-brief-item[data-tone="overdue"] small { color:#ffb185; }
-@media(max-width:760px) { .doc-brief { padding:16px; border-radius:14px; } .doc-brief h2 { font-size:28px; } .doc-brief>header { flex-wrap:wrap; row-gap:4px; } .doc-brief h2 { flex-basis:calc(100% - 60px); } .doc-brief-tools { flex-basis:100%; justify-content:flex-end; } }
-@media(prefers-reduced-motion:reduce) { .doc-brief,.doc-brief-open[data-ready="true"] { animation:none; } .doc-brief-item { transition:none; } .doc-brief-item:hover { transform:none; } }
-:root[data-motion="reduced"] :is(.doc-brief,.doc-brief-open[data-ready="true"]) { animation:none; }
-:root[data-motion="reduced"] .doc-brief-item { transition:none; }
-:root[data-motion="reduced"] .doc-brief-item:hover { transform:none; }
-
-.doc-brief-status { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
-
 /* Popup controls keep their own row and stay reachable while the record scrolls. */
 :is(dialog[open],aside#recordPanel:not([hidden])) > .doc-presence { position:sticky; top:0; right:auto; bottom:auto; display:flex; align-items:center; gap:8px; margin:0 0 12px; }

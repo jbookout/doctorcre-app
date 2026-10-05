@@ -884,7 +884,7 @@ test("app.js holds a confirmed write and asks for a fresh read rather than await
 test("app.js sends one cell change under one key, and never mints a second one per attempt", async () => {
   const app = await file("js/app.js");
   assert.match(app, /from '\.\/field-write-reconciliation\.mjs'/);
-  assert.match(app, /fieldWrites: createFieldWriteState\(\)/,
+  assert.match(app, /fieldWrites: \{\}/,
     "the retained request per cell sits beside fieldBase, as bookkeeping");
   assert.doesNotMatch(app, /function performFieldWrite|function beginFieldWrite/,
     "the reconciliation rule has one home, and app.js is not a second copy of it");

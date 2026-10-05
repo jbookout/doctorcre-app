@@ -12,7 +12,7 @@ import {
   contrastRatio, formatCalendarDate, formatClock,
   formatDueStamp, orderWork, parseQuickAdd, weekdayName,
 } from "./visual-system.js";
-import { createCommandState, feedbackStateFor, performCommand } from "./command-feedback.mjs";
+import { feedbackStateFor, performCommand } from "./command-feedback.mjs";
 import { escapeText } from "./change-receipts.mjs";
 import { createCommandDock } from "./command-dock.js";
 import { mountPrefs, wireTabs } from "./shell.js";
@@ -85,7 +85,7 @@ function showToast(text) {
 // than by guessing, and a refusal that keeps the person's input.
 const feedbackDock = () => $("receiptDock");
 const SIMULATED_ROUND_TRIP = 700;
-let commandState = createCommandState();
+let commandState = {};
 let mintedKeys = 0;
 let simulatedEvents = 0;
 // What each operation is called on screen. The kernel holds the requests; this

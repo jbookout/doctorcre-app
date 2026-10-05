@@ -19,11 +19,12 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const main = root.getElementById('appMainSlot');
   if (!main || !context || root.getElementById('docPresence')) return null;
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
+  const briefStyle = root.createElement('link'); briefStyle.rel = 'stylesheet'; briefStyle.href = '/css/morning-brief.css'; root.head.append(briefStyle);
   const strip = root.createElement('section'); strip.id = 'docPresence'; strip.className = 'doc-presence'; strip.setAttribute('aria-label', 'Doc');
   strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-label="Open Doc" title="Doc · ⌘D / Ctrl+D · ⌘K / Ctrl+K" aria-keyshortcuts="Meta+D Control+D Meta+K Control+K" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span></button>';
   root.body.append(strip);
   const dialog = root.createElement('dialog'); dialog.id = 'docDetail'; dialog.className = 'doc-detail'; dialog.setAttribute('aria-labelledby','docTitle');
-  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a><a href="/doc-activity" class="doc-chats-link" data-doc-activity-link>Doc Activity ↗</a></section></div>';
+  dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><button id="docMorning" type="button">Morning brief</button><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a><a href="/doc-activity" class="doc-chats-link" data-doc-activity-link>Doc Activity ↗</a></section></div>';
   const suggestionsHost = root.createElement('div'); suggestionsHost.className = 'doc-context-tools';
   suggestionsHost.innerHTML = '<div id="docSuggestions" class="doc-suggestion-strip" aria-live="polite"></div><div class="doc-updated"><time id="docUpdated">Updating…</time><button id="docRefresh" type="button" aria-label="Refresh Doc" title="Refresh Doc">↻</button></div>';
   dialog.querySelector('header').after(suggestionsHost);
@@ -41,7 +42,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   // Keep the same presence reachable in a native record popup. DOM state
   // controls placement only; record identity still comes from the page read.
   function placePresence() {
-    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail), aside#recordPanel:not([hidden])')];
+    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden])')];
     const host = hosts.at(-1) || root.body;
     if (strip.parentElement !== host) host.prepend(strip);
   }
@@ -89,7 +90,11 @@ export function mountDocPresence({ document: root = document, window: win = wind
   };
   const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs });
   const command = mountDocCommandBar({ dialog, window:win, context,
-    pages: registerSlices(slices).navigationItems, onOpen:render,
+    pages: registerSlices(slices).navigationItems, onOpen:() => {
+      const brief = root.getElementById('docMorningBrief');
+      if (brief?.open) brief.close();
+      render();
+    },
     client: ensureClient,
     tours: async () => {
       if (resolveDealroomBoot(win.location).mode !== 'live') return [];
@@ -127,7 +132,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
-  const brief = mountMorningBrief({ document:root, window:win, strip, getClient:ensureClient, intervalMs });
+  const brief = mountMorningBrief({ document:root, window:win, automatic:resolveDealroomBoot(win.location).mode === 'live', getClient:ensureClient, intervalMs });
   const dispose = () => { disposed = true; ++readEpoch; auto.dispose(); brief.dispose(); command.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };

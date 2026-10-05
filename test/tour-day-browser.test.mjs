@@ -94,7 +94,7 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     assert.ok(dock.x + dock.width <= docPresence.x || docPresence.x + docPresence.width <= dock.x ||
       dock.y + dock.height <= docPresence.y || docPresence.y + docPresence.height <= dock.y,
       `Capture and Doc must not overlap: ${JSON.stringify({ dock, docPresence, width })}`);
-    for (const id of ['day-record', 'day-previous', 'day-next', 'docOpen', 'docBriefOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
+    for (const id of ['day-record', 'day-previous', 'day-next', 'docOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
       const rect = button.getBoundingClientRect();
       return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
     }), true, `The shared shell must leave ${id} reachable`);

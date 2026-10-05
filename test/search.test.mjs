@@ -14,11 +14,11 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PREFERENCES_KEY } from "../js/shell.js";
 import {
   AUTHORIZATION_SENTENCE, NOT_SEARCHED_SENTENCE, SAVED_VIEWS_KEY, SAVED_VIEW_SENTENCE,
-  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES,
-  acceptsSearchResponse, applyScope, buildFindAndCatchUpArguments, buildFindArguments,
-  classifySearchFailure, deepLinkFor, groupSearchResults, parseSearchAddress,
-  readSavedViews, refusalDetail, renameView, resetViews, retiredSummary, saveView, scopeChips,
-  searchAddress, searchPhase, truncationNotes, validSearchPayload, visibleCount, writeSavedViews,
+  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES, acceptsSearchResponse, applyScope,
+  buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, deepLinkFor,
+  groupSearchResults, parseSearchAddress, readSavedViews, refusalDetail, renameView,
+  retiredSummary, saveView, scopeChips, searchAddress, searchPhase, truncationNotes,
+  validSearchPayload, visibleCount, writeSavedViews,
 } from "../js/search-model.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -158,7 +158,7 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
   views = writeSavedViews(storage, renameView(views, "Pensacola leads", "Panhandle leads"));
   assert.deepEqual(views.map((view) => view.name), ["Panhandle leads"]);
   assert.deepEqual([...readSavedViews(storage)], [...views]);
-  views = writeSavedViews(storage, resetViews());
+  views = writeSavedViews(storage, Object.freeze([]));
   assert.deepEqual([...views], []);
 
   assert.deepEqual([...new Set(written)], [SAVED_VIEWS_KEY], "one key, and it is not the preference key");
@@ -383,7 +383,7 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.20.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.version, "1.42.0", "the current contract retains Search operations");
+  assert.equal(contract.version, "1.43.0", "the current contract retains Search operations");
   assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
