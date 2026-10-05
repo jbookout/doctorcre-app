@@ -25,6 +25,14 @@ npm run serve
 npm run dev:staging
 ```
 
+### Agent verification
+
+[verify-doctorcre](.cursor/skills/verify-doctorcre/SKILL.md) launches an isolated
+local fixture server and drives the app with Playwright. Its
+[feature map](.cursor/skills/verify-doctorcre/features/README.md) defines the
+covered user paths; screenshots, ARIA snapshots, traces, and byte manifests
+survive cleanup.
+
 ### End-to-end journeys
 
 The [e2e](https://www.npmjs.com/package/e2e) runner starts the fixture server
