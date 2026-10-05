@@ -1,3 +1,4 @@
+import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 // V5-UX-B03 — the Deals board.
 //
 // Four kinds of test, and they are deliberately different kinds:
@@ -890,7 +891,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.43.0");
+  assert.equal(contract.version, CARR_INTERFACE_VERSION);
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

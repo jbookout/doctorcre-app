@@ -1,3 +1,4 @@
+import { CARR_INTERFACE_VERSION, CARR_PRODUCER_SHA } from './carr-interface-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -17,13 +18,13 @@ test('every literal browser MCP call is pinned in the versioned interface', asyn
   assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
     'the pinned operations stay unique and sorted');
   assert.equal(contract.producer.source_commit,
-    '2f531c295f37757899ca432dfb04a9b95e8d5184',
+    CARR_PRODUCER_SHA,
     'the pinned CARR revision contains the vendor directory and audited update-vendor fields');
 });
 
 test('Tour client feedback endpoints have an explicit contract newer than the prior search/cart interface', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.version, '1.43.0');
+  assert.equal(contract.version, CARR_INTERFACE_VERSION);
   for (const path of ['/api/share/feedback', '/api/share/shortlist', '/api/share/comment', '/api/tours/feedback'])
     assert.ok(contract.http_surfaces.includes(path), `${path} is missing from the feedback interface`);
 });
@@ -51,7 +52,7 @@ test('the inherited vendor directory retains its exact producer reference', asyn
 
 test('the merged interface preserves the exact distinct Leads and relationship producer revisions', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.producer.source_commit, '2f531c295f37757899ca432dfb04a9b95e8d5184');
+  assert.equal(contract.producer.source_commit, CARR_PRODUCER_SHA);
   assert.deepEqual(contract.lead_workspace.producer, {
     repository: 'jbookout/carr-system',
     source_commit: '6d739deb1a31de8f257f4e1e11695d71ec3a74bf',

@@ -1,3 +1,4 @@
+import { CARR_PRODUCER_SHA } from './carr-interface-fixture.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
@@ -8,7 +9,6 @@ import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "a3a6913f7af0d721ab538090b1347976befcf421";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -25,7 +25,7 @@ async function producerModuleUrl(path) {
 }
 
 test("the runtime pin integrates runtime errors with inherited application reads", () => {
-  assert.equal(contract.producer.source_commit, pinnedProducer);
+  assert.equal(contract.producer.source_commit, CARR_PRODUCER_SHA);
 });
 
 // Opt-in cross-repository verification reads committed source, never a working
