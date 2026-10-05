@@ -121,7 +121,9 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
   $('docCommandResults').onclick=event=>{const button=event.target.closest('[data-doc-result]');if(button)detail(results[Number(button.dataset.docResult)]);};
   $('docCommandForm').onsubmit=event=>{event.preventDefault();if(event.isComposing)return;if(/^open\s+/i.test(query)&&pageResults().length===1){navigate(pageResults()[0].href);return;}if(/^(?:send|email|pay|delete|move|plan|schedule|draft|ask|change|update)\b/i.test(query)){$('docCommandStatus').textContent='Doc actions unavailable';return;}if(results[selected])detail(results[selected]);else $('docCommandStatus').textContent='Doc actions unavailable';};
   $('docCommandRefresh').onclick=()=>void auto.refresh();
-  const closed=()=>{if(dialog.open)return;++epoch;win.clearTimeout(timer);focusBefore?.isConnected&&focusBefore.focus();};
+  const closed=()=>{if(dialog.open)return;++epoch;win.clearTimeout(timer);
+    (focusBefore?.isConnected && !focusBefore.closest('dialog:not([open])') ? focusBefore : $('docOpen'))?.focus();
+  };
   dialog.addEventListener('close',closed);
   const auto=mountAutoRefresh({document:root,window:win,refresh,intervalMs,shouldRefresh:()=>dialog.open});
   return {open,refresh,dispose(){disposed=true;++epoch;win.clearTimeout(timer);auto.dispose();unsubscribe();root.removeEventListener('keydown',shortcut,true);dialog.removeEventListener('close',closed);}};

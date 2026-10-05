@@ -49,7 +49,7 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
  }
  }
  assert.deepEqual(errors,[]);
- assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
+ assert.deepEqual(calls.filter(call=>! /^(list-|read-|get-|deal-room-|morning-brief|today-triage|lead-board|claim-card|loop-board|incident-board|current-work-|notification-feed|correspondence-|doc-outcome-cards|unfinished-work|industry-events|resource-dashboard|schedule-board)/.test(call.name)).map(call=>call.name),[]);
 });
 
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
@@ -360,7 +360,8 @@ test('R13/R18 incomplete conversation reports unknown recent activity in the ans
  await goto('/doc-chats?mode=live&id='+id);
  await page.waitForFunction(()=> {const c=window.docContext?.snapshot();return c?.ready&&c.active?.activityComplete===false;});
  await page.locator('#docOpen').click();
- assert.match(await page.locator('#docActivity').innerText(),/Recent activity unavailable/i);
+ assert.equal(await page.locator('#docActivity').innerText(),'Recent activity unavailable.');
+ assert.doesNotMatch(await page.locator('#docActivity').innerText(),/read|source|incomplete/i);
  assert.equal(await page.locator('#docActivity article').count(),0);
  const answer=await page.evaluate(async id=>{
   const c=(await import('/js/doc-context.js')).pageDocContext;
@@ -429,7 +430,7 @@ for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11
   await page.screenshot({path:new URL(`out/test-artifacts/w11/${name}-${width}.png`,root).pathname,animations:'disabled'});
   await page.locator('#docCommandRefresh').click();assert.equal(await page.locator('#docCommandInput').inputValue(),'Demo');
   assert.deepEqual(errors,[]);
-  assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
+  assert.equal(calls.some(row=>! /^(find$|deal-room-|list-|read-|get-|morning-brief|today-triage|notification-feed|lead-board|claim-card|loop-board|incident-board|current-work-)/.test(row.name)),false);
  });
 });
 

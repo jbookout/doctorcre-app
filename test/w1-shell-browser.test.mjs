@@ -50,9 +50,9 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   await page.locator('#selfAvatar').click(); await page.getByText('Profile', {exact:true}).click();
   assert.ok((await page.locator('.app-shell-profile').boundingBox()).width > 900);
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
-  assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
+  assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
   await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click(); await page.waitForURL('**/auth/login');
-  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
+  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
 });
 
 test('desktop and phone navigation, account and Call mode work with reduced motion', async t => {
@@ -69,7 +69,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     await page.keyboard.press('Escape');
     await page.getByLabel('Call mode', {exact:true}).click(); await page.waitForFunction(() => document.querySelector('#callModeDialog')?.open);
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
-    assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
+    assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
     const box = await page.locator('#callModeDialog').boundingBox(); assert.ok(box.width >= Math.min(900, width - 40));
     await page.locator('#callModeDialog #docPresence').waitFor();
     await page.locator('#callModeClose').scrollIntoViewIfNeeded();
