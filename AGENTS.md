@@ -55,3 +55,17 @@ Before opening or updating any pull request, apply both skills to the diff:
 2. `zero-tech-debt`: rework the change from its intended end state; delete dead compatibility paths and duplicated rules.
 
 Both are installed at `~/.agents/skills/` (sources: github.com/mattpocock/skills `skills/engineering/codebase-design`, github.com/jnsahaj/skills `skills/zero-tech-debt`). The PR reviewer checks both, so all two are required.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are GitHub Issues in `jbookout/doctorcre-app`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context; CARR doctrine stays in `jbookout/carr-system`. See `docs/agents/domain.md`.
