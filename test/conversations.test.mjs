@@ -25,7 +25,7 @@ import {
   visibleCountLine,
 } from "../js/conversations-model.js";
 import { APP_ROUTE_PATHS } from "../js/notifications-model.js";
-import { classifyCommandOutcome, createCommandState, settleCommand } from "../js/command-feedback.mjs";
+import { classifyCommandOutcome, settleCommand } from "../js/command-feedback.mjs";
 import { createFixtureClient } from "../js/fixture-client.js";
 
 const root = new URL("..", import.meta.url);
@@ -314,7 +314,7 @@ test("clause 8: a stale base version is a conflict, is settled, and is recovered
   assert.equal(outcome.reason, "version_conflict");
   // A conflict is SETTLED: the kernel drops the entry, so the next attempt is a
   // fresh intent built on a fresh read rather than a replay of a dead one.
-  const opened = { ...createCommandState(), "conversations:rename:x": { operationKey: "conversations:rename:x", status: "pending" } };
+  const opened = { ...{}, "conversations:rename:x": { operationKey: "conversations:rename:x", status: "pending" } };
   assert.equal(Object.prototype.hasOwnProperty.call(settleCommand(opened, "conversations:rename:x", outcome), "conversations:rename:x"), false);
 
   // The recovery is a RE-READ, and the retry carries the version the re-read

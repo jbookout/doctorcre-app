@@ -10,7 +10,7 @@ import { createSystemWorkClient } from "../js/system-work-client.js";
 import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
-import { createCommandState, performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
+import { performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
 import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
@@ -86,7 +86,7 @@ test("Dot 24: producer city is displayed as the deal market", async () => {
 test("Dot 21: closing outcome uses the producer base_version", async () => {
   const writes=[];
   const client=createLiveClient({fetchImpl:async(_path,init)=>{const req=JSON.parse(init.body).params; if(req.name==="get-deal-room")return rpc({deal_id:"demo",base_version:7,thread:[],events:[]});writes.push(req); return rpc({ok:true});}});
-  const h=handlers("js/pipeline.js","async function runOutcomeWrite(","/** One follow-up",{state:{client,boardSync:{requestRefresh:noop}},dock:{record:noop},operations:new Map(),commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runOutcomeWrite"]);
+  const h=handlers("js/pipeline.js","async function runOutcomeWrite(","/** One follow-up",{state:{client,boardSync:{requestRefresh:noop}},dock:{record:noop},operations:new Map(),commandState:{},performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runOutcomeWrite"]);
   await h.runOutcomeWrite("close",{verb:"update-deal",summary:"Close",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}},{deal:"demo",name:"Demo"});
   assert.equal(writes.length,1);assert.equal(writes[0].arguments.base_version,7);assert.equal(writes[0].arguments.outcome,"won");
 });
@@ -270,7 +270,7 @@ test("Dot 10: an answered app release with pending CARR reads cannot claim succe
 
 test("Dot 11: a blocked second rename cannot replace the retained recovery intent", async () => {
   const calls=[];const operations=new Map();
-  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:createCommandState(),uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop},["dispatch"]);
+  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:{},uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop},["dispatch"]);
   const send=async args=>{calls.push(args);if(calls.length===1)throw new Error("lost response");return {ok:true};};
   await h.dispatch("rename:A",{name:"First"},"Rename",send);await h.dispatch("rename:A",{name:"Second"},"Rename",send);
   const saved=operations.get("rename:A");await h.dispatch("rename:A",saved.args,saved.summary,saved.send);
@@ -432,11 +432,11 @@ test("Dot 30: source review closure does not prove merge release activation or c
 });
 
 test("Dot 9: phase reconciliation resumes the originally requested follow-up writes", async () => {
-  const {completionPlan,moveIntent}=await import("../js/pipeline-model.js");const {cellKey,pendingFieldWrite}=await import("../js/field-write-reconciliation.mjs");
+  const {completionPlan,moveIntent}=await import("../js/pipeline-model.js");const {cellKey}=await import("../js/field-write-reconciliation.mjs");const {pendingCommand}=await import("../js/command-feedback.mjs");
   const operations=new Map(),followUps=[];let phaseCalls=0;
   const state={fieldWrites:{},deals:new Map([["demo",{name:"Demo"}]]),boardSync:{requestRefresh:noop}};
   const request={deal:"demo",field:"phase",value:"Legal"};
-  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingFieldWrite,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,refreshPanel:noop,fieldPatch:(field,value)=>({[field]:value}),sendFieldWrite:async()=>({status:"ok",request}),uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
+  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingCommand,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,refreshPanel:noop,fieldPatch:(field,value)=>({[field]:value}),sendFieldWrite:async()=>({status:"ok",request}),uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
   const intent=moveIntent({id:"demo",name:"Demo",phase:"On Deck"},"legal");
   await h.runMove(intent,{evidence:"Demo note",nextStep:"Demo follow-up",nextWhen:"2026-10-01",effectiveDate:"2026-09-30",recordCriticalDate:true,dateSource:"Demo source"});
   assert.equal(followUps.length,0);await h.retryFieldWrite(cellKey("demo","phase"));
@@ -446,7 +446,7 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
   const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:{},performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
@@ -454,7 +454,7 @@ test("Closing outcome recovery after Dot 21 replays update-deal through the dock
 
 test("PR111 #5: outcome read failure remains retryable from the receipt dock", async () => {
   const writes=[],receipts=[],operations=new Map();let reads=0;let dockOptions;
-  const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
+  const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:{},performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
   const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","/**\n * The whole Move",globals,["runOutcomeWrite","runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}};
   await h.runOutcomeWrite("close",step,{deal:"demo",name:"Demo"});

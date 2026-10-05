@@ -11,7 +11,7 @@ import {
 } from "../js/delivery-evidence-model.js";
 import { dispositionState } from "../js/work-inventory-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
-import { createCommandState, performCommand } from "../js/command-feedback.mjs";
+import { performCommand } from "../js/command-feedback.mjs";
 import { uuidv4 } from "../js/uuid.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -201,7 +201,7 @@ test("verb arguments are built from the fresh card and refuse a missing part in 
 
 test("a refused write moves the base on re-read and the replay is confirmed", async () => {
   const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
-  let state = createCommandState();
+  let state = {};
   const operationKey = operationKeys.decline("WR-000904");
   const run = (args) => performCommand({
     operationKey, args,

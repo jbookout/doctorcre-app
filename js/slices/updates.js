@@ -2,7 +2,6 @@ export default {
   "id": "updates",
   "files": [
     "css/notifications.css",
-    "js/notification-preference-draft.mjs",
     "js/notifications-model.js",
     "js/notifications.js",
     "notifications.html",

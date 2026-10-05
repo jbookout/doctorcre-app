@@ -31,7 +31,7 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh
 //      with the version the refusal carried. The page re-reads, which is the
 //      only source of the new version, and asks the person to press again.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -102,7 +102,7 @@ function suggestionEditorActive() {
 }
 let pendingOutcomeOpen = null;
 const openLinks = createOpenLinkGuard();
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();

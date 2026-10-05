@@ -326,3 +326,48 @@ export const operationKeys = Object.freeze({
 export function quickAddStartsOpen({ phone = false, hasDraftText = false } = {}) {
   return !phone || hasDraftText;
 }
+
+// Decide whether a task detail can remain on screen after a board reread.
+// The close outcome is page memory only until the person explicitly confirms.
+const stillOpen = (snapshot, rows) => Array.isArray(rows) && rows.some((row) =>
+  `${row.kind}:${row.number}` === snapshot?.key);
+
+export function taskDialogTransition({ status, open, held, rows, viewer }) {
+  if (status !== "ready") {
+    return open
+      ? { action: "conceal", snapshot: null, held: status === "unauthorized" || status === "unverified" ? null : open }
+      : { action: "none", snapshot: null, held: status === "unauthorized" || status === "unverified" ? null : held || null };
+  }
+  if (open) return stillOpen(open, rows) && open.viewer === viewer
+    ? { action: "refresh", snapshot: open, held: null }
+    : { action: "discard", snapshot: null, held: null };
+  if (held) return stillOpen(held, rows) && held.viewer === viewer
+    ? { action: "restore", snapshot: held, held: null }
+    : { action: "discard", snapshot: null, held: null };
+  return { action: "none", snapshot: null, held: null };
+}
+
+// Choose whether an in-memory Quick Add draft belongs to the verified actor.
+export function draftIdentityPlan(previousActor, nextActor) {
+  if (!nextActor) return "refuse";
+  if (!previousActor) return "first";
+  return previousActor === nextActor ? "reuse" : "replace";
+}
+
+// Identity verification is a new read epoch. Any board request from an older
+// epoch must lose, even if it finishes after verification fails.
+export function invalidateTaskRead(view, status, message = null) {
+  view.sequence += 1;
+  view.status = status;
+  view.rows = [];
+  view.message = message;
+  return view.sequence;
+}
+
+export function isCurrentTaskRead(view, sequence) {
+  return sequence === view.sequence;
+}
+
+export function shouldFocusTaskRetry(concealedDialog, status) {
+  return concealedDialog && (status === "error" || status === "unauthorized" || status === "unverified");
+}

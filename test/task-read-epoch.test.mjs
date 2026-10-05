@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "../js/task-read-epoch.mjs";
+import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "../js/task-records-model.js";
 
 test("a failed identity read fences out an earlier successful board response", async () => {
   const view = { sequence: 8, status: "ready", rows: [{ number: "old" }], message: null };
