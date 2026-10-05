@@ -7,8 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { buildArtifact } from './artifact.mjs';
 import { journeyFiles, continuityCases, requiredNativeEntries, assertNativeJourneys } from './browser-proof-contract.mjs';
 
-import { journeyProfiles } from '../tests/journeys/phone-profiles.mjs';
-
 const root=fileURLToPath(new URL('../',import.meta.url));
 const output=join(root,'.e2e/proof');
 const buildRoot=join(root,'.e2e/proof-build');
@@ -48,7 +46,7 @@ try {
   run(['node_modules/e2e/dist/cli/bin.js','run','tests/journeys','--reporter','list,junit'],{BROWSER_PROOF_ROOT:buildRoot,BROWSER_PROOF_BINDING:JSON.stringify(servedBuild)});
   const native=JSON.parse(await readFile(join(root,'.e2e/report.json')));
   if(native.run?.vcs?.commit!==sourceCommit || native.run.vcs.dirty!==false || native.run.exitCode!==0 || native.run.status!=='passed') throw Error('native runner failed or source identity changed');
-  assertNativeJourneys(native.run.results,journeyProfiles.map(profile=>profile.name));
+  assertNativeJourneys(native.run.results);
   const binding={repo:'jbookout/doctorcre-app',sourceCommit,buildDigest:built.archiveSha256,buildConfigDigest,fixtureDigest,runtime,runId:native.run.id,attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   await writeFile(join(output,'binding.json'),JSON.stringify(binding));
   phase='continuity';

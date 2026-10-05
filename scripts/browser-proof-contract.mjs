@@ -8,8 +8,9 @@ export const journeyFiles = [...new Set(requiredNativeEntries.map(row => row.fil
 export const continuityCases = [320, 390, 844].flatMap(width =>
   ['reduce', 'no-preference'].map(motion => ({ width, motion, id: `continuity-${width}-${motion}` })));
 
-export function assertNativeJourneys(results, targets) {
-  for (const target of targets) for (const entry of requiredNativeEntries) {
+export function assertNativeJourneys(results) {
+  // The acceptance contract is independent of the runner's target selection.
+  for (const target of ['chromium', 'iphone', 'small-android']) for (const entry of requiredNativeEntries) {
     const id = `${entry.file}::${encodeURIComponent(entry.title)}`;
     const rows = results.filter(row => row.testId === id && row.targetId === target && row.selected);
     if (rows.length !== 1 || rows[0].status !== 'passed' || rows[0].attempts.length !== 1)

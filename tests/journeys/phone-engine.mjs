@@ -8,12 +8,14 @@ import { auditScreen } from './screen-audit.mjs';
 // engine and live-surface seams; Chromium CDP applies the Playwright profile.
 // Every locator tap remains a harness operation and dispatches touch events.
 export function journeyEngine(profile) {
+  const mobile = profile.name !== 'chromium';
+  if (mobile && (!profile.hasTouch || !profile.isMobile))
+    throw Error('Phone profile requires mobile layout and touch input');
   const base = web({ browser: 'chromium', viewport: profile.viewport, ...(profile.userAgent ? { userAgent: profile.userAgent } : {}) });
   const { capabilities, ...implementation } = base;
   const live = surfaceOf(base);
   const refs = new Map();
   let cdp, artifactsDir, checks = 0, touches = 0;
-  const mobile = Boolean(profile.hasTouch);
   async function configurePage() {
     if (!mobile) return;
     cdp = await live.context().newCDPSession(live.page());
