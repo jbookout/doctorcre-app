@@ -1,3 +1,4 @@
+import { mountFeatureGate } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
@@ -84,6 +85,7 @@ const view = {
 };
 
 let client = null;
+let suggestionActionsEnabled = false;
 // A cancelled traversal must settle even if its adapter ignores abort. Live
 // reads also forward the signal to the transport, outside the verb arguments.
 const readClient = (method, args, signal) => signal
@@ -404,19 +406,19 @@ function renderSuggestions() {
         <details class="suggestion-original"><summary>Original and contributions</summary>
           <p>${escapeHtml(card.original)}</p><ul>${card.contributions.map(item => `<li>${escapeHtml(item.original)} <span>— ${escapeHtml(item.contributor)}, ${escapeHtml(formatClock(item.at) || "time unavailable")}</span></li>`).join("")}</ul>
         </details>
-        <div class="suggestion-decisions" role="group" aria-label="Decide this suggestion">
+        <div ${suggestionActionsEnabled ? "" : "hidden"} class="suggestion-decisions" role="group" aria-label="Decide this suggestion">
           <button class="btn btn-primary" type="button" data-choice="act">Act</button>
           <button class="btn" type="button" data-choice="discuss">Discuss</button>
           <button class="btn" type="button" data-choice="snooze">Snooze</button>
           <button class="btn btn-quiet" type="button" data-choice="dismiss">Dismiss</button>
         </div>
-        <div class="suggestion-fields">
+        <div ${suggestionActionsEnabled ? "" : "hidden"} class="suggestion-fields">
           <label>Work number for Act <input type="text" data-work-number="${escapeHtml(card.id)}" value="${escapeHtml(workNumber)}" placeholder="Number from Choose work"></label>
           <a href="/doc-chats/work" target="_blank" rel="noopener">Choose work</a>
           <label>Snooze until <input type="date" data-snooze-date="${escapeHtml(card.id)}" value="${escapeHtml(state.snoozeDates.get(card.id) ?? defaultSnooze)}"></label>
         </div>
         ${conflictHtml}
-        <div class="field suggestion-correction"><label for="correction-${escapeHtml(card.id)}">Correct this suggestion</label>
+        <div ${suggestionActionsEnabled ? "" : "hidden"} class="field suggestion-correction"><label for="correction-${escapeHtml(card.id)}">Correct this suggestion</label>
           <textarea id="correction-${escapeHtml(card.id)}" data-correction="${escapeHtml(card.id)}" rows="3" placeholder="Type the narrow correction…">${escapeHtml(draft)}</textarea>
           <button class="btn btn-secondary" type="button" data-propose="${escapeHtml(card.id)}">Propose correction</button>
         </div>
@@ -694,6 +696,7 @@ function suggestionRow(id) {
 }
 
 async function decideSuggestion(id, choice, card) {
+  if (!suggestionActionsEnabled) return;
   if (view.suggestions.state !== "read") return;
   const row = suggestionRow(id);
   const workNumber = view.suggestions.workNumbers.get(id) || "";
@@ -732,6 +735,7 @@ async function decideSuggestion(id, choice, card) {
 }
 
 async function proposeSuggestionCorrection(id) {
+  if (!suggestionActionsEnabled) return;
   if (view.suggestions.state !== "read") return;
   const row = suggestionRow(id);
   const draft = view.suggestions.drafts.get(id) || "";
@@ -903,6 +907,13 @@ async function boot() {
   client = boot_.mode === "live"
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+  mountFeatureGate({ document, window: globalThis.window, name: "doc-suggestion-actions",
+    read: signal => client.listFeatureSwitches({ signal }),
+    onChange: enabled => {
+      suggestionActionsEnabled = enabled;
+      for (const node of document.querySelectorAll(".suggestion-decisions,.suggestion-fields,.suggestion-correction")) node.hidden = !enabled;
+    },
+  });
   mountNotificationBadge(client);
   await load();
   mountAutoRefresh({ document, window: globalThis.window, shouldRefresh: () => !suggestionEditorActive(), refresh: ({ signal }) => load({ background: true, signal }) });

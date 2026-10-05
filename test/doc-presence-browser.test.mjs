@@ -23,7 +23,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
-   const methods={'deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
+   const methods={'list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
    else if(methods[name]) { value=await fixture[methods[name]](name==='get-deal-room'?args.deal||args.deal_id:name==='deal-room-changes'?args.cursor:args); if(name==='get-deal-room') value={...value.deal,deal_id:value.deal.id,thread:value.thread,critical_dates:value.critical_dates.map(row=>({...row,due_on:row.date})),next_actions:value.next_actions,activities:value.activities,events:[]}; }
@@ -446,4 +446,28 @@ for(const [name,engine] of [['chromium',chromium],['webkit',webkit]])test(`R8 ${
  await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Demo');await page.getByRole('option',{name:new RegExp(title)}).click();
  assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
  assert.ok(await page.locator('#docCommandBack').evaluate(n=>n.getBoundingClientRect().width)>=44);
+});
+
+test('Doc suggestion control follows server switch flips and stale clicks cannot write',async t=>{
+ let available=false;
+ const {page,goto,calls,errors}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname==='/mcp' && route.request().postDataJSON()?.params?.name==='list-feature-switches'){
+   await rpc(route,{ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]});return true;
+  }
+ }});
+ await goto('/deals?mode=live');
+ await page.locator('#docOpen').click();
+ await page.waitForFunction(()=>document.querySelector('[data-doc-approve]'));
+ const action=page.locator('[data-doc-approve]').first();
+ assert.equal(await action.isVisible(),false);
+ await action.evaluate(node=>{node.hidden=false;node.click();});
+ assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
+ available=true;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await action.waitFor({state:'visible'});
+ available=false;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await action.waitFor({state:'hidden'});
+ assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
+ assert.deepEqual(errors,[]);
 });

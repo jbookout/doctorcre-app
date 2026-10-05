@@ -199,7 +199,7 @@ for (const width of [1440, 390])
           "deal-room-changes",
           "unread-count",
           "correspondence-readiness",
-          "list-doc-suggestions",
+          "list-feature-switches","list-doc-suggestions",
         ].includes(v),
       ),
     );

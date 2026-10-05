@@ -1695,6 +1695,9 @@ export async function createFixtureClient(opts = {}) {
     // statuses or inbox, so it never answers those rows, and no test may treat
     // it as evidence of what production returns. Dates are minted against the
     // current clock, since a frozen "today" would make every run look overdue.
+    async listFeatureSwitches() {
+      return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
+    },
     async morningBrief() {
       const own = row => !row.owner || row.owner === selfActor;
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
