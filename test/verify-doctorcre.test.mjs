@@ -87,7 +87,8 @@ test('source revision and source bytes drift during a recipe retain a failed ver
     await t.test(drift, async () => {
       const scratch = await mkdtemp(join(tmpdir(), 'doctorcre-verify-source-'));
       const checkout = join(scratch, 'source'), run = join(scratch, 'run');
-      await exec('git', ['clone', '--quiet', '--shared', root, checkout]);
+      // Depth 1 matches hosted CI, so the drift revision must come from the fixture itself.
+      await exec('git', ['clone', '--quiet', '--depth=1', `file://${root}`, checkout]);
       for (const path of ['contracts/app-routes.v1.json', 'js/slices.generated.js', 'tours/day-shell.generated.js']) {
         await writeFile(join(checkout, path), await readFile(join(root, path)));
       }
@@ -98,7 +99,9 @@ test('source revision and source bytes drift during a recipe retain a failed ver
         recipes.home = async h => {
           await home(h);
           ${drift === 'revision'
-            ? `const { execFileSync } = await import('node:child_process'); execFileSync('git', ['update-ref', 'HEAD', 'HEAD^'], { cwd: ${JSON.stringify(checkout)} });`
+            ? `const { execFileSync } = await import('node:child_process');
+               const git = (...args) => execFileSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd: ${JSON.stringify(checkout)}, encoding: 'utf8' }).trim();
+               git('update-ref', 'HEAD', git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'source drift'));`
             : `const { appendFile } = await import('node:fs/promises'); await appendFile(${JSON.stringify(join(checkout, 'js/boot-mode.js'))}, '\\n// source drift\\n');`}
         };
       `);
