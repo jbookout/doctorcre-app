@@ -9,7 +9,7 @@ test("production can reach CARR without making the app publicly routable", () =>
   assert.equal(config.workers_dev, false);
   assert.equal(config.preview_urls, true);
   assert.deepEqual(config.routes, []);
-  assert.deepEqual(config.services, [{ binding: "CARR", service: "carr-mcp" }]);
+  assert.deepEqual(config.services, [{ binding: "CARR", service: "carr-mcp" }, { binding: 'CARR_ERRORS', service: 'carr-mcp', entrypoint: 'RuntimeErrorSink' }]);
   assert.equal(config.vars.APP_ENV, "production");
 });
 
@@ -18,6 +18,6 @@ test("staging remains isolated from production CARR and production hostnames", (
   assert.equal(staging.name, "doctorcre-app-staging");
   assert.equal(staging.workers_dev, true);
   assert.deepEqual(staging.routes, []);
-  assert.deepEqual(staging.services, [{ binding: "CARR", service: "carr-mcp-staging" }]);
+  assert.deepEqual(staging.services, [{ binding: "CARR", service: "carr-mcp-staging" }, { binding: 'CARR_ERRORS', service: 'carr-mcp-staging', entrypoint: 'RuntimeErrorSink' }]);
   assert.equal(staging.vars.APP_ENV, "staging");
 });

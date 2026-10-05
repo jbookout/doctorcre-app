@@ -8,7 +8,7 @@ import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "2f531c295f37757899ca432dfb04a9b95e8d5184";
+const pinnedProducer = "cb31306e2bbfc4ed7ada11920d9077cbdb949947";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -24,7 +24,7 @@ async function producerModuleUrl(path) {
   return url;
 }
 
-test("the runtime pin integrates Doc activity with inherited Progress and system-work reads", () => {
+test("the runtime pin integrates runtime errors with inherited application reads", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
@@ -226,4 +226,14 @@ test("the advertised runtime producer accepts the inherited Live Library system=
   assert.equal(consumed.system, "true");
   assert.equal(consumed.live_library, "true");
   assert.deepEqual(await response.json(), inventory, "the admitted query must return the inherited inventory to the app");
+});
+
+
+test("runtime error wire contracts match the exact pinned producer", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime error ingress",
+}, async () => {
+  const producer = JSON.parse(execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:mcp-server/src/runtime-errors.v1.json`], { encoding: "utf8" }));
+  const consumer = JSON.parse(await readFile(new URL("../contracts/runtime-errors.v1.json", import.meta.url), "utf8"));
+  assert.deepEqual(consumer, producer);
+  assert.ok(contract.http_surfaces.includes(producer.browser_endpoint));
 });

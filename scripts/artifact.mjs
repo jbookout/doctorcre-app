@@ -10,6 +10,7 @@ const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
   route_contract: "contracts/app-routes.v1.json",
+  runtime_errors: 'contracts/runtime-errors.v1.json',
 };
 const SHA = /^[0-9a-f]{64}$/;
 
@@ -114,6 +115,15 @@ async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
   const files = new Map();
   for (const path of paths) {
     let content = await readSource(path);
+    if (path === 'js/error-tracking.js') {
+      const contract = JSON.parse((await readSource('contracts/runtime-errors.v1.json')).toString('utf8'));
+      content = Buffer.from(content.toString('utf8').replace("import contract from '../contracts/runtime-errors.v1.json' with { type: 'json' };", `const contract = ${JSON.stringify(contract)};`));
+    }
+    if (path === 'js/error-tracking-entry.js') content = Buffer.from(content.toString('utf8').replace('__DOCTORCRE_RELEASE_SHA__', commit));
+    if (path.endsWith('.html') && !path.startsWith('reports/')) {
+      content = Buffer.from(content.toString('utf8').replace(/<head([^>]*)>/i,
+        '<head$1><script type="module" src="/js/error-tracking-entry.js"></script>'));
+    }
     if (path === "reports/share.js") {
       const source = (await readSource("js/app-shell.js")).toString("utf8");
       // Token-authenticated public reports carry navigation back to the app.

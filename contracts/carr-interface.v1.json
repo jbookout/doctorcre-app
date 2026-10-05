@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.43.0",
+  "version": "1.44.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "2f531c295f37757899ca432dfb04a9b95e8d5184"
+    "source_commit": "cb31306e2bbfc4ed7ada11920d9077cbdb949947"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -131,7 +131,8 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*"
+    "/api/tours/*",
+    "/api/v1/runtime-errors"
   ],
   "invariants": [
     "The browser never receives database credentials.",
