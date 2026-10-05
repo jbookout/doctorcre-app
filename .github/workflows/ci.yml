@@ -65,3 +65,18 @@ jobs:
         if: github.event_name == 'push'
       - run: npm run build
       - run: npm run artifact:verify
+      # Lives inside the existing required test context; no ruleset change needed.
+      - run: npm run performance:check
+        if: github.event_name == 'pull_request'
+        env:
+          PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            doctorcre-app/test-artifacts/performance/report.json
+            doctorcre-app/test-artifacts/performance/summary.md
+            doctorcre-app/test-artifacts/performance/*.zip
+          if-no-files-found: warn
+          retention-days: 7

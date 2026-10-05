@@ -28,7 +28,9 @@
     "prebuild": "npm run slices:check",
     "preserve": "npm run slices:check",
     "predeployment:check:staging": "npm run slices:check",
-    "predeployment:check:production": "npm run slices:check"
+    "predeployment:check:production": "npm run slices:check",
+    "performance:measure": "node scripts/measure-performance.mjs",
+    "performance:check": "npm run performance:measure && node scripts/performance-budget.mjs contracts/performance-budget.v1.json test-artifacts/performance/report.json test-artifacts/performance/summary.md"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
