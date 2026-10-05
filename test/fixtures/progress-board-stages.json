@@ -1,6 +1,6 @@
 {
   "producer_repository": "jbookout/carr-system",
-  "producer_source_commit": "0803c96043e882539c38ab9e08e3e095dd2668fe",
+  "producer_source_commit": "4af24be8b4415290dcf29eecb6091a0d25fc91bd",
   "producer_function": "tools/progress_board.py:task_stage/task_health/pulse_state/blocked_detail/is_stale/stage_timer",
   "reference_time": "2026-09-28T13:00:00Z",
   "synthetic": true,
@@ -367,12 +367,12 @@
         "title": "Synthetic done",
         "status": "done"
       },
-      "stage": "build",
-      "stage_label": "Building",
+      "stage": "live",
+      "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "still",
       "stale": false,
-      "stage_timer": "build unknown",
+      "stage_timer": "live unknown",
       "blocked": null
     },
     {
@@ -389,6 +389,22 @@
       "pulse": "still",
       "stale": false,
       "stage_timer": "merged unknown",
+      "blocked": null
+    },
+    {
+      "id": "done_unmerged",
+      "task": {
+        "title": "Synthetic unmerged",
+        "status": "done",
+        "pr": 85,
+        "pr_phase": "Awaiting review"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "stale": false,
+      "stage_timer": "review unknown",
       "blocked": null
     },
     {
@@ -768,12 +784,12 @@
         "status": "done",
         "stage": "live"
       },
-      "stage": "build",
-      "stage_label": "Building",
+      "stage": "live",
+      "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "still",
       "stale": false,
-      "stage_timer": "build unknown",
+      "stage_timer": "live unknown",
       "blocked": null
     },
     {

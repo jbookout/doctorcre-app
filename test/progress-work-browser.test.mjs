@@ -762,7 +762,7 @@ for (const width of [390, 1280]) test(`work detail retains the board details at 
 test('merged work detail displays the release wait and inline question', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
     if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
-      status:'done', stage:'merged', release_wait:'Synthetic canary pending',
+      status:'done', stage:'merged', pr:100, pr_phase:'Merged', release_wait:'Synthetic canary pending',
       question:'SYNTHETIC V1 QUESTION', stage_history:[],
     });
     return payload;
