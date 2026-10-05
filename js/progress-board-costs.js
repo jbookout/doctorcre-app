@@ -90,8 +90,10 @@ export function mountCostView(root) {
           drivers: knownRows.flatMap(row => Object.entries(row.drivers || {}).map(([driver, amount]) => `${driver} ${usd(amount)}`)) };
       });
       const graph = svg('svg', { viewBox: '0 0 700 210', role: 'group', 'aria-label': `Daily spend for ${provider.selectedOptions[0]?.textContent}, ${selectedMonth}`, class: 'cost-chart' });
-      const max = Math.max(1, ...days.map(day => day.usd ?? 0));
-      graph.append(svg('text', { x: 0, y: 15 }, `${usd(max)} · daily spend`));
+      const observedDays = days.filter(day => Number.isFinite(day.usd));
+      const highest = observedDays.length ? Math.max(...observedDays.map(day => day.usd)) : null;
+      const max = Math.max(1, highest ?? 0);
+      graph.append(svg('text', { x: 0, y: 15 }, highest === null ? 'Daily spend unavailable' : `${usd(highest)} · highest observed day`));
       for (const [i, day] of days.entries()) {
         const x = 12 + i * 676 / days.length, width = Math.max(2, 676 / days.length - 5), height = 145 * day.usd / max;
         const bar = svg('rect', { x, y: 175 - height, width, height: Math.max(3, height), rx: 3, tabindex: 0, 'data-day': day.day,

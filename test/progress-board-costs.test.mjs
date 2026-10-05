@@ -71,6 +71,7 @@ test('an unconfirmed subscription zero stays a known lower bound and an unavaila
   assert.match(panel.textContent, /subscription plan\/price unconfirmed/);
   assert.match(panel.textContent, /Amounts exclude unknown costs/);
   assert.match(panel.querySelector('[data-day="2026-10-01"]').getAttribute('aria-label'), /Unavailable/);
+  assert.match(panel.querySelector('.cost-chart > text').textContent, /Daily spend unavailable/);
   fixture.providers[1].state = 'unavailable';
   await app.refresh();
   assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to dateUnavailable/);
