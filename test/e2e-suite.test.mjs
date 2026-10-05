@@ -4,6 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { WAIT_MS } from "./browser-harness.mjs";
+import { journeyProfiles } from '../tests/journeys/phone-profiles.mjs';
 import { journeyFiles } from "../scripts/browser-proof-contract.mjs";
 
 const root = new URL("../", import.meta.url);
@@ -150,7 +151,7 @@ test('every native entry refuses the working-tree server when a build is bound',
   let result;
   try {
     execFileSync(process.execPath, ['node_modules/e2e/dist/cli/bin.js', 'run', 'tests/journeys', '--reporter', 'list'], {
-      cwd: fileURLToPath(root), encoding: 'utf8', timeout: WAIT_MS * 4,
+      cwd: fileURLToPath(root), encoding: 'utf8', timeout: WAIT_MS * 4 * journeyProfiles.length,
       env: { ...process.env, CI: '1', E2E_TELEMETRY_DISABLED: '1', BROWSER_PROOF_ROOT: '',
         BROWSER_PROOF_BINDING: JSON.stringify({ sourceCommit: 'a'.repeat(40), manifestDigest: 'b'.repeat(64) }) }, stdio: 'pipe',
     });
@@ -159,8 +160,8 @@ test('every native entry refuses the working-tree server when a build is bound',
   assert.match(result.stdout + result.stderr, /served build manifest unavailable/);
   const report = JSON.parse(await read('.e2e/report.json'));
   const declared = JSON.parse(await read('tests/journeys/required-coverage.json')).tests;
-  for (const { file, title } of declared) {
-    const entry = report.run.results.find(row => row.testId === `${file}::${encodeURIComponent(title)}` && row.selected);
+  for (const profile of journeyProfiles) for (const { file, title } of declared) {
+    const entry = report.run.results.find(row => row.targetId === profile.name && row.testId === `${file}::${encodeURIComponent(title)}` && row.selected);
     assert.equal(entry?.status, 'failed', `${file}: ${title} must reject the unbound server`);
     assert.match(JSON.stringify(entry.attempts), /served build manifest unavailable/);
   }

@@ -8,6 +8,15 @@ export const journeyFiles = [...new Set(requiredNativeEntries.map(row => row.fil
 export const continuityCases = [320, 390, 844].flatMap(width =>
   ['reduce', 'no-preference'].map(motion => ({ width, motion, id: `continuity-${width}-${motion}` })));
 
+export function assertNativeJourneys(results, targets) {
+  for (const target of targets) for (const entry of requiredNativeEntries) {
+    const id = `${entry.file}::${encodeURIComponent(entry.title)}`;
+    const rows = results.filter(row => row.testId === id && row.targetId === target && row.selected);
+    if (rows.length !== 1 || rows[0].status !== 'passed' || rows[0].attempts.length !== 1)
+      throw Error(`required native entry point incomplete: ${target}/${id}`);
+  }
+}
+
 // Called against the origin used by the test, never a separate proof server.
 // Hash the full manifest bytes so a matching commit alone cannot certify a
 // different build. The producer obtains this digest from the verified archive.

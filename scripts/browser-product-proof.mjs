@@ -1,11 +1,13 @@
 // Deterministic product evidence. No model, personal session or production target.
-import { readFile, writeFile, mkdir, copyFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, rename } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from './artifact.mjs';
-import { journeyFiles, continuityCases, requiredNativeEntries } from './browser-proof-contract.mjs';
+import { journeyFiles, continuityCases, requiredNativeEntries, assertNativeJourneys } from './browser-proof-contract.mjs';
+
+import { journeyProfiles } from '../tests/journeys/phone-profiles.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const output=join(root,'.e2e/proof');
@@ -22,8 +24,12 @@ const continuity=continuityCases.map(({id})=>id);
 
 try {
   if(git('status','--porcelain','--untracked-files=no')) throw Error('product proof requires committed source');
-  await rm(output,{recursive:true,force:true});
-  await rm(buildRoot,{recursive:true,force:true});
+  const retired=join(root,'_to_delete',`browser-proof-${Date.now()}`);
+  await mkdir(retired,{recursive:true});
+  for(const path of [output,buildRoot]) {
+    try { await rename(path,join(retired,path===output?'proof':'proof-build')); }
+    catch(error) { if(error.code!=='ENOENT') throw error; }
+  }
   await mkdir(output,{recursive:true});
   await mkdir(buildRoot,{recursive:true});
   const sourceCommit=git('rev-parse','HEAD');
@@ -35,17 +41,14 @@ try {
   const servedBuild={sourceCommit,manifestDigest:sha(await readFile(join(root,'dist/doctorcre-app.manifest.json')))};
   const runtime={e2e:JSON.parse(await readFile(join(root,'node_modules/e2e/package.json'))).version,web:JSON.parse(await readFile(join(root,'node_modules/@e2e-dev/web/package.json'))).version,playwright:JSON.parse(await readFile(join(root,'node_modules/playwright/package.json'))).version,node:process.versions.node,browser:'chromium'};
   const requiredNativeTests=requiredNativeEntries.map(row=>`${row.file}::${encodeURIComponent(row.title)}`);
-  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','scripts/browser-proof-contract.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/test.mjs','tests/journeys/browser-continuity.mjs',...journeyFiles]);
+  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','scripts/browser-proof-contract.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/test.mjs','tests/journeys/phone-engine.mjs','tests/journeys/phone-profiles.mjs','tests/journeys/screen-audit.mjs','tests/journeys/browser-continuity.mjs',...journeyFiles]);
   const fixtureDigest=await filesDigest(['data/board-seed.json','tests/journeys/browser-continuity.mjs']);
   // Run from this invocation's extracted archive. Old reports cannot satisfy it.
   phase='native-journeys';
   run(['node_modules/e2e/dist/cli/bin.js','run','tests/journeys','--reporter','list,junit'],{BROWSER_PROOF_ROOT:buildRoot,BROWSER_PROOF_BINDING:JSON.stringify(servedBuild)});
   const native=JSON.parse(await readFile(join(root,'.e2e/report.json')));
   if(native.run?.vcs?.commit!==sourceCommit || native.run.vcs.dirty!==false || native.run.exitCode!==0 || native.run.status!=='passed') throw Error('native runner failed or source identity changed');
-  for(const id of requiredNativeTests) {
-    const row=native.run.results.find(row=>row.testId===id && row.selected);
-    if(!row || row.status!=='passed' || row.attempts.length!==1) throw Error(`required native entry point incomplete: ${id}`);
-  }
+  assertNativeJourneys(native.run.results,journeyProfiles.map(profile=>profile.name));
   const binding={repo:'jbookout/doctorcre-app',sourceCommit,buildDigest:built.archiveSha256,buildConfigDigest,fixtureDigest,runtime,runId:native.run.id,attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   await writeFile(join(output,'binding.json'),JSON.stringify(binding));
   phase='continuity';

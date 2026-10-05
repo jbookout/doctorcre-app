@@ -15,3 +15,5 @@
 #homeInvoices .home-panel-head h2{min-width:0;overflow-wrap:anywhere}
 
 #homeInvoices .home-flag-light{animation-duration:1s}
+
+.home-introductions .relationship-card,.relationship-intro-list .relationship-card{color:var(--text);font:inherit}

@@ -80,7 +80,7 @@ export function dealTimeline(detail, now = Date.now()) {
 }
 
 export function renderPhaseTimeline(detail) {
-  return `<div class="phase-scroll"><ol class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${dealTimeline(detail).phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span><time datetime="${esc(p.day || '')}">${esc(dateCaption(p.day))}</time></li>`).join('')}</ol></div>`;
+  return `<div class="phase-scroll" tabindex="0"><ol class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${dealTimeline(detail).phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span><time datetime="${esc(p.day || '')}">${esc(dateCaption(p.day))}</time></li>`).join('')}</ol></div>`;
 }
 export function renderCriticalDates(detail, now = Date.now()) {
   const view = dealTimeline(detail,now);
@@ -105,7 +105,7 @@ export function renderDealTimeline(detail, now = Date.now(), full = false) {
     const last = clusters.at(-1);
     if (last && x(day)-x(last[0]) < 28) last.push(day); else clusters.push([day]);
   }
-  const chart = `<div class="timeline-viewport"><svg class="timeline-chart" viewBox="0 0 1000 180" role="img" aria-label="Calendar timeline from ${esc(dateCaption(ticks[0]))} to ${esc(dateCaption(ticks.at(-1)))}"><line class="timeline-baseline" x1="40" x2="960" y1="58" y2="58"/><line class="timeline-baseline" x1="40" x2="960" y1="98" y2="98"/>${ticks.map(day => `<line class="timeline-grid" x1="${x(day)}" x2="${x(day)}" y1="35" y2="124"/><text x="${x(day)}" y="164" text-anchor="middle">${esc(dateCaption(day))}</text>`).join('')}<text x="40" y="46">Dates</text><text x="40" y="88">Activity</text><line class="timeline-today" x1="${x(view.today)}" x2="${x(view.today)}" y1="30" y2="138"/><text class="timeline-today-label" x="${x(view.today)}" y="20" text-anchor="middle">Today</text>${clusters.map(cluster => {
+  const chart = `<div class="timeline-viewport" tabindex="0"><svg class="timeline-chart" viewBox="0 0 1000 180" role="img" aria-label="Calendar timeline from ${esc(dateCaption(ticks[0]))} to ${esc(dateCaption(ticks.at(-1)))}"><line class="timeline-baseline" x1="40" x2="960" y1="58" y2="58"/><line class="timeline-baseline" x1="40" x2="960" y1="98" y2="98"/>${ticks.map(day => `<line class="timeline-grid" x1="${x(day)}" x2="${x(day)}" y1="35" y2="124"/><text x="${x(day)}" y="164" text-anchor="middle">${esc(dateCaption(day))}</text>`).join('')}<text x="40" y="46">Dates</text><text x="40" y="88">Activity</text><line class="timeline-today" x1="${x(view.today)}" x2="${x(view.today)}" y1="30" y2="138"/><text class="timeline-today-label" x="${x(view.today)}" y="20" text-anchor="middle">Today</text>${clusters.map(cluster => {
     const items = shown.filter(e => cluster.includes(e.day));
     const dates = items.filter(e => e.type === 'date').length, activity = items.length-dates;
     const cx = x(cluster[0]);
