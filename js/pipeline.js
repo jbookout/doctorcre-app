@@ -136,7 +136,7 @@ function cardHtml(deal) {
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(deal.name)}, ${esc(columnLabel(deal.phase))}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(deal.name)}</button></h4>
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" aria-label="Needs attention"></span>' : ''}</div>
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" role="img" aria-label="Needs attention"></span>' : ''}</div>
     <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p>
     ${autoHtml(deal)}
   </article>`;
@@ -630,7 +630,12 @@ function closeCompletion({ cancelled }) {
   state.target = null;
   renderBoard();
   if (cancelled && intent) announce(`Move cancelled. ${intent.name} stays in ${intent.from_label}.`);
-  if (intent) document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`)?.focus();
+  if (intent) {
+    const returnTo = state.panelDeal === intent.deal && $('recordPanel')?.open
+      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`);
+    if (returnTo?.id === 'detailPhase') returnTo.value = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
+    returnTo?.focus({ preventScroll: true });
+  }
 }
 
 function showConflict(conflict) {
@@ -1185,6 +1190,7 @@ function wire() {
       return;
     }
     closeCompletion({ cancelled: false });
+    if (state.panelDeal === intent.deal) await refreshPanel();
   });
 
   $('conflictCancel')?.addEventListener('click', () => $('conflictDialog')?.close());
@@ -1244,8 +1250,9 @@ function wire() {
       $('timelineRange').focus({preventScroll:true});
     }
     if (e.target.id === 'detailPhase') {
-      const intent = moveIntent(state.deals.get(id), e.target.value);
-      if (intent) { const result = await sendPhaseWrite(id,intent.value); if(result.status === 'ok' && !result.superseded) { confirmLocalWrite(id,{phase:result.request?.value ?? intent.value}); await refreshPanel(); } else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Phase') || 'Change not confirmed'); renderPendingWrites(); }
+      const destination = e.target.value;
+      e.target.value = columnByValue(state.deals.get(id)?.phase)?.slug || '';
+      beginMove(id, destination);
     }
     if (e.target.id === 'detailOwner') { const value = e.target.value || null; const result = await sendFieldWrite(id,'owner',value); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request.value}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed'); renderPendingWrites(); }
   });

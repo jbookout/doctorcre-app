@@ -175,7 +175,8 @@ function requireSuite(workflow, suite) {
 
 test("installed engines match the actual Node and e2e selections and lockfile pin", async () => {
   const config = await readFile(new URL("../e2e.config.ts", import.meta.url), "utf8");
-  const journeyEngines = [...new Set([...config.matchAll(/browser: ['"](\w+)['"]/g)].map(match => match[1]))].sort();
+  const adapter = await readFile(new URL("../tests/journeys/phone-engine.mjs", import.meta.url), "utf8");
+  const journeyEngines = [...new Set([...(config + adapter).matchAll(/browser: ['"](\w+)['"]/g)].map(match => match[1]))].sort();
   assert.ok(nodeEngines.length && journeyEngines.length, "engine selections must be readable");
   for (const [workflow, engines] of [[ci, nodeEngines], [release, nodeEngines], [e2e, journeyEngines]]) {
     assert.deepEqual(installedEngines(workflow), engines);

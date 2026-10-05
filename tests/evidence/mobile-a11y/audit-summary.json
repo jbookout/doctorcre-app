@@ -1,0 +1,1185 @@
+{
+  "source_commit": "57c70ba8ebd48d30168cee140531808834482a93",
+  "screens": [
+    {
+      "profile": "iphone",
+      "screen": "tour-planner",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "tour-detail",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "vendors",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "landmark-contentinfo-is-top-level",
+        "landmark-no-duplicate-contentinfo",
+        "landmark-unique",
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-allowed-role",
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "vendor-record",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "region"
+      ],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "invoices",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "invoice-payment",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "contract-date",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "deal-timeline",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "shell-dark",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "shell-light",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "home-attention",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "attention-deal",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "home-invoices",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "phase-confirmation",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "local-deals",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "relationship-record",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "relationships",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "relationship-referrals",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "iphone",
+      "screen": "shell-account",
+      "emulation": {
+        "width": 320,
+        "height": 568,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "tour-planner",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "tour-detail",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "vendors",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "landmark-contentinfo-is-top-level",
+        "landmark-no-duplicate-contentinfo",
+        "landmark-unique",
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-allowed-role",
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "vendor-record",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "region"
+      ],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "invoices",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "invoice-payment",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "contract-date",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "deal-timeline",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "shell-dark",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "shell-light",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "home-attention",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "attention-deal",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "home-invoices",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "phase-confirmation",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "local-deals",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "relationship-record",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "relationships",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "relationship-referrals",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "chromium",
+      "screen": "shell-account",
+      "emulation": {
+        "width": 1440,
+        "height": 960,
+        "touch": 0,
+        "mobile": false
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "tour-planner",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "tour-detail",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "vendors",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "landmark-contentinfo-is-top-level",
+        "landmark-no-duplicate-contentinfo",
+        "landmark-unique",
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-allowed-role",
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "vendor-record",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "region"
+      ],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "invoices",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "invoice-payment",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "contract-date",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "deal-timeline",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "shell-dark",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "shell-light",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "home-attention",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "attention-deal",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "home-invoices",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "phase-confirmation",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "local-deals",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "relationship-record",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [],
+      "incomplete": [
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "relationships",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "relationship-referrals",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    },
+    {
+      "profile": "small-android",
+      "screen": "shell-account",
+      "emulation": {
+        "width": 320,
+        "height": 658,
+        "touch": 1,
+        "mobile": true
+      },
+      "blocking": 0,
+      "layout": 0,
+      "moderate": [
+        "page-has-heading-one",
+        "region"
+      ],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "aria-valid-attr-value",
+        "color-contrast",
+        "label-content-name-mismatch"
+      ]
+    }
+  ],
+  "journeys": 30,
+  "profile_counts": {
+    "iphone": 19,
+    "chromium": 19,
+    "small-android": 19
+  }
+}

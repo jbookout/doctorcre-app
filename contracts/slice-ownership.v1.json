@@ -108,6 +108,8 @@
     "test/dot-review.test.mjs",
     "test/draft-revalidation.test.mjs",
     "test/e2e-suite.test.mjs",
+    "test/mobile-screen-audit.test.mjs",
+    "test/mobile-coverage.test.mjs",
     "test/entry-details.test.mjs",
     "test/ia-routes.test.mjs",
     "test/inline-style-csp.test.mjs",

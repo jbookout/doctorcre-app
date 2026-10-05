@@ -108,6 +108,9 @@ test('W4 drag and keyboard phase writes, manual phase, park, revive and undo rec
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
   await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
   await page.locator('#detailPhase').selectOption('site_selection');
+  await page.locator('#completionDialog[open]').waitFor();
+  assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
+  await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Site selection');
   await page.locator('.park-options summary').click(); await page.locator('#detailParkForm input').fill('Demo unverified import'); await page.locator('#detailParkForm button').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');

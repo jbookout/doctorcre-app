@@ -168,11 +168,10 @@ for (const width of [1440, 390])
     });
     await page.keyboard.press("Escape");
     assert.equal(await page.locator(".relationship-dialog").isVisible(), false);
-    assert.match(
-      await page.evaluate(() =>
-        document.activeElement.getAttribute("aria-label"),
-      ),
-      /Demo Healthcare Lending/,
+    assert.equal(
+      await page.evaluate(() => document.activeElement.getAttribute('data-node')),
+      'party:demo-lender',
+      'Dismissal restores the exact opening node',
     );
     await page.locator("#referralsTab").click();
     assert.equal(await page.locator(".relationship-referral").count(), 2);

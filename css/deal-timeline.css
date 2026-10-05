@@ -54,7 +54,8 @@
 @media(max-width:500px) {
   .deal-timeline { padding:12px; }
   .timeline-heading { align-items:flex-start; flex-direction:column; }
-  .timeline-chart { min-width:580px; }
+  .timeline-chart { min-width:0; }
+  .phase-rail { min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 8px; }
   .timeline-entries { grid-template-columns:1fr; }
   .critical-dates { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .critical-date { padding:12px; }
