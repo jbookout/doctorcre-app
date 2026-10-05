@@ -135,16 +135,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       const resumeReview = state.resumeReview;
       state.resumeReview = null;
       if (resumeReview?.actor === state.actor && !state.pending) {
-        await openReview(resumeReview.id, resumeReview.target);
+        await openReview(resumeReview.id, resumeReview.target, { undoEventId: resumeReview.undoEventId });
         if (state.proposal?.review.question === resumeReview.question) {
           const input = $("stageQuestions").querySelector("textarea");
           if (input) input.value = resumeReview.answer;
         }
       }
       if (!resumeReview && state.reviewTarget && $("stageDialog").open && !state.writing && !state.pending) {
-        const { id, target } = state.reviewTarget, current = leadById(id);
+        const { id, target, undoEventId } = state.reviewTarget, current = leadById(id);
         if (!current || target === normalizedStage(current)) $("stageDialog").close();
-        else await openReview(id, target, { updating: true });
+        else await openReview(id, target, { updating: true, undoEventId });
       }
       if (state.detailId && $("leadDetail").open) {
         if (leadById(state.detailId)) await readDetail(state.detailId, false);
@@ -196,14 +196,14 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       state.detail = response.detail; if (!unchanged) paintDetail(response.detail);
     } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; state.detail = null; $("detailBody").innerHTML = '<p class="empty">Connection interrupted · reconnecting…</p>'; }
   }
-  async function openReview(id, target, { updating = false } = {}) {
+  async function openReview(id, target, { updating = false, undoEventId = null } = {}) {
     const lead = leadById(id);
-    if (!lead || !state.identityReady || state.writing || state.pending || target === normalizedStage(lead) || !FILTER_STAGES.some(([key]) => key === target)) return;
+    if (!lead || !state.identityReady || state.writing || state.pending || target === normalizedStage(lead) || (!undoEventId && !FILTER_STAGES.some(([key]) => key === target))) return;
     const priorQuestion = state.proposal?.review.question;
     state.proposal = null;
     if (!updating) { if (!$("leadDetail").open) state.trigger = focusIdentity(doc.activeElement); ++state.detailEpoch; $("leadDetail").close(); }
     selectDocRecord("lead", id);
-    state.reviewTarget = { id, target };
+    state.reviewTarget = { id, target, undoEventId };
     const epoch = ++state.reviewEpoch, actor = state.actor;
     $("stageTitle").textContent = `Doc · ${leadTitle(lead)}`;
     if (!updating) { $("stageContext").innerHTML = '<p class="empty">Checking correspondence…</p>'; $("stageQuestions").innerHTML = ""; $("stageDialog").showModal(); }
@@ -214,12 +214,14 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       const detail = response.detail;
       if (!leadById(id) || !detail || detail.id !== id || !eligibleLead(detail) || normalizedStage(detail) === target) { state.proposal = null; $("stageDialog").close(); return; }
       validateLeadDetail(detail, id);
-      const review = stageReview(detail, target);
-      state.proposal = { lead: detail, target, review, actor };
+      const undo = undoEventId ? undoReview(detail) : null;
+      if (undoEventId && (undo?.stage_review.undo_event_id !== undoEventId || undo.stage !== target)) { $("stageDialog").close(); return; }
+      const review = undo ? { evidence: [], question: undo.question, reason: undo.stage_review.reason } : stageReview(detail, target);
+      state.proposal = { lead: detail, target, review, actor, undoEventId };
       $("stageContext").innerHTML = `<div class="stage-proposal">${esc(stageLabel(normalizedStage(detail)))} <span>→</span> ${esc(stageLabel(target))}</div><ul class="stage-evidence">${review.evidence.map(entry => `<li><b>${esc(summary(entry.summary))}</b> · ${shortDate(entry.occurred_at)}</li>`).join("") || '<li>No supporting mail or calendar entry</li>'}</ul>`;
       if (!updating || review.question !== priorQuestion) $("stageQuestions").innerHTML = review.question ? `<label>${esc(review.question)}<textarea name="answer" required maxlength="1000" autofocus></textarea></label>` : "";
       for (const input of $("stageQuestions").querySelectorAll("textarea")) input.disabled = false;
-      $("saveStage").disabled = false; $("saveStage").textContent = target === "archived" ? "Archive lead" : `Confirm ${stageLabel(target)}`;
+      $("saveStage").disabled = false; $("saveStage").textContent = undo ? "Restore stage" : target === "archived" ? "Archive lead" : `Confirm ${stageLabel(target)}`;
       if (!updating || review.question !== priorQuestion) $("stageQuestions").querySelector("textarea")?.focus();
     } catch (error) {
       if (epoch !== state.reviewEpoch || authorizationFailure(error)) return;
@@ -290,11 +292,11 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (!p || p.actor !== state.actor || $("saveStage").disabled) return;
     const answer = String(new win.FormData(event.target).get("answer") || "").trim();
     if (p.review.question && !answer) return;
-    command({ kind: "stage", lead: p.lead, stage: p.target, review: { reason: p.review.reason || answer,
+    command({ kind: "stage", lead: p.lead, stage: p.target, review: p.undoEventId ? undoReview(p.lead, answer).stage_review : { reason: p.review.reason || answer,
       evidence_ids: p.review.evidence.map(entry => entry.id), ...(answer ? { human_quote: answer } : {}) } });
   });
   function clickLead(event) {
-    const undo = event.target.closest("[data-undo]"); if (undo) { const lead = leadById(undo.dataset.undo), review = lead && undoReview(lead); if (review) command({ kind: "stage", lead, stage: review.stage, review: review.stage_review }); return; }
+    const undo = event.target.closest("[data-undo]"); if (undo) { const lead = leadById(undo.dataset.undo), review = lead && undoReview(lead); if (review) openReview(lead.id, review.stage, { undoEventId: review.stage_review.undo_event_id }); return; }
     const link = event.target.closest("[data-link]"); if (link) { const lead = leadById(link.dataset.link); if (lead) command({ kind: "link", lead, clientId: link.dataset.clientId }); return; }
     const claim = event.target.closest("[data-claim]"); if (claim) { const lead = leadById(claim.dataset.claim); if (lead) command({ kind: "claim", lead }); return; }
     const card = event.target.closest("[data-lead-id]"); if (card && !event.target.closest("[data-drag-handle]")) readDetail(card.dataset.leadId);
@@ -360,7 +362,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   mapFactory($("territoryMap"), selectMarket).then(map => { state.map = map; render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
   function suspendPrivateView() {
     if (state.proposal && $("stageDialog").open) state.resumeReview = {
-      id: state.proposal.lead.id, target: state.proposal.target, actor: state.actor,
+      id: state.proposal.lead.id, target: state.proposal.target, actor: state.actor, undoEventId: state.proposal.undoEventId,
       question: state.proposal.review.question, answer: $("stageQuestions").querySelector("textarea")?.value || "",
     };
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;

@@ -36,10 +36,54 @@ test('missing evidence asks one question; changed record refreshes the unsigned 
  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes[0].l.base_version,2);
  }finally{s.close()}
 });
-test('Undo, Link, and Claim are one-tap record operations; link removes card, claim preserves New stage',async()=>{
- const s=await setup();try{s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].review.undo_event_id,id(500));
+test('Undo collects a human quote; Link removes card and Claim preserves New stage',async()=>{
+ const s=await setup();try{s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes.length,0);assert.equal(s.d.getElementById('stageDialog').open,true);
+ assert.match(s.d.getElementById('stageQuestions').textContent,/Why undo/);
+ const submit=()=>s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));
+ submit();await tick();assert.equal(s.writes.length,0);
+ s.d.querySelector('#stageQuestions textarea').value='   ';submit();await tick();assert.equal(s.writes.length,0);
+ s.d.querySelector('#stageQuestions textarea').value='Synthetic reply was attributed to the wrong lead';
+ await s.app.refresh();assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic reply was attributed to the wrong lead');
+ submit();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review,{reason:'Undo automatic stage move',evidence_ids:[],undo_event_id:id(500),human_quote:'Synthetic reply was attributed to the wrong lead'});
  s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
  s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#hotLeads [data-lead-id="${id(1)}"]`),null);
+ }finally{s.close()}
+});
+for (const connected of [false, null, true]) test(`Engaged submits only connected call evidence: ${connected}`, async () => {
+ const s=await setup();try{
+  const call={id:id(700),kind:'call',connected,occurred_at:'2026-10-01T10:00:00Z',summary:'Synthetic call outcome'};
+  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[call]}});
+  await s.app.openReview(id(1),'engaged');
+  const submit=()=>s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));
+  if(connected!==true){
+   assert.equal(s.d.getElementById('stageQuestions').textContent,'What contact has taken place?');
+   submit();await tick();assert.equal(s.writes.length,0);
+   s.d.querySelector('#stageQuestions textarea').value='Synthetic contact confirmed in person';
+  }else assert.equal(s.d.querySelector('#stageQuestions textarea'),null);
+  submit();await tick();assert.equal(s.writes[0].stage,'engaged');
+  assert.deepEqual(s.writes[0].review,connected===true?{reason:'Call completed',evidence_ids:[id(700)]}:
+   {reason:'Synthetic contact confirmed in person',evidence_ids:[],human_quote:'Synthetic contact confirmed in person'});
+ }finally{s.close()}
+});
+test('Undo cancellation and a replaced automatic event never send a correction',async()=>{
+ const s=await setup();try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.getElementById('stageDialog').close();assert.equal(s.writes.length,0);
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction';
+  s.board.leads.find(row=>row.id===id(10)).last_stage_move.event_id=id(501);await s.app.refresh();
+  assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.app.state.proposal,null);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+test('Undo preserves its historical stage, event and quote through resume and an uncertain write',async()=>{
+ const calls=[];const s=await setup({recordStage:async(...args)=>{calls.push(args);throw Object.assign(new Error('uncertain'),{code:'unknown_outcome'})}});try{
+  s.board.leads.find(row=>row.id===id(10)).last_stage_move.from='closed_lost';await s.app.refresh();
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction after reviewing the reply';
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic correction after reviewing the reply');assert.equal(calls.length,0);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(calls[0][1],'closed_lost');assert.equal(calls[0][2].undo_event_id,id(500));assert.equal(calls[0][2].human_quote,'Synthetic correction after reviewing the reply');
+  await s.app.refresh();assert.equal(calls.length,1);
+  s.d.getElementById('checkPending').click();await tick();assert.equal(calls.length,2);assert.deepEqual(calls[1],calls[0]);
  }finally{s.close()}
 });
 test('unknown write retains exact key and payload, never automatically resends; actor change clears it',async()=>{
