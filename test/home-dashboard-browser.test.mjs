@@ -337,7 +337,7 @@ test('R9 identical refresh retains lead and deal focus; modal repaint retains ex
     assert.equal(await page.locator(selector).first().evaluate(node => document.activeElement === node), true, selector);
   }
   await page.locator('.home-lead').first().click();
-  for (const selector of ['#homeDetail a', '#homeDetail [data-close-detail]', '#homeDetail summary']) {
+  for (const selector of ['#homeDetail [data-home-key="detail:leads"]', '#homeDetail [data-close-detail]', '#homeDetail summary']) {
     await page.locator(selector).focus();
     state.updateLead('demo-lead-0', 97 + selector.length);
     await page.evaluate(() => window.dispatchEvent(new Event('online')));

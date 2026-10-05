@@ -1,30 +1,9 @@
-/* V5-UX-C01 Control Room — page layer over css/system.css.
- *
- * The shared sheet is contract-bound, so nothing here invents a colour, a type
- * scale or a component. It does only the four things the shared sheet leaves to
- * a page:
- *
- *  1. The hero row and the one freshness line under it, as the business
- *     workspace carries them.
- *  2. The five-across question grid, which lives in the prototype stylesheet and
- *     is not part of the product sheet.
- *  3. The 44px floor on the controls this page adds, and wrapping for refs that
- *     are single unbroken tokens.
- *  4. The permanent "not in this release" state: a scope statement, drawn quiet
- *     and dashed so it can never be mistaken for a zero or an outage.
- */
+/* Active Control Room panels; outer sizing belongs to the shared app layout. */
 
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
-.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.hero > div:first-child { flex: 1 1 320px; min-width: 0; max-width: 100%; }
-.hero .tabs { max-width: 100%; margin: 10px 0 0; }
-.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.hero-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
-
 .caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
-.freshness[data-freshness="partial"], .freshness[data-freshness="offline"] { color: var(--amber-text); }
 
 .count-line { margin: 0; font: 600 24px/1.1 var(--display); }
 .count-line[data-state="unavailable"] { color: var(--quiet); }
@@ -32,14 +11,6 @@
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .chip { min-height: var(--touch); }
 .btn-group .btn { min-height: var(--touch); }
-
-/* The five questions, one tile each. The tile is a card with a title, one value
- * line, one sentence and the one button that opens the rows behind it. */
-.five-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
-.five-grid .card { display: grid; gap: 6px; align-content: start; margin: 0; padding: 18px; }
-.tile-value { margin: 0; font: 600 40px/1.05 var(--display); }
-.tile-value[data-state="unknown"], .tile-value[data-state="not_in_release"] { color: var(--quiet); font-size: 24px; }
-.tile-sentence { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 /* Refs and correlation ids are unbroken tokens: they wrap rather than push the
  * page sideways. */
@@ -53,76 +24,6 @@
 .detail-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px 12px; margin: 0; }
 .detail-rows dt { color: var(--quiet); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .detail-rows dd { margin: 0; font-size: 13px; }
-
-/* Permanent scope, not an outage and not a zero. */
-.state-block[data-state="not_in_release"] { border-style: dashed; border-color: var(--line-strong); }
-.state-block[data-state="not_in_release"] h3 { color: var(--muted); font-size: 18px; }
-.state-block + .state-block { margin-top: 10px; }
-
-/* Resource coverage: five independent provider slots on one observation rail.
- * Filled cores carry evidence; outlined cores have none. Labels stay visible
- * when every animation is removed. */
-.resource-card { overflow: hidden; }
-.resource-summary { margin: 0 0 12px; color: var(--text); font: 600 20px/1.15 var(--display); }
-.resource-visual { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--orange) 13%, transparent), transparent 72%), color-mix(in srgb, var(--ground-0) 56%, transparent); }
-.resource-visual svg { display: block; width: 100%; height: auto; min-height: 120px; }
-.resource-spine { fill: none; stroke: var(--line-strong); stroke-width: 2; stroke-dasharray: 4 8; }
-.resource-node { color: var(--quiet); transition: color var(--motion-enter) var(--ease); }
-.resource-node text { fill: var(--text); font: 600 15px var(--display); }
-.resource-node .resource-node-state { fill: var(--quiet); font: 500 10px var(--body); }
-.resource-halo { fill: transparent; stroke: var(--line-strong); stroke-width: 1.5; }
-.resource-core { fill: transparent; stroke: var(--quiet); stroke-width: 2.5; }
-.resource-node[data-state="ok"] .resource-core { fill: var(--cyan); stroke: var(--cyan); }
-.resource-node[data-state="partial"] .resource-core,
-.resource-node[data-state="stale"] .resource-core,
-.resource-node[data-state="host_offline"] .resource-core { fill: var(--orange); stroke: var(--orange); }
-.resource-node[data-state="ok"] .resource-halo { stroke: var(--cyan); animation: resource-breathe 3.6s ease-in-out infinite; }
-.resource-node[data-state="partial"] .resource-halo { stroke: var(--orange); animation: resource-breathe 2s ease-in-out infinite; }
-.resource-node[data-state="stale"] .resource-halo,
-.resource-node[data-state="host_offline"] .resource-halo { stroke: var(--orange); animation: resource-breathe 1.2s ease-in-out infinite; }
-.resource-node.highlight .resource-halo { stroke-width: 3; }
-.resource-node.highlight text { fill: var(--orange-text); }
-@keyframes resource-breathe { 50% { opacity: .35; transform: scale(1.12); } }
-.resource-provider-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.resource-provider { display: grid; align-content: start; gap: 3px; min-height: 88px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--glass) 80%, transparent); color: var(--text); text-align: left; cursor: pointer; transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease), background var(--motion-enter) var(--ease); }
-.resource-provider:hover, .resource-provider:focus-visible { transform: translateY(-3px); border-color: var(--orange); background: color-mix(in srgb, var(--orange) 11%, var(--glass)); }
-.resource-provider:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
-.resource-provider-name { font: 600 17px/1.1 var(--display); }
-.resource-provider-state { color: var(--quiet); font-size: 11px; font-weight: 700; }
-.resource-provider[data-state="ok"] .resource-provider-state { color: var(--cyan); }
-.resource-provider[data-state="partial"] .resource-provider-state,
-.resource-provider[data-state="stale"] .resource-provider-state,
-.resource-provider[data-state="host_offline"] .resource-provider-state { color: var(--orange-text); }
-.resource-provider-meta { color: var(--quiet); font-size: 10px; overflow-wrap: anywhere; }
-.resource-detail-state { margin: 0; font-weight: 700; }
-.resource-detail-state[data-state="stale"], .resource-detail-state[data-state="partial"] { color: var(--orange-text); }
-.resource-object { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 8px; }
-.resource-object dt { text-transform: none; letter-spacing: 0; }
-.resource-object dd { overflow-wrap: anywhere; }
-@media (max-width: 760px) {
-  .resource-provider-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .resource-visual { overflow-x: auto; }
-  .resource-visual svg { min-width: 740px; max-width: none; }
-}
-@media (max-width: 420px) { .resource-provider-list { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) {
-  .resource-node .resource-halo { animation: none; }
-  .resource-provider, .resource-node { transition: none; }
-  .resource-provider:hover, .resource-provider:focus-visible { transform: none; }
-}
-
-@media (max-width: 980px) {
-  .five-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 640px) {
-  .five-grid { grid-template-columns: 1fr; }
-  .work-item { grid-template-columns: minmax(0, 1fr); }
-  .stack-end { justify-items: start; }
-  .detail-rows { grid-template-columns: 1fr; }
-  /* The bottom navigation mirrors the tabs, so the page keeps clear of it. */
-  main.shell { padding-bottom: 96px; }
-}
 
 /* V5-UX-C07 Atlas tab. system.css tokens only: no literal colour, no fixed
  * width, one column at 360px, every control the page adds at the 44px floor.
@@ -430,62 +331,3 @@
   .dispatch-search-row { grid-template-columns: 1fr; }
   .history-picker { grid-template-columns: 1fr; }
 }
-
-/* ------------------------------------------------ V5-UX-C14 Operations cards
- * The approvals card and schedule board. All
- * motion reuses system.css's tokens and keyframes (receipt-in, breathe, flow-dash) and
- * adds none. The entrance stagger comes from --ops-delay, set through CSSOM
- * by js/control-room.js because the Worker's CSP refuses style attributes.
- * Schedule paths move at the shared flow tempo. */
-#operationsBlocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; margin-top: 12px; }
-.ops-card { display: grid; gap: 8px; align-content: start; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--ground-2) 60%, transparent); animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); transition: border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
-.ops-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-float); }
-.ops-card[data-state="unknown"] { border-style: dashed; border-color: var(--line-strong); }
-.ops-card h3 { margin: 0; font-size: 18px; }
-.ops-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
-.ops-orb { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--quiet); opacity: 0.5; }
-.ops-orb[data-tempo="calm"] { background: var(--status-healthy); opacity: 1; box-shadow: 0 0 12px var(--status-healthy); animation: breathe var(--motion-calm) ease-in-out infinite; }
-.ops-orb[data-tempo="attention"] { background: var(--status-attention); opacity: 1; box-shadow: 0 0 12px var(--status-attention); animation: breathe var(--motion-attention) ease-in-out infinite; }
-.ops-orb[data-tempo="urgent"] { background: var(--status-urgent); opacity: 1; box-shadow: 0 0 14px var(--status-urgent); animation: breathe var(--motion-urgent) ease-in-out infinite; }
-.ops-value.motion-pulse { animation: receipt-in var(--motion-enter) var(--ease); }
-.ops-oldest { justify-self: start; font-variant-numeric: tabular-nums; }
-.ops-lanes { display: grid; gap: 8px; }
-.ops-lane { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease); }
-.ops-lane:hover { transform: translateY(-2px); border-color: var(--line-strong); }
-.ops-lane:active { transform: scale(0.98); }
-.ops-lane-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-.ops-lane h4 { margin: 0; font-size: 13px; }
-.ops-items { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
-.ops-item { min-width: 0; animation: receipt-in var(--motion-enter) var(--ease) both; animation-delay: var(--ops-delay, 0ms); }
-.ops-item summary { display: flex; align-items: center; min-height: var(--touch); padding: 4px 8px; border-radius: var(--radius-s); cursor: pointer; overflow-wrap: anywhere; transition: background var(--motion-enter) var(--ease), transform var(--motion-enter) var(--ease); }
-.ops-item summary:hover { background: color-mix(in srgb, var(--orange) 10%, transparent); transform: translateX(2px); }
-.ops-item summary:active { transform: scale(0.99); }
-.ops-item[open] .detail-rows { margin-top: 6px; animation: receipt-in var(--motion-enter) var(--ease); }
-.ops-card .operations-rule { margin: 0; font-size: 12px; color: var(--text); }
-.ops-sources { display: flex; flex-wrap: wrap; gap: 6px; }
-.ops-sources .chip { max-width: 100%; white-space: nowrap; overflow-wrap: normal; }
-.ops-schedule-list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
-.ops-schedule-job { border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--navy) 18%, transparent); }
-.ops-schedule-job summary { justify-content: space-between; gap: 8px; }
-.ops-schedule-job summary strong { font-family: var(--font-display); font-size: 15px; }
-.ops-schedule-job .chip { flex: none; white-space: nowrap; overflow-wrap: normal; }
-.ops-schedule-glance { display: grid; gap: 4px; min-width: 0; }
-.ops-schedule-glance > span { color: var(--quiet); font-size: 12px; line-height: 1.45; }
-.ops-schedule-job .detail-rows, .ops-schedule-job .small { margin-inline: 10px; }
-.ops-timeline { display: block; width: 100%; height: 60px; margin-block: 4px; overflow: visible; }
-.ops-timeline-track { fill: none; stroke: var(--line-strong); stroke-width: 2; stroke-dasharray: 5 5; }
-.ops-timeline-flow { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-dasharray: 8 5; animation: flow-dash var(--motion-flow) linear infinite; }
-.ops-timeline-last { fill: var(--navy); stroke: var(--text); stroke-width: 2; }
-.ops-timeline-due { fill: var(--orange); filter: drop-shadow(0 0 7px var(--orange)); }
-.ops-timeline-now { fill: var(--text); }
-.ops-schedule-job[data-due-overdue="true"] .ops-timeline-due { fill: var(--status-urgent); filter: drop-shadow(0 0 8px var(--status-urgent)); }
-.ops-schedule-job[data-state="paused"] .ops-timeline-flow { stroke: var(--quiet); animation: none; }
-
-@media (prefers-reduced-motion: reduce) {
-  .ops-lane:hover, .ops-lane:active, .ops-item summary:hover, .ops-item summary:active { transform: none; }
-  .ops-card, .ops-lane, .ops-item { opacity: 1; transform: none; }
-  .ops-timeline-flow { animation: none; }
-}
-:root[data-motion="reduced"] .ops-lane:hover, :root[data-motion="reduced"] .ops-lane:active, :root[data-motion="reduced"] .ops-item summary:hover, :root[data-motion="reduced"] .ops-item summary:active { transform: none; }
-:root[data-motion="reduced"] .ops-card, :root[data-motion="reduced"] .ops-lane, :root[data-motion="reduced"] .ops-item { opacity: 1; transform: none; }
-:root[data-motion="reduced"] .ops-timeline-flow { animation: none; }

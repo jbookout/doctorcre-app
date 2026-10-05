@@ -100,12 +100,12 @@ function serve() {
       response.end(MEASURE);
       return;
     }
-    const path = url.pathname === "/progress-board" ? "/progress-board.html" : url.pathname;
+    const path = url.pathname === "/progress-board" ? "/control-room.html" : url.pathname;
     const file = normalize(join(ROOT, path));
     if (!file.startsWith(ROOT)) { response.writeHead(403); response.end(); return; }
     try {
       let content = await readFile(file);
-      if (path === "/progress-board.html")
+      if (path === "/control-room.html")
         content = Buffer.from(String(content).replace("</body>", '<script type="module" src="/__measure.js"></script></body>'));
       response.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream" });
       response.end(content);
@@ -126,7 +126,7 @@ for (const width of [390, 1280]) {
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const { port } = server.address();
-      await page.goto(`http://127.0.0.1:${port}/progress-board?board=${board}`);
+      await page.goto(`http://127.0.0.1:${port}/progress-board?board=${board}&mode=live`);
       await page.waitForFunction(() => document.body.hasAttribute("data-measure"));
       const result = await page.evaluate(() => JSON.parse(document.body.getAttribute("data-measure")));
       assert.equal(result.width, width);
@@ -136,3 +136,52 @@ for (const width of [390, 1280]) {
     });
   }
 }
+
+for (const width of [1440, 390]) test(`Live expansion keeps browser focus through background updates at ${width}px`, async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 960 } });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  // Mount the production board directly, with synthetic reads and no external effects.
+  await page.route("**/*", async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== "http://board.test") return route.abort();
+    const path = url.pathname === "/" ? "control-room.html" : url.pathname.slice(1);
+    let body = await readFile(join(ROOT, path));
+    if (path === "control-room.html") body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""));
+    await route.fulfill({ body, contentType: TYPES[extname(path)] || "application/octet-stream" });
+  });
+  await page.goto("http://board.test/");
+  await page.evaluate(async read => {
+    const { mountBoard } = await import("/js/progress-board.js");
+    window.focusRead = read;
+    window.focusBoard = mountBoard({ window, document, storage: null, search: "?board=focus-demo",
+      client: { readProgressBoard: async () => structuredClone(window.focusRead) },
+      now: () => new Date("2026-09-30T12:00:00Z"), setInterval: () => 0,
+      setTimeout: () => 0, clearTimeout: () => {} });
+    await window.focusBoard.refresh();
+  }, FULL.project);
+  const toggle = page.locator("#live-toggle");
+  for (const expanded of [false, true]) {
+    if (expanded) await toggle.click();
+    for (const update of ["tick", "refresh"]) {
+      await toggle.focus();
+      await page.evaluate(async update => { await window.focusBoard[update](); }, update);
+      assert.equal(await toggle.evaluate(node => node === document.activeElement), true, `${update}, expanded=${expanded}`);
+      assert.equal(await toggle.getAttribute("aria-expanded"), String(expanded));
+      const outside = page.locator("#board-retry");
+      await outside.focus();
+      await page.evaluate(async update => { await window.focusBoard[update](); }, update);
+      assert.equal(await outside.evaluate(node => node === document.activeElement), true);
+    }
+  }
+  await toggle.focus();
+  await page.evaluate(async () => {
+    window.focusRead.snapshot.snapshot_json.tasks = {};
+    await window.focusBoard.refresh();
+  });
+  assert.equal(await toggle.count(), 0);
+  assert.equal(await page.locator("#board-title").evaluate(node => node === document.activeElement), true);
+  assert.deepEqual(errors, []);
+});

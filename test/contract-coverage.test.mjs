@@ -17,7 +17,7 @@ test('every literal browser MCP call is pinned in the versioned interface', asyn
   assert.deepEqual(contract.mcp_operations, [...new Set(contract.mcp_operations)].sort(),
     'the pinned operations stay unique and sorted');
   assert.equal(contract.producer.source_commit,
-    '993f6e630aca20175b92a0475b2dda3dd51bdba9',
+    'c82e2bf2e717798cb1d0b719ef5696fcca0db5d4',
     'the pinned CARR revision contains the vendor directory and audited update-vendor fields');
 });
 
@@ -51,7 +51,7 @@ test('the inherited vendor directory retains its exact producer reference', asyn
 
 test('the merged interface preserves the exact distinct Leads and relationship producer revisions', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.producer.source_commit, '993f6e630aca20175b92a0475b2dda3dd51bdba9');
+  assert.equal(contract.producer.source_commit, 'c82e2bf2e717798cb1d0b719ef5696fcca0db5d4');
   assert.deepEqual(contract.lead_workspace.producer, {
     repository: 'jbookout/carr-system',
     source_commit: '6d739deb1a31de8f257f4e1e11695d71ec3a74bf',

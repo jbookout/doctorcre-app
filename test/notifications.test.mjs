@@ -23,6 +23,12 @@ import {
 import { classifyCommandOutcome } from "../js/command-feedback.mjs";
 import { createFixtureClient } from "../js/fixture-client.js";
 
+test('board notifications retain encoded board identity and require the registered board route', () => {
+  const path = '/control-room/progress/board/demo%20project?task=build';
+  assert.equal(deepLinkView(path).href, path);
+  assert.equal(deepLinkView(path, ['/control-room/progress']).href, null);
+});
+
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("notifications.html");
@@ -366,7 +372,7 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
   assert.equal(routes.version, "1.20.0");
   assert.equal(contract.version, "1.42.0");
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9");
+  assert.equal(contract.producer.source_commit, "c82e2bf2e717798cb1d0b719ef5696fcca0db5d4");
   assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -746,7 +752,7 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 
 test("B12-9 the current contract still pins both preference verbs and their order", async () => {
   assert.equal(contract.version, "1.42.0", "the current interface retains notification preferences");
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
+  assert.equal(contract.producer.source_commit, "c82e2bf2e717798cb1d0b719ef5696fcca0db5d4",
     "the producer pin includes preference verbs and the Codex checkpoint read");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 

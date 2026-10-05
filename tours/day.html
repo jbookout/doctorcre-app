@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tour day · DoctorCRE</title>
+  <link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/tours/day.css">
+  <link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
+  <script type="module" src="/tours/day.js"></script>
+</head>
+<body>
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+  <main id="tour-day">
+    <div class="day-title"><h1 id="day-title">Tour day</h1><div class="freshness"><time id="day-updated">Updating…</time><button id="day-refresh" type="button" aria-label="Refresh tour" title="Refresh tour">↻</button></div></div>
+    <p id="day-status" role="status" aria-live="polite"></p>
+    <div class="day-grid">
+      <section class="day-panel route-panel" aria-label="Tour route"><h2>Route</h2><div id="day-map"></div><ol id="day-stops" aria-label="Tour stops"></ol></section>
+      <section class="day-panel stop-panel" aria-label="Current property"><div id="day-current"></div><div id="day-notes" aria-live="polite"></div></section>
+    </div>
+    <div class="capture-dock"><button id="day-previous" type="button" aria-label="Previous stop">‹</button><button id="day-record" type="button" disabled><span aria-hidden="true">●</span> Record note</button><button id="day-next" type="button" aria-label="Next stop">›</button></div>
+  </main>
+  <dialog id="day-dialog" aria-labelledby="day-dialog-title"><div class="dialog-heading"><h2 id="day-dialog-title">Property</h2><button id="day-dialog-close" type="button" aria-label="Close property">×</button></div><div id="day-dialog-body"></div></dialog>
+</body>
+</html>

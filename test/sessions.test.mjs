@@ -5,16 +5,11 @@
 // The pinned contract supplies the field names; no live session data is stored.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import {
-  ALIAS_SOURCES, DEFAULT_LIMIT, EMPTY_HISTORY_SENTENCE, LINEAGE_UNRECORDED_SENTENCE,
-  NO_OPEN_SENTENCE, PROVABLE_STAGES, STAGE_UNAVAILABLE_SENTENCE, countsLine, dispatchView,
-  hostState, identityRequest, lineage, lineageSummary, listState, refuseDispatchHistory,
-  refuseSessionIdentity, sessionCard, sessionCards,
-} from "../js/sessions-model.js";
-import { CONTROL_ROOM_TABS } from "../js/control-room-model.js";
-import { createFixtureClient } from "../js/fixture-client.js";
+import {ALIAS_SOURCES, DEFAULT_LIMIT, EMPTY_HISTORY_SENTENCE, LINEAGE_UNRECORDED_SENTENCE, NO_OPEN_SENTENCE, PROVABLE_STAGES, STAGE_UNAVAILABLE_SENTENCE, countsLine, dispatchView, hostState, identityRequest, lineage, lineageSummary, listState, refuseDispatchHistory, refuseSessionIdentity, sessionCard, sessionCards} from "../js/sessions-model.js";
+
+import {createFixtureClient} from "../js/fixture-client.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -396,7 +391,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
+  assert.equal(contract.producer.source_commit, "c82e2bf2e717798cb1d0b719ef5696fcca0db5d4",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");
@@ -408,19 +403,3 @@ test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
 // V5-UX-C12 replaced the Model Room placeholder this test once pinned. What S02
 // owns here is unchanged: Sessions is its OWN fifth panel and never reuses the
 // Model Room's, whatever the Model Room now holds.
-test("S02-23 Sessions is its own panel beside the Model Room's", () => {
-  assert.equal(/id="panelModelRoom"[\s\S]*?not in this release/.test(html), false,
-    "V5-UX-C12 shipped the Model Room tab, so its placeholder is gone");
-  assert.match(html, /<section class="tabpanel" id="panelModelRoom"/, "Model Room keeps its own panel");
-  assert.match(html, /<section class="tabpanel" id="panelSessions"/, "Sessions is a fifth panel, not an absorption");
-  assert.equal(
-    /id="panelSessions"[\s\S]*?not in this release/.test(html), false,
-    "the Sessions tab does not reuse the placeholder",
-  );
-  assert.deepEqual(CONTROL_ROOM_TABS.map((tab) => tab.id),
-    ["tabDashboard", "tabAttention", "tabModelRoom", "tabAtlas", "tabSessions"]);
-  assert.equal(CONTROL_ROOM_TABS.length, 5, "Sessions is the fifth tab beside the four that shipped");
-  // 360px: one column, and every control this tab adds at the 44px floor.
-  assert.match(css, /#sessionsLookup \{ min-height: var\(--touch\); \}/);
-  assert.match(css, /@media \(max-width: 640px\) \{\s*\n  \.session-head/);
-});

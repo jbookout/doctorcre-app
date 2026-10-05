@@ -1,13 +1,12 @@
 import { mountSliceSections } from './slice-registration.js';
-import { scopedDeals } from './home-dashboard-model.js';
-import { toDay } from './calendar-model.js';
 import { radarToday } from './lease-radar-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
-import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews } from './change-receipts.mjs';
+import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
-const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import { scopedDeals } from './home-dashboard-model.js';
+import { localToday, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
 // Build validation and runtime use the same layout targets.

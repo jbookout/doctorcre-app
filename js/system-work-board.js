@@ -1,14 +1,18 @@
 import {updatedLabel} from './auto-refresh.mjs';
 import {uuidv4} from './uuid.js';
+import {jobLinks} from './progress-board-model.js';
 import {workDetailUrl} from './progress-work-model.js';
+import {mountProgressPipeline} from './progress-pipeline.js';
 import {validSystemWork,groupSystemWork,systemPipeline,triageWork} from './system-work-board-model.js';
 const workLabel=value=>String(value||'Work').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 const node=(tag,text,className)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(className)e.className=className;return e;};
-export function mountSystemWorkBoard({client,onPipeline}){
+export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}){
  const panel=document.getElementById('system-work-panel');panel.hidden=false;
  const cards=document.getElementById('system-work-cards'),coverage=document.getElementById('system-work-coverage'),form=document.getElementById('system-work-filters');
  const more=document.getElementById('system-work-more'),library=document.getElementById('live-library'),error=document.getElementById('system-work-error');
  const dialog=document.getElementById('work-triage'),actionForm=document.getElementById('work-triage-form');
+ const retry=document.getElementById('system-work-retry');
+ const pipeline=document.getElementById('system-work-flow')?mountProgressPipeline({flow:document.getElementById('system-work-flow'),taskCount:document.getElementById('system-work-count'),focusFallback:document.getElementById('system-work-title'),onTask:task=>{location.href=workDetailUrl({board:'carr-v5',task:task.id,workRequest:jobLinks(task).workRequest});}}):null;
  let items=[],live=[],cursor=null,libraryMode=false,generation=0,current=null,loading=false,cursorQuery=null,pageCount=1;
  const operations=new Map();
  const operationId=(item,action)=>JSON.stringify([item.source,item.kind,item.id,action.action]);
@@ -34,11 +38,13 @@ export function mountSystemWorkBoard({client,onPipeline}){
    const section=node('section','','work-source');section.append(node('h3',workLabel(group.items[0]?.kind)));
    const grid=node('div','','work-card-grid');
    for(const item of group.items){const article=node('article','','work-card');article.dataset.workId=item.id;
-    const heading=node('h4'),detail=node('a',item.title||item.id);detail.href=workDetailUrl({board:'carr-v5',task:`${item.kind}:${item.id}`,workRequest:item.human_ref});heading.append(detail);
-    article.append(heading,node('p',`${item.kind.replaceAll('_',' ')} · ${item.state} · ${item.age} days old${item.owner?` · ${item.owner}`:''}`,'work-card-meta'));
+    const heading=node('h4'),detail=node('a',item.title||item.id);detail.href=workDetailUrl({board:'carr-v5',task:`${item.kind}:${item.id}`,workRequest:jobLinks(item).workRequest});if(openTask)detail.addEventListener('click',event=>{event.preventDefault();openTask({...item,id:`${item.kind}:${item.id}`});});heading.append(detail);
+    const links=jobLinks(item);article.append(heading,node('p',`${links.workRequest?`Work Request ${links.workRequest}`:'Work Request unavailable'}${links.prLabel?` · ${links.prLabel}`:''}`,'work-card-links'),node('p',`${item.kind.replaceAll('_',' ')} · ${item.state} · ${item.age} days old${item.owner?` · ${item.owner}`:''}`,'work-card-meta'));
     if(item.suggested_triage)article.append(node('p',`${item.suggested_triage.label}: ${item.suggested_triage.action}`,'work-suggestion'));
     const actions=node('div','','work-actions');for(const action of item.available_triage_actions||[]){const b=node('button',action.action);b.type='button';b.addEventListener('click',()=>openAction(item,action));actions.append(b);}
-    const link=node('a','Details');link.href=item.link||'/system-work.html';actions.append(link);article.append(actions);grid.append(article);
+    if(item.link && item.navigation?.state!=='unavailable'){const link=node('a','Open source');link.href=item.link;actions.append(link);}
+    else actions.append(node('span','Source page unavailable.','caption'));
+    article.append(actions);if(openTask)article.addEventListener('click',event=>{if(!event.target.closest('a,button,input,select,textarea'))openTask({...item,id:`${item.kind}:${item.id}`});});grid.append(article);
    }section.append(grid);cards.append(section);
   }
   if(!items.length)cards.append(node('p',libraryMode?'No completed work matches these filters.':'No unfinished work matches these filters.','empty'));
@@ -85,6 +91,15 @@ export function mountSystemWorkBoard({client,onPipeline}){
   }
   return span;
  }
+ function clearAccess(cause){
+  ++generation;loading=false;items=[];live=[];cursor=null;cursorQuery=null;pageCount=1;
+  // Access denial clears the protected view, but an unresolved write still
+  // needs its original request for reconciliation after access recovers.
+  current=null;actionForm.replaceChildren();if(dialog.open)dialog.close();
+  coverage.replaceChildren();render();pipeline?.clear();onPipeline?.(systemPipeline([],[]));more.disabled=false;
+  error.textContent=cause.status===401?'Sign in to view system work.':'System work access unavailable.';
+  error.hidden=false;if(retry)retry.hidden=false;
+ }
  async function refresh(append=false,{force=false}={}){
   if(append&&(loading||!cursor||cursorQuery!==JSON.stringify(args())))return;
   if(!force&&!append&&(loading||dialog.open||cards.contains(document.activeElement)))return;
@@ -114,12 +129,16 @@ export function mountSystemWorkBoard({client,onPipeline}){
     select.value=selected;
    }
    render();
-   if(!queryArgs.live_library){if(liveRead)live=liveRead.items;onPipeline(systemPipeline(items,live));}
+   if(retry)retry.hidden=true;
+   if(liveRead)live=liveRead.items;
+   const projection=systemPipeline(items,queryArgs.live_library?[]:live);pipeline?.render(projection);onPipeline?.(projection);
   }catch(cause){if(gen!==generation)return;error.textContent=cause.status===401?'Sign in to view system work.':'System work updates unavailable.';error.hidden=false;
-   if(cause.status===401||cause.status===403){items=[];live=[];cursor=null;render();onPipeline(systemPipeline([],[]));}}
+   if(retry)retry.hidden=false;
+   if(cause.status===401||cause.status===403){if(onAccessDenied)onAccessDenied(cause);else clearAccess(cause);}}
   finally{if(gen===generation){loading=false;more.disabled=false;}}
  }
  form.addEventListener('submit',event=>{event.preventDefault();refresh(false,{force:true});});
+ retry?.addEventListener('click',()=>refresh(false,{force:true}));
  form.addEventListener('change',()=>refresh(false,{force:true}));
  more.addEventListener('click',()=>refresh(true));
  library.addEventListener('click',()=>{libraryMode=!libraryMode;library.textContent=libraryMode?'Unfinished work':'Live Library';library.setAttribute('aria-pressed',String(libraryMode));refresh(false,{force:true});});
@@ -147,5 +166,5 @@ export function mountSystemWorkBoard({client,onPipeline}){
   if(current?.operation===op&&dialog.open)showOperation(current);
  });
  document.getElementById('work-triage-close').addEventListener('click',()=>dialog.close());
- refresh();return {refresh};
+ refresh();return {refresh,clearAccess};
 }

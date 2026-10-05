@@ -7,9 +7,9 @@ import { execFileSync } from "node:child_process";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "993f6e630aca20175b92a0475b2dda3dd51bdba9";
+const pinnedProducer = "c82e2bf2e717798cb1d0b719ef5696fcca0db5d4";
 
-test("property evidence pins the merged CARR producer with the inherited Progress directory", () => {
+test("property evidence pins the integrated Doc activity producer with the inherited Progress directory", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 

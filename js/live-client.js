@@ -286,9 +286,13 @@ export function createLiveClient(opts = {}) {
 
     async getChanges(cursor) {
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error(`live changes -> ${res.status}`);
-      const data = await res.json();
+      const data = await readWithDeadline(async signal => {
+        const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal });
+        // Refusal is decided by the headers. Its diagnostic body must not
+        // turn a known authorization failure into a statusless read failure.
+        if (!res.ok) throw Object.assign(new Error(`live changes -> ${res.status}`), { status: res.status });
+        return res.json();
+      }, { timeoutMs: opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.
@@ -523,6 +527,7 @@ export function createLiveClient(opts = {}) {
     // One read-only verb, passed through untouched. It takes NO arguments and
     // refuses any field, so none is sent. It grants no authority: the decisions
     // it lists are taken with their own partner verbs, none of which is pinned.
+    async readConnections({ signal } = {}) { return (await rpc('read-resource-dashboard', {}, signal)).connections; },
     async governanceQueue() { return rpc('governance-queue', {}); },
     async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 

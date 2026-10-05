@@ -3,7 +3,7 @@
   "version": "1.42.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "993f6e630aca20175b92a0475b2dda3dd51bdba9"
+    "source_commit": "c82e2bf2e717798cb1d0b719ef5696fcca0db5d4"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -547,6 +547,16 @@
       "repository": "jbookout/carr-system",
       "source_commit": "ee8fd95ec7b1c82591089b7694fd558bec9034e2"
     }
+  },
+  "connections": {
+    "schema": "doctorcre-connections.v1",
+    "read_verb": "read-resource-dashboard",
+    "response_field": "connections",
+    "producer": {
+      "repo": "jbookout/carr-system",
+      "source_commit": "495f90283c722065b3f5394a3d0cefd8789a991b"
+    },
+    "missing_observations": "Unknown status and unavailable spend; configuration and capacity do not imply authenticated capability or currency charges."
   },
   "relationship_network": {
     "schema": "carr-relationship-network.v1",

@@ -7,7 +7,7 @@ import { createLiveClient } from "../js/live-client.js";
 import {
   STAGES, EXECUTORS, PULSES, INDICATORS, LIVE_PREVIEW, LIVE_PREF_KEY, legendEntries, boardView, answerRequest,
   taskStage, taskHealth, taskPulse, blockedDetail, isStale, stageTimer, stageDurations, taskIdentity, taskSummary,
-  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, prLabel, deliveryDetail,
+  relatedQuestions, cardIndicators, sortLive, filterCards, groupByRepo, boardFromSearch, jobLinks, deliveryDetail,
 } from "../js/progress-board-model.js";
 import { mountBoard } from "../js/progress-board.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
@@ -16,7 +16,7 @@ const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.met
 const host = `https://${config.env.staging.name}.workers.dev`;
 const FULL = JSON.parse(await readFile(new URL("./fixtures/progress-board-full.json", import.meta.url), "utf8"));
 const REF = new Date(FULL.reference_time);
-const PAGE = await readFile(new URL("../progress-board.html", import.meta.url), "utf8");
+const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
 const CSS = await readFile(new URL("../css/progress-board.css", import.meta.url), "utf8");
 
 function memoryStorage(initial = {}) {
@@ -35,12 +35,12 @@ async function mount(read, { now = REF, storage = memoryStorage(), search = "?bo
     answerBoardQuestion: async args => { writes.push(args); return { ok: true }; },
   };
   // A card navigates to its work detail; the stand-in records where it went.
-  const location = { href: "" };
-  const board = mountBoard({ window, document: window.document, client, storage, search, location,
+  const opened = [];
+  const board = mountBoard({ window, document: window.document, client, storage, search, openTask:card=>opened.push(card),
     now: () => clock, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
   await board.refresh(true);
   const doc = window.document;
-  return { board, window, doc, writes, storage, location, setNow: value => { clock = new Date(value); },
+  return { board, window, doc, writes, storage, opened, setNow: value => { clock = new Date(value); },
     $: selector => doc.querySelector(selector), $$: selector => [...doc.querySelectorAll(selector)] };
 }
 
@@ -77,7 +77,7 @@ test("progress board route requires the existing signed-in CARR page gate", asyn
     } },
     ASSETS: { fetch: async () => { throw Error("signed-out board must not load"); } },
   };
-  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress?board=project-one`), env);
+  const signedOut = await handleDoctorcreRequest(new Request(`${host}/control-room/progress/board/project-one`), env);
   assert.equal(signedOut.status, 302);
   assert.equal(new URL(gated[0].url).pathname, "/control-room");
   env.CARR.fetch = async (request) => { gated.push(request); return new Response(); };
@@ -91,16 +91,17 @@ test("/progress-board?board=all-repos keeps its board through the redirect and i
   const response = await handleDoctorcreRequest(new Request(`${host}/progress-board?board=all-repos`), env);
   assert.equal(response.status, 308);
   const location = new URL(response.headers.get("location"));
-  assert.equal(location.pathname, "/control-room/progress");
-  assert.equal(location.searchParams.get("board"), "all-repos");
+  assert.equal(location.pathname, "/control-room/progress/board/all-repos");
+  assert.equal(location.searchParams.has("board"), false);
   assert.equal(boardFromSearch("?board=all-repos"), "all-repos");
   assert.equal(boardFromSearch("?board=<script>"), null);
   assert.equal(boardFromSearch(""), "carr-v5", "no parameter opens the system board, as the Progress nav does");
 });
 
 test("the static page is gone: the app page renders every section from a full fixture", async () => {
-  const { $, $$, doc, location } = await mount(FULL.project);
-  assert.equal($("#board-title").textContent, "CARR v5 delivery");
+  const { board, $, $$, doc, opened } = await mount(FULL.project);
+  assert.equal(board.view.title, "CARR v5 delivery");
+  assert.equal($("#board-title").textContent, "System Job Board");
   assert.equal($$("#board-stages .column").length, 6, "pipeline");
   assert.ok($$("#board-blocked .blocked-card").length >= 3, "blocked cards with reason and next action");
   assert.match($("#board-blocked").textContent, /Why: Waiting on the production database key/);
@@ -116,12 +117,12 @@ test("the static page is gone: the app page renders every section from a full fi
   const codex = $('#board-ledger [data-pool="codex"]');
   assert.match(codex.textContent, /Codex · gpt-6-sol · high ×9/, "ledger with provider, model and effort");
   assert.ok($('#board-ledger [data-pool="claude-cloud"].ledger-violation'), "policy violation flagged");
-  assert.equal($$("#board-completed .completed-card").length, 7, "completed history");
+  assert.equal($$("#completed-list .completed-card").length, 7, "completed history");
   assert.ok($$("#legend-body [data-legend-id]").length >= INDICATORS.length, "legend");
   assert.ok($("#board-headline").textContent.includes("blocked"), "headline");
   doc.querySelector('[data-card-id="build-card"]').click();
-  assert.equal(location.href, "/control-room/progress/work?board=carr-v5&task=build-card", "a card opens its work detail");
-  assert.equal($("#task-detail"), null, "no pop-up");
+  assert.equal(opened[0].id, "build-card", "a card opens the shared popup");
+  assert.equal($("#task-detail"), null, "no duplicate detail");
 });
 
 test("every indicator the renderer emits has a legend entry, from the same constants", async () => {
@@ -213,6 +214,33 @@ test("Live collapses by default to the newest few, expands with one control, and
   assert.equal(locked.$('.column[data-stage="live"]').querySelectorAll(".board-card").length, 7, "works without storage");
 });
 
+for (const update of ["tick", "refresh"]) {
+  for (const expanded of [false, true]) test(`Live expansion focus survives ${update} when expanded=${expanded}`, async t => {
+    const page = await mount(FULL.project);
+    t.after(() => { page.board.dispose(); page.window.close(); });
+    if (expanded) page.board.toggleLive();
+    page.$("#live-toggle").focus();
+    await page.board[update]();
+    assert.equal(page.doc.activeElement, page.$("#live-toggle"));
+    assert.equal(page.$("#live-toggle").getAttribute("aria-expanded"), String(expanded));
+    // A refresh of the board must not pull focus from a separate control.
+    const outside = page.$("#board-retry");
+    outside.focus();
+    await page.board[update]();
+    assert.equal(page.doc.activeElement, outside);
+  });
+}
+
+test("Live expansion focus falls back to the board title when filtering removes the control", async t => {
+  const page = await mount(FULL.project);
+  t.after(() => { page.board.dispose(); page.window.close(); });
+  page.$("#live-toggle").focus();
+  page.board.filters.stage = "build";
+  page.board.tick();
+  assert.equal(page.$("#live-toggle"), null);
+  assert.equal(page.doc.activeElement, page.$("#board-title"));
+});
+
 test("stage timer reads stage_entered_at, updates live, and the pop-up shows history with durations", async () => {
   const task = { status: "running", stage: "build", stage_entered_at: "2026-09-29T09:46:00Z", updated_at: "2026-09-29T11:59:00Z" };
   assert.equal(stageTimer(task, REF), "build 2h 14m");
@@ -293,7 +321,7 @@ test("all-repos board groups by repo, keys cards per repo, and filters by repo, 
   assert.ok(carr && app && carr !== app, "equal PR numbers never collide");
   assert.equal(carr.querySelector(".card-pr").textContent, "carr-system #93");
   assert.equal(app.querySelector(".card-pr").textContent, "doctorcre-app #93");
-  assert.equal(prLabel({ pr: 93, repo: "jbookout/doctorcre-app" }), "doctorcre-app #93");
+  assert.deepEqual(jobLinks({ pr: 93, repo: "jbookout/doctorcre-app" }), {workRequest:null,prLabel:"doctorcre-app #93",prUrl:"https://github.com/jbookout/doctorcre-app/pull/93"});
   const review = $('.column[data-stage="review"]');
   assert.deepEqual([...review.querySelectorAll(".repo-group")].map(node => node.textContent), ["carr-system", "doctorcre-app"]);
   assert.match(carr.querySelector(".card-summary").textContent, /One line about 93\./);
@@ -431,17 +459,28 @@ test("prototype-like and malformed task statuses cannot break the board", () => 
 });
 
 
-test("board activity and every card open the dedicated work-detail route", async () => {
-  const { window, doc, $, location } = await mount({ snapshot: { board_id: "demo-project", version: 1,
+test("board activity links to project history and cards open the shared popup", async () => {
+  const { window, doc, $, opened } = await mount({ snapshot: { board_id: "demo-project", version: 1,
     snapshot_json: { tasks: { "WR-900": { title: "Synthetic work", status: "review", work_request: "WR-900" } } } },
     questions: [] }, { search: "?board=demo-project" });
   assert.equal($("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
   assert.equal($("#board-parent-name").textContent, "Project board");
   doc.querySelector(".board-card").click();
-  assert.equal(location.href, "/control-room/progress/work?board=demo-project&task=WR-900&work_request=WR-900");
-  location.href = "";
+  assert.equal(opened[0].work_request, "WR-900");
+  opened.length = 0;
   doc.querySelector(".board-card").dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  assert.equal(location.href, "/control-room/progress/work?board=demo-project&task=WR-900&work_request=WR-900",
-    "Enter opens the same page");
+  assert.equal(opened[0].work_request, "WR-900", "Enter opens the same popup");
   window.close();
+});
+
+
+test('PR132 #8: explicit bindings share the pipeline, blocked and completed projections',async()=>{
+ const read=structuredClone(FULL.project);
+ const fields={work_request_ref:'WR-000999',pr_url:'https://github.com/example/demo/pull/88'};
+ for(const task of Object.values(read.snapshot.snapshot_json.tasks)){Object.assign(task,fields);delete task.work_request;delete task.human_ref;delete task.pr;}
+ const {doc}=await mount(read);
+ for(const selector of ['#board-stages .board-card','#board-blocked .blocked-card','#completed-list .completed-card']){
+  const cards=[...doc.querySelectorAll(selector)];assert.ok(cards.length,selector);
+  for(const card of cards){assert.match(card.textContent,/WR-000999/);assert.match(card.textContent,/#88/);}
+ }
 });
