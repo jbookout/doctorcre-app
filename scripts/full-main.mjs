@@ -79,7 +79,7 @@ export async function runFullMain({root,suite,timeoutMs=suite==='app'?900000:540
   // Browser screenshots are declared test outputs, even when older versions
   // remain tracked. All other tracked paths and the selected commit must stay fixed.
   const sourceDirty=()=>git('diff','--name-only','HEAD').split('\n').some(path=>path&&!path.startsWith('test-artifacts/'));
-  const untrackedInputs=()=>git('ls-files','--others','--exclude-standard','--','test','tests/journeys');
+  const untrackedInputs=()=>git('ls-files','--others','--exclude-standard').split('\n').some(path=>path&&!path.startsWith('test-artifacts/'));
   const cleanSource=trackedInventory&&!untrackedInputs()&&!sourceDirty();
   const result=cleanSource?await execute(commands[suite],root,timeoutMs,new Set(suite==='app'?paths:['test/browser-product-proof.test.mjs'])):{code:null,sourceChanged:true,tail:''};
   result.sourceChanged=!cleanSource||Boolean(untrackedInputs())||sourceDirty()||git('rev-parse','HEAD')!==source.sha||await inventory()!==inventoryDigest;

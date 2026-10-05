@@ -12,8 +12,9 @@ async function fixture(t, body) {
   await mkdir(join(root, 'test')); await mkdir(join(root, 'scripts'));
   await writeFile(join(root, 'package.json'), JSON.stringify({type:'module',scripts:{test:'node --test test/*.test.mjs'}}));
   await writeFile(join(root, 'test/seeded.test.mjs'), body);
+  await writeFile(join(root, '.gitignore'), '.e2e/\n');
   const git=(...args)=>execFileSync('git',args,{cwd:root,stdio:'pipe'});
-  git('init');git('add','package.json','test/seeded.test.mjs');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','fixture');
+  git('init');git('add','.gitignore','package.json','test/seeded.test.mjs');git('-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-m','fixture');
   return {root,git};
 }
 const clean="import test from 'node:test'; test('synthetic full-suite case',()=>{});\n";
@@ -71,6 +72,10 @@ test('untracked executable test inputs cannot borrow the selected source SHA',as
   await writeFile(join(root,'test/untracked.test.mjs'),clean);
   const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
   assert.equal(receipt.status,'failed');assert.equal(receipt.reason,'source_changed');assert.equal(receipt.counts,null);
+  const other=await fixture(t,clean);
+  await mkdir(join(other.root,'src'));
+  await writeFile(join(other.root,'src/untracked.mjs'),'export const synthetic = true;');
+  assert.notEqual((await runner.runFullMain({root:other.root,suite:'app',timeoutMs:5000})).status,'passed','untracked runtime code cannot borrow main source');
 });
 test('e2e acknowledgement must bind the native runner and complete packet to this source',async t=>{
   assert.ok(runner,'full-main runner must exist');
