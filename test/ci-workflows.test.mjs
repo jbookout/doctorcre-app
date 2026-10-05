@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { checkActionPins } from "../scripts/check-action-pins.mjs";
 import { context, policy } from "./workflow-policy.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
@@ -354,17 +355,10 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
   await assert.rejects(readFile(join(directory,'published.json')),/ENOENT/);
 });
 
-test('action pins agree with authenticated canonical release evidence',async()=>{
-  const pins=JSON.parse(await readFile(new URL('../.github/action-pins.json',import.meta.url)));
-  const check=(action,sha)=>{
-    const pin=pins.actions[action];
-    assert.equal(pin.sha,sha); assert.equal(pin.canonical_tag_sha,sha);
-    assert.equal(pin.release_url,`https://github.com/${action}/releases/tag/${pin.tag}`);
-    assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,'node20');
-  };
-  for(const workflow of [ci,e2e,release]) for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
-  assert.throws(()=>check('actions/checkout','f'.repeat(40)),/strictly equal/);
+test('action pins agree with authenticated canonical release evidence', async () => {
+  await checkActionPins(root);
 });
+
 for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {
   test(`${name}: close runs zero shell commands; invalid edited body still blocks`, async t => {
     const closed = await replay(t, workflow, "pull_request", "", { action: "closed" });
