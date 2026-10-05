@@ -100,6 +100,7 @@
     "test/dealroom-call-mode.test.mjs",
     "test/dealroom-system-work-client.test.mjs",
     "test/dealroom-system-work.test.mjs",
+    "test/dependency-updates.test.mjs",
     "test/design-prototype-escaping.test.mjs",
     "test/doc-command-bar.test.mjs",
     "test/doc-context.test.mjs",
