@@ -38,7 +38,6 @@ test("built report uses only report-adapter asset routes and includes the shared
     const requested = [...html.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]);
     const routed = new Set(["/share-bootstrap.js", "/share.js", "/share.css", "/vendor/maplibre-gl-6.4.1/maplibre-gl.css"]);
     assert.deepEqual(requested.filter((path) => !routed.has(path)), [], "every report asset request has an adapter route");
-    assert.match(script, /function appShellMarkup\(/, "report JavaScript carries the shared navigation renderer");
     assert.match(style, /\.app-shell-header\{/, "report CSS carries the shared shell styles");
     assert.doesNotMatch(script, /^export /m, "report JavaScript runs without an unrouted module import");
     assert.doesNotThrow(() => new Script(script), "the standalone report bundle parses after removing app-only mounting");
@@ -85,4 +84,28 @@ test("public report navigation uses its sibling app origin", async () => {
   const shell = appShellMarkup("/share", origin);
   assert.ok(shell.includes(`href="${appOrigin}/deals"`));
   assert.ok(shell.includes(`href="${appOrigin}/" aria-label="DoctorCRE Home"`));
+});
+
+test('report navigation mounts through its module without partner controls and keeps More keyboard behavior', async () => {
+  const { JSDOM } = await import('jsdom');
+  const { mountNavigation } = await import('../js/navigation.js');
+  const dom = new JSDOM('<body><div id="appShell"></div><main>Report</main></body>', { url:'https://reports.example.test/' });
+  try {
+    const host = mountNavigation(dom.window.document, '/', { report:true });
+    assert.equal(host.querySelector('.app-shell-controls'), null);
+    assert.equal(dom.window.document.body.classList.contains('report-shell'), true);
+    assert.equal(host.querySelector('[aria-label="Leads"]').href, 'https://app.example.test/leads');
+    const more = host.querySelector('[aria-label="More"]');
+    const list = host.querySelector('.app-shell-more-list');
+    more.click();
+    assert.equal(list.hidden, false);
+    assert.equal(more.getAttribute('aria-expanded'), 'true');
+    host.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key:'Escape',bubbles:true}));
+    assert.equal(list.hidden, true);
+    assert.equal(more.getAttribute('aria-expanded'), 'false');
+    assert.equal(dom.window.document.activeElement, more);
+    more.click();
+    dom.window.document.querySelector('main').click();
+    assert.equal(list.hidden, true);
+  } finally { dom.window.close(); }
 });

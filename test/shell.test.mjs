@@ -197,7 +197,8 @@ const PAGES_WITH_BADGE_JS = [
 const PAGES_WITHOUT_BADGE_JS = ["design.html", "design-business.html", "design-operations.html"];
 
 test("B12b-shell-8: every page with the shared top bar carries the navUnreadBadge element", async () => {
-  const shell = await read("js/app-shell.js");
+  const { appShellMarkup } = await import("../js/app-shell.js");
+  const shell = appShellMarkup("/");
   assert.match(shell, /id="navUnreadBadge"/);
   for (const [page] of PAGES_WITH_BADGE_JS) {
     const html = await read(page);

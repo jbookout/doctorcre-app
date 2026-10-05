@@ -25,6 +25,15 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
   });
   await page.goto('https://reports.doctorcre.com/');await page.locator('.app-shell-header').waitFor();
   assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('report-shell')),true);
+  assert.equal(await page.locator('.app-shell-controls').count(), 0);
+  assert.equal(await page.getByLabel('DoctorCRE Home', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/');
+  assert.equal(await page.getByLabel('Leads', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/leads');
+  await page.getByLabel('More', {exact:true}).click();
+  assert.equal(await page.getByLabel('More', {exact:true}).getAttribute('aria-expanded'), 'true');
+  assert.equal(await page.getByLabel('Local Deals', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/deals');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.app-shell-more-list').isVisible(), false);
+  assert.equal(await page.getByLabel('More', {exact:true}).evaluate(node=>node===document.activeElement), true);
   const rail=await page.locator('.app-shell-header').boundingBox(), main=await page.locator('main').boundingBox();
   assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
 });
@@ -92,8 +101,8 @@ async function committedFixture(t) {
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   // Exercise the code under test, including edits not yet committed by the maker.
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs"]);
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "--allow-empty", "-m", "Synthetic verifier fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
   const outDir = join(root, "dist");
@@ -112,7 +121,7 @@ test("one contract path declaration drives both assembly and committed-source ve
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
   ];
@@ -123,7 +132,7 @@ test("one contract path declaration drives both assembly and committed-source ve
     source = source.replace(oldPath, newPath);
   }
   await writeFile(join(root, "scripts/artifact.mjs"), source);
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "Synthetic relocated contracts"]);
   for (const command of ["build", "verify"]) {
     execFileSync(process.execPath, ["scripts/build-artifact.mjs", command], {
@@ -227,4 +236,12 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
   await buildArtifact({root,outDir,commit});
   await rm(join(outDir,'doctorcre-app.manifest.json'));
   await assert.rejects(runCli(root,['prepare-deployment']), /ENOENT/);
+});
+
+test('report assembly is independent of app-shell implementation spelling', async t => {
+  const { root, outDir } = await committedFixture(t);
+  const before = await readFile(join(outDir, 'site/reports/share.js'));
+  await writeFile(join(root, 'js/app-shell.js'), '// App-only mounting may change independently of reports.\n');
+  await buildArtifact({ root, outDir, commit:COMMIT });
+  assert.deepEqual(await readFile(join(outDir, 'site/reports/share.js')), before);
 });
