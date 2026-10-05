@@ -51,7 +51,7 @@ test('timeline fixture waits for delayed client initialization before instrument
  assert.deepEqual(errors,[]);
 });
 test('W9 horizontal phase dates, countdowns, dated originals, wide layout and phone renders',async t=>{
- await mkdir(new URL('test-artifacts/w9/',root),{recursive:true});
+ await mkdir(new URL('out/test-artifacts/w9/',root),{recursive:true});
  for(const width of [1440,390,320])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,{width,reducedMotion:'reduce'});
   assert.equal(await page.locator('.phase-rail [aria-current] time').textContent(),'Oct 3, 2026');
@@ -64,11 +64,11 @@ test('W9 horizontal phase dates, countdowns, dated originals, wide layout and ph
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
   assert.ok((await page.locator('#recordPanel').boundingBox()).width>=Math.min(1100,width-30));
   assert.equal(await page.locator('.timeline-entry').evaluateAll(es=>es.every(e=>getComputedStyle(e).transitionDuration==='0s'&&getComputedStyle(e).transform==='none')),true);
-  await page.screenshot({path:new URL(`test-artifacts/w9/deal-${width}.png`,root).pathname});
+  await page.screenshot({path:new URL(`out/test-artifacts/w9/deal-${width}.png`,root).pathname});
   await page.locator('.timeline-entry[data-kind="email"] summary').click();
   assert.match(await page.locator('.timeline-entry[data-kind="email"] .note-original').textContent(),/Original synthetic email/);
   assert.ok((await page.locator('.timeline-entry[data-kind="email"] > p').textContent()).length<=150);
-  await page.screenshot({path:new URL(`test-artifacts/w9/timeline-${width}.png`,root).pathname});
+  await page.screenshot({path:new URL(`out/test-artifacts/w9/timeline-${width}.png`,root).pathname});
   assert.equal(await page.locator('#timelineRange').inputValue(),'full');
   assert.equal(await page.getByText('Demo historic entry',{exact:true}).count(),1);
   await page.locator('#timelineRange').selectOption('recent');

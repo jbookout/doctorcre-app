@@ -46,7 +46,7 @@ test('all source cards and ten recent Live nodes fit phone and desktop; library 
   assert.equal(await page.locator('#system-work-flow .pipeline-node').count(),1);
   assert.equal(await page.locator('#system-work-count').textContent(),'1 TASK');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
-  if(width!==320){await mkdir('test-artifacts/w1',{recursive:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`test-artifacts/w1/progress-${width===390?'phone':'desktop'}.png`,fullPage:true});}
+  if(width!==320){await mkdir('out/test-artifacts/w1',{recursive:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`out/test-artifacts/w1/progress-${width===390?'phone':'desktop'}.png`,fullPage:true});}
  });
 });
 test('card action confirms and calls source verb with freshly read version',async t=>{

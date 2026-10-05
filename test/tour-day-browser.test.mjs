@@ -79,7 +79,7 @@ const record = async page => {
 };
 
 test("W16 desktop and phone renders: reachable capture, wide Details, full width and reduced motion", async t => {
-  await mkdir(new URL("test-artifacts/w16/", root), { recursive: true });
+  await mkdir(new URL("out/test-artifacts/w16/", root), { recursive: true });
   for (const width of [1440, 761, 760, 721, 390, 320]) await t.test(String(width), async t => {
     const { page, requests, errors } = await open(t, { width });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -105,7 +105,7 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     assert.equal(await page.locator("#day-dialog").isVisible(), true);
     const dialog = await page.locator("#day-dialog").boundingBox(); assert.ok(dialog.width >= Math.min(1000, width - 24));
     assert.match(await page.locator("#day-dialog-body").textContent(), /200 Example Way.*north lobby/s);
-    if ([1440, 390, 320].includes(width)) await page.screenshot({ path: new URL(`test-artifacts/w16/details-${width}.png`, root).pathname, fullPage: true });
+    if ([1440, 390, 320].includes(width)) await page.screenshot({ path: new URL(`out/test-artifacts/w16/details-${width}.png`, root).pathname, fullPage: true });
     await page.getByLabel("Close property", { exact: true }).click();
     await page.locator("#day-previous").click();
     assert.match(await page.locator("#day-current").textContent(), /waterfront/);
@@ -113,7 +113,7 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     assert.equal(await page.locator(".day-stop").first().evaluate(e => getComputedStyle(e).transitionDuration), "0s");
     const copy = await page.locator("#tour-day").textContent(); assert.doesNotMatch(copy, /record layer|source|Read again|retry read|records read|Search Mode/i);
     await page.evaluate(() => window.scrollTo(0, 0));
-    if ([1440, 390, 320].includes(width)) await page.screenshot({ path: new URL(`test-artifacts/w16/day-${width}.png`, root).pathname, fullPage: true });
+    if ([1440, 390, 320].includes(width)) await page.screenshot({ path: new URL(`out/test-artifacts/w16/day-${width}.png`, root).pathname, fullPage: true });
     assert.deepEqual(errors, []); assert.equal(requests.some(r => r.method !== "GET"), false);
   });
 });
@@ -128,7 +128,7 @@ test("browser MediaRecorder audio is durable per property and Details preserves 
   const original = await page.evaluate(async () => [...new Uint8Array(await new Blob(window.syntheticChunks).arrayBuffer())]);
   const bytes = await page.locator('#day-dialog audio').evaluate(async e => [...new Uint8Array(await window.syntheticAudioBlobs[e.src].arrayBuffer())]);
   assert.ok(bytes.length > 100); assert.deepEqual(bytes, original);
-  await page.screenshot({ path: new URL("test-artifacts/w16/phone-note-details.png", root).pathname, fullPage: true });
+  await page.screenshot({ path: new URL("out/test-artifacts/w16/phone-note-details.png", root).pathname, fullPage: true });
   await page.getByLabel("Close property", { exact: true }).click();
   await page.locator("#day-next").click(); assert.equal(await page.locator(".note-card").count(), 0);
   await page.reload(); await page.waitForFunction(() => document.querySelector("#day-current").textContent.includes("garden"));
@@ -229,7 +229,7 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   assert.equal(await page.locator(".day-stop").count(), 2); assert.equal(await page.locator(".note-card").count(), 1);
   assert.equal(await page.locator("#appMainSlot #tour-day").count(), 1);
   assert.equal(await page.getByLabel("Workspace sidebar", { exact: true }).isVisible(), true);
-  await page.screenshot({ path: new URL("test-artifacts/w16/phone-offline.png", root).pathname, fullPage: true });
+  await page.screenshot({ path: new URL("out/test-artifacts/w16/phone-offline.png", root).pathname, fullPage: true });
   await context.setOffline(false);
   await page.waitForFunction(() => document.querySelector("#day-status").textContent === "Voice notes stay on this phone");
   assert.equal(await page.locator(".note-card").count(), 1); assert.deepEqual(errors, []);

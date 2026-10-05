@@ -206,3 +206,25 @@ test("slice fragments and generated registry stay bound to committed source", as
   await writeFile(registry, (await readFile(registry, "utf8")) + "// Demo tampered registry\n");
   await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
 });
+
+test('provider preparation replaces poisoned cache output with verified committed bytes', async t => {
+  const {root,outDir} = await committedFixture(t);
+  await writeFile(join(outDir,'site','marker.sh'), '#!/bin/sh\nexit 99\n');
+  await writeFile(join(outDir,'site','workspace.html'), 'synthetic cache poison');
+  await runCli(root,['prepare-deployment']);
+  await assert.rejects(readFile(join(outDir,'site','marker.sh')), /ENOENT/);
+  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), await readFile(join(root,'workspace.html')));
+});
+
+test('provider preparation refuses missing, empty, fork and changed artifacts', async t => {
+  const {root,outDir,commit,built} = await committedFixture(t);
+  await writeFile(join(outDir,'doctorcre-app.tar'), '');
+  await assert.rejects(runCli(root,['prepare-deployment']), /digest mismatch/);
+  await writeFile(join(outDir,'doctorcre-app.tar'), built.archive);
+  await runCli(root,['prepare-deployment']);
+  await buildArtifact({root,outDir,commit:'f'.repeat(40)});
+  await assert.rejects(runCli(root,['prepare-deployment']), /source commit mismatch/);
+  await buildArtifact({root,outDir,commit});
+  await rm(join(outDir,'doctorcre-app.manifest.json'));
+  await assert.rejects(runCli(root,['prepare-deployment']), /ENOENT/);
+});

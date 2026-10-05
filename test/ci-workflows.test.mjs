@@ -56,7 +56,7 @@ function commands(workflow, event, action = "opened") {
       if (match[1] !== event) return [];
     }
     if (run === ">-") return [step.match(/^        run: >-\n((?:          .+\n?)+)/m)[1].trim().replace(/\n\s*/g, " ")];
-    assert.notEqual(run, "|", "literal shell blocks need an explicit reader update");
+    if (run === "|") return [step.match(/^        run: \|\n((?:          .+\n?)+)/m)[1].replace(/^          /gm, "")];
     return [run];
   });
 }
@@ -279,18 +279,92 @@ test("main keeps artifact checks while avoiding a repeated full suite", async (t
 
 test("release retains full tests and source verification before publication", async (t) => {
   for (const failure of ["npm test", "npm run artifact:verify"]) {
-    const result = await replay(t, release, "push", failure);
+    const result = await replay(t, release.split("      - id: digests")[0], "push", failure);
     assert.equal(result.failed, true, failure);
     assert.equal(result.trace.some((command) => command.startsWith("gh release create ")), false);
   }
-  const success = await replay(t, release, "push");
+  const success = await replay(t, release.split("      - id: digests")[0], "push");
   assert.equal(success.failed, false);
-  const publish = success.trace.findIndex((command) => command.startsWith("gh release create "));
+  const publish = success.trace.length;
+  assert.match(release, /publish:\n    needs: build/);
   for (const command of ["npm test", "npm run build", "npm run artifact:verify"]) {
     assert.ok(success.trace.indexOf(command) >= 0 && success.trace.indexOf(command) < publish);
   }
 });
 
+
+test("release build is read-only and publisher receives only this run's digest-bound artifact", () => {
+  assert.match(release, /permissions:\n  contents: read/);
+  const [build, publisher] = release.split(/^  publish:/m);
+  assert.doesNotMatch(build, /contents: write|GH_TOKEN|secrets\./);
+  assert.match(publisher, /needs: build/);
+  assert.match(publisher, /contents: write/);
+  assert.doesNotMatch(publisher, /npm ci|npm test|npm run build|actions\/checkout|cache:/);
+  assert.match(publisher, /artifact-ids: \$\{\{ needs.build.outputs.artifact_id \}\}/);
+  assert.match(publisher, /sha256sum -c/);
+});
+
+test("every external action is immutable, and checkout never persists credentials", async () => {
+  for (const file of ["ci.yml", "e2e.yml", "release.yml"]) {
+    const workflow = await readFile(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8");
+    for (const ref of workflow.matchAll(/uses: ([^\s#]+)/g)) assert.match(ref[1], /^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
+    for (const step of workflow.split(/^      - /m).slice(1).filter(s => s.includes("actions/checkout@"))) assert.match(step, /persist-credentials: false/);
+  }
+});
+
+test('publisher handoff rejects tampering, missing digests, fork identity and symlinks; malicious ref stays inert', async t => {
+  const verify = release.match(/      - name: Verify handoff[\s\S]*?        run: \|\n([\s\S]*?)      - name: Publish/)[1].replace(/^          /gm, '');
+  const publish = commands(release, 'push').find(command => command.includes('gh release create'));
+  assert.ok(publish.includes('gh release create'));
+  const directory=await mkdtemp(join(tmpdir(),'release-handoff-'));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  const {mkdir,symlink}=await import('node:fs/promises');
+  await mkdir(join(directory,'dist')); await mkdir(join(directory,'bin'));
+  const sha='1'.repeat(40);
+  const files={
+    'doctorcre-app.tar':'synthetic archive data; $(touch marker)',
+    'doctorcre-app.manifest.json':JSON.stringify({schema:'doctorcre-static-artifact.v1',repository:'jbookout/doctorcre-app',source_commit:sha}),
+    'doctorcre-app.tar.sha256':'synthetic digest sidecar',
+  };
+  const hashes=Object.values(files).map(bytes=>createHash('sha256').update(bytes).digest('hex'));
+  const gh=join(directory,'bin','gh');
+  await writeFile(gh,`#!${process.execPath}\nif (process.argv[2] === 'api') console.log(JSON.stringify({type:'commit',sha:process.env.FIXTURE_TAG_SHA || process.env.GITHUB_SHA})); else if (process.env.FIXTURE_WRITE_DENIED) process.exit(1); else require('node:fs').writeFileSync('published.json',JSON.stringify(process.argv.slice(2)));\n`); await chmod(gh,0o755);
+  const env={...process.env,PATH:`${join(directory,'bin')}:${process.env.PATH}`,GITHUB_SHA:sha,GITHUB_REPOSITORY:'jbookout/doctorcre-app',GITHUB_REF_NAME:'app-v$(touch marker)',TAR_SHA:hashes[0],MANIFEST_SHA:hashes[1],SIDECAR_SHA:hashes[2]};
+  const reset=async()=>{
+    await rm(join(directory,'published.json'),{force:true});
+    for(const [file,bytes] of Object.entries(files)) {await rm(join(directory,'dist',file),{force:true});await writeFile(join(directory,'dist',file),bytes);}
+  };
+  const run=(overrides={})=>spawnSync('bash',['-e','-c',verify+'\n'+publish],{cwd:directory,env:{...env,...overrides},encoding:'utf8'});
+  await reset(); const healthy=run(); assert.equal(healthy.status,0, healthy.stderr+healthy.stdout);
+  const args=JSON.parse(await readFile(join(directory,'published.json'),'utf8'));
+  assert.equal(args[2],env.GITHUB_REF_NAME);
+  await assert.rejects(readFile(join(directory,'marker')),/ENOENT/);
+  for(const file of Object.keys(files)) {
+    await reset(); await writeFile(join(directory,'dist',file),'synthetic tampering');
+    assert.notEqual(run().status,0,file);
+    await assert.rejects(readFile(join(directory,'published.json')),/ENOENT/);
+  }
+  for(const overrides of [{TAR_SHA:''},{MANIFEST_SHA:'$(touch marker)'},{GITHUB_SHA:'f'.repeat(40)},{FIXTURE_TAG_SHA:'f'.repeat(40)},{FIXTURE_WRITE_DENIED:'1'}]) {
+    await reset(); assert.notEqual(run(overrides).status,0);
+    await assert.rejects(readFile(join(directory,'published.json')),/ENOENT/);
+  }
+  await reset(); await rm(join(directory,'dist','doctorcre-app.tar'));
+  await symlink(join(directory,'dist','doctorcre-app.tar.sha256'),join(directory,'dist','doctorcre-app.tar'));
+  assert.notEqual(run().status,0);
+  await assert.rejects(readFile(join(directory,'published.json')),/ENOENT/);
+});
+
+test('action pins agree with authenticated canonical release evidence',async()=>{
+  const pins=JSON.parse(await readFile(new URL('../.github/action-pins.json',import.meta.url)));
+  const check=(action,sha)=>{
+    const pin=pins.actions[action];
+    assert.equal(pin.sha,sha); assert.equal(pin.canonical_tag_sha,sha);
+    assert.equal(pin.release_url,`https://github.com/${action}/releases/tag/${pin.tag}`);
+    assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,'node20');
+  };
+  for(const workflow of [ci,e2e,release]) for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
+  assert.throws(()=>check('actions/checkout','f'.repeat(40)),/strictly equal/);
+});
 for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {
   test(`${name}: close runs zero shell commands; invalid edited body still blocks`, async t => {
     const closed = await replay(t, workflow, "pull_request", "", { action: "closed" });

@@ -7,9 +7,9 @@ import { execFileSync } from "node:child_process";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "c82e2bf2e717798cb1d0b719ef5696fcca0db5d4";
+const pinnedProducer = "2f531c295f37757899ca432dfb04a9b95e8d5184";
 
-test("property evidence pins the integrated Doc activity producer with the inherited Progress directory", () => {
+test("property evidence pins the integrated activity, system-work and Progress producer", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
 });
 
@@ -180,10 +180,12 @@ test("the advertised runtime producer accepts the inherited Live Library system=
     export { workInventoryResponse };`;
   const { workInventoryResponse } = await import(`data:text/javascript;base64,${Buffer.from(module).toString("base64")}`);
   let consumed;
+  const inventory = { schema: "unfinished-work.v1", items: [{ id: "synthetic-system-item", title: "Synthetic completed build" }] };
   const response = await workInventoryResponse(new Request("https://app.doctorcre.com/api/v1/work-inventory?system=true&live_library=true"), {}, { actor: { slug: "joe" } }, {
-    workInventoryReader: async (_env, _actor, _correlation, args) => { consumed = args; return { items: [] }; },
+    workInventoryReader: async (_env, _actor, _correlation, args) => { consumed = args; return inventory; },
   });
   assert.equal(response.status, 200, "the pin must admit the query already used by the Live Library");
   assert.equal(consumed.system, "true");
   assert.equal(consumed.live_library, "true");
+  assert.deepEqual(await response.json(), inventory, "the admitted query must return the inherited inventory to the app");
 });
