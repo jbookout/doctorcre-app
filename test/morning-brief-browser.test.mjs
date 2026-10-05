@@ -47,8 +47,8 @@ async function setup(t, { width = 1440, triage, changes, boardMap = board => boa
 }
 
 const shot = async (page, name) => {
-  await mkdir(new URL('test-artifacts/w12/', root), { recursive: true });
-  await page.screenshot({ path: new URL(`test-artifacts/w12/${name}.png`, root).pathname, animations: 'disabled' });
+  await mkdir(new URL('out/test-artifacts/w12/', root), { recursive: true });
+  await page.screenshot({ path: new URL(`out/test-artifacts/w12/${name}.png`, root).pathname, animations: 'disabled' });
 };
 
 test('Doc shows the brief on the first open of the day, every line opens its record, and it stays dismissed until reopened', async t => {

@@ -80,7 +80,7 @@ async function open(t, width = 1440) {
       return r.fulfill({ status: 404, body: "" });
     }
   });
-  await mkdir(new URL("test-artifacts/w14", root), { recursive: true });
+  await mkdir(new URL("out/test-artifacts/w14", root), { recursive: true });
   return {
     page,
     errors,
@@ -141,7 +141,7 @@ for (const width of [1440, 390])
       true,
     );
     await page.screenshot({
-      path: `test-artifacts/w14/network-${width}.png`,
+      path: `out/test-artifacts/w14/network-${width}.png`,
       animations: "disabled",
     });
     await page.locator('[data-node="party:demo-lender"]').first().focus();
@@ -163,7 +163,7 @@ for (const width of [1440, 390])
       /Original synthetic email/,
     );
     await page.screenshot({
-      path: `test-artifacts/w14/detail-${width}.png`,
+      path: `out/test-artifacts/w14/detail-${width}.png`,
       animations: "disabled",
     });
     await page.keyboard.press("Escape");
@@ -181,7 +181,7 @@ for (const width of [1440, 390])
       /100% win rate/,
     );
     await page.screenshot({
-      path: `test-artifacts/w14/referrals-${width}.png`,
+      path: `out/test-artifacts/w14/referrals-${width}.png`,
       animations: "disabled",
     });
     if (width === 390) await page.locator("#appSidebarToggle").click();
@@ -313,7 +313,7 @@ for (const width of [1440, 390])
       /Demo Dental Expansion/,
     );
     await page.screenshot({
-      path: `test-artifacts/w14/home-introduction-${width}.png`,
+      path: `out/test-artifacts/w14/home-introduction-${width}.png`,
       animations: "disabled",
     });
     await page.keyboard.press("Escape");
