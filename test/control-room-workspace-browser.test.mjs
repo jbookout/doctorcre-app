@@ -80,7 +80,7 @@ async function advanceRoom(page, ms) {
  await page.clock.runFor(ms);
  await waitForRoom(page,sequence);
 }
-async function capture(page,name){await mkdir(new URL('test-artifacts/w7/',root),{recursive:true});await page.screenshot({path:new URL(`test-artifacts/w7/${name}.png`,root).pathname,fullPage:true});}
+async function capture(page,name){await mkdir(new URL('out/test-artifacts/w7/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w7/${name}.png`,root).pathname,fullPage:true});}
 for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit ${width}px`,async t=>{
  const {page,calls,errors}=await open(t,{width});await page.waitForSelector('[data-task-id="work_request:WR-000901"]');
  assert.equal(await page.locator('#appLayout').count(),1);assert.equal(await page.locator('#appTabsSlot #controlRoomTabs').count(),1);assert.equal(await page.locator('#appSidebarSlot #board-directory').count(),1);
@@ -152,7 +152,7 @@ for(const width of [1440,390])test(`W7 calendar defaults and dedicated automatio
 test('W7 retains distinct before and after renders at desktop and phone width',async()=>{
  for(const width of [1440,390]){
   const before=await readFile(new URL(`test-artifacts/w7/before-${width}.png`,root));
-  const after=await readFile(new URL(`test-artifacts/w7/board-${width}.png`,root));
+  const after=await readFile(new URL(`out/test-artifacts/w7/board-${width}.png`,root));
   assert.equal(before.readUInt32BE(16),width);assert.equal(after.readUInt32BE(16),width);assert.notDeepEqual(before,after);
  }
 });

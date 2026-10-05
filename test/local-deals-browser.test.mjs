@@ -35,7 +35,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
 
 test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduced motion', async t => {
-  await mkdir(new URL('test-artifacts/w4/', root), { recursive: true });
+  await mkdir(new URL('out/test-artifacts/w4/', root), { recursive: true });
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, reducedMotion: 'reduce' });
     assert.equal(await page.locator('#pageTitle').textContent(), 'Local Deals');
@@ -48,7 +48,7 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
     assert.ok(sizes.every(e => e.height === 212 && e.transform === 'none' && e.transition === '0s'));
-    await page.screenshot({ path: new URL(`test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
     await page.locator('[data-filter="dell"]').click();
     assert.equal(await page.locator('.kanban-column .owner').evaluateAll(es => es.every(e => e.textContent === 'Dell')), true);
     await page.locator('[data-filter="all"]').click();
@@ -59,7 +59,7 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.match(await page.locator('.deal-note[data-id="demo-note"] .note-original').textContent(), /Full original demo entry/);
     await page.locator('#recordPanel').evaluate(e => { e.scrollTop = 0; });
     assert.equal(await page.locator('#recordPanel').evaluate(e => e.scrollWidth <= e.clientWidth), true);
-    await page.screenshot({ path: new URL(`test-artifacts/w4/detail-${width}.png`, root).pathname });
+    await page.screenshot({ path: new URL(`out/test-artifacts/w4/detail-${width}.png`, root).pathname });
     await page.getByLabel('Close deal', { exact: true }).click(); assert.deepEqual(errors, []);
   });
 });

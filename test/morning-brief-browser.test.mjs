@@ -33,7 +33,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  const goto=async(path='/deals?mode=live')=>{await page.goto('http://localhost'+path);await page.locator('#docPresence').waitFor();};
  return {page,goto,calls,errors,set scope(value){scope=value;},set ready(value){ready=value;},set fail(value){fail=value;},set thread(value){thread=value;},change(){revision++;}};
 }
-const snap=async(page,name)=>{await mkdir(new URL('test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
+const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
 
 test('live first-open brief and wide record detail; desktop/phone renders, focus, original entry, no horizontal overflow',async t=>{
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docMorningBrief[open]').waitFor();
