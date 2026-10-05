@@ -43,6 +43,12 @@ async function sourceSnapshot(root) {
   for (const path of paths) files.push({ path, sha256: hash(await readFile(join(root, path))) });
   return { source_commit: git(root, 'rev-parse', 'HEAD'), files, digest: hash(JSON.stringify(files)) };
 }
+async function verifySource(state) {
+  const current = await sourceSnapshot(state.root);
+  assert.equal(current.source_commit, state.source_commit, 'source revision changed since launch');
+  assert.equal(current.digest, state.digest, 'source bytes changed since launch');
+  assert.deepEqual(current.files, state.files, 'source file inventory changed since launch');
+}
 
 function processCommand(pid) {
   assert.ok(Number.isInteger(pid) && pid > 1, 'invalid owned PID');
@@ -77,16 +83,27 @@ async function filesIn(dir, prefix = '') {
   }
   return rows.sort((a, b) => a.path.localeCompare(b.path));
 }
-async function manifest(run) {
+async function manifest(run, previous) {
   const files = await filesIn(join(run, 'evidence'));
+  if (previous) {
+    assert.equal(previous.schema, 'doctorcre-verification-evidence.v1');
+    const current = new Map(files.map(row => [row.path, row]));
+    for (const row of previous.files) {
+      assert.deepEqual(current.get(row.path), row, `previously sealed evidence changed or removed: ${row.path}`);
+    }
+  }
   await save(join(run, 'evidence/manifest.json'), { schema: 'doctorcre-verification-evidence.v1', files });
   return files;
 }
-async function evidence(run) {
+async function verifiedManifest(run) {
   const record = await json(join(run, 'evidence/manifest.json'));
   assert.equal(record.schema, 'doctorcre-verification-evidence.v1');
   assert.ok(record.files.length > 0, 'no evidence retained');
   assert.deepEqual(await filesIn(join(run, 'evidence')), record.files, 'evidence bytes or file inventory changed');
+  return record;
+}
+async function evidence(run) {
+  const record = await verifiedManifest(run);
   return { evidence: join(run, 'evidence'), files: record.files.length };
 }
 
@@ -120,7 +137,7 @@ async function launch({ run, root }) {
     await save(join(run, 'scratch/state.json'), state);
     await doctor(run);
     await save(join(run, 'evidence/launch.json'), { command: 'launch', root, origin: state.origin, pid: state.pid, source_commit: state.source_commit, source_digest: state.digest, synthetic: true });
-    await manifest(run);
+    await manifest(run, null);
     return { origin: state.origin, pid: state.pid, source_commit: state.source_commit, evidence: join(run, 'evidence') };
   } catch (error) {
     await stop(state); await rename(join(run, 'scratch'), join(run, 'retired-launch-scratch'));
@@ -138,10 +155,7 @@ async function doctor(run) {
   try { sockets = execFileSync('lsof', ['-nP', '-a', '-p', String(state.pid), `-iTCP:${port}`, '-sTCP:LISTEN', '-Fn'], { encoding: 'utf8' }); }
   catch { throw Error('owned server PID does not own the stated loopback port (read-only lsof check failed)'); }
   assert.ok(sockets.split('\n').includes(`n127.0.0.1:${port}`), 'owned server PID does not own the stated loopback port');
-  const current = await sourceSnapshot(state.root);
-  assert.equal(current.source_commit, state.source_commit, 'source revision changed since launch');
-  assert.equal(current.digest, state.digest, 'source bytes changed since launch');
-  assert.deepEqual(current.files, state.files, 'source file inventory changed since launch');
+  await verifySource(state);
   const releaseResponse = await fetch(state.origin + '/app-release', { signal: AbortSignal.timeout(5000), redirect: 'error' });
   assert.equal(releaseResponse.status, 200, 'fixture identity did not answer');
   const release = await releaseResponse.json();
@@ -159,31 +173,48 @@ async function drive({ run, feature }) {
   const state = await json(join(run, 'scratch/state.json'));
   const names = feature === 'all' ? Object.keys(recipes) : [feature];
   for (const name of names) await driveFeature(run, state, name);
+  await verifySource(state);
   return { features: names, ...(await evidence(run)) };
 }
 async function driveFeature(run, state, feature) {
+  // Keep the accepted inventory across asynchronous recipes; rereading it at
+  // the end would let a replacement manifest authorize changed earlier proof.
+  const previous = await verifiedManifest(run);
   const dir = join(run, 'evidence', `${feature}-${Date.now()}-${randomUUID().slice(0, 8)}`);
   await mkdir(dir);
   const helperFiles = ['verify-doctorcre.mjs', 'recipes.mjs'];
   const helper_digests = {};
   for (const name of helperFiles) helper_digests[name] = hash(await readFile(new URL(name, import.meta.url)));
-  const record = { feature, source_commit: state.source_commit, source_digest: state.digest, helper_digests, entry_points: [], actions: [], assertions: [], browser_errors: [], requests: [], blocked_external_requests: [], status: 'running' };
+  const record = { feature, source_commit: state.source_commit, source_digest: state.digest, helper_digests, entry_points: [], actions: [], assertions: [], browser_errors: [], interception_errors: [], requests: [], blocked_external_requests: [], status: 'running' };
   let browser, context, page, failure;
+  const fail = error => { failure ||= error; record.status = 'failed'; record.error = failure.message; };
+  let rejectInterception;
+  const interceptionFailed = new Promise((_, reject) => { rejectInterception = reject; });
+  // Route callbacks run outside the awaited recipe. Consume their rejection
+  // immediately, then race it with the recipe to enter the retained failure path.
+  interceptionFailed.catch(() => {});
   const notePage = observed => observed.on('pageerror', error => record.browser_errors.push(error.message));
   try {
     browser = await chromium.launch({ headless: true });
     context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', serviceWorkers: 'block' });
     context.setDefaultTimeout(30_000); context.on('page', notePage);
     await context.route('**/*', async route => {
-      const request = route.request(), url = new URL(request.url());
-      if (url.origin !== state.origin) {
-        record.blocked_external_requests.push({ origin: url.origin, method: request.method(), resource: request.resourceType() });
-        return route.abort();
+      try {
+        const request = route.request(), url = new URL(request.url());
+        if (url.origin !== state.origin) {
+          record.blocked_external_requests.push({ origin: url.origin, method: request.method(), resource: request.resourceType() });
+          return await route.abort();
+        }
+        record.requests.push({ path: url.pathname + url.search, method: request.method(), resource: request.resourceType(), boundary: ['/mcp', '/api/'].some(prefix => url.pathname.startsWith(prefix)) });
+        if (url.searchParams.get('mode') === 'live') return await route.abort('blockedbyclient');
+        if (await boundary(route, feature)) return;
+        return await route.continue();
+      } catch (error) {
+        record.interception_errors.push({ url: route.request().url(), error: error.message });
+        const diagnostic = Error(`network interception failed: ${error.message}`);
+        fail(diagnostic); rejectInterception(diagnostic);
+        await route.abort('failed').catch(() => {});
       }
-      record.requests.push({ path: url.pathname + url.search, method: request.method(), resource: request.resourceType(), boundary: ['/mcp', '/api/'].some(prefix => url.pathname.startsWith(prefix)) });
-      if (url.searchParams.get('mode') === 'live') return route.abort('blockedbyclient');
-      if (await boundary(route, feature)) return;
-      return route.continue();
     });
     await context.addInitScript(() => {
       if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Verification cannot capture host devices', 'NotAllowedError'); };
@@ -204,21 +235,28 @@ async function driveFeature(run, state, feature) {
       catch (error) { record.assertions.push({ label, passed: false, error: error.message }); throw error; }
     };
     const entry = (id, route) => record.entry_points.push({ id, route });
-    await recipes[feature]({ page, context, origin: state.origin, action, capture, check, entry });
+    await Promise.race([recipes[feature]({ page, context, origin: state.origin, action, capture, check, entry }), interceptionFailed]);
+    await check('No network interception errors', async () => assert.deepEqual(record.interception_errors, []));
     await check('No unhandled browser errors', async () => assert.deepEqual(record.browser_errors, []));
     record.status = 'passed';
   } catch (error) {
-    failure = error; record.status = 'failed'; record.error = error.message;
+    fail(error);
     if (page && !page.isClosed()) {
       await page.screenshot({ path: join(dir, 'failure.png'), fullPage: true, animations: 'disabled' }).catch(() => {});
       await writeFile(join(dir, 'failure.aria.txt'), await page.locator('body').ariaSnapshot()).catch(() => {});
     }
   } finally {
     if (context) await context.tracing.stop({ path: join(dir, 'trace.zip') }).catch(error => {
-      record.trace_error = error.message; record.status = 'failed'; failure ||= error;
+      record.trace_error = error.message; fail(error);
     });
-    if (browser) await browser.close();
-    await save(join(dir, 'result.json'), record); await manifest(run);
+    if (browser) await browser.close().catch(fail);
+    if (!failure) await verifySource(state).catch(fail);
+    await save(join(dir, 'result.json'), record);
+    await manifest(run, previous).catch(async error => {
+      fail(error);
+      record.manifest_error = error.message;
+      await save(join(dir, 'result.json'), record);
+    });
   }
   if (failure) throw Error(`${feature}: ${failure.message}; evidence retained at ${dir}; run doctor and cleanup before retry`);
 }
@@ -231,9 +269,9 @@ async function cleanup(run) {
   const result = await stop(state);
   await mkdir(join(run, '_to_delete'), { recursive: true });
   await rename(join(run, 'scratch'), join(run, '_to_delete', `scratch-${state.nonce}`));
-  await evidence(run);
+  const previous = await verifiedManifest(run);
   await save(join(run, 'evidence/cleanup.json'), { ...result, pid: state.pid, source_commit: state.source_commit, scratch_retired: true, evidence_preserved: true });
-  await manifest(run);
+  await manifest(run, previous);
   return { ...result, scratch_retired: true, ...(await evidence(run)) };
 }
 

@@ -39,7 +39,14 @@ export async function boundary(route, feature) {
     if (data) { await route.fulfill({ json: { data, csrf_token: 'synthetic-verification-only' } }); return true; }
   }
   if (url.pathname === '/mcp') {
-    const rpc = request.postDataJSON().params;
+    let body;
+    try { body = request.postDataJSON(); }
+    catch { throw Error('Malformed MCP request: invalid JSON'); }
+    const rpc = body?.params;
+    assert.ok(rpc && typeof rpc === 'object' && !Array.isArray(rpc)
+      && typeof rpc.name === 'string' && rpc.name.length > 0
+      && rpc.arguments && typeof rpc.arguments === 'object' && !Array.isArray(rpc.arguments),
+    'Malformed MCP request: expected params.name and params.arguments');
     let value = { ok: true };
     if (rpc.name === 'deal-room-board') value = { actor: 'joe', deals: [] };
     else if (rpc.name === 'lead-board' && feature === 'leads') {
@@ -183,14 +190,24 @@ export const recipes = {
   },
   vendors: async h => {
     const { page, action, capture, check } = h;
+    const checkRows = async (owner, label) => {
+      const expected = directoryFixture(new URL(`/api/v1/business/vendors?owner=${owner}`, h.origin).href).rows;
+      const visible = await page.locator('.record-row').evaluateAll(nodes => nodes.map(node => ({
+        id: node.dataset.recordId,
+        owner: node.querySelector('.row-owner').childNodes[0].textContent.trim(),
+      })));
+      await check(label, async () => assert.deepEqual(visible, expected.map(row => ({ id: row.id, owner: `Owner: ${row.owner_label}` }))));
+    };
     await enter(h, '/vendors', 'Vendors', '.record-row');
     await page.locator('.record-row').first().waitFor(); await capture('before');
     await action('Choose Dell owner', () => page.locator('[data-owner="dell"]').click());
     await page.waitForFunction(() => document.querySelector('#resultSummary').textContent.startsWith('31 '));
     await check('Owner read reports Dell subset', async () => assert.equal(new URL(page.url()).searchParams.get('owner'), 'dell'));
+    await checkRows('dell', 'Dell filter displays expected record membership and owners');
     await capture('action');
     await action('Reset filters', () => page.locator('#resetFilters').click());
     await page.waitForFunction(() => document.querySelector('#resultSummary').textContent.startsWith('62 '));
+    await checkRows('all', 'Reset displays expected record membership and owners');
     await action('Open Demo Partner 01', () => page.locator('.record-row').first().click());
     await page.locator('[data-details-key="entry-demo-entry"] summary').waitFor();
     await action('Expand original relationship entry', () => page.locator('[data-details-key="entry-demo-entry"] summary').click());
