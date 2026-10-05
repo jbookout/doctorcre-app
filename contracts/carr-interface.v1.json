@@ -3,7 +3,7 @@
   "version": "1.44.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "052435b7ce0d6ed5f8675e4527802669b3ec6e47"
+    "source_commit": "62f7027dfe6de4c133e6c1f02301f03887f17d1c"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -646,6 +646,7 @@
     "vocabulary_path": "mcp-server/src/usage-contract.v1.js",
     "vocabulary_sha256": "024c4b9bab99b6ee5e688b2fedc75ec607bc2e109a96c57b5e8d401204f008a6",
     "capture_off_env": "DOCTORCRE_USAGE_CAPTURE_ENABLED",
-    "summary_release_provenance": "app-release.provider_version_created_at"
+    "summary_release_provenance": "app-release.provider_version_created_at",
+    "summary_scope": "weekly uses and retained last use span app releases; never-used describes the current release"
   }
 }

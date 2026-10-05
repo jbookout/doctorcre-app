@@ -28,7 +28,7 @@ export function mountWeeklyUsage({ host, fetch: request = (...args) => globalThi
   host.append(header, status, chart, details);
   let value = null, rows = [], disposed = false, epoch = 0;
   const last = timestamp => timestamp ? new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-  const state = (row, partner) => row.never_used[partner] === true ? 'Never used' : row.never_used[partner] === null && !row.last_used[partner] ? 'Unknown' : last(row.last_used[partner]);
+  const state = (row, partner) => row.never_used[partner] === true ? 'Never used' : row.never_used[partner] === null ? 'Unknown' : 'Used';
   const paint = () => {
     const shown = rows.filter(row => filter.value === 'doc' ? ['chat_opened', 'chat_sent', 'search_used'].includes(row.event_name) : row.id.endsWith(`:${filter.value}`));
     chart.replaceChildren(); tableHost.replaceChildren();
@@ -47,12 +47,12 @@ export function mountWeeklyUsage({ host, fetch: request = (...args) => globalThi
     });
     chart.append(svg);
     const table = make('table'), head = make('thead'), tr = make('tr');
-    for (const label of ['Feature', 'Joe uses', 'Dell uses', 'Joe last use', 'Dell last use']) tr.append(make('th', label));
+    for (const label of ['Feature', 'Joe uses', 'Dell uses', 'Joe last use', 'Dell last use', 'Joe since release', 'Dell since release']) tr.append(make('th', label));
     head.append(tr); table.append(head);
     const body = make('tbody');
-    for (const row of shown) { const tr = make('tr'); for (const text of [row.label, row.uses.joe, row.uses.dell, state(row, 'joe'), state(row, 'dell')]) tr.append(make('td', text)); body.append(tr); }
+    for (const row of shown) { const tr = make('tr'); for (const text of [row.label, row.uses.joe, row.uses.dell, last(row.last_used.joe), last(row.last_used.dell), state(row, 'joe'), state(row, 'dell')]) tr.append(make('td', text)); body.append(tr); }
     table.append(body); tableHost.append(table);
-    status.textContent = `Last seven days · ${value.enabled ? 'Capture on' : 'Capture off'} · ${value.coverage === 'retained_window' ? '180-day history · Earlier use unknown' : 'History since release'}`;
+    status.textContent = `Last seven days · ${value.enabled ? 'Capture on' : 'Capture off'} · ${value.coverage === 'retained_window' ? '180-day history · Earlier release use unknown' : 'Never-used history since release'}`;
   };
   const refresh = async () => {
     const current = ++epoch;
