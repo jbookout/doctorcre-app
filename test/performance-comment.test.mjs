@@ -30,4 +30,7 @@ test('the required test context measures every PR and the writer runs trusted ma
   assert.match(publisher, /workflow_run:/);
   assert.match(publisher, /ref: main/);
   assert.doesNotMatch(publisher, /npm (?:ci|install)|pull_request_target:/);
+  assert.match(ci, /name: performance-\$\{\{ github.sha \}\}-\$\{\{ github.run_attempt \}\}/);
+  assert.match(publisher, /RUN_ATTEMPT: \$\{\{ github.event.workflow_run.run_attempt \}\}/);
+  assert.match(publisher, /endswith\("-"\+env.RUN_ATTEMPT\)/);
 });

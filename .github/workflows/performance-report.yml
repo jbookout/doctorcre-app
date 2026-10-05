@@ -33,11 +33,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           number=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" --jq ".[] | select(.state == \"open\" and .head.sha == \"$HEAD_SHA\") | .number" | head -1)
-          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name | startswith("performance-")) | .id' | head -1)
+          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name | startswith("performance-") and endswith("-"+env.RUN_ATTEMPT)) | .id' | head -1)
           if [[ "$number" =~ ^[0-9]+$ && "$artifact" =~ ^[0-9]+$ ]]; then
             echo "number=$number" >> "$GITHUB_OUTPUT"
             echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
