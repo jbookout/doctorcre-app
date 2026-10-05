@@ -277,17 +277,15 @@ test("B05-9 all nine states carry their own rendered text and are reachable thro
 
 /* ----------------------------------------------------------------------- B05-10 */
 
-test("B05-10 a needs_disambiguation answer renders the count, the candidates and the producer's hint, and opens none of them", async () => {
+test("B05-10 a needs_disambiguation answer renders the count, candidates and human guidance, and opens none of them", async () => {
   const client = await fixture();
   const answer = await client.findAndCatchUp({ query: "Pensacola" });
   assert.equal(answer.state, "needs_disambiguation");
   assert.equal(answer.candidate_count, answer.candidates.length + (answer.candidates_truncated ? answer.candidate_count - answer.candidates.length : 0));
   assert.ok(answer.candidates.length > 1);
   assert.equal(answer.hint, "Choose one exact target and call catch-me-up; this verb never guesses.");
-  // The hint is printed verbatim — it is not rewritten anywhere in this app.
-  assert.doesNotMatch(pageJs, /never guesses/, "the hint is the producer's sentence, not the page's");
-  assert.match(pageJs, /escapeHtml\(payload\.hint\)/, "the page prints the hint it was given");
   const disambiguationBody = pageJs.slice(pageJs.indexOf("function renderDisambiguation()"), pageJs.indexOf("function renderRetired()"));
+  assert.doesNotMatch(disambiguationBody, /payload\.hint/, "producer command syntax is not human interface guidance");
   assert.doesNotMatch(disambiguationBody, /location\.|href=|client\./, "the page opens no candidate on its own");
   assert.match(disambiguationBody, /escapeHtml\(String\(payload\.candidate_count\)\)/, "the producer's own count is what is shown");
 });

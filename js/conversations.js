@@ -189,6 +189,7 @@ function renderAccess() {
     : "");
   $("shareControls").innerHTML = shareCandidates(payload, PARTNER_SLUGS).map((row) => `<button class="btn share-toggle" type="button" data-share="${escapeHtml(row.slug)}" aria-pressed="${row.granted}">${row.granted ? "Shared with" : "Not shared with"} ${escapeHtml(row.slug)}</button>`).join("");
   const header = identityHeader(payload);
+  for (const id of ["renameInput","renameSave","pinToggle","archiveToggle"]) $(id).disabled = !header;
   $("pinToggle").setAttribute("aria-pressed", header ? String(header.pinned) : "false");
   $("pinToggle").textContent = header?.pinned ? "Unpin this conversation" : "Pin this conversation";
   $("archiveToggle").setAttribute("aria-pressed", header ? String(header.archived) : "false");

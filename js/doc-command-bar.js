@@ -119,7 +119,16 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
     if(['ArrowDown','ArrowUp'].includes(event.key)&&results.length){event.preventDefault();selected=selected<0?(event.key==='ArrowDown'?0:results.length-1):(selected+(event.key==='ArrowDown'?1:-1)+results.length)%results.length;paint();$('doc-result-'+selected)?.scrollIntoView?.({block:'nearest'});}
   });
   $('docCommandResults').onclick=event=>{const button=event.target.closest('[data-doc-result]');if(button)detail(results[Number(button.dataset.docResult)]);};
-  $('docCommandForm').onsubmit=event=>{event.preventDefault();if(event.isComposing)return;if(/^open\s+/i.test(query)&&pageResults().length===1){navigate(pageResults()[0].href);return;}if(/^(?:send|email|pay|delete|move|plan|schedule|draft|ask|change|update)\b/i.test(query)){$('docCommandStatus').textContent='Doc actions unavailable';return;}if(results[selected])detail(results[selected]);else $('docCommandStatus').textContent='Doc actions unavailable';};
+  $('docCommandForm').onsubmit = event => {
+    event.preventDefault();
+    if (event.isComposing) return;
+    if (/^open\s+/i.test(query) && pageResults().length === 1) { navigate(pageResults()[0].href); return; }
+    if (/^(?:send|email|pay|delete|move|plan|schedule|draft|ask|change|update)\b/i.test(query) || !results[selected]) {
+      $('docCommandStatus').textContent = 'Doc is unavailable. Your question was not submitted. Keep it here and try again later, or search for a record by name.';
+      return;
+    }
+    detail(results[selected]);
+  };
   $('docCommandRefresh').onclick=()=>void auto.refresh();
   const closed=()=>{if(dialog.open)return;++epoch;win.clearTimeout(timer);
     (focusBefore?.isConnected && !focusBefore.closest('dialog:not([open])') ? focusBefore : $('docOpen'))?.focus();

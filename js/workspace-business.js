@@ -517,7 +517,7 @@ function renderList() {
     if (dom.source) dom.source.textContent = signedOut ? "Signed out" : "Nothing loaded";
     if (dom.pager) dom.pager.hidden = true;
     renderNotices([]);
-    paintList(`<li class="record-empty"><p class="empty-title">${signedOut ? "Your session has ended" : "This did not load"}</p><p class="empty-copy">${escapeHtml(refusalCopy(list.code || (signedOut ? "AUTHENTICATION_REQUIRED" : "INTERNAL_ERROR")))}</p>${signedOut
+    paintList(`<li class="record-empty" role="alert"><p class="empty-title">${signedOut ? "Your session has ended" : "This did not load"}</p><p class="empty-copy">${escapeHtml(refusalCopy(list.code || (signedOut ? "AUTHENTICATION_REQUIRED" : "INTERNAL_ERROR")))}</p>${signedOut
       ? `<a class="action primary-action" href="/auth/login?return_to=${encodeURIComponent(currentHref())}">Sign in</a>`
       : '<button type="button" class="action secondary-action" data-retry="list" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>'}</li>`);
     return;

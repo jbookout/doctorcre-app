@@ -58,7 +58,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
       <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog"><span aria-hidden="true">☎</span></button>
       <button class="app-shell-control" id="colorAssistButton" type="button" aria-pressed="false" aria-label="Color assist" title="Color assist"><span aria-hidden="true">◐</span></button>
       <div class="app-shell-account"><button class="app-shell-avatar" id="selfAvatar" type="button" aria-label="Account and settings" aria-expanded="false" aria-controls="accountMenu">…</button>
-        <div class="app-shell-account-menu" id="accountMenu" hidden>
+        <div class="app-shell-account-menu" id="accountMenu" popover="manual" hidden>
           <strong id="accountWorkspace">Workspace</strong>
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
@@ -126,8 +126,13 @@ function mountAccount(root, host, pathname) {
       close(); dialog.showModal();
     };
   };
-  const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
-  avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
+  const close = () => { panel.hidePopover?.(); panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
+  avatar.onclick = () => {
+    if (!panel.hidden) { close(); return; }
+    panel.hidden = false;
+    panel.showPopover?.();
+    avatar.setAttribute("aria-expanded", "true");
+  };
   host.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
   root.addEventListener("click", (event) => { if (!event.target.closest(".app-shell-account")) close(); });
   host.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
