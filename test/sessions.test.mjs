@@ -58,11 +58,11 @@ test("S02-01 name lookup passes query through and renders the producer's order",
 // MUTATION: match on `display_name` only in the fixture client's sessionIdentity.
 test("S02-02 ID lookup finds a row by canonical_session_id", async () => {
   const client = await fixture();
-  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-000" }));
+  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-007" }));
   assert.equal(answer.sessions.length, 1);
-  assert.equal(answer.sessions[0].canonical_session_id, "example-session-000");
+  assert.equal(answer.sessions[0].canonical_session_id, "example-session-007");
   assert.equal(
-    answer.sessions[0].display_name.toLowerCase().includes("example-session-000"), false,
+    answer.sessions[0].display_name.toLowerCase().includes("example-session-007"), false,
     "the id matched on the id, not by accident through the name",
   );
 });

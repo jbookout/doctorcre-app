@@ -35,6 +35,8 @@ jobs:
       - if: github.event_name == 'pull_request'
         run: node scripts/check-pr-description.mjs
       - run: npm run privacy:check
+        env:
+          DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
       - run: npm run check
       - run: node --test test/e2e-suite.test.mjs
       - run: npx playwright install --with-deps chromium

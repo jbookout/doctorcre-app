@@ -53,6 +53,8 @@ jobs:
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
       - run: npm run privacy:check
+        env:
+          DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
       - run: npm run check
       - run: npx playwright install --with-deps chromium webkit
       # PRs test the merge candidate under the strict required `test` context.

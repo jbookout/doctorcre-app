@@ -55,7 +55,9 @@ test("CI runs only the deterministic suite, with no model and no telemetry", asy
   assert.match(producer, /'run','tests\/journeys','--reporter'/);
   assert.match(producer, /--test','test\/browser-product-proof\.test\.mjs/);
   assert.match(workflow, /E2E_TELEMETRY_DISABLED: "1"/);
-  assert.doesNotMatch(workflow, /tests\/agent|secrets\.|API_KEY|e2e login/);
+  assert.match(workflow, /- run: npm run privacy:check\n        env:\n          DOCTORCRE_PRIVACY_CORPUS_JSON: \$\{\{ secrets\.DOCTORCRE_PRIVACY_CORPUS_JSON \}\}/);
+  const withoutPrivacySecret = workflow.replace('${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}', '');
+  assert.doesNotMatch(withoutPrivacySecret, /tests\/agent|secrets\.|API_KEY|e2e login/);
   assert.doesNotMatch(await read(".github/workflows/ci.yml"), /e2e run/, "e2e stays out of the required test job");
 });
 
