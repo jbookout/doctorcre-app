@@ -55,3 +55,17 @@ Before opening or updating any pull request, apply both skills to the diff:
 2. `zero-tech-debt`: rework the change from its intended end state; delete dead compatibility paths and duplicated rules.
 
 Both are installed at `~/.agents/skills/` (sources: github.com/mattpocock/skills `skills/engineering/codebase-design`, github.com/jnsahaj/skills `skills/zero-tech-debt`). The PR reviewer checks both, so all two are required.
+
+## Agent skills
+
+### Issue tracker
+
+CARR Work Requests. See [tracker operations](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Canonical roles map to Work Request states and classes. See [triage mapping](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context; record-store destinations. See [domain consumers](docs/agents/domain.md).
