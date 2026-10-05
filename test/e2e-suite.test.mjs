@@ -48,7 +48,7 @@ test("the deterministic suite covers every merged V1 journey without a model", a
   assert.equal((await list("tests/agent/")).length, 3, "three journeys keep a local agent variant");
 });
 
-test("CI runs only the deterministic suite, with no model and no telemetry", async () => {
+test("CI preserves deterministic source proof and gates agent shards without telemetry", async () => {
   const workflow = await read(".github/workflows/e2e.yml");
   assert.match(workflow, /^\s+- run: node scripts\/browser-product-proof\.mjs/m);
   const producer=await read('scripts/browser-product-proof.mjs');
@@ -56,8 +56,14 @@ test("CI runs only the deterministic suite, with no model and no telemetry", asy
   assert.match(producer, /--test','test\/browser-product-proof\.test\.mjs/);
   assert.match(workflow, /E2E_TELEMETRY_DISABLED: "1"/);
   assert.match(workflow, /- run: npm run privacy:check\n        env:\n          DOCTORCRE_PRIVACY_CORPUS_JSON: \$\{\{ secrets\.DOCTORCRE_PRIVACY_CORPUS_JSON \}\}/);
-  const withoutPrivacySecret = workflow.replace('${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}', '');
+  const journeys = workflow.split(/^  agent-shards:/m)[0];
+  const withoutPrivacySecret = journeys.replace('${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}', '');
   assert.doesNotMatch(withoutPrivacySecret, /tests\/agent|secrets\.|API_KEY|e2e login/);
+  assert.match(workflow, /shard: \[1, 2\]/);
+  assert.match(workflow, /OPENAI_API_KEY: \$\{\{ secrets\.OPENAI_API_KEY \}\}/);
+  assert.match(workflow, /^  agent-gate:/m);
+  assert.match(workflow, /needs: \[journeys, agent-shards\]/);
+  assert.match(await read('e2e.ci.config.ts'), /tests\/agent\/\*\*\/\*\.e2e\.ts/);
   assert.doesNotMatch(await read(".github/workflows/ci.yml"), /e2e run/, "e2e stays out of the required test job");
 });
 

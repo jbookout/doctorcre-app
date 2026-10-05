@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { censusResponse } from '../scripts/work-inventory-fixture.mjs';
 
 import {
   COVERAGE_ORB, WORK_INVENTORY_KINDS, buildInventoryQuery, coverageOrbState, coverageSummary,
@@ -296,11 +297,14 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
 
   // The fixture server really serves the census, with all six kinds and a second page.
   assert.match(serveScript, /\/api\/v1\/work-inventory/);
-  assert.match(serveScript, /Demo /);
-  for (const kind of WORK_INVENTORY_KINDS) assert.ok(serveScript.includes(kind), `the fixture must exercise ${kind}`);
-  for (const status of ["superseded", "dormant"]) assert.ok(serveScript.includes(status), `the fixture must exercise ${status}`);
-  assert.match(serveScript, /"unavailable"/, "the fixture must exercise an unavailable leg");
-  assert.match(serveScript, /next_cursor/);
+  assert.match(serveScript, /import \{ censusResponse \} from "\.\/work-inventory-fixture\.mjs"/);
+  const servedFixture = censusResponse({ searchParams: new URLSearchParams() });
+  assert.equal(validWorkInventoryPayload(servedFixture), true);
+  assert.equal(servedFixture.items.every(item => item.title.startsWith('Demo ')), true);
+  for (const kind of WORK_INVENTORY_KINDS) assert.ok(servedFixture.coverage.some(row => row.kind === kind), `the fixture must exercise ${kind}`);
+  for (const status of ["superseded", "dormant"]) assert.ok(servedFixture.items.some(item => item.status === status), `the fixture must exercise ${status}`);
+  assert.ok(servedFixture.coverage.some(row => row.state === 'unavailable'), "the fixture must exercise an unavailable leg");
+  assert.equal(typeof servedFixture.next_cursor, 'string');
 });
 
 test("an item's open link must stay on this app, including the backslash form browsers read as another host", () => {

@@ -144,6 +144,12 @@
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
     "tours/vendor/tour-map-route-state.js",
-    "js/progress-board-route.js"
+    "js/progress-board-route.js",
+    "scripts/e2e-ci.mjs",
+    "scripts/qa-fixture-server.mjs",
+    "scripts/qa-board-auth.mjs",
+    "test/e2e-ci.test.mjs",
+    "test/qa-fixture.test.mjs",
+    "scripts/work-inventory-fixture.mjs"
   ]
 }
