@@ -234,6 +234,7 @@ footer { padding-top: 8px; }
 .directory-summary { cursor: pointer; min-height: 44px; align-content: center; font-family: 'Roboto Condensed', 'Arial Narrow', sans-serif; font-size: 1.25rem; font-weight: 700; }
 .directory-summary:hover { color: var(--orange); }
 .directory-summary:focus-visible { outline: 2px solid var(--orange); outline-offset: 4px; }
+.directory-summary .error:not([hidden]) { display: block; font-size: .9rem; font-weight: 400; }
 .board-directory { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); gap: 12px; margin-top: 18px; max-height: min(50vh, 24rem); overflow-y: auto; overscroll-behavior-y: contain; }
 .board-link { display: grid; align-content: start; gap: 9px; min-width: 0; min-height: 44px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(3,15,31,.7); color: var(--ink); text-decoration: none; overflow-wrap: anywhere; transition: background .2s, border-color .2s, transform .2s; }
 .board-link h3 { margin: 0; }

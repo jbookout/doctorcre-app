@@ -23,7 +23,10 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
         const { mountBoard } = await import('/js/progress-board.js');
         window.directoryTestBoard = mountBoard({ window, document, search: '?board=demo-0', storage: null,
           client: {
-            listProgressBoards: async () => ({ schema: 'progress-board-directory.v1', boards }),
+            listProgressBoards: async () => {
+              if (window.directoryTestFailure) throw new Error('Synthetic discovery unavailable');
+              return { schema: 'progress-board-directory.v1', boards };
+            },
             readProgressBoard: async () => ({ snapshot: { board_id: 'demo-0', version: 1,
               snapshot_json: { title: 'Demo delivery', tasks: { build: { title: 'Demo task', status: 'running' } } } }, questions: [] }),
           }, setInterval: () => 0 });
@@ -58,6 +61,13 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await summary.press('Enter');
       assert.equal(await nav.isVisible(), true, 'reduced motion keeps every entry available');
+      await summary.press('Space');
+      await page.evaluate(async () => {
+        window.directoryTestFailure = true;
+        await window.directoryTestBoard.refresh();
+      });
+      assert.equal(await directory.evaluate(node => node.open), false);
+      assert.equal(await page.locator('#directory-error').isVisible(), true, 'discovery failure remains visible while collapsed');
     });
   }
 }

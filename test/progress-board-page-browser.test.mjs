@@ -72,7 +72,8 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
 
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
   const { page, context, errors } = await open(t, { unfinished });
-  await page.locator('[data-board-id="carr-v5"]').waitFor();
+  await page.locator('[data-board-id="carr-v5"]').waitFor({ state: 'attached' });
+  await page.getByText('Published boards', { exact: true }).click();
   const link = page.locator('[data-board-id="carr-v5"]');
   const target = await link.getAttribute('target');
   const opened = target === '_blank' ? context.waitForEvent('page') : null;
