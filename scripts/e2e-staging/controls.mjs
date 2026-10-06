@@ -177,18 +177,27 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
 
 export async function sweepScreen({ freshPage, screen, target, evidence, waitMs = 2000, limit = 5000, routedPaths = [] }) {
   const queue = [{ openers: [], controls: null }], destructive = [], seen = new Set(), controls = [];
+  const stableMs = waitMs < 2000 ? waitMs : 1500;
+  const settle = async page => {
+    await page.waitForLoadState('networkidle', { timeout: 30_000 });
+    return settledInventory(page, { stableMs });
+  };
+  const replayOpeners = async (page, openers) => {
+    for (const opener of openers) {
+      const result = await pressControl(page, opener, { waitMs: Math.min(waitMs, 500) });
+      if (!['OBSERVED','DEAD'].includes(result.status)) throw new Error('opener replay failed');
+      await settle(page);
+    }
+  };
   let reached = false, exhausted = false;
   while (queue.length || destructive.length) {
     if (controls.length >= limit) { exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
     const page = await freshPage();
     try {
-      for (const opener of state.openers) {
-        const result = await pressControl(page, opener, { waitMs: Math.min(waitMs, 500) });
-        if (!['OBSERVED','DEAD'].includes(result.status)) throw new Error('opener replay failed');
-      }
+      await replayOpeners(page, state.openers);
       reached = true;
-      const listed = state.controls || await settledInventory(page, { stableMs: waitMs < 2000 ? waitMs : 1500 });
+      const listed = state.controls || await settledInventory(page, { stableMs });
       for (const control of listed) {
         if (controls.length >= limit) { exhausted = true; break; }
         if (seen.has(control.identity)) continue;
@@ -199,10 +208,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, waitMs 
         seen.add(control.identity);
         const fresh = await freshPage();
         try {
-          for (const opener of state.openers) {
-            const replay = await pressControl(fresh, opener, { waitMs: Math.min(waitMs, 500) });
-            if (!['OBSERVED','DEAD'].includes(replay.status)) throw new Error('opener replay failed');
-          }
+          await replayOpeners(fresh, state.openers);
           const result = await pressControl(fresh, control, { waitMs });
           const key = `${target}/${screen.path}/${createHash('sha256').update(control.identity).digest('hex').slice(0, 16)}`;
           const row = { ...control, ...result, key, screen: screen.name, path: screen.path, target, openers: state.openers.map(opener => opener.name) };
@@ -212,7 +218,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, waitMs 
           const current = new URL(page.url());
           const discovery = destination.origin === current.origin && !destination.pathname.startsWith('/auth/') && (fresh.url() === page.url() || !routedPaths.includes(destination.pathname + destination.search));
           if (result.status === 'OBSERVED' && discovery) {
-            const exposed = (await settledInventory(fresh, { stableMs: waitMs < 2000 ? waitMs : 1500 })).filter(next => !seen.has(next.identity));
+            const exposed = (await settle(fresh)).filter(next => !seen.has(next.identity));
             if (exposed.length) queue.push({ openers: [...state.openers, control], controls: exposed });
           }
         } catch {

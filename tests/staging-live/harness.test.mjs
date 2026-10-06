@@ -155,6 +155,31 @@ test('shared controls are swept again in each discovered drawer state', async ()
   await browser.close();
 });
 
+test('fresh opener replay waits for delayed async nested drawers without a busy attribute', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const outer = `<button id="nested" onclick="document.querySelector('#inner').hidden=false;document.querySelector('#inner').textContent='Updating';fetch('https://synthetic.test/inner').then(response=>response.text()).then(html=>document.querySelector('#inner').innerHTML=html)">Open nested drawer</button><section id="inner" class="drawer" aria-label="Nested drawer" hidden></section>`;
+  const inner = `<button id="loaded" onclick="document.querySelector('#out').textContent='Loaded action changed'">Loaded action</button>`;
+  const html = `<main><button id="open" onclick="document.querySelector('#outer').hidden=false;document.querySelector('#outer').textContent='Updating';fetch('https://synthetic.test/outer').then(response=>response.text()).then(html=>document.querySelector('#outer').innerHTML=html)">Open drawer</button><section id="outer" class="drawer" aria-label="Outer drawer" hidden></section><output id="out"></output></main>`;
+  const result = await sweepScreen({
+    freshPage: async () => {
+      const page = await browser.newPage();
+      await page.route('https://synthetic.test/**', async route => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await route.fulfill({ status: 200, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: route.request().url().endsWith('/outer') ? outer : inner });
+      });
+      await page.setContent(html);
+      return page;
+    },
+    screen: { path: '/', name: 'Async drawers' }, target: 'test', waitMs: 20, limit: 20,
+  });
+  assert.equal(result.exhausted, false);
+  assert.deepEqual(result.controls.filter(control => control.selector === '#nested').map(control => control.status), ['OBSERVED']);
+  assert.ok(result.controls.some(control => control.selector === '#nested' && control.status === 'OBSERVED' && control.openers.includes('Open drawer')));
+  assert.ok(result.controls.some(control => control.selector === '#loaded' && control.status === 'OBSERVED' && control.openers.includes('Open nested drawer')));
+  assert.ok(result.controls.every(control => !['ERROR','UNREACHABLE'].includes(control.status)));
+});
+
 test('pressed view buttons retest shared controls in the selected workspace', async () => {
   const browser = await chromium.launch();
   const html = `<main><button id="viewEverything" aria-pressed="false" onclick="this.setAttribute('aria-pressed','true');document.querySelector('#action').onclick=null">Other view</button><button id="action" onclick="document.querySelector('#out').textContent='Live'">Action</button><output id="out"></output></main>`;
