@@ -1,50 +1,47 @@
-# Issue tracker: CARR Work Requests
+# Issue tracker: GitHub
 
-DoctorCRE work is tracked as CARR Work Requests in the record layer. Use the
-CARR connector's record verbs; this repository has no `run.sh` wrapper. The
-application's authenticated, versioned contracts remain its runtime interface.
-This setup does not add verbs to that contract or permit direct database access.
+Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+
+This repository is public. Client and CARR data live in their own database, never here: keep client data, CARR business records, deal detail and credentials out of every issue, comment, label and PR body.
 
 ## Conventions
 
-- **Create an issue**: `report-problem` with `situation`, `title`,
-  `desired_outcome`, and `acceptance_criteria` as `[{id, text}]` (for example,
-  `AC-1`). It captures a request without triaging or dispatching it.
-- **Read an issue**: `work-request-card` with `work_request` set to its `WR-` ref.
-- **List issues**: `current-work-requests` returns requests needing bounded
-  human action; it is not a complete filtered backlog.
-- **Triage**: propose the classification in [triage-labels.md](triage-labels.md).
-  `review-and-triage` requires direct human authority; do not impersonate it.
-- **Withdraw**: use `decline-work-request` or `supersede-work-request` from
-  `captured`, with the reason and replacement where applicable.
-- **Plan**: `propose-ready-plan` on a triaged request, using its current schema.
-- **Discussion**: use the delivering PR; these verbs provide no comment operation.
+- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
+- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Close**: `gh issue close <number> --comment "..."`
 
-Each write needs a UUID `idempotency_key`; changes to an existing request need
-`base_version` from a fresh card. Check the live verb schema before writing.
-`report-problem` and `propose-ready-plan` are connector operations, not additions
-to the app's pinned MCP operation list.
-
-Finish authorized work that fits the session. Follow the current CARR product
-priority policy before filing follow-ups; a new prerequisite names the product
-task it blocks. Keep client and production details out of this public repo.
+Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface
 
-**PRs as a request surface: no.**
+**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+
+When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
+
+- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
+- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
+- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
+
+GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
 ## When a skill says "publish to the issue tracker"
 
-Call `report-problem` through the CARR connector.
+Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Call `work-request-card` with its `WR-` ref.
+Run `gh issue view <number> --comments`.
 
 ## Wayfinding operations
 
-`/wayfinder` must use record-layer relationships and lifecycle operations only
-where the live schema supports them. This configuration does not declare map,
-child, dependency, claim, or resolve verbs. If an operation is unavailable,
-report that specific gap; do not invent fields, use GitHub Issues as a second
-tracker, or write `.scratch/` records.
+Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+
+- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
+- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
+- **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only, the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
+- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
+- **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
+- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
