@@ -7,10 +7,14 @@ test('QA-015 submitted dark Search button retains readable contrast', { tags: ['
   await screen.getByLabel('Name to search', { exact: true }).fill('Demo');
   await screen.getByRole('button', 'Search', { exact: true }).tap();
   await expect(browser.locator('#searchResults [data-group]')).toHaveCount(9);
-  await browser.mouse.move(0, 0);
   await expect(screen.getByRole('button', 'Search', { exact: true })).toBeFocused();
   await browser.evaluate(() => Promise.all(document.querySelector('#searchForm button[type="submit"]').getAnimations().map(animation => animation.finished.catch(() => null))).then(() => true));
   const color = await textContrast(browser, '#searchForm button[type="submit"]');
-  await app.screenshot('qa-015-submitted-search-focus');
+  await app.screenshot('qa-015-submitted-search-hover');
   expect(color.ratio, JSON.stringify(color)).toBeGreaterThanOrEqual(4.5);
+  await browser.mouse.move(0, 0);
+  await browser.evaluate(() => Promise.all(document.querySelector('#searchForm button[type="submit"]').getAnimations().map(animation => animation.finished.catch(() => null))).then(() => true));
+  const resting = await textContrast(browser, '#searchForm button[type="submit"]');
+  expect(resting.ratio, JSON.stringify(resting)).toBeGreaterThanOrEqual(4.5);
+  await app.screenshot('qa-015-submitted-search-focus');
 });

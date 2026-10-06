@@ -36,7 +36,13 @@ export async function textContrast(browser, selector) {
   return browser.evaluate(selector => {
     const node = document.querySelector(selector);
     if (!node) return { found: false, ratio: 0 };
-    const rgba = value => { const m = value.match(/[\d.]+/g); return m ? [Number(m[0]), Number(m[1]), Number(m[2]), m[3] === undefined ? 1 : Number(m[3])] : [0, 0, 0, 0]; };
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const rgba = value => {
+      context.clearRect(0, 0, 1, 1); context.fillStyle = value; context.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
+    };
     const chain = []; for (let p = node; p; p = p.parentElement) chain.push(p);
     let bg = [255, 255, 255]; const backgrounds = [];
     for (const p of chain.reverse()) { const s = getComputedStyle(p), c = rgba(s.backgroundColor); backgrounds.push({ tag: p.tagName, id: p.id, color: s.backgroundColor, image: s.backgroundImage }); bg = bg.map((v, i) => c[i] * c[3] + v * (1 - c[3])); }
