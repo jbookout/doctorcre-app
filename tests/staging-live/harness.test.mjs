@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, writeFile, chmod } from 'node:fs/promises';
+import { mkdtemp, writeFile, chmod, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '../../test/browser-harness.mjs';
-import { CONTROL_SELECTOR, inventory, pressControl, sweepScreen, settledInventory } from '../../scripts/e2e-staging/controls.mjs';
+import { CONTROL_SELECTOR, inventory, pressControl, sweepScreen, settledInventory, SweepFailure } from '../../scripts/e2e-staging/controls.mjs';
 import { assertStagingURL, readSessionSecret } from '../../scripts/e2e-staging/session.mjs';
-import { newDeadControls, explorationEvidence } from '../../scripts/e2e-staging/report.mjs';
+import { newDeadControls, explorationEvidence, writeReport } from '../../scripts/e2e-staging/report.mjs';
 import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
 
 const html = `<main><button id="dead" onclick="this.blur()">Dead</button><button id="live" onclick="document.querySelector('#result').textContent='Changed'">Live</button><button id="disabled" disabled title="Requires a selected record">Disabled</button><button id="drawer" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true'); document.querySelector('#sheet').hidden=false">Open drawer</button><section id="sheet" hidden><button id="nested" onclick="document.querySelector('#result').textContent='Nested'">Nested</button></section><output id="result"></output></main>`;
@@ -178,6 +178,90 @@ test('fresh opener replay waits for delayed async nested drawers without a busy 
   assert.ok(result.controls.some(control => control.selector === '#nested' && control.status === 'OBSERVED' && control.openers.includes('Open drawer')));
   assert.ok(result.controls.some(control => control.selector === '#loaded' && control.status === 'OBSERVED' && control.openers.includes('Open nested drawer')));
   assert.ok(result.controls.every(control => !['ERROR','UNREACHABLE'].includes(control.status)));
+});
+
+test('phase failures retain accumulated presses and evidence without duplicate controls', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const ordinary = `<main><button id="first" onclick="document.querySelector('#out').textContent='First changed'">First action</button><button id="second" onclick="document.querySelector('#out').textContent='Second changed'">Second action</button><output id="out"></output></main>`;
+  const drawer = `<main><button id="open" onclick="document.querySelector('#drawer').hidden=false">Open drawer</button><section id="drawer" class="drawer" aria-label="Synthetic drawer" hidden><button id="nested">Nested action</button></section></main>`;
+  for (const scenario of ['fresh-page', 'replay', 'discovery', 'evidence', 'cleanup', 'evidence+cleanup']) await t.test(scenario, async () => {
+    let freshCalls = 0;
+    const captured = [];
+    const result = await sweepScreen({
+      freshPage: async () => {
+        const ordinal = ++freshCalls;
+        if (scenario === 'fresh-page' && ordinal === 3) throw new Error('Synthetic failure do-not-log-canary');
+        const page = await browser.newPage();
+        await page.setContent(scenario === 'replay' ? ordinal === 3 ? '<main><button id="other">Still loaded</button></main>' : drawer : ordinary);
+        const inventoryFailure = scenario === 'discovery' && ordinal === 2;
+        const cleanupFailure = scenario === 'cleanup' && ordinal === 2 || scenario === 'evidence+cleanup' && ordinal === 3;
+        if (!inventoryFailure && !cleanupFailure) return page;
+        return new Proxy(page, {
+          get(target, key) {
+            if (inventoryFailure && key === 'locator') return selector => selector === CONTROL_SELECTOR ? { evaluateAll: async () => { throw new Error('Synthetic failure do-not-log-canary'); } } : target.locator(selector);
+            if (cleanupFailure && key === 'context') return () => {
+              const context = target.context();
+              return { close: async () => { await context.close(); throw new Error('Synthetic failure do-not-log-canary'); } };
+            };
+            const value = Reflect.get(target, key);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      },
+      screen: { path: '/', name: 'Synthetic phases' }, target: 'test', waitMs: 10, limit: 10,
+      evidence: async (_page, row) => {
+        if (scenario.startsWith('evidence') && captured.length === 1) throw new Error('Synthetic failure do-not-log-canary');
+        const path = `synthetic-${captured.length + 1}.png`;
+        captured.push({ selector: row.selector, key: row.key, path });
+        return path;
+      },
+    });
+    assert.equal(result.reached, true);
+    assert.equal(result.failure?.phase, scenario === 'evidence+cleanup' ? 'evidence' : scenario);
+    assert.equal(typeof result.failure.code, 'string');
+    const first = result.controls.find(row => row.key === captured[0].key);
+    assert.equal(first.status, 'OBSERVED');
+    assert.equal(first.evidence_path, captured[0].path);
+    assert.equal(result.controls.filter(row => row.key === captured[0].key).length, 1);
+    assert.equal(new Set(result.controls.map(row => row.key)).size, result.controls.length);
+    if (scenario.startsWith('evidence')) assert.deepEqual(result.controls.map(row => row.status), ['OBSERVED', 'OBSERVED']);
+    assert.doesNotMatch(JSON.stringify(result), /do-not-log-canary/);
+  });
+});
+
+test('fresh-page source phases stay bounded and are not inferred from exception text', async () => {
+  for (const [phase, code] of [['session-preflight', 'session-preflight-failed'], ['session-preflight', 'source-pair-changed'], ['context', 'context-creation-failed'], ['navigation', 'navigation-failed'], ['load', 'network-idle-failed'], ['tracing', 'tracing-start-failed']]) {
+    const error = new SweepFailure(phase, code);
+    error.message = 'Synthetic exception do-not-log-canary';
+    const result = await sweepScreen({ freshPage: async () => { throw error; }, screen: { path: '/', name: 'Synthetic phases' }, target: 'test' });
+    assert.equal(result.reached, false);
+    assert.deepEqual(result.controls, []);
+    assert.deepEqual(result.failure, { phase, code, openers: [] });
+    assert.doesNotMatch(JSON.stringify(result), /do-not-log-canary/);
+  }
+});
+
+test('coverage names the failure phase while preserving completed press counts', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-phase-report-'));
+  try {
+    const findings = await writeReport(output, { expectedScreens: 2, screens: [{
+      target: 'test', path: '/synthetic', name: 'Synthetic phases', surface: 'app', reached: true,
+      controls: [{ key: 'synthetic-first', status: 'OBSERVED', evidence_path: 'synthetic-first.png' }],
+      failure: { phase: 'discovery', code: 'inventory-failed' },
+    }] });
+    assert.equal(findings.length, 1);
+    assert.deepEqual(Object.keys(findings[0]).sort(), ['actual', 'evidence_path', 'expected', 'id', 'kind', 'screen', 'severity', 'source', 'steps', 'surface', 'suspected_area', 'title']);
+    assert.match(findings[0].title, /Automation infrastructure failure/);
+    assert.match(findings[0].suspected_area, /scripts\/e2e-staging/);
+    assert.equal(findings[0].evidence_path, 'synthetic-first.png');
+    const coverage = await readFile(join(output, 'coverage.md'), 'utf8');
+    assert.match(coverage, /1\/2 screens reached; 1 controls enumerated; 1 pressed/);
+    assert.match(coverage, /discovery: inventory-failed/);
+    const published = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')).screens[0];
+    assert.equal(published.controls[0].evidence_path, 'synthetic-first.png');
+    assert.deepEqual(published.failure, { phase: 'discovery', code: 'inventory-failed' });
+  } finally { await rm(output, { recursive: true, force: true }); }
 });
 
 test('pressed view buttons retest shared controls in the selected workspace', async () => {

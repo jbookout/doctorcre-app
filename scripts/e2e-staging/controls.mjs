@@ -3,6 +3,13 @@ import { createHash } from 'node:crypto';
 export const CONTROL_SELECTOR = 'button,input:not([type="hidden"]):not([readonly]),textarea:not([readonly]),a[href],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="switch"],[role="checkbox"],input[type="checkbox"],input[type="radio"],[aria-pressed],[aria-expanded],summary,select';
 export const WORKSPACE_VIEW_SELECTOR = '[role="tab"],[data-view],#appTabsSlot [aria-pressed],[data-layout-slot="tabs"] [aria-pressed],[data-atlas-view],#viewConversation,#viewEverything';
 
+export class SweepFailure extends Error {
+  constructor(phase, code, selector) {
+    super(`Staging sweep failed: ${phase}/${code}`);
+    this.failure = { phase, code, ...(selector ? { selector } : {}) };
+  }
+}
+
 async function inventoryState(page) {
   return page.locator(CONTROL_SELECTOR).evaluateAll((elements, workspaceSelector) => {
     const visible = element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden';
@@ -178,27 +185,44 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
 export async function sweepScreen({ freshPage, screen, target, evidence, waitMs = 2000, limit = 5000, routedPaths = [] }) {
   const queue = [{ openers: [], controls: null }], destructive = [], seen = new Set(), controls = [];
   const stableMs = waitMs < 2000 ? waitMs : 1500;
-  const settle = async page => {
-    await page.waitForLoadState('networkidle', { timeout: 30_000 });
-    return settledInventory(page, { stableMs });
+  const settle = async (page, phase, selector) => {
+    try { await page.waitForLoadState('networkidle', { timeout: 30_000 }); }
+    catch { throw new SweepFailure(phase, 'network-idle-failed', selector); }
+    try { return await settledInventory(page, { stableMs }); }
+    catch { throw new SweepFailure(phase, 'inventory-failed', selector); }
   };
   const replayOpeners = async (page, openers) => {
     for (const opener of openers) {
-      const result = await pressControl(page, opener, { waitMs: Math.min(waitMs, 500) });
-      if (!['OBSERVED','DEAD'].includes(result.status)) throw new Error('opener replay failed');
-      await settle(page);
+      let result;
+      try { result = await pressControl(page, opener, { waitMs: Math.min(waitMs, 500) }); }
+      catch { throw new SweepFailure('replay', 'opener-press-failed', opener.selector); }
+      if (!['OBSERVED','DEAD'].includes(result.status)) throw new SweepFailure('replay', result.status === 'UNREACHABLE' ? 'opener-unreachable' : 'opener-press-failed', opener.selector);
+      await settle(page, 'replay', opener.selector);
     }
   };
-  let reached = false, exhausted = false;
-  while (queue.length || destructive.length) {
+  let reached = false, exhausted = false, failure = null;
+  const fail = (error, phase, openers, control, code = `${phase}-failed`) => {
+    const bounded = error instanceof SweepFailure ? error.failure : { phase, code };
+    failure ||= { ...bounded, ...(control && !bounded.selector ? { selector: control.selector } : {}), openers: openers.map(opener => opener.name) };
+  };
+  const close = async (page, openers, control) => {
+    if (!page) return;
+    try { await page.context().close(); }
+    catch (error) { fail(error, 'cleanup', openers, control, 'context-close-failed'); }
+  };
+  while ((queue.length || destructive.length) && !failure) {
     if (controls.length >= limit) { exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
-    const page = await freshPage();
+    let page, phase = 'fresh-page';
     try {
-      await replayOpeners(page, state.openers);
+      page = await freshPage();
       reached = true;
+      phase = 'replay';
+      await replayOpeners(page, state.openers);
+      phase = 'inventory';
       const listed = state.controls || await settledInventory(page, { stableMs });
       for (const control of listed) {
+        if (failure) break;
         if (controls.length >= limit) { exhausted = true; break; }
         if (seen.has(control.identity)) continue;
         if (!state.destructive && /(?:delete|archive|send draft|send-draft|sign out)/i.test(control.name)) {
@@ -206,26 +230,34 @@ export async function sweepScreen({ freshPage, screen, target, evidence, waitMs 
           continue;
         }
         seen.add(control.identity);
-        const fresh = await freshPage();
+        const key = `${target}/${screen.path}/${createHash('sha256').update(control.identity).digest('hex').slice(0, 16)}`;
+        const base = { ...control, key, screen: screen.name, path: screen.path, target, openers: state.openers.map(opener => opener.name) };
+        let fresh, row, phase = 'fresh-page';
         try {
+          fresh = await freshPage();
+          phase = 'replay';
           await replayOpeners(fresh, state.openers);
+          phase = 'press';
           const result = await pressControl(fresh, control, { waitMs });
-          const key = `${target}/${screen.path}/${createHash('sha256').update(control.identity).digest('hex').slice(0, 16)}`;
-          const row = { ...control, ...result, key, screen: screen.name, path: screen.path, target, openers: state.openers.map(opener => opener.name) };
-          if (evidence) row.evidence_path = await evidence(fresh, row);
+          row = { ...base, ...result };
           controls.push(row);
+          phase = 'evidence';
+          if (evidence) row.evidence_path = await evidence(fresh, row);
+          phase = 'discovery';
           const destination = new URL(fresh.url());
           const current = new URL(page.url());
           const discovery = destination.origin === current.origin && !destination.pathname.startsWith('/auth/') && (fresh.url() === page.url() || !routedPaths.includes(destination.pathname + destination.search));
           if (result.status === 'OBSERVED' && discovery) {
-            const exposed = (await settle(fresh)).filter(next => !seen.has(next.identity));
+            const exposed = (await settle(fresh, 'discovery', control.selector)).filter(next => !seen.has(next.identity));
             if (exposed.length) queue.push({ openers: [...state.openers, control], controls: exposed });
           }
-        } catch {
-          controls.push({ ...control, key: `${target}/${screen.path}/${createHash('sha256').update(control.identity).digest('hex').slice(0, 16)}`, status: 'UNREACHABLE', reason: 'Fresh-state opener replay failed', screen: screen.name, path: screen.path, target, openers: state.openers.map(opener => opener.name) });
-        } finally { await fresh.context().close(); }
+        } catch (error) {
+          fail(error, phase, state.openers, control);
+          if (!row && ['replay','press'].includes(phase)) controls.push({ ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: `${failure.phase}: ${failure.code}`, signals: [] });
+        } finally { await close(fresh, state.openers, control); }
       }
-    } finally { await page.context().close(); }
+    } catch (error) { fail(error, phase, state.openers); }
+    finally { await close(page, state.openers); }
   }
-  return { ...screen, target, reached, exhausted, controls };
+  return { ...screen, target, reached, exhausted, controls, failure };
 }
