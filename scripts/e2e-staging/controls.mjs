@@ -12,20 +12,32 @@ export class SweepFailure extends Error {
 
 async function inventoryState(page) {
   return page.locator(CONTROL_SELECTOR).evaluateAll((elements, workspaceSelector) => {
-    const visible = element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden';
+    const visible = element => {
+      if (!element.checkVisibility({ visibilityProperty: true })) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
     const busyVisible = element => {
       const style = getComputedStyle(element);
       if (style.display === 'contents') return [...element.childNodes].some(node => {
         if (node.nodeType === Node.ELEMENT_NODE) return busyVisible(node);
         if (node.nodeType !== Node.TEXT_NODE) return false;
+        const parent = node.parentElement;
+        if (getComputedStyle(parent).visibility !== 'visible') return false;
+        for (let ancestor = parent; ancestor; ancestor = ancestor.parentElement) {
+          const style = getComputedStyle(ancestor);
+          if (style.contentVisibility === 'hidden' || (style.display !== 'contents' && !ancestor.checkVisibility())) return false;
+          if (ancestor.tagName === 'DETAILS' && !ancestor.open) {
+            const summary = [...ancestor.children].find(child => child.tagName === 'SUMMARY');
+            if (!summary?.contains(parent)) return false;
+          }
+        }
         const range = document.createRange();
         range.selectNode(node);
         const rect = range.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
       });
-      if (style.visibility !== 'visible' || !element.checkVisibility()) return false;
-      const rect = element.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0;
+      return visible(element);
     };
     const cssPath = element => {
       if (element.id) return `#${CSS.escape(element.id)}`;

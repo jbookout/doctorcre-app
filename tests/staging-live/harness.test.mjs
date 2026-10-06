@@ -90,6 +90,60 @@ test('observable changes and disabled reasons are classified; nested controls ar
   await browser.close();
 });
 
+const detailsFixture = nested => `<main>${nested ? '<details id="outer"><summary id="outerToggle">Actions</summary>' : ''}<details id="park"><summary id="parkToggle">Park</summary><form style="display:grid"><label style="display:grid">Reason<input id="reason"></label><button id="save" type="button" onclick="document.querySelector('#out').textContent='Saved'">Save</button></form></details>${nested ? '</details>' : ''}<output id="out"></output></main>`;
+
+test('closed grid details exclude descendants until their native summaries open', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const nested of [false, true]) {
+    const page = await browser.newPage();
+    await page.setContent(detailsFixture(nested));
+    for (const selector of ['#reason', '#save']) {
+      assert.equal(await page.locator(selector).isVisible(), false);
+      assert.equal(await page.locator(selector).evaluate(element => element.checkVisibility({ visibilityProperty: true })), false);
+    }
+    assert.deepEqual((await inventory(page)).map(control => control.selector), [nested ? '#outerToggle' : '#parkToggle']);
+    if (nested) {
+      await page.locator('#outerToggle').click();
+      assert.deepEqual((await inventory(page)).map(control => control.selector), ['#outerToggle', '#parkToggle']);
+    }
+    await page.locator('#parkToggle').click();
+    assert.equal(await page.locator('#reason').isVisible(), true);
+    assert.deepEqual((await inventory(page)).map(control => control.selector), [...(nested ? ['#outerToggle'] : []), '#parkToggle', '#reason', '#save']);
+    await page.close();
+  }
+});
+
+test('native details replay their summaries before pressing grid form descendants', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const nested of [false, true]) {
+    const result = await sweepScreen({
+      freshPage: async () => { const page = await browser.newPage(); await page.setContent(detailsFixture(nested)); return page; },
+      screen: { path: '/', name: 'Native details' }, target: 'test', waitMs: 20,
+    });
+    assert.equal(result.failure, null);
+    assert.equal(result.exhausted, false);
+    assert.ok(result.controls.every(control => control.status === 'OBSERVED'));
+    for (const selector of ['#reason', '#save']) {
+      const rows = result.controls.filter(control => control.selector === selector);
+      assert.equal(rows.length, 1);
+      assert.deepEqual(rows[0].openers, [...(nested ? ['Actions'] : []), 'Park']);
+    }
+    for (const selector of [...(nested ? ['#outerToggle'] : []), '#parkToggle']) {
+      assert.equal(result.controls.filter(control => control.selector === selector).length, 2, 'both disclosure states are pressed');
+    }
+  }
+});
+
+test('inventory excludes hidden inert collapsed and zero-size controls', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent('<main><button id="ready">Ready</button><button hidden>Hidden</button><section hidden><button>Hidden parent</button></section><section inert><button>Inert</button></section><button style="visibility:hidden">Invisible</button><button style="visibility:collapse">Collapsed</button><button style="width:0;height:0;padding:0;border:0">Zero size</button></main>');
+  assert.deepEqual((await inventory(page)).map(control => control.selector), ['#ready']);
+});
+
 test('removed controls finish within the observation window and exclude delayed signals', async t => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
@@ -390,6 +444,24 @@ test('settling retains visible busy semantics for zero-size and display-contents
     document.querySelector('main').removeAttribute('aria-busy');
   });
   assert.equal((await settledInventory(page, { stableMs: 0, timeoutMs: 500 }))[0].name, 'Ready');
+});
+
+test('closed details busy text follows native visibility through display-contents wrappers', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  for (const nested of [false, true]) {
+    await page.setContent(`<main><button>Ready</button><details><summary id="parkToggle">Park</summary>${nested ? '<span style="display:contents"><span style="display:contents">' : ''}<span id="busy" aria-busy="true" style="display:contents">Loading</span>${nested ? '</span></span>' : ''}</details><span aria-busy="true" style="display:contents;visibility:hidden">Hidden</span><span aria-busy="true" style="display:contents;visibility:collapse">Collapsed</span></main>`);
+    assert.equal((await settledInventory(page, { stableMs: 20, timeoutMs: 400 }))[0].name, 'Ready');
+    await page.locator('#parkToggle').click();
+    await assert.rejects(settledInventory(page, { stableMs: 20, timeoutMs: 150 }), /completeness/);
+    await page.locator('#busy').evaluate(element => element.remove());
+    assert.equal((await settledInventory(page, { stableMs: 20, timeoutMs: 400 }))[0].name, 'Ready');
+  }
+  await page.setContent('<main><button>Ready</button><details><summary><span id="busy" aria-busy="true" style="display:contents">Loading</span></summary><p>Closed content</p></details></main>');
+  await assert.rejects(settledInventory(page, { stableMs: 20, timeoutMs: 150 }), /completeness/);
+  await page.locator('#busy').evaluate(element => element.remove());
+  assert.equal((await settledInventory(page, { stableMs: 20, timeoutMs: 400 }))[0].name, 'Ready');
 });
 
 test('late controls settle before enumeration and empty screens fail completeness', async () => {
