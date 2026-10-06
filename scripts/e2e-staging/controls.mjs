@@ -100,55 +100,78 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   if (control.disabled) return { status: 'DISABLED', reason: control.reason || 'No reason provided', signals: [] };
   if (await locator.count() !== 1 || !await locator.isVisible()) return { status: 'UNREACHABLE', reason: 'Control missing after replay', signals: [] };
   await locator.focus().catch(() => {});
-  await page.evaluate(() => {
+  const beforeURL = page.url();
+  await page.evaluate(selector => {
     const root = document.querySelector('main,[role="main"],#appMain,#mainContent') || document.body;
-    window.__controlObservation = { mutations: 0, focus: 0, aria: 0 };
+    const target = document.querySelector(selector);
+    const state = window.__controlObservation = { mutations: 0, focus: 0, aria: 0, target, beforeValue: target?.value ?? null, deadline: Infinity };
+    const active = () => !state.snapshot && Date.now() <= state.deadline;
     window.__controlObserver = new MutationObserver(records => {
+      if (!active()) return;
       for (const record of records) {
-        if (root.contains(record.target) || record.target === root || record.target.closest?.('[role="dialog"],[role="status"],[role="alert"],dialog,.toast,.sheet')) window.__controlObservation.mutations++;
-        if (record.type === 'attributes' && /^(aria-|open|checked|disabled)/.test(record.attributeName)) window.__controlObservation.aria++;
+        if (root.contains(record.target) || record.target === root || record.target.closest?.('[role="dialog"],[role="status"],[role="alert"],dialog,.toast,.sheet')) state.mutations++;
+        if (record.type === 'attributes' && /^(aria-|open|checked|disabled)/.test(record.attributeName)) state.aria++;
       }
     });
     window.__controlObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
-    window.__controlFocus = () => window.__controlObservation.focus++;
+    window.__controlFocus = () => { if (active()) state.focus++; };
     document.addEventListener('focusin', window.__controlFocus);
     document.addEventListener('focusout', window.__controlFocus);
-  });
-  const beforeURL = page.url();
-  const beforeValue = await locator.evaluate(element => element.value ?? null);
+    window.__controlFinish = () => {
+      if (state.snapshot) return state.snapshot;
+      clearTimeout(state.timer);
+      window.__controlObserver.disconnect();
+      document.removeEventListener('focusin', window.__controlFocus);
+      document.removeEventListener('focusout', window.__controlFocus);
+      state.snapshot = { mutations: state.mutations, focus: state.focus, aria: state.aria, url: location.href,
+        valueChanged: Boolean(state.target?.isConnected && (state.target.value ?? null) !== state.beforeValue) };
+      state.target = null;
+      return state.snapshot;
+    };
+  }, control.selector);
   const signals = new Set();
-  const request = () => signals.add('network request');
-  const dialog = async value => { signals.add('dialog'); await value.accept().catch(() => {}); };
-  const popup = () => signals.add('new tab');
-  const download = () => signals.add('download');
-  const filechooser = () => signals.add('file chooser');
-  page.on('request', request); page.on('dialog', dialog); page.on('popup', popup); page.on('download', download); page.on('filechooser', filechooser);
-  let error;
+  let deadline = Infinity;
+  const record = signal => { if (Date.now() <= deadline) signals.add(signal); };
+  const request = () => record('network request');
+  const dialog = async value => { record('dialog'); await value.accept().catch(() => {}); };
+  const popup = () => record('new tab');
+  const download = () => record('download');
+  const filechooser = () => record('file chooser');
+  const navigation = frame => { if (frame === page.mainFrame() && frame.url() !== beforeURL) record('URL change'); };
+  page.on('request', request); page.on('dialog', dialog); page.on('popup', popup); page.on('download', download); page.on('filechooser', filechooser); page.on('framenavigated', navigation);
+  let error, observed;
   try {
     if (control.role === 'select') {
       await locator.selectOption(control.optionValue);
     } else if (control.inputType === 'range') {
       await locator.press('ArrowRight');
-      if (await locator.inputValue() === beforeValue) await locator.press('ArrowLeft');
+      if (await page.evaluate(() => {
+        const state = window.__controlObservation;
+        return state.target?.isConnected && state.target.value === state.beforeValue;
+      })) await locator.press('ArrowLeft');
     } else if (['input','textarea'].includes(control.role) && await locator.getAttribute('readonly') === null && !['submit','button','checkbox','radio','file','color'].includes(control.inputType)) {
       await locator.click({ timeout: 5000 });
       const values = { email: 'e2e@example.test', url: 'https://example.test', tel: '2025550100', number: '1', date: '2030-01-15', time: '12:00', 'datetime-local': '2030-01-15T12:00', month: '2030-01', week: '2030-W03' };
       await locator.fill(values[control.inputType] || 'E2E synthetic input');
     } else await locator.click({ timeout: 5000, noWaitAfter: true });
-    await page.waitForTimeout(waitMs);
-    if (await locator.evaluate(element => element.value ?? null).catch(() => null) !== beforeValue) signals.add('main form state change');
-    if (page.url() !== beforeURL) signals.add('URL change');
-    const observed = await page.evaluate(() => {
-      window.__controlObserver?.disconnect();
-      document.removeEventListener('focusin', window.__controlFocus);
-      document.removeEventListener('focusout', window.__controlFocus);
-      return window.__controlObservation;
-    }).catch(() => null);
-    if (observed?.mutations) signals.add('main DOM mutation');
-    if (observed?.focus) signals.add('focus move');
-    if (observed?.aria) signals.add('aria state change');
+    deadline = Date.now() + waitMs;
+    await page.evaluate(deadline => {
+      const state = window.__controlObservation;
+      if (!state) return;
+      state.deadline = deadline;
+      state.timer = setTimeout(window.__controlFinish, Math.max(0, deadline - Date.now()));
+    }, deadline).catch(() => {});
+    await page.waitForTimeout(Math.max(0, deadline - Date.now()));
   } catch { error = 'Control click failed or timed out'; }
-  finally { page.off('request', request); page.off('dialog', dialog); page.off('popup', popup); page.off('download', download); page.off('filechooser', filechooser); }
+  finally {
+    page.off('request', request); page.off('dialog', dialog); page.off('popup', popup); page.off('download', download); page.off('filechooser', filechooser); page.off('framenavigated', navigation);
+    observed = await page.evaluate(() => window.__controlFinish?.() || null).catch(() => null);
+  }
+  if (observed?.valueChanged) signals.add('main form state change');
+  if (observed && observed.url !== beforeURL) signals.add('URL change');
+  if (observed?.mutations) signals.add('main DOM mutation');
+  if (observed?.focus) signals.add('focus move');
+  if (observed?.aria) signals.add('aria state change');
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 

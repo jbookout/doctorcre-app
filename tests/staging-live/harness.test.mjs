@@ -90,6 +90,42 @@ test('observable changes and disabled reasons are classified; nested controls ar
   await browser.close();
 });
 
+test('removed controls finish within the observation window and exclude delayed signals', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  page.setDefaultTimeout(400);
+  await page.route('https://synthetic.test/**', route => route.fulfill({ status: 200, body: 'Synthetic response' }));
+  await page.setContent(`<header><button id="gone" value="original" onfocusin="event.stopPropagation()" onfocusout="event.stopPropagation()" onclick="this.remove();setTimeout(()=>{document.querySelector('#out').textContent='Late';document.querySelector('#later').focus();document.querySelector('#later').setAttribute('aria-checked','true');fetch('https://synthetic.test/late').catch(()=>{})},150)">Remove quietly</button><input id="later"></header><main><output id="out"></output></main>`);
+  const control = (await inventory(page)).find(control => control.selector === '#gone');
+  const started = performance.now();
+  const result = await pressControl(page, control, { waitMs: 50 });
+  const elapsed = performance.now() - started;
+  assert.equal(result.status, 'DEAD');
+  assert.deepEqual(result.signals, []);
+  assert.ok(elapsed < 300, `Removed control took ${elapsed}ms`);
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('#out').textContent(), 'Late');
+  assert.deepEqual(await page.evaluate(() => ({ mutations: window.__controlObservation.mutations, focus: window.__controlObservation.focus, aria: window.__controlObservation.aria })), { mutations: 0, focus: 0, aria: 0 });
+});
+
+test('removed and replaced controls do not await or invent a replacement form value', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const change of ["this.remove()", "this.outerHTML='<input id=action value=replacement>'"]) {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(400);
+    await page.setContent(`<header><button id="action" value="original" onfocusin="event.stopPropagation()" onfocusout="event.stopPropagation()" onclick="${change}">Change target</button></header><main>Unchanged</main>`);
+    const started = performance.now();
+    const result = await pressControl(page, (await inventory(page)).find(control => control.selector === '#action'), { waitMs: 20 });
+    const elapsed = performance.now() - started;
+    assert.equal(result.status, 'DEAD');
+    assert.deepEqual(result.signals, []);
+    assert.ok(elapsed < 300, `Changed control took ${elapsed}ms`);
+    await page.close();
+  }
+});
+
 test('the pinned explorer runs with a forty-step goal budget', async () => {
   const { explorer40 } = await import('../../scripts/e2e-staging/explorer.mjs');
   const explore = await explorer40();
