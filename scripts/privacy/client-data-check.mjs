@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
+import tar from 'tar-stream';
+import { Unzip, UnzipInflate } from 'fflate';
 
 export function normalizeTokens(text, { decodeSource = true } = {}) {
   text = String(text);
@@ -62,7 +65,65 @@ export function changedFiles(root, base) {
     .toString('utf8').split('\0').filter(Boolean);
 }
 
-function main() {
+// Decode evidence containers without extracting any files. Every member uses
+// the same path/text checks as a source file, including nested Playwright traces.
+async function* artifactInputs(bytes, path, budget, depth = 0) {
+  if (depth > 4) throw new Error('archive nesting limit');
+  const charge = size => {
+    budget.remaining -= size;
+    if (budget.remaining < 0) throw new Error('archive size limit');
+  };
+  if (/\.tar(?:\.gz)?$/.test(path)) {
+    yield { path }; // Container names count too.
+    const archive = path.endsWith('.gz')
+      ? gunzipSync(bytes, { maxOutputLength: budget.remaining }) : bytes;
+    charge(archive.length);
+    const extract = tar.extract();
+    extract.end(archive);
+    for await (const entry of extract) {
+      if (!['file', 'directory'].includes(entry.header.type)) throw new Error('unsupported archive entry');
+      const chunks = [];
+      for await (const chunk of entry) chunks.push(chunk);
+      const member = `${path}!${entry.header.name}`;
+      if (entry.header.type === 'directory') yield { path: member };
+      else yield* artifactInputs(Buffer.concat(chunks), member, budget, depth + 1);
+    }
+  } else if (path.endsWith('.zip')) {
+    yield { path };
+    if (!bytes.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4]))
+      && !bytes.subarray(0, 4).equals(Buffer.from([80, 75, 5, 6]))) throw new Error('invalid ZIP');
+    const members = [];
+    const unzip = new Unzip(file => {
+      const chunks = [];
+      file.ondata = (error, chunk, final) => {
+        if (error) throw error;
+        charge(chunk.length);
+        chunks.push(chunk);
+        if (final) members.push({ path: `${path}!${file.name}`, bytes: Buffer.concat(chunks) });
+      };
+      file.start();
+    });
+    unzip.register(UnzipInflate);
+    unzip.push(bytes, true);
+    for (const member of members) yield* artifactInputs(member.bytes, member.path, budget, depth + 1);
+  } else {
+    // Trace resources use content hashes rather than image extensions.
+    const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const jpeg = depth > 0 && bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255]))
+      && bytes.subarray(-2).equals(Buffer.from([255, 217]));
+    if (extname(path).toLowerCase() === '.png' && !png) throw new Error('invalid PNG');
+    if (png || jpeg) { yield { path }; return; }
+    if (bytes.includes(0)) throw new Error('unsupported text encoding');
+    // Fatal decoding keeps unknown binaries and encodings from being skipped.
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    let json;
+    try { json = JSON.parse(text); } catch { /* Most source files are not JSON. */ }
+    if (json?.schema === 'doctorcre-private-name-hashes.v1') throw new Error('public privacy corpus');
+    yield { path, text };
+  }
+}
+
+async function main() {
   let root = fileURLToPath(new URL('../../', import.meta.url));
   let corpusPath = process.env.DOCTORCRE_PRIVACY_CORPUS_FILE || null;
   let base = null;
@@ -80,31 +141,22 @@ function main() {
     ? readFileSync(corpusPath, 'utf8')
     : process.env.DOCTORCRE_PRIVACY_CORPUS_JSON || readFileSync(resolve(homedir(), '.config/doctorcre-app/private-name-hashes.json'), 'utf8')));
   let failed = false;
-  for (const [index, path] of changedFiles(root, base).entries()) {
-    const pathFindings = scanText(path, path, corpus, { decodeSource: false });
-    const locator = pathFindings.length ? `[redacted-path:${index + 1}]` : path.replace(/[\r\n\x00-\x1f]/g, '?');
+  let index = 0;
+  for (const path of changedFiles(root, base)) {
     const bytes = readFileSync(resolve(root, path));
-    let text = '';
-    // PNG assets are the repository's only supported binary format. A NUL in
-    // any other input is an unsupported text encoding, never a clean scan.
-    if (extname(path).toLowerCase() === '.png') {
-      if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error('invalid PNG');
-    } else {
-      if (bytes.includes(0)) throw new Error('unsupported text encoding');
-      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      let json;
-      try { json = JSON.parse(text); } catch { /* Most source files are not JSON. */ }
-      if (json?.schema === 'doctorcre-private-name-hashes.v1') throw new Error('public privacy corpus');
-    }
-    const lines = new Set([...pathFindings, ...scanText(text, path, corpus)].map(finding => finding.line));
-    for (const line of lines) {
-      process.stdout.write(`${locator}:${line}\n`);
-      failed = true;
+    for await (const input of artifactInputs(bytes, path, { remaining: 256 * 1024 * 1024 })) {
+      const pathFindings = scanText(input.path, input.path, corpus, { decodeSource: false });
+      const locator = pathFindings.length ? `[redacted-path:${++index}]` : input.path.replace(/[\r\n\x00-\x1f]/g, '?');
+      const lines = new Set([...pathFindings, ...scanText(input.text || '', input.path, corpus)].map(finding => finding.line));
+      for (const line of lines) {
+        process.stdout.write(`${locator}:${line}\n`);
+        failed = true;
+      }
     }
   }
   process.exitCode = failed ? 1 : 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); } catch { process.stdout.write('scripts/privacy/client-data-check.mjs:1\n'); process.exitCode = 2; }
+  try { await main(); } catch { process.stdout.write('scripts/privacy/client-data-check.mjs:1\n'); process.exitCode = 2; }
 }

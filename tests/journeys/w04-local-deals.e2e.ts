@@ -2,6 +2,7 @@ import { productTest } from './test.mjs';
 const test = productTest();
 import { expect } from 'e2e';
 import { readFileSync } from 'node:fs';
+import { dragDealToPhase } from './deal-drag.mjs';
 
 // The synthetic board seed, with one automatic phase move Doc recorded on d14.
 const seed = JSON.parse(readFileSync(new URL('../../data/board-seed.json', import.meta.url), 'utf8'));
@@ -27,7 +28,7 @@ test('W4 Local Deals board drags a phase change and undoes an automatic move', a
   await expect(browser.locator('[data-column="research"] [data-id="d14"]')).toBeVisible();
   await expect(browser.locator('[data-id="d14"] .auto-move')).toHaveCount(0);
 
-  await browser.locator('[data-column="negotiation"] [data-id="d23"]').dragTo(browser.locator('[data-column="legal"]'));
+  await dragDealToPhase(browser, 'd23', 'legal');
   await expect(browser.locator('#completionDialog')).toBeVisible();
   await browser.locator('#completionConfirm').tap();
   await expect(browser.locator('#completionDialog')).toBeHidden();
