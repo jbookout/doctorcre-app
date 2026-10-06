@@ -28,9 +28,11 @@ test('shared Doc shows unavailable reads, keeps Chats reachable and offers no un
       client:{ listDocSuggestions:async () => { throw new Error('unavailable'); } } });
     const doc = dom.window.document;
     await settles(() => assert.match(doc.querySelector('#docSuggestions').textContent, /Unavailable/));
-    assert.equal(doc.querySelector('form, #docMic, #docInput'), null);
+    // The read-only search bar is Doc's one supported input; nothing else may accept input.
+    assert.equal(doc.querySelector('#docDetail form:not(#docCommandForm), #docMic, #docInput'), null);
+    assert.ok(doc.querySelector('#docCommandForm'));
     assert.doesNotMatch(doc.querySelector('#docPresence').textContent, /Listening|prototype|demo/i);
-    const link = doc.querySelector('.doc-chats-link');
+    const link = doc.querySelector('.doc-chats-link[href="/doc-chats"]');
     assert.equal(new URL(link.href).pathname, '/doc-chats');
     const destination = link.href;
     const gates = [], assets = [];
@@ -196,15 +198,18 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       await page.route('http://127.0.0.1:4682/**', route => route.fulfill({ status:companionAvailable ? 200 : 503, json:{state:'idle'} }));
       await page.goto(`${base}/deals?view=board`);
       await page.locator('#docOpen').click();
-      assert.equal(await page.locator('#docDetail form, #docMic, #docInput').count(), 0);
+      assert.equal(await page.locator('#docDetail form:not(#docCommandForm), #docMic, #docInput').count(), 0);
+      assert.equal(await page.locator('#docCommandForm').count(), 1);
       assert.match(await page.locator('#docSuggestions').textContent(), /Unavailable|Updating/);
       for (const selector of ['#docOpen', '#docClose', '.doc-chats-link']) {
-        const box = await touchTargetBox(page.locator(selector));
-        assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
+        for (const locator of await page.locator(selector).all()) {
+          const box = await touchTargetBox(locator);
+          assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
+        }
       }
       const dockBox = await page.locator('#docDetail').boundingBox();
       assert.ok(dockBox.x >= 0 && dockBox.x + dockBox.width <= width);
-      await page.locator('.doc-chats-link').click();
+      await page.locator('.doc-chats-link[href="/doc-chats"]').click();
       await page.waitForURL('**/doc-chats');
       await page.locator('#conversationList').waitFor({ state: 'attached' });
 
