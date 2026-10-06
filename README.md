@@ -12,6 +12,8 @@ The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
+Local development and the e2e runner require Node.js 22.12.0 or newer.
+
 ```bash
 npm ci
 npx playwright install chromium
@@ -23,8 +25,35 @@ npm run serve
 npm run dev:staging
 ```
 
+`npm run privacy:check` requires the private name-hash corpus in
+`~/.config/doctorcre-app/private-name-hashes.json`, or an explicit
+`DOCTORCRE_PRIVACY_CORPUS_FILE` path. CI reads the
+`DOCTORCRE_PRIVACY_CORPUS_JSON` Actions secret. Keep this record-derived lookup
+material outside the public repository. Missing or malformed input fails the check.
+
+### End-to-end journeys
+
+The [e2e](https://www.npmjs.com/package/e2e) runner starts the fixture server
+itself and drives Chromium through the merged V1 journeys on synthetic data.
+Telemetry is off in `e2e.config.ts`.
+
+```bash
+npx e2e run tests/journeys   # deterministic, no model; the CI e2e job runs this
+npx e2e run tests/agent      # agent.act/agent.assert variants, local only
+```
+
+The agent suite uses Joe's ChatGPT subscription, never an API key. Sign in once
+per machine with `npx e2e login openai` (add `--device` to use a code instead of
+a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
+lists the ids the login serves. CI configures no model and never runs it.
+
+`npm run release:prepare` runs checks, tests, build and source-bound artifact
+verification with a credential-free child environment. Run it before either
+publication command. The CARR pipeline invokes this entrypoint separately from
+the provider step.
+
 `npm run release:staging` accepts only a clean checkout whose `HEAD` exactly
-matches `origin/main`, builds with that commit identity, creates the staging
+matches `origin/main`, verifies the prepared artifact, creates the staging
 Worker on first use, and otherwise uploads and promotes an immutable version.
 `npm run rollback:staging -- <version-id>` restores one explicit earlier staging
 version.
@@ -33,8 +62,11 @@ The production Worker configuration deliberately has no route. It binds only to
 the production `carr-mcp` service and enables version preview URLs, so a release
 can be built, uploaded, and verified before any public hostname moves. Run
 `npm run deployment:check:production` to validate that configuration locally.
-`npm run release:production`, run from a clean checkout at exactly `origin/main`
-under Joe's explicit instruction for that release, uploads and promotes an
+`npm run release:production` consumes the prepared artifact, replaces `dist/site`
+from its verified source bytes, and runs only provider upload, promotion and
+readback commands. It refuses a missing `CLOUDFLARE_API_TOKEN`. Run publication from a clean
+checkout at exactly `origin/main`
+under the authorized release workflow. It uploads and promotes an
 immutable production version through the same checks as staging; it never
 creates a Worker on first use. `npm run rollback:production -- <version-id>`
 restores one explicit earlier production version. Attaching `app.doctorcre.com`

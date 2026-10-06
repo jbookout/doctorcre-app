@@ -1,3 +1,4 @@
+import { BOARD_ROUTE, boardIdFromPath } from './progress-board-route.js';
 import { routeContract } from "./slices.generated.js";
 // V5-UX-B12a — what the Notifications page shows, decided without a DOM.
 //
@@ -185,7 +186,7 @@ export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   const [pathname, query] = path.split("?");
   const home = LEGACY_ROUTE_HOMES[pathname] || pathname;
   const homePath = home.split("?")[0];
-  const routed = routeList.includes(homePath);
+  const routed = routeList.includes(homePath) || (boardIdFromPath(homePath) !== null && routeList.includes(BOARD_ROUTE));
   const href = routed ? `${home}${query ? `${home.includes("?") ? "&" : "?"}${query}` : ""}` : null;
   return { path, href, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
 }
@@ -546,4 +547,16 @@ export function quietNowBanner(feedPayload, preferencePayload) {
 export function versionConflictLine(currentVersion, baseVersion) {
   if (!Number.isInteger(currentVersion) || !Number.isInteger(baseVersion)) return null;
   return `Preferences changed elsewhere.`;
+}
+
+/**
+ * A resumed read may advance the current version while a person still holds
+ * fields typed against an older one. Keep that draft's base for the record
+ * layer's compare-and-swap. An untouched form uses the current read.
+ */
+export function preferenceSaveView(currentView, draftBaseVersion) {
+  if (!currentView) return null;
+  return Number.isInteger(draftBaseVersion) && draftBaseVersion > 0
+    ? { ...currentView, version: draftBaseVersion }
+    : currentView;
 }

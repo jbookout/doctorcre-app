@@ -21,7 +21,7 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 //      frozen request; that reconcile is the kernel's and nothing is added to
 //      it here.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -50,7 +50,7 @@ const view = {
 };
 
 let client = null;
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();

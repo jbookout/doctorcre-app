@@ -1,0 +1,29 @@
+.morning-brief { box-sizing:border-box; width:min(1100px,calc(100vw - 32px)); max-width:1100px; max-height:calc(100dvh - 32px); padding:28px; color:#edf2fc; border:1px solid #8bb6eb38; border-radius:24px; background:radial-gradient(ellipse at 0 0,#002f6c80,transparent 55%),radial-gradient(ellipse at 100% 100%,#f2692424,transparent 60%),#080e19f7; backdrop-filter:blur(22px); box-shadow:0 28px 120px #000b; font:15px/1.5 'DM Sans',sans-serif; }
+.morning-brief[open] { animation:doc-arrive 200ms ease-out; }
+.morning-brief::backdrop { background:#01050ccc; backdrop-filter:blur(8px); }
+.morning-brief header,.morning-brief header>div,.morning-toolbar { display:flex; align-items:center; gap:12px; }
+.morning-brief header { justify-content:space-between; }
+.morning-brief h2,.morning-brief h3 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; margin:0; }
+.morning-brief h2 { font-size:32px; }.morning-brief h3 { font-size:23px; color:#b4c9e8; margin:12px 0; }
+.morning-brief button { min-height:44px; min-width:44px; border:1px solid #8bb6eb30; border-radius:10px; background:#14213680; color:inherit; font:inherit; cursor:pointer; }
+.morning-toolbar { margin:20px 0; flex-wrap:wrap; }
+#morningUpdated { margin-right:auto; color:#99aecb; font-size:12px; }
+#morningSpeech[aria-pressed=true] { color:#ff9a61; background:#f2692430; border-color:#f26924; }
+.morning-brief button:disabled { opacity:.4; cursor:default; }
+#morningCoverage { color:#e2bc90; font-size:12px; }
+#morningContent { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 20px; }
+#morningContent>section:first-child { grid-column:1/-1; }
+.morning-brief .morning-card { display:flex; width:100%; text-align:left; align-items:center; gap:18px; min-height:90px; padding:22px; color:inherit; text-decoration:none; border:1px solid #8bb6eb30; border-radius:16px; background:linear-gradient(110deg,#002f6c50,#10203790); transition:transform 160ms,box-shadow 160ms,border-color 160ms; overflow-wrap:anywhere; }
+.morning-card>div { display:grid; gap:7px; flex:1; min-width:0; }.morning-card strong { font:600 25px/1.2 'Barlow Condensed','Arial Narrow',sans-serif; }.morning-card span { color:#b3c6df; }.morning-card time { color:#ffaf79; font-size:12px; }
+.morning-card:hover { transform:translateY(-2px); border-color:#f2692480; box-shadow:0 10px 28px #0005; }
+.morning-marker { display:grid; place-items:center; flex:none; width:42px; height:42px; border-radius:50%; border:1px solid #f2692460; color:#ffa466!important; }
+#morningContent>section:first-child .morning-card { border-color:#f2692460; background:linear-gradient(110deg,#f269241c,#002f6c55); }
+#morningContent>section:first-child .morning-marker { animation:morning-pulse 2s ease-in-out infinite; }
+.morning-brief :is(a,button,summary):focus-visible { outline:2px solid #ff8a48; outline-offset:3px; }
+.morning-record { grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:28px; overflow-wrap:anywhere; }.morning-record dl { margin:0; }.morning-record dl>div,.morning-record article { padding:16px; margin:0 0 12px; border:1px solid #8bb6eb25; border-radius:12px; background:#10203780; }.morning-record dt { color:#99aecb; font-size:12px; }.morning-record dd { margin:6px 0 0; }.morning-record summary { cursor:pointer; min-height:44px; display:flex; align-items:center; color:#9dbfeb; }.morning-record .entry-original { white-space:pre-wrap; }
+#morningContent>section:first-child .morning-card[data-urgency=overdue] .morning-marker { animation-duration:1s; }
+@keyframes morning-pulse { 50% { box-shadow:0 0 18px #f2692450; } }
+@media(max-width:760px) { .morning-brief { width:calc(100vw - 20px); padding:18px; }.morning-brief h2 { font-size:28px; }#morningContent,.morning-record { grid-template-columns:minmax(0,1fr); }.morning-brief .morning-card { padding:16px; gap:12px; }.morning-card strong { font-size:23px; } }
+@media(prefers-reduced-motion:reduce) { .morning-brief[open],#morningContent>section:first-child .morning-marker { animation:none; }.morning-brief .morning-card { transition:none; }.morning-card:hover { transform:none; } }
+:root[data-motion=reduced] :is(.morning-brief[open],.morning-marker) { animation:none!important; }
+:root[data-motion=reduced] .morning-brief .morning-card { transition:none; transform:none; }

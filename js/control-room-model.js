@@ -1,24 +1,4 @@
-// V5-UX-C01 — what the Control Room shows, decided without a DOM.
-//
-// Five operational questions, answered ONLY from reads that actually answered:
-// broken, running, stuck, needs Joe, changed. The rules that make that safe are
-// all in this file, so the page cannot quietly invent a number:
-//
-//   1. A tile whose producer did not answer carries `value: null` and the word
-//      `unknown` with the reason. It NEVER carries 0. Zero and unknown are
-//      different answers and a dashboard that confuses them is worse than one
-//      that shows nothing.
-//   2. The coverage line is built from the reads that were attempted, each with
-//      its own clock. There is no denominator: "N of 8 collectors" would be a
-//      number nobody produces, and inventing one is the failure this surface
-//      exists to prevent.
-//   3. Stuck is a comparison against an approved silence cadence. No cadence is
-//      approved, so this file refuses to render a verdict and lists the facts
-//      instead — longest since change, descending. `stallCandidates` already
-//      takes the cadence, so the ruling that approves one turns the tile on
-//      without a rewrite.
-//   4. A panel with no producer at all is a named scope statement, not an empty
-//      list and not a zero.
+// Incident, held-work and request contracts shared by Home, Status and the Control Room.
 import { formatClock } from "./visual-system.js";
 
 /** The four reads this page attempts, in the order the coverage line states them. */
@@ -31,43 +11,6 @@ export const READ_LABEL = Object.freeze({
   census: "Work census",
 });
 
-/**
- * The tab strip, in the order control-room.html draws it. V5-UX-S02 added
- * `sessions` as the fifth panel; `model_room` stays exactly where it is and
- * keeps its own placeholder, because V5-UX-C12 and V5-UX-C13 are unshipped and
- * S02 does not deliver them.
- */
-export const CONTROL_ROOM_TABS = Object.freeze([
-  { id: "tabDashboard", panel: "panelDashboard", label: "Dashboard" },
-  { id: "tabAttention", panel: "panelAttention", label: "Attention" },
-  { id: "tabModelRoom", panel: "panelModelRoom", label: "Model Room" },
-  { id: "tabAtlas", panel: "panelAtlas", label: "Atlas" },
-  { id: "tabSessions", panel: "panelSessions", label: "Sessions" },
-]);
-
-/** The five questions, in doctrine order. */
-export const TILES = Object.freeze(["broken", "running", "stuck", "needs_joe", "changed"]);
-
-export const TILE_TITLE = Object.freeze({
-  broken: "Broken",
-  running: "Running",
-  stuck: "Stuck",
-  needs_joe: "Needs Joe",
-  changed: "Changed",
-});
-
-export const NO_CADENCE_REASON = "no silence cadence is approved yet";
-
-/**
- * The approved silence cadence for held work, in hours.
- *
- * Approved 2026-09-17 by the v5 refinement pass; reopen by changing this
- * constant and the decision that set it. Until that ruling there was no
- * approved number at all, and the Stuck tile said so rather than inventing
- * one — `NO_CADENCE_REASON` and the `cadence: null` path are kept for exactly
- * that state, because a cadence this app made up would be a claim about work
- * nobody agreed to measure that way.
- */
 export const STUCK_SILENCE_HOURS = 48;
 
 const SEVERITY = /^SEV-[0-9]$/;
@@ -128,33 +71,6 @@ export function validCurrentWorkRequestsPayload(payload) {
     && orNull(row.next_human_action, isText));
 }
 
-const JEV_CLASSES = new Set(["decision_ready", "information_needed", "blocked", "routine_review", "unclear"]);
-
-// Advisory fields are optional. Validate their item binding before showing them;
-// the queue item, its position and action always come from the canonical read.
-export function needsJoeAdvisoryLabel(payload, index) {
-  const advisory = payload?.advisory;
-  if (advisory?.schema !== "jev_c13_decision_queue_advisory/v1") return "Jev advisory unavailable";
-  if (advisory.status === "unavailable") return "Jev advisory unavailable";
-  if (payload.advisory_binding_verified !== true) return "Jev advisory unavailable";
-  if (!/^sha256:[0-9a-f]{64}$/.test(advisory.snapshot_digest || "") ||
-      !/^sha256:[0-9a-f]{64}$/.test(advisory.question_config_digest || "") ||
-      advisory.model !== "jev-1.13.0" || !Number.isFinite(Date.parse(advisory.source_observed_at || "")))
-    return "Jev advisory unavailable";
-  const item = payload.items?.[index];
-  const judged = advisory.items?.[index];
-  if (!item || !judged || judged.index !== index || judged.human_ref !== item.human_ref)
-    return "Jev advisory unavailable";
-  if (!judged.judged) return "Jev abstained";
-  const values = [judged.priority_probability, judged.relevance_probability, judged.ambiguity_probability];
-  if (judged.calibration_status !== "unverified_model_output" ||
-      !JEV_CLASSES.has(judged.attention_class) || values.some(value =>
-    typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1))
-    return "Jev advisory unavailable";
-  const pct = value => `${Math.round(value * 100)}%`;
-  return `Jev estimate (uncalibrated): ${judged.attention_class.replaceAll("_", " ")} · priority ${pct(values[0])} · DoctorCRE relevance ${pct(values[1])} · action ambiguity ${pct(values[2])}`;
-}
-
 /* ------------------------------------------------------------ read bookkeeping */
 
 /**
@@ -178,191 +94,16 @@ export function coverageLine(reads) {
   });
 }
 
-/** What the page as a whole is doing, before any tile is painted. */
-export function readPhase({ status, reads }) {
-  if (status === "loading") return "loading";
-  if (status === "unauthorized") return "no_access";
-  const chips = coverageLine(reads);
-  const answered = chips.filter((chip) => chip.state === "read").length;
-  const attempted = chips.length;
-  if (attempted === 0) return "loading";
-  if (answered === 0) return "offline";
-  return answered === attempted ? "ready" : "partial";
-}
-
-/** The header badge's words, one per phase. */
-export const HEADER_WORDS = Object.freeze({
-  loading: "Updating…",
-  no_access: "Session ended",
-  offline: "Unavailable",
-  partial: "Partly available",
-  incomplete: "Partly available",
-  ready: "Current",
-});
-
-/**
- * A read can answer and still say it is short. "ready" is claimed only when
- * no answered read names a source it could not read in full.
- *
- * @param {string} phase the page phase from readPhase/resourceRoomPhase
- * @param {string[]} incomplete source names that answered incompletely
- */
-export function headerPhase(phase, incomplete = []) {
-  return phase === "ready" && incomplete.length > 0 ? "incomplete" : phase;
-}
-
-/** The census legs that answered short, from a census read that did answer. */
-export function censusIncompleteSources(read) {
-  if (read?.state !== "read" || read.payload?.census_complete !== false) return [];
-  const legs = Array.isArray(read.payload.coverage) ? read.payload.coverage : [];
-  const short = legs.filter((leg) => leg?.state !== "complete").map((leg) => leg.source_ref || leg.kind).filter(Boolean);
-  return short.length ? short : ["the work census"];
-}
-
-/* -------------------------------------------------------------------- tiles */
-
-const unanswered = (id, reason, open) => ({
-  id, title: TILE_TITLE[id], state: "unknown", value: null, word: "unknown",
-  reason, sentence: `This is unknown: ${reason}.`, open,
-});
-
-/**
- * The five question tiles. Each answered tile carries a verified count; each
- * unanswered one carries null and says why. One read failing therefore makes
- * exactly one tile unknown and leaves the other four alone.
- *
- * @param {{incidents?: object, work?: object, needsJoe?: object, census?: object}} reads
- *   each entry is {state: "read", payload} or {state: "unknown", reason}
- */
-export function dashboardTiles({ incidents, work, needsJoe, census, cadence = null } = {}) {
-  const tiles = [];
-
-  const brokenOpen = { tab: "attention", label: "Open the incident queue" };
-  if (incidents?.state === "read" && validIncidentBoardPayload(incidents.payload)) {
-    const count = incidents.payload.count;
-    tiles.push({
-      id: "broken", title: TILE_TITLE.broken, state: "read", value: count, word: String(count), reason: null,
-      sentence: count === 1
-        ? "One operational incident is open on the ledger."
-        : `${count} operational incidents are open on the ledger.`,
-      open: brokenOpen,
-    });
-  } else {
-    tiles.push(unanswered("broken", incidents?.reason || "the incident ledger did not answer", brokenOpen));
-  }
-
-  const runningOpen = { tab: "dashboard", section: "activeWork", label: "Open the active work list" };
-  if (work?.state === "read" && validCurrentWorkItemPayload(work.payload)) {
-    const count = work.payload.count;
-    tiles.push({
-      id: "running", title: TILE_TITLE.running, state: "read", value: count, word: String(count), reason: null,
-      sentence: count === 1
-        ? "One work request is held by a person or a session right now."
-        : `${count} work requests are held by a person or a session right now.`,
-      open: runningOpen,
-    });
-  } else {
-    tiles.push(unanswered("running", work?.reason || "the held-work read did not answer", runningOpen));
-  }
-
-  const stuckOpen = { tab: "dashboard", section: "longestSinceChange", label: "Open longest since change" };
-  if (work?.state === "read" && validCurrentWorkItemPayload(work.payload)) {
-    const stalls = stallCandidates(work.payload.current, { cadence });
-    if (stalls.state === "read") {
-      // The read answered, so 0 is a real answer and stays 0. Only an
-      // unanswered read is ever the word unknown on this tile.
-      const count = stalls.items.length;
-      tiles.push({
-        id: "stuck", title: TILE_TITLE.stuck, state: "read", value: count, word: String(count), reason: null,
-        sentence: `Held work with no change for ${stalls.cadence} hours or more.`,
-        open: stuckOpen,
-      });
-    } else {
-      tiles.push({
-        id: "stuck", title: TILE_TITLE.stuck, state: "unknown", value: null, word: "unknown",
-        reason: stalls.reason,
-        sentence: `This is unknown: ${stalls.reason}. The held work is listed by how long it has gone without a change instead.`,
-        open: stuckOpen,
-      });
-    }
-  } else {
-    tiles.push(unanswered("stuck", work?.reason || "the held-work read did not answer", stuckOpen));
-  }
-
-  const joeOpen = { tab: "dashboard", section: "needsJoe", label: "Open the request list" };
-  if (needsJoe?.state === "read" && validCurrentWorkRequestsPayload(needsJoe.payload)) {
-    const count = needsJoe.payload.items.length;
-    tiles.push({
-      id: "needs_joe", title: TILE_TITLE.needs_joe, state: "read", value: count, word: String(count), reason: null,
-      sentence: count === 1
-        ? "One shared request carries a bounded next action for a partner."
-        : `${count} shared requests carry a bounded next action for a partner.`,
-      open: joeOpen,
-    });
-  } else {
-    tiles.push(unanswered("needs_joe", needsJoe?.reason || "the shared request read did not answer", joeOpen));
-  }
-
-  tiles.push({
-    id: "changed", title: TILE_TITLE.changed, state: "not_in_release", value: null, word: "not in this release",
-    reason: "no release feed exists to read",
-    sentence: "Release updates unavailable",
-    open: null,
-  });
-
-  // `census` answers the delivery-evidence summary rather than a tile; it is
-  // taken here only so a caller passing it is not silently ignored.
-  void census;
-  return tiles;
-}
-
-/* -------------------------------------------------------------------- stuck */
-
-/**
- * Facts, not a verdict. Without an approved cadence this states `unknown` and
- * still returns the held items ordered by how long they have gone unchanged,
- * longest first. With a cadence in hours it returns the items at or past it.
- */
-export function stallCandidates(items, { cadence = null } = {}) {
-  const rows = (Array.isArray(items) ? items : [])
-    .filter((row) => row && typeof row.hours_since_last_change === "number")
-    .slice()
-    .sort((left, right) => right.hours_since_last_change - left.hours_since_last_change
-      || String(left.human_ref).localeCompare(String(right.human_ref)));
-  if (!Number.isFinite(cadence) || cadence === null || cadence <= 0) {
-    return { state: "unknown", reason: NO_CADENCE_REASON, cadence: null, items: rows };
-  }
-  return { state: "read", reason: null, cadence, items: rows.filter((row) => row.hours_since_last_change >= cadence) };
-}
-
-/** How long a held item has gone without a change, in words and never as a clock. */
-export function sinceChangeLabel(hours) {
-  if (typeof hours !== "number" || !Number.isFinite(hours) || hours < 0) return "unknown";
-  const rounded = Math.round(hours * 10) / 10;
-  return rounded === 1 ? "1 hour since change" : `${rounded} hours since change`;
-}
-
-/**
- * The work-in-progress line, and only when both numbers are integers the read
- * actually carried.
- */
-export function workInProgressLine(wip) {
-  if (!wip || !Number.isInteger(wip.in_flight) || !Number.isInteger(wip.limit_system_wide)) {
-    return { known: false, text: "unknown" };
-  }
-  return { known: true, text: `${wip.in_flight} of ${wip.limit_system_wide} in flight` };
-}
-
 /* --------------------------------------------------------------- incidents */
 
 /** The age the ledger measured, in days, or the word unknown. */
-export function incidentAgeLabel(days) {
+function incidentAgeLabel(days) {
   if (!Number.isInteger(days) || days < 0) return "unknown";
   return days === 1 ? "1 day old" : `${days} days old`;
 }
 
 /** One card per incident, carrying only what the read said. */
-export function incidentCard(row) {
+function incidentCard(row) {
   return {
     ref: row.ref,
     title: row.title,
@@ -414,48 +155,3 @@ export function canonicalHref(item) {
   if (INCIDENT_REF.test(ref)) return `/incidents?ref=${encodeURIComponent(ref)}`;
   return null;
 }
-
-export const NO_CANONICAL_PAGE = "This record has no page in this application yet.";
-
-/* ------------------------------------------------------- scope, not silence */
-
-/**
- * Every panel the prototype drew that has NO producer, each naming the slice
- * that owns it. These are scope statements: not zeros, not outages, and not
- * empty lists.
- */
-export function notInReleaseBlocks() {
-  return [
-    { id: "changed", title: "Changed: not in this release", slice: "V5-UX-C01", reason: "no release feed exists to read" },
-    { id: "accomplishments", title: "Accomplishments: not in this release", slice: "V5-UX-C01", reason: "no verified-accomplishment producer exists" },
-    { id: "detected_and_repaired", title: "Detected and repaired: not in this release", slice: "V5-UX-C01", reason: "no producer records a detection and its repair" },
-    // V5-UX-C08b wired the anatomical renderer into the live Atlas tab, and
-    // V5-UX-C09 bound incident markers, a recorded/correlated incident trace
-    // and an optional Doc tour to it — all from verbs already pinned
-    // (incident-board, get-incident) and no second canonical work store. Two
-    // pieces of C09's spec remain genuinely unbuilt, each for a reason named
-    // where the reader can see it rather than silently dropped:
-    //
-    //  1. A structured per-component failure map (CR-AC-05 / C31: failed vs
-    //     downstream-blocked vs healthy-parallel). No verb ties an atlas node
-    //     id to a live per-node health status, and investigation-neighborhood
-    //     — the only candidate — is a different subsystem keyed by an
-    //     investigation run id, whose own description forbids inventing an
-    //     edge it was not given (js/atlas-model.js CAUSAL_GRAPH_GAP_SENTENCE).
-    //  2. A planned/proposed architecture overlay and its links to affected
-    //     work (CR-AC-13, C28). No verb reads a proposed addition distinct
-    //     from operating architecture, and no verb links an atlas node to the
-    //     work that would finish it, so an overlay here would be invented.
-    {
-      id: "atlas_causal_failure_graph_and_planned_layer",
-      title: "Atlas causal failure map and planned-architecture layer: not in this release",
-      slice: "V5-UX-C09",
-      reason: "incident markers, a recorded incident trace and an optional Doc tour are live on the Atlas tab now; a " +
-        "per-component failure/health map and a planned-vs-operating overlay are not — no verb supplies either " +
-        "without inventing an edge (see js/atlas-model.js CAUSAL_GRAPH_GAP_SENTENCE)",
-    },
-  ];
-}
-
-// V5-UX-C14's Operations cards (approvals from governance-queue, and the
-// honest no-read schedule card) live in ./operations-model.js.

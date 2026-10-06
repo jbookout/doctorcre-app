@@ -561,8 +561,3 @@ export function renameView(views, from, to) {
   if (label === "") return Object.freeze([...(views || [])]);
   return Object.freeze((views || []).map((view) => (view.name === from ? Object.freeze({ ...view, name: label }) : view)));
 }
-
-/** Reset clears the saved views and NOTHING else. */
-export function resetViews() {
-  return Object.freeze([]);
-}

@@ -72,12 +72,89 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
     const legacy=routes.redirects[url.pathname]?.startsWith('/control-room/progress/work');
-    const file=legacy ? (url.pathname.includes('queue')?'queue.html':'room.html') : routes.routes[url.pathname]||url.pathname.slice(1);
+    const file=legacy ? (url.pathname.includes('queue')?'queue.html':'room.html') : routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
     try{const body=await readFile(new URL('../'+file,import.meta.url));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
+
+function reboundPassport() {
+  let value = JSON.parse(JSON.stringify(canonicalFixture()).replaceAll('wr-synthetic-read-only','wr:next').replaceAll('attempt:a','attempt:b').replaceAll('session:fresh','session:next'));
+  const plan = structuredClone(value.slice_plan); delete plan.plan_digest;
+  value = JSON.parse(JSON.stringify(value).replaceAll(value.plan_digest,passportProjectionDigest(plan)));
+  value.receipts[0].envelope_digest = passportProjectionDigest(value.execution_envelopes[0]);
+  value.current_receipts = structuredClone(value.receipts);
+  value.projection_digest = passportProjectionDigest(value);
+  assert.equal(canonicalPassport(value),true);
+  return value;
+}
+
+test('fresh publication reconciles delivery and derived request evidence and removes obsolete references',async t=>{
+  let request = 'WR-900';
+  const next = reboundPassport();
+  const {page,calls,state,errors} = await open(t,{sessions:[
+    {canonical_session_id:'session:fresh',latest_attempt_ref:'attempt:a',display_name:'Prior builder'},
+    {canonical_session_id:'session:next',latest_attempt_ref:'attempt:b',display_name:'Current builder'},
+  ],rpcReply:(rpc,payload)=>{
+    if(rpc.name==='read-progress-board') payload.snapshot.snapshot_json.tasks[taskId] = {title:`Published ${request || 'unbound'}`,status:'blocked',stage:'review',blocked_reason:`Review ${request || 'unbound'}`,next_action:'Read the current request',...(request?{work_request:request}:{})};
+    if(rpc.name==='work-request-card') return {...payload,human_ref:rpc.arguments.work_request,title:`Card ${rpc.arguments.work_request}`};
+    if(rpc.name==='engineering-passport') return rpc.arguments.work_request==='WR-901'?next:payload;
+    return payload;
+  }});
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Prior builder'));
+  assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-900/);
+  await page.locator('[data-session-id="session:fresh"]').click();
+  await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('synthetic dispatch'));
+  request='WR-901'; await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published WR-901');
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Card WR-901'));
+  assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-901/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(), /Review WR-900/);
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Current builder'));
+  for(const id of ['workMetadata','workCanonicalBody','workSessionList','workDispatchHistory'])
+    assert.doesNotMatch(await page.locator('#'+id).textContent(),/Card WR-900|wr-synthetic-read-only|attempt:a|Prior builder|synthetic dispatch/);
+  state.turns.push({seq:100,msg_id:'old-attempt-review',seat:'human',kind:'turn',at:NOW.toISOString(),body:JSON.stringify({attempt_id:'attempt:a',review:'Obsolete attempt review'})});
+  await page.clock.runFor(5100);
+  assert.doesNotMatch(await page.locator('#workReviewList').textContent(),/Obsolete attempt review/);
+  assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-901');
+  request=null; await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published unbound');
+  assert.match(await page.locator('#workCanonicalBody').textContent(),/No canonical work-request/);
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Card WR-/);
+  assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review unbound/);
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Prior builder|Current builder/);
+  assert.deepEqual(errors,[]);
+});
+
+for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{
+  const {page,state} = await open(t);
+  await page.waitForSelector('[data-session-id="session:fresh"]');
+  let release,started=false; const gate=new Promise(resolve=>release=resolve);
+  state.rpcReply=async(rpc,payload)=>{
+    if(rpc.name===late&&!started){started=true;await gate;return late==='read-session-identity'?{sessions:[{canonical_session_id:'session:fresh',display_name:'Obsolete held session'}]}:{events:[{event_id:99,session_id:'session:fresh',stage:'Obsolete held dispatch'}],more:false};}
+    if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Unbound publication',status:'review'};
+    return payload;
+  };
+  if(late==='read-session-identity')await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
+  else await page.locator('[data-session-id="session:fresh"]').click();
+  await assertEventually(()=>started);
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Unbound publication');
+  release(); await new Promise(resolve=>setTimeout(resolve,100));
+  assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Obsolete held session/);
+  assert.doesNotMatch(await page.locator('#workDispatchHistory').textContent(),/Obsolete held dispatch/);
+});
+
+test('explicit URL request remains pinned when the published task changes binding',async t=>{
+  const {page,state,calls}=await open(t,{path:taskPath+'&work_request=WR-900'});
+  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+  state.rpcReply=(rpc,payload)=>{if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Rebound task',status:'review',work_request:'WR-901'};return payload;};
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Rebound task');
+  assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-900');
+  assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
+});
 
 test('published task without a repository shows its PR as plain text', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
@@ -455,8 +532,9 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
 
 for (const width of [390, 820, 1440]) test(`board → project → task uses one tap each and breadcrumbs return to the parent at ${width}px`,async t=>{
   const {page,errors}=await open(t,{width,path:'/control-room/progress'});
+  await page.locator('[data-board-id="demo-project"]').evaluate(node=>node.removeAttribute("target"));
   await page.locator('[data-board-id="demo-project"]').click();
-  await page.waitForURL('**/control-room/progress?board=demo-project');
+  await page.waitForURL('**/control-room/progress/board/demo-project');
   await page.locator(`.board-card[data-card-id="${taskId}"]`).first().click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
@@ -469,7 +547,7 @@ for (const width of [390, 820, 1440]) test(`board → project → task uses one 
     }), true, `${width}px: breadcrumb remains reachable beside the rail and above the status bar`);
   }
   await page.locator('#workBreadcrumbs a').nth(1).click();
-  await page.waitForURL('**/control-room/progress?board=demo-project');assert.deepEqual(errors,[]);
+  await page.waitForURL('**/control-room/progress/board/demo-project');assert.deepEqual(errors,[]);
 });
 
 test('task detail exposes sessions, reviews, Dot jobs, dispatch pages and every Passport section',async t=>{
@@ -692,7 +770,7 @@ for (const width of [390, 1280]) test(`work detail retains the board details at 
 test('merged work detail displays the release wait and inline question', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=> {
     if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
-      status:'done', stage:'merged', release_wait:'Synthetic canary pending',
+      status:'done', stage:'merged', pr:100, pr_phase:'Merged', release_wait:'Synthetic canary pending',
       question:'SYNTHETIC V1 QUESTION', stage_history:[],
     });
     return payload;

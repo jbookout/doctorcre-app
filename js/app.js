@@ -7,18 +7,17 @@ import { uuidv4 } from './uuid.js';
 import { createPostCallClient } from './post-call-client.js';
 import { createCallMode, CALL_MODE_URL, CALL_MODE_HEADER } from './call-mode.js';
 import {
-  REVERTIBLE_FIELDS, escapeText, parkingReasonLabel, ingestChangeEvents,
-  receiptViews, receiptListHtml, receiptsSignature, receiptsAnnouncement,
-  createFeedProgress, observeChangeBatch, createUndoState, performUndo, fieldLabel, readableValue,
+  REVERTIBLE_FIELDS, escapeText, parkingReasonLabel, ingestChangeEvents, receiptViews,
+  receiptListHtml, receiptsSignature, receiptsAnnouncement, createFeedProgress, observeChangeBatch,
+  performUndo, fieldLabel, readableValue,
 } from './change-receipts.mjs';
 import {
   createBoardSync, batchTouchesBoard, resolveCurrentRow, SYNC_STATES, HEALTH,
 } from './board-sync.mjs';
 import {
-  cellKey, createFieldWriteState, performFieldWrite, unresolvedFieldWrites,
-  pendingFieldWrite, fieldWriteMessage, nextCellBase,
+  cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
-import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
+import { classifyCommandOutcome, commandMessage, pendingCommand } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
 import { mountEvidence } from './correspondence.js';
 import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
@@ -61,14 +60,14 @@ const state = {
   // request as it was sent — value, base and idempotency key — so a retry is the
   // SAME operation and not a second one. Never a value store; the board's values
   // come from a snapshot. See field-write-reconciliation.mjs.
-  fieldWrites: createFieldWriteState(),
+  fieldWrites: {},
   nextStepRequests: new Map(), nextStepInFlight: new Set(),
   presence: [], captureSessions: [],
   confirms: [], review: null, pollTimer: null, boardRefreshTimer: null,
   // Recent changes are session memory only: bounded, never stored, and never
   // a substitute for the deal's own Change history. The feed cursor starts at
   // the beginning of the log, so nothing is shown until it reaches the present.
-  receipts: [], undo: createUndoState(), feed: createFeedProgress(),
+  receipts: [], undo: {}, feed: createFeedProgress(),
   receiptSignature: null, receiptFocus: null, receiptAnnounced: null,
   // What the unconfirmed-changes bar last drew, so a poll does not rewrite it —
   // a render memo, exactly like receiptSignature. The operations themselves live
@@ -874,7 +873,7 @@ function reconcileNewerState(dealId, field, result, options = {}) {
  * the key, the base and the value identical.
  */
 async function retryCellWrite(cell, trigger = null) {
-  const entry = pendingFieldWrite(state.fieldWrites, cell);
+  const entry = pendingCommand(state.fieldWrites, cell);
   if (!entry) { renderBoardOnly(); return null; }
   const { deal, field, value } = entry.request;
   // The retry is answered on the surface it was asked from: a Retry pressed in

@@ -13,7 +13,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-PIN = "0803c96043e882539c38ab9e08e3e095dd2668fe"
+PIN = "4af24be8b4415290dcf29eecb6091a0d25fc91bd"
 AT = "2026-09-28T13:00:00Z"
 STAGES = ("queued", "build", "review", "ci", "merged", "live")
 HEALTH = ("healthy", "question", "blocked")
@@ -47,6 +47,7 @@ def main():
         ("queued_still", {"title": "Synthetic queued", "status": "queued"}),
         ("done_still", {"title": "Synthetic done", "status": "done"}),
         ("done_merged", {"title": "Synthetic merged", "status": "done", "pr": 84, "pr_phase": "Merged"}),
+        ("done_unmerged", {"title": "Synthetic unmerged", "status": "done", "pr": 85, "pr_phase": "Awaiting review"}),
         ("done_leftover_blocked", {"title": "Leftover", "status": "done", "pr": 84, "pr_phase": "Merged", "health": "blocked"}),
         ("review_status", {"title": "Synthetic review", "status": "review"}),
         ("failed_status", {"title": "Synthetic failure", "status": "failed"}),

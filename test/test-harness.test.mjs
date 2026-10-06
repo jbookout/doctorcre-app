@@ -8,7 +8,7 @@ import { pbkdf2, webcrypto } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { animationsSettled, chromium, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
+import { animationsSettled, chromium, webkit, pausedClock, settles, waitForAsync } from './browser-harness.mjs';
 import { openDom } from './jsdom-harness.mjs';
 
 const dir = new URL('./', import.meta.url);
@@ -16,11 +16,23 @@ const dir = new URL('./', import.meta.url);
 const sources = await Promise.all((await readdir(dir)).filter(name => /\.test\.mjs$/.test(name) && name !== 'test-harness.test.mjs')
   .map(async name => ({ name, text: await readFile(new URL(name, dir), 'utf8') })));
 
-test('every browser test gets Chromium from the harness and waits on its one budget', () => {
+function assertSharedBrowserBudget(text, name) {
+  // Non-browser tests bound child processes too; those are not page waits.
+  if (/from ['"].*browser-harness\.mjs['"]/.test(text)) {
+    assert.doesNotMatch(text, /[{,]\s*timeout\s*:\s*\d/, `${name} gives one wait its own budget`);
+  }
+}
+
+test('the browser wait-budget guard permits bounded subprocess tests and rejects a page override', () => {
+  assertSharedBrowserBudget("spawnSync(process.execPath, [], {timeout:3000})", 'subprocess');
+  assert.throws(() => assertSharedBrowserBudget("import { chromium } from './browser-harness.mjs'; page.waitForFunction(() => true, {timeout:3000})", 'browser'), /gives one wait its own budget/);
+});
+
+test('every browser test gets its engine from the harness and waits on its one budget', () => {
   for (const { name, text } of sources) {
     assert.doesNotMatch(text, /from ['"]playwright['"]/, `${name} imports Playwright directly`);
     assert.doesNotMatch(text, /setDefaultTimeout\(/, `${name} sets its own wait budget`);
-    assert.doesNotMatch(text, /[{,]\s*timeout\s*:\s*\d/, `${name} gives one wait its own budget`);
+    assertSharedBrowserBudget(text, name);
     assert.doesNotMatch(text, /waitForFunction\(\s*async/, `${name} waits on an async predicate, which never waits`);
     assert.doesNotMatch(text, /for\s*\(\s*let \w+\s*=\s*0;[^;]*;\s*\w+\+\+\s*\)\s*await page\.waitForTimeout/, `${name} polls with its own fixed budget`);
   }
@@ -67,6 +79,30 @@ test('launches share one Chromium while each test keeps its own storage', async 
   assert.equal(pageA.isClosed(), true);
   assert.equal(await pageB.evaluate(() => 1 + 1), 2);
   await b.close();
+});
+
+test('WebKit leases share their engine while keeping contexts and Chromium separate', async t => {
+  const [a, b, chrome] = await Promise.all([webkit.launch(), webkit.launch(), chromium.launch()]);
+  t.after(() => Promise.all([a.close(), b.close(), chrome.close()]));
+  const [pageA, pageB, pageChrome] = await Promise.all([a.newPage(), b.newPage(), chrome.newPage()]);
+  assert.equal(pageA.context().browser(), pageB.context().browser());
+  assert.notEqual(pageA.context().browser(), pageChrome.context().browser());
+  assert.notEqual(pageA.context(), pageB.context());
+  await a.close();
+  assert.equal(pageA.isClosed(), true);
+  assert.equal(await pageB.evaluate(() => 1 + 1), 2);
+});
+
+test('WebKit pages refuse outside requests and retain test fixture routes', async t => {
+  const browser = await webkit.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const refused = [];
+  page.on('requestfailed', request => refused.push(new URL(request.url()).hostname));
+  await page.route('http://localhost/', route => route.fulfill({ contentType: 'text/html', body: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans"><p>loaded</p>' }));
+  await page.goto('http://localhost/');
+  assert.deepEqual(refused, ['fonts.googleapis.com']);
+  assert.equal(await page.locator('p').innerText(), 'loaded');
 });
 
 test('a paused clock lands exactly on its time however long the runner stalls', async () => {
@@ -194,4 +230,21 @@ test('a page never waits on the outside network', async () => {
     await page.goto('http://localhost/');
     assert.deepEqual(refused, ['fonts.googleapis.com']);
   } finally { await browser.close(); }
+});
+
+test('a page never waits on the host capture devices', async () => {
+  for (const engine of [chromium, webkit]) {
+    const browser = await engine.launch();
+    try {
+      const page = await browser.newPage();
+      await page.route('http://localhost/', route => route.fulfill({ contentType: 'text/html', body: '<p>loaded</p>' }));
+      await page.goto('http://localhost/');
+      // A regression would hang here forever on a Mac, so the page bounds it.
+      const outcome = await page.evaluate(() => Promise.race([
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(() => 'captured', error => error.name),
+        new Promise(resolve => setTimeout(resolve, 5_000, 'waiting on host capture')),
+      ]));
+      assert.equal(outcome, 'NotAllowedError');
+    } finally { await browser.close(); }
+  }
 });

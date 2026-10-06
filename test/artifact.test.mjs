@@ -40,10 +40,10 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
   assert.deepEqual(await readFile(join(first, "site", "workspace.html")), await readFile(join(ROOT, "workspace.html")));
-  assert.deepEqual(await readFile(join(first, "site", "progress-board.html")), await readFile(join(ROOT, "progress-board.html")));
+  assert.deepEqual(await readFile(join(first, "site", "control-room.html")), await readFile(join(ROOT, "control-room.html")));
+  assert.equal(a.manifest.files.some((file) => file.path === "control-room.html"), true);
+  assert.equal(verifyArtifact(a.archive, a.archiveSha256).manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
-  assert.equal(a.manifest.files.some((file) => file.path === "progress-board.html"), true);
-  assert.equal(verifyArtifact(a.archive, a.archiveSha256).manifest.files.some((file) => file.path === "progress-board.html"), true);
 });
 
 test("the deployment directory is rebuilt without stale files", async () => {
@@ -72,6 +72,17 @@ test("verification binds every payload file and rejects changed bytes", async ()
   const badTrailer = Buffer.from(built.archive);
   badTrailer[badTrailer.length - 1] = 1;
   assert.throws(() => verifyArtifact(badTrailer), /archive trailer/);
+});
+
+test("every contracted page including Doc activity is present in the deployment and archive", async () => {
+  const routes = JSON.parse(await readFile(join(ROOT, "contracts/app-routes.v1.json")));
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-route-artifact-"));
+  const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  const verified = verifyArtifact(built.archive, built.archiveSha256);
+  for (const path of new Set(Object.values(routes.routes))) {
+    assert.ok(verified.manifest.files.some(file => file.path === path), `missing deployed route: ${path}`);
+    assert.deepEqual(await readFile(join(outDir, "site", path)), await readFile(join(ROOT, path)));
+  }
 });
 
 async function committedFixture(t) {
@@ -194,4 +205,26 @@ test("slice fragments and generated registry stay bound to committed source", as
   const registry = join(root, "js/slices.generated.js");
   await writeFile(registry, (await readFile(registry, "utf8")) + "// Demo tampered registry\n");
   await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
+});
+
+test('provider preparation replaces poisoned cache output with verified committed bytes', async t => {
+  const {root,outDir} = await committedFixture(t);
+  await writeFile(join(outDir,'site','marker.sh'), '#!/bin/sh\nexit 99\n');
+  await writeFile(join(outDir,'site','workspace.html'), 'synthetic cache poison');
+  await runCli(root,['prepare-deployment']);
+  await assert.rejects(readFile(join(outDir,'site','marker.sh')), /ENOENT/);
+  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), await readFile(join(root,'workspace.html')));
+});
+
+test('provider preparation refuses missing, empty, fork and changed artifacts', async t => {
+  const {root,outDir,commit,built} = await committedFixture(t);
+  await writeFile(join(outDir,'doctorcre-app.tar'), '');
+  await assert.rejects(runCli(root,['prepare-deployment']), /digest mismatch/);
+  await writeFile(join(outDir,'doctorcre-app.tar'), built.archive);
+  await runCli(root,['prepare-deployment']);
+  await buildArtifact({root,outDir,commit:'f'.repeat(40)});
+  await assert.rejects(runCli(root,['prepare-deployment']), /source commit mismatch/);
+  await buildArtifact({root,outDir,commit});
+  await rm(join(outDir,'doctorcre-app.manifest.json'));
+  await assert.rejects(runCli(root,['prepare-deployment']), /ENOENT/);
 });

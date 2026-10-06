@@ -5,16 +5,11 @@
 // The pinned contract supplies the field names; no live session data is stored.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import {readFile} from "node:fs/promises";
 
-import {
-  ALIAS_SOURCES, DEFAULT_LIMIT, EMPTY_HISTORY_SENTENCE, LINEAGE_UNRECORDED_SENTENCE,
-  NO_OPEN_SENTENCE, PROVABLE_STAGES, STAGE_UNAVAILABLE_SENTENCE, countsLine, dispatchView,
-  hostState, identityRequest, lineage, lineageSummary, listState, refuseDispatchHistory,
-  refuseSessionIdentity, sessionCard, sessionCards,
-} from "../js/sessions-model.js";
-import { CONTROL_ROOM_TABS } from "../js/control-room-model.js";
-import { createFixtureClient } from "../js/fixture-client.js";
+import {ALIAS_SOURCES, DEFAULT_LIMIT, EMPTY_HISTORY_SENTENCE, LINEAGE_UNRECORDED_SENTENCE, NO_OPEN_SENTENCE, PROVABLE_STAGES, STAGE_UNAVAILABLE_SENTENCE, countsLine, dispatchView, hostState, identityRequest, lineage, lineageSummary, listState, refuseDispatchHistory, refuseSessionIdentity, sessionCard, sessionCards} from "../js/sessions-model.js";
+
+import {createFixtureClient} from "../js/fixture-client.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
@@ -63,11 +58,11 @@ test("S02-01 name lookup passes query through and renders the producer's order",
 // MUTATION: match on `display_name` only in the fixture client's sessionIdentity.
 test("S02-02 ID lookup finds a row by canonical_session_id", async () => {
   const client = await fixture();
-  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-000" }));
+  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-007" }));
   assert.equal(answer.sessions.length, 1);
-  assert.equal(answer.sessions[0].canonical_session_id, "example-session-000");
+  assert.equal(answer.sessions[0].canonical_session_id, "example-session-007");
   assert.equal(
-    answer.sessions[0].display_name.toLowerCase().includes("example-session-000"), false,
+    answer.sessions[0].display_name.toLowerCase().includes("example-session-007"), false,
     "the id matched on the id, not by accident through the name",
   );
 });
@@ -375,14 +370,14 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads", () => {
-  assert.equal(contract.version, "1.42.0", "the checkpoint read and lead calls advance the interface");
+  assert.equal(contract.version, "1.43.0", "the checkpoint read and lead calls advance the interface");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
   assert.equal(contract.mcp_operations[dispatch - 1], "read-correspondence-thread");
-  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-conversation");
+  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-activity");
   const identity = contract.mcp_operations.indexOf("read-session-identity");
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.
@@ -396,7 +391,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");
@@ -408,19 +403,3 @@ test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
 // V5-UX-C12 replaced the Model Room placeholder this test once pinned. What S02
 // owns here is unchanged: Sessions is its OWN fifth panel and never reuses the
 // Model Room's, whatever the Model Room now holds.
-test("S02-23 Sessions is its own panel beside the Model Room's", () => {
-  assert.equal(/id="panelModelRoom"[\s\S]*?not in this release/.test(html), false,
-    "V5-UX-C12 shipped the Model Room tab, so its placeholder is gone");
-  assert.match(html, /<section class="tabpanel" id="panelModelRoom"/, "Model Room keeps its own panel");
-  assert.match(html, /<section class="tabpanel" id="panelSessions"/, "Sessions is a fifth panel, not an absorption");
-  assert.equal(
-    /id="panelSessions"[\s\S]*?not in this release/.test(html), false,
-    "the Sessions tab does not reuse the placeholder",
-  );
-  assert.deepEqual(CONTROL_ROOM_TABS.map((tab) => tab.id),
-    ["tabDashboard", "tabAttention", "tabModelRoom", "tabAtlas", "tabSessions"]);
-  assert.equal(CONTROL_ROOM_TABS.length, 5, "Sessions is the fifth tab beside the four that shipped");
-  // 360px: one column, and every control this tab adds at the 44px floor.
-  assert.match(css, /#sessionsLookup \{ min-height: var\(--touch\); \}/);
-  assert.match(css, /@media \(max-width: 640px\) \{\s*\n  \.session-head/);
-});

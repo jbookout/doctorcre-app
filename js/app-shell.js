@@ -5,6 +5,7 @@ import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
+import { offlineTourSession } from "./offline-tour-session.js";
 // One navigation source for every DoctorCRE route. Page scripts own their local
 // controls; this module owns the shared rail and layout.
 const registration = registerSlices(slices);
@@ -12,6 +13,7 @@ export const navigationItems = registration.navigationItems;
 const sectionForRoute = registration.sectionForRoute;
 
 export function activeDestination(pathname) {
+  if (pathname.startsWith('/control-room/progress/board/')) return '/control-room/progress';
   return sectionForRoute[pathname] || pathname;
 }
 
@@ -61,6 +63,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
           <a href="${base}/updates#prefForm">Notification preferences</a>
+          <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
           <button type="button" id="accountSignOut">Sign out</button>
           <p id="accountStatus" role="status"></p>
         </div>
@@ -161,6 +164,7 @@ function mountAccount(root, host, pathname) {
     try {
       const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
       if (!response.ok) throw new Error();
+      offlineTourSession(globalThis.window).revoke();
       globalThis.location.assign("/auth/login");
     } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };

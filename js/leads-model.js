@@ -48,6 +48,7 @@ export function marketCounts(leads, filters = {}) {
 export function stageReview(detail, target, now = Date.now()) {
   const kinds = target === "engaged" ? ["email_in", "meeting", "call"] : target === "outreach_active" ? ["email_out"] : [];
   const evidence = (detail.correspondence || []).filter(entry => kinds.includes(entry.kind) &&
+    (entry.kind !== "call" || entry.connected === true) &&
     Number.isFinite(Date.parse(entry.occurred_at)) && Date.parse(entry.occurred_at) <= now)
     .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)).slice(0, 3);
   const questions = { new: "Why return this lead to New?", qualified: "What makes this lead qualified?",
@@ -62,8 +63,9 @@ export function automaticMove(lead) {
   if (!move?.automatic || move.undone || move.to !== lead.stage || !move.from || !move.event_id) return null;
   return move;
 }
-export function undoReview(lead) {
+export function undoReview(lead, humanQuote = "") {
   const move = automaticMove(lead);
   if (!move || !(move.from === "closed_lost" || FILTER_STAGES.some(([key]) => key === move.from))) return null;
-  return { stage: move.from, stage_review: { reason: "Undo automatic stage move", evidence_ids: [], undo_event_id: move.event_id } };
+  return { stage: move.from, question: "Why undo this automatic stage move?",
+    stage_review: { reason: "Undo automatic stage move", evidence_ids: [], undo_event_id: move.event_id, human_quote: humanQuote } };
 }

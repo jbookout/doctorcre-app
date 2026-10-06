@@ -1,69 +1,87 @@
-// The one way browser tests get Chromium, a wait budget and a fake clock.
+// The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
-// Hosted CI runs three test files at once on a four-vCPU runner. Launching a
-// fresh Chromium for every test and giving each file its own 1-7 s wait budget
-// made any wait that needed a little longer fail at random. Here:
-//  - each test process keeps one Chromium; every launch() hands out its own
-//    browser contexts, so storage, routes, clock and viewport stay per test;
-//  - every page waits up to WAIT_MS for a condition before it fails, and no
-//    request leaves the machine unless the test routes it;
-//  - BROWSER_CPU_THROTTLE=<n> slows every page n times (CDP emulation) and
+// Launching a fresh browser for every test and giving each file its own 1-7 s
+// wait budget made waits fail at random. Here:
+//  - each test process keeps one browser per engine; every launch() hands out
+//    its own contexts, so storage, routes, clock and viewport stay per test;
+//  - every page waits up to WAIT_MS for a condition before it fails, no
+//    request leaves the machine unless the test routes it, and no page
+//    captures from the host's microphones;
+//  - BROWSER_CPU_THROTTLE=<n> slows Chromium pages n times (CDP emulation) and
 //    BROWSER_ROUTE_JITTER_MS=<ms> answers each routed request up to <ms> late,
 //    so a CI-starved runner can be reproduced locally.
 import { after } from 'node:test';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium as playwright } from 'playwright';
+import { chromium as playwrightChromium, webkit as playwrightWebkit } from 'playwright';
 
 export const WAIT_MS = 30_000;
 const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-const launched = new Map();
+const pools = [];
 
 after(async () => {
-  const results = await Promise.allSettled(launched.values());
-  launched.clear();
+  const results = await Promise.allSettled(pools.flatMap(pool => [...pool.values()]));
+  pools.forEach(pool => pool.clear());
   await Promise.all(results.filter(result => result.status === 'fulfilled')
     .map(result => result.value.close()));
 });
 
-export const chromium = {
-  async launch(options = {}) {
-    const key = JSON.stringify(options);
-    if (!launched.has(key)) launched.set(key, playwright.launch(options));
-    const browser = await launched.get(key);
-    const contexts = new Set();
-    return {
-      async newPage(options = {}) {
-        const context = await browser.newContext(options);
-        contexts.add(context);
-        context.setDefaultTimeout(WAIT_MS);
-        // Tests never reach the network. A page's Google Fonts link held its
-        // load event, and so page.goto, until an outside server answered. A
-        // request a test does not route itself and that leaves this machine is refused.
-        await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
-        const page = await context.newPage();
-        if (throttle > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
-        if (jitter > 0) {
-          const route = page.route.bind(page);
-          page.route = (url, handler, options) => route(url, async (...args) => { await delay(Math.random() * jitter); return handler(...args); }, options);
-        }
-        return page;
-      },
-      async close() {
-        const open = [...contexts];
-        contexts.clear();
-        await Promise.all(open.map(context => context.close()));
-      },
-    };
-  },
-};
+function browserEngine(engine) {
+  const launched = new Map();
+  // Keep each engine's launch options in its own pool.
+  pools.push(launched);
+  return {
+    async launch(options = {}) {
+      const key = JSON.stringify(options);
+      if (!launched.has(key)) launched.set(key, engine.launch(options));
+      const browser = await launched.get(key);
+      const contexts = new Set();
+      return {
+        async newPage(options = {}) {
+          const context = await browser.newContext(options);
+          contexts.add(context);
+          context.setDefaultTimeout(WAIT_MS);
+          // Tests never reach the network. A page's Google Fonts link held its
+          // load event, and so page.goto, until an outside server answered. A
+          // request a test does not route itself and that leaves this machine is refused.
+          await context.route(url => !LOOPBACK.has(url.hostname), route => route.abort().catch(() => {}));
+          // Nor do they reach the host's microphones. On a Mac the browser's own
+          // getUserMedia, fake capture device or not, can wait forever on the
+          // host audio stack, and that stuck request starved every later
+          // recording in the shared browser. Linux CI has no such stack. A test
+          // that records installs its own synthetic stream after this one.
+          await context.addInitScript(() => {
+            if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async () => {
+              throw new DOMException('Browser tests never capture from host devices', 'NotAllowedError');
+            };
+          });
+          const page = await context.newPage();
+          if (throttle > 1 && engine === playwrightChromium) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
+          if (jitter > 0) {
+            const route = page.route.bind(page);
+            page.route = (url, handler, options) => route(url, async (...args) => { await delay(Math.random() * jitter); return handler(...args); }, options);
+          }
+          return page;
+        },
+        async close() {
+          const open = [...contexts];
+          contexts.clear();
+          await Promise.all(open.map(context => context.close()));
+        },
+      };
+    },
+  };
+}
+
+export const chromium = browserEngine(playwrightChromium);
+export const webkit = browserEngine(playwrightWebkit);
 
 // Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
 // a fixed range can be taken by a parallel run or an ephemeral connection.
-export async function fixtureServer() {
-  const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+export async function fixtureServer({ root } = {}) {
+  const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: '0', ...(root ? { DOCTORCRE_FIXTURE_ROOT: root } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
   const origin = await new Promise((resolve, reject) => {
     server.stdout.once('data', data => resolve(String(data).match(/http:\/\/[\d.]+:\d+/)[0]));
     server.once('error', reject);
@@ -115,4 +133,43 @@ export async function animationsSettled(page) {
 export async function pausedClock(page, time) {
   await page.clock.install({ time: 0 });
   await page.clock.pauseAt(time);
+}
+
+// These assertions cross the same evaluate seam as Playwright and the e2e
+// browser fixture. Re-resolve selectors after repaint; detached nodes prove nothing.
+export async function retainDraftThroughRefresh(page, selector, refresh) {
+  const read = () => page.evaluate(selector => {
+    const el = document.querySelector(selector);
+    if (!el || !('value' in el)) throw new Error('draft field missing');
+    return {value:el.value, start:el.selectionStart, end:el.selectionEnd,
+      direction:el.selectionDirection, focused:document.activeElement === el};
+  }, selector);
+  const before = await read();
+  await refresh();
+  const after = await read();
+  if (before.value !== after.value || before.start !== after.start || before.end !== after.end || before.direction !== after.direction)
+    throw new Error('draft or selection changed through refresh');
+  if (before.focused && !after.focused) throw new Error('focus lost through refresh');
+}
+
+export async function assertFocusRoundTrip(page, selector, open, close) {
+  await page.evaluate(selector => {
+    const el=document.querySelector(selector); if (!el) throw new Error('focus trigger missing'); el.focus();
+  }, selector);
+  await open();
+  await close();
+  if (!(await page.evaluate(selector => document.activeElement === document.querySelector(selector), selector)))
+    throw new Error('focus did not return to the current trigger');
+}
+
+export async function assertFitsViewport(page, selectors = []) {
+  const fits = await page.evaluate(selectors => {
+    if (document.documentElement.scrollWidth > innerWidth) return false;
+    return selectors.every(selector => {
+      const el=document.querySelector(selector); if (!el) return false;
+      const box=el.getBoundingClientRect();
+      return box.width > 0 && box.left >= -1 && box.right <= innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1;
+    });
+  }, selectors);
+  if (!fits) throw new Error('layout exceeds viewport or required surface is missing');
 }

@@ -4,7 +4,7 @@ import {readFile,mkdir} from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
-async function open(t,{width=1440,link=false,reducedMotion='no-preference'}={}) {
+async function open(t,{width=1440,link=false,reducedMotion='no-preference',fixtureDelayMs=0}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},reducedMotion});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -13,6 +13,7 @@ async function open(t,{width=1440,link=false,reducedMotion='no-preference'}={}) 
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-only'})});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
+  if(url.pathname==='/data/board-seed.json' && fixtureDelayMs)await new Promise(resolve=>setTimeout(resolve,fixtureDelayMs));
   const file=url.pathname==='/deals'?'pipeline.html':url.pathname.slice(1);
   try {return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
@@ -43,8 +44,14 @@ async function open(t,{width=1440,link=false,reducedMotion='no-preference'}={}) 
  await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#timelineRange').waitFor();
  return {page,errors};
 }
+test('timeline fixture waits for delayed client initialization before instrumenting reads',async t=>{
+ const {page,errors}=await open(t,{fixtureDelayMs:250});
+ assert.equal(await page.locator('.kanban-card[data-id="d14"]').count(),1);
+ assert.equal(await page.locator('#timelineRange').isVisible(),true);
+ assert.deepEqual(errors,[]);
+});
 test('W9 horizontal phase dates, countdowns, dated originals, wide layout and phone renders',async t=>{
- await mkdir(new URL('test-artifacts/w9/',root),{recursive:true});
+ await mkdir(new URL('out/test-artifacts/w9/',root),{recursive:true});
  for(const width of [1440,390,320])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,{width,reducedMotion:'reduce'});
   assert.equal(await page.locator('.phase-rail [aria-current] time').textContent(),'Oct 3, 2026');
@@ -57,11 +64,11 @@ test('W9 horizontal phase dates, countdowns, dated originals, wide layout and ph
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
   assert.ok((await page.locator('#recordPanel').boundingBox()).width>=Math.min(1100,width-30));
   assert.equal(await page.locator('.timeline-entry').evaluateAll(es=>es.every(e=>getComputedStyle(e).transitionDuration==='0s'&&getComputedStyle(e).transform==='none')),true);
-  await page.screenshot({path:new URL(`test-artifacts/w9/deal-${width}.png`,root).pathname});
+  await page.screenshot({path:new URL(`out/test-artifacts/w9/deal-${width}.png`,root).pathname});
   await page.locator('.timeline-entry[data-kind="email"] summary').click();
   assert.match(await page.locator('.timeline-entry[data-kind="email"] .note-original').textContent(),/Original synthetic email/);
   assert.ok((await page.locator('.timeline-entry[data-kind="email"] > p').textContent()).length<=150);
-  await page.screenshot({path:new URL(`test-artifacts/w9/timeline-${width}.png`,root).pathname});
+  await page.screenshot({path:new URL(`out/test-artifacts/w9/timeline-${width}.png`,root).pathname});
   assert.equal(await page.locator('#timelineRange').inputValue(),'full');
   assert.equal(await page.getByText('Demo historic entry',{exact:true}).count(),1);
   await page.locator('#timelineRange').selectOption('recent');

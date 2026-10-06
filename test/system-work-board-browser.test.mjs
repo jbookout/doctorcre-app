@@ -36,18 +36,17 @@ async function open(t,width,{snapshot=true}={}){
 test('all source cards and ten recent Live nodes fit phone and desktop; library finds old completion',async t=>{
  for(const width of [320,390,1440])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);assert.equal(await page.locator('.work-source').count(),19);
-  // The v2 Live column shows the newest five and expands to all ten recent Live nodes.
-  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),5);
-  assert.match(await page.locator('.column[data-stage="live"] .live-summary').textContent(),/^10 live/);
-  await page.locator('#live-toggle').click();
-  assert.equal(await page.locator('.column[data-stage="live"] .board-card').count(),10);
+  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),10);
+  assert.equal(await page.locator('#board-stages .board-card').count(),0,'the empty published snapshot stays independent of the census');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Live Library',exact:true}).click();
   await page.locator('[name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
   await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===1);
   assert.match(await page.locator('.work-card').textContent(),/older completed/);
+  assert.equal(await page.locator('#system-work-flow .pipeline-node').count(),1);
+  assert.equal(await page.locator('#system-work-count').textContent(),'1 TASK');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
-  if(width!==320){await mkdir('test-artifacts/w1',{recursive:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`test-artifacts/w1/progress-${width===390?'phone':'desktop'}.png`,fullPage:true});}
+  if(width!==320){await mkdir('out/test-artifacts/w1',{recursive:true});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`out/test-artifacts/w1/progress-${width===390?'phone':'desktop'}.png`,fullPage:true});}
  });
 });
 test('card action confirms and calls source verb with freshly read version',async t=>{

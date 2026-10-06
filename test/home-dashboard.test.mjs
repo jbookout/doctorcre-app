@@ -70,6 +70,36 @@ test('control room cannot report No issues with incomplete/absent evidence; posi
 async function fixtureClient() {
   return createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
 }
+test('Home refuses malformed or mixed board and lead reads before publishing success', async t => {
+  for (const [name, values] of [
+    ['board', [{}, { deals: {} }, { deals: [{ name: 'Missing identity' }] }, { deals: [board.deals[0], null] }, { deals: [board.deals[0], { id: ' ' }] }]],
+    ['leads', [{}, { leads: {} }, { leads: [{ score: 90 }] }, { leads: [{ id: 'demo-lead' }, null] }, { leads: [{ id: ' ' }] }]],
+  ]) for (const value of values) await t.test(`${name}: ${JSON.stringify(value)}`, async () => {
+    const client = await fixtureClient();
+    client.getBoard = async () => name === 'board' ? value : board;
+    client.getLeadBoard = async () => name === 'leads' ? value : { leads: [] };
+    const publications = [];
+    const result = await readHomeDashboard(client, { onUpdate: result => publications.push(result.reads[name].state) });
+    assert.equal(result.reads[name].state, 'error');
+    assert.equal(result.reads[name].code, 'malformed_response');
+    assert.equal(result[name], null);
+    assert.ok(!publications.includes('read'), 'malformed values never become successful publications');
+    assert.equal(result.loading, false);
+    if (name === 'board') assert.equal(result.details.size, 0);
+  });
+});
+
+test('Home accepts verified empty feeds without treating them as malformed', async () => {
+  const client = await fixtureClient();
+  client.getBoard = async () => ({ actor: 'joe', deals: [] });
+  client.getLeadBoard = async () => ({ leads: [] });
+  const result = await readHomeDashboard(client);
+  assert.equal(result.reads.board.state, 'read');
+  assert.equal(result.reads.leads.state, 'read');
+  assert.equal(dealSnapshot(result.board).active, 0);
+  assert.deepEqual(topNewLeads(result.leads), []);
+});
+
 test('PR124 R2 malformed Home boards never publish a successful read or authoritative counts', async () => {
   const client = await fixtureClient();
   const valid = await client.getBoard();

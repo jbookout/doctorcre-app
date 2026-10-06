@@ -1,3 +1,4 @@
+import { classifyCommandOutcome, pendingCommand } from "../js/command-feedback.mjs";
 // Deal Room board cells: what one intended change does when the answer is late,
 // lost, refused, or never comes at all.
 //
@@ -11,8 +12,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  createFieldWriteState, performFieldWrite, classifyFieldWriteOutcome,
-  unresolvedFieldWrites, pendingFieldWrite, fieldWriteMessage, sameFieldValue, cellKey,
+  performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, sameFieldValue, cellKey,
   answerSupersededByFeed, nextCellBase,
 } from "../js/field-write-reconciliation.mjs";
 import { readFile } from "node:fs/promises";
@@ -26,7 +26,7 @@ import { createFixtureClient } from "../js/fixture-client.js";
  * same request again".
  */
 function board(answers = [], { baseNow = null } = {}) {
-  let writes = createFieldWriteState();
+  let writes = {};
   const sent = [];
   let minted = 0;
   const queue = [...answers];
@@ -72,7 +72,7 @@ test("a lost answer keeps the operation: the retry is the same request under the
   assert.equal(lost.reason, "no_answer");
   assert.equal(lost.sent, true);
   assert.match(lost.message, /could not be confirmed/);
-  assert.equal(pendingFieldWrite(b.state(), cellKey("d1", "attention")).status, "unknown");
+  assert.equal(pendingCommand(b.state(), cellKey("d1", "attention")).status, "unknown");
 
   const retry = await b.write("d1", "attention", true, "e1");
   assert.equal(retry.status, "ok", "the server replayed the stored answer");
@@ -99,7 +99,7 @@ test("an answer is never superseded by the event it itself committed", async () 
   let base = "e0";
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
-  let writes = createFieldWriteState();
+  let writes = {};
   const delayed = performFieldWrite({
     deal: "d1", field: "phase", value: "Legal", base,
     baseNow: () => base,
@@ -136,7 +136,7 @@ test("an answer is never superseded by the event it itself committed", async () 
 test("a second click while the first request is open sends nothing", async () => {
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
-  let writes = createFieldWriteState();
+  let writes = {};
   const sent = [];
   let minted = 0;
   const write = (value) => performFieldWrite({
@@ -200,7 +200,7 @@ test("the request an operation is defined by cannot be edited after it is sent",
   const lost = await b.write("d1", "owner", "dell", "e0");
   assert.throws(() => { lost.request.value = "joe"; }, TypeError);
   assert.throws(() => { lost.request.idempotency_key = "other"; }, TypeError);
-  assert.equal(pendingFieldWrite(b.state(), "d1|owner").request.value, "dell");
+  assert.equal(pendingCommand(b.state(), "d1|owner").request.value, "dell");
 });
 
 test("a genuine later edit is a new operation with its own key and today's base", async () => {
@@ -249,7 +249,7 @@ test("a refusal, a server fault, a spent key and a silence are four different an
   assert.equal(fault.reason, "server_error");
   assert.match(fault.message, /reported an error instead of confirming it/);
   assert.doesNotMatch(fault.message, /TypeError/, "server diagnostics are not shown to a partner");
-  assert.equal(pendingFieldWrite(broke.state(), "d1|phase").status, "unknown");
+  assert.equal(pendingCommand(broke.state(), "d1|phase").status, "unknown");
 
   // A key already carrying a different request. Re-sending is exactly what this
   // refusal prevents, so nothing is retained to re-send.
@@ -270,16 +270,16 @@ test("a refusal, a server fault, a spent key and a silence are four different an
 
   // A non-2xx that is not a decision: an answer came back, and it may still have
   // landed. The status travels with it.
-  const httpFault = classifyFieldWriteOutcome({ error: Object.assign(new Error("502"), { status: 502 }) });
+  const httpFault = classifyCommandOutcome({ error: Object.assign(new Error("502"), { status: 502 }) });
   assert.deepEqual({ status: httpFault.status, reason: httpFault.reason, http_status: httpFault.http_status },
     { status: "unknown", reason: "server_error", http_status: 502 });
   // And one that IS a decision, taken before the verb ran.
-  const denied = classifyFieldWriteOutcome({ error: Object.assign(new Error("401"), { status: 401 }) });
+  const denied = classifyCommandOutcome({ error: Object.assign(new Error("401"), { status: 401 }) });
   assert.deepEqual({ status: denied.status, reason: denied.reason, code: denied.code },
     { status: "refused", reason: "unauthorized", code: "http_401" });
   // An answer with no recognisable shape is an unknown, never a success.
-  assert.equal(classifyFieldWriteOutcome({ response: null }).status, "unknown");
-  assert.equal(classifyFieldWriteOutcome({ response: { status: "ok", ok: false } }).status, "unknown");
+  assert.equal(classifyCommandOutcome({ response: null }).status, "unknown");
+  assert.equal(classifyCommandOutcome({ response: { status: "ok", ok: false } }).status, "unknown");
 });
 
 test("a transport failure returns an outcome instead of rejecting", async () => {
@@ -294,7 +294,7 @@ test("a transport failure returns an outcome instead of rejecting", async () => 
     assert.equal(b.sent.length, 2);
     assert.equal(b.sent[1].idempotency_key, b.sent[0].idempotency_key,
       "a retry that fails again is still the same operation");
-    assert.equal(pendingFieldWrite(b.state(), "d1|next_date").attempts, 2);
+    assert.equal(pendingCommand(b.state(), "d1|next_date").attempts, 2);
   } finally {
     process.off("unhandledRejection", onRejection);
   }
@@ -347,7 +347,7 @@ test("a delayed answer that lands after the feed moved is accepted but not paint
   let base = "e0";
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
-  let writes = createFieldWriteState();
+  let writes = {};
   const run = performFieldWrite({
     deal: "d1", field: "phase", value: "Negotiation", base,
     baseNow: () => base,
@@ -440,7 +440,7 @@ const rpcAnswer = (payload) => ({
 
 /** One cell, written through the real live client over a scripted transport. */
 function liveBoard(fetchImpl) {
-  let writes = createFieldWriteState();
+  let writes = {};
   const client = createLiveClient({ fetchImpl });
   return {
     client,
@@ -493,7 +493,7 @@ test("through the live client: 401 is a decision, a 5xx and a dropped connection
   assert.equal(uncertain.http_status, 503);
   assert.match(uncertain.message, /reported an error instead of confirming it/);
   assert.doesNotMatch(uncertain.message, /never answered/, "it did answer — with an error");
-  assert.equal(pendingFieldWrite(broken.state(), "d1|attention").status, "unknown",
+  assert.equal(pendingCommand(broken.state(), "d1|attention").status, "unknown",
     "and it stays retryable under the key it already used");
 
   const gone = liveBoard(async () => { throw new TypeError("Failed to fetch"); });
@@ -662,7 +662,7 @@ test("the message names the cell when a toast has to, and speaks plainly when it
 });
 
 test("extra arguments ride on the first attempt, and a replay re-sends the original ones", async () => {
-  let writes = createFieldWriteState();
+  let writes = {};
   const sent = [];
   let minted = 0;
   const queue = [dropped("connection dropped"), ok({ event_id: "e-9", event_recorded_at: "2026-02-01T00:00:00Z" })];
