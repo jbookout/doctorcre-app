@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { copyFile, cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { github } from '@e2e-dev/github';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-const config = 'e2e.ci.config.ts';
+const config = 'e2e.agent.config.ts';
 const pass = new Set(['passed', 'flaky']);
 const failed = new Set(['failed', 'timed-out']);
 const pairKey = row => JSON.stringify([row.file, row.titlePath?.join(' ') ?? row.title, row.target ?? row.targetId]);
 const keys = rows => rows.map(pairKey).sort();
-const json = async file => JSON.parse(await readFile(file, 'utf8'));
 const save = (file, data) => writeFile(file, JSON.stringify(data, null, 2) + '\n');
 
 function execute(args, root, env) {
@@ -43,7 +40,6 @@ export async function runShard({ shard, root = process.cwd(), env = process.env,
     };
     receipt.plan = await collect();
     receipt.selected = await collect(['--shard', `${shard}/2`]);
-    if (!env.OPENAI_API_KEY) throw Error('Missing repository secret OPENAI_API_KEY');
     const common = ['--config', config, '--output', output, '--retries', '0', '--reporter', 'list,junit,markdown'];
     receipt.firstExit = (await run(['run', ...common, '--shard', `${shard}/2`])).code;
     receipt.finalExit = receipt.firstExit;
@@ -165,11 +161,7 @@ export function aggregateShards(bundles, commit) {
       }
       before.push(prefixed(first, receipt.shard));
       const next = prefixed(final, receipt.shard);
-      if (!receipt.rerun) {
-        next.run.results = next.run.results.map(row => ({ ...row, selected: false, attempts: [] }));
-        next.run.serialGroups = [];
-        next.run.usage = {};
-      }
+      if (!receipt.rerun) next.run.usage = {};
       current.push(next);
       verified.push(receipt.shard);
     } catch (error) { errors.push(`shard ${bundle.receipt?.shard ?? '?'}: ${error.message}`); }
@@ -188,48 +180,12 @@ export function aggregateShards(bundles, commit) {
   const report = combine(current);
   for (const [name, value] of Object.entries(lastRun.run.usage)) report.run.usage[name] = (report.run.usage[name] ?? 0) + value;
   report.run.startedAt = lastRun.run.startedAt;
-  // Include unselected placeholders so the reporter folds untouched first-pass results.
+  // Include passing first-run results that a failed-test rerun did not select.
   const currentIds = new Set(report.run.results.map(row => row.id));
-  report.run.results.push(...lastRun.run.results.filter(row => !currentIds.has(row.id)).map(row => ({ ...row, selected: false, attempts: [] })));
+  report.run.results.push(...lastRun.run.results.filter(row => !currentIds.has(row.id)).map(row => ({ ...row })));
   const exitCode = errors.length || verified.length !== 2 ? 1 : 0;
   report.run.status = exitCode ? 'failed' : 'passed'; report.run.exitCode = exitCode;
   report.run.errors.push(...errors.map(message => ({ category: 'test', code: 'CI_EVIDENCE_INVALID', message, retryable: false, phase: 'report' })));
   report.run.summary = summary(report.run.results);
   return { report, lastRun, exitCode };
 }
-
-export function publishAggregate(aggregate, reporter = github({ key: 'DoctorCRE' }), root = process.cwd()) {
-  return reporter.onRunFinished({ report: aggregate.report, lastRun: aggregate.lastRun, status: aggregate.report.run.status,
-    exitCode: aggregate.exitCode, projectRoot: root, reportPath: join(root, '.e2e/ci/aggregate.json'), artifactsRoot: join(root, '.e2e/ci') }, AbortSignal.timeout(60_000));
-}
-
-async function main() {
-  const [command, argument] = process.argv.slice(2);
-  if (command === 'shard') process.exitCode = (await runShard({ shard: Number(argument) })).finalExit;
-  else if (command === 'collect') {
-    const entries = await readdir(argument).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
-    for (const shard of [1, 2]) {
-      const name = `e2e-shard-${shard}-${process.env.SOURCE_COMMIT}-${process.env.GITHUB_RUN_ATTEMPT}`;
-      if (entries.includes(name)) await cp(join(argument, name), `.e2e/ci/shard-${shard}`, { recursive: true, errorOnExist: true, force: false });
-    }
-  } else if (command === 'aggregate') {
-    const bundles = [];
-    for (const shard of [1, 2]) {
-      const dir = resolve('.e2e/ci', `shard-${shard}`);
-      try { bundles.push({ receipt: await json(join(dir, 'receipt.json')), first: await json(join(dir, 'first.json')).catch(() => undefined), final: await json(join(dir, 'report.json')).catch(() => undefined) }); }
-      catch { bundles.push({ receipt: { shard, error: 'missing shard receipt' } }); }
-    }
-    const aggregate = aggregateShards(bundles, process.env.SOURCE_COMMIT);
-    if (process.env.JOURNEYS_RESULT !== 'success') {
-      aggregate.exitCode = 1;
-      aggregate.report.run.status = 'failed'; aggregate.report.run.exitCode = 1;
-      aggregate.report.run.errors.push({ category: 'test', code: 'PRODUCT_PROOF_FAILED', message: `Exact-source journeys job: ${process.env.JOURNEYS_RESULT ?? 'missing result'}`, retryable: false, phase: 'report' });
-    }
-    await mkdir('.e2e/ci', { recursive: true });
-    await save('.e2e/ci/aggregate.json', aggregate.report);
-    const rows = await publishAggregate(aggregate);
-    for (const row of rows ?? []) console.log(`${row.label}: ${row.text}`);
-    process.exitCode = aggregate.exitCode;
-  } else throw Error('usage: node scripts/e2e-ci.mjs shard <1|2> | collect <downloads> | aggregate');
-}
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().catch(error => { console.error(error.message); process.exitCode = 1; });

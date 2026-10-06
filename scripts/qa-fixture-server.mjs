@@ -4,6 +4,7 @@ import { extname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { createInvoiceFixture, invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
+import { localToday } from '../js/calendar-model.js';
 import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { workspace as leadWorkspace, detail as leadDetail, id as leadId } from '../test/leads-workspace-fixture.mjs';
@@ -55,7 +56,7 @@ function directoryRead(url, state, viewer, namespace) {
 
 function makeState(variant) {
   const count = variant === 'empty' ? 0 : variant === 'large' ? 160 : 16;
-  const today = new Date().toISOString().slice(0,10);
+  const today = localToday();
   const deals = Array.from({length:count}, (_, i) => ({ id:`qa-deal-${i+1}`, name:`Demo ${i%2 ? 'Dell' : 'Joe'} ${['Dental Relocation','Primary Care Renewal','Ortho Expansion','Surgical Purchase'][i%4]} ${String(i+1).padStart(3,'0')}`, type:['relocation','renewal','expansion','purchase'][i%4], phase:phases[i%phases.length], owner:i%2 ? 'dell':'joe', attention:i<8 || i%5===0, last_touch:today, next_step:`Review synthetic ${i%2 ? 'lease terms':'property shortlist'}`, next_date:today, segment:'Dental', market:['Pensacola','Mobile','Gulf Breeze','Destin'][i%4], lane:'territory', workspace_kind:'team', operating_state:'active', parking_reason:null, parking_note:null, version:1, field_base:{}, invoiced_on:null, client_name:`Demo Practice ${i+1}` }));
   const template = leadWorkspace().leads;
   const leads = Array.from({length:variant==='empty'?0:variant==='large'?180:template.length}, (_, i) => ({ ...structuredClone(template[i%template.length]), id:leadId(i+1), party_id:leadId(i+1000), registry_ref:`L-${i+1}`, name:`Demo Lead ${String(i+1).padStart(3,'0')}`, doctor_name:`Dr. Demo ${i+1}`, owner:i%3===0?'joe':i%3===1?'dell':null, created_at:now(), first_seen_at:now(), score:95-i%70 }));
