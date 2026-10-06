@@ -3,8 +3,23 @@ import { createHash } from 'node:crypto';
 export const CONTROL_SELECTOR = 'button,input:not([type="hidden"]):not([readonly]),textarea:not([readonly]),a[href],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="switch"],[role="checkbox"],input[type="checkbox"],input[type="radio"],[aria-pressed],[aria-expanded],summary,select';
 export const WORKSPACE_VIEW_SELECTOR = '[role="tab"],[data-view],#appTabsSlot [aria-pressed],[data-layout-slot="tabs"] [aria-pressed],[data-atlas-view],#viewConversation,#viewEverything';
 
-export async function inventory(page) {
+async function inventoryState(page) {
   return page.locator(CONTROL_SELECTOR).evaluateAll((elements, workspaceSelector) => {
+    const visible = element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden';
+    const busyVisible = element => {
+      const style = getComputedStyle(element);
+      if (style.display === 'contents') return [...element.childNodes].some(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) return busyVisible(node);
+        if (node.nodeType !== Node.TEXT_NODE) return false;
+        const range = document.createRange();
+        range.selectNode(node);
+        const rect = range.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      if (style.visibility !== 'visible' || !element.checkVisibility()) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
     const cssPath = element => {
       if (element.id) return `#${CSS.escape(element.id)}`;
       const parts = [];
@@ -31,7 +46,7 @@ export async function inventory(page) {
     const panelLabel = element => element.getAttribute('aria-label') || (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
     const ownership = new Map();
     const modal = [...document.querySelectorAll('dialog:modal')].at(-1);
-    const rows = elements.filter(element => (!modal || modal.contains(element)) && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden' && !element.closest('[inert]')).map(element => {
+    const rows = elements.filter(element => (!modal || modal.contains(element)) && visible(element) && !element.closest('[inert]')).map(element => {
       const labels = (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
       const name = (element.getAttribute('aria-label') || labels || element.textContent || element.getAttribute('title') || element.getAttribute('value') || '').replace(/\s+/g, ' ').trim();
       const selector = cssPath(element);
@@ -52,22 +67,26 @@ export async function inventory(page) {
         workspaceViews.get(workspace).push([row.selector, row.aria]);
       }
     }
-    return rows.flatMap(row => {
+    const controls = rows.flatMap(row => {
       const { owner, workspace, panels, disclosure } = ownership.get(row.selector);
       const context = JSON.stringify([cssPath(owner), localControls.get(owner), workspaceViews.get(workspace) || [], panels]);
       const identity = `${context}|${row.identity}|${disclosure}|${row.disabled}`;
       return row.options?.length ? row.options.map(option => ({ ...row, name: `${row.name}: ${option.text}`, optionValue: option.value, identity: `${identity}|${option.value}` })) : [{ ...row, identity }];
     });
+    return { rows: controls, busy: [...document.querySelectorAll('[aria-busy="true"]')].some(busyVisible) };
   }, WORKSPACE_VIEW_SELECTOR);
+}
+
+export async function inventory(page) {
+  return (await inventoryState(page)).rows;
 }
 
 export async function settledInventory(page, { timeoutMs = 30_000, stableMs = 1500 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let previous, stableSince = Date.now();
   while (Date.now() < deadline) {
-    const rows = await inventory(page);
+    const { rows, busy } = await inventoryState(page);
     const signature = JSON.stringify(rows.map(row => row.identity));
-    const busy = await page.locator('[aria-busy="true"]:visible').count();
     if (signature !== previous || busy || !rows.length) stableSince = Date.now();
     if (rows.length && !busy && Date.now() - stableSince >= stableMs) return rows;
     previous = signature;

@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '../../test/browser-harness.mjs';
-import { inventory, pressControl, sweepScreen, settledInventory } from '../../scripts/e2e-staging/controls.mjs';
+import { CONTROL_SELECTOR, inventory, pressControl, sweepScreen, settledInventory } from '../../scripts/e2e-staging/controls.mjs';
 import { assertStagingURL, readSessionSecret } from '../../scripts/e2e-staging/session.mjs';
 import { newDeadControls, explorationEvidence } from '../../scripts/e2e-staging/report.mjs';
 import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
@@ -203,6 +203,48 @@ test('range input changes without a fill error and independent filters do not mu
   assert.equal(result.controls.find(control => control.selector === '#range').status, 'OBSERVED');
   assert.equal(result.controls.length, 7);
   await browser.close();
+});
+
+test('loading completion after a control snapshot cannot settle that stale snapshot', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent('<main aria-busy="true"><button>Loading</button></main>');
+  let snapshots = 0;
+  const transitioningPage = {
+    locator(selector) {
+      const locator = page.locator(selector);
+      if (selector !== CONTROL_SELECTOR) return locator;
+      return {
+        async evaluateAll(...args) {
+          const result = await locator.evaluateAll(...args);
+          if (++snapshots === 2) await page.evaluate(() => {
+            document.querySelector('main').innerHTML = '<button>Ready</button>';
+            document.querySelector('main').removeAttribute('aria-busy');
+          });
+          return result;
+        },
+      };
+    },
+    waitForTimeout: milliseconds => page.waitForTimeout(milliseconds),
+  };
+  assert.equal((await settledInventory(transitioningPage, { stableMs: 50, timeoutMs: 1500 }))[0].name, 'Ready');
+  assert.ok(snapshots >= 2);
+});
+
+test('settling retains visible busy semantics for zero-size and display-contents indicators', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent('<main><button>Ready</button></main><div aria-busy="true" hidden>Hidden</div><div aria-busy="true" style="width:0;height:0;overflow:hidden"></div>');
+  assert.equal((await settledInventory(page, { stableMs: 0, timeoutMs: 500 }))[0].name, 'Ready');
+  await page.setContent('<main aria-busy="true" style="display:contents"><button>Loading</button></main>');
+  await assert.rejects(settledInventory(page, { stableMs: 0, timeoutMs: 150 }), /completeness/);
+  await page.evaluate(() => {
+    document.querySelector('main').innerHTML = '<button>Ready</button>';
+    document.querySelector('main').removeAttribute('aria-busy');
+  });
+  assert.equal((await settledInventory(page, { stableMs: 0, timeoutMs: 500 }))[0].name, 'Ready');
 });
 
 test('late controls settle before enumeration and empty screens fail completeness', async () => {
