@@ -295,6 +295,9 @@ footer { padding-top: 8px; }
 .cost-controls select { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #06182b; color: var(--ink); font: inherit; transition: border-color .2s; }
 .cost-controls select:hover { border-color: var(--orange); }
 .cost-controls select:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.cost-open-day { align-self: end; min-width: 44px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 10px; background: #173b5e; color: var(--ink); font: inherit; cursor: pointer; }
+.cost-open-day:hover { border-color: var(--orange); }
+.cost-open-day:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .cost-content { animation: card-in .4s ease-out; }
 .cost-meta,.cost-coverage,.cost-day-detail { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
 .cost-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 16px 0; }

@@ -4,6 +4,7 @@
   "month": "2026-10",
   "through": "2026-10-04",
   "state": "partial",
+  "budget_usd": 70,
   "providers": [
     {
       "provider": "jev",

@@ -3,8 +3,75 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { mountBoard } from '../js/progress-board.js';
+import { mountCostView } from '../js/progress-board-costs.js';
 
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
+
+function costView(data) {
+  const dom = new JSDOM('<section></section>');
+  const panel = dom.window.document.querySelector('section');
+  const view = mountCostView(panel);
+  view.update(data);
+  const select = (label, value) => {
+    const node = panel.querySelector(`[aria-label="${label}"]`);
+    node.value = value; node.dispatchEvent(new dom.window.Event('change'));
+  };
+  return { panel, view, select };
+}
+
+test('aggregate budget uses the published system budget independently of provider budgets', () => {
+  const { panel, select } = costView({ ...costs, budget_usd: 70 });
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Monthly budget\$70\.00/);
+  select('Cost provider', 'jev');
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Monthly budget\$80\.00/);
+});
+
+test('unavailable usage preserves confirmed subscription lower bounds in metrics, daily spend and history', () => {
+  const fixture = structuredClone(costs);
+  Object.assign(fixture.providers[1], { plan: 'Confirmed subscription', mtd_usd: 0.516129, projection_usd: 4,
+    daily: [{ day: '2026-10-04', usd: 0.129032, drivers: { subscription: 0.129032 } },
+      { day: '2026-09-20', usd: 0.133333, drivers: { subscription: 0.133333 } }] });
+  fixture.months[0] = { month: '2026-09', usd: 54, providers: { jev: 50, neon: 4 } };
+  const { panel, select } = costView(fixture);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to date\$12\.52/);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known projection · incomplete\$97\.00/);
+  select('Cost provider', 'neon');
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to date\$0\.52/);
+  assert.match(panel.querySelector('[data-day="2026-10-04"]').getAttribute('aria-label'), /\$0\.13 known.*incomplete.*subscription/);
+  assert.match(panel.textContent, /Coverage incomplete/);
+  select('Cost month', '2026-09');
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known monthly spend\$4\.00/);
+  assert.match(panel.querySelector('[data-day="2026-09-20"]').getAttribute('aria-label'), /subscription \$0\.13/);
+  select('Cost provider', '');
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known monthly spend\$54\.00/);
+});
+
+test('published unavailable envelope is visible initially, after ready data, and recovers', () => {
+  const unavailable = { schema: costs.schema, state: 'unavailable', reason: 'source_unavailable',
+    providers: [], months: [], alerts: [], action: costs.action };
+  const { panel, view } = costView(unavailable);
+  const check = () => {
+    assert.equal(panel.hidden, false);
+    assert.match(panel.textContent, /unavailable.*source_unavailable.*Finance Ops/s);
+    assert.equal(panel.querySelectorAll('[data-day]').length, 0);
+    assert.equal(panel.querySelectorAll('option').length, 0);
+    assert.doesNotMatch(panel.textContent, /\$12\.00/);
+  };
+  check(); view.update(costs); assert.match(panel.textContent, /\$12\.00/);
+  view.update(unavailable); check();
+  view.update(costs); assert.equal(panel.hidden, false); assert.match(panel.textContent, /\$12\.00/);
+  view.update(undefined); assert.equal(panel.hidden, true);
+});
+
+for (const [month, through] of [['2026-10', '2026-09-30'], ['2027-01', '2026-12-31']]) {
+  test(`month rollover ${month} has no completed or future daily bars`, () => {
+    const { panel, view } = costView({ ...costs, month, through });
+    assert.equal(panel.querySelectorAll('[data-day]').length, 0);
+    assert.match(panel.textContent, /No completed days/);
+    view.update({ ...costs, month, through: `${month}-01` });
+    assert.equal(panel.querySelectorAll('[data-day]').length, 1);
+  });
+}
 
 async function board(costData = costs) {
   const html = await readFile(new URL('../progress-board.html', import.meta.url), 'utf8');
@@ -59,7 +126,7 @@ test('finite amounts on a partial aggregate are labeled as known lower bounds', 
   assert.match(panel.querySelector('.cost-metrics').textContent, /Known monthly spend\$55\.00/);
 });
 
-test('an unconfirmed subscription zero stays a known lower bound and an unavailable zero stays unavailable', async () => {
+test('finite zero stays a known lower bound when usage is unavailable', async () => {
   const fixture = structuredClone(costs);
   fixture.providers[1] = { ...fixture.providers[1], state: 'partial', plan: 'Unconfirmed',
     reason: 'subscription plan/price unconfirmed', mtd_usd: 0, projection_usd: 0 };
@@ -74,8 +141,9 @@ test('an unconfirmed subscription zero stays a known lower bound and an unavaila
   assert.match(panel.querySelector('.cost-chart > text').textContent, /Daily spend unavailable/);
   fixture.providers[1].state = 'unavailable';
   await app.refresh();
-  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to dateUnavailable/);
-  assert.match(panel.querySelector('.cost-metrics').textContent, /Known projection · incompleteUnavailable/);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known month to date\$0\.00/);
+  assert.match(panel.querySelector('.cost-metrics').textContent, /Known projection · incomplete\$0\.00/);
+  assert.match(panel.textContent, /Amounts exclude unknown costs/);
 });
 
 test('provider and month controls retain selection on refresh and never render provider text as HTML', async () => {
