@@ -45,7 +45,22 @@ npx e2e run tests/agent      # agent.act/agent.assert variants, local only
 The agent suite uses Joe's ChatGPT subscription, never an API key. Sign in once
 per machine with `npx e2e login openai` (add `--device` to use a code instead of
 a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
-lists the ids the login serves. CI configures no model and never runs it.
+lists the ids the login serves. Hosted CI runs deterministic journeys only.
+
+The orchestrator runs the PR's subscription shards on the Studio with:
+
+```bash
+node scripts/e2e-agent-local.mjs 181
+```
+
+The runner fetches the PR head into a temporary detached worktree, builds and
+verifies its static artifact, runs two shards with failed-test-only reruns, and
+posts an advisory `agent-journeys` commit status on that exact head. It uses the
+saved local ChatGPT login and costs no API credits. The status description names
+the local report path. Reports and the temporary worktree stay on the Studio for
+inspection; move cleanup candidates to `_to_delete/`. A missing or expired login
+fails the run and posts a failure status without starting an interactive login.
+`agent-journeys` is never a required check.
 
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either

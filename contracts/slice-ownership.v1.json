@@ -150,6 +150,9 @@
     "scripts/qa-board-auth.mjs",
     "test/e2e-ci.test.mjs",
     "test/qa-fixture.test.mjs",
-    "scripts/work-inventory-fixture.mjs"
+    "scripts/work-inventory-fixture.mjs",
+    "scripts/e2e-agent-local.mjs",
+    "test/e2e-agent-local.test.mjs",
+    "test/e2e-ci-fixtures.mjs"
   ]
 }

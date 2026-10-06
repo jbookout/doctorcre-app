@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,10 +46,7 @@ test("the CI checkout layout keeps producer-owned content out of app repository 
 // supports the workflows' run/if forms and refuses unfamiliar conditions.
 function commands(workflow, event, action = "opened") {
   if (workflow !== release && !policy(workflow, context(event, action)).runnable.length) return [];
-  // Agent jobs have their own replay; keep this deterministic lane bounded
-  // by its job boundary even when a negative control changes its source.
-  const tested = workflow.split(/^  agent-shards:\n/m)[0];
-  return tested.split(/^      - /m).slice(1).flatMap((step) => {
+  return workflow.split(/^      - /m).slice(1).flatMap((step) => {
     const run = step.match(/^(?:run:|\s+run:) (.+)$/m)?.[1];
     if (!run) return [];
     const condition = step.match(/^\s*if: (.+)$/m)?.[1];
@@ -382,3 +379,11 @@ for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {
     }
   });
 }
+
+test("no workflow can reference a paid OpenAI API credential", async () => {
+  const directory = new URL('../.github/workflows/', import.meta.url);
+  const files = await readdir(directory, { recursive: true });
+  const check = (source, file) => assert.doesNotMatch(source, /OPENAI_API_KEY/, `${file} must use no paid OpenAI API credential`);
+  for (const file of files.filter(file => /\.ya?ml$/.test(file))) check(await readFile(new URL(file, directory), 'utf8'), file);
+  assert.throws(() => check('env: { OPENAI_API_KEY: synthetic }', 'negative-control.yml'), /must use no paid/);
+});

@@ -6,7 +6,7 @@ import test from "node:test";
 const files = ["ci.yml", "e2e.yml"];
 const expectedContexts = {
   "ci.yml": ["test"],
-  "e2e.yml": ["journeys", "agent-shards", "agent-gate"],
+  "e2e.yml": ["journeys"],
 };
 const read = name => readFileSync(new URL("../.github/workflows/" + name, import.meta.url), "utf8");
 function replay(source, events) {
@@ -76,10 +76,8 @@ for (const file of files) {
   });
 }
 
-test("e2e.yml: agent gate runs after failed upstream work and never on close", () => {
+test("e2e.yml: hosted CI has only deterministic journeys", () => {
   const source = read("e2e.yml");
-  assert.deepEqual(policy(source, context(), false).runnable, ["agent-gate"]);
-  assert.deepEqual(policy(source, context("pull_request", "closed"), false).runnable, []);
-  const withoutAlways = source.replace("always() && ", "");
-  assert.deepEqual(policy(withoutAlways, context(), false).runnable, [], "control removing always loses the failed-evidence gate");
+  assert.deepEqual(policy(source, context(), false).runnable, []);
+  assert.doesNotMatch(source, /agent-shards|agent-gate|tests\/agent|e2e-ci\.mjs|e2e-agent-local/);
 });

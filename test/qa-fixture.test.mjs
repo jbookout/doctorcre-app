@@ -11,6 +11,8 @@ import { validListPayload, validRecordPayload, echoesQuery, parseViewState } fro
 import { validInvoiceTracker } from '../js/invoice-tracker-model.js';
 import { validWorkInventoryPayload } from '../js/work-inventory-model.js';
 import { validCurrentWorkRequestsPayload, validIncidentBoardPayload, validCurrentWorkItemPayload } from '../js/control-room-model.js';
+import { localToday } from '../js/calendar-model.js';
+import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 
 const artifactDir=await mkdtemp(join(tmpdir(),'doctorcre-qa-fixture-artifact-'));
 await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifactDir,commit:'1'.repeat(40)});
@@ -42,12 +44,35 @@ test('built static app crosses its live seam with isolated synthetic accounts an
   await joeClient.addCriticalDate({deal:'qa-deal-1',kind:'inspection',due_on:'2026-10-15',source:'Synthetic inspection appointment',idempotency_key:'synthetic-date-key'});
   assert.equal((await dellClient.getDeal('qa-deal-1')).critical_dates[0].date,'2026-10-15');
   const invoices=await dellClient.getInvoiceTracker();const invoice=invoices.entries.find(row=>row.status==='invoiced');
-  await dellClient.markInvoicePaid({commission_id:invoice.commission_id,base_version:invoice.base_version,received_on:new Date().toISOString().slice(0,10),idempotency_key:'synthetic-paid-key'});
+  await dellClient.markInvoicePaid({commission_id:invoice.commission_id,base_version:invoice.base_version,received_on:invoice.as_of,idempotency_key:'synthetic-paid-key'});
   assert.equal((await joeClient.getInvoiceTracker()).entries.find(row=>row.commission_id===invoice.commission_id).status,'received');
   const empty=await seed('empty','joe','empty');const emptyClient=createLiveClient({fetchImpl:caller(empty),docContext:false});assert.equal((await emptyClient.getBoard()).deals.length,0);assert.equal(validInvoiceTracker(await emptyClient.getInvoiceTracker()),true);
   const large=await seed('large','joe','large');const largeClient=createLiveClient({fetchImpl:caller(large),docContext:false});assert.equal((await largeClient.getBoard()).deals.length,160);
   const largeInvoices=await largeClient.getInvoiceTracker();assert.equal(validInvoiceTracker(largeInvoices),true);assert.equal(largeInvoices.entries.length,120);
   const control=await (await caller(large)('/api/v1/command-center')).json();assert.equal(control.metrics.find(row=>row.scope==='team').active_deals,160);
+});
+
+test('QA invoice seed and payment validation share the local day across UTC midnight', async t => {
+  const previous = process.env.TZ;
+  process.env.TZ = 'America/Chicago';
+  t.after(() => { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; });
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-06T02:00:00Z') });
+  for (const instant of ['2026-10-06T02:00:00Z', '2026-10-06T07:00:00Z']) {
+    t.mock.timers.setTime(Date.parse(instant));
+    const { dispatch } = await createQaServer({ buildRoot });
+    const origin = 'http://127.0.0.1:18997';
+    const seeded = await (await dispatch(new Request(`${origin}/api/test/seed`, { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace: 'local-day', viewer: 'joe' }) }))).json();
+    const fetchImpl = (path, init = {}) => dispatch(new Request(new URL(path, origin), { ...init,
+      headers: { ...init.headers, cookie: `${seeded.cookie.name}=${seeded.cookie.value}` } }));
+    const client = createLiveClient({ fetchImpl, docContext: false });
+    const invoice = (await client.getInvoiceTracker()).entries[0];
+    assert.equal(invoice.as_of, localToday());
+    assert.equal(invoice.commission_invoiced_on, invoiceTrackerFixture(localToday()).entries[0].commission_invoiced_on);
+    const args = { commission_id: invoice.commission_id, base_version: invoice.base_version,
+      received_on: localToday(), idempotency_key: 'synthetic-local-day-payment' };
+    assert.equal((await client.markInvoicePaid(args)).ok, true);
+  }
 });
 
 test('synthetic directory honors the pinned list/detail contract, identity, pagination and filters', async () => {

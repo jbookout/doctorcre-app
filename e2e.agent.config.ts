@@ -1,5 +1,5 @@
 import type { E2EConfig } from 'e2e';
-import { openai } from '@ai-sdk/openai';
+import { chatgpt } from 'e2e/oauth/chatgpt';
 import base from './e2e.config.ts';
 
 export default {
@@ -8,7 +8,7 @@ export default {
   reporters: ['list', 'junit', 'markdown'],
   agents: {
     default: {
-      model: openai('gpt-6.1-sol'),
+      model: chatgpt(process.env.E2E_AGENT_MODEL ?? 'gpt-6.1-sol'),
       providerOptions: { openai: { reasoningEffort: 'high' } },
     },
   },

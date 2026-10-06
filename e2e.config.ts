@@ -7,7 +7,7 @@ import { chatgpt } from 'e2e/oauth/chatgpt';
 process.env.E2E_TELEMETRY_DISABLED = '1';
 
 // Agent steps run only on a local machine signed in with `npx e2e login openai`.
-// The dedicated CI config supplies its API model for agent steps.
+// The local shard config selects a subscription model explicitly.
 const ci = !['', '0', 'false'].includes(process.env.CI ?? '');
 
 export default {
