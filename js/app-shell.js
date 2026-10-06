@@ -107,16 +107,17 @@ function mountAccount(root, host, pathname) {
   mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
+  root.body.append(panel);
   let session = null;
   const showPartner = (identity) => {
     if (!identity) return;
     const title = `${identity.name}'s Workspace`;
     avatar.textContent = identity.initial;
     avatar.setAttribute("aria-label", `${identity.name}: account and settings`);
-    host.querySelector("#accountWorkspace").textContent = title;
+    panel.querySelector("#accountWorkspace").textContent = title;
     const workspace = root.getElementById("viewerWorkspace");
     if (workspace) workspace.textContent = title;
-    host.querySelector("#accountProfile").onclick = () => {
+    panel.querySelector("#accountProfile").onclick = () => {
       const dialog = root.createElement("dialog");
       dialog.className = "app-shell-profile";
       dialog.innerHTML = `<header><h2>Profile</h2><button type="button" aria-label="Close profile">×</button></header><div class="app-shell-profile-identity"><span>${identity.initial}</span><h3>${identity.name}</h3></div>`;
@@ -128,9 +129,9 @@ function mountAccount(root, host, pathname) {
   };
   const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
   avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
-  host.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
-  root.addEventListener("click", (event) => { if (!event.target.closest(".app-shell-account")) close(); });
-  host.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
+  panel.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
+  root.addEventListener("click", (event) => { if (!panel.contains(event.target) && !avatar.contains(event.target)) close(); });
+  root.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
   const assist = host.querySelector("#colorAssistButton");
   const applyAssist = (enabled) => { root.body.classList.toggle("color-assist", enabled); root.documentElement.dataset.colorAssist = enabled ? "on" : "off"; assist.setAttribute("aria-pressed", String(enabled)); };
   try { applyAssist(localStorage.getItem("dealroom-color-assist") === "on"); } catch { applyAssist(false); }
@@ -149,16 +150,16 @@ function mountAccount(root, host, pathname) {
   };
   readIdentity();
   mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity, intervalMs: 60_000 });
-  host.querySelector("#accountSignOut").onclick = async (event) => {
-    if (boot.mode === "fixture") { host.querySelector("#accountStatus").textContent = "Demo account"; return; }
-    if (!session?.csrf_token) { host.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
+  panel.querySelector("#accountSignOut").onclick = async (event) => {
+    if (boot.mode === "fixture") { panel.querySelector("#accountStatus").textContent = "Demo account"; return; }
+    if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
     event.target.disabled = true;
     try {
       const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
       if (!response.ok) throw new Error();
       offlineTourSession(globalThis.window).revoke();
       globalThis.location.assign("/auth/login");
-    } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
+    } catch { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };
   if (!root.getElementById("callModeDialog")) {
     let opening = false;

@@ -42,6 +42,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Deterministic journeys only: CI configures no model, so agent steps stay local.
       - run: node scripts/browser-product-proof.mjs
+      - run: npm run build && npm run test:regressions
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -53,5 +54,8 @@ jobs:
             .e2e/artifacts
             .e2e/logs
             .e2e/proof
+            .e2e/regressions/report.json
+            .e2e/regressions/junit.xml
+            .e2e/regressions/artifacts
           if-no-files-found: error
           retention-days: 7

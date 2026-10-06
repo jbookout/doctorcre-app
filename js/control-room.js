@@ -55,7 +55,7 @@ function renderIncidents() {
         ${group.incidents.map((card) => `<li class="work-item" data-incident="${escapeHtml(card.ref)}" data-priority="ordinary">
           <div>
             <h3>${escapeHtml(card.title)}</h3>
-            <div class="work-meta"><span>${escapeHtml(`${card.ref} · ${card.severity} · ${card.state} · ${card.age} · ${card.owner} · seen ${card.occurrences === null ? "unknown" : card.occurrences} times`)}</span></div>
+            <div class="work-meta"><span>${escapeHtml(`${card.ref} · ${card.severity} · ${card.state} · ${card.age} · ${card.owner} · seen ${card.occurrences === null ? "unknown" : card.occurrences} ${card.occurrences === 1 ? "time" : "times"}`)}</span></div>
             <div class="work-meta"><span>${escapeHtml(card.recommendedNext ? `Recommended next: ${card.recommendedNext}` : "Next action unavailable")}</span></div>
             ${card.readyToClose ? `<div class="work-meta"><span>Ready to close</span></div>` : ""}
           </div>
@@ -131,7 +131,7 @@ async function boot(){
  });
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
  const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
- document.getElementById('controlRoomTabs')?.addEventListener('click',event=>{const selected=event.target.closest('[data-tab-key]');if(!selected)return;const next=new URL(location.href);next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);activate(selected);},true);
+ document.getElementById('controlRoomTabs')?.addEventListener('tabchange',event=>{const selected=event.detail.tab;if(!selected.dataset.tabKey)return;const next=new URL(location.href);if(next.searchParams.get('tab')!==selected.dataset.tabKey){next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);}activate(selected);});
  const restoreTab=()=>{const requested=new URLSearchParams(location.search).get('tab');const key={atlas:'system-map','model-room':'agents',dashboard:'overview'}[requested]||requested||'overview';const selected=[...document.querySelectorAll('#controlRoomTabs [data-tab-key]')].find(t=>t.dataset.tabKey===key);if(selected){tabs.select(selected.id);activate(selected);}};
  window.addEventListener('popstate',restoreTab);const parameters=new URLSearchParams(location.search);if(parameters.has("tab")) restoreTab();
  $('automationPrev').onclick=()=>{month--;if(month<0){month=11;year--;}renderAutomations();};$('automationNext').onclick=()=>{month++;if(month>11){month=0;year++;}renderAutomations();};

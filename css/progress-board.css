@@ -231,7 +231,7 @@ footer { padding-top: 8px; }
 
 /* published board directory and freshness */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.board-directory { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); gap: 12px; margin-top: 18px; }
+.board-directory { max-height: 35vh; overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); gap: 12px; margin-top: 18px; }
 .board-link { display: grid; align-content: start; gap: 9px; min-width: 0; min-height: 44px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(3,15,31,.7); color: var(--ink); text-decoration: none; overflow-wrap: anywhere; transition: background .2s, border-color .2s, transform .2s; }
 .board-link h3 { margin: 0; }
 .board-link:hover { background: rgba(24,57,88,.8); border-color: var(--orange); transform: translateY(-2px); }

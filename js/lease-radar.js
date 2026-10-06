@@ -1,5 +1,5 @@
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
-import { projectLeaseRadar, pastClientTouches, radarToday } from './lease-radar-model.js';
+import { projectLeaseRadar, pastClientTouches, radarToday, leaseRadarAddress, parseLeaseRadarAddress } from './lease-radar-model.js';
 const E = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const date = day => day ? new Date(`${day}T12:00:00`).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'}) : 'Missing expiry';
 const keyedPaint = (node, html, fallback) => {
@@ -11,7 +11,7 @@ const keyedPaint = (node, html, fallback) => {
 function leaseCard(row, gap = false) {
   return `<button type="button" class="lease-card ${gap ? 'gap' : row.tone || 'soon'}" data-lease="${E(row.id)}" data-radar-key="lease:${E(row.id)}"><span class="lease-light" aria-hidden="true"></span><span class="lease-card-copy"><strong>${E(row.client_name)}</strong><span>${E([row.city,row.state].filter(Boolean).join(' · '))}</span></span><span class="lease-card-date"><time datetime="${E(row.expiration_on || '')}">${date(row.expiration_on)}</time><small>${gap ? 'Date needed' : E(row.label)}</small></span><span class="lease-card-arrow" aria-hidden="true">↗</span></button>`;
 }
-function mountLeaseDetail({document, dialog, rows, fallback}) {
+function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}) {
   let selected = null, opener = null;
   const paint = () => {
     const row = rows().find(r => r.id === selected);
@@ -26,7 +26,9 @@ function mountLeaseDetail({document, dialog, rows, fallback}) {
   };
   dialog.addEventListener('click', e => { if (e.target.closest('[data-close-lease]')) dialog.close(); });
   dialog.addEventListener('close', () => {
+    const dismissed = selected !== null;
     selected = null;
+    if (dismissed) onClose();
     const current = opener?.dataset.radarKey && [...document.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === opener.dataset.radarKey);
     (opener?.isConnected ? opener : current || fallback)?.focus();
   });
@@ -34,8 +36,15 @@ function mountLeaseDetail({document, dialog, rows, fallback}) {
 }
 export function mountLeaseRadar({document, window, client, now = () => new Date(), intervalMs = 30_000}) {
   const $ = id => document.getElementById(id);
-  let payload = null, model = null, view='timeline', scope='team', search='', quarter=null, sequence=0, disposed=false;
-  const detail = mountLeaseDetail({document,dialog:$('leaseDetail'),rows:()=>payload?.leases || [],fallback:$('refreshLeases')});
+  let payload = null, model = null, sequence=0, disposed=false;
+  let {view,scope,search,quarter,lease} = parseLeaseRadarAddress(window.location?.search);
+  const saveAddress = () => window.history?.replaceState({},'',leaseRadarAddress({view,scope,search,quarter,lease},window.location?.href));
+  const restoreControls = () => {
+    $('leaseSearch').value=search; $('leaseScope').value=scope;
+    document.querySelectorAll('[data-lease-view]').forEach(tab=>tab.setAttribute('aria-pressed',String(tab.dataset.leaseView===view)));
+  };
+  restoreControls();
+  const detail = mountLeaseDetail({document,dialog:$('leaseDetail'),rows:()=>payload?.leases || [],fallback:$('refreshLeases'),onClose:()=>{lease=null;saveAddress();}});
   const render = () => {
     model = projectLeaseRadar(payload,{scope,today:radarToday(now())});
     if (!model) return;
@@ -60,6 +69,7 @@ export function mountLeaseRadar({document, window, client, now = () => new Date(
       if(disposed || epoch!==sequence) return;
       if (!projectLeaseRadar(next,{today:radarToday(now())})) throw Error('Unavailable');
       payload=next; render();
+      if (lease) { const row=payload.leases.find(row=>row.id===lease); if(row) detail.open(lease,[...document.querySelectorAll("[data-lease]")].find(node=>node.dataset.lease===lease)); }
     } catch(error) { if(disposed || epoch!==sequence) return;
       payload=null; model=null; detail.close();
       $('leaseRadar').replaceChildren(); $('leaseUpdated').textContent='Unavailable';
@@ -69,13 +79,13 @@ export function mountLeaseRadar({document, window, client, now = () => new Date(
     } finally { if(epoch===sequence) $('refreshLeases').setAttribute('aria-busy','false'); }
   };
   $('leaseRadar').addEventListener('click',e=>{
-    const card=e.target.closest('[data-lease]'); if(card) detail.open(card.dataset.lease,card);
-    const mark=e.target.closest('[data-quarter]'); if(mark){quarter=quarter===mark.dataset.quarter?null:mark.dataset.quarter;render();}
+    const card=e.target.closest('[data-lease]'); if(card) {lease=card.dataset.lease;saveAddress();detail.open(lease,card);}
+    const mark=e.target.closest('[data-quarter]'); if(mark){quarter=quarter===mark.dataset.quarter?null:mark.dataset.quarter;saveAddress();render();}
   });
   $('leaseRadar').addEventListener('keydown',e=>{if(e.target.matches('[data-quarter]') && ['Enter',' '].includes(e.key)){e.preventDefault();e.target.dispatchEvent(new window.MouseEvent('click',{bubbles:true}));}});
-  $('leaseSearch').addEventListener('input',e=>{search=e.target.value;render();});
-  $('leaseScope').addEventListener('change',e=>{scope=e.target.value;render();});
-  for(const tab of document.querySelectorAll('[data-lease-view]')) tab.addEventListener('click',()=>{view=tab.dataset.leaseView;quarter=null;document.querySelectorAll('[data-lease-view]').forEach(b=>b.setAttribute('aria-pressed',String(b===tab)));render();});
+  $('leaseSearch').addEventListener('input',e=>{search=e.target.value;saveAddress();render();});
+  $('leaseScope').addEventListener('change',e=>{scope=e.target.value;saveAddress();render();});
+  for(const tab of document.querySelectorAll('[data-lease-view]')) tab.addEventListener('click',()=>{view=tab.dataset.leaseView;quarter=null;saveAddress();restoreControls();render();});
   const auto=mountAutoRefresh({document,window,refresh,intervalMs}); $('refreshLeases').addEventListener('click',auto.refresh); auto.refresh();
   return {dispose(){disposed=true;sequence++;auto.dispose();},refresh:auto.refresh};
 }
