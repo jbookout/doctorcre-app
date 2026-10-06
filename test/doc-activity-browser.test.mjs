@@ -158,17 +158,20 @@ test('a server refusal performs no second write and rechecks eligibility',async 
   assert.ok(calls.filter(c=>c.name==='read-doc-activity').length>before);
 });
 test('desktop and phone rendered checks, hover motion and reduced motion',async t=>{
-  await mkdir(new URL('test-artifacts/w10/',root),{recursive:true});
+  await mkdir(new URL('out/test-artifacts/w10/',root),{recursive:true});
   for(const width of [1440,390,320])await t.test(String(width),async t=>{
+    const baseline=new URL(`test-artifacts/w10/activity-${width}.png`,root);
+    const before=await readFile(baseline);
+    t.after(async()=>assert.ok((await readFile(baseline)).equals(before),'rendered checks preserve tracked inputs'));
     const {page,errors}=await open(t,{width});
     await page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect.getComputedTiming().iterations)).forEach(a=>a.finish()));
     assert.equal(await page.locator(".activity-row").first().evaluate(el=>getComputedStyle(el).opacity),"1");
-    await page.screenshot({path:new URL(`test-artifacts/w10/activity-${width}.png`,root).pathname,fullPage:true});
+    await page.screenshot({path:new URL(`out/test-artifacts/w10/activity-${width}.png`,root).pathname,fullPage:true});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.locator('.activity-open').first().click();
     assert.equal(await page.locator('#activityDetail').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     await page.locator('#detailOriginal summary').click();
-    await page.screenshot({path:new URL(`test-artifacts/w10/detail-${width}.png`,root).pathname});
+    await page.screenshot({path:new URL(`out/test-artifacts/w10/detail-${width}.png`,root).pathname});
     await page.locator('#detailClose').click(); await page.emulateMedia({reducedMotion:'reduce'});
     await page.locator('.activity-row').first().hover();
     const motion=await page.locator('.activity-row').first().evaluate(el=>({transform:getComputedStyle(el).transform,animation:getComputedStyle(el).animationName,transition:getComputedStyle(el).transitionDuration}));
