@@ -2,8 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { providerRelease } from '../provider-release.mjs';
 import { fileURLToPath } from 'node:url';
-import { STAGING_ORIGIN } from './session.mjs';
-import { assertStagingDeployment } from './deployment.mjs';
+import { assertStagingDeployment, waitForStagingRelease } from './deployment.mjs';
 import { credentialFreeEnv } from '../release-environment.mjs';
 
 const cwd = fileURLToPath(new URL('../../', import.meta.url));
@@ -18,7 +17,5 @@ for (const operation of ['build', 'prepare-deployment']) {
 }
 const provider = providerRelease();
 provider(['deploy', '--env', 'staging', '--strict', '--var', `GIT_SHA:${commit}`, '--message', `E2E staging candidate ${commit}`], { capture: true });
-const response = await fetch(`${STAGING_ORIGIN}/app-release`, { redirect: 'error' });
-const release = await response.json();
-if (release.environment !== 'staging' || release.source_commit !== commit) throw new Error('Staging candidate readback mismatch');
+await waitForStagingRelease(commit);
 console.log(`DoctorCRE staging candidate verified ${commit}`);

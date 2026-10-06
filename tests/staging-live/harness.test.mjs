@@ -7,9 +7,28 @@ import { chromium } from '../../test/browser-harness.mjs';
 import { inventory, pressControl, sweepScreen, settledInventory } from '../../scripts/e2e-staging/controls.mjs';
 import { assertStagingURL, readSessionSecret } from '../../scripts/e2e-staging/session.mjs';
 import { newDeadControls, explorationEvidence } from '../../scripts/e2e-staging/report.mjs';
-import { assertStagingDeployment } from '../../scripts/e2e-staging/deployment.mjs';
+import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
 
 const html = `<main><button id="dead" onclick="this.blur()">Dead</button><button id="live" onclick="document.querySelector('#result').textContent='Changed'">Live</button><button id="disabled" disabled title="Requires a selected record">Disabled</button><button id="drawer" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true'); document.querySelector('#sheet').hidden=false">Open drawer</button><section id="sheet" hidden><button id="nested" onclick="document.querySelector('#result').textContent='Nested'">Nested</button></section><output id="result"></output></main>`;
+
+test('deployment waits for its staging source through edge propagation and refuses persistent mismatches', async () => {
+  const source = 'a'.repeat(40);
+  let reads = 0;
+  const release = await waitForStagingRelease(source, {
+    fetchRelease: async () => new Response(JSON.stringify({ environment: 'staging', source_commit: ++reads === 1 ? 'b'.repeat(40) : source })),
+    pause: async () => {},
+  });
+  assert.equal(release.source_commit, source);
+  assert.equal(reads, 2);
+  for (const environment of ['production', 'staging']) {
+    let failedReads = 0;
+    await assert.rejects(waitForStagingRelease(source, {
+      fetchRelease: async () => { failedReads++; return new Response(JSON.stringify({ environment, source_commit: environment === 'production' ? source : 'b'.repeat(40) })); },
+      pause: async () => {},
+    }), /bounded propagation/);
+    assert.equal(failedReads, 6);
+  }
+});
 
 test('deployment refuses production bindings, names and routes', () => {
   const config = { env: { staging: { name: 'doctorcre-app-staging', workers_dev: true, routes: [], vars: { APP_ENV: 'staging' }, services: [{ binding: 'CARR', service: 'carr-mcp-staging' }] } } };
