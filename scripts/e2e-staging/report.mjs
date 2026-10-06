@@ -1,0 +1,49 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve, relative, isAbsolute } from 'node:path';
+
+export function explorationEvidence(report, artifactId, destination) {
+  const attempts = [...(report.run?.results || []), ...(report.run?.serialGroups || [])].flatMap(row => row.attempts || []);
+  const artifact = attempts.flatMap(attempt => attempt.artifacts || []).find(item => item.id === artifactId);
+  if (!artifact?.path) return join(destination, 'report.json');
+  const root = resolve(destination, 'artifacts');
+  const path = resolve(root, artifact.path);
+  const within = relative(root, path);
+  if (within.startsWith('..') || isAbsolute(within)) throw new Error('Exploration artifact would escape the evidence tree');
+  return path;
+}
+
+export function newDeadControls(controls, allowlist) {
+  if (!Array.isArray(allowlist) || allowlist.some(row => typeof row.key !== 'string' || !row.reason?.trim())) throw new Error('Every DEAD allowlist entry needs an exact key and reason');
+  const allowed = new Set(allowlist.map(row => row.key));
+  return controls.filter(row => row.status === 'DEAD' && !allowed.has(row.key));
+}
+
+export function sweepFindings(screens) {
+  return screens.flatMap(screen => screen.controls.filter(row => ['DEAD','ERROR','UNREACHABLE'].includes(row.status)).map(row => ({
+    id: row.key, surface: screen.surface, screen: screen.name, severity: 'minor', kind: 'bug',
+    title: `${row.status}: ${row.name || row.role || 'Unnamed control'}`,
+    steps: [`Open ${screen.path} on ${screen.target} with a fresh signed-in staging session.`, ...row.openers.map(name => `Open ${name}.`), `Press ${row.name || row.selector}.`, 'Observe for two seconds.'],
+    expected: 'A control produces a URL change, main DOM mutation, network request, dialog/sheet/toast, focus move or aria state change.',
+    actual: row.status === 'DEAD' ? 'No observable signal followed within two seconds.' : row.reason,
+    evidence_path: row.evidence_path || '', source: 'run', suspected_area: `${screen.path} ${row.selector}`,
+  })));
+}
+
+export async function writeReport(output, { screens = [], explorations = [], release, findings = [] }) {
+  await mkdir(output, { recursive: true });
+  const all = [...sweepFindings(screens), ...findings];
+  await writeFile(join(output, 'findings.json'), JSON.stringify(all, null, 2) + '\n');
+  const controls = screens.flatMap(screen => screen.controls);
+  await writeFile(join(output, 'controls.json'), JSON.stringify({ release, screens }, null, 2) + '\n');
+  const rows = screens.map(screen => `| ${screen.target} | ${screen.name} (${screen.path}) | ${screen.reached ? 'reached' : 'FAILED'} | ${screen.controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} | ${screen.controls.filter(c => c.status === 'DEAD').length} | ${screen.controls.filter(c => c.status === 'DISABLED').length} | ${screen.controls.filter(c => ['ERROR','UNREACHABLE'].includes(c.status)).length} |`);
+  const disabled = controls.filter(c => c.status === 'DISABLED').map(c => `- ${c.target} ${c.path}: ${c.name || c.selector}: ${c.reason}`);
+  const explorationRows = explorations.map(run => `| ${run.target} | ${run.screen} | ${run.agent} | ${run.steps} / 40 | ${run.status} |`);
+  await writeFile(join(output, 'coverage.md'), [
+    '# DoctorCRE staging-live e2e coverage', '', `Measured at ${new Date().toISOString()}. Source ${release?.source_commit || 'unverified'}.`, '',
+    `${screens.filter(s => s.reached).length}/${screens.length} screens reached; ${controls.length} controls enumerated; ${controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} pressed; ${controls.filter(c => c.status === 'DEAD').length} DEAD.`, '',
+    '| Target | Screen | Access | Pressed | DEAD | Disabled | Failed to press |', '|---|---|---|---:|---:|---:|---:|', ...rows, '',
+    '## Disabled controls', '', ...disabled, '', '## Per-screen explorations', '', '| Target | Screen | Agent | Steps / limit | Status |', '|---|---|---|---:|---|', ...explorationRows, '',
+    'Controls restore browser storage and reload the screen before each press, then replay only the opening path. Staging server mutations persist. Every exhausted discovery queue, missing screen, failed press or disabled control without a reason fails completeness. OBSERVED records signals, not a claim that the action is correct. Focus is placed on the target before measurement so pointer focus alone does not mask a dead action.', '',
+  ].join('\n'));
+  return all;
+}
