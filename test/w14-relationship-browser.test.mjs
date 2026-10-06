@@ -194,6 +194,7 @@ for (const width of [1440, 390])
       h.verbs.every((v) =>
         [
           "deal-room-board",
+          "morning-brief",
           "today-triage",
           "deal-room-changes",
           "unread-count",

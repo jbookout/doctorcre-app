@@ -144,7 +144,7 @@ test("who can clear this is built from the row, and the page offers no partner a
 /* ------------------------------------------------------------------ the write */
 
 test("the one write goes through the command kernel with one operation key", () => {
-  assert.match(pageJs, /import \{ createCommandState, performCommand \} from "\.\/command-feedback\.mjs"/);
+  assert.match(pageJs, /import \{ performCommand \} from "\.\/command-feedback\.mjs"/);
   assert.match(pageJs, /await performCommand\(\{/);
   assert.match(pageJs, /newKey: uuidv4/);
   assert.match(pageJs, /client\.linkIncidentWorkRequest\(request\)/);
@@ -200,7 +200,7 @@ test("a read that did not answer is unknown in the app's own words", async () =>
 test("the route and the two verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/incidents"], "incidents.html");
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, "1.42.0");
+  assert.equal(contract.version, "1.43.0");
   for (const verb of ["get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

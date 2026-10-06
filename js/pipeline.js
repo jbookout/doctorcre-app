@@ -29,7 +29,7 @@ import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from '
 import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
-import { createCommandState, performCommand, pendingCommand } from './command-feedback.mjs';
+import { performCommand, pendingCommand } from './command-feedback.mjs';
 import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
@@ -41,19 +41,17 @@ import {
   createBoardSync, batchTouchesBoard, SYNC_STATES,
 } from './board-sync.mjs';
 import {
-  cellKey, createFieldWriteState, performFieldWrite, unresolvedFieldWrites,
-  pendingFieldWrite, fieldWriteMessage, nextCellBase,
+  cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
 import {
-  escapeText, fieldLabel, readableValue, ingestChangeEvents, receiptViews,
-  receiptListHtml, receiptsSignature, createFeedProgress, observeChangeBatch,
-  createUndoState, performUndo,
+  escapeText, fieldLabel, readableValue, ingestChangeEvents, receiptViews, receiptListHtml,
+  receiptsSignature, createFeedProgress, observeChangeBatch, performUndo,
 } from './change-receipts.mjs';
 import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, presenceChip,
-  tapMoveTargets, dealInsightLines,
+  dealInsightLines,
 } from './pipeline-model.js';
 import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderPhaseTimeline, renderCriticalDates, renderDealTimeline, updateCountdowns } from './deal-timeline.js';
@@ -78,10 +76,10 @@ const state = {
   boardSync: null,
   /** Per cell, the newest event SEEN for it — the base its next write sends. */
   fieldBase: new Map(),
-  fieldWrites: createFieldWriteState(),
+  fieldWrites: {},
   presence: [],
   receipts: [],
-  undo: createUndoState(),
+  undo: {},
   feed: createFeedProgress(),
   receiptSignature: null,
   filter: ['joe','dell'].includes(incomingScope.get('owner')) ? incomingScope.get('owner') : 'all',
@@ -100,7 +98,7 @@ const state = {
   unplaced: 0,
 };
 
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {}, forget: () => {} };
 /** What each open operation would send again: the dock's two buttons need it. */
 const operations = new Map();
@@ -135,7 +133,7 @@ function autoHtml(deal) {
 }
 function cardHtml(deal) {
   const attention = needsAttention(deal);
-  const pending = pendingFieldWrite(state.fieldWrites, cellKey(deal.id, 'phase'));
+  const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(deal.name)}, ${esc(columnLabel(deal.phase))}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(deal.name)}</button></h4>
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" aria-label="Needs attention"></span>' : ''}</div>
@@ -454,7 +452,7 @@ async function runMove(intent, form) {
 
   const [phaseStep, ...followUps] = plan.steps;
   const cell = cellKey(intent.deal, 'phase');
-  if (!pendingFieldWrite(state.fieldWrites, cell)) {
+  if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
       summary: moveSummary(intent), intent: { ...intent }, followUps, followUpToken: uuidv4(), followUpsStarted: false });
   }
@@ -517,7 +515,7 @@ async function resumeMoveFollowUps(cell) {
 }
 
 async function retryFieldWrite(cell) {
-  const entry = pendingFieldWrite(state.fieldWrites, cell);
+  const entry = pendingCommand(state.fieldWrites, cell);
   if (!entry) { renderBoard(); return; }
   const { deal, field, value } = entry.request;
   const row = state.deals.get(deal);
@@ -1002,22 +1000,6 @@ function beginMove(dealId, toSlug) {
   openCompletion(intent);
 }
 
-function openMoveChooser(dealId) {
-  const deal = state.deals.get(dealId);
-  const dialog = $('moveDialog');
-  if (!deal || !dialog) return;
-  const targets = tapMoveTargets(deal);
-  if (!targets.length) return;
-  dialog.dataset.dealId = dealId;
-  $('moveTitle').textContent = `Move ${deal.name}`;
-  $('moveFrom').textContent = `Currently in ${columnLabel(deal.phase)}. Choose a destination, then review the move before saving.`;
-  $('moveTargets').innerHTML = targets.map((column) =>
-    `<button class="btn move-target" type="button" data-move-target="${esc(column.slug)}">${esc(column.label)}</button>`
-  ).join('');
-  leasePhase(dealId);
-  if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
-  $('moveTargets').querySelector('button')?.focus();
-}
 
 function wireBoard() {
   const board = $('kanban');
@@ -1141,16 +1123,6 @@ function wire() {
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
-
-  $('moveTargets')?.addEventListener('click', (event) => {
-    const target = event.target.closest('button[data-move-target]');
-    if (!target) return;
-    const dialog = $('moveDialog');
-    const dealId = dialog.dataset.dealId;
-    dialog.close();
-    beginMove(dealId, target.dataset.moveTarget);
-  });
-  $('moveCancel')?.addEventListener('click', () => $('moveDialog')?.close());
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);

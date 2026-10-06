@@ -101,7 +101,7 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  await page.locator('.board-card[data-task-id^="governance:"]').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobBody summary').click();assert.match(await page.locator('#jobBody pre').textContent(),/Demo rule/);await page.locator('#jobClose').click();
  await page.locator('.work-card').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobClose').click();
  await page.locator('#tabConnections').click();await page.locator('[data-connection="claude"] a').waitFor();assert.equal(await page.locator('[data-device]').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(width!==320)await capture(page,`connections-${width}`);
- assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'||name==='list-doc-suggestions'),calls.join(', '));assert.deepEqual(errors,[]);
+ assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'||name==='morning-brief'),calls.join(', '));assert.deepEqual(errors,[]);
 });
 
 for(const width of [1440,390])test(`Live work refresh preserves task focus and handles removal at ${width}px`,async t=>{

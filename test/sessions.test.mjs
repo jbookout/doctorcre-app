@@ -58,11 +58,11 @@ test("S02-01 name lookup passes query through and renders the producer's order",
 // MUTATION: match on `display_name` only in the fixture client's sessionIdentity.
 test("S02-02 ID lookup finds a row by canonical_session_id", async () => {
   const client = await fixture();
-  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-000" }));
+  const answer = await client.sessionIdentity(identityRequest({ query: "example-session-007" }));
   assert.equal(answer.sessions.length, 1);
-  assert.equal(answer.sessions[0].canonical_session_id, "example-session-000");
+  assert.equal(answer.sessions[0].canonical_session_id, "example-session-007");
   assert.equal(
-    answer.sessions[0].display_name.toLowerCase().includes("example-session-000"), false,
+    answer.sessions[0].display_name.toLowerCase().includes("example-session-007"), false,
     "the id matched on the id, not by accident through the name",
   );
 });
@@ -370,14 +370,14 @@ test("S02-20 every fixture payload passes the validator and matches the captured
 
 // MUTATION: append the two verbs out of order in contracts/carr-interface.v1.json.
 test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads", () => {
-  assert.equal(contract.version, "1.42.0", "the checkpoint read and lead calls advance the interface");
+  assert.equal(contract.version, "1.43.0", "the checkpoint read and lead calls advance the interface");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
   assert.equal(contract.mcp_operations[dispatch - 1], "read-correspondence-thread");
-  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-conversation");
+  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-activity");
   const identity = contract.mcp_operations.indexOf("read-session-identity");
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.
@@ -391,7 +391,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "993f6e630aca20175b92a0475b2dda3dd51bdba9",
+  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");

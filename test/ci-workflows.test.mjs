@@ -1,19 +1,46 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { context, policy } from "./workflow-policy.mjs";
+import { context, policy, expression } from "./workflow-policy.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const e2e = await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
-const root = fileURLToPath(new URL("../", import.meta.url));
 const harnessSource = await readFile(new URL("./browser-harness.mjs", import.meta.url), "utf8");
 const nodeEngines = [...harnessSource.matchAll(/export const (\w+) = browserEngine\(/g)].map(match => match[1]).sort();
+const root = fileURLToPath(new URL("../", import.meta.url));
+
+test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "doctorcre-checkout-layout-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const steps = ci.split(/^      - /m).slice(1);
+  const appCheckout = steps.find(step => /^uses: actions\/checkout@/m.test(step));
+  const producerCheckout = steps.find(step => /repository: jbookout\/carr-system/.test(step));
+  const app = resolve(workspace, appCheckout.match(/path: (\S+)/)?.[1] ?? ".");
+  const producer = resolve(workspace, producerCheckout.match(/path: (\S+)/)[1]);
+  await mkdir(app, { recursive: true });
+  const archive = join(workspace, "app.tar");
+  execFileSync("git", ["archive", "-o", archive, "HEAD"], { cwd: root });
+  execFileSync("tar", ["-xf", archive, "-C", app]);
+  await symlink(join(root, "node_modules"), join(app, "node_modules"), "dir");
+  await mkdir(join(producer, ".github/workflows"), { recursive: true });
+  // Synthetic external source reproduces the scanner refusal without reading
+  // credentials or requiring the producer checkout for this offline test.
+  const externalSource = `connection: ${"post" + "gresql"}://synthetic.invalid/example\n`;
+  await writeFile(join(producer, ".github/workflows/producer.yml"), externalSource);
+  const result = execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, encoding: "utf8" });
+  assert.match(result, /repository check passed/);
+  assert.equal(ci.match(/working-directory: (\S+)/)?.[1], appCheckout.match(/path: (\S+)/)?.[1]);
+  assert.match(ci, new RegExp(`cache-dependency-path: ${appCheckout.match(/path: (\S+)/)?.[1]}/package-lock\\.json`));
+  await writeFile(join(app, "app-owned.yml"), externalSource);
+  assert.throws(() => execFileSync(process.execPath, ["scripts/check-repository.mjs"], { cwd: app, stdio: "pipe" }),
+    /app-owned\.yml contains a database connection string/, "app-owned content must remain guarded");
+});
 
 // Execute the workflow's shell steps with instrumented tools. This small reader
 // supports the workflows' run/if forms and refuses unfamiliar conditions.
@@ -24,9 +51,7 @@ function commands(workflow, event, action = "opened") {
     if (!run) return [];
     const condition = step.match(/^\s*if: (.+)$/m)?.[1];
     if (condition) {
-      const match = condition.match(/^github\.event_name == '(pull_request|push)'$/);
-      assert.ok(match, `unhandled workflow condition: ${condition}`);
-      if (match[1] !== event) return [];
+      if (!expression(condition, context(event, action))) return [];
     }
     if (run === ">-") return [step.match(/^        run: >-\n((?:          .+\n?)+)/m)[1].trim().replace(/\n\s*/g, " ")];
     if (run === "|") return [step.match(/^        run: \|\n((?:          .+\n?)+)/m)[1].replace(/^          /gm, "")];
@@ -108,7 +133,7 @@ for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "nod
       assert.ok(healthy.trace.indexOf(check) >= 0 && healthy.trace.indexOf(check) < healthy.trace.findIndex(command => command.startsWith("npx playwright install")));
     }
     assert.equal(healthy.trace.filter(command => command === suite).length, 1);
-    const testCommands = name === "CI" ? ["npm test"] : ["node --test test/e2e-suite.test.mjs", suite];
+    const testCommands = name === "CI" ? ["node --test test/property-producer.test.mjs", "npm test"] : ["node --test test/e2e-suite.test.mjs", suite];
     assert.deepEqual(healthy.trace.filter(command => command === suite || command === "npm test" || command.startsWith("node --test ") || command.startsWith("npx e2e run ")), testCommands,
       "healthy heads retain the complete test command inventory");
     const push = await replay(t, workflow, "push", "npm run privacy:check");
@@ -206,6 +231,38 @@ test("description check runs for PRs and stays out of main pushes", () => {
   const check = "node scripts/check-pr-description.mjs";
   assert.equal(commands(ci, "pull_request").filter(command => command === check).length, 1);
   assert.equal(commands(ci, "push").includes(check), false);
+});
+
+test("CI verifies the contract's exact CARR producer without opt-in skips", async (t) => {
+  const steps = ci.split(/^      - /m).slice(1);
+  const pin = steps.find(step => /^id: producer$/m.test(step));
+  assert.ok(pin, "CI must obtain the runtime pin from the consumer contract");
+  assert.match(pin, /contracts\/carr-interface\.v1\.json/);
+  assert.match(pin, /producer\.source_commit/);
+  assert.match(pin, /GITHUB_OUTPUT/);
+  const checkout = steps.find(step => /repository: jbookout\/carr-system/.test(step));
+  assert.ok(checkout, "CI must fetch committed producer source");
+  assert.match(checkout, /ref: \$\{\{ steps\.producer\.outputs\.commit \}\}/);
+  assert.match(checkout, /fetch-depth: 0/, "ancestor checks require producer history");
+  assert.match(checkout, /persist-credentials: false/);
+  const directory = checkout.match(/path: (\S+)/)?.[1];
+  assert.ok(directory);
+  const verification = steps.find(step => /^run: node --test test\/property-producer\.test\.mjs$/m.test(step));
+  assert.ok(verification, "producer compatibility must be executed explicitly");
+  assert.ok(verification.includes(`CARR_PRODUCER_CHECKOUT: \${{ github.workspace }}/${directory}`));
+  assert.doesNotMatch(verification, /(?:continue-on-error|if):/);
+  assert.ok(steps.indexOf(checkout) < steps.indexOf(verification));
+  const failure = "node --test test/property-producer.test.mjs";
+  for (const event of ["pull_request", "push"]) {
+    const run = commands(ci, event);
+    const generate = run.indexOf("npm run slices:check");
+    assert.ok(generate >= 0 && generate < run.indexOf(failure),
+      "generate the Worker route contracts before importing the producer tests");
+    const result = await replay(t, ci, event, failure);
+    assert.equal(result.failed, true, event);
+    assert.ok(result.trace.includes(failure));
+    assert.equal(result.trace.includes("npm run build"), false, "incompatible pins cannot reach a green build");
+  }
 });
 
 test("main keeps artifact checks while avoiding a repeated full suite", async (t) => {

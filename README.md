@@ -25,6 +25,12 @@ npm run serve
 npm run dev:staging
 ```
 
+`npm run privacy:check` requires the private name-hash corpus in
+`~/.config/doctorcre-app/private-name-hashes.json`, or an explicit
+`DOCTORCRE_PRIVACY_CORPUS_FILE` path. CI reads the
+`DOCTORCRE_PRIVACY_CORPUS_JSON` Actions secret. Keep this record-derived lookup
+material outside the public repository. Missing or malformed input fails the check.
+
 ### Agent verification
 
 [verify-doctorcre](.cursor/skills/verify-doctorcre/SKILL.md) launches an isolated

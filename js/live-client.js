@@ -284,15 +284,22 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
-    async getChanges(cursor) {
+    async getChanges(cursor, { signal, since } = {}) {
+      // Versioned pipeline keyset format. Starting at a clock cutoff avoids
+      // replaying years of history; subsequent cursors remain server-issued.
+      if (!cursor && since) {
+        const timestamp = new Date(since).toISOString();
+        cursor = btoa(JSON.stringify({ recorded_at:timestamp, id:'00000000-0000-0000-0000-000000000000' }))
+          .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      }
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const data = await readWithDeadline(async signal => {
-        const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal });
+      const data = await readWithDeadline(async currentSignal => {
+        const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal:currentSignal });
         // Refusal is decided by the headers. Its diagnostic body must not
         // turn a known authorization failure into a statusless read failure.
         if (!res.ok) throw Object.assign(new Error(`live changes -> ${res.status}`), { status: res.status });
         return res.json();
-      }, { timeoutMs: opts.readTimeoutMs || 10_000 });
+      }, { signal, timeoutMs:opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.
@@ -445,6 +452,9 @@ export function createLiveClient(opts = {}) {
     async listIndustryEvents(args = {}) { return rpc('list-industry-events', args); },
     async addIndustryEvent(args) { return write('add-industry-event', args); },
     async updateIndustryEvent(args) { return write('update-industry-event', args); },
+
+    // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
+    async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
 
     // ------------------------------------------------------------- triage
     // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are
@@ -654,6 +664,7 @@ export function createLiveClient(opts = {}) {
     async createNationalAccount(args) { return write('create-national-account', args); },
     async createNationalMarketDeal(args) { return write('create-national-market-deal', args); },
     async revertDealField(args) { return write('revert-deal-field', args); },
+    async readDocActivity(args = {}, { signal } = {}) { return rpc('read-doc-activity', args, signal); },
   };
   return opts.docContext === false ? client : observeDocClient(client);
 }
