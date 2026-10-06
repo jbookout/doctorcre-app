@@ -28,10 +28,8 @@ import {
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 
-const html = await read("business-workspace.html");
 const pageJs = await read("js/charts.js");
 const modelJs = await read("js/charts-model.js");
-const workspaceJs = await read("js/business-workspace.js");
 const css = await read("css/business-workspace.css");
 const checkScript = await read("scripts/check-repository.mjs");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
@@ -415,13 +413,6 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
   assert.equal(Object.keys(routes.routes).some((route) => route.includes("chart")), false);
   assert.equal(chartsAddress({ group: "segment", pick: "Dental" }).startsWith("/?"), true);
 
-  // The tab, its panel and its wiring are all present, and the tab is selected
-  // from the address exactly as the Search tab is.
-  assert.match(html, /id="tabCharts" aria-controls="panelCharts"/);
-  assert.match(html, /<section class="tabpanel" id="panelCharts"/);
-  assert.match(workspaceJs, /if \(parseChartsAddress\(globalThis\.location\?\.search \|\| ""\)\.present\) tabs\?\.select\("tabCharts"\);/);
-  assert.match(workspaceJs, /mountCharts\(\{ client, board: boardRead, onRestore: \(\) => tabs\?\.select\("tabCharts"\) \}\);/);
-
   // UX19: the row is the control, it clears the touch floor, the bar is paint,
   // and reduced motion is honoured by having no transition at all.
   assert.match(pageJs, /<span class="chart-bar" aria-hidden="true"/);
@@ -476,74 +467,4 @@ test("B06-13 a pick no record carries renders the no-match state and draws no ch
   // The selection strip it does draw offers the way out and names the miss.
   assert.match(pageJs, /id="chartsClear">Clear this slice</);
   assert.equal(selectionLabel("segment", "NoSuchSegment"), "Segment: NoSuchSegment");
-});
-
-/* ----------------------------------------------------------------------- B06-14 */
-
-/**
- * A DOM small enough to drive the real `mountCharts` and nothing more. The
- * point of this test is the CALL COUNT at the fetch, which no assertion over
- * the text of `js/charts.js` alone can reach: B06-10 counts the call sites
- * inside one file, and a second read taken by the page that mounts it would
- * slip straight past that.
- */
-function stubDom({ search = "?charts=1" } = {}) {
-  const nodes = new Map();
-  for (const id of ["chartsCanvas", "chartsState", "chartsLive", "chartsReadAt", "chartsOneRead", "chartsSnapshot", "chartsForecast"]) {
-    nodes.set(id, {
-      id, innerHTML: "", textContent: "", hidden: false, open: false, attrs: {},
-      setAttribute(key, value) { this.attrs[key] = value; },
-      getAttribute(key) { return this.attrs[key]; },
-      addEventListener() {},
-      // `render()` runs a CSSOM pass over the painted bars after every
-      // `innerHTML` assignment (the Worker's CSP refuses `style=` written
-      // into markup); this stub's canvas has no real children to select.
-      querySelectorAll() { return []; },
-    });
-  }
-  globalThis.document = { getElementById: (id) => nodes.get(id) || null, addEventListener() {}, querySelectorAll: () => [] };
-  globalThis.location = { search };
-  globalThis.history = { pushState() {}, replaceState() {} };
-  return nodes;
-}
-
-test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is handed the page's read and takes none of its own", async () => {
-  const nodes = stubDom();
-  const { client, calls } = captureClient();
-  const { mountCharts } = await import("../js/charts.js");
-
-  // Exactly the wiring `js/business-workspace.js` boot() performs: the page
-  // takes ONE board read and hands the promise to both consumers.
-  const boardRead = client.getBoard({ workspace: "all" });
-  assert.equal(calls.length, 1, "the page's own read");
-  mountCharts({ client, storage: null, board: boardRead });
-  const quickAdd = await boardRead;            // the Quick add consumer
-  await new Promise((resolve) => setTimeout(resolve, 20));
-
-  // The tab painted from that same answer and issued nothing of its own. TWO
-  // is the failure this test exists to catch.
-  assert.equal(calls.length, 1, "the Charts tab adds no board read of its own");
-  assert.deepEqual(calls.map((call) => call.verb), ["deal-room-board"]);
-  assert.equal(quickAdd.deals.length, 74);
-  const painted = nodes.get("chartsCanvas").innerHTML;
-  assert.match(painted, /73 of 74 have no next date on file/, "the tab painted from the page's answer");
-  assert.match(nodes.get("chartsReadAt").textContent, /^Updated \d\d:\d\d$/);
-  assert.equal(nodes.get("chartsState").hidden, true, "a ready paint shows no state block");
-
-  // Only a person pressing Retry takes a new one, and that is a new as-of they
-  // asked for — one call, not two.
-  const { read } = await import("../js/charts.js");
-  await read({ push: false });
-  assert.equal(calls.length, 2, "a deliberate re-read is exactly one more call");
-
-  // And the page's wiring is the shared promise, not two reads racing.
-  assert.equal((workspaceJs.match(/client\.getBoard\(/g) || []).length, 1, "business-workspace.js takes exactly one board read");
-  assert.match(workspaceJs, /const boardRead = readBoard\(\);/);
-  assert.match(workspaceJs, /function readBoard\(\) \{\s*return client\.getBoard\(\{ workspace: 'all' \}\);\s*\}/);
-  assert.match(workspaceJs, /async function loadBoardRecords\(boardRead\) \{/, "Quick add is handed the read rather than taking one");
-  assert.match(workspaceJs, /board = await boardRead;/);
-  assert.match(pageJs, /const pending = sharedBoard \|\| client\.getBoard\(\{ workspace: "all" \}\);\s*\n\s*sharedBoard = null;/);
-  // popstate restores the TAB as well as the selection (advisory A6).
-  assert.match(pageJs, /if \(address\.present\) selectTab\?\.\(\);/);
-  assert.match(workspaceJs, /onRestore: \(\) => tabs\?\.select\("tabCharts"\)/);
 });

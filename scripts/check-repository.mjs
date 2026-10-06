@@ -36,7 +36,7 @@ assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 for (const verb of ["list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(contract.mcp_operations.includes(verb), `the Events tab needs ${verb} pinned`);
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["control-room.html", "automations.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
+for (const path of ["control-room.html", "automations.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.

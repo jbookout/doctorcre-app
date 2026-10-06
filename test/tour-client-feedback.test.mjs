@@ -6,7 +6,14 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import { openDom } from "./jsdom-harness.mjs";
 
-const share = readFileSync(new URL("../reports/share.js", import.meta.url), "utf8");
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-feedback-report-'));
+await buildArtifact({root:new URL('../',import.meta.url).pathname,outDir,commit:'1'.repeat(40)});
+const share = await readFile(join(outDir,'site/reports/share.js'),'utf8');
+const shareSource = readFileSync(new URL('../reports/share.js',import.meta.url),'utf8');
 const html = readFileSync(new URL("../reports/share.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("../reports/share.css", import.meta.url), "utf8");
 const tours = readFileSync(new URL("../tours/app.js", import.meta.url), "utf8");
@@ -331,7 +338,7 @@ test("both feedback diagrams give phone stage labels a 12px floor after SVG scal
 
 test("client feedback appears only after an opened share and uses opaque refs", () => {
   assert.match(share, /\/api\/share\/feedback/);
-  assert.match(share, /request\(`\/api\/share\/\$\{kind\}`/);
+  assert.match(shareSource, /request\(`\/api\/share\/\$\{kind\}`/);
   assert.match(share, /projection_ref/);
   assert.match(share, /property_ref/);
   assert.match(share, /idempotency_key/);

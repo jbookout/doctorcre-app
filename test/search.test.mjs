@@ -24,7 +24,7 @@ import {
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 
-const html = await read("business-workspace.html");
+const html = await read("search.html");
 const pageJs = await read("js/search.js");
 const modelJs = await read("js/search-model.js");
 const css = await read("css/business-workspace.css");

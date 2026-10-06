@@ -1,5 +1,5 @@
 import { GENERATED_PATHS, prepareSlices, sliceNames, sliceOutputs } from "./slices.mjs";
-import { NAVIGATION_GROUPS } from "../js/slice-registration.js";
+import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -115,19 +115,30 @@ async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
   for (const path of paths) {
     let content = await readSource(path);
     if (path === "reports/share.js") {
-      const source = (await readSource("js/app-shell.js")).toString("utf8");
-      // Token-authenticated public reports carry navigation back to the app.
-      // Partner controls live on the signed-in app, not the report hostname.
-      const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
-        .replace('const registration = registerSlices(slices);\nexport const navigationItems = registration.navigationItems;\nconst sectionForRoute = registration.sectionForRoute;',
-          `const NAVIGATION_GROUPS = ${JSON.stringify(NAVIGATION_GROUPS)};\nexport const navigationItems = Object.freeze(${JSON.stringify(sliceRegistration.navigationItems)});\nconst sectionForRoute = ${JSON.stringify(sliceRegistration.sectionForRoute)};`)
-        .replace("  else mountAccount(root, host, pathname);", "")
-        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
-      const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
-      if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
-        throw new Error("report shell bundle needs an explicit export update");
-      }
-      content = Buffer.from(`${shell.replace(/^export (?=(?:const|function) )/gm, "")}\n${content.toString("utf8")}`);
+      // Compile the report's explicit module graph from the same admitted bytes
+      // used by assembly and committed-source verification, never the live disk.
+      const result = await build({
+        entryPoints: [path], bundle: true, write: false, format: "iife",
+        platform: "browser", target: "es2022", legalComments: "none",
+        plugins: [{ name: "artifact-source", setup(builder) {
+          builder.onResolve({ filter: /.*/ }, (args) => {
+            // The report adapter already serves lazy map assets at /vendor/.
+            if (args.kind === "dynamic-import" && args.path.startsWith("/vendor/") && paths.includes(`reports${args.path}`)) {
+              return { path: args.path, external: true };
+            }
+            const resolved = args.kind === "entry-point" ? posix.normalize(args.path)
+              : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
+            if ((args.kind !== "entry-point" && !args.path.startsWith(".")) || !paths.includes(resolved)) {
+              throw new Error(`report import is not an admitted artifact input: ${args.path}`);
+            }
+            return { path: resolved, namespace: "artifact-source" };
+          });
+          builder.onLoad({ filter: /.*/, namespace: "artifact-source" }, async (args) => ({
+            contents: (await readSource(args.path)).toString("utf8"), loader: "js",
+          }));
+        } }],
+      });
+      content = Buffer.from(result.outputFiles[0].contents);
     }
     if (path === "reports/share.css") {
       const shell = await readSource("css/app-shell.css");

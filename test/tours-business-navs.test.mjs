@@ -21,7 +21,6 @@ const PAGES = [
   "ideas.html",
   "pipeline.html",
   "control-room.html",
-  "business-workspace.html",
 ];
 
 for (const page of PAGES) {
