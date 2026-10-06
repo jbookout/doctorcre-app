@@ -20,11 +20,10 @@
 </head>
 <body>
 <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-<div data-layout-slot="sidebar" class="control-room-sidebar"><a class="room-name" href="/control-room">Control Room</a><h3>System Job Boards</h3>      <section class="panel directory-panel" aria-labelledby="directory-title">
-        <div class="panel-heading"><h2 id="directory-title">Published boards</h2></div>
-        <p id="directory-error" class="error" role="alert" hidden></p>
+<div data-layout-slot="sidebar" class="control-room-sidebar"><a class="room-name" href="/control-room">Control Room</a><h3>System Job Boards</h3>      <details class="panel directory-panel" aria-labelledby="directory-title">
+        <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
-      </section>
+      </details>
         <form id="system-work-filters" class="work-filters">
           <label>Search<input name="text" type="search" maxlength="200"></label>
           <label>Category<select name="source"><option value="">All categories</option></select></label>
