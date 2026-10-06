@@ -129,6 +129,15 @@ function mountAccount(root, host, pathname) {
   };
   const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
   avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
+  root.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab" || panel.hidden) return;
+    const options = [...panel.querySelectorAll("button:not(:disabled), a[href]")];
+    const focused = root.activeElement;
+    if (focused === avatar && !event.shiftKey) { event.preventDefault(); options[0]?.focus(); }
+    else if ((focused === options[0] && event.shiftKey) || (focused === options.at(-1) && !event.shiftKey)) {
+      event.preventDefault(); close(); avatar.focus();
+    }
+  });
   panel.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
   root.addEventListener("click", (event) => { if (!panel.contains(event.target) && !avatar.contains(event.target)) close(); });
   root.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });

@@ -111,3 +111,17 @@ test("W6 polling recovers from outage without retry controls and refreshes open 
   assert.equal(await page.locator("#upcoming-tours .tour-button").first().evaluate(el => document.activeElement === el), true);
   await page.locator("#tour-filter").fill("Tour 10"); assert.equal(await page.locator("#history-tours button").count(), 1); assert.equal(await page.locator("#upcoming-tours button").count(), 0);
 });
+
+
+for (const status of [401,403]) test(`PR182 Tours ${status} settles freshness at boot and retry`, async t => {
+  const { page, errors } = await open(t,1440);
+  await page.route('**/api/**', route => route.fulfill({status,json:{}}));
+  await page.reload();
+  await page.getByText('Sign in to continue.',{exact:true}).first().waitFor();
+  assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
+  await page.locator('#planner-refresh').click();
+  await page.getByText('Sign in to continue.',{exact:true}).first().waitFor();
+  assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
+  assert.equal(await page.locator('.freshness').evaluate(n=>n.classList.contains('current')), false);
+  assert.deepEqual(errors,[]);
+});

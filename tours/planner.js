@@ -40,6 +40,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
       try { window.sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
       for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
+      message("#planner-updated", "Unavailable");
       $(".freshness").classList.remove("current");
     } else if (scope) {
       try {

@@ -126,6 +126,7 @@
     "test/property-producer.test.mjs",
     "test/provider-version.test.mjs",
     "test/qa-batch-1.test.mjs",
+    "test/qa-fixture-server.test.mjs",
     "test/release-scripts.test.mjs",
     "test/release-publication.test.mjs",
     "test/shell.test.mjs",

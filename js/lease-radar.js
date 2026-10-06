@@ -13,7 +13,12 @@ function leaseCard(row, gap = false) {
 }
 function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}) {
   let selected = null, opener = null;
-  const paint = () => {
+  const dismiss = () => {
+    if (selected === null) return;
+    selected = null;
+    onClose();
+  };
+  const paintSelected = () => {
     const row = rows().find(r => r.id === selected);
     if (!row) { dialog.replaceChildren(); if (dialog.open) dialog.close(); return; }
     const expanded = dialog.querySelector('details')?.open;
@@ -24,15 +29,22 @@ function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}
     if (expanded) dialog.querySelector('details').open = true;
     if (focused) ([...dialog.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === focused) || dialog.querySelector('button')).focus();
   };
-  dialog.addEventListener('click', e => { if (e.target.closest('[data-close-lease]')) dialog.close(); });
+  const closeDialog = () => { dismiss(); if (dialog.open) dialog.close(); };
+  dialog.addEventListener('click', e => { if (e.target.closest('[data-close-lease]')) closeDialog(); });
+  dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });
   dialog.addEventListener('close', () => {
-    const dismissed = selected !== null;
-    selected = null;
-    if (dismissed) onClose();
+    if (dialog.open) return;
+    dismiss();
     const current = opener?.dataset.radarKey && [...document.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === opener.dataset.radarKey);
     (opener?.isConnected ? opener : current || fallback)?.focus();
   });
-  return { paint, open(id, target) { selected=id; opener=target; paint(); if (selected) dialog.showModal(); }, close(){selected=null;dialog.replaceChildren();if(dialog.open)dialog.close();} };
+  const paint = () => {
+    // Native close clears `open` before its queued event. Observe that state
+    // before a refresh can restore the selection from the address.
+    if (!dialog.open) dismiss();
+    paintSelected();
+  };
+  return { paint, open(id, target) { selected=id; opener=target; paintSelected(); if (selected) dialog.showModal(); }, close(){selected=null;dialog.replaceChildren();if(dialog.open)dialog.close();} };
 }
 export function mountLeaseRadar({document, window, client, now = () => new Date(), intervalMs = 30_000}) {
   const $ = id => document.getElementById(id);
