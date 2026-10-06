@@ -18,4 +18,3 @@ export function report(shard, status = 'passed', rerun = false) {
     summary: { discovered: 2, selected: 1, executed: 1, passed: status === 'passed' ? 1 : 0, failed: status === 'failed' ? 1 : 0, interrupted: 0, flaky: 0, skipped: status === 'skipped' ? 1 : 0 } } };
 }
 export const bundle = (shard) => ({ receipt: { schema: 'doctorcre-e2e-shard.v1', shard, total: 2, commit, startedAt: '2026-10-05T00:00:00.000Z', plan, selected: [plan[shard - 1]], firstExit: 0, finalExit: 0 }, first: report(shard), final: report(shard) });
-
