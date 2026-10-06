@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
+import { FEATURES } from '../js/usage-contract.v1.js';
+const releaseSha='a'.repeat(40);
 const root=new URL('../',import.meta.url);
 const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
 async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
@@ -16,6 +18,8 @@ async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   const rpc=value=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(value)}]}}});
+  if(url.pathname==='/app-release')return route.fulfill({json:{source_commit:releaseSha,provider_version_created_at:'2026-10-01T00:00:00.000Z'}});
+  if(url.pathname==='/api/v1/usage-signals')return route.fulfill({json:{schema:'doctorcre-usage.v1',release_sha:releaseSha,enabled:true,coverage:'since_release',features:FEATURES.map(feature=>({...feature,uses:{joe:feature.id==='home:view'?3:0,dell:feature.id==='home:view'?1:0},last_used:{joe:null,dell:null},never_used:{joe:feature.id!=='home:view',dell:feature.id!=='home:view'}}))}});
   if(url.pathname==='/api/system-work/session')return route.fulfill({json:{actor:{slug:scope}}});
   if(url.pathname==='/pipeline/changes') {return route.fulfill({json:{events:url.searchParams.get('cursor')!=='demo-end' ? [{id:'demo-event',subject_type:'deal',subject_id:'d20',field:'next_step',new_value:'Review revised demo terms',recorded_at:new Date().toISOString()}]:[],cursor:'demo-end'}});}
   if(url.pathname==='/mcp') {
@@ -37,8 +41,13 @@ const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root
 
 test('live first-open brief and wide record detail; desktop/phone renders, focus, original entry, no horizontal overflow',async t=>{
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docMorningBrief[open]').waitFor();
- assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today']);
+ assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today','Weekly feature use']);
  assert.doesNotMatch(await page.locator('#docMorningBrief').innerText(),/read from|source|records read|retry|Read again/);
+ await page.locator('.weekly-usage svg').waitFor();
+ assert.match(await page.locator('.weekly-usage').innerText(),/Joe 3 · Dell 1/);
+ await page.locator('.weekly-usage select').selectOption('doc');
+ assert.equal(await page.locator('.weekly-usage tbody tr').count(),3);
+ await page.locator('.weekly-usage select').selectOption('view');
  await snap(page,'brief-desktop');
  assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.getBoundingClientRect().width)>1000);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await page.locator('#morningContent summary').click();assert.match(await page.locator('#morningContent details[open]').innerText(),/Original synthetic entry/);await snap(page,'record-desktop');
@@ -68,6 +77,7 @@ test('motion includes hover and ambient pulse; reduced motion is measured at des
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
   const {page,goto}=await setup(t,{motion,width});await goto();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('.morning-card').first().hover();
   const css=await page.locator('.morning-card').first().evaluate(node=>({transform:getComputedStyle(node).transform,transition:getComputedStyle(node).transitionDuration,pulse:getComputedStyle(node.querySelector('.morning-marker')).animationName,duration:getComputedStyle(node.querySelector('.morning-marker')).animationDuration}));
+  assert.equal(await page.locator('.weekly-usage .usage-bar').first().evaluate(node=>getComputedStyle(node).animationName),motion==='reduce'?'none':'usage-enter');
   if(motion==='reduce'){assert.equal(css.transform,'none');assert.equal(css.transition,'0s');assert.equal(css.pulse,'none');}else{assert.notEqual(css.pulse,'none');assert.equal(css.duration,'1s');assert.notEqual(css.transition,'0s');}
   if(motion==='reduce')await snap(page,`reduced-${width}`);
  }

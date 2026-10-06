@@ -1,6 +1,7 @@
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { FIND_QUERY_MAX, deepLinkFor } from './search-model.js';
+import { emitUsage } from './usage-signals.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const authorizationRefusal = error => [401,403].includes(error.status) || error.code === 'authentication_required';
 const identity = row => row && typeof row.id === 'string' && row.id ? JSON.stringify([row.kind,row.id]) : null;
@@ -94,18 +95,19 @@ export function mountDocCommandBar({ dialog, window: win, client, context, pages
       if(opened){if(fresh)detail(fresh,false);else clearDetail();}
     } catch(error) {
       if(disposed||current!==epoch)return;
+      emitUsage(root,'error_shown');
       clearDetail();selected=-1;paint(pageResults());$('docCommandUpdated').textContent='';$('docCommandStatus').textContent=authorizationRefusal(error)?'Sign in to search':'Search temporarily unavailable';
     } finally {if(current===epoch)$('docCommandResults').setAttribute('aria-busy','false');}
   }
   function open() {
-    if(!dialog.open){focusBefore=root.activeElement;dialog.showModal();}
+    if(!dialog.open){focusBefore=root.activeElement;dialog.showModal();emitUsage(root,'chat_opened');}
     $('docCommandScope').textContent=context.snapshot().active?.title||context.snapshot().label;
     if(!query.trim()){selected=0;paint(pageResults());}else void auto.refresh();
     onOpen(); input.focus();
   }
   const inputChanged=()=>{
     ++epoch;query=input.value.trim();dialog.querySelector('.doc-detail-grid').hidden=!!query;const tools=dialog.querySelector('.doc-context-tools');if(tools)tools.hidden=!!query;selected=0;clearDetail();$('docCommandStatus').textContent='';$('docCommandUpdated').textContent='';
-    paint(pageResults());win.clearTimeout(timer);timer=win.setTimeout(()=>void refresh(),180);
+    paint(pageResults());win.clearTimeout(timer);timer=win.setTimeout(()=>{if(query.trim())emitUsage(root,'search_used');void refresh();},180);
   };
   input.addEventListener('input',inputChanged);
   const shortcut=event=>{

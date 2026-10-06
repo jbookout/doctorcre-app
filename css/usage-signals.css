@@ -1,0 +1,19 @@
+.weekly-usage { margin-block: 1rem; padding: 1rem; border: 1px solid var(--line, #314052); border-radius: 14px; background: var(--panel, #101721); backdrop-filter: blur(16px); color: var(--text, #e9eef5); }
+.weekly-usage header { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem; }
+.weekly-usage h3 { margin: 0 auto 0 0; }
+.weekly-usage select, .weekly-usage button { background: var(--panel, #101721); color: inherit; border: 1px solid var(--line, #314052); border-radius: 8px; padding: .4rem .6rem; }
+.weekly-usage button, .weekly-usage summary { cursor: pointer; }
+.weekly-usage button:hover, .weekly-usage summary:hover { color: var(--orange, #ec873c); }
+.weekly-usage svg { display: block; width: 100%; }
+.weekly-usage > div, .weekly-usage details > div { overflow-x: auto; }
+.weekly-usage .usage-label { fill: currentColor; font-size: 12px; }
+.weekly-usage .usage-count { fill: currentColor; font-size: 11px; }
+.weekly-usage .usage-joe { fill: var(--orange, #ec873c); }
+.weekly-usage .usage-dell { fill: #66a8eb; }
+.weekly-usage .usage-bar { animation: usage-enter .6s ease-out; transform-origin: 210px center; }
+.weekly-usage table { border-collapse: collapse; width: 100%; margin-top: .6rem; font-size: .85rem; }
+.weekly-usage th, .weekly-usage td { padding: .45rem; text-align: left; border-bottom: 1px solid var(--line, #314052); white-space: nowrap; }
+.weekly-usage p { font-size: .85rem; color: var(--muted, #a5b4c6); }
+#usageCaptureToggle[aria-pressed="false"] { opacity: .55; }
+@keyframes usage-enter { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .weekly-usage .usage-bar { animation: none; } }

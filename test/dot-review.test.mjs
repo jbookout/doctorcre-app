@@ -11,6 +11,7 @@ import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
 import { performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
+import { emitUsage } from '../js/usage-signals.js';
 import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
@@ -279,7 +280,7 @@ test("Dot 11: a blocked second rename cannot replace the retained recovery inten
 
 function searchHarness() {
   const view={query:"Alpha",kinds:[],sequence:0};const replies=new Map();
-  const globals={view,client:{find:args=>replies.get(args.q),findAndCatchUp:async()=>({})},queryIsSendable:q=>q.trim().length>0,render:noop,pushAddress:noop,acceptsSearchResponse:(a,b)=>a===b,validSearchPayload:()=>true,validCatchUpPayload:()=>true,buildFindArguments:q=>({q}),buildFindAndCatchUpArguments:q=>({q}),FIND_CATCH_UP_LIMIT_DEFAULT:10,classifySearchFailure:()=>"unknown",refusalDetail:()=>({}),parseSearchAddress:query=>({query:new URLSearchParams(query).get("q")||"",kinds:[],present:true}),location:{search:"?q=Alpha"},history:{pushState:noop,replaceState:noop},searchAddress:()=>""};
+  const globals={emitUsage,document:new JSDOM().window.document,view,client:{find:args=>replies.get(args.q),findAndCatchUp:async()=>({})},queryIsSendable:q=>q.trim().length>0,render:noop,pushAddress:noop,acceptsSearchResponse:(a,b)=>a===b,validSearchPayload:()=>true,validCatchUpPayload:()=>true,buildFindArguments:q=>({q}),buildFindAndCatchUpArguments:q=>({q}),FIND_CATCH_UP_LIMIT_DEFAULT:10,classifySearchFailure:()=>"unknown",refusalDetail:()=>({}),parseSearchAddress:query=>({query:new URLSearchParams(query).get("q")||"",kinds:[],present:true}),location:{search:"?q=Alpha"},history:{pushState:noop,replaceState:noop},searchAddress:()=>""};
   const h=handlers("js/search.js","async function read(","/* ------------------------------------------------------------------ the wiring",globals,["read","restoreFromAddress"]);
   return {h,view,replies};
 }

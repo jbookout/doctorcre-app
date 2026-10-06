@@ -4,11 +4,12 @@ import { readFile } from "node:fs/promises";
 import { posix } from "node:path";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
+import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "2f531c295f37757899ca432dfb04a9b95e8d5184";
+const pinnedProducer = "62f7027dfe6de4c133e6c1f02301f03887f17d1c";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -26,6 +27,19 @@ async function producerModuleUrl(path) {
 
 test("the runtime pin integrates Doc activity with inherited Progress and system-work reads", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
+});
+
+test('usage vocabulary matches the pinned producer contract', async () => {
+  const source = await readFile(new URL('../js/usage-contract.v1.js', import.meta.url));
+  assert.equal(createHash('sha256').update(source).digest('hex'), contract.usage_signals.vocabulary_sha256);
+  assert.equal(contract.usage_signals.schema, 'doctorcre-usage.v1');
+  assert.equal(contract.usage_signals.retention_days, 180);
+  if (process.env.CARR_PRODUCER_CHECKOUT) {
+    const committed = execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, 'show', `${contract.producer.source_commit}:${contract.usage_signals.vocabulary_path}`]);
+    assert.deepEqual(source, committed);
+    const producer = await import(await producerModuleUrl('mcp-server/src/usage-signals.js'));
+    assert.equal(producer.USAGE_PATH, contract.usage_signals.path);
+  }
 });
 
 // Opt-in cross-repository verification reads committed source, never a working

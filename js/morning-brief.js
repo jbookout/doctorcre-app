@@ -2,11 +2,14 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh
 import { escapeText } from './change-receipts.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { localDay, validBrief, morningBriefView, briefPreferences } from './morning-brief-model.js';
+import { mountWeeklyUsage } from './weekly-usage.js';
 
 export function mountMorningBrief({ document:root, window:win, getClient, automatic = true, intervalMs = 30_000, now = () => new Date() }) {
   const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
   dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="morningTitle">Morning brief</h2></div><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button><button id="morningSpeech" type="button" aria-label="Brief speech" title="Brief speech" aria-pressed="false">◖))</button><button id="morningListen" type="button" aria-label="Listen to morning brief" title="Listen to morning brief" disabled>▶</button></div><div id="morningCoverage" role="status"></div><div id="morningContent"></div>';
   root.body.append(dialog);
+  const usageHost = root.createElement('section'); usageHost.setAttribute('aria-label', 'Weekly feature use'); dialog.append(usageHost);
+  const usage = mountWeeklyUsage({ host: usageHost, fetch: win.fetch?.bind(win) });
   const $ = id => dialog.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
   let client, view = null, sponsor = null, preferences, since, windowDay, events = [], cursor = null, disposed = false, selected = null, detailEpoch = 0, opener, speaking = false, speechEpoch = 0;
   let storage; try { storage = win.localStorage; } catch {}
@@ -22,6 +25,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
     if (view?.observedAt) $('morningUpdated').dateTime = view.observedAt; else $('morningUpdated').removeAttribute('datetime');
     $('morningCoverage').textContent = view ? view.unavailable.join(' · ') : 'Brief unavailable';
     controls();
+    usageHost.hidden = selected !== null;
     if (selected) return;
     const title = view ? `Morning brief · ${view.sponsor === 'joe' ? 'Joe' : 'Dell'}` : 'Morning brief';
     $('morningTitle').textContent = title;
@@ -40,6 +44,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
     const doc = $('docDetail'); if (doc?.open) doc.close();
     selected = null; ++detailEpoch; stop(); render();
     if (!dialog.open) dialog.showModal();
+    void usage.refresh();
     if (sponsor && view) {
       // Keep the current briefing window across page navigation. Only metadata
       // survives; every page must re-read the facts before opening its brief.
@@ -140,5 +145,5 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
   const hidden = () => { if (root.visibilityState === 'hidden') stop(); };
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; stop(); ++detailEpoch; auto.dispose(); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; usage.dispose(); stop(); ++detailEpoch; auto.dispose(); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }
