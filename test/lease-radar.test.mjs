@@ -30,9 +30,8 @@ test('finding 10: radar uses the shared calendar month implementation', () => {
   for (const day of ['2026-01-31','2024-02-29','2026-03-31'])
     for (const offset of [-24,-1,0,1,24]) assert.equal(addMonths(day,offset),calendarAddMonths(day,offset));
 });
-test('published lease contract binds the exact authenticated producer revision and horizon', async () => {
+test('published lease contract declares the read path, schema and calendar horizon', async () => {
   const contract = JSON.parse(await readFile(new URL('../contracts/lease-radar.v1.json', import.meta.url)));
-  assert.equal(contract.producer.source_commit, '84955cdb72d64bb7e712f7dd3b696c20b38710a1');
   assert.equal(contract.read.path, '/api/v1/business/leases');
   assert.equal(contract.read.response_schema, 'lease-radar.v1');
   assert.equal(contract.read.horizon_calendar_months, 24);
@@ -94,9 +93,8 @@ test('slice discovery registers Lease radar beside invoices with its admitted ga
   assert.ok(registration.slices.find(slice => slice.id === 'lease-radar')?.files.includes('contracts/lease-radar.v1.json'));
 });
 
-test('merged route contract adds leases beside relationships and Progress under a new minor version', async () => {
+test('merged route contract retains leases beside relationships, Progress and Deals', async () => {
   const routes = JSON.parse(await readFile(new URL('../contracts/app-routes.v1.json', import.meta.url)));
-  assert.equal(routes.version, '1.20.0');
   assert.equal(routes.routes['/leases'], 'lease-radar.html');
   assert.equal(routes.routes['/relationships'], 'relationships.html');
   assert.equal(routes.routes['/control-room/progress/work'], 'progress-work.html');

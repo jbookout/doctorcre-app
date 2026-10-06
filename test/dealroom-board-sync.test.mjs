@@ -18,13 +18,6 @@ import {
 
 const file = (relative) => readFile(new URL(`../${relative}`, import.meta.url), "utf8");
 
-function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
-  return { promise, resolve, reject };
-}
-
 /** Let every already-settled microtask run before asserting. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -127,8 +120,8 @@ test("app.js no longer copies any field value out of a change event", async () =
 // ------------------------------------------------------ serialized board reads
 
 test("overlapping refreshes never run two board reads, and collapse into one follow-up", async () => {
-  const first = deferred();
-  const second = deferred();
+  const first = Promise.withResolvers();
+  const second = Promise.withResolvers();
   const h = harness({ boardReads: [() => first.promise, () => second.promise] });
 
   const a = h.sync.refreshBoard({ reason: "load" });
@@ -157,8 +150,8 @@ test("a caller that asks after its own write waits for a NEW read, not the open 
   // The open read was issued before the write was confirmed, so joining it
   // would answer with data that cannot contain it. This is why a request that
   // arrives mid-flight queues a fresh read instead of sharing the current one.
-  const open = deferred();
-  const follow = deferred();
+  const open = Promise.withResolvers();
+  const follow = Promise.withResolvers();
   const h = harness({ boardReads: [() => open.promise, () => follow.promise] });
 
   h.sync.refreshBoard({ reason: "background" });
@@ -177,8 +170,8 @@ test("a caller that asks after its own write waits for a NEW read, not the open 
 });
 
 test("a superseded answer is discarded: it applies nothing and moves no clock", async () => {
-  const hung = deferred();
-  const fresh = deferred();
+  const hung = Promise.withResolvers();
+  const fresh = Promise.withResolvers();
   const h = harness({ boardReads: [() => hung.promise, () => fresh.promise] });
 
   const hungRead = h.sync.refreshBoard({ reason: "first" });
@@ -234,7 +227,7 @@ test("a failed read leaves the last successful values on screen and says so", as
 });
 
 test("the badge never claims more than has actually been read", async () => {
-  const slow = deferred();
+  const slow = Promise.withResolvers();
   const h = harness({
     boardReads: [() => slow.promise, () => Promise.resolve(board([deal()]))],
     changeReads: [() => Promise.resolve(changes())],
@@ -316,8 +309,8 @@ test("a working feed cannot clear a failed board read, and a fresh board cannot 
 // Regression, root's reproduction: start A, queue B, force C, settle A — and B
 // started a third read behind C, bumped the sequence, and stopped C applying.
 test("forcing a read cancels the queued one, so old work cannot overtake the new generation", async () => {
-  const a = deferred();
-  const c = deferred();
+  const a = Promise.withResolvers();
+  const c = Promise.withResolvers();
   const h = harness({ boardReads: [() => a.promise, () => c.promise] });
 
   const readA = h.sync.refreshBoard({ reason: "A" });
@@ -352,7 +345,7 @@ test("forcing a read cancels the queued one, so old work cannot overtake the new
 // Regression, root's reproduction: setOnline bumped the generation but left the
 // hung feed read registered, so every later tick skipped as "busy" forever.
 test("a reconnect supersedes a hung feed, and its late answer cannot move the cursor", async () => {
-  const hung = deferred();
+  const hung = Promise.withResolvers();
   const h = harness({
     boardReads: [() => Promise.resolve(board([deal()]))],
     changeReads: [
@@ -384,7 +377,7 @@ test("a reconnect supersedes a hung feed, and its late answer cannot move the cu
 });
 
 test("a poll can be forced past a read that never answers, without waiting for an offline event", async () => {
-  const hung = deferred();
+  const hung = Promise.withResolvers();
   const h = harness({
     changeReads: [() => hung.promise, () => Promise.resolve(changes([], { cursor: "c9" }))],
   });
@@ -402,8 +395,8 @@ test("a poll can be forced past a read that never answers, without waiting for a
 });
 
 test("going offline stops trusting what is in flight; coming back only says we are trying", async () => {
-  const open = deferred();
-  const openChanges = deferred();
+  const open = Promise.withResolvers();
+  const openChanges = Promise.withResolvers();
   const h = harness({
     boardReads: [() => open.promise],
     changeReads: [() => openChanges.promise],
@@ -435,8 +428,8 @@ test("going offline stops trusting what is in flight; coming back only says we a
 // ------------------------------------- a confirmed local write is not undone
 
 test("a snapshot issued before a confirmed write cannot put the old value back", async () => {
-  const open = deferred();
-  const next = deferred();
+  const open = Promise.withResolvers();
+  const next = Promise.withResolvers();
   const h = harness({ boardReads: [() => open.promise, () => next.promise] });
 
   const inFlight = h.sync.refreshBoard({ reason: "background" });
@@ -479,7 +472,7 @@ test("a snapshot's per-cell bases reach the app untouched, even under a held val
   // is not a value, no hold applies to it, and the app's own forward-only rule is
   // what decides whether an older one is taken. This is the pairing the write path
   // depends on: a HELD value on a row whose base is the older one the read saw.
-  const open = deferred();
+  const open = Promise.withResolvers();
   const h = harness({ boardReads: [() => open.promise] });
   const base = { phase: { id: "e5", recorded_at: "2026-09-10T14:00:00.000000+00:00" } };
 
@@ -543,7 +536,7 @@ test("a row captured before a snapshot resolves to current values by id, in the 
 // microtask between a read clearing and its follow-up starting used to see no
 // open read, start its own, and then be superseded by the follow-up.
 test("a request that lands between a read settling and its follow-up starting does not double-read", async () => {
-  const first = deferred();
+  const first = Promise.withResolvers();
   const h = harness({
     boardReads: [() => first.promise, () => Promise.resolve(board([deal({ phase: "Legal" })]))],
   });
@@ -622,7 +615,7 @@ test("a render fault is not a read fault, and a board that could not be shown is
 // -------------------------------------------------------- serialized polling
 
 test("a poll tick during an open poll is dropped, and a slow page cannot land after a newer one", async () => {
-  const first = deferred();
+  const first = Promise.withResolvers();
   const h = harness({
     changeReads: [
       () => first.promise,

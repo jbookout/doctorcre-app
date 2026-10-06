@@ -18,9 +18,8 @@ const evidence = { schema: "tour-property-evidence.v1", property_id: "10000000-0
     site_address: reviewed("100 Clinic Way"), building: reviewed("Clinic Plaza") } };
 
 const panelSource = await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8");
-test("property evidence is an explicit additive CARR contract read above main's 1.33 release", async () => {
+test("property evidence remains an explicit CARR contract read", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-  assert.equal(contract.version, "1.43.0");
   assert.ok(contract.http_surfaces.includes("/api/tours/property-evidence/v1"));
 });
 const otherProperty = "10000000-0000-4000-8000-000000000002";

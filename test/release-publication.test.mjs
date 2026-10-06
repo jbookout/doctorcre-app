@@ -24,8 +24,9 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   pkg.scripts.test = browser ? 'node --test --test-name-pattern="live first-open brief" test/morning-brief-browser.test.mjs' : 'node -e ""';
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(join(ROOT, 'node_modules/playwright'), join(root, 'node_modules/playwright'), 'dir');
-  symlinkSync(join(ROOT, 'node_modules/jsdom'), join(root, 'node_modules/jsdom'), 'dir');
+  for (const dependency of ['playwright', 'jsdom', 'acorn']) {
+    symlinkSync(join(ROOT, 'node_modules', dependency), join(root, 'node_modules', dependency), 'dir');
+  }
   git(['add', ...paths.filter(path => existsSync(join(root, path))), 'package.json']);
   git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Synthetic release source']);
   const commit = git(['rev-parse', 'HEAD']);

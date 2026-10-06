@@ -25,12 +25,6 @@ function v2(extra = {}) {
 const OPEN_QUESTION = { question_id: "q-open", revision: 3, prompt: "Synthetic open question?", choices: [],
   allow_free_text: true, default_answer: null, status: null };
 
-function deferred() {
-  let resolve, reject;
-  const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; });
-  return { promise, resolve, reject };
-}
-
 function mount({ now = "2026-09-30T12:00:00Z", reads, answer } = {}) {
   const dom = new JSDOM(PAGE, { url: "https://app.doctorcre.com/progress-board?board=carr-v5" });
   const { window } = dom;
@@ -137,8 +131,8 @@ test("the snapshot boundary rejects unsupported schemas visibly and isolates mal
 });
 
 test("a superseded read never overwrites a newer one", async () => {
-  const first = deferred();
-  const second = deferred();
+  const first = Promise.withResolvers();
+  const second = Promise.withResolvers();
   const queue = [first, second];
   const page = mount({ reads: () => queue.shift().promise });
   const a = page.board.refresh(true);
@@ -151,7 +145,7 @@ test("a superseded read never overwrites a newer one", async () => {
 });
 
 test("a read that lands while an answer is being typed keeps the draft and focus", async () => {
-  const late = deferred();
+  const late = Promise.withResolvers();
   const reads = [async () => snapshotRead(v2(), { questions: [OPEN_QUESTION] }), () => late.promise];
   const page = mount({ reads: () => reads.shift()() });
   await page.board.refresh(true);

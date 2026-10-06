@@ -20,7 +20,7 @@ const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-44
 const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const tourScript = `${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
-function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
+
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
 }
@@ -51,7 +51,7 @@ async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) 
 }
 
 test("a late feedback Refresh cannot replace the selected Tour's responses", async t => {
-  const held = deferred();
+  const held = Promise.withResolvers();
   const app = await openBroker((i, count) => i === 0 && count === 2 ? held.promise : feedbackResponse(i ? "B response" : "A response"));
   const buttons = app.doc.querySelectorAll(".tour-button");
   buttons[0].click(); await settle();
@@ -65,7 +65,7 @@ test("a late feedback Refresh cannot replace the selected Tour's responses", asy
 });
 
 test("a late earlier Refresh cannot replace newer feedback for the same projection", async t => {
-  const held = deferred();
+  const held = Promise.withResolvers();
   const app = await openBroker((i, count) => count === 2 ? held.promise : feedbackResponse(count === 3 ? "Newest response" : "Initial response"));
   app.doc.querySelector(".tour-button").click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
@@ -89,7 +89,7 @@ test("a failed initial feedback read shows unavailable and Refresh can confirm a
 });
 
 test("loading and a failed feedback Refresh never claim a successful empty read", async t => {
-  const held = deferred();
+  const held = Promise.withResolvers();
   const app = await openBroker((i, count) => count === 2 ? held.promise : feedbackResponse("Confirmed response"));
   app.doc.querySelector(".tour-button").click(); await settle();
   app.doc.querySelector("#refresh-feedback").click(); await settle();
@@ -213,7 +213,7 @@ test("shortlist saves preserve unsaved comments on every property", async t => {
 });
 
 test("saving another property's feedback retains in-flight controls and newer comment drafts", async t => {
-  const held = deferred();
+  const held = Promise.withResolvers();
   const app = await openShare({ properties: [
     { property_ref: propertyRef, name: "Demo office A" },
     { property_ref: "property:public:synthetic_property_02", name: "Demo office B" },
@@ -249,7 +249,7 @@ test("a refused shortlist save retains the unknown choice and retries the same l
 
 test("a partial feedback outage is visible and retry restores scoped controls without reloading the report", async t => {
   let attempts = 0;
-  const held = deferred();
+  const held = Promise.withResolvers();
   const app = await openShare({ feedbackRead: () => ++attempts === 1
     ? { ok: false, json: async () => ({ error: "unavailable" }) }
     : attempts === 2 ? held.promise : null });
@@ -350,7 +350,6 @@ test("broker feedback is confined to the authenticated Tours view", () => {
   assert.match(css, /prefers-reduced-motion/);
 });
 
-
 test("Dot Tour: broker Refresh renders CARR data.feedback comments and shortlist", async t => {
   const app = await openBroker(() => ({ ok: true, json: async () => ({ data: { feedback: {
     items: [{ route_label: "A", shortlisted: true, comments: [{ comment: "Synthetic reviewed response" }] }],
@@ -361,7 +360,6 @@ test("Dot Tour: broker Refresh renders CARR data.feedback comments and shortlist
   assert.match(app.doc.querySelector("#feedback-list").textContent, /Shortlisted/);
   assert.equal(app.doc.querySelector("#feedback-empty").hidden, true);
 });
-
 
 for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stalled} times out without hiding the report and can retry`, async t => {
   const signals = []; let hang = true;

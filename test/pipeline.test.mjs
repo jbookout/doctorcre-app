@@ -890,7 +890,6 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.43.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

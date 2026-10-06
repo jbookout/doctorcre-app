@@ -1,4 +1,5 @@
 import { prepareSlices } from "./slices.mjs";
+import { checkTestContracts } from "./check-test-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
@@ -10,6 +11,7 @@ const read = (path) => readFile(new URL(path, ROOT), "utf8");
 const json = async (path) => JSON.parse(await read(path));
 
 await prepareSlices(ROOT_PATH);
+await checkTestContracts(ROOT_PATH);
 
 const fixture = await json("data/board-seed.json");
 assert.equal(fixture.fixture?.synthetic, true, "the local board fixture must be explicitly synthetic");
@@ -41,6 +43,7 @@ for (const path of ["control-room.html", "automations.html", "workspace.html", "
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
 const routes = await json("contracts/app-routes.v1.json");
+for (const version of [contract.version, routes.version]) assert.match(version, /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/);
 for (const path of new Set(Object.values(routes.routes))) await read(path);
 assert.equal(routes.routes["/doc-activity"], "activity.html");
 assert.equal(routes.routes["/all-work"], "work-inventory.html", "All Work must stay in the route contract");
