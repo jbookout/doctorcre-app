@@ -530,8 +530,9 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
-for (const width of [390, 820, 1440]) test(`board → project → task uses one tap each and breadcrumbs return to the parent at ${width}px`,async t=>{
+for (const width of [390, 820, 1440]) test(`directory opens, board → project → task uses one tap each and breadcrumbs return to the parent at ${width}px`,async t=>{
   const {page,errors}=await open(t,{width,path:'/control-room/progress'});
+  await page.locator('.directory-summary').click();
   await page.locator('[data-board-id="demo-project"]').evaluate(node=>node.removeAttribute("target"));
   await page.locator('[data-board-id="demo-project"]').click();
   await page.waitForURL('**/control-room/progress/board/demo-project');

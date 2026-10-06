@@ -83,6 +83,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(await page.locator("#board-stages .column").count(), 6);
   await project.evaluate(node => node.removeAttribute("target"));
+  await page.locator('.directory-summary').click();
   await project.click();
   await page.waitForURL("**/control-room/progress/board/demo-project");
   await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
@@ -268,6 +269,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     });
     await page.waitForFunction(() => document.querySelector(".board-card"));
     const target = state === "directory focus" ? ".board-link" : ".answer-form textarea";
+    if (state === "directory focus") await page.locator('.directory-summary').click();
     if (state.includes("focus")) await page.locator(target).first().focus();
     if (state === "answer focus") await page.locator(target).fill("Synthetic unsent draft");
     await page.evaluate(selector => {
