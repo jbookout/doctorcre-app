@@ -29,7 +29,7 @@ export function sweepFindings(screens) {
   })));
 }
 
-export async function writeReport(output, { screens = [], explorations = [], release, findings = [] }) {
+export async function writeReport(output, { screens = [], explorations = [], release, findings = [], setup, expectedScreens = screens.length, expectedExplorations = explorations.length }) {
   await mkdir(output, { recursive: true });
   const all = [...sweepFindings(screens), ...findings];
   await writeFile(join(output, 'findings.json'), JSON.stringify(all, null, 2) + '\n');
@@ -40,10 +40,11 @@ export async function writeReport(output, { screens = [], explorations = [], rel
   const explorationRows = explorations.map(run => `| ${run.target} | ${run.screen} | ${run.agent} | ${run.steps} / 40 | ${run.status} |`);
   await writeFile(join(output, 'coverage.md'), [
     '# DoctorCRE staging-live e2e coverage', '', `Measured at ${new Date().toISOString()}. Source ${release?.source_commit || 'unverified'}.`, '',
-    `${screens.filter(s => s.reached).length}/${screens.length} screens reached; ${controls.length} controls enumerated; ${controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} pressed; ${controls.filter(c => c.status === 'DEAD').length} DEAD.`, '',
+    `${screens.filter(s => s.reached).length}/${expectedScreens} screens reached; ${controls.length} controls enumerated; ${controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} pressed; ${controls.filter(c => c.status === 'DEAD').length} DEAD.`, '',
     '| Target | Screen | Access | Pressed | DEAD | Disabled | Failed to press |', '|---|---|---|---:|---:|---:|---:|', ...rows, '',
-    '## Disabled controls', '', ...disabled, '', '## Per-screen explorations', '', '| Target | Screen | Agent | Steps / limit | Status |', '|---|---|---|---:|---|', ...explorationRows, '',
+    '## Disabled controls', '', ...disabled, '', '## Per-screen explorations', '', `${explorations.length}/${expectedExplorations} goals attempted.`, '', '| Target | Screen | Agent | Steps / limit | Status |', '|---|---|---|---:|---|', ...explorationRows, '',
     'Controls restore browser storage and reload the screen before each press, then replay only the opening path. Staging server mutations persist. Every exhausted discovery queue, missing screen, failed press or disabled control without a reason fails completeness. OBSERVED records signals, not a claim that the action is correct. Focus is placed on the target before measurement so pointer focus alone does not mask a dead action.', '',
+    ...(setup ? ['## Staging record setup', '', `Normal authenticated API setup: ${setup.complete ? 'complete' : 'FAILED'}. Synthetic record receipts: staging-records.json.`, '', `Recovery needed: ${JSON.stringify(setup.needs_restore)}.`, '', 'The draft tour has no canonical property stop, so acceptance and share require an authorized property fixture. Mark-paid requires an existing invoiced commission. Outlook draft creation uses a local processor outside this staging stack. These prerequisites are not fabricated or bypassed by the runner.', ''] : []),
   ].join('\n'));
   return all;
 }

@@ -8,6 +8,7 @@ import { installStagingGuard } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen } from './controls.mjs';
 import { writeReport, newDeadControls } from './report.mjs';
+import { prepareStagingRecords } from './records.mjs';
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
 export function scrubEvidence(path) {
@@ -17,9 +18,11 @@ export function scrubEvidence(path) {
 
 export async function sweep() {
   process.env.E2E_TELEMETRY_DISABLED = '1';
-  const { release } = await stagingSession();
-  const routedScreens = await screens();
   const output = outputPath();
+  const setup = await prepareStagingRecords(output);
+  const { release } = setup;
+  const routedScreens = await screens();
+  const expectedScreens = targets.reduce((count, target) => count + routedScreens.filter(screen => screen.surface === target.surface).length, 0);
   const evidenceDir = join(output, 'evidence', 'sweep');
   const privateEvidence = fileURLToPath(new URL('../../.e2e/staging-private-evidence/', import.meta.url));
   await mkdir(evidenceDir, { recursive: true, mode: 0o700 });
@@ -30,7 +33,8 @@ export async function sweep() {
     for (const target of targets) for (const screen of routedScreens.filter(screen => screen.surface === target.surface)) {
       console.log(`Sweeping ${target.name} ${screen.path}`);
       const freshPage = async () => {
-        const { state } = await stagingSession();
+        const { state, release: currentRelease } = await stagingSession();
+        if (currentRelease.source_commit !== release.source_commit || currentRelease.carr_source_commit !== release.carr_source_commit) throw new Error('Staging source changed during the control sweep');
         const context = await browser.newContext({ viewport: target.viewport, storageState: state, serviceWorkers: 'block' });
         await installStagingGuard(context);
         const page = await context.newPage();
@@ -58,7 +62,7 @@ export async function sweep() {
       } catch { result = { ...screen, target: target.name, reached: false, controls: [], error: 'Signed-in screen failed to load' }; }
       measured.push(result);
 
-      await writeReport(output, { screens: measured, release });
+      await writeReport(output, { screens: measured, release, setup, expectedScreens, findings: setup.findings });
       scrubEvidence(output);
       console.log(`${result.controls.length} enumerated; ${result.controls.filter(row => row.status === 'DEAD').length} DEAD`);
     }

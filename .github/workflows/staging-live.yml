@@ -16,7 +16,7 @@ jobs:
   sweep:
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 120
+    timeout-minutes: 360
     env:
       E2E_V2_OUTPUT: ${{ github.workspace }}/out/orch/e2e-v2
       E2E_TELEMETRY_DISABLED: "1"

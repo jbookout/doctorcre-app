@@ -15,20 +15,49 @@ export async function inventory(page) {
       }
       return parts.join(' > ');
     };
+    const panelSelector = 'dialog,[role="dialog"],.drawer,.sheet,[role="tabpanel"],[role="menu"]';
+    const regions = new Set(document.querySelectorAll(`${panelSelector},[role="main"],[role="region"],details,header,nav,main,#appShell,#appMainSlot,#appSidebar,#appToday,.app-shell-more-list,.app-shell-account-menu`));
+    for (const controller of document.querySelectorAll('[aria-controls]')) {
+      for (const id of controller.getAttribute('aria-controls').split(/\s+/)) {
+        const target = document.getElementById(id);
+        if (target) regions.add(target);
+      }
+    }
+    const ownerOf = element => {
+      for (let node = element; node; node = node.parentElement) if (regions.has(node)) return node;
+      return document.body;
+    };
+    const workspaceOf = element => element.closest('#appLayout') || element.closest('main,[role="main"]') || ownerOf(element);
+    const panelLabel = element => element.getAttribute('aria-label') || (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
+    const ownership = new Map();
     const modal = [...document.querySelectorAll('dialog:modal')].at(-1);
     const rows = elements.filter(element => (!modal || modal.contains(element)) && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden' && !element.closest('[inert]')).map(element => {
       const labels = (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim();
       const name = (element.getAttribute('aria-label') || labels || element.textContent || element.getAttribute('title') || element.getAttribute('value') || '').replace(/\s+/g, ' ').trim();
       const selector = cssPath(element);
+      const panels = [];
+      for (let node = element; node; node = node.parentElement) if (node.matches(panelSelector)) panels.push([cssPath(node), panelLabel(node)]);
+      ownership.set(selector, { owner: ownerOf(element), workspace: workspaceOf(element), panels, disclosure: element.getAttribute('aria-expanded') ?? (element.tagName === 'SUMMARY' ? String(element.parentElement.open) : '') });
       const role = element.getAttribute('role') || (element.tagName === 'A' ? 'link' : element.tagName.toLowerCase());
       const reason = (element.getAttribute('aria-describedby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim() || element.getAttribute('title') || element.getAttribute('data-disabled-reason') || '';
       return { selector, name, role, inputType: element.getAttribute('type'), workspace: element.matches(workspaceSelector), aria: ['aria-selected','aria-expanded','aria-pressed','aria-checked'].map(key => element.getAttribute(key)).join('|'), options: element.tagName === 'SELECT' ? [...element.options].filter(option => !option.disabled).map(option => ({ value: option.value, text: option.textContent })) : null, href: element.getAttribute('href'), disabled: element.matches(':disabled,[aria-disabled="true"]'), reason, identity: `${location.pathname}${location.search}|${selector}|${role}|${element.getAttribute('href') || ''}` };
     });
-    const panels = [...document.querySelectorAll('dialog,[role="dialog"],.drawer,.sheet')].filter(element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden').map(element => [
-      cssPath(element), element.getAttribute('aria-label') || (element.getAttribute('aria-labelledby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim(),
-    ]);
-    const state = JSON.stringify([rows.map(row => row.selector), rows.filter(row => row.workspace).map(row => [row.selector, row.aria]), panels]);
-    return rows.flatMap(row => row.options?.length ? row.options.map(option => ({ ...row, name: `${row.name}: ${option.text}`, optionValue: option.value, identity: `${state}|${row.identity}|${option.value}|${row.disabled}` })) : [{ ...row, identity: `${state}|${row.identity}|${row.disabled}` }]);
+    const localControls = new Map(), workspaceViews = new Map();
+    for (const row of rows) {
+      const { owner, workspace } = ownership.get(row.selector);
+      if (!localControls.has(owner)) localControls.set(owner, []);
+      localControls.get(owner).push(row.selector);
+      if (row.workspace) {
+        if (!workspaceViews.has(workspace)) workspaceViews.set(workspace, []);
+        workspaceViews.get(workspace).push([row.selector, row.aria]);
+      }
+    }
+    return rows.flatMap(row => {
+      const { owner, workspace, panels, disclosure } = ownership.get(row.selector);
+      const context = JSON.stringify([cssPath(owner), localControls.get(owner), workspaceViews.get(workspace) || [], panels]);
+      const identity = `${context}|${row.identity}|${disclosure}|${row.disabled}`;
+      return row.options?.length ? row.options.map(option => ({ ...row, name: `${row.name}: ${option.text}`, optionValue: option.value, identity: `${identity}|${option.value}` })) : [{ ...row, identity }];
+    });
   }, WORKSPACE_VIEW_SELECTOR);
 }
 

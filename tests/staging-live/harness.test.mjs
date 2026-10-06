@@ -136,6 +136,23 @@ test('independent pressed preferences do not multiply workspace states', async (
   await browser.close();
 });
 
+test('independent menus do not repeat unrelated controls and both disclosure states are covered', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const count of [2, 3]) {
+    const html = `<header><button id="global" onclick="document.querySelector('#out').textContent='Global changed'">Global action</button></header><main>${Array.from({ length: count }, (_, i) => `<button id="open${i}" aria-expanded="false" aria-controls="menu${i}" onclick="const menu=document.querySelector('#menu${i}');menu.hidden=!menu.hidden;this.setAttribute('aria-expanded',String(!menu.hidden))">Menu ${i}</button><section id="menu${i}" role="menu" aria-label="Menu ${i} actions" hidden><button id="nested${i}" onclick="document.querySelector('#out').textContent='Nested ${i}'">Nested ${i}</button></section>`).join('')}<output id="out"></output></main>`;
+    const result = await sweepScreen({ freshPage: async () => { const page = await browser.newPage(); await page.setContent(html); return page; }, screen: { path: '/', name: 'Menus' }, target: 'test', waitMs: 20, limit: 100 });
+    assert.equal(result.exhausted, false);
+    assert.equal(result.controls.length, count * 3 + 1);
+    assert.equal(result.controls.filter(control => control.selector === '#global').length, 1);
+    for (let i = 0; i < count; i++) {
+      assert.equal(result.controls.filter(control => control.selector === `#nested${i}`).length, 1);
+      assert.equal(result.controls.filter(control => control.selector === `#open${i}`).length, 2);
+    }
+    assert.ok(result.controls.every(control => control.status === 'OBSERVED'));
+  }
+});
+
 test('layout-owned lease tabs retest shared controls in both views', async () => {
   const browser = await chromium.launch();
   const html = `<main><div id="appTabsSlot"><button data-lease-view="timeline" aria-pressed="true" onclick="document.querySelector('#refresh').onclick=()=>document.querySelector('#out').textContent='Live';this.setAttribute('aria-pressed','true');this.nextElementSibling.setAttribute('aria-pressed','false')">Timeline</button><button data-lease-view="gaps" aria-pressed="false" onclick="document.querySelector('#refresh').onclick=null;this.setAttribute('aria-pressed','true');this.previousElementSibling.setAttribute('aria-pressed','false')">Missing dates</button></div><button id="refresh" onclick="document.querySelector('#out').textContent='Live'">Refresh leases</button><output id="out"></output></main>`;
@@ -152,6 +169,22 @@ test('record drawers with shared controls are swept under each accessible title'
   assert.ok(result.controls.some(control => control.name === 'Shared action' && control.status === 'DEAD' && control.openers.includes('Open record two')));
   assert.ok(result.controls.every(control => !['ERROR','UNREACHABLE'].includes(control.status)));
   await browser.close();
+});
+
+test('reused record menus retest shared controls under each accessible label', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const labelledBy of [false, true]) {
+    const label = text => labelledBy ? `document.querySelector('#menuTitle').textContent='${text}'` : `document.querySelector('#menu').setAttribute('aria-label','${text}')`;
+    const html = `<header><button id="global" onclick="document.querySelector('#out').textContent='Global changed'">Global action</button></header><main><button id="one" onclick="${label('Record one actions')};document.querySelector('#action').onclick=()=>document.querySelector('#out').textContent='Live';document.querySelector('#menu').hidden=false">Open record one</button><button id="two" onclick="${label('Record two actions')};document.querySelector('#action').onclick=null;document.querySelector('#menu').hidden=false">Open record two</button><section id="menu" role="menu" ${labelledBy ? 'aria-labelledby="menuTitle"' : 'aria-label="Record actions"'} hidden><h2 id="menuTitle">Record actions</h2><button id="action" role="menuitem">Shared action</button></section><output id="out"></output></main>`;
+    const result = await sweepScreen({ freshPage: async () => { const page = await browser.newPage(); await page.setContent(html); return page; }, screen: { path: '/', name: 'Record menus' }, target: 'test', waitMs: 20, limit: 20 });
+    assert.equal(result.exhausted, false);
+    assert.ok(result.controls.some(control => control.name === 'Shared action' && control.status === 'OBSERVED' && control.openers.includes('Open record one')));
+    assert.ok(result.controls.some(control => control.name === 'Shared action' && control.status === 'DEAD' && control.openers.includes('Open record two')));
+    assert.equal(result.controls.filter(control => control.selector === '#action').length, 2);
+    assert.equal(result.controls.filter(control => control.selector === '#global').length, 1);
+    assert.ok(result.controls.every(control => !['ERROR','UNREACHABLE'].includes(control.status)));
+  }
 });
 
 test('all select options and their newly revealed controls are swept', async () => {
