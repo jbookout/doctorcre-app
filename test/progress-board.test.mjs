@@ -484,3 +484,21 @@ test('PR132 #8: explicit bindings share the pipeline, blocked and completed proj
   for(const card of cards){assert.match(card.textContent,/WR-000999/);assert.match(card.textContent,/#88/);}
  }
 });
+
+test("recorded source cards retain their filter and detail outside the release sequence", async () => {
+  const read = structuredClone(FULL.project);
+  const tasks = read.snapshot.snapshot_json.tasks;
+  const source = Object.values(tasks)[0];
+  tasks["recorded-source"] = {...source, id:"recorded-source", title:"Synthetic recorded completion",
+    status:"done", stage:"recorded", pr:null, evidence:"Recorded loop state: closed"};
+  const {board, window, $, $$} = await mount(read);
+  assert.ok($("#filter-stage option[value='recorded']"));
+  $("#filter-stage").value = "recorded";
+  $("#filter-stage").dispatchEvent(new window.Event("change"));
+  assert.equal($$("#board-stages [data-stage='recorded'] .board-card").length, 1);
+  assert.equal($$("#board-stages [data-stage='live'] .board-card").length, 0);
+  assert.equal($$("#board-stages [data-stage='recorded'] .stage-index").length, 0);
+  assert.equal($$("#completed-list [data-stage='recorded']").length, 1);
+  assert.match($("#completed-count").textContent, /1 RECORDED/);
+  board.dispose();
+});

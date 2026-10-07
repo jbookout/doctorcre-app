@@ -119,8 +119,8 @@ export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}
    if(!force&&!append&&(dialog.open||cards.contains(document.activeElement)))return;
    pageCount=append?pageCount+1:force?1:pageCount;
    items=append?[...items,...read.items]:read.items;cursor=read.next_cursor;cursorQuery=signature;
-   coverage.replaceChildren(showCoverage(read,queryArgs.live_library?'Live Library':'Unfinished'));
-   if(liveRead)coverage.append(node('span',' · '),showCoverage(liveRead,'Live'));
+   coverage.replaceChildren(showCoverage(read,queryArgs.live_library?'Completed records':'Unfinished'));
+   if(liveRead)coverage.append(node('span',' · '),showCoverage(liveRead,'Recent completions'));
    else if(liveError)coverage.append(node('span',' · Recent completions unavailable'));
    const refreshButton=node('button','↻');refreshButton.type='button';refreshButton.className='icon-btn';refreshButton.setAttribute('aria-label','Refresh');refreshButton.title='Refresh';refreshButton.addEventListener('click',()=>refresh(false,{force:true}));coverage.append(refreshButton);
    for(const [name,key] of [['source','source_ref'],['kind','kind']]){
@@ -141,7 +141,7 @@ export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}
  retry?.addEventListener('click',()=>refresh(false,{force:true}));
  form.addEventListener('change',()=>refresh(false,{force:true}));
  more.addEventListener('click',()=>refresh(true));
- library.addEventListener('click',()=>{libraryMode=!libraryMode;library.textContent=libraryMode?'Unfinished work':'Live Library';library.setAttribute('aria-pressed',String(libraryMode));refresh(false,{force:true});});
+ library.addEventListener('click',()=>{libraryMode=!libraryMode;library.textContent=libraryMode?'Unfinished work':'Completed records';library.setAttribute('aria-pressed',String(libraryMode));refresh(false,{force:true});});
  actionForm.addEventListener('submit',async event=>{
   event.preventDefault();if(!current)return;
   const view=current;

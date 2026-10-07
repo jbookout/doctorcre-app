@@ -1,4 +1,4 @@
-import {STAGES,taskStage} from './progress-board-model.js';
+import {STAGES,RECORDED_STAGE,taskStage} from './progress-board-model.js';
 export const SYSTEM_WORK_CONTRACT = 'unfinished-work.v1';
 // Producer revision is pinned in the app PR after the server source is committed.
 export function validSystemWork(read) {
@@ -11,13 +11,13 @@ export function groupSystemWork(items){
 }
 export function recentLive(items){return items.slice().sort((a,b)=>b.last_activity_at.localeCompare(a.last_activity_at)||a.id.localeCompare(b.id)).slice(0,10);}
 export function systemPipeline(items,live){
- const stages=STAGES.map(stage=>({...stage,tasks:[]}));
+ const stages=[...STAGES,RECORDED_STAGE].map(stage=>({...stage,tasks:[]}));
  for(const item of [...items,...recentLive(live)]){
   const status=item.completed?'done':({in_progress:'running',claimed:'running',verification:'review',pending:'review',needs_revision:'review',monitoring:'review',investigating:'review'})[item.state]||item.state;
   const task={...item,id:`${item.kind}:${item.id}`,status,executor:item.owner,
-    updated_at:item.last_activity_at,evidence:item.completed?'Completed':null,note:`${item.kind.replaceAll('_',' ')} · ${item.age} days old`};
-  const stage=item.completed?'live':taskStage({...task,stage:['ci','merged'].includes(item.state)?item.state:item.stage});
-  stages.find(s=>s.id===stage).tasks.push(task);
+    updated_at:item.last_activity_at,evidence:item.completed?`Recorded ${item.kind.replaceAll('_',' ')} state: ${item.state}`:null,note:`${item.kind.replaceAll('_',' ')} · ${item.age} days old`};
+  const stage=item.completed?'recorded':taskStage({...task,stage:['ci','merged'].includes(item.state)?item.state:item.stage});
+  stages.find(s=>s.id===stage).tasks.push({...task,stage});
  }
  return {stages};
 }
