@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.3 || >=24.8.0"
   },
   "scripts": {
     "build": "node scripts/build-artifact.mjs build",
@@ -29,13 +29,18 @@
     "preserve": "npm run slices:check",
     "predeployment:check:staging": "npm run slices:check",
     "predeployment:check:production": "npm run slices:check",
-    "test:regressions": "e2e run --config e2e.regressions.config.ts"
+    "test:regressions": "e2e run --config e2e.regressions.config.ts",
+    "e2e:staging:explore": "node scripts/e2e-staging/explore.mjs",
+    "e2e:staging:sweep": "node scripts/e2e-staging/sweep.mjs",
+    "e2e:staging:sweep:resume": "node scripts/e2e-staging/sweep.mjs --resume",
+    "e2e:staging:selftest": "node --test tests/staging-live/*.test.mjs && python3 tests/staging-live/scrub.test.py",
+    "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
-    "@e2e-dev/web": "0.12.0",
+    "@e2e-dev/web": "0.13.0",
     "ai": "7.0.127",
-    "e2e": "0.17.0",
+    "e2e": "0.18.0",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
     "wrangler": "4.131.2"

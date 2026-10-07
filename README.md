@@ -12,7 +12,7 @@ The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
 routes through a private Cloudflare service binding.
 
-Local development and the e2e runner require Node.js 22.12.0 or newer.
+Local development and the e2e runner require Node.js 22.22.3 or newer on Node 22, or 24.8.0 or newer.
 
 ```bash
 npm ci
