@@ -2,7 +2,7 @@ import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAut
 import { boardPageUrl } from './progress-board-route.js';
 import { createLiveClient } from './live-client.js';
 import { boardView, boardFreshness, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
-import { mountProgressWire } from './room.js';
+import { mountProgressWire } from './progress-wire.js';
 import { validEngineeringPassport } from './job-passport.js';
 import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
 import { systemPipeline, validSystemWork } from './system-work-board-model.js';

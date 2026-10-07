@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.43.0",
+  "version": "1.44.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "2f531c295f37757899ca432dfb04a9b95e8d5184"
+    "source_commit": "b8e044ace2ef2270ab75d63a628448e04e392e81"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -81,6 +81,7 @@
     "read-progress-board",
     "read-resource-dashboard",
     "read-room",
+    "read-room-latest",
     "read-room-queue",
     "read-session-identity",
     "read-tour-selection-cart",

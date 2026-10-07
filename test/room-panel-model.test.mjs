@@ -18,7 +18,7 @@ import {
   errorState, humanizeKey, isErrorReceipt, isHeartbeat, isSubstantiveTurn,
   isDocStaffProfile, isWorkerSpawn, lagState, receiptKey, receiptLabel, relativeAgo,
   relativeTime, seatColor, sessionState, stageNodes, turnPasses,
-} from "../js/room.js";
+} from "../js/progress-wire.js";
 
 const NOW = Date.parse("2026-08-22T15:00:00Z");
 const at = (offsetSeconds) => new Date(NOW - offsetSeconds * 1000).toISOString();
