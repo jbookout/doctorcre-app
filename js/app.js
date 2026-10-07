@@ -582,6 +582,7 @@ function installCallMode() {
     startAgenda,
     onConfirmed: loadHome,
   });
+  state.callModeUi.checkEligibility();
   return state.callModeUi;
 }
 
