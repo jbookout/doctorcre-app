@@ -63,21 +63,39 @@ export function sweepFindings(screens) {
   }))].map(finding => ({ ...finding, id: screen.attempt_id ? `attempt/${screen.attempt_id}/${finding.id}` : finding.id })));
 }
 
-export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations, publishFile = rename }) {
+export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates, publishFile = rename }) {
   const previous = await retainedReport(output, release);
   explorations = mergeRows(previous.explorations, explorations ?? [], row => JSON.stringify([row.target, row.screen, row.agent]));
   findings = mergeRows(previous.findings, findings ?? [], row => row.id);
   expectedScreens ??= previous.expectedScreens ?? screens.length;
   expectedExplorations ??= previous.expectedExplorations ?? explorations.length;
   setup ??= previous.setup;
+  stateObligations ??= previous.stateObligations ?? [];
+  expectedStates ??= stateObligations.length;
   await mkdir(output, { recursive: true, mode: 0o700 });
   const stage = await mkdtemp(join(dirname(output), '.' + basename(output) + '-report-'));
   try {
-    const all = [...history.flatMap(entry => entry.findings), ...sweepFindings(screens), ...findings];
+    const owned = stateObligations.filter(entry => entry.spec.kind !== 'calendar-operation').flatMap(entry => [
+      ...(entry.result ? [{ ...entry.result, attempt_id: entry.attempt_id }] : []),
+      ...(entry.history || []).map(old => ({ ...old.result, attempt_id: old.attempt_id })),
+    ]);
+    const calendarFindings = stateObligations.filter(entry => entry.spec.kind === 'calendar-operation').flatMap(entry =>
+      [...(entry.result ? [{ result: entry.result, attempt_id: entry.attempt_id }] : []),
+        ...(entry.history || []).map(old => ({ ...old, resolved: true }))]
+        .filter(row => row.result.status === 'failed').map(({ result, attempt_id, resolved }) => ({
+          id: 'attempt/' + attempt_id + '/state/' + entry.target + '/' + entry.spec.id + '/' + result.failure.code,
+          surface: 'app', screen: 'Calendar', severity: 'major', kind: 'bug', source: 'run',
+          title: 'Calendar functional coverage failed: ' + result.failure.code,
+          steps: result.steps.map(step => 'Perform declared Calendar step: ' + JSON.stringify(step)), expected: 'The declared Calendar operation has correct dates and rendered state.',
+          actual: result.failure.code, evidence_path: result.evidence_path || '',
+          suspected_area: 'scripts/e2e-staging/calendar-coverage.mjs',
+          ...(resolved ? { resolved: true } : {}),
+        })));
+    const all = [...history.flatMap(entry => entry.findings), ...sweepFindings(screens), ...sweepFindings(owned), ...calendarFindings, ...findings];
     await writeFile(join(stage, 'findings.json'), JSON.stringify(all, null, 2) + '\n');
     await writeFile(join(stage, 'explorations.json'), JSON.stringify(explorations, null, 2) + '\n');
     const controls = screens.flatMap(screen => screen.controls);
-    await writeFile(join(stage, 'controls.json'), JSON.stringify({ release, screens, history, explorations, findings, setup, expectedScreens, expectedExplorations }, null, 2) + '\n');
+    await writeFile(join(stage, 'controls.json'), JSON.stringify({ release, screens, history, explorations, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates }, null, 2) + '\n');
     const rows = screens.map(screen => `| ${screen.target} | ${screen.name} (${screen.path}) | ${screen.reached ? 'reached' : 'FAILED'} | ${screen.controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} | ${screen.controls.filter(c => c.status === 'DEAD').length} | ${screen.controls.filter(c => c.status === 'DISABLED').length} | ${screen.controls.filter(c => ['ERROR','UNREACHABLE'].includes(c.status)).length} | ${screen.failure ? `${screen.failure.phase}: ${screen.failure.code}` : screen.in_progress ? 'In progress; incomplete' : ''} |`);
     const disabled = controls.filter(c => c.status === 'DISABLED').map(c => `- ${c.target} ${c.path}: ${c.name || c.selector}: ${c.reason}`);
     const explorationRows = explorations.map(run => `| ${run.target} | ${run.screen} | ${run.agent} | ${run.steps} / 40 | ${run.status} |`);
@@ -88,6 +106,7 @@ export async function writeReport(output, { screens = [], history = [], explorat
       '| Target | Screen | Access | Pressed | DEAD | Disabled | Failed to press | Failure phase |', '|---|---|---|---:|---:|---:|---:|---|', ...rows, '',
       ...(history.length ? ['## Previous interrupted attempts', '', 'Current coverage counts use the latest attempt for each target and path. Earlier controls, findings and evidence remain below and in controls.json. Historical DEAD keys remain subject to the exact allowlist; historical infrastructure failures do not block a later completed attempt.', '', '| Attempt | Target | Screen | Retained controls | DEAD | Prior failure |', '|---|---|---|---:|---:|---|', ...historyRows, ''] : []),
       ...(screens.some(screen => screen.traversal) ? ['## Durable traversal', '', 'Known remaining counts cover queued controls; later discovery can add states. Opening paths are replayed to restore UI state without replacing measured results. Legacy incomplete screens without a frontier require a conservative screen retry.', '', '| Target | Screen | Known remaining | Maximum opener depth | Pending discovery |', '|---|---|---:|---:|---|', ...screens.filter(screen => screen.traversal).map(screen => '| ' + screen.target + ' | ' + screen.path + ' | ' + screen.traversal.known_remaining + ' | ' + screen.traversal.max_opener_depth + ' | ' + Boolean(screen.traversal.pending_discovery) + ' |'), ''] : []),
+      ...(stateObligations.length ? ['## Destination and functional states', '', String(stateObligations.filter(row => row.status === 'passed').length) + '/' + expectedStates + ' state obligations passed. These supplement the full screen and model-goal denominators.', '', '| Target | Owner | State | Status | Source presses retained |', '|---|---|---|---|---:|', ...stateObligations.map(row => '| ' + row.target + ' | ' + row.spec.owner + ' | ' + row.spec.id + ' | ' + row.status + ' | ' + row.sources.length + ' |'), ''] : []),
       '## Disabled controls', '', ...disabled, '', '## Per-screen explorations', '', `${explorations.length}/${expectedExplorations} goals attempted.`, '', '| Target | Screen | Agent | Steps / limit | Status |', '|---|---|---|---:|---|', ...explorationRows, '',
       'Controls restore browser storage and reload the screen before each press, then replay only the opening path. Staging server mutations persist. Every phase failure, exhausted discovery queue, missing screen, failed press or disabled control without a reason fails completeness. Completed control results and evidence remain in partial reports. OBSERVED records signals, not a claim that the action is correct. Focus is placed on the target before measurement so pointer focus alone does not mask a dead action.', '',
       'Call Mode opens a local service outside the staging stack; the runner presses its link and blocks the nonstaging destination. A resulting network signal does not verify the local service.', '',

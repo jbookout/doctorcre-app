@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { newDeadControls, sweepFindings } from './report.mjs';
 import { canContinueTraversal, validateTraversal } from './traversal.mjs';
+import { createStateLedger } from './state-ledger.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const statuses = new Set(['OBSERVED', 'DEAD', 'DISABLED', 'ERROR', 'UNREACHABLE']);
@@ -69,8 +70,13 @@ export function createSweepRun({ targets, routedScreens, prior }) {
   const continuationIDs = new Map([...measured].filter(([, screen]) => canContinueTraversal(screen)).map(([key, screen]) => [key, screen.attempt_id]));
   const attemptID = randomUUID();
   let number = 0;
+  const states = createStateLedger({ targets, routedScreens, prior: prior?.stateObligations || [], validateScreen, complete, attemptID });
+  states.validateSources([...measured.values(), ...history.map(entry => entry.screen)]);
   return {
     pending,
+    pendingStates() { return states.pending(); },
+    requireState(target, spec, source) { return states.register(target, spec, source); },
+    recordState(key, result) { states.record(key, result); },
     priorScreen(target, path) { return structuredClone(measured.get(pair(target, path))); },
     assertRelease(release) {
       if (!sourceRelease(release) || prior && (prior.release.source_commit !== release.source_commit || prior.release.carr_source_commit !== release.carr_source_commit)) throw new Error('Staging sweep requires the same pinned source pair; no screen was retried');
@@ -83,12 +89,14 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       if (old?.attempt_id === currentAttempt && (screen.controls.length < old.controls.length || JSON.stringify(screen.controls.slice(0, old.controls.length)) !== JSON.stringify(old.controls))) throw new Error('Measured control evidence cannot be replaced during frontier continuation');
       if (old && old.attempt_id !== currentAttempt) history.push({ screen: structuredClone(old), findings: sweepFindings([old]) });
       measured.set(key, { ...structuredClone(screen), attempt_id: currentAttempt });
+      states.collect(screen);
     },
-    snapshot() { return structuredClone({ screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },
+    snapshot() { return structuredClone({ stateObligations: states.snapshot(), expectedStates: states.snapshot().length, screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },
     verdict(allowlist) {
-      const controls = [...measured.values(), ...history.map(entry => entry.screen)].flatMap(screen => screen.controls);
+      const owned = states.snapshot().filter(entry => entry.spec.kind !== 'calendar-operation').flatMap(entry => [entry.result, ...(entry.history || []).map(old => old.result)]).filter(Boolean);
+      const controls = [...measured.values(), ...history.map(entry => entry.screen), ...owned].flatMap(screen => screen.controls);
       const dead = newDeadControls(controls, allowlist);
-      return { completed: measured.size === planned.length && planned.every(({ target, screen }) => complete(measured.get(pair(target.name, screen.path)))), newDeadControls: [...new Set(dead.map(row => row.key))] };
+      return { completed: measured.size === planned.length && planned.every(({ target, screen }) => complete(measured.get(pair(target.name, screen.path)))) && states.completed(), pendingStateObligations: states.pending().map(entry => entry.key), newDeadControls: [...new Set(dead.map(row => row.key))] };
     },
     evidencePaths(output, privateRoot, status) {
       requireCheckpoint(statuses.has(status));
