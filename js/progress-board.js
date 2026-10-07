@@ -6,7 +6,7 @@ import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
 import { mountCostView } from './progress-board-costs.js';
 import {
-  jobLinks, STAGES, RECORDED_STAGE, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
+  jobLinks, STAGE_DEFINITIONS, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
   answerRequest, taskSummary, modelLine, stageEnteredAt, ageText,
   executorGlyph, executorPool, taskRepo, liveView, readLivePreference,
   writeLivePreference, filterCards, groupByRepo, boardFromSearch, safeHref, sortLive,
@@ -190,7 +190,7 @@ export function mountBoard(deps = {}) {
   }
 
   function stageColor(id) {
-    return [...STAGES, RECORDED_STAGE].find(stage => stage.id === id)?.color || "#f2f6fc";
+    return STAGE_DEFINITIONS.find(stage => stage.id === id)?.color || "#f2f6fc";
   }
 
   function clickable(node, open) {
@@ -261,7 +261,7 @@ export function mountBoard(deps = {}) {
       "data-card-id": card.id, "data-task-id": card.id, "data-stage": card.stage, "data-pulse": card.pulse,
       "data-indicators": card.indicators.join(" "),
       style: `--stage-accent:${stageColor(card.stage)};--pulse-speed:${pulseSpeed(card.pulse)};--i:${Math.min(index, 12)}`,
-      "aria-label": `${card.title || card.id}, ${STAGES.find(stage => stage.id === card.stage).label}. Open work detail.`,
+      "aria-label": `${card.title || card.id}, ${STAGE_DEFINITIONS.find(stage => stage.id === card.stage).label}. Open work detail.`,
     });
     if (card.indicators.includes("outline-dashed")) node.classList.add("outline-dashed");
     const previous = fingerprints.get(card.id);

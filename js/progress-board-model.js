@@ -23,7 +23,7 @@ export const RECORDED_STAGE = {
   id: "recorded", label: "Recorded", color: "#f2f6fc", sequence: false,
   meaning: "Completed in its source record; live consumer verification is separate",
 };
-const STAGE_DEFINITIONS = [...STAGES, RECORDED_STAGE];
+export const STAGE_DEFINITIONS = [...STAGES, RECORDED_STAGE];
 
 // Executor pools, in ledger order. Glyphs match the CARR producer's POOLS.
 export const EXECUTORS = [
