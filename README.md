@@ -50,7 +50,13 @@ staging sessions before testing only the remaining controls. Replaying an opener
 restores UI state; staging mutations persist. A pending post-click discovery is
 replayed before continuing, so a crash cannot silently omit its children.
 Known remaining controls and opener depth are checkpointed; newly discovered
-states can increase the remaining count. Source pair changes and changed opener
+states can increase the remaining count. DOM identities are hashed before
+publication so URL and credential redaction cannot change their bindings. Resume
+matches that complete state digest and uses the unique live control for its
+selector and option value; scrubbed metadata is never an action argument.
+Existing unsullied legacy identity bindings retain their exact keys and measured
+rows. A legacy identity already changed by redaction is refused rather than
+reconstructed. Source pair changes and changed opener
 identities fail rather than pretending to continue.
 
 An incomplete legacy checkpoint without a frontier requires a conservative

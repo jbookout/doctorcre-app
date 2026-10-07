@@ -754,3 +754,57 @@ test('session-preflight failure retains the unpressed frontier and resumes witho
   const findings = (await import('../../scripts/e2e-staging/report.mjs')).sweepFindings([resumed]);
   assert.equal(findings.find(row => row.id.includes('session-exchange-transport-failed')).resolved, true);
 });
+
+test('scrubbed share URLs and nested selectors resume through real live actions without identity collisions', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const tokens = ['A','B','C','D','E'].map(letter => letter.repeat(43));
+  const [first, second, nested, optionA, optionB] = tokens;
+  const fixture = '<main><a id=shareA href="/share?token=' + first + '" onclick="event.preventDefault();document.querySelector(\'#outer\').hidden=false">Share one</a><a id=shareB href="/share?token=' + second + '" onclick="event.preventDefault();document.querySelector(\'#outer\').hidden=false">Share two</a><section id=outer role=region hidden><button id="' + nested + '" onclick="document.querySelector(\'#inner\').hidden=false">Open nested</button><section id=inner role=region hidden><select id=choice onchange="document.querySelector(\'#result\').textContent=this.value"><option value="" disabled selected>Choose</option><option value="' + optionA + '">First</option><option value="' + optionB + '">Second</option></select><button id=leaf onclick="document.querySelector(\'#result\').textContent=\'done\'">Finish</button></section></section><output id=result></output></main>';
+  const freshPage = async (html = fixture) => { const page = await browser.newPage(); await page.setContent(html); return page; };
+  const screen = { name: 'Synthetic', path: '/', surface: 'app' };
+  const plan = { targets: [{ name: 'desktop', surface: 'app' }], routedScreens: [screen] };
+  let partial;
+  await sweepScreen({ freshPage: () => freshPage(), screen, target: 'desktop', waitMs: 20, checkpoint: async row => {
+    if (!partial && row.traversal.pending_discovery?.control.selector === '#' + nested) {
+      partial = structuredClone(row); throw new Error('Synthetic interruption before nested discovery');
+    }
+  } });
+  assert.ok(partial);
+  assert.ok(partial.controls.some(row => row.selector === '#shareA'));
+  assert.ok(partial.controls.some(row => row.selector === '#shareB'));
+  const output = await mkdtemp(join(tmpdir(), 'staging-sensitive-frontier-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  const initial = createSweepRun(plan); initial.record(partial);
+  await writeReport(output, { ...initial.snapshot(), release });
+  const bytes = await readFile(join(output, 'controls.json'), 'utf8');
+  for (const token of tokens) assert.ok(!bytes.includes(token), 'Credential canary remained in canonical checkpoint');
+  assert.ok(bytes.includes('[redacted]'));
+  const saved = JSON.parse(bytes);
+  assert.equal(saved.screens[0].traversal.pending_discovery.control.selector, '#[redacted]');
+  const shareRows = saved.screens[0].controls.filter(row => ['#shareA','#shareB'].includes(row.selector));
+  assert.equal(shareRows[0].href, shareRows[1].href);
+  assert.notEqual(shareRows[0].identity, shareRows[1].identity);
+  assert.notEqual(shareRows[0].key, shareRows[1].key);
+  const resumed = createSweepRun({ ...plan, prior: saved });
+  const selected = new Set();
+  const continued = await sweepScreen({ freshPage: () => freshPage(), screen, target: 'desktop', waitMs: 20, prior: resumed.priorScreen('desktop','/'),
+    evidence: async (page,row) => { if (row.selector === '#choice') selected.add(await page.locator('#choice').inputValue()); },
+    checkpoint: async row => {
+      resumed.record(row); await writeReport(output, { ...resumed.snapshot(), release });
+      const persisted = JSON.parse(await readFile(join(output,'controls.json'),'utf8'));
+      assert.doesNotThrow(() => createSweepRun({ ...plan, prior: persisted }));
+    },
+  });
+  assert.equal(continued.failure, null);
+  assert.deepEqual(continued.controls.slice(0, saved.screens[0].controls.length), saved.screens[0].controls);
+  assert.ok(selected.has(optionA) && selected.has(optionB), 'Resume used redacted option metadata instead of the uniquely matched live values');
+  assert.ok(continued.controls.some(row => row.selector === '#leaf' && row.status === 'OBSERVED'));
+  resumed.record(continued); await writeReport(output, { ...resumed.snapshot(), release });
+  assert.equal(resumed.verdict([]).completed, true);
+  const finalBytes = await readFile(join(output,'controls.json'),'utf8');
+  for (const token of tokens) assert.ok(!finalBytes.includes(token));
+  const changed = await sweepScreen({ freshPage: () => freshPage(fixture.replaceAll(first, 'Z'.repeat(43))), screen, target: 'desktop', waitMs: 20, prior: saved.screens[0] });
+  assert.equal(changed.failure.code, 'opener-state-changed');
+  assert.deepEqual(changed.controls, saved.screens[0].controls);
+});

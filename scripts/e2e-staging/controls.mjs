@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { canContinueTraversal, traversalSnapshot } from './traversal.mjs';
+import { canonicalIdentity, identityKey, canContinueTraversal, traversalSnapshot } from './traversal.mjs';
 
 export const CONTROL_SELECTOR = 'button,input:not([type="hidden"]):not([readonly]),textarea:not([readonly]),a[href],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="switch"],[role="checkbox"],input[type="checkbox"],input[type="radio"],[aria-pressed],[aria-expanded],summary,select';
 export const WORKSPACE_VIEW_SELECTOR = '[role="tab"],[data-view],#appTabsSlot [aria-pressed],[data-layout-slot="tabs"] [aria-pressed],[data-atlas-view],#viewConversation,#viewEverything';
@@ -12,7 +11,7 @@ export class SweepFailure extends Error {
 }
 
 async function inventoryState(page) {
-  return page.locator(CONTROL_SELECTOR).evaluateAll((elements, workspaceSelector) => {
+  const state = await page.locator(CONTROL_SELECTOR).evaluateAll((elements, workspaceSelector) => {
     const visible = element => {
       if (!element.checkVisibility({ visibilityProperty: true })) return false;
       const rect = element.getBoundingClientRect();
@@ -95,6 +94,7 @@ async function inventoryState(page) {
     });
     return { rows: controls, busy: [...document.querySelectorAll('[aria-busy="true"]')].some(busyVisible) };
   }, WORKSPACE_VIEW_SELECTOR);
+  return { ...state, rows: state.rows.map(row => ({ ...row, identity: canonicalIdentity(row.identity) })) };
 }
 
 export async function inventory(page) {
@@ -199,7 +199,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   const continuing = canContinueTraversal(prior);
   const saved = continuing ? structuredClone(prior.traversal) : null;
   const queue = saved ? [...(saved.active ? [saved.active] : []), ...saved.queue] : [{ openers: [], controls: null }];
-  const destructive = saved?.destructive || [], seen = new Set(saved?.seen || []), controls = continuing ? structuredClone(prior.controls) : [];
+  const destructive = saved?.destructive || [], seen = new Set((saved?.seen || []).map(canonicalIdentity)), controls = continuing ? structuredClone(prior.controls) : [];
   let active = null, pending = saved?.pending_discovery || null;
   const priorFailures = continuing ? [...(prior.prior_failures || []), ...(prior.failure ? [{ ...prior.failure, retained_controls: prior.controls.length }] : [])] : [];
   const failureEvidence = priorFailures.length ? { prior_failures: priorFailures } : {};
@@ -213,10 +213,15 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   const replayOpeners = async (page, openers, strict = continuing) => {
     let listed;
     for (const opener of openers) {
-      if (strict && !(listed ||= await settle(page, 'frontier-validation', opener.selector)).some(row => row.identity === opener.identity))
-        throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
+      let action = opener;
+      if (strict) {
+        listed ||= await settle(page, 'frontier-validation', opener.selector);
+        const matching = listed.filter(row => row.identity === canonicalIdentity(opener.identity));
+        if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
+        action = matching[0];
+      }
       let result;
-      try { result = await pressControl(page, opener, { waitMs: Math.min(waitMs, 500) }); }
+      try { result = await pressControl(page, action, { waitMs: Math.min(waitMs, 500) }); }
       catch { throw new SweepFailure('replay', 'opener-press-failed', opener.selector); }
       if (!['OBSERVED','DEAD'].includes(result.status)) throw new SweepFailure('replay', result.status === 'UNREACHABLE' ? 'opener-unreachable' : 'opener-press-failed', opener.selector);
       listed = await settle(page, 'replay', opener.selector);
@@ -239,8 +244,8 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     catch { failure ||= { phase: 'checkpoint', code: 'checkpoint-write-failed', openers: [] }; }
   };
   const enqueue = (openers, exposed) => {
-    const scheduled = new Set([...(active?.controls || []), ...queue.flatMap(state => state.controls || []), ...destructive.flatMap(state => state.controls || [])].map(row => row.identity));
-    const next = exposed.filter(row => !seen.has(row.identity) && !scheduled.has(row.identity));
+    const scheduled = new Set([...(active?.controls || []), ...queue.flatMap(state => state.controls || []), ...destructive.flatMap(state => state.controls || [])].map(row => canonicalIdentity(row.identity)));
+    const next = exposed.filter(row => !seen.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)));
     if (next.length) queue.push({ openers, controls: next });
   };
   if (pending) {
@@ -259,7 +264,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     if (controls.length >= limit) { exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
     if (state.controls) {
-      state.controls = state.controls.filter(control => !seen.has(control.identity));
+      state.controls = state.controls.filter(control => !seen.has(canonicalIdentity(control.identity)));
       if (!state.controls.length) continue;
     }
     active = { ...state, controls: state.controls ? [...state.controls] : null };
@@ -276,23 +281,27 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
         if (failure) break;
         if (controls.length >= limit) { exhausted = true; break; }
         active.controls.shift();
-        if (seen.has(control.identity)) continue;
+        if (seen.has(canonicalIdentity(control.identity))) continue;
         if (!state.destructive && /(?:delete|archive|send draft|send-draft|sign out)/i.test(control.name)) {
           destructive.push({ openers: state.openers, controls: [control], destructive: true });
           continue;
         }
-        seen.add(control.identity);
-        const key = `${target}/${screen.path}/${createHash('sha256').update(control.identity).digest('hex').slice(0, 16)}`;
+        seen.add(canonicalIdentity(control.identity));
+        const key = `${target}/${screen.path}/${identityKey(control.identity)}`;
         const base = { ...control, key, screen: screen.name, path: screen.path, target, openers: state.openers.map(opener => opener.name) };
         let fresh, row, phase = 'fresh-page';
         try {
           fresh = await freshPage();
           phase = 'replay';
           const replayed = await replayOpeners(fresh, state.openers);
-          if (continuing && !(replayed || await settle(fresh, 'frontier-validation', control.selector)).some(row => row.identity === control.identity))
-            throw new SweepFailure('frontier-validation', 'control-state-changed', control.selector);
+          let action = control;
+          if (continuing) {
+            const matching = (replayed || await settle(fresh, 'frontier-validation', control.selector)).filter(row => row.identity === canonicalIdentity(control.identity));
+            if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'control-state-changed', control.selector);
+            action = matching[0];
+          }
           phase = 'press';
-          const result = await pressControl(fresh, control, { waitMs });
+          const result = await pressControl(fresh, action, { waitMs });
           row = { ...base, ...result };
           controls.push(row);
           phase = 'evidence';
@@ -316,7 +325,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
             row = { ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: failure.phase + ': ' + failure.code, signals: [] };
             controls.push(row);
           }
-          if (!row) { seen.delete(control.identity); active.controls.unshift(control); }
+          if (!row) { seen.delete(canonicalIdentity(control.identity)); active.controls.unshift(control); }
         } finally { await close(fresh, state.openers, control); }
         if (failure && failure.phase !== 'checkpoint') await publishProgress();
       }
