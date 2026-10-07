@@ -430,6 +430,12 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });
+test('a failed first read reconnects within seconds without waiting a full poll',async()=>{
+ let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
+ try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
+  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,14);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
 
 for (const surface of ['actor','workspace']) test(`PR129 #1 failed ${surface} verification clears loaded private details`,async()=>{
  const s=await setup();try{await s.app.readDetail(id(1));s.client[surface==='actor'?'getActor':'getWorkspace']=async()=>{throw Object.assign(new Error('Unavailable'),{status:503})};await s.app.refresh();
@@ -440,4 +446,32 @@ test('PR129 #8 an open missing lead recovers with the identical detail on the ne
  const s=await setup();try{await s.app.readDetail(id(1));const lead=s.board.leads.shift();await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Unavailable/);
  s.board.leads.unshift(lead);await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,true);assert.ok(s.d.querySelector('#detailStage'));assert.match(s.d.getElementById('detailBody').textContent,/example@example.test/);
  }finally{s.close()}
+});
+
+for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pending boot ${phase} immediately replaces the invalidated read`, async () => {
+ let actorReads = 0, workspaceReads = 0, release;
+ const held = new Promise(resolve => { release = resolve; });
+ const s = await setup({
+  getActor: async () => { actorReads++; return phase === 'identity' && actorReads === 1 ? held : 'example-partner'; },
+  getWorkspace: async () => { workspaceReads++; return phase === 'workspace' && workspaceReads === 1 ? held : structuredClone(workspace()); },
+ });
+ try {
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0);
+  Object.defineProperty(s.d, 'visibilityState', { value: 'hidden', configurable: true });
+  s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  Object.defineProperty(s.d, 'visibilityState', { value: 'visible', configurable: true });
+  s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  await tick();
+  // The client ignores abort: a held transport must not delay replacement.
+  assert.equal(actorReads, 2);
+  assert.equal(workspaceReads, phase === 'identity' ? 1 : 2);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.d.getElementById('leadBoard').getAttribute('aria-busy'), 'false');
+  assert.equal(s.d.getElementById('leadBoardError').hidden, true);
+  release(phase === 'identity' ? 'stale-example-partner' : { leads: [] });
+  await tick();
+  assert.equal(s.app.state.actor, 'example-partner');
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.writes.length, 0);
+ } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });

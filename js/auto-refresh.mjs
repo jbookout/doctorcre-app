@@ -2,24 +2,29 @@
 // Page callbacks own request epochs and preserve their local drafts.
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
-export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
+// A failed read retries on a short backoff (1s, 2s, 4s... capped at the
+// interval), so "reconnecting" holds within seconds rather than a full poll.
+export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
   let queuedResume = null;
   let disposed = false;
   let controller = null;
+  let failures = 0;
   const schedule = () => {
     window.clearTimeout?.(timer);
-    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, intervalMs); timer?.unref?.(); }
+    const delay = failures ? Math.min(intervalMs, retryMs * 2 ** (failures - 1)) : intervalMs;
+    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
   };
   const run = operation => {
     if (disposed || document.visibilityState === "hidden" || !shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
     controller = new AbortController();
-    running = readWithDeadline(signal => operation({ signal }), { signal: controller.signal, timeoutMs, clock: window }).catch(() => {
-      // Failure stays in the page's own state; the next scheduled read recovers.
+    running = readWithDeadline(signal => operation({ signal }), { signal: controller.signal, timeoutMs, clock: window }).then(() => { failures = 0; }, () => {
+      // Failure stays in the page's own state; the next read comes sooner.
+      failures += 1;
     }).finally(() => { running = null; controller = null; schedule(); });
     return running;
   };
