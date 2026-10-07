@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { canContinueTraversal, traversalSnapshot } from './traversal.mjs';
 
 export const CONTROL_SELECTOR = 'button,input:not([type="hidden"]):not([readonly]),textarea:not([readonly]),a[href],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="switch"],[role="checkbox"],input[type="checkbox"],input[type="radio"],[aria-pressed],[aria-expanded],summary,select';
 export const WORKSPACE_VIEW_SELECTOR = '[role="tab"],[data-view],#appTabsSlot [aria-pressed],[data-layout-slot="tabs"] [aria-pressed],[data-atlas-view],#viewConversation,#viewEverything';
@@ -194,8 +195,14 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, waitMs = 2000, limit = 5000, routedPaths = [] }) {
-  const queue = [{ openers: [], controls: null }], destructive = [], seen = new Set(), controls = [];
+export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, waitMs = 2000, limit = 5000, routedPaths = [] }) {
+  const continuing = canContinueTraversal(prior);
+  const saved = continuing ? structuredClone(prior.traversal) : null;
+  const queue = saved ? [...(saved.active ? [saved.active] : []), ...saved.queue] : [{ openers: [], controls: null }];
+  const destructive = saved?.destructive || [], seen = new Set(saved?.seen || []), controls = continuing ? structuredClone(prior.controls) : [];
+  let active = null, pending = saved?.pending_discovery || null;
+  const priorFailures = continuing ? [...(prior.prior_failures || []), ...(prior.failure ? [{ ...prior.failure, retained_controls: prior.controls.length }] : [])] : [];
+  const failureEvidence = priorFailures.length ? { prior_failures: priorFailures } : {};
   const stableMs = waitMs < 2000 ? waitMs : 1500;
   const settle = async (page, phase, selector) => {
     try { await page.waitForLoadState('networkidle', { timeout: 30_000 }); }
@@ -203,16 +210,20 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     try { return await settledInventory(page, { stableMs }); }
     catch { throw new SweepFailure(phase, 'inventory-failed', selector); }
   };
-  const replayOpeners = async (page, openers) => {
+  const replayOpeners = async (page, openers, strict = continuing) => {
+    let listed;
     for (const opener of openers) {
+      if (strict && !(listed ||= await settle(page, 'frontier-validation', opener.selector)).some(row => row.identity === opener.identity))
+        throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
       let result;
       try { result = await pressControl(page, opener, { waitMs: Math.min(waitMs, 500) }); }
       catch { throw new SweepFailure('replay', 'opener-press-failed', opener.selector); }
       if (!['OBSERVED','DEAD'].includes(result.status)) throw new SweepFailure('replay', result.status === 'UNREACHABLE' ? 'opener-unreachable' : 'opener-press-failed', opener.selector);
-      await settle(page, 'replay', opener.selector);
+      listed = await settle(page, 'replay', opener.selector);
     }
+    return listed;
   };
-  let reached = false, exhausted = false, failure = null;
+  let reached = continuing ? prior.reached : false, exhausted = false, failure = null;
   const fail = (error, phase, openers, control, code = `${phase}-failed`) => {
     const bounded = error instanceof SweepFailure ? error.failure : { phase, code };
     failure ||= { ...bounded, ...(control && !bounded.selector ? { selector: control.selector } : {}), openers: openers.map(opener => opener.name) };
@@ -224,9 +235,26 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   };
   const publishProgress = async () => {
     if (!checkpoint) return;
-    try { await checkpoint(structuredClone({ ...screen, target, reached, exhausted, controls, failure, in_progress: true })); }
+    try { await checkpoint(structuredClone({ ...screen, ...failureEvidence, target, reached, exhausted, controls, failure, in_progress: true, traversal: traversalSnapshot({ queue, destructive, active, pending, seen }) })); }
     catch { failure ||= { phase: 'checkpoint', code: 'checkpoint-write-failed', openers: [] }; }
   };
+  const enqueue = (openers, exposed) => {
+    const scheduled = new Set([...(active?.controls || []), ...queue.flatMap(state => state.controls || []), ...destructive.flatMap(state => state.controls || [])].map(row => row.identity));
+    const next = exposed.filter(row => !seen.has(row.identity) && !scheduled.has(row.identity));
+    if (next.length) queue.push({ openers, controls: next });
+  };
+  if (pending) {
+    let page;
+    try {
+      page = await freshPage();
+      const exposed = await replayOpeners(page, [...pending.openers, pending.control], true);
+      enqueue([...pending.openers, pending.control], exposed);
+      pending = null;
+      await publishProgress();
+    } catch (error) { fail(error, 'discovery', pending?.openers || []); }
+    finally { await close(page, pending?.openers || []); }
+    if (failure && failure.phase !== 'checkpoint') await publishProgress();
+  }
   while ((queue.length || destructive.length) && !failure) {
     if (controls.length >= limit) { exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
@@ -234,6 +262,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
       state.controls = state.controls.filter(control => !seen.has(control.identity));
       if (!state.controls.length) continue;
     }
+    active = { ...state, controls: state.controls ? [...state.controls] : null };
     let page, phase = 'fresh-page';
     try {
       page = await freshPage();
@@ -242,9 +271,11 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
       await replayOpeners(page, state.openers);
       phase = 'inventory';
       const listed = state.controls || await settledInventory(page, { stableMs });
+      active.controls = [...listed];
       for (const control of listed) {
         if (failure) break;
         if (controls.length >= limit) { exhausted = true; break; }
+        active.controls.shift();
         if (seen.has(control.identity)) continue;
         if (!state.destructive && /(?:delete|archive|send draft|send-draft|sign out)/i.test(control.name)) {
           destructive.push({ openers: state.openers, controls: [control], destructive: true });
@@ -257,32 +288,42 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
         try {
           fresh = await freshPage();
           phase = 'replay';
-          await replayOpeners(fresh, state.openers);
+          const replayed = await replayOpeners(fresh, state.openers);
+          if (continuing && !(replayed || await settle(fresh, 'frontier-validation', control.selector)).some(row => row.identity === control.identity))
+            throw new SweepFailure('frontier-validation', 'control-state-changed', control.selector);
           phase = 'press';
           const result = await pressControl(fresh, control, { waitMs });
           row = { ...base, ...result };
           controls.push(row);
           phase = 'evidence';
           if (evidence) row.evidence_path = await evidence(fresh, row);
-          phase = 'checkpoint';
-          await publishProgress();
           phase = 'discovery';
           const destination = new URL(fresh.url());
           const current = new URL(page.url());
           const discovery = destination.origin === current.origin && !destination.pathname.startsWith('/auth/') && (fresh.url() === page.url() || !routedPaths.includes(destination.pathname + destination.search));
-          if (!failure && result.status === 'OBSERVED' && discovery) {
-            const exposed = (await settle(fresh, 'discovery', control.selector)).filter(next => !seen.has(next.identity));
-            if (exposed.length) queue.push({ openers: [...state.openers, control], controls: exposed });
+          pending = result.status === 'OBSERVED' && discovery ? { openers: state.openers, control } : null;
+          phase = 'checkpoint';
+          await publishProgress();
+          phase = 'discovery';
+          if (!failure && pending) {
+            enqueue([...state.openers, control], await settle(fresh, 'discovery', control.selector));
+            pending = null;
+            await publishProgress();
           }
         } catch (error) {
           fail(error, phase, state.openers, control);
-          if (!row && ['replay','press'].includes(phase)) controls.push({ ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: `${failure.phase}: ${failure.code}`, signals: [] });
+          if (!row && ['replay','press'].includes(phase)) {
+            row = { ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: failure.phase + ': ' + failure.code, signals: [] };
+            controls.push(row);
+          }
+          if (!row) { seen.delete(control.identity); active.controls.unshift(control); }
         } finally { await close(fresh, state.openers, control); }
         if (failure && failure.phase !== 'checkpoint') await publishProgress();
       }
     } catch (error) { fail(error, phase, state.openers); }
     finally { await close(page, state.openers); }
+    if (!failure && !exhausted) active = null;
     if (failure && failure.phase !== 'checkpoint') await publishProgress();
   }
-  return { ...screen, target, reached, exhausted, controls, failure };
+  return { ...screen, ...failureEvidence, target, reached, exhausted, controls, failure, ...(failure || exhausted ? { in_progress: true, traversal: traversalSnapshot({ queue, destructive, active, pending, seen }) } : {}) };
 }

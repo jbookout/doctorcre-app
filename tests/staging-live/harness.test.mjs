@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, writeFile, chmod, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, chmod, readFile, rm, readdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '../../test/browser-harness.mjs';
 import { CONTROL_SELECTOR, inventory, pressControl, sweepScreen, settledInventory, SweepFailure } from '../../scripts/e2e-staging/controls.mjs';
-import { assertStagingURL, readSessionSecret } from '../../scripts/e2e-staging/session.mjs';
+import { assertStagingURL, readSessionSecret, preflightRequest, SessionPreflightFailure } from '../../scripts/e2e-staging/session.mjs';
 import { newDeadControls, explorationEvidence, writeReport } from '../../scripts/e2e-staging/report.mjs';
+import { validateTraversal } from '../../scripts/e2e-staging/traversal.mjs';
+import { persistSweepReport } from '../../scripts/e2e-staging/sweep.mjs';
 import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
@@ -543,10 +545,19 @@ test('killing an owned browser sweep after one control preserves durable incompl
   assert.equal(resumed.pending.length, 1);
   assert.equal(resumed.verdict([]).completed, false);
   assert.deepEqual(resumed.verdict([]).newDeadControls, [row.key]);
-  resumed.record({ ...checkpoint.screens[0], in_progress: false, controls: [{ ...row, status: 'OBSERVED' }] });
+  assert.throws(() => resumed.record({ ...checkpoint.screens[0], controls: [{ ...row, status: 'OBSERVED' }] }), /Measured control evidence/);
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const continued = await sweepScreen({ screen: routedScreens[0], target: 'desktop', prior: checkpoint.screens[0], waitMs: 20,
+    freshPage: async () => { const page = await browser.newPage(); await page.setContent('<main><button id=dead>Dead</button><button id=later>Later</button></main>'); return page; },
+  });
+  assert.equal(continued.controls.length, 2);
+  assert.equal(continued.controls.filter(control => control.selector === '#dead').length, 1);
+  assert.equal(continued.controls[0].status, 'DEAD');
+  resumed.record(continued);
   assert.equal(resumed.verdict([]).completed, true);
-  assert.equal(resumed.snapshot().history[0].screen.controls[0].status, 'DEAD');
-  assert.deepEqual(resumed.verdict([]).newDeadControls, [row.key]);
+  assert.equal(resumed.snapshot().history.length, 0);
+  assert.equal(resumed.snapshot().screens[0].attempt_id, checkpoint.screens[0].attempt_id);
+  assert.deepEqual(resumed.verdict([]).newDeadControls, continued.controls.map(control => control.key));
 });
 
 test('checkpoint failure stops new presses and reports a bounded infrastructure failure', async t => {
@@ -579,4 +590,167 @@ test('exhausted duplicate discovery states do not reopen and replay tested contr
   assert.equal(result.controls.filter(row => row.selector === '#shared').length, 1);
   assert.equal(new Set(result.controls.map(row => row.key)).size, 5);
   assert.equal(pages, 7, 'only the initial and first revealed inventory need base pages');
+});
+
+test('session preflight retries bounded transient failures and never retries authentication refusals', async () => {
+  for (const mode of ['transport', 'unavailable']) {
+    let calls = 0;
+    const response = await preflightRequest('session-exchange', async () => {
+      calls++;
+      if (calls < 3 && mode === 'transport') throw new Error('private provider credential canary');
+      return { status: () => calls < 3 ? 503 : 200 };
+    }, { pause: async () => {} });
+    assert.equal(calls, 3); assert.equal(response.status(), 200);
+  }
+  let denied = 0;
+  assert.equal((await preflightRequest('session-exchange', async () => { denied++; return { status: () => 401 }; }, { pause: async () => {} })).status(), 401);
+  assert.equal(denied, 1);
+  await assert.rejects(preflightRequest('carr-release', async () => { throw new Error('private provider credential canary'); }, { pause: async () => {} }),
+    error => error instanceof SessionPreflightFailure && error.code === 'carr-release-transport-failed' && !error.message.includes('canary'));
+});
+
+const frontierFixture = '<main><button id=open aria-expanded=false onclick="const x=document.querySelector(\'#panel\');x.hidden=!x.hidden;this.setAttribute(\'aria-expanded\',String(!x.hidden))">Open drawer</button><section id=panel hidden><button id=child>Nested action</button></section></main>';
+
+test('interruption before post-click discovery resumes the opener frontier without dropping its child', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const freshPage = async () => { const page = await browser.newPage(); await page.setContent(frontierFixture); return page; };
+  const screen = { name: 'Synthetic', path: '/', surface: 'app' };
+  let partial;
+  await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, checkpoint: async row => {
+    if (!partial) { partial = structuredClone(row); throw new Error('Synthetic process interruption after durable control record'); }
+  } });
+  assert.equal(partial.controls.length, 1);
+  assert.equal(partial.traversal.pending_discovery.control.selector, '#open');
+  validateTraversal(partial);
+  const output = await mkdtemp(join(tmpdir(), 'staging-frontier-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  const plan = { targets: [{ name: 'desktop', surface: 'app' }], routedScreens: [screen] };
+  const initial = createSweepRun(plan); initial.record(partial);
+  const setup = { release, complete: true, findings: [], needs_restore: [] };
+  await persistSweepReport(output, initial, setup);
+  const checkpoint = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8'));
+  const resumed = createSweepRun({ ...plan, prior: checkpoint }); resumed.assertRelease(release);
+  const continued = await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, prior: resumed.priorScreen('desktop', '/'),
+    checkpoint: async row => { validateTraversal(row); resumed.record(row); await persistSweepReport(output, resumed, setup); },
+  });
+  assert.equal(continued.failure, null);
+  assert.equal(continued.controls.length, 3);
+  assert.equal(continued.controls.filter(row => row.selector === '#child').length, 1);
+  assert.equal(continued.controls.filter(row => row.identity === partial.controls[0].identity).length, 1);
+  assert.deepEqual(continued.controls[0], checkpoint.screens[0].controls[0]);
+  resumed.record(continued); await persistSweepReport(output, resumed, setup);
+  assert.equal(resumed.verdict([]).completed, true);
+  assert.equal(resumed.snapshot().history.length, 0);
+  assert.equal(resumed.snapshot().screens[0].attempt_id, checkpoint.screens[0].attempt_id);
+  const original = await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20 });
+  assert.deepEqual(continued.controls.map(row => [row.key, row.status]).sort(), original.controls.map(row => [row.key, row.status]).sort());
+});
+
+test('persisted frontier refuses malformed state and changed opener identity before pressing', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const screen = { name: 'Synthetic', path: '/', surface: 'app' };
+  let partial;
+  await sweepScreen({ screen, target: 'desktop', waitMs: 20,
+    freshPage: async () => { const page = await browser.newPage(); await page.setContent(frontierFixture); return page; },
+    checkpoint: async row => { if (!partial) { partial = structuredClone(row); throw new Error('Synthetic interruption'); } },
+  });
+  for (const mutate of [
+    row => row.traversal.seen.push('unmeasured'),
+    row => row.traversal.known_remaining++,
+    row => row.traversal.max_opener_depth++,
+    row => row.traversal.pending_discovery.control.selector = '#unmeasured',
+    row => row.traversal.pending_discovery.control.disabled = true,
+    row => row.traversal.pending_discovery.control.optionValue = 'different-choice',
+    row => row.traversal.pending_discovery.control.identity = 'unmeasured',
+    row => row.controls[0].key = 'desktop//0000000000000000',
+    row => row.in_progress = false,
+  ]) { const bad = structuredClone(partial); mutate(bad); assert.throws(() => validateTraversal(bad), /invalid/); }
+  const changed = await sweepScreen({ screen, target: 'desktop', prior: partial, waitMs: 20,
+    freshPage: async () => { const page = await browser.newPage(); await page.setContent(frontierFixture.replaceAll('id=open', 'id=changed')); return page; },
+  });
+  assert.equal(changed.failure.phase, 'frontier-validation');
+  assert.equal(changed.failure.code, 'opener-state-changed');
+  assert.deepEqual(changed.controls, partial.controls);
+});
+
+test('killing frontier publication before canonical commit retains pending discovery and all child coverage', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'staging-frontier-publish-'));
+  const output = join(root, 'report'); t.after(() => rm(root, { recursive: true, force: true }));
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const freshPage = async () => { const page = await browser.newPage(); await page.setContent(frontierFixture); return page; };
+  const screen = { name: 'Synthetic', path: '/', surface: 'app' };
+  let partial;
+  await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, checkpoint: async row => {
+    if (!partial) { partial = structuredClone(row); throw new Error('Synthetic initial interruption'); }
+  } });
+  const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  const plan = { targets: [{ name: 'desktop', surface: 'app' }], routedScreens: [screen] };
+  const setup = { release, complete: true, findings: [], needs_restore: [] };
+  const initial = createSweepRun(plan); initial.record(partial); await persistSweepReport(output, initial, setup);
+  const original = await readFile(join(output, 'controls.json'), 'utf8');
+  const source = [
+    'import { chromium } from "playwright";',
+    'import { readFile, rename } from "node:fs/promises";',
+    'import { sweepScreen } from ' + JSON.stringify(new URL('../../scripts/e2e-staging/controls.mjs', import.meta.url).href) + ';',
+    'import { createSweepRun } from ' + JSON.stringify(new URL('../../scripts/e2e-staging/resume.mjs', import.meta.url).href) + ';',
+    'import { persistSweepReport } from ' + JSON.stringify(new URL('../../scripts/e2e-staging/sweep.mjs', import.meta.url).href) + ';',
+    'const output=' + JSON.stringify(output) + ', setup=' + JSON.stringify(setup) + ', plan=' + JSON.stringify(plan) + ', html=' + JSON.stringify(frontierFixture) + ';',
+    'const prior=JSON.parse(await readFile(output+"/controls.json","utf8")); const run=createSweepRun({...plan,prior});',
+    'const browser=await chromium.launch(); process.on("SIGTERM",async()=>{await browser.close();process.exit(1);});',
+    'await sweepScreen({screen:plan.routedScreens[0],target:"desktop",prior:prior.screens[0],waitMs:20,',
+    'freshPage:async()=>{const page=await browser.newPage();await page.context().route("**/*",route=>route.abort());await page.setContent(html);return page;},',
+    'checkpoint:async row=>{run.record(row);await persistSweepReport(output,run,setup,{publishFile:async(src,dest)=>{',
+    'if(dest.endsWith("/controls.json")){await browser.close();process.send({beforeCommit:true});setInterval(()=>{},1000);await new Promise(()=>{});}',
+    'await rename(src,dest);}});}});',
+  ].join('\n');
+  const child = spawn(process.execPath, ['--input-type=module', '-e', source], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  let stderr = ''; child.stderr.on('data', value => { stderr += value; });
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Publication fixture deadline: ' + stderr)); }, 20_000);
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('exit', code => { clearTimeout(timer); reject(new Error('Publication fixture ended: ' + code + ' ' + stderr)); });
+    child.once('message', value => { clearTimeout(timer); assert.equal(value.beforeCommit, true); resolve(); });
+  });
+  const ended = once(child, 'exit'); child.kill('SIGKILL'); assert.deepEqual(await ended, [null, 'SIGKILL']);
+  assert.equal(await readFile(join(output, 'controls.json'), 'utf8'), original);
+  const staged = (await readdir(root)).find(name => name.startsWith('.report-report-'));
+  const unpublished = JSON.parse(await readFile(join(root, staged, 'controls.json'), 'utf8'));
+  assert.equal(unpublished.screens[0].traversal.pending_discovery, null);
+  assert.equal(unpublished.screens[0].traversal.known_remaining, 2);
+  const checkpoint = JSON.parse(original), run = createSweepRun({ ...plan, prior: checkpoint }); run.assertRelease(release);
+  const result = await sweepScreen({ freshPage, screen, target: 'desktop', prior: run.priorScreen('desktop', '/'), waitMs: 20,
+    checkpoint: async row => { run.record(row); await persistSweepReport(output, run, setup); },
+  });
+  assert.equal(result.failure, null);
+  assert.equal(result.controls.length, 3);
+  assert.equal(result.controls.filter(row => row.selector === '#child').length, 1);
+  run.record(result); await persistSweepReport(output, run, setup);
+  assert.equal(run.verdict([]).completed, true);
+  assert.equal(run.snapshot().history.length, 0);
+});
+
+test('session-preflight failure retains the unpressed frontier and resumes without retesting completed controls', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const screen = { name: 'Synthetic', path: '/', surface: 'app' };
+  const html = '<main><button id=first onclick="document.querySelector(\'output\').textContent=\'First\'">First</button><button id=second onclick="document.querySelector(\'output\').textContent=\'Second\'">Second</button><button id=third onclick="document.querySelector(\'output\').textContent=\'Third\'">Third</button><output></output></main>';
+  let pages = 0;
+  const freshPage = async () => { const page = await browser.newPage(); await page.setContent(html); return page; };
+  const failed = await sweepScreen({ screen, target: 'desktop', waitMs: 20,
+    freshPage: async () => { if (++pages === 3) throw new SweepFailure('session-preflight', 'session-exchange-transport-failed'); return freshPage(); },
+  });
+  assert.equal(failed.failure.phase, 'session-preflight');
+  assert.equal(failed.controls.length, 1);
+  assert.equal(failed.traversal.known_remaining, 2);
+  validateTraversal(failed);
+  const resumed = await sweepScreen({ screen, target: 'desktop', waitMs: 20, prior: failed, freshPage });
+  assert.equal(resumed.failure, null);
+  assert.equal(resumed.controls.length, 3);
+  assert.deepEqual(resumed.controls[0], failed.controls[0]);
+  assert.equal(resumed.controls.filter(row => row.selector === '#first').length, 1);
+  assert.equal(resumed.prior_failures.length, 1);
+  assert.equal(resumed.prior_failures[0].retained_controls, 1);
+  const findings = (await import('../../scripts/e2e-staging/report.mjs')).sweepFindings([resumed]);
+  assert.equal(findings.find(row => row.id.includes('session-exchange-transport-failed')).resolved, true);
 });

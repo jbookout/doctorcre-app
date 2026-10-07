@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stagingSession, STAGING_ORIGIN } from './session.mjs';
+import { stagingSession, STAGING_ORIGIN, SessionPreflightFailure } from './session.mjs';
 import { installStagingGuard } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen, SweepFailure } from './controls.mjs';
@@ -13,8 +13,8 @@ import { prepareStagingRecords } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint, sweepOptions } from './resume.mjs';
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
-export async function persistSweepReport(output, run, setup) {
-  await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings });
+export async function persistSweepReport(output, run, setup, { publishFile } = {}) {
+  await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
 }
 
 export async function sweep({ resume = false } = {}) {
@@ -57,12 +57,12 @@ export async function sweep({ resume = false } = {}) {
           return page;
         } catch (error) {
           if (context) await context.close().catch(() => {});
-          throw error instanceof SweepFailure ? error : new SweepFailure(phase, code);
+          throw error instanceof SweepFailure ? error : new SweepFailure(phase, error instanceof SessionPreflightFailure ? error.code : code);
         }
       };
       let result;
       try {
-        result = await sweepScreen({ freshPage, screen, target: target.name, routedPaths: routedScreens.map(screen => screen.path), checkpoint: async partial => {
+        result = await sweepScreen({ freshPage, screen, target: target.name, prior: run.priorScreen(target.name, screen.path), routedPaths: routedScreens.map(screen => screen.path), checkpoint: async partial => {
           run.record(partial);
           await persistSweepReport(output, run, setup);
         }, evidence: async (page, row) => {

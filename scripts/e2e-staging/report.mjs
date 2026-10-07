@@ -50,19 +50,20 @@ export function sweepFindings(screens) {
     expected: 'A control produces a URL change, main DOM mutation, network request, dialog/sheet/toast, focus move or aria state change.',
     actual: row.status === 'DEAD' ? 'No observable signal followed within two seconds.' : row.reason,
     evidence_path: row.evidence_path || '', source: 'run', suspected_area: `${screen.path} ${row.selector}`,
-  })), ...(screen.failure ? [{
-    id: `sweep/${screen.target}${screen.path}/${screen.failure.phase}/${screen.failure.code}`,
+  })), ...[...(screen.prior_failures || []).map(failure => ({ ...failure, resolved: true })), ...(screen.failure ? [{ ...screen.failure, retained_controls: screen.controls.length }] : [])].map(failure => ({
+    id: 'sweep/' + screen.target + screen.path + '/' + failure.phase + '/' + failure.code,
     surface: screen.surface, screen: screen.name, severity: 'major', kind: 'bug',
-    title: `Automation infrastructure failure: ${screen.failure.phase} (${screen.failure.code})`,
-    steps: [`Run the staging control sweep for ${screen.path} on ${screen.target}.`, ...(screen.failure.openers || []).map(name => `Open ${name}.`)],
+    title: 'Automation infrastructure failure: ' + failure.phase + ' (' + failure.code + ')',
+    steps: ['Run the staging control sweep for ' + screen.path + ' on ' + screen.target + '.', ...(failure.openers || []).map(name => 'Open ' + name + '.')],
     expected: 'The harness retains measured controls and completes screen inventory, opener replay and evidence capture.',
-    actual: `The harness stopped during ${screen.failure.phase} (${screen.failure.code}); ${screen.controls.length} control results were retained.`,
-    evidence_path: screen.controls.findLast(row => row.evidence_path)?.evidence_path || '',
+    actual: 'The harness stopped during ' + failure.phase + ' (' + failure.code + '); ' + failure.retained_controls + ' control results were retained.',
+    evidence_path: screen.controls.slice(0, failure.retained_controls).findLast(row => row.evidence_path)?.evidence_path || '',
     source: 'run', suspected_area: 'scripts/e2e-staging/controls.mjs and scripts/e2e-staging/sweep.mjs',
-  }] : [])].map(finding => ({ ...finding, id: screen.attempt_id ? `attempt/${screen.attempt_id}/${finding.id}` : finding.id })));
+    ...(failure.resolved ? { resolved: true } : {}),
+  }))].map(finding => ({ ...finding, id: screen.attempt_id ? `attempt/${screen.attempt_id}/${finding.id}` : finding.id })));
 }
 
-export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations }) {
+export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations, publishFile = rename }) {
   const previous = await retainedReport(output, release);
   explorations = mergeRows(previous.explorations, explorations ?? [], row => JSON.stringify([row.target, row.screen, row.agent]));
   findings = mergeRows(previous.findings, findings ?? [], row => row.id);
@@ -86,6 +87,7 @@ export async function writeReport(output, { screens = [], history = [], explorat
       `${screens.filter(s => s.reached).length}/${expectedScreens} screens reached; ${controls.length} controls enumerated; ${controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} pressed; ${controls.filter(c => c.status === 'DEAD').length} DEAD.`, '',
       '| Target | Screen | Access | Pressed | DEAD | Disabled | Failed to press | Failure phase |', '|---|---|---|---:|---:|---:|---:|---|', ...rows, '',
       ...(history.length ? ['## Previous interrupted attempts', '', 'Current coverage counts use the latest attempt for each target and path. Earlier controls, findings and evidence remain below and in controls.json. Historical DEAD keys remain subject to the exact allowlist; historical infrastructure failures do not block a later completed attempt.', '', '| Attempt | Target | Screen | Retained controls | DEAD | Prior failure |', '|---|---|---|---:|---:|---|', ...historyRows, ''] : []),
+      ...(screens.some(screen => screen.traversal) ? ['## Durable traversal', '', 'Known remaining counts cover queued controls; later discovery can add states. Opening paths are replayed to restore UI state without replacing measured results. Legacy incomplete screens without a frontier require a conservative screen retry.', '', '| Target | Screen | Known remaining | Maximum opener depth | Pending discovery |', '|---|---|---:|---:|---|', ...screens.filter(screen => screen.traversal).map(screen => '| ' + screen.target + ' | ' + screen.path + ' | ' + screen.traversal.known_remaining + ' | ' + screen.traversal.max_opener_depth + ' | ' + Boolean(screen.traversal.pending_discovery) + ' |'), ''] : []),
       '## Disabled controls', '', ...disabled, '', '## Per-screen explorations', '', `${explorations.length}/${expectedExplorations} goals attempted.`, '', '| Target | Screen | Agent | Steps / limit | Status |', '|---|---|---|---:|---|', ...explorationRows, '',
       'Controls restore browser storage and reload the screen before each press, then replay only the opening path. Staging server mutations persist. Every phase failure, exhausted discovery queue, missing screen, failed press or disabled control without a reason fails completeness. Completed control results and evidence remain in partial reports. OBSERVED records signals, not a claim that the action is correct. Focus is placed on the target before measurement so pointer focus alone does not mask a dead action.', '',
       'Call Mode opens a local service outside the staging stack; the runner presses its link and blocks the nonstaging destination. A resulting network signal does not verify the local service.', '',
@@ -97,7 +99,7 @@ export async function writeReport(output, { screens = [], history = [], explorat
     for (const file of ['findings.json', 'coverage.md', 'explorations.json', 'controls.json']) {
       const handle = await open(join(stage, file), 'r+');
       try { await handle.sync(); } finally { await handle.close(); }
-      await rename(join(stage, file), join(output, file));
+      await publishFile(join(stage, file), join(output, file));
     }
     return all;
   } finally { await rm(stage, { recursive: true, force: true }); }

@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -25,28 +26,56 @@ export async function readSessionSecret(path = process.env.E2E_SESSION_SECRET_FI
   } finally { await handle.close(); }
 }
 
+export class SessionPreflightFailure extends Error {
+  constructor(code) { super('staging session preflight failed: ' + code); this.code = code; }
+}
+
+export async function preflightRequest(phase, operation, { pause = delay } = {}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await operation();
+      if (![429, 502, 503, 504].includes(response.status())) return response;
+      if (attempt === 2) throw new SessionPreflightFailure(phase + '-http-' + response.status());
+    } catch (error) {
+      if (error instanceof SessionPreflightFailure) throw error;
+      if (attempt === 2) throw new SessionPreflightFailure(phase + '-transport-failed');
+    }
+    await pause(250 * (attempt + 1));
+  }
+}
+
 export async function stagingSession(baseURL = STAGING_ORIGIN) {
   const origin = assertStagingURL(baseURL);
-  const api = await playwrightRequest.newContext({ baseURL: origin, timeout: 30_000 });
+  let api, phase = 'context';
   try {
-    const release = await api.get('/app-release', { maxRedirects: 0 });
+    api = await playwrightRequest.newContext({ baseURL: origin, timeout: 30_000 });
+    phase = 'app-release';
+    const release = await preflightRequest(phase, () => api.get('/app-release', { maxRedirects: 0 }));
     const identity = release.ok() ? await release.json() : {};
-    if (identity.environment !== 'staging' || identity.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity.source_commit || '')) throw new Error('staging release identity was not confirmed');
-    const carrRelease = await api.get(`${contract.carr_origin}/release`, { maxRedirects: 0 });
+    if (identity.environment !== 'staging' || identity.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity.source_commit || ''))
+      throw new SessionPreflightFailure('app-release-invalid');
+    phase = 'carr-release';
+    const carrRelease = await preflightRequest(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }));
     const carr = carrRelease.ok() ? await carrRelease.json() : {};
-    if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit) throw new Error('staging CARR release differs from the pinned E2E session contract');
+    if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit)
+      throw new SessionPreflightFailure('carr-source-pair-refused');
+    phase = 'secret';
     const secret = await readSessionSecret();
-    const response = await api.post('/auth/e2e-session', { headers: { authorization: `Bearer ${secret}` }, maxRedirects: 0 });
-    if (!response.ok()) throw new Error(`staging E2E session exchange refused (${response.status()}); provision the staging route and secret`);
-    const session = await api.get('/auth/session', { maxRedirects: 0 });
+    phase = 'session-exchange';
+    const response = await preflightRequest(phase, () => api.post('/auth/e2e-session', { headers: { authorization: 'Bearer ' + secret }, maxRedirects: 0 }));
+    if (!response.ok()) throw new SessionPreflightFailure('session-exchange-refused-' + response.status());
+    phase = 'session-confirm';
+    const session = await preflightRequest(phase, () => api.get('/auth/session', { maxRedirects: 0 }));
     const actor = session.ok() ? await session.json() : {};
-    if (actor.actor?.slug !== 'joe' || actor.e2e_principal !== 'e2e-joe') throw new Error('staging session did not authenticate the dedicated e2e-joe partner');
+    if (actor.actor?.slug !== 'joe' || actor.e2e_principal !== 'e2e-joe') throw new SessionPreflightFailure('dedicated-principal-refused');
+    phase = 'cookie';
     const state = await api.storageState();
-    if (!state.cookies.some(cookie => cookie.name === '__Host-dealroom_session' && cookie.httpOnly && cookie.secure)) throw new Error('staging exchange did not set the normal secure session cookie');
+    if (!state.cookies.some(cookie => cookie.name === '__Host-dealroom_session' && cookie.httpOnly && cookie.secure))
+      throw new SessionPreflightFailure('secure-cookie-refused');
     return { state, release: { ...identity, carr_source_commit: contract.producer.source_commit } };
   } catch (error) {
-    // Provider error objects can carry request headers. Only our own bounded messages escape.
-    if (/^staging |^E2E /.test(error.message)) throw new Error(error.message);
-    throw new Error('staging session preflight failed; no credential or provider payload was logged');
-  } finally { await api.dispose(); }
+    if (error instanceof SessionPreflightFailure) throw error;
+    // Never forward a provider error: request objects can include credentials.
+    throw new SessionPreflightFailure(phase + '-failed');
+  } finally { if (api) await api.dispose().catch(() => { throw new SessionPreflightFailure('context-dispose-failed'); }); }
 }

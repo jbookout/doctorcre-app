@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { newDeadControls, sweepFindings } from './report.mjs';
+import { canContinueTraversal, validateTraversal } from './traversal.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const statuses = new Set(['OBSERVED', 'DEAD', 'DISABLED', 'ERROR', 'UNREACHABLE']);
@@ -31,12 +32,17 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     requireCheckpoint(screen.in_progress === undefined || typeof screen.in_progress === 'boolean');
     requireCheckpoint(screen.attempt_id === undefined || typeof screen.attempt_id === 'string' && uuid.test(screen.attempt_id));
     if (screen.failure != null) requireCheckpoint(typeof screen.failure.phase === 'string' && /^[a-z][a-z0-9-]*$/.test(screen.failure.phase) && typeof screen.failure.code === 'string' && /^[a-z][a-z0-9-]*$/.test(screen.failure.code) && strings(screen.failure.openers || []));
+    if (screen.prior_failures !== undefined) {
+      requireCheckpoint(Array.isArray(screen.prior_failures));
+      for (const failure of screen.prior_failures) requireCheckpoint(failure && /^[a-z][a-z0-9-]*$/.test(failure.phase) && /^[a-z][a-z0-9-]*$/.test(failure.code) && strings(failure.openers || []) && Number.isSafeInteger(failure.retained_controls) && failure.retained_controls >= 0 && failure.retained_controls <= screen.controls.length);
+    }
     const keys = new Set();
     for (const row of screen.controls) {
       requireCheckpoint(row && typeof row === 'object' && row.target === screen.target && row.path === screen.path && row.screen === screen.name && typeof row.key === 'string' && row.key.startsWith(`${screen.target}/${screen.path}/`) && /^[0-9a-f]{16}$/.test(row.key.slice(`${screen.target}/${screen.path}/`.length)) && !keys.has(row.key));
       requireCheckpoint(statuses.has(row.status) && typeof row.selector === 'string' && row.selector.length > 0 && strings(row.openers) && strings(row.signals) && (row.evidence_path === undefined || typeof row.evidence_path === 'string') && (row.reason === undefined || typeof row.reason === 'string'));
       keys.add(row.key);
     }
+    if (screen.traversal) validateTraversal(screen);
   };
   const measured = new Map(), history = [];
   if (prior !== undefined) {
@@ -60,10 +66,12 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     }
   }
   const pending = planned.filter(({ target, screen }) => !complete(measured.get(pair(target.name, screen.path))));
+  const continuationIDs = new Map([...measured].filter(([, screen]) => canContinueTraversal(screen)).map(([key, screen]) => [key, screen.attempt_id]));
   const attemptID = randomUUID();
   let number = 0;
   return {
     pending,
+    priorScreen(target, path) { return structuredClone(measured.get(pair(target, path))); },
     assertRelease(release) {
       if (!sourceRelease(release) || prior && (prior.release.source_commit !== release.source_commit || prior.release.carr_source_commit !== release.carr_source_commit)) throw new Error('Staging sweep requires the same pinned source pair; no screen was retried');
     },
@@ -71,8 +79,10 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       validateScreen(screen);
       const key = pair(screen.target, screen.path), old = measured.get(key);
       if (complete(old)) throw new Error('A complete screen cannot be replaced by resume');
-      if (old && old.attempt_id !== attemptID) history.push({ screen: structuredClone(old), findings: sweepFindings([old]) });
-      measured.set(key, { ...structuredClone(screen), attempt_id: attemptID });
+      const currentAttempt = continuationIDs.get(key) || attemptID;
+      if (old?.attempt_id === currentAttempt && (screen.controls.length < old.controls.length || JSON.stringify(screen.controls.slice(0, old.controls.length)) !== JSON.stringify(old.controls))) throw new Error('Measured control evidence cannot be replaced during frontier continuation');
+      if (old && old.attempt_id !== currentAttempt) history.push({ screen: structuredClone(old), findings: sweepFindings([old]) });
+      measured.set(key, { ...structuredClone(screen), attempt_id: currentAttempt });
     },
     snapshot() { return structuredClone({ screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },
     verdict(allowlist) {
