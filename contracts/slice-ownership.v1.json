@@ -123,6 +123,7 @@
     "test/pr119-refresh-browser.test.mjs",
     "test/pr119-system-work.test.mjs",
     "test/production-readiness.test.mjs",
+    "test/production-smoke.test.mjs",
     "test/property-panel.test.mjs",
     "test/property-producer.test.mjs",
     "test/provider-version.test.mjs",
