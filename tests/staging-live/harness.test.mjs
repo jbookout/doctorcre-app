@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, writeFile, chmod, readFile, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '../../test/browser-harness.mjs';
 import { CONTROL_SELECTOR, inventory, pressControl, sweepScreen, settledInventory, SweepFailure } from '../../scripts/e2e-staging/controls.mjs';
 import { assertStagingURL, readSessionSecret } from '../../scripts/e2e-staging/session.mjs';
 import { newDeadControls, explorationEvidence, writeReport } from '../../scripts/e2e-staging/report.mjs';
+import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
+import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
 
 const html = `<main><button id="dead" onclick="this.blur()">Dead</button><button id="live" onclick="document.querySelector('#result').textContent='Changed'">Live</button><button id="disabled" disabled title="Requires a selected record">Disabled</button><button id="drawer" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true'); document.querySelector('#sheet').hidden=false">Open drawer</button><section id="sheet" hidden><button id="nested" onclick="document.querySelector('#result').textContent='Nested'">Nested</button></section><output id="result"></output></main>`;
@@ -486,4 +490,93 @@ test('share credentials are masked from pixels under the deployed CSP', async ()
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#share-url')).opacity === '0');
   assert.equal(await page.locator('#share-url').inputValue(), 'synthetic-grant');
   await browser.close();
+});
+
+test('killing an owned browser sweep after one control preserves durable incomplete evidence', async t => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-killed-screen-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  const targets = [{ name: 'desktop', surface: 'app' }];
+  const routedScreens = [{ name: 'Synthetic', path: '/', surface: 'app' }];
+  const source = [
+    'import { chromium } from ' + JSON.stringify(new URL('../../test/browser-harness.mjs', import.meta.url).href) + ';',
+    'import { sweepScreen } from ' + JSON.stringify(new URL('../../scripts/e2e-staging/controls.mjs', import.meta.url).href) + ';',
+    'import { createSweepRun } from ' + JSON.stringify(new URL('../../scripts/e2e-staging/resume.mjs', import.meta.url).href) + ';',
+    'import { persistSweepReport } from ' + JSON.stringify(new URL('../../scripts/e2e-staging/sweep.mjs', import.meta.url).href) + ';',
+    'const output = ' + JSON.stringify(output) + ', release = ' + JSON.stringify(release) + ';',
+    'const targets = ' + JSON.stringify(targets) + ', routedScreens = ' + JSON.stringify(routedScreens) + ';',
+    'const browser = await chromium.launch();',
+    'process.on("SIGTERM", async () => { await browser.close(); process.exit(1); });',
+    'const run = createSweepRun({ targets, routedScreens });',
+    'await sweepScreen({ screen: routedScreens[0], target: "desktop", waitMs: 20,',
+    'freshPage: async () => { const page = await browser.newPage(); await page.setContent("<main><button id=dead>Dead</button><button id=later>Later</button></main>"); return page; },',
+    'evidence: async page => { const path = output + "/synthetic.png"; await page.screenshot({path}); return path; },',
+    'checkpoint: async partial => {',
+    'run.record(partial); await persistSweepReport(output, run, { release, complete: true, findings: [], needs_restore: [] });',
+    // Close only this fixture browser before SIGKILL so the regression leaks no browser processes.
+    'await browser.close(); process.send({ durable: true }); setInterval(() => {}, 1000); await new Promise(() => {});',
+    '} });',
+  ].join('\n');
+  const child = spawn(process.execPath, ['--input-type=module', '-e', source], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+  let stderr = '';
+  child.stderr.on('data', value => { stderr += value; });
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('Fixture checkpoint deadline: ' + stderr)); }, 20_000);
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('exit', code => { clearTimeout(timer); reject(new Error('Fixture exited before checkpoint: ' + code + ' ' + stderr)); });
+    child.once('message', value => { clearTimeout(timer); assert.equal(value.durable, true); resolve(); });
+  });
+  const stopped = once(child, 'exit');
+  child.kill('SIGKILL');
+  assert.deepEqual(await stopped, [null, 'SIGKILL']);
+  const checkpoint = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8'));
+  assert.equal(checkpoint.screens[0].in_progress, true);
+  assert.equal(checkpoint.screens[0].controls.length, 1);
+  const row = checkpoint.screens[0].controls[0];
+  assert.equal(row.status, 'DEAD');
+  assert.equal(row.selector, '#dead');
+  assert.ok((await readFile(row.evidence_path)).length > 0);
+  assert.match(await readFile(join(output, 'coverage.md'), 'utf8'), /In progress; incomplete/);
+  assert.equal(JSON.parse(await readFile(join(output, 'findings.json'), 'utf8'))[0].evidence_path, row.evidence_path);
+  const resumed = createSweepRun({ targets, routedScreens, prior: checkpoint });
+  assert.equal(resumed.pending.length, 1);
+  assert.equal(resumed.verdict([]).completed, false);
+  assert.deepEqual(resumed.verdict([]).newDeadControls, [row.key]);
+  resumed.record({ ...checkpoint.screens[0], in_progress: false, controls: [{ ...row, status: 'OBSERVED' }] });
+  assert.equal(resumed.verdict([]).completed, true);
+  assert.equal(resumed.snapshot().history[0].screen.controls[0].status, 'DEAD');
+  assert.deepEqual(resumed.verdict([]).newDeadControls, [row.key]);
+});
+
+test('checkpoint failure stops new presses and reports a bounded infrastructure failure', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  let writes = 0;
+  const result = await sweepScreen({
+    screen: { name: 'Synthetic', path: '/', surface: 'app' }, target: 'desktop', waitMs: 20,
+    freshPage: async () => { const page = await browser.newPage(); await page.setContent('<main><button id=first>First</button><button id=second>Second</button></main>'); return page; },
+    checkpoint: async () => { writes++; throw new Error('private credential canary'); },
+  });
+  assert.equal(writes, 1);
+  assert.equal(result.controls.length, 1);
+  assert.equal(result.controls[0].selector, '#first');
+  assert.deepEqual(result.failure, { phase: 'checkpoint', code: 'checkpoint-write-failed', openers: [] });
+  assert.ok(!JSON.stringify(result).includes('private credential canary'));
+});
+
+test('exhausted duplicate discovery states do not reopen and replay tested controls', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const fixture = '<main><button id=one onclick="if(!document.querySelector(\'#shared\'))document.querySelector(\'main\').insertAdjacentHTML(\'beforeend\',\'<button id=shared>Shared</button>\')">One</button><button id=two onclick="document.querySelector(\'#one\').click()">Two</button></main>';
+  let pages = 0;
+  const result = await sweepScreen({
+    screen: { name: 'Synthetic', path: '/', surface: 'app' }, target: 'desktop', waitMs: 20,
+    freshPage: async () => { pages++; const page = await browser.newPage(); await page.setContent(fixture); return page; },
+  });
+  assert.equal(result.failure, null);
+  assert.equal(result.controls.length, 5);
+  assert.equal(result.controls.filter(row => row.selector === '#shared').length, 1);
+  assert.equal(new Set(result.controls.map(row => row.key)).size, 5);
+  assert.equal(pages, 7, 'only the initial and first revealed inventory need base pages');
 });

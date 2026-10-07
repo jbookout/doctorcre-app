@@ -1,4 +1,4 @@
-import { readFile, mkdir, cp, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, cp } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { explorer40 } from './explorer.mjs';
@@ -57,9 +57,7 @@ export async function exploreAll() {
       await mkdir(destination, { recursive: true, mode: 0o700 });
       await cp(local, destination, { recursive: true });
       explorations.push({ target: target.name, screen: screen.name, path: screen.path, agent, steps, status, evidence: destination });
-      await writeFile(join(output, 'explorations.json'), JSON.stringify(explorations, null, 2) + '\n');
       await writeReport(output, { ...sweep.snapshot(), explorations, release, findings, setup, expectedExplorations });
-      scrubEvidence(output);
       if (status === 'ERROR') throw new Error(`Exploration infrastructure failed at ${runId}. Evidence retained; no login was attempted.`);
     }
   }

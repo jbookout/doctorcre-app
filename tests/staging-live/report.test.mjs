@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeReport, sweepFindings } from '../../scripts/e2e-staging/report.mjs';
@@ -44,4 +44,19 @@ test('resume reports retain interrupted attempts and findings through exploratio
   assert.deepEqual(JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')).history, preserved);
   assert.deepEqual(JSON.parse(await readFile(join(output, 'findings.json'), 'utf8')), preserved[0].findings);
   assert.deepEqual(history, preserved);
+});
+
+test('retained reports reject source drift and malformed metadata before overwriting evidence', async t => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-report-source-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) };
+  await writeReport(output, { release });
+  const path = join(output, 'controls.json');
+  const original = await readFile(path, 'utf8');
+  await assert.rejects(writeReport(output, { release: { ...release, source_commit: 'c'.repeat(40) } }), /different source pair/);
+  assert.equal(await readFile(path, 'utf8'), original);
+  await writeFile(path, JSON.stringify({ ...JSON.parse(original), explorations: [null] }));
+  const malformed = await readFile(path, 'utf8');
+  await assert.rejects(writeReport(output, { release }), /valid source-bound checkpoint/);
+  assert.equal(await readFile(path, 'utf8'), malformed);
 });

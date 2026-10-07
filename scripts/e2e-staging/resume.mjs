@@ -10,7 +10,7 @@ const strings = value => Array.isArray(value) && value.every(item => typeof item
 const pair = (target, path) => JSON.stringify([target, path]);
 const requireCheckpoint = value => { if (!value) throw new Error('Staging sweep checkpoint is invalid; no screen was retried'); };
 const sourceRelease = release => release?.service === 'doctorcre-app' && release.environment === 'staging' && /^[0-9a-f]{40}$/.test(release.source_commit || '') && release.carr_source_commit === contract.producer.source_commit;
-const complete = screen => screen?.reached === true && !screen.failure && !screen.exhausted && screen.controls.length > 0 && screen.controls.every(row => !['ERROR', 'UNREACHABLE'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided'));
+const complete = screen => screen?.reached === true && screen.in_progress !== true && !screen.failure && !screen.exhausted && screen.controls.length > 0 && screen.controls.every(row => !['ERROR', 'UNREACHABLE'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided'));
 
 export async function readSweepCheckpoint(output) {
   try { return JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')); }
@@ -28,6 +28,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     requireCheckpoint(screen && typeof screen === 'object' && !Array.isArray(screen));
     const expected = plan.get(pair(screen.target, screen.path));
     requireCheckpoint(expected && screen.name === expected.screen.name && screen.surface === expected.screen.surface && typeof screen.reached === 'boolean' && (screen.exhausted === undefined || typeof screen.exhausted === 'boolean') && Array.isArray(screen.controls));
+    requireCheckpoint(screen.in_progress === undefined || typeof screen.in_progress === 'boolean');
     requireCheckpoint(screen.attempt_id === undefined || typeof screen.attempt_id === 'string' && uuid.test(screen.attempt_id));
     if (screen.failure != null) requireCheckpoint(typeof screen.failure.phase === 'string' && /^[a-z][a-z0-9-]*$/.test(screen.failure.phase) && typeof screen.failure.code === 'string' && /^[a-z][a-z0-9-]*$/.test(screen.failure.code) && strings(screen.failure.openers || []));
     const keys = new Set();
@@ -70,7 +71,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       validateScreen(screen);
       const key = pair(screen.target, screen.path), old = measured.get(key);
       if (complete(old)) throw new Error('A complete screen cannot be replaced by resume');
-      if (old) history.push({ screen: structuredClone(old), findings: sweepFindings([old]) });
+      if (old && old.attempt_id !== attemptID) history.push({ screen: structuredClone(old), findings: sweepFindings([old]) });
       measured.set(key, { ...structuredClone(screen), attempt_id: attemptID });
     },
     snapshot() { return structuredClone({ screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },

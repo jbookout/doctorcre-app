@@ -194,7 +194,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, waitMs = 2000, limit = 5000, routedPaths = [] }) {
+export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, waitMs = 2000, limit = 5000, routedPaths = [] }) {
   const queue = [{ openers: [], controls: null }], destructive = [], seen = new Set(), controls = [];
   const stableMs = waitMs < 2000 ? waitMs : 1500;
   const settle = async (page, phase, selector) => {
@@ -222,9 +222,18 @@ export async function sweepScreen({ freshPage, screen, target, evidence, waitMs 
     try { await page.context().close(); }
     catch (error) { fail(error, 'cleanup', openers, control, 'context-close-failed'); }
   };
+  const publishProgress = async () => {
+    if (!checkpoint) return;
+    try { await checkpoint(structuredClone({ ...screen, target, reached, exhausted, controls, failure, in_progress: true })); }
+    catch { failure ||= { phase: 'checkpoint', code: 'checkpoint-write-failed', openers: [] }; }
+  };
   while ((queue.length || destructive.length) && !failure) {
     if (controls.length >= limit) { exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
+    if (state.controls) {
+      state.controls = state.controls.filter(control => !seen.has(control.identity));
+      if (!state.controls.length) continue;
+    }
     let page, phase = 'fresh-page';
     try {
       page = await freshPage();
@@ -255,11 +264,13 @@ export async function sweepScreen({ freshPage, screen, target, evidence, waitMs 
           controls.push(row);
           phase = 'evidence';
           if (evidence) row.evidence_path = await evidence(fresh, row);
+          phase = 'checkpoint';
+          await publishProgress();
           phase = 'discovery';
           const destination = new URL(fresh.url());
           const current = new URL(page.url());
           const discovery = destination.origin === current.origin && !destination.pathname.startsWith('/auth/') && (fresh.url() === page.url() || !routedPaths.includes(destination.pathname + destination.search));
-          if (result.status === 'OBSERVED' && discovery) {
+          if (!failure && result.status === 'OBSERVED' && discovery) {
             const exposed = (await settle(fresh, 'discovery', control.selector)).filter(next => !seen.has(next.identity));
             if (exposed.length) queue.push({ openers: [...state.openers, control], controls: exposed });
           }
@@ -267,9 +278,11 @@ export async function sweepScreen({ freshPage, screen, target, evidence, waitMs 
           fail(error, phase, state.openers, control);
           if (!row && ['replay','press'].includes(phase)) controls.push({ ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: `${failure.phase}: ${failure.code}`, signals: [] });
         } finally { await close(fresh, state.openers, control); }
+        if (failure && failure.phase !== 'checkpoint') await publishProgress();
       }
     } catch (error) { fail(error, phase, state.openers); }
     finally { await close(page, state.openers); }
+    if (failure && failure.phase !== 'checkpoint') await publishProgress();
   }
   return { ...screen, target, reached, exhausted, controls, failure };
 }

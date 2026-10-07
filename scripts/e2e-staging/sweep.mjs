@@ -1,20 +1,20 @@
 import { chromium } from 'playwright';
 import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stagingSession, STAGING_ORIGIN } from './session.mjs';
 import { installStagingGuard } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen, SweepFailure } from './controls.mjs';
 import { writeReport } from './report.mjs';
+import { scrubEvidence } from './evidence.mjs';
+export { scrubEvidence } from './evidence.mjs';
 import { prepareStagingRecords } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint, sweepOptions } from './resume.mjs';
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
-export function scrubEvidence(path) {
-  const result = spawnSync('python3', [fileURLToPath(new URL('./scrub-evidence.py', import.meta.url)), path], { stdio: ['ignore', 'pipe', 'pipe'] });
-  if (result.status !== 0) throw new Error('Evidence scrub failed; private artifacts were not published');
+export async function persistSweepReport(output, run, setup) {
+  await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings });
 }
 
 export async function sweep({ resume = false } = {}) {
@@ -62,7 +62,10 @@ export async function sweep({ resume = false } = {}) {
       };
       let result;
       try {
-        result = await sweepScreen({ freshPage, screen, target: target.name, routedPaths: routedScreens.map(screen => screen.path), evidence: async (page, row) => {
+        result = await sweepScreen({ freshPage, screen, target: target.name, routedPaths: routedScreens.map(screen => screen.path), checkpoint: async partial => {
+          run.record(partial);
+          await persistSweepReport(output, run, setup);
+        }, evidence: async (page, row) => {
           const paths = run.evidencePaths(output, privateEvidence, row.status);
           await mkdir(paths.privateDir, { recursive: true, mode: 0o700 });
           await page.screenshot({ path: paths.png, fullPage: true });
@@ -72,18 +75,16 @@ export async function sweep({ resume = false } = {}) {
           await cp(paths.privateDir, paths.publicDir, { recursive: true });
           return paths.publishedPNG;
         } });
-      } catch { result = { ...screen, target: target.name, reached: false, controls: [], failure: { phase: 'sweep', code: 'unexpected-sweep-failure', openers: [] } }; }
+      } catch { result = { ...(run.snapshot().screens.find(row => row.target === target.name && row.path === screen.path) || { ...screen, target: target.name, reached: false, controls: [] }), failure: { phase: 'sweep', code: 'unexpected-sweep-failure', openers: [] } }; }
       run.record(result);
 
-      await writeReport(output, { ...run.snapshot(), release, setup, findings: setup.findings });
-      scrubEvidence(output);
+      await persistSweepReport(output, run, setup);
       console.log(`${result.controls.length} enumerated; ${result.controls.filter(row => row.status === 'DEAD').length} DEAD`);
       if (result.failure) console.log(`Sweep stopped: ${result.failure.phase}/${result.failure.code}`);
     }
   } finally { if (browser) await browser.close(); }
   if (!run.pending.length) {
-    await writeReport(output, { ...run.snapshot(), release, setup, findings: setup.findings });
-    scrubEvidence(output);
+    await persistSweepReport(output, run, setup);
   }
   const allowlist = JSON.parse(await readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8'));
   const verdict = run.verdict(allowlist);
