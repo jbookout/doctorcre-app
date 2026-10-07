@@ -73,7 +73,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       if (old) history.push({ screen: structuredClone(old), findings: sweepFindings([old]) });
       measured.set(key, { ...structuredClone(screen), attempt_id: attemptID });
     },
-    snapshot() { return structuredClone({ screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length }); },
+    snapshot() { return structuredClone({ screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },
     verdict(allowlist) {
       const controls = [...measured.values(), ...history.map(entry => entry.screen)].flatMap(screen => screen.controls);
       const dead = newDeadControls(controls, allowlist);

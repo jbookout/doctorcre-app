@@ -63,6 +63,7 @@ test('full planned union is required even when every measured pair is complete',
   const first = { ...screen(), name: routes[0].name, path: routes[0].path, controls: [{ ...screen().controls[0], key: 'desktop//workspace0/0000000000000000', path: routes[0].path, screen: routes[0].name }] };
   const state = createSweepRun({ targets, routedScreens: routes, prior: { release, screens: [first] } });
   assert.equal(state.snapshot().expectedScreens, 60);
+  assert.equal(state.snapshot().expectedExplorations, 90);
   assert.equal(state.pending.length, 59);
   assert.equal(state.verdict([]).completed, false);
 });
@@ -118,6 +119,7 @@ test('exploration report input carries immutable resume history and the full den
   assert.equal(JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')).history.length, 1);
   assert.deepEqual(JSON.parse(await readFile(join(output, 'findings.json'), 'utf8')), snapshot.history[0].findings);
   assert.match(await readFile(join(output, 'coverage.md'), 'utf8'), /1\/4 screens reached/);
+  assert.match(await readFile(join(output, 'coverage.md'), 'utf8'), /1\/6 goals attempted/);
 });
 
 test('CLI accepts exactly the ordinary sweep or one --resume argument', () => {
