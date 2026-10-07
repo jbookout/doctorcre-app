@@ -178,6 +178,7 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
     await mkdir(dirname(deploymentPath), { recursive: true });
     await writeFile(deploymentPath, content);
   }
+  await writeFile(join(siteDir, 'artifact-manifest.json'), manifestContent);
   await mkdir(outDir, { recursive: true });
   await writeFile(join(outDir, "doctorcre-app.tar"), archive);
   await writeFile(join(outDir, "doctorcre-app.manifest.json"), manifestContent);
@@ -269,6 +270,7 @@ export async function runCli(root, args = process.argv.slice(2)) {
         await mkdir(dirname(join(siteDir, path)), { recursive: true });
         await writeFile(join(siteDir, path), bytes);
       }
+      await writeFile(join(siteDir, 'artifact-manifest.json'), expected.manifestContent);
     }
     console.log(`verified doctorcre-app.tar: ${result.fileCount} files, sha256:${result.archiveSha256}`);
     return;

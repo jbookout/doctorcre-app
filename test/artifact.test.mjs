@@ -106,6 +106,15 @@ test("CLI verification accepts the exact committed artifact", async (t) => {
   await runCli(root, ["verify"]);
 });
 
+test('build and prepared deployment serve the byte-exact archive manifest', async (t) => {
+  const { root, outDir } = await committedFixture(t);
+  const manifest = await readFile(join(outDir, 'doctorcre-app.manifest.json'));
+  assert.deepEqual(await readFile(join(outDir, 'site/artifact-manifest.json')), manifest);
+  await writeFile(join(outDir, 'site/artifact-manifest.json'), 'stale bytes');
+  await runCli(root, ['prepare-deployment']);
+  assert.deepEqual(await readFile(join(outDir, 'site/artifact-manifest.json')), manifest);
+});
+
 test("one contract path declaration drives both assembly and committed-source verification", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "doctorcre-contract-membership-"));
   t.after(() => rm(root, { recursive: true, force: true }));

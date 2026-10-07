@@ -81,5 +81,23 @@ commit and archive digest; they never import this repository's source tree.
 The pinned consumer contract is `contracts/carr-interface.v1.json`. The live and
 fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
 
+Same-repository PRs run `PR preview`: build the exact PR head, create an
+undeployed `doctorcre-app-pr-<number>` Worker, then upload a version with alias
+`pr-<number>`. One bot comment carries the URL and journey result. These previews
+use the existing synthetic fixture client, have no CARR binding or production
+route, and refuse CARR HTTP/MCP requests. Closing a PR deletes its Worker;
+every uploaded version also stops serving after seven days, including when
+cleanup cannot authenticate. Push another commit to renew an open preview.
+
+Preview publication needs the repository secret `CLOUDFLARE_API_TOKEN` with
+Workers Scripts Write for the account in `wrangler.jsonc`. Missing credentials
+produce a skip notice, never a production deployment. GitHub withholds secrets
+and comment write permission on fork PRs; those receive a workflow summary.
+The optional hosted journey job runs by default against the immutable version
+URL. Set repository variable `PR_PREVIEW_E2E=false` to disable it. It uses no
+model and checks the served build's commit and manifest digest before each
+journey. `E2E_PREVIEW_URL` selects that target in `e2e.config.ts`; only isolated
+preview hosts and local loopback are accepted.
+
 The repository is publicly visible. No open-source license has been selected;
 public visibility alone does not grant reuse rights.
