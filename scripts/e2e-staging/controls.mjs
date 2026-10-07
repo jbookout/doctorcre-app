@@ -326,6 +326,11 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
       phase = 'inventory';
       const listed = state.controls || await settledInventory(page, { stableMs, scope: identityScope });
       active.controls = [...listed];
+      // Measurements replay the admitted state in their own fresh contexts.
+      // Retain its URL for discovery, then retire the unused inventory context.
+      const sourceURL = page.url();
+      await close(page, state.openers);
+      if (!failure) page = null;
       for (const control of listed) {
         if (failure) break;
         if (controls.length >= limit) { exhausted = true; break; }
@@ -358,8 +363,8 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
           if (evidence) row.evidence_path = await evidence(fresh, row);
           phase = 'discovery';
           const destination = new URL(fresh.url());
-          const current = new URL(page.url());
-          const discovery = destination.origin === current.origin && !destination.pathname.startsWith('/auth/') && (fresh.url() === page.url() || !routedPaths.includes(destination.pathname + destination.search));
+          const current = new URL(sourceURL);
+          const discovery = destination.origin === current.origin && !destination.pathname.startsWith('/auth/') && (fresh.url() === sourceURL || !routedPaths.includes(destination.pathname + destination.search));
           pending = result.status === 'OBSERVED' && discovery ? { openers: state.openers, control } : null;
           phase = 'checkpoint';
           await publishProgress();

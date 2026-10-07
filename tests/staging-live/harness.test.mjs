@@ -513,6 +513,86 @@ async function assertCapturedPNGs(controls) {
   }
 }
 
+
+test('inventory contexts retire before fresh measurements without losing readiness discovery or evidence', async t => {
+  const capture = await captureControlEvidence(t);
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const pages = [];
+  const fixture = "<main aria-busy=\"true\"><button id=\"first\" onclick=\"document.querySelector('#out').textContent='First changed'\">First action</button><button id=\"open\" onclick=\"document.querySelector('#panel').showModal()\">Open drawer</button><button id=\"disabled\" disabled title=\"Requires a selected record\">Disabled</button><output id=\"out\"></output></main><dialog id=\"panel\" aria-label=\"Synthetic drawer\"><button id=\"nested\" onclick=\"document.querySelector('#nestedOut').textContent='Nested changed'\">Nested action</button><button id=\"close\" onclick=\"document.querySelector('#panel').close()\">Close drawer</button><output id=\"nestedOut\"></output></dialog><script>setTimeout(() => document.querySelector('main').removeAttribute('aria-busy'), 35)</script>";
+  const result = await sweepScreen({
+    screen: { name: 'Synthetic inventory lifetime', path: '/', surface: 'app' }, target: 'desktop', waitMs: 20,
+    freshPage: async () => {
+      assert.ok(pages.every(page => page.isClosed()), 'Previous inventory and measurement contexts must be retired');
+      const page = await browser.newPage();
+      pages.push(page);
+      await page.setContent(fixture);
+      await page.waitForLoadState('networkidle', { timeout: 30_000 });
+      await page.context().tracing.start({ screenshots: true, snapshots: true, sources: false });
+      return page;
+    },
+    evidence: async page => {
+      assert.equal(await page.locator('main').getAttribute('aria-busy'), null, 'Keep full fresh-page readiness');
+      const path = await capture(page);
+      await page.context().tracing.stop({ path: path.replace(/\.png$/, '.zip') });
+      return path;
+    },
+  });
+  assert.equal(result.failure, null);
+  assert.equal(result.exhausted, false);
+  assert.equal(result.in_progress, undefined);
+  assert.deepEqual(result.controls.map(row => [row.selector, row.status]), [
+    ['#first', 'OBSERVED'], ['#open', 'OBSERVED'], ['#disabled', 'DISABLED'],
+    ['#nested', 'OBSERVED'], ['#close', 'OBSERVED'],
+  ]);
+  assert.equal(result.controls.find(row => row.selector === '#disabled').reason, 'Requires a selected record');
+  assert.deepEqual(result.controls.find(row => row.selector === '#nested').openers, ['Open drawer']);
+  assert.equal(new Set(result.controls.map(row => row.key)).size, 5);
+  assert.ok(pages.every(page => page.isClosed()));
+  await assertCapturedPNGs(result.controls);
+  for (const row of result.controls) {
+    const trace = await readFile(row.evidence_path.replace(/\.png$/, '.zip'));
+    assert.deepEqual(trace.subarray(0, 4), Buffer.from([80, 75, 3, 4]));
+  }
+});
+
+test('inventory context close failure stops presses and preserves the complete resumable frontier', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  let freshCalls = 0, closeCalls = 0;
+  const result = await sweepScreen({
+    screen: { name: 'Synthetic inventory cleanup', path: '/', surface: 'app' }, target: 'desktop', waitMs: 20,
+    freshPage: async () => {
+      const ordinal = ++freshCalls;
+      const page = await browser.newPage();
+      await page.setContent('<main><button id="first">First action</button><button id="second">Second action</button></main>');
+      if (ordinal !== 1) return page;
+      return new Proxy(page, {
+        get(target, key) {
+          if (key === 'context') return () => ({
+            close: async () => {
+              if (++closeCalls === 1) throw new Error('private inventory close canary');
+              await target.context().close();
+            },
+          });
+          const value = Reflect.get(target, key);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    },
+  });
+  assert.equal(freshCalls, 1, 'No measurement page or press follows a failed inventory close');
+  assert.equal(closeCalls, 2, 'Final cleanup retries the still-owned inventory context');
+  assert.deepEqual(result.controls, []);
+  assert.deepEqual(result.failure, { phase: 'cleanup', code: 'context-close-failed', openers: [] });
+  const frontier = validateTraversal(result);
+  assert.equal(frontier.known_remaining, 2);
+  assert.deepEqual(frontier.active.controls.map(row => row.selector), ['#first', '#second']);
+  assert.deepEqual(frontier.seen, []);
+  assert.equal(frontier.pending_discovery, null);
+  assert.doesNotMatch(JSON.stringify(result), /private inventory close canary/);
+});
+
 test('killing an owned browser sweep after one control preserves durable incomplete evidence', async t => {
   const evidence = await captureControlEvidence(t);
   const output = await mkdtemp(join(tmpdir(), 'staging-killed-screen-'));
