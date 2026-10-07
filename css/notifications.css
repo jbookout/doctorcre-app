@@ -69,7 +69,7 @@
 
 /* The preference form. One column at 360px; the grid only widens where there
  * is room for two clock fields to sit side by side without either shrinking. */
-.pref-form { display: grid; gap: 12px; margin-top: 12px; }
+.pref-form { display: grid; gap: 12px; margin-top: 12px; scroll-margin-top: 80px; }
 .pref-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .pref-form .field { display: grid; gap: 6px; min-width: 0; }
 .pref-form label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
