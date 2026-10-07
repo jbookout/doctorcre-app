@@ -13,10 +13,13 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     const refresh = viewport.width < 760 ? '#appSyncRefresh' : surface.refresh;
     // The phone shows planner feedback while its library lives in the sidebar.
     const failure = viewport.width < 760 && surface.name === 'Tours' ? '#plan-message' : surface.failure;
-    let refusedReads = 0;
-    const reject = route => {
+    let refusedReads = 0, refusedClientReads = 0;
+    let retryGate = null;
+    const reject = async route => {
+      if (route.request.url.includes('/api/v1/business/clients?')) refusedClientReads += 1;
       if (surface.name === 'Tours' ? route.request.url.includes('/api/tours/library')
         : JSON.parse(route.request.postData || '{}').params?.name === 'deal-room-board') refusedReads += 1;
+      if (retryGate) await retryGate;
       return route.fulfill({ status, json: { ok: false, error: status === 401 ? 'unauthorized' : 'temporarily_unavailable', code: status === 401 ? 'unauthorized' : 'temporarily_unavailable' } });
     };
     await browser.route('**/api/**', reject);
@@ -25,10 +28,55 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await expect(browser.locator(failure)).toContainText(surface.settled);
     await expect(browser.locator(surface.freshness)).toContainText(/unavailable/i);
     await expect(browser.locator('.app-layout-status')).not.toContainText('Updating…');
-    const beforeRetry = refusedReads;
+    const boardRead = () => browser.evaluate(async () => {
+      const { state } = await import('/js/pipeline.js');
+      return { failed: state.boardSync.stats().board_failed, ...state.boardSync.status() };
+    });
+    let failedBeforeRetry;
+    if (surface.name === 'Deals') {
+      await expect.poll(async () => {
+        const read = await boardRead();
+        return !read.board_read_in_flight && !read.refresh_pending;
+      }).toBe(true);
+      failedBeforeRetry = (await boardRead()).failed;
+    }
+    if (surface.name === 'Tours') await browser.evaluate(() => {
+      window.qa008TerminalPaints = 0;
+      const observer = new MutationObserver(records => { window.qa008TerminalPaints += records.length; });
+      observer.observe(document.querySelector('#planner-updated'), { childList: true });
+    });
+    const beforeRetry = refusedReads, beforeClients = refusedClientReads;
+    let releaseRetry;
+    retryGate = new Promise(resolve => { releaseRetry = resolve; });
     await browser.locator(refresh).focus();
     await browser.locator(refresh).press('Enter');
     await expect.poll(() => refusedReads).toBeGreaterThan(beforeRetry);
+    // Hold the refused responses until the retry lifecycle has been observed.
+    // Old failure text cannot satisfy these completion checks.
+    if (surface.name === 'Leads') await expect(browser.locator('#leadBoard')).toHaveAttribute('aria-busy', 'true');
+    if (surface.name === 'Deals') await expect.poll(async () => (await boardRead()).board_read_in_flight).toBe(true);
+    if (surface.name === 'Tours') {
+      await expect.poll(() => refusedClientReads).toBeGreaterThan(beforeClients);
+      expect(await browser.evaluate(() => window.qa008TerminalPaints)).toBe(0);
+      const responses = [
+        browser.waitForResponse('**/api/tours/library'),
+        browser.waitForResponse('**/api/v1/business/clients?**'),
+      ];
+      releaseRetry();
+      for (const response of await Promise.all(responses)) {
+        expect(response.status).toBe(status);
+        await response.json(); // The supported response API waits for the body.
+      }
+      await expect.poll(() => browser.evaluate(() => window.qa008TerminalPaints)).toBeGreaterThan(0);
+    } else {
+      releaseRetry();
+      if (surface.name === 'Leads') await expect(browser.locator('#leadBoard')).toHaveAttribute('aria-busy', 'false');
+      if (surface.name === 'Deals') await expect.poll(async () => {
+        const read = await boardRead();
+        return read.failed > failedBeforeRetry && !read.board_read_in_flight && !read.refresh_pending;
+      }).toBe(true);
+    }
+    retryGate = null;
     await expect(browser.locator(failure)).toContainText(surface.settled);
     await expect(browser.locator(surface.freshness)).toContainText(/unavailable/i);
     // These local interactions repaint the settled failed read.
