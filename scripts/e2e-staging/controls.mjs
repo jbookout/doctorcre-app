@@ -116,7 +116,17 @@ export async function settledInventory(page, { timeoutMs = 30_000, stableMs = 15
   const deadline = Date.now() + timeoutMs;
   let previous, stableSince = Date.now();
   while (Date.now() < deadline) {
-    const { rows, busy } = await inventoryState(page, scope);
+    let state;
+    try { state = await inventoryState(page, scope); }
+    catch (error) {
+      if (!error.message?.includes('Execution context was destroyed') || page.isClosed()) throw error;
+      // Navigation can invalidate an in-flight DOM read. Reobserve the new
+      // document within the original deadline; no old inventory is accepted.
+      previous = undefined; stableSince = Date.now();
+      await page.waitForTimeout(100);
+      continue;
+    }
+    const { rows, busy } = state;
     const signature = JSON.stringify(rows.map(row => row.identity));
     if (signature !== previous || busy || !rows.length) stableSince = Date.now();
     if (rows.length && !busy && Date.now() - stableSince >= stableMs) return rows;

@@ -808,3 +808,40 @@ test('scrubbed share URLs and nested selectors resume through real live actions 
   assert.equal(changed.failure.code, 'opener-state-changed');
   assert.deepEqual(changed.controls, saved.screens[0].controls);
 });
+
+test('inventory reobserves navigation context loss within its deadline and keeps fatal reads fatal', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const wrap = (page, read) => new Proxy(page, { get(target, key) {
+    if (key === 'locator') return selector => selector === CONTROL_SELECTOR
+      ? { evaluateAll: (...args) => read(() => target.locator(selector).evaluateAll(...args)) }
+      : target.locator(selector);
+    const value = Reflect.get(target, key);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } });
+  await t.test('replacement document replaces every pre-navigation observation', async () => {
+    const page = await browser.newPage(); await page.setContent('<main><button>Old</button></main>');
+    let reads = 0;
+    const changing = wrap(page, async read => {
+      if (++reads === 2) {
+        await page.setContent('<main><button>New</button></main>');
+        throw new Error('Execution context was destroyed, most likely because of a navigation');
+      }
+      return read();
+    });
+    const controls = await settledInventory(changing, { stableMs: 150, timeoutMs: 1500 });
+    assert.deepEqual(controls.map(row => row.name), ['New']);
+  });
+  await t.test('repeated context loss cannot extend the original deadline', async () => {
+    const page = await browser.newPage(); await page.setContent('<main><button>Old</button></main>');
+    const missing = wrap(page, () => { throw new Error('Execution context was destroyed'); });
+    await assert.rejects(settledInventory(missing, { stableMs: 0, timeoutMs: 150 }), /unverified/);
+  });
+  await t.test('unrelated errors and closed pages are not retried into success', async () => {
+    const page = await browser.newPage();
+    const fatal = new Error('Synthetic fatal inventory read');
+    await assert.rejects(settledInventory(wrap(page, () => { throw fatal; })), error => error === fatal);
+    await page.context().close();
+    const closed = new Error('Execution context was destroyed');
+    await assert.rejects(settledInventory(wrap(page, () => { throw closed; })), error => error === closed);
+  });
+});
