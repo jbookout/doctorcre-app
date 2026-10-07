@@ -197,6 +197,14 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       let companionAvailable = false;
       await page.route('http://127.0.0.1:4682/**', route => route.fulfill({ status:companionAvailable ? 200 : 503, json:{state:'idle'} }));
       await page.goto(`${base}/deals?view=board`);
+      await page.locator('#selfAvatar').click();
+      await page.keyboard.press('Tab');
+      const accountFocus = await page.locator('#accountMenu :focus-visible').evaluate(el => {
+        const style = getComputedStyle(el);
+        return { outline: style.outlineStyle, width: style.outlineWidth, color: style.outlineColor };
+      });
+      assert.deepEqual(accountFocus, { outline: 'solid', width: '2px', color: 'rgb(255, 174, 104)' }, `${width}: account keyboard focus stays visible alongside recorder availability`);
+      await page.keyboard.press('Escape');
       await page.locator('#docOpen').click();
       assert.equal(await page.locator('#docDetail form:not(#docCommandForm), #docMic, #docInput').count(), 0);
       assert.equal(await page.locator('#docCommandForm').count(), 1);
