@@ -352,16 +352,58 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
   await assert.rejects(readFile(join(directory,'published.json')),/ENOENT/);
 });
 
-test('action pins agree with authenticated canonical release evidence',async()=>{
-  const pins=JSON.parse(await readFile(new URL('../.github/action-pins.json',import.meta.url)));
-  const check=(action,sha)=>{
-    const pin=pins.actions[action];
-    assert.equal(pin.sha,sha); assert.equal(pin.canonical_tag_sha,sha);
-    assert.equal(pin.release_url,`https://github.com/${action}/releases/tag/${pin.tag}`);
-    assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,'node20');
-  };
-  for(const workflow of [ci,e2e,release]) for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
-  assert.throws(()=>check('actions/checkout','f'.repeat(40)),/strictly equal/);
+const actionRuntimes = {
+  'actions/checkout': 'node20',
+  'actions/setup-node': 'node24',
+  'actions/upload-artifact': 'node20',
+  'actions/download-artifact': 'node20',
+};
+
+function checkActionPin(pins, action, sha) {
+  const pin = pins.actions[action];
+  assert.equal(pin.sha, sha);
+  assert.equal(pin.canonical_tag_sha, sha);
+  assert.equal(pin.release_url, `https://github.com/${action}/releases/tag/${pin.tag}`);
+  assert.equal(pin.tag_url, `https://api.github.com/repos/${action}/git/refs/tags/${pin.tag}`);
+  assert.match(pin.metadata_blob, /^[a-f0-9]{40}$/);
+  assert.ok(Object.hasOwn(actionRuntimes, action), `${action} must have a verified runtime`);
+  assert.equal(pin.runtime, actionRuntimes[action]);
+}
+
+const setupNodeV7 = {
+  sha: '820762786026740c76f36085b0efc47a31fe5020',
+  tag: 'v7.0.0',
+  release_url: 'https://github.com/actions/setup-node/releases/tag/v7.0.0',
+  runtime: 'node24',
+  canonical_tag_sha: '820762786026740c76f36085b0efc47a31fe5020',
+  tag_url: 'https://api.github.com/repos/actions/setup-node/git/refs/tags/v7.0.0',
+  metadata_blob: 'dc1cefd59528621f6952ef3309bb6c551925b330',
+};
+
+test('setup-node v7 provenance records the verified canonical release and metadata together', async () => {
+  const pins = JSON.parse(await readFile(new URL('../.github/action-pins.json', import.meta.url)));
+  assert.deepEqual(pins.actions['actions/setup-node'], setupNodeV7);
+});
+
+test('action runtime validation accepts setup-node node24 and preserves node20 for the other actions', async () => {
+  const pins = JSON.parse(await readFile(new URL('../.github/action-pins.json', import.meta.url)));
+  pins.actions['actions/setup-node'] = setupNodeV7;
+  for (const [action, pin] of Object.entries(pins.actions)) {
+    checkActionPin(pins, action, pin.sha);
+    const wrongRuntime = action === 'actions/setup-node' ? 'node20' : 'node24';
+    assert.throws(() => checkActionPin({ actions: { [action]: { ...pin, runtime: wrongRuntime } } }, action, pin.sha),
+      /strictly equal/, `${action} must reject the wrong runtime`);
+  }
+});
+
+test('action pins agree with authenticated canonical release evidence', async () => {
+  const pins = JSON.parse(await readFile(new URL('../.github/action-pins.json', import.meta.url)));
+  for (const workflow of [ci, e2e, release]) {
+    for (const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) {
+      checkActionPin(pins, match[1], match[2]);
+    }
+  }
+  assert.throws(() => checkActionPin(pins, 'actions/checkout', 'f'.repeat(40)), /strictly equal/);
 });
 for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {
   test(`${name}: close runs zero shell commands; invalid edited body still blocks`, async t => {
