@@ -5,12 +5,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { webcrypto, createHash } from "node:crypto";
-import { JSDOM } from "jsdom";
-import { chromium } from "playwright";
+import { openDom } from "./jsdom-harness.mjs";
+import { animationsSettled, chromium, settles } from "./browser-harness.mjs";
 
 const html = await readFile(new URL("../tours/route-editor.html", import.meta.url), "utf8");
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
-const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^export /gm, "");
+const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
 const script = `${autoRefreshScript}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const uuid = () => webcrypto.randomUUID();
@@ -123,8 +123,7 @@ function domain() {
   return { tours, calls, transitions, fetch, fail(path, kind) { fault = { path, kind }; } };
 }
 async function open(store, storage = {}, query = "") {
-  const dom = new JSDOM(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" });
-  Object.defineProperty(dom.window, "crypto", { value: webcrypto }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
+  const dom = openDom(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
   if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
   for (const [key, value] of Object.entries(storage)) dom.window.sessionStorage.setItem(key, value);
   dom.window.eval(script); await settle();
@@ -216,9 +215,9 @@ test("review 1: a changed same-Tour read invalidates review and displays the tar
   const tour = [...store.tours.values()][0];
   tour.routes.unshift({ ...structuredClone(tour.routes[0]), id: uuid(), route_version: 2 });
   tour.routes[0].stops[0].route_label = "Changed elsewhere";
-  doc.querySelector(".tour-button").click(); await settle();
+  doc.querySelector(".tour-button").click();
+  await settles(() => assert.equal(doc.querySelector('[data-field="route_label"]')?.value, "Changed elsewhere"));
   assert.equal(doc.querySelector("#route-reviewed").checked, false);
-  assert.equal(doc.querySelector('[data-field="route_label"]').value, "Changed elsewhere");
   doc.querySelector("#accept-route").click(); await settle();
   assert.equal(store.calls.filter(c => c.path === "/api/tours/route-accept").length, 0);
   dom.window.close();
@@ -376,15 +375,13 @@ test("review 10: endpoint-only edits appear in review, support undo, and save a 
   doc.querySelector("#route-reviewed").click(); doc.querySelector("#accept-route").click(); await settle();
   assert.equal([...store.tours.values()][0].routes[0].accepted, true); dom.window.close();
 });
-test("review 10: endpoint review survives reload of an unresolved version save", async t => {
-  const store = domain(), first = await open(store); t.after(() => first.dom.window.close()); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
+test("review 10: endpoint review survives reload of an unresolved version save", async () => {
+  const store = domain(), first = await open(store); await create(first.doc); await addCart(first.doc); await saveAndAccept(first.doc);
   fill(first.doc, "#edit-start-latitude", "30.7"); store.fail("/api/tours/route-stop", "lost");
   first.doc.querySelector("#save-composer").click(); await settle();
   const retained = first.dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); first.dom.window.close();
-  const next = await open(store, { "doctorcre-tour-pending-v1": retained }); t.after(() => next.dom.window.close());
-  const deadline = Date.now() + 10000;
-  while (next.doc.querySelector("#edit-start-latitude").value !== "30.7" && Date.now() < deadline) await settle();
-  assert.equal(next.doc.querySelector("#edit-start-latitude").value, "30.7");
+  const next = await open(store, { "doctorcre-tour-pending-v1": retained });
+  await settles(() => assert.equal(next.doc.querySelector("#edit-start-latitude").value, "30.7"));
   assert.match(next.doc.querySelector("#route-changes").textContent, /Start endpoint changed/);
   next.doc.querySelector("#reconcile-composer").click(); await settle(); next.doc.querySelector("#retry-composer").click(); await settle();
   assert.match(next.doc.querySelector("#composer-state").textContent, /Draft saved/);
@@ -556,6 +553,7 @@ test("a reloaded accepted Tour requests route endpoints in the composer before o
   assert.match(next.doc.querySelector("#composer-state").textContent, /Draft saved/); next.dom.window.close();
 });
 async function touchLayout(page) {
+  await animationsSettled(page);
   return page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth,
     overflowing: [...document.querySelectorAll("body *")].filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, id: el.id, className: el.getAttribute("class"), right: el.getBoundingClientRect().right })).slice(0, 12),
     rows: [...document.querySelectorAll(".composer-stop")].map(row => ({ width: row.clientWidth, scroll: row.scrollWidth })),
@@ -575,6 +573,8 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
     const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
+    const { slices } = await import('../js/slices.generated.js');
+    const registrationScript = (await readFile(new URL('../js/slice-registration.js', import.meta.url), 'utf8')).replace(/^export /gm, '');
     const shellScript = (await readFile(new URL("../js/app-shell.js", import.meta.url), "utf8")).replace(/^export /gm, "").replace(/^import [^\n]*\n/gm, "");
     const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}\n${shellCss}</style></head>`);
     await page.route("https://tour.test/**", async route => {
@@ -584,7 +584,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
-    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountAppLayout = () => {}; const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
+    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountAppLayout = () => {}; const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\nconst slices = ${JSON.stringify(slices)};\n${registrationScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
     // Exercise the preserved catalog/cart component independently of its retired UI.
     await page.evaluate(() => { document.querySelector(".discovery").hidden = false; });
     await page.locator("#create-tour-panel summary").click();
@@ -668,7 +668,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
 });
 
 
-test("Dot Tour: default cart labels satisfy accepted membership and accept without edits", async t => {
+test("Dot Tour: default cart labels satisfy accepted membership and accept without edits", async () => {
   const store = domain(), normal = store.fetch;
   store.fetch = async (path, options) => {
     if (path === "/api/tours/route-accept") {
@@ -679,21 +679,21 @@ test("Dot Tour: default cart labels satisfy accepted membership and accept witho
     }
     return normal(path, options);
   };
-  const { dom, doc } = await open(store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(store);
   await create(doc); await addCart(doc); await saveAndAccept(doc);
   assert.equal([...store.tours.values()][0].routes[0].accepted, true);
   assert.deepEqual(store.calls.filter(call => call.path === "/api/tours/route-stop").map(call => call.body.route_label), ["1", "2"]);
 });
 
 
-for (const next of ["open", "create"]) test(`Dot Tour: ${next} another Tour clears the previous confidential link`, async t => {
+for (const next of ["open", "create"]) test(`Dot Tour: ${next} another Tour clears the previous confidential link`, async () => {
   const store = domain(), normal = store.fetch;
   store.fetch = async (path, options) => {
     if (path === "/api/tours/share/issue") return response({ share_grant_id: uuid() });
     if (path.startsWith("/api/tours/feedback")) return response({ feedback: { items: [] } });
     return normal(path, options);
   };
-  const { dom, doc } = await open(store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(store);
   let copied = null;
   Object.defineProperty(dom.window.navigator, "clipboard", { value: { writeText: async value => { copied = value; } } });
   await create(doc);
@@ -715,8 +715,8 @@ for (const next of ["open", "create"]) test(`Dot Tour: ${next} another Tour clea
 });
 
 
-test("Dot Tour: keyboard reorder keeps focus on the moved property at route boundaries", async t => {
-  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close());
+test("Dot Tour: keyboard reorder keeps focus on the moved property at route boundaries", async () => {
+  const store = domain(), { dom, doc } = await open(store);
   await create(doc); await addCart(doc);
   const down = [...doc.querySelector(`[data-property-id="${propA}"] .stop-controls`).children].find(button => button.textContent === "Down");
   down.focus(); down.click();
@@ -730,7 +730,7 @@ test("Dot Tour: keyboard reorder keeps focus on the moved property at route boun
 });
 
 
-test("Dot Tour: acceptance submits the digest of the reviewed stop set and handles refusal", async t => {
+test("Dot Tour: acceptance submits the digest of the reviewed stop set and handles refusal", async () => {
   const store = domain(), normal = store.fetch;
   const reviewedDigest = `sha256:${"b".repeat(64)}`; let acceptance;
   store.fetch = async (path, options) => {
@@ -744,7 +744,7 @@ test("Dot Tour: acceptance submits the digest of the reviewed stop set and handl
     if (payload.data) payload.data.routes[0].acceptance_digest = reviewedDigest;
     return { ...result, json: async () => payload };
   };
-  const { dom, doc } = await open(store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(store);
   await create(doc); await addCart(doc);
   doc.querySelector("#save-composer").click(); await settle();
   doc.querySelector("#route-reviewed").click();
@@ -760,15 +760,15 @@ test("Dot Tour: acceptance submits the digest of the reviewed stop set and handl
 });
 
 
-for (const label of ["Stop 1", "ABCD", "A_", "A B", ""]) test(`Dot Tour: invalid membership label ${JSON.stringify(label)} cannot write a draft`, async t => {
-  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close());
+for (const label of ["Stop 1", "ABCD", "A_", "A B", ""]) test(`Dot Tour: invalid membership label ${JSON.stringify(label)} cannot write a draft`, async () => {
+  const store = domain(), { dom, doc } = await open(store);
   await create(doc); await addCart(doc);
   fill(doc, `[data-property-id="${propA}"] [data-field="route_label"]`, label);
   doc.querySelector("#save-composer").click(); await settle();
   assert.equal(store.calls.filter(call => call.path === "/api/tours/route-stop").length, 0);
   assert.match(doc.querySelector("#composer-state").textContent, /1–3 letters or numbers/);
 });
-for (const missing of [undefined, "invalid"]) test(`Dot Tour: missing or invalid reviewed digest ${missing} withholds acceptance`, async t => {
+for (const missing of [undefined, "invalid"]) test(`Dot Tour: missing or invalid reviewed digest ${missing} withholds acceptance`, async () => {
   const store = domain(), normal = store.fetch;
   store.fetch = async (path, options) => {
     const result = await normal(path, options);
@@ -777,7 +777,7 @@ for (const missing of [undefined, "invalid"]) test(`Dot Tour: missing or invalid
     if (payload.data) payload.data.routes[0].acceptance_digest = missing;
     return { ...result, json: async () => payload };
   };
-  const { dom, doc } = await open(store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(store);
   await create(doc); await addCart(doc);
   doc.querySelector("#save-composer").click(); await settle();
   assert.equal(doc.querySelector("#route-reviewed").disabled, true);
@@ -821,7 +821,7 @@ test("the digest-bearing detail read and release prerequisite bind the composer 
 // It reads git blobs only. SQL execution and production deployment stay in CARR.
 test("the committed digest producer detail reaches composer acceptance unchanged", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned detail producer",
-}, async t => {
+}, async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
   const migration = committed(contract.reviewed_route.producer.migration);
@@ -859,7 +859,7 @@ test("the committed digest producer detail reaches composer acceptance unchanged
     }
     return result;
   };
-  const { dom, doc } = await open(store); t.after(() => dom.window.close());
+  const { dom, doc } = await open(store);
   await create(doc); await addCart(doc);
   doc.querySelector("#save-composer").click(); await settle();
   const reviewedDigest = displayedDigest;

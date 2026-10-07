@@ -1,0 +1,23 @@
+{
+  "routes": [
+    {
+      "path": "/control-room",
+      "asset": "control-room.html",
+      "order": 1,
+      "gatePath": "/control-room"
+    },
+    {
+      "path": "/control-room/automations",
+      "asset": "automations.html",
+      "order": 22,
+      "gatePath": "/control-room"
+    },
+    {
+      "path": "/control-room/observatory",
+      "asset": "observatory.html",
+      "order": 50,
+      "gatePath": "/control-room"
+    }
+  ],
+  "redirects": []
+}

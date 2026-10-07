@@ -9,6 +9,7 @@ import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
+import { observeDocClient } from './doc-context.js';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -84,7 +85,7 @@ export function createLiveClient(opts = {}) {
     return payload;
   }
 
-  async function write(verb, args) {
+  async function write(verb, args, timeoutMs) {
     // A disconnected app may keep local drafts, but must never attempt a
     // canonical write. The caller retains the same request for reconciliation.
     if (!online()) {
@@ -92,7 +93,8 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    return rawRpc(verb, { ...args, idempotency_key: args.idempotency_key || uuidv4() });
+    const request = { ...args, idempotency_key: args.idempotency_key || uuidv4() };
+    return timeoutMs ? readWithDeadline(signal => rawRpc(verb, request, signal), { timeoutMs }) : rawRpc(verb, request);
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -160,6 +162,8 @@ export function createLiveClient(opts = {}) {
     // to. It passes through untouched: it is the record layer's own identity for
     // an event, in the record layer's own field vocabulary, and translating or
     // rebuilding it would be inventing one.
+    async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
+    async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
@@ -214,6 +218,8 @@ export function createLiveClient(opts = {}) {
         premises: page.premises || [],
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
+        lease: page.lease ?? null,
+        schema_version: page.schema_version,
       };
     },
 
@@ -278,11 +284,22 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
-    async getChanges(cursor) {
+    async getChanges(cursor, { signal, since } = {}) {
+      // Versioned pipeline keyset format. Starting at a clock cutoff avoids
+      // replaying years of history; subsequent cursors remain server-issued.
+      if (!cursor && since) {
+        const timestamp = new Date(since).toISOString();
+        cursor = btoa(JSON.stringify({ recorded_at:timestamp, id:'00000000-0000-0000-0000-000000000000' }))
+          .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      }
       const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-      const res = await fetchReadImpl(`/pipeline/changes${q}`, { credentials: 'same-origin' });
-      if (!res.ok) throw new Error(`live changes -> ${res.status}`);
-      const data = await res.json();
+      const data = await readWithDeadline(async currentSignal => {
+        const res = await fetchImpl(`/pipeline/changes${q}`, { credentials: 'same-origin', signal:currentSignal });
+        // Refusal is decided by the headers. Its diagnostic body must not
+        // turn a known authorization failure into a statusless read failure.
+        if (!res.ok) throw Object.assign(new Error(`live changes -> ${res.status}`), { status: res.status });
+        return res.json();
+      }, { signal, timeoutMs:opts.readTimeoutMs || 10_000 });
       for (const e of data.events || []) {
         // The event log stores values wrapped as {field: value}; the app (and
         // the fixture) speak bare values. Unwrap, then translate phase slugs.
@@ -436,6 +453,9 @@ export function createLiveClient(opts = {}) {
     async addIndustryEvent(args) { return write('add-industry-event', args); },
     async updateIndustryEvent(args) { return write('update-industry-event', args); },
 
+    // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
+    async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
+
     // ------------------------------------------------------------- triage
     // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are
     // sent: which rows are due is the record layer's decision, not the page's.
@@ -517,6 +537,7 @@ export function createLiveClient(opts = {}) {
     // One read-only verb, passed through untouched. It takes NO arguments and
     // refuses any field, so none is sent. It grants no authority: the decisions
     // it lists are taken with their own partner verbs, none of which is pinned.
+    async readConnections({ signal } = {}) { return (await rpc('read-resource-dashboard', {}, signal)).connections; },
     async governanceQueue() { return rpc('governance-queue', {}); },
     async scheduleBoard({ signal } = {}) { return rpc('schedule-board', {}, signal); },
 
@@ -643,6 +664,7 @@ export function createLiveClient(opts = {}) {
     async createNationalAccount(args) { return write('create-national-account', args); },
     async createNationalMarketDeal(args) { return write('create-national-market-deal', args); },
     async revertDealField(args) { return write('revert-deal-field', args); },
+    async readDocActivity(args = {}, { signal } = {}) { return rpc('read-doc-activity', args, signal); },
   };
-  return client;
+  return opts.docContext === false ? client : observeDocClient(client);
 }

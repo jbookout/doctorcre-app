@@ -144,7 +144,7 @@ test("who can clear this is built from the row, and the page offers no partner a
 /* ------------------------------------------------------------------ the write */
 
 test("the one write goes through the command kernel with one operation key", () => {
-  assert.match(pageJs, /import \{ createCommandState, performCommand \} from "\.\/command-feedback\.mjs"/);
+  assert.match(pageJs, /import \{ performCommand \} from "\.\/command-feedback\.mjs"/);
   assert.match(pageJs, /await performCommand\(\{/);
   assert.match(pageJs, /newKey: uuidv4/);
   assert.match(pageJs, /client\.linkIncidentWorkRequest\(request\)/);
@@ -199,8 +199,8 @@ test("a read that did not answer is unknown in the app's own words", async () =>
 
 test("the route and the two verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/incidents"], "incidents.html");
-  assert.equal(routes.version, "1.19.0");
-  assert.equal(contract.version, "1.41.0");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(contract.version, "1.44.0");
   for (const verb of ["get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
@@ -218,8 +218,8 @@ test("the page is the shared shell: titles not descriptions, one Doc, a mono ref
     /data-section="hypotheses"/.exec(html).index,
     "facts and hypotheses share one region",
   );
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 1, "Doc appears once");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.equal([...html.matchAll(/class="doc-chat glass" id="docChat"/g)].length, 0, "legacy dock is absent");
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "the dock is not mounted");
   assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
   assert.doesNotMatch(html, /\bTODO\b/);

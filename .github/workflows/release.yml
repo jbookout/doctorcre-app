@@ -5,34 +5,101 @@ on:
     tags: ["app-v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    outputs:
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      tar_sha: ${{ steps.digests.outputs.tar_sha }}
+      manifest_sha: ${{ steps.digests.outputs.manifest_sha }}
+      sidecar_sha: ${{ steps.digests.outputs.sidecar_sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: node scripts/check-release-source.mjs
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run check
       - run: npm test
       - run: npm run build
         env:
           DOCTORCRE_SOURCE_COMMIT: ${{ github.sha }}
       - run: npm run artifact:verify
+      - id: digests
+        name: Bind handoff bytes
+        run: |
+          echo "tar_sha=$(sha256sum dist/doctorcre-app.tar | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "manifest_sha=$(sha256sum dist/doctorcre-app.manifest.json | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sidecar_sha=$(sha256sum dist/doctorcre-app.tar.sha256 | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - id: artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ github.sha }}
+          path: |
+            dist/doctorcre-app.tar
+            dist/doctorcre-app.manifest.json
+            dist/doctorcre-app.tar.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      # Download only the immutable artifact ID from the successful build in
+      # this run. No checkout, cache, install hooks or executable artifact data.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          merge-multiple: true
+          path: dist
+      - name: Verify handoff
+        env:
+          TAR_SHA: ${{ needs.build.outputs.tar_sha }}
+          MANIFEST_SHA: ${{ needs.build.outputs.manifest_sha }}
+          SIDECAR_SHA: ${{ needs.build.outputs.sidecar_sha }}
+        run: |
+          set -euo pipefail
+          for digest in "$TAR_SHA" "$MANIFEST_SHA" "$SIDECAR_SHA"; do
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          done
+          for file in doctorcre-app.tar doctorcre-app.manifest.json doctorcre-app.tar.sha256; do
+            test -f "dist/$file" && test ! -L "dist/$file"
+          done
+          printf '%s  %s\n' "$TAR_SHA" dist/doctorcre-app.tar "$MANIFEST_SHA" dist/doctorcre-app.manifest.json "$SIDECAR_SHA" dist/doctorcre-app.tar.sha256 | sha256sum -c -
+          jq -e --arg sha "$GITHUB_SHA" '.repository == "jbookout/doctorcre-app" and .source_commit == $sha and .schema == "doctorcre-static-artifact.v1"' dist/doctorcre-app.manifest.json
       - name: Publish content-addressed inputs and digests
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          dist/doctorcre-app.tar
-          dist/doctorcre-app.manifest.json
-          dist/doctorcre-app.tar.sha256
-          --verify-tag
-          --title "DoctorCRE $GITHUB_REF_NAME"
-          --notes "Deterministic static artifact built from $GITHUB_SHA. Consumers must pin both this tag and the published SHA-256 digest."
+        run: |
+          set -euo pipefail
+          tag_ref=$(jq -rn --arg ref "$GITHUB_REF_NAME" '$ref | @uri')
+          object=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag_ref" --jq '.object')
+          for depth in 1 2 3 4; do
+            [ "$(jq -r '.type' <<< "$object")" = tag ] || break
+            tag_sha=$(jq -r '.sha' <<< "$object")
+            [[ "$tag_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" --jq '.object')
+          done
+          [ "$(jq -r '.type' <<< "$object")" = commit ]
+          [ "$(jq -r '.sha' <<< "$object")" = "$GITHUB_SHA" ]
+          gh release create "$GITHUB_REF_NAME" \
+            dist/doctorcre-app.tar \
+            dist/doctorcre-app.manifest.json \
+            dist/doctorcre-app.tar.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "DoctorCRE $GITHUB_REF_NAME" \
+            --notes "Deterministic static artifact built from $GITHUB_SHA. Consumers must pin both this tag and the published SHA-256 digest."

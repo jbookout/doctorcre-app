@@ -1,21 +1,16 @@
-import { scopedDeals } from './home-dashboard-model.js';
-import { localToday, toDay } from './calendar-model.js';
+import { mountSliceSections } from './slice-registration.js';
+import { radarToday } from './lease-radar-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
-import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews } from './change-receipts.mjs';
+import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
-const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import { scopedDeals } from './home-dashboard-model.js';
+import { localToday, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
-// Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
-// lazy tab reads therefore retain their existing owner across layout changes.
-export function mountAppLayout(root, host, pathname) {
-  if (root.getElementById('appLayout')) return;
-  const win = root.defaultView || globalThis.window;
-  const pageKey = pathname === '/deals' ? '/deals' : pathname;
-  const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
-  const title = pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+// Build validation and runtime use the same layout targets.
+export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
   layout.className = 'app-layout';
@@ -26,6 +21,20 @@ export function mountAppLayout(root, host, pathname) {
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
   status.innerHTML = '<span><time id="appSyncTime" title="Last sync">—</time><button type="button" id="appSyncRefresh" aria-label="Refresh workspace" title="Refresh">↻</button></span><span title="Last new-lead search">⌕ <time id="appLeadSearchTime">—</time></span><span id="appConnection" class="app-layout-health" data-state="unknown" role="img" aria-label="Connection unknown" title="Connection unknown"></span><div id="appStatusSlot"></div>';
+  return { layout, status };
+}
+
+// Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
+// lazy tab reads therefore retain their existing owner across layout changes.
+export function mountAppLayout(root, host, pathname, slices = []) {
+  if (root.getElementById('appLayout')) return;
+  const win = root.defaultView || globalThis.window;
+  const pageKey = pathname === '/deals' ? '/deals' : pathname;
+  const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
+  const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const { layout, status } = createAppLayout(root, title);
+  host.after(layout, status);
+  mountSliceSections(root, pathname, slices);
   const main = layout.querySelector('#appMainSlot');
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
@@ -37,15 +46,16 @@ export function mountAppLayout(root, host, pathname) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .doc-fab, .doc-chat, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
+    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.app-shell-account-menu, .skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }
-  host.after(layout, status);
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia('(max-width: 760px)');
   let sidebar = !boardPage, today = true, drawer = null;
+  let drawerOpener = null;
+  const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; today = win.localStorage.getItem('doctorcre:today') !== 'closed'; } catch {}
   const sidebarToggle = layout.querySelector('#appSidebarToggle'), todayToggle = layout.querySelector('#appTodayToggle');
   const paint = () => {
@@ -56,19 +66,37 @@ export function mountAppLayout(root, host, pathname) {
     layout.querySelector('#appToday').inert = !rightOpen;
     sidebarToggle.setAttribute('aria-expanded', String(leftOpen)); todayToggle.setAttribute('aria-expanded', String(rightOpen));
     layout.querySelector('#appDrawerScrim').hidden = !phone.matches || !drawer;
+    if (phone.matches && drawer) {
+      for (const node of [layout.querySelector('.app-layout-center'), ...root.body.children]) {
+        if (node === layout || node.tagName === 'DIALOG') continue;
+        if (!background.has(node)) background.set(node, node.inert);
+        node.inert = true;
+      }
+    } else {
+      for (const [node, inert] of background) node.inert = inert;
+      background.clear();
+    }
   };
-  const openDrawer = region => {
-    drawer = region;
+  const openRegion = (region, opener = root.activeElement) => {
+    if (phone.matches) {
+      drawerOpener = opener;
+      drawer = region;
+    } else if (region === 'sidebar') sidebar = true;
+    else today = true;
     paint();
-    layout.querySelector(`#${region === 'sidebar' ? 'appSidebar' : 'appToday'} button`).focus();
+    if (phone.matches) layout.querySelector(`#${region === 'sidebar' ? 'appSidebar' : 'appToday'} button`).focus();
   };
   const toggle = region => {
-    if (phone.matches) { if (drawer === region) closeDrawer(); else openDrawer(region); return; }
+    if (phone.matches) { if (drawer === region) closeDrawer(); else openRegion(region); return; }
     else if (region === 'sidebar') { sidebar = !sidebar; try { win.localStorage.setItem(`doctorcre:sidebar:${pageKey}`, sidebar ? 'open' : 'closed'); } catch {} }
     else { today = !today; try { win.localStorage.setItem('doctorcre:today', today ? 'open' : 'closed'); } catch {} }
     paint();
   };
-  const closeDrawer = () => { const previous = drawer; drawer = null; paint(); if (previous) (previous === 'sidebar' ? sidebarToggle : todayToggle).focus(); };
+  const closeDrawer = () => {
+    const previous = drawer; drawer = null; paint();
+    if (previous) (drawerOpener?.isConnected && !drawerOpener.closest("[inert]") ? drawerOpener : previous === 'sidebar' ? sidebarToggle : todayToggle).focus();
+    drawerOpener = null;
+  };
   sidebarToggle.onclick = () => toggle('sidebar'); todayToggle.onclick = () => toggle('today');
   layout.querySelector('#appDrawerScrim').onclick = closeDrawer;
   layout.querySelectorAll('[data-layout-close]').forEach(button => button.onclick = () => phone.matches ? closeDrawer() : toggle(button.dataset.layoutClose));
@@ -79,13 +107,14 @@ export function mountAppLayout(root, host, pathname) {
       const panel = layout.querySelector(drawer === 'sidebar' ? '#appSidebar' : '#appToday');
       const focusable = [...panel.querySelectorAll('a,button,input,select,textarea,[tabindex="0"]')].filter(n => !n.disabled && n.getClientRects().length);
       const first = focusable[0], last = focusable.at(-1);
-      if (event.shiftKey && root.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!panel.contains(root.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+      else if (event.shiftKey && root.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && root.activeElement === last) { event.preventDefault(); first?.focus(); }
     }
   });
   phone.addEventListener('change', () => { drawer = null; paint(); });
   paint();
-  root.addEventListener('doctorcre:open-today', () => { if (phone.matches) openDrawer('today'); else { today = true; paint(); } });
+  root.addEventListener('doctorcre:open-today', () => openRegion('today'));
   // Page tab controllers retain selection and lazy reads. Give groups without
   // their own roving focus the same left/right keyboard affordance.
   const tabs = layout.querySelector('#appTabsSlot');
@@ -106,11 +135,16 @@ export function mountAppLayout(root, host, pathname) {
     items[next]?.focus();
   });
   const boot = resolveDealroomBoot(globalThis.location);
-  let client, cursor = null, feed = createFeedProgress(), receipts = [];
+  let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
+  const resetFeed = () => { feedActor = null; cursor = null; feed = createFeedProgress(); receipts = []; if (!pageOwnsMoves) renderMoves(); };
   const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
+  const renderMoves = () => {
+    const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
+    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${move.after}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
+  };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';
   const validBoard = value => scopedDeals(value, 'team') !== null
@@ -126,8 +160,8 @@ export function mountAppLayout(root, host, pathname) {
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const refresh = async ({ signal } = {}) => {
-    try { client ||= await createClient(boot.mode, boot.options); }
-    catch { connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
+    try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
+    catch { resetFeed(); connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(() => client.todayTriage(), { signal }),
@@ -140,13 +174,20 @@ export function mountAppLayout(root, host, pathname) {
     render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${i.due_on || ''}`)).join('') || empty : unavailable);
     if (connected) {
       const value = board.value;
+      if (feedActor !== value.actor) resetFeed();
+      feedActor = value.actor;
+      // Retained receipts have the same authorization scope as newly read ones.
+      const authorized = new Map(value.deals.map(deal => [deal.id, deal.name]));
+      receipts = receipts.filter(receipt => authorized.has(receipt.deal_id))
+        .map(receipt => ({ ...receipt, deal_name: authorized.get(receipt.deal_id) }));
+      if (!pageOwnsMoves) renderMoves();
       if (triageValid) {
         const observed = new Date().toISOString();
         status.querySelector('#appSyncTime').textContent = time(observed);
         status.querySelector('#appSyncTime').dateTime = observed;
       }
       const active = scopedDeals(value, 'team');
-      const needs = scopedDeals(value, 'mine').filter(d => d.attention || d.next_date && toDay(d.next_date) <= localToday());
+      const needs = scopedDeals(value, 'mine').filter(d => d.attention || d.next_date && toDay(d.next_date) <= radarToday());
       render('#appTodayNeeds', needs.slice(0,6).map(d => row(d,d.next_step)).join('') || empty);
       render('#appWorkingList', active.filter(d => d.attention).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       if (!pageOwnsMoves) {
@@ -163,16 +204,15 @@ export function mountAppLayout(root, host, pathname) {
             cursor = changes.cursor ?? cursor;
             if (feed.caught_up) break;
           }
-          const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
-          render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${move.after}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
+          renderMoves();
         } catch { render('#appTodayMoves', unavailable); }
       }
-    } else { render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); }
+    } else { resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); }
   };
   layout.addEventListener('click', event => {
     const item = event.target.closest('[data-layout-deal]'); if (!item) return;
     const id = item.dataset.layoutDeal;
-    const existing = [...root.querySelectorAll('.deal-link, .kanban-card')].find(n => n.dataset.id === id || n.dataset.openDeal === id || n.dataset.deal === id);
+    const existing = [...root.querySelectorAll('.deal-link, .kanban-card, button[data-open], button[data-open-deal]')].find(n => n.dataset.id === id || n.dataset.open === id || n.dataset.openDeal === id || n.dataset.deal === id);
     if (existing) { closeDrawer(); existing.click(); }
     else globalThis.location.assign(`/deals?deal=${encodeURIComponent(id)}`);
   });

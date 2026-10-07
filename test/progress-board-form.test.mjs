@@ -1,80 +1,52 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 
+import { mountBoard } from "../js/progress-board.js";
+
+const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-const tool = payload => new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify(payload) }] } }),
-  { headers: { "content-type": "application/json" } });
-let loadNumber = 0;
-
-class Node {
-  constructor(tag = "div") {
-    this.tagName = tag.toUpperCase();
-    this.children = [];
-    this.listeners = {};
-    this.dataset = {};
-    this.value = "";
-    this.checked = false;
-    this.disabled = false;
-    this._textContent = "";
-  }
-  set textContent(value) { this._textContent = String(value); this.children = []; }
-  get textContent() { return this._textContent + this.children.map(child => child.textContent).join(""); }
-  append(...children) { this.children.push(...children); }
-  replaceChildren(...children) { this.children = children; this._textContent = ""; }
-  addEventListener(name, listener) { this.listeners[name] = listener; }
-  setAttribute(name, value) { this[name] = String(value); }
-  contains(node) { return this === node || this.children.some(child => child.contains(node)); }
-}
-
-function descendants(node) {
-  return [node, ...node.children.flatMap(descendants)];
-}
 
 async function board(answers = []) {
-  const nodes = new Map();
+  const dom = new JSDOM(PAGE, { url: "https://app.doctorcre.com/progress-board?board=project-one" });
+  const { window } = dom;
   const writes = [];
-  const old = Object.fromEntries(["document", "location", "matchMedia", "setInterval", "fetch"]
-    .map(key => [key, globalThis[key]]));
-  globalThis.document = {
-    title: "",
-    activeElement: null,
-    getElementById(id) { if (!nodes.has(id)) nodes.set(id, new Node()); return nodes.get(id); },
-    createElement: tag => new Node(tag),
-    createElementNS: (_ns, tag) => new Node(tag),
-  };
-  globalThis.location = { search: "?board=project-one" };
-  globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
-  globalThis.setInterval = () => 0;
-  globalThis.fetch = async (_path, init) => {
-    const { name, arguments: args } = JSON.parse(init.body).params;
-    if (name === "read-progress-board") return tool({
+  const client = {
+    readProgressBoard: async () => ({
       snapshot: { board_id: "project-one", version: 1, snapshot_json: { title: "Test board", tasks: {} } },
       questions: [{ question_id: "color", revision: 2, prompt: "Choose a color",
         choices: ["Blue", "Green"], allow_free_text: true, status: null }],
-    });
-    assert.equal(name, "answer-board-question");
-    writes.push(args);
-    return answers.length ? answers.shift() : tool({ ok: true });
+    }),
+    answerBoardQuestion: async args => {
+      writes.push(structuredClone(args));
+      const next = answers.shift();
+      if (next instanceof Error) throw next;
+      return { ok: true };
+    },
   };
-  await import(`../js/progress-board.js?form-test=${++loadNumber}`);
+  mountBoard({ window, document: window.document, client, storage: null, search: "?board=project-one",
+    setInterval: () => 0 }).start();
   await tick();
-  const question = nodes.get("board-questions");
-  const form = descendants(question).find(node => node.tagName === "FORM");
+  const doc = window.document;
+  const form = doc.querySelector("#board-questions form.answer-form");
   assert.ok(form, "question form rendered");
-  const all = descendants(form);
-  const radios = all.filter(node => node.type === "radio");
-  const textarea = all.find(node => node.tagName === "TEXTAREA");
-  const preview = all.find(node => node.className === "answer-preview");
-  const button = all.find(node => node.type === "submit");
+  const radios = [...form.querySelectorAll('input[type="radio"]')];
+  const textarea = form.querySelector("textarea");
+  const preview = form.querySelector(".answer-preview");
   const select = index => {
-    radios.forEach((radio, radioIndex) => { radio.checked = radioIndex === index; });
-    radios[index].listeners.change?.();
+    radios[index].checked = true;
+    radios[index].dispatchEvent(new window.Event("change"));
   };
-  const type = value => { textarea.value = value; textarea.listeners.input?.(); };
+  const type = value => { textarea.value = value; textarea.dispatchEvent(new window.Event("input")); };
+  const current = () => doc.querySelector("#board-questions form.answer-form");
   return {
-    form, radios, textarea, preview, button, writes, select, type,
-    submit: () => form.listeners.submit({ preventDefault() {} }),
-    restore: () => { for (const [key, value] of Object.entries(old)) globalThis[key] = value; },
+    form, radios, textarea, preview, writes, select, type,
+    submit: async () => {
+      form.dispatchEvent(new window.Event("submit", { cancelable: true }));
+      for (let i = 0; i < 5; i += 1) await tick();
+    },
+    current,
   };
 }
 
@@ -88,40 +60,35 @@ for (const [name, actions, expected] of [
 ]) {
   test(`answer form sends its visible value after ${name}`, async () => {
     const view = await board();
-    try {
-      for (const [action, value] of actions) view[action](value);
-      assert.equal(view.preview.textContent, `Will send: ${expected}`);
-      assert.equal(view.radios.filter(radio => radio.checked).length + Number(Boolean(view.textarea.value.trim())), 1,
-        "only one answer mode is filled");
-      await view.submit();
-      assert.equal(view.writes.length, 1);
-      assert.equal(view.writes[0].answer_text, expected);
-    } finally { view.restore(); }
+    for (const [action, value] of actions) view[action](value);
+    assert.equal(view.preview.textContent, `Will send: ${expected}`);
+    assert.equal(view.radios.filter(radio => radio.checked).length + Number(Boolean(view.textarea.value.trim())), 1,
+      "only one answer mode is filled");
+    await view.submit();
+    assert.equal(view.writes.length, 1);
+    assert.equal(view.writes[0].answer_text, expected);
+    assert.equal(view.writes[0].base_version, 2);
   });
 }
 
 test("typing whitespace after a choice clears it and previews no answer", async () => {
   const view = await board();
-  try {
-    view.select(0);
-    view.type("   ");
-    assert.equal(view.radios.some(radio => radio.checked), false);
-    assert.equal(view.preview.textContent, "Will send: —");
-    await view.submit();
-    assert.equal(view.writes.length, 0);
-  } finally { view.restore(); }
+  view.select(0);
+  view.type("   ");
+  assert.equal(view.radios.some(radio => radio.checked), false);
+  assert.equal(view.preview.textContent, "Will send: —");
+  await view.submit();
+  assert.equal(view.writes.length, 0);
 });
 
 test("an unconfirmed send locks the shown answer until the identical retry", async () => {
-  const view = await board([new Response("unavailable", { status: 503 }), tool({ ok: true })]);
-  try {
-    view.type("Custom");
-    await view.submit();
-    assert.equal(view.preview.textContent, "Will send: Custom");
-    assert.equal(view.textarea.disabled, true);
-    assert.ok(view.radios.every(radio => radio.disabled));
-    await view.submit();
-    assert.equal(view.writes.length, 2);
-    assert.deepEqual(view.writes[1], view.writes[0]);
-  } finally { view.restore(); }
+  const view = await board([new Error("HTTP 503")]);
+  view.type("Custom");
+  await view.submit();
+  assert.equal(view.preview.textContent, "Will send: Custom");
+  assert.equal(view.textarea.disabled, true);
+  assert.ok(view.radios.every(radio => radio.disabled));
+  await view.submit();
+  assert.equal(view.writes.length, 2);
+  assert.deepEqual(view.writes[1], view.writes[0]);
 });

@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.41.0",
+  "version": "1.44.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "993f6e630aca20175b92a0475b2dda3dd51bdba9"
+    "source_commit": "b8e044ace2ef2270ab75d63a628448e04e392e81"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -62,6 +62,7 @@
     "list-progress-boards",
     "loop-board",
     "loop-headers",
+    "morning-brief",
     "new-deal",
     "notification-feed",
     "patch-deal-field",
@@ -70,17 +71,21 @@
     "read-assurance-health",
     "read-correspondence-thread",
     "read-dispatch-history",
+    "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
+    "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
     "read-progress-board",
     "read-resource-dashboard",
     "read-room",
+    "read-room-latest",
     "read-room-queue",
     "read-session-identity",
     "read-tour-selection-cart",
+    "record-commission-receipt",
     "record-dispatch-link",
     "rename-doc-conversation",
     "resolve-candidate",
@@ -446,6 +451,16 @@
       },
       "coverage": "One exact workflow/version, optionally one work request. No global backup or supervisor/job health. The pinned read passes unavailable workflow truth and therefore returns unknown, unavailable, green false."
     },
+    "doc_activity": {
+      "operation": "read-doc-activity",
+      "schema_version": "doc-activity.v1",
+      "producer_module": "mcp-server/src/doc-activity.js",
+      "undo_operation": "revert-deal-field",
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "f3f57f42a881c103bf3eca14bd69b23bec2b41a1"
+      }
+    },
     "deal-room-board": {
       "write": false,
       "producer": {
@@ -473,6 +488,33 @@
         "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
         "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
       }
+    },
+    "get-deal-room": {
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+      },
+      "response": {
+        "schema_version": "deal-timeline.v1",
+        "lease_keys": [
+          "id",
+          "version",
+          "status",
+          "executed_on",
+          "commencement_on",
+          "expiration_on",
+          "options_note",
+          "evidence_kind",
+          "evidence_ref",
+          "source"
+        ],
+        "lease_absence": null
+      },
+      "critical_date_write": "add-critical-date",
+      "never_derive": [
+        "rent_start",
+        "option_window"
+      ]
     }
   },
   "vendor_directory": {
@@ -480,7 +522,11 @@
     "version": "1.1.0",
     "path": "contracts/vendor-directory.v1.json",
     "sha256": "af68a55a68eca6cf5bb17b786a33308faa2261cc3cdcf51bce73deafff7b5e5b",
-    "request_selector": "contract=vendor-directory.v1"
+    "request_selector": "contract=vendor-directory.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "2b53a65d1be3c91dc7e6dc0aa4f3b7b285b63a65"
+    }
   },
   "system_work_inventory": {
     "schema": "unfinished-work.v1",
@@ -498,7 +544,21 @@
       "id",
       "limit"
     ],
-    "cache": "GitHub comes from published producer cache; no GitHub requests per page load"
+    "cache": "GitHub comes from published producer cache; no GitHub requests per page load",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "ee8fd95ec7b1c82591089b7694fd558bec9034e2"
+    }
+  },
+  "connections": {
+    "schema": "doctorcre-connections.v1",
+    "read_verb": "read-resource-dashboard",
+    "response_field": "connections",
+    "producer": {
+      "repo": "jbookout/carr-system",
+      "source_commit": "495f90283c722065b3f5394a3d0cefd8789a991b"
+    },
+    "missing_observations": "Unknown status and unavailable spend; configuration and capacity do not imply authenticated capability or currency charges."
   },
   "relationship_network": {
     "schema": "carr-relationship-network.v1",
@@ -538,5 +598,45 @@
       "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
       "scores": "existing record score; null shown as missing"
     }
+  },
+  "invoice_tracker": {
+    "schema_version": "invoice-tracker.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "3a41bd685abedd218b504174b6a240499f77ddaf"
+    },
+    "read": "read-invoice-tracker",
+    "write": "record-commission-receipt",
+    "amount": "commission.gross_amount",
+    "payment": "Full receipt of one commission; dated and version guarded",
+    "due_date": "Explicit due_on; null means unknown",
+    "lifecycle_fields": [
+      "invoiced_on",
+      "closed_on",
+      "lane",
+      "outcome"
+    ]
+  },
+  "morning_brief": {
+    "version": "1.0.0",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "6c346181d75fd54cef4f1d29e1341b8536fbaf5f"
+    },
+    "read": "morning-brief",
+    "arguments": {},
+    "audience": "authenticated sponsor; no caller-selected audience",
+    "sections_consumed": [
+      "today",
+      "deals",
+      "loops"
+    ],
+    "section_states": [
+      "ready",
+      "empty",
+      "unavailable"
+    ],
+    "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
+    "content_storage": "memory only"
   }
 }

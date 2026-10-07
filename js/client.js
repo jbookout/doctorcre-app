@@ -1,11 +1,17 @@
 /**
  * Deal Room client interface (WO-1 contract).
  *
+ * `morningBrief({signal})` returns MorningBriefResponse without audience arguments.
  * Both FixtureClient and LiveClient implement this shape. The fixture adapter
  * is in-memory; the live adapter uses authenticated same-origin CARR routes.
  *
  * @typedef {'joe'|'dell'|string} Actor
  * @typedef {'phase'|'owner'|'attention'|'next_date'|'next_step'|'operating_state'} DealField
+ *
+ * Morning brief: CARR derives sponsor from the authenticated session. Each
+ * section independently reports ready/empty/unavailable. Browser preferences
+ * contain only day/cutoff/speech; brief contents are never cached on disk.
+ * @typedef {{state:string,sponsor:string,sections:Object}} MorningBriefResponse
  *
  * @typedef {Object} PipelineEvent
  * @property {string} id
@@ -81,8 +87,11 @@
  * @property {(args:Object) => Promise<Object>} readAssuranceHealth read-only assurance-health.v1 for an exact workflow scope
  * @property {(args?:Object) => Promise<Object>} correspondenceReadiness governed installation read, no arguments
  * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
+ * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getInvoiceTracker invoice-tracker.v1 snapshot
+ * @property {(args:{commission_id:string,base_version:number,received_on:string,idempotency_key:string}) => Promise<Object>} markInvoicePaid record one full commission receipt
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
+ * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
  * @property {() => Promise<{deals:BoardDeal[], as_of:string, last_call_at:string}>} getBoard
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges

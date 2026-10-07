@@ -1,3 +1,4 @@
+import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
@@ -639,7 +640,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
-    status("Loading tours…"); const data = await request("/api/tours/library");
+    status("Loading tours…"); const data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
     if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
     libraryReady = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
@@ -674,13 +675,14 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     navigationBusy = true; if (composer) renderComposer(); renderCreate();
     try {
       const seq = ++tourLoadSeq; ++state.feedbackSeq; status("Loading tour…");
-      const tour = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
+      const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
       if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
       const changed = composer && composer.snapshot !== routeSnapshot(tour);
       if (changed && (composer.dirty || composer.plan || composer.busy)) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
       if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
       state.tour = tour;
+      selectDocRecord("tour", tour.id);
       if (!composer || composer.tourId !== tourId || changed) initComposer(tour);
       restoredTourId = "";
       renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]);

@@ -4,10 +4,11 @@ import { mountReadOnResume } from "./read-on-resume.mjs";
 
 // A failed read retries on a short backoff (1s, 2s, 4s... capped at the
 // interval), so "reconnecting" holds within seconds rather than a full poll.
-export function mountAutoRefresh({ document, window, refresh, onResume = () => {}, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
+export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
+  let queuedResume = null;
   let disposed = false;
   let controller = null;
   let failures = 0;
@@ -16,23 +17,32 @@ export function mountAutoRefresh({ document, window, refresh, onResume = () => {
     const delay = failures ? Math.min(intervalMs, retryMs * 2 ** (failures - 1)) : intervalMs;
     if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
   };
-  const read = () => {
+  const run = operation => {
     if (disposed || document.visibilityState === "hidden" || !shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
     controller = new AbortController();
-    running = readWithDeadline(signal => refresh({ signal }), { signal: controller.signal, timeoutMs, clock: window }).then(() => { failures = 0; }, () => {
+    running = readWithDeadline(signal => operation({ signal }), { signal: controller.signal, timeoutMs, clock: window }).then(() => { failures = 0; }, () => {
       // Failure stays in the page's own state; the next read comes sooner.
       failures += 1;
     }).finally(() => { running = null; controller = null; schedule(); });
     return running;
   };
+  const read = () => run(refresh);
+  const resumeRead = () => {
+    onResume?.();
+    if (!onResume || !running) return read();
+    if (queuedResume) return queuedResume;
+    controller?.abort();
+    queuedResume = running.then(read).finally(() => { queuedResume = null; });
+    return queuedResume;
+  };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
   document.addEventListener("visibilitychange", visibility);
-  const resume = mountReadOnResume({ document, window, refresh: () => { onResume(); return read(); } });
-  window.addEventListener("online", read);
+  const resume = mountReadOnResume({ document, window, refresh: resumeRead });
+  window.addEventListener("online", resumeRead);
   schedule();
-  return { refresh: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", read); resume?.dispose?.(); } };
+  return { refresh: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", resumeRead); resume?.dispose?.(); } };
 }
 
 // Bound the whole read, including decoding. A late result from a transport

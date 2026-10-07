@@ -1,0 +1,17 @@
+{
+  "routes": [
+    {
+      "path": "/deals",
+      "asset": "pipeline.html",
+      "order": 4,
+      "gatePath": "/deals"
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/pipeline",
+      "to": "/deals?view=board",
+      "order": 4
+    }
+  ]
+}

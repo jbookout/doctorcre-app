@@ -23,7 +23,8 @@
  *   - an unresolved operation is not silently replaced. A DIFFERENT intent for
  *     the same operation is blocked while the first is still unknown, because
  *     minting a second key over the top of it is the defect, not the fix.
- *   - only the server's answer settles anything. No timer, no blind re-send, no
+ *   - only the server's answer confirms a write. A deadline leaves it unknown,
+ *     retaining the request for an explicit outcome check. No blind re-send, no
  *     optimistic value, and nothing in here touches the DOM, the network or
  *     storage.
  *
@@ -111,10 +112,6 @@ export function sameCommandIntent(a, b) {
   return stableText(strip(a)) === stableText(strip(b));
 }
 
-/** Per-operation write bookkeeping. Plain data so it stays comparable. */
-export function createCommandState() {
-  return {};
-}
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object') return value;
@@ -343,10 +340,18 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
   }
   let response = null;
   let error = null;
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Command outcome not received')), 30_000);
+  });
   try {
-    response = await call(claim.request);
+    // The deadline bounds the wait, not the server's write. Late transport
+    // completion cannot settle this operation after an outcome check begins.
+    response = await Promise.race([call(claim.request), deadline]);
   } catch (caught) {
     error = caught;
+  } finally {
+    clearTimeout(timer);
   }
   const classified = classifyCommandOutcome({ response, error });
   const outcome = (classified.status === 'ok' && typeof supersededBy === 'function')

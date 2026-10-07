@@ -36,11 +36,119 @@ test('missing evidence asks one question; changed record refreshes the unsigned 
  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes[0].l.base_version,2);
  }finally{s.close()}
 });
-test('Undo, Link, and Claim are one-tap record operations; link removes card, claim preserves New stage',async()=>{
- const s=await setup();try{s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].review.undo_event_id,id(500));
+test('Undo collects a human quote; Link removes card and Claim preserves New stage',async()=>{
+ const s=await setup();try{s.d.querySelector('[data-undo]').click();await tick();assert.equal(s.writes.length,0);assert.equal(s.d.getElementById('stageDialog').open,true);
+ assert.match(s.d.getElementById('stageQuestions').textContent,/Why undo/);
+ const submit=()=>s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));
+ submit();await tick();assert.equal(s.writes.length,0);
+ s.d.querySelector('#stageQuestions textarea').value='   ';submit();await tick();assert.equal(s.writes.length,0);
+ s.d.querySelector('#stageQuestions textarea').value='Synthetic reply was attributed to the wrong lead';
+ await s.app.refresh();assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic reply was attributed to the wrong lead');
+ submit();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review,{reason:'Undo automatic stage move',evidence_ids:[],undo_event_id:id(500),human_quote:'Synthetic reply was attributed to the wrong lead'});
  s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
  s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#hotLeads [data-lead-id="${id(1)}"]`),null);
  }finally{s.close()}
+});
+for (const connected of [false, null, true]) test(`Engaged submits only connected call evidence: ${connected}`, async () => {
+ const s=await setup();try{
+  const call={id:id(700),kind:'call',connected,occurred_at:'2026-10-01T10:00:00Z',summary:'Synthetic call outcome'};
+  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[call]}});
+  await s.app.openReview(id(1),'engaged');
+  const submit=()=>s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));
+  if(connected!==true){
+   assert.equal(s.d.getElementById('stageQuestions').textContent,'What contact has taken place?');
+   submit();await tick();assert.equal(s.writes.length,0);
+   s.d.querySelector('#stageQuestions textarea').value='Synthetic contact confirmed in person';
+  }else assert.equal(s.d.querySelector('#stageQuestions textarea'),null);
+  submit();await tick();assert.equal(s.writes[0].stage,'engaged');
+  assert.deepEqual(s.writes[0].review,connected===true?{reason:'Call completed',evidence_ids:[id(700)]}:
+   {reason:'Synthetic contact confirmed in person',evidence_ids:[],human_quote:'Synthetic contact confirmed in person'});
+ }finally{s.close()}
+});
+test('Undo cancellation and a replaced automatic event never send a correction',async()=>{
+ const s=await setup();try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.getElementById('stageDialog').close();assert.equal(s.writes.length,0);
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction';
+  s.board.leads.find(row=>row.id===id(10)).last_stage_move.event_id=id(501);await s.app.refresh();
+  assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.app.state.proposal,null);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+test('Undo preserves its historical stage, event and quote through resume and an uncertain write',async()=>{
+ const calls=[];const s=await setup({recordStage:async(...args)=>{calls.push(args);throw Object.assign(new Error('uncertain'),{code:'unknown_outcome'})}});try{
+  s.board.leads.find(row=>row.id===id(10)).last_stage_move.from='closed_lost';await s.app.refresh();
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction after reviewing the reply';
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic correction after reviewing the reply');assert.equal(calls.length,0);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(calls[0][1],'closed_lost');assert.equal(calls[0][2].undo_event_id,id(500));assert.equal(calls[0][2].human_quote,'Synthetic correction after reviewing the reply');
+  await s.app.refresh();assert.equal(calls.length,1);
+  s.d.getElementById('checkPending').click();await tick();assert.equal(calls.length,2);assert.deepEqual(calls[1],calls[0]);
+ }finally{s.close()}
+});
+test('stale Undo resume cannot copy its draft into another lead review',async()=>{
+ const s=await setup();let release;try{
+  const a=s.board.leads.find(row=>row.id===id(10)),b=s.board.leads.find(row=>row.id===id(9));
+  b.stage='engaged';b.last_stage_move={...a.last_stage_move,event_id:id(502)};await s.app.refresh();
+  await s.app.openReview(a.id,'outreach_active',{undoEventId:id(500)});
+  s.d.querySelector('#stageQuestions textarea').value='Synthetic reason for lead A';
+  const read=s.client.getLeadDetail;
+  s.client.getLeadDetail=l=>l.id===a.id?new Promise(resolve=>{release=resolve}):read(l);
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(typeof release,'function');s.d.getElementById('closeStage').click();
+  await s.app.openReview(b.id,'outreach_active',{undoEventId:id(502)});
+  release({detail:detail(a)});await tick();
+  assert.equal(s.d.querySelector('#stageQuestions textarea').value,'');
+  s.d.querySelector('#stageQuestions textarea').value='Synthetic reason for lead B';
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].l.id,b.id);
+  assert.equal(s.writes[0].review.undo_event_id,id(502));assert.equal(s.writes[0].review.human_quote,'Synthetic reason for lead B');
+ }finally{release?.({detail:detail(s.board.leads.find(row=>row.id===id(10)))});s.close()}
+});
+for(const source of ['board','fresh detail'])test(`Undo restores distinct producer stages within Nurture from ${source}`,async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(row=>row.id===id(10));row.last_stage_move.from='nurture_drip';row.last_stage_move.to='closed_lost';
+  row.stage=source==='board'?'closed_lost':'engaged';row.last_stage_move.to=row.stage;await s.app.refresh();
+  s.client.getLeadDetail=async()=>({detail:detail({...row,stage:'closed_lost',last_stage_move:{...row.last_stage_move,to:'closed_lost'}})});
+  s.d.querySelector(`[data-undo="${row.id}"]`).click();await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.getElementById('saveStage').disabled,false);
+  s.d.querySelector('#stageQuestions textarea').value='Synthetic historical restoration';await s.app.refresh();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic historical restoration');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].stage,'nurture_drip');assert.equal(s.writes[0].review.undo_event_id,id(500));
+ }finally{s.close()}
+});
+test('Undo draft survives a failed detail poll and requires fresh verification before confirmation',async()=>{
+ const s=await setup();try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction retained after read failure';
+  const read=s.client.getLeadDetail;s.client.getLeadDetail=async()=>{throw new Error('Synthetic network failure')};await s.app.refresh();
+  assert.equal(s.d.getElementById('saveStage').disabled,true);assert.equal(s.app.state.proposal,null);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));assert.equal(s.writes.length,0);
+  s.client.getLeadDetail=read;await s.app.refresh();assert.equal(s.d.getElementById('saveStage').disabled,false);
+  assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic correction retained after read failure');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes[0].review.human_quote,'Synthetic correction retained after read failure');
+ }finally{s.close()}
+});
+test('Undo draft survives visibility resume while its detail poll is pending',async()=>{
+ const s=await setup();let release;try{
+  s.d.querySelector('[data-undo]').click();await tick();s.d.querySelector('#stageQuestions textarea').value='Synthetic correction retained during pending poll';
+  const read=s.client.getLeadDetail;s.client.getLeadDetail=()=>new Promise(resolve=>{release=resolve});const polling=s.app.refresh();await tick();
+  assert.equal(s.app.state.proposal,null);assert.equal(s.d.getElementById('saveStage').disabled,true);
+  Object.defineProperty(s.d,'visibilityState',{value:'hidden',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  s.client.getLeadDetail=read;Object.defineProperty(s.d,'visibilityState',{value:'visible',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));await tick();
+  release({detail:detail(s.board.leads.find(row=>row.id===id(10)))});await polling;await tick();
+  assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.getElementById('saveStage').disabled,false);
+  assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic correction retained during pending poll');assert.equal(s.writes.length,0);
+ }finally{release?.({detail:detail(s.board.leads.find(row=>row.id===id(10)))});s.close()}
+});
+test('Undo polling preserves edits made while fresh detail is pending',async()=>{
+ const s=await setup();let release;try{
+  s.d.querySelector('[data-undo]').click();await tick();const input=s.d.querySelector('#stageQuestions textarea');input.value='Synthetic initial draft';
+  s.client.getLeadDetail=()=>new Promise(resolve=>{release=resolve});const polling=s.app.refresh();await tick();
+  input.value='Synthetic revised draft during verification';release({detail:detail(s.board.leads.find(row=>row.id===id(10)))});await polling;
+  assert.equal(s.d.querySelector('#stageQuestions textarea'),input);assert.equal(input.value,'Synthetic revised draft during verification');
+ }finally{release?.({detail:detail(s.board.leads.find(row=>row.id===id(10)))});s.close()}
 });
 test('unknown write retains exact key and payload, never automatically resends; actor change clears it',async()=>{
  const writes=[];const s=await setup({recordStage:async(...args)=>{writes.push(args);throw Object.assign(new Error('network'),{code:'unknown_outcome'})}});
@@ -219,7 +327,7 @@ test('blocking 6: initial detail cannot resurrect a lead excluded by the latest 
  const stale=detail(s.board.leads[0]);s.client.getLeadDetail=()=>new Promise(r=>release=r);const reading=s.app.readDetail(id(1));
  if(change==='removed')s.board.leads.shift();else if(change==='linked')s.board.leads[0].client_id=id(900);else s.board.leads[0].suppressed=true;
  await s.app.refresh();release({detail:stale});await reading;
- assert.equal(s.d.getElementById('leadDetail').open,false,change);assert.equal(s.app.state.detail,null);
+ assert.equal(s.d.getElementById('leadDetail').open,change==='removed',change);assert.equal(s.app.state.detail,null);if(change==='removed')assert.match(s.d.getElementById('detailBody').textContent,/Unavailable/);
  }finally{s.close()}
  }
 });
@@ -327,4 +435,43 @@ test('a failed first read reconnects within seconds without waiting a full poll'
  try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
   await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,14);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
+});
+
+for (const surface of ['actor','workspace']) test(`PR129 #1 failed ${surface} verification clears loaded private details`,async()=>{
+ const s=await setup();try{await s.app.readDetail(id(1));s.client[surface==='actor'?'getActor':'getWorkspace']=async()=>{throw Object.assign(new Error('Unavailable'),{status:503})};await s.app.refresh();
+ assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');if(surface==='actor')assert.equal(s.d.querySelectorAll('.lead-card').length,0);
+ }finally{s.close()}
+});
+test('PR129 #8 an open missing lead recovers with the identical detail on the next successful board',async()=>{
+ const s=await setup();try{await s.app.readDetail(id(1));const lead=s.board.leads.shift();await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Unavailable/);
+ s.board.leads.unshift(lead);await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,true);assert.ok(s.d.querySelector('#detailStage'));assert.match(s.d.getElementById('detailBody').textContent,/example@example.test/);
+ }finally{s.close()}
+});
+
+for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pending boot ${phase} immediately replaces the invalidated read`, async () => {
+ let actorReads = 0, workspaceReads = 0, release;
+ const held = new Promise(resolve => { release = resolve; });
+ const s = await setup({
+  getActor: async () => { actorReads++; return phase === 'identity' && actorReads === 1 ? held : 'example-partner'; },
+  getWorkspace: async () => { workspaceReads++; return phase === 'workspace' && workspaceReads === 1 ? held : structuredClone(workspace()); },
+ });
+ try {
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0);
+  Object.defineProperty(s.d, 'visibilityState', { value: 'hidden', configurable: true });
+  s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  Object.defineProperty(s.d, 'visibilityState', { value: 'visible', configurable: true });
+  s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  await tick();
+  // The client ignores abort: a held transport must not delay replacement.
+  assert.equal(actorReads, 2);
+  assert.equal(workspaceReads, phase === 'identity' ? 1 : 2);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.d.getElementById('leadBoard').getAttribute('aria-busy'), 'false');
+  assert.equal(s.d.getElementById('leadBoardError').hidden, true);
+  release(phase === 'identity' ? 'stale-example-partner' : { leads: [] });
+  await tick();
+  assert.equal(s.app.state.actor, 'example-partner');
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.writes.length, 0);
+ } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });

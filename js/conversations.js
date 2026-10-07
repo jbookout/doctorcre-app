@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
 //
@@ -30,11 +31,11 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh
 //      with the version the refusal carried. The page re-reads, which is the
 //      only source of the new version, and asks the person to press again.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
   COMPOSER_ABSENT, DOC_REPLY_PENDING, EXPOSURE_STATEMENT, LIST_EMPTY, LIST_SCOPE,
@@ -101,7 +102,7 @@ function suggestionEditorActive() {
 }
 let pendingOutcomeOpen = null;
 const openLinks = createOpenLinkGuard();
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -596,6 +597,7 @@ async function takeSuggestions({ background = false, signal } = {}) {
 }
 
 async function load({ background = false, signal } = {}) {
+  selectDocRecord('conversation', view.route.state === 'ok' ? view.route.id : null);
   if (background && suggestionEditorActive()) return;
   if (background) backgroundReads++;
   try {
@@ -609,6 +611,7 @@ async function load({ background = false, signal } = {}) {
 
 /** Opening one sets `?id=` so Back restores the list this page came from. */
 function open(id) {
+  selectDocRecord('conversation', id);
   const route = idFromSearch(`?id=${id}`);
   view.route = route;
   view.conversation = { state: "pending" };
@@ -725,7 +728,6 @@ async function decideSuggestion(id, choice, card) {
     view.suggestions.workNumbers.delete(id);
     view.suggestions.snoozeDates.delete(id);
   }
-  if (choice === "discuss" && outcome.status === "ok") $("docFab")?.click();
 }
 
 async function proposeSuggestionCorrection(id) {
@@ -784,7 +786,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Conversations");
+
   mountDock();
   $("listScope").textContent = LIST_SCOPE;
   $("sharingCaveat").textContent = SHARING_CAVEAT;

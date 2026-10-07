@@ -14,36 +14,54 @@
   <div class="shell">
     <header class="masthead">
       <a class="brand" href="/control-room" aria-label="DoctorCRE Control Room">✦ <span>DoctorCRE</span></a>
-      <span class="edition">PROGRESS</span>
+      <nav class="board-switch" aria-label="Boards">
+        <a id="switch-project" href="/progress-board?board=carr-v5">Project</a>
+        <a id="switch-all" href="/progress-board?board=all-repos">All repositories</a>
+      </nav>
+      <button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button>
     </header>
+    <aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">KEY</p><h2 id="legend-title">What every mark means</h2></div></div>
+      <div id="legend-body" class="legend-body"></div>
+    </aside>
     <main>
       <nav aria-label="Breadcrumb"><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
       <section class="intro" aria-labelledby="board-title">
-        <p class="eyebrow">DELIVERY / PROGRESS BOARD</p>
+        <p class="eyebrow" id="board-eyebrow">DELIVERY / PROGRESS BOARD</p>
         <h1 id="board-title" tabindex="-1">Progress</h1>
         <p id="board-meta" class="board-meta">Loading published board…</p>
         <span id="board-freshness" class="freshness-badge"></span>
+        <p id="board-sync" class="board-sync" role="status" hidden></p>
         <p id="board-error" class="error" role="alert" hidden></p>
         <div class="read-recovery"><button data-layout-refresh id="board-retry" type="button" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>
+        <div id="board-headline" class="headline" aria-label="Board summary"></div>
       </section>
-      <section class="panel directory-panel" aria-labelledby="directory-title">
-        <div class="panel-heading"><h2 id="directory-title">Published boards</h2></div>
-        <p id="directory-error" class="error" role="alert" hidden></p>
+      <section id="repos-panel" class="panel repos-panel" aria-labelledby="repos-title" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">00 / REPOSITORIES</p><h2 id="repos-title">Every jbookout repository</h2></div><span id="repo-count" class="panel-count">—</span></div>
+        <div id="board-repos" class="repo-list"></div>
+      </section>
+      <details class="panel directory-panel" aria-labelledby="directory-title">
+        <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
-      </section>
+      </details>
       <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
+      <section id="board-costs" class="panel cost-panel" aria-label="System costs" hidden></section>
       <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
         <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
-        <div id="board-stages" class="flow-wrap" aria-live="polite">
-          <svg id="board-flow" class="pipeline-diagram" role="group" aria-label="Tasks positioned along the six delivery stages"></svg>
-        </div>
+        <form id="board-filters" class="filters" aria-label="Filter cards">
+          <label>Repository <select id="filter-repo"><option value="">All</option></select></label>
+          <label>Stage <select id="filter-stage"><option value="">All</option></select></label>
+          <label class="check"><input id="filter-blocked" type="checkbox"> Blocked only</label>
+        </form>
+        <svg id="board-rail" class="pipeline-rail" viewBox="0 0 600 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="board-stages" class="columns" aria-live="polite"></div>
       </section>
-      <section class="panel" aria-labelledby="completed-title">
-        <div class="panel-heading"><div><p class="eyebrow">02 / COMPLETED</p><h2 id="completed-title">Live work</h2></div><span id="completed-count" class="panel-count">—</span></div>
-        <div id="completed-list" class="completed-list"></div>
+      <section class="panel blocked-panel" aria-labelledby="blocked-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / BLOCKED</p><h2 id="blocked-title" tabindex="-1">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
+        <div id="board-blocked" class="blocked-list"></div>
       </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
-        <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
+        <div class="panel-heading"><h2 id="system-work-title" tabindex="-1">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Live Library</button></div>
         <form id="system-work-filters" class="work-filters">
           <label>Search<input name="text" type="search" maxlength="200"></label>
           <label>Category<select name="source"><option value="">All categories</option></select></label>
@@ -53,15 +71,40 @@
         </form>
         <p id="system-work-coverage" class="caption" role="status"></p>
         <p id="system-work-error" class="error" role="alert" hidden></p>
+        <button id="system-work-retry" type="button" hidden>Retry system work</button>
+        <span id="system-work-count" class="panel-count">—</span>
+        <div class="flow-wrap"><svg id="system-work-flow" class="pipeline-diagram" role="group" aria-label="System work delivery stages"></svg></div>
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>
       </section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
         <div class="panel-heading"><div><p class="eyebrow">03 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
-
         <div id="board-questions" class="questions" aria-live="polite"></div>
+      </section>
+      <div class="lower-grid">
+        <section class="panel" aria-labelledby="ledger-title">
+          <div class="panel-heading"><div><p class="eyebrow">04 / EXECUTORS</p><h2 id="ledger-title">Executor ledger</h2></div></div>
+          <div id="board-ledger" class="ledger"></div>
+        </section>
+        <section class="panel" aria-labelledby="delivery-title">
+          <div class="panel-heading"><div><p class="eyebrow">05 / DELIVERY</p><h2 id="delivery-title">Latest deliverables</h2></div><span id="deliverable-count" class="panel-count">—</span></div>
+          <div id="board-deliverables" class="link-list"></div>
+        </section>
+        <section class="panel" aria-labelledby="decisions-title">
+          <div class="panel-heading"><div><p class="eyebrow">06 / DECISIONS</p><h2 id="decisions-title">Decisions made</h2></div><span id="decision-count" class="panel-count">—</span></div>
+          <div id="board-decisions" class="decision-list"></div>
+        </section>
+        <section class="panel" aria-labelledby="notes-title">
+          <div class="panel-heading"><div><p class="eyebrow">07 / NOTES</p><h2 id="notes-title">Notes</h2></div></div>
+          <div id="board-notes" class="note-list"></div>
+        </section>
+      </div>
+      <section class="panel completed-panel" aria-labelledby="completed-title">
+        <div class="panel-heading"><div><p class="eyebrow">08 / COMPLETED</p><h2 id="completed-title" tabindex="-1">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div id="board-completed" class="completed-list"></div>
       </section>
     </main>
     <dialog id="work-triage" aria-label="Review system work action"><button id="work-triage-close" type="button" aria-label="Close">×</button><form id="work-triage-form"></form></dialog>
+
   </div>
 </body>
 </html>

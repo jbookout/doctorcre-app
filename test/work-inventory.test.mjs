@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -234,18 +235,17 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
   const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
-  const artifactScript = await readFile(`${ROOT}/scripts/artifact.mjs`, "utf8");
   const serveScript = await readFile(`${ROOT}/scripts/serve.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract.
   assert.equal(routes.routes["/all-work"], "work-inventory.html");
-  assert.equal(routes.version, "1.19.0", "an additive route is a minor version of the route contract");
+  assert.equal(routes.version, "1.20.0", "an additive route is a minor version of the route contract");
   assert.ok(carr.http_surfaces.includes("/api/v1/work-inventory"), "the consumed path belongs in the pinned interface");
 
   // The page is listed everywhere a page has to be listed.
   assert.match(checkScript, /"work-inventory\.html"/);
-  assert.match(artifactScript, /"work-inventory\.html"/);
+  assert.equal(await hasArtifactPage("work-inventory.html"), true, "the page ships in the verified artifact");
   assert.match(summary, /work-inventory/);
 
   // Accessibility floor.
@@ -294,13 +294,17 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   assert.match(js, /updatedLabel\(payload\.source\.observed_at\)/, "the census displays its update timestamp");
   assert.match(js, /Partly available/);
 
-  // The fixture server really serves the census, with all six kinds and a second page.
+  // Both local servers share the same synthetic census implementation.
   assert.match(serveScript, /\/api\/v1\/work-inventory/);
-  assert.match(serveScript, /Demo /);
-  for (const kind of WORK_INVENTORY_KINDS) assert.ok(serveScript.includes(kind), `the fixture must exercise ${kind}`);
-  for (const status of ["superseded", "dormant"]) assert.ok(serveScript.includes(status), `the fixture must exercise ${status}`);
-  assert.match(serveScript, /"unavailable"/, "the fixture must exercise an unavailable leg");
-  assert.match(serveScript, /next_cursor/);
+  assert.match(serveScript, /import.*censusResponse.*work-inventory-fixture/);
+  const {censusResponse} = await import('../scripts/work-inventory-fixture.mjs');
+  const first=censusResponse(new URL('http://fixture.local/api/v1/work-inventory'));
+  const second=censusResponse(new URL(`http://fixture.local/api/v1/work-inventory?cursor=${first.next_cursor}`));
+  assert.deepEqual(first.kinds,WORK_INVENTORY_KINDS);
+  assert.ok([...first.items,...second.items].every(item=>item.title.startsWith('Demo ')));
+  for (const status of ['superseded','dormant']) assert.ok(first.items.some(item=>item.status===status));
+  assert.ok(first.coverage.some(leg=>leg.state==='unavailable'));
+  assert.ok(first.next_cursor); assert.equal(second.next_cursor,null);
 });
 
 test("an item's open link must stay on this app, including the backslash form browsers read as another host", () => {

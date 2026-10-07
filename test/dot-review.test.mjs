@@ -3,12 +3,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { observeDocRead, selectDocRecord, setDocFilters } from "../js/doc-context.js";
+import { createDocContext } from "../js/doc-context-model.js";
 import { createLiveClient } from "../js/live-client.js";
 import { createSystemWorkClient } from "../js/system-work-client.js";
 import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
-import { createCommandState, performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
+import { performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
 import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
@@ -22,7 +24,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -84,7 +86,7 @@ test("Dot 24: producer city is displayed as the deal market", async () => {
 test("Dot 21: closing outcome uses the producer base_version", async () => {
   const writes=[];
   const client=createLiveClient({fetchImpl:async(_path,init)=>{const req=JSON.parse(init.body).params; if(req.name==="get-deal-room")return rpc({deal_id:"demo",base_version:7,thread:[],events:[]});writes.push(req); return rpc({ok:true});}});
-  const h=handlers("js/pipeline.js","async function runOutcomeWrite(","/** One follow-up",{state:{client,boardSync:{requestRefresh:noop}},dock:{record:noop},operations:new Map(),commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runOutcomeWrite"]);
+  const h=handlers("js/pipeline.js","async function runOutcomeWrite(","/** One follow-up",{state:{client,boardSync:{requestRefresh:noop}},dock:{record:noop},operations:new Map(),commandState:{},performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runOutcomeWrite"]);
   await h.runOutcomeWrite("close",{verb:"update-deal",summary:"Close",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}},{deal:"demo",name:"Demo"});
   assert.equal(writes.length,1);assert.equal(writes[0].arguments.base_version,7);assert.equal(writes[0].arguments.outcome,"won");
 });
@@ -268,7 +270,7 @@ test("Dot 10: an answered app release with pending CARR reads cannot claim succe
 
 test("Dot 11: a blocked second rename cannot replace the retained recovery intent", async () => {
   const calls=[];const operations=new Map();
-  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:createCommandState(),uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop},["dispatch"]);
+  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:{},uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop},["dispatch"]);
   const send=async args=>{calls.push(args);if(calls.length===1)throw new Error("lost response");return {ok:true};};
   await h.dispatch("rename:A",{name:"First"},"Rename",send);await h.dispatch("rename:A",{name:"Second"},"Rename",send);
   const saved=operations.get("rename:A");await h.dispatch("rename:A",saved.args,saved.summary,saved.send);
@@ -354,8 +356,8 @@ test("PR111 #3: successful answer preserves newer edits in the same draft", asyn
 function roomHarness(total=6000) {
   const state={cursor:0,latestSeqHint:0,turns:[],byMsgId:new Map(),oldestSeq:null,following:true,pending:new Map(),filters:{},viewer:"joe",missed:0};const reads=[];let displayed=[];
   const globals={state,scope:{},scopedTurn:()=>true,onRead:noop,PAGE_SIZE:60,DOM_TURN_CAP:300,POLL_BACKOFF_CEILING_MS:60000,POLL_VISIBLE_MS:4000,$:(()=>{const get=elements();get("roomHealth").dataset={};return get;})(),PARTNER_LABEL:{},seqOf:t=>Number(t.seq),fetchTurns:async(from,limit)=>{reads.push([from,limit]);const turns=Array.from({length:Math.min(limit,Math.max(0,total-from))},(_,i)=>({seq:from+i+1,msg_id:`turn-${from+i+1}`}));return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};},deriveModel:()=>({jobPassports:{enabled:true}}),renderStage:noop,renderSeatChips:noop,renderDesks:noop,renderWire:noop,renderAssignments:noop,renderSessions:noop,renderJobPassport:noop,renderHealth:noop,animateArrivals:noop,banner:noop,setState:noop,document:{hidden:false},setTimeout:()=>0,clearTimeout:noop,turnPasses:()=>true,reconcile:(_root,items)=>{displayed=items.filter(i=>i.kind==="turn").map(i=>i.turn.seq);},scrollToBottom:noop};
-  const h=handlers("js/room.js","  function absorb(","  /* ------------------------------------------------------------- wiring up",globals,["poll","loadEarlier","absorb"]);
-  const wire=handlers("js/room.js","  function renderWire(","  function turnNode(",globals,["renderWire"]);
+  const h=handlers("js/progress-wire.js","  function absorb(","  /* ------------------------------------------------------------- wiring up",globals,["poll","loadEarlier","absorb"]);
+  const wire=handlers("js/progress-wire.js","  function renderWire(","  function turnNode(",globals,["renderWire"]);
   return {h,wire,state,reads,displayed:()=>displayed};
 }
 test("Dot 19: first room poll catches up immediately to the current window", async () => {
@@ -382,7 +384,7 @@ for(const start of [1,301]) test(`PR111 #9: history stays contiguous with buffer
 
 for(const fails of [false,true]) test(`PR111 #10: delayed history ${fails ? "failure" : "success"} respects Resume live`,async()=>{
   const {h,state}=roomHarness();const reply=deferred();state.historyTurns=[{seq:241,msg_id:"old"}];state.following=false;state.turns=[{seq:600,msg_id:"live"}];h.fetchTurns=()=>reply.promise;
-  const resume=handlers("js/room.js",'  $("wireResume").addEventListener', '  $("composerInput").addEventListener',{state,$:h.$,render:noop,scrollToBottom:noop},[]);
+  const resume=handlers("js/progress-wire.js",'  $("wireResume").addEventListener', '  $("composerInput").addEventListener',{state,$:h.$,render:noop,scrollToBottom:noop},[]);
   const pending=h.loadEarlier();h.$("wireResume").listeners.click();
   if(fails)reply.reject(new Error("old history failure"));else reply.resolve({turns:[{seq:181,msg_id:"earlier"}],latest_seq:181,more:false});
   await pending;assert.equal(state.historyTurns,null);assert.equal(state.following,true);
@@ -398,12 +400,11 @@ test("Dot 26: replaying a conflicted version cannot restore verified completion"
 });
 
 test("Dot 27: automatic board refresh preserves an unchanged questions answer draft", async () => {
-  const {workDetailUrl}=await import("../js/progress-work-model.js");
-  const {boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange}=await import("../js/progress-board-model.js");
-  const dom=new JSDOM(source("progress-board.html"));
+  const {mountBoard}=await import("../js/progress-board.js");
+  const dom=new JSDOM(source("control-room.html"));
   const payload={snapshot:{board_id:"demo-board",version:1,snapshot_json:{title:"Demo board",tasks:{}}},questions:[{question_id:"demo-question",revision:1,prompt:"Demo question",choices:[],allow_free_text:true,status:null}]};
-  const h=handlers("js/progress-board.js","const boardId",null,{document:dom.window.document,location:{search:"?board=demo-board"},matchMedia:()=>({matches:false,addEventListener:noop}),setInterval:()=>0,createLiveClient:()=>({listProgressBoards:async()=>({schema:"progress-board-directory.v1",boards:[]}),readProgressBoard:async()=>payload}),workDetailUrl,boardView,answerRequest,taskPulse,SYSTEM_BOARD_ID,boardDirectory,boardFreshness,nextFreshnessChange,uuidv4:()=>"key"},["refresh"]);
-  await tick();const input=dom.window.document.querySelector("textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await h.refresh();
+  const board=mountBoard({window:dom.window,document:dom.window.document,client:{readProgressBoard:async()=>payload},storage:null,search:"?board=demo-board",setInterval:()=>0,setTimeout:()=>0,clearTimeout:()=>{}});
+  board.start();await tick();const input=dom.window.document.querySelector("textarea");input.value="Unsaved answer";input.dispatchEvent(new dom.window.Event("input"));await board.refresh();
   assert.equal(dom.window.document.querySelector("textarea").value,"Unsaved answer");dom.window.close();
 });
 
@@ -431,11 +432,11 @@ test("Dot 30: source review closure does not prove merge release activation or c
 });
 
 test("Dot 9: phase reconciliation resumes the originally requested follow-up writes", async () => {
-  const {completionPlan,moveIntent}=await import("../js/pipeline-model.js");const {cellKey,pendingFieldWrite}=await import("../js/field-write-reconciliation.mjs");
+  const {completionPlan,moveIntent}=await import("../js/pipeline-model.js");const {cellKey}=await import("../js/field-write-reconciliation.mjs");const {pendingCommand}=await import("../js/command-feedback.mjs");
   const operations=new Map(),followUps=[];let phaseCalls=0;
   const state={fieldWrites:{},deals:new Map([["demo",{name:"Demo"}]]),boardSync:{requestRefresh:noop}};
   const request={deal:"demo",field:"phase",value:"Legal"};
-  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingFieldWrite,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,refreshPanel:noop,fieldPatch:(field,value)=>({[field]:value}),sendFieldWrite:async()=>({status:"ok",request}),uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
+  const h=handlers("js/pipeline.js","async function runMove(","async function runUndo(",{state,operations,completionPlan,cellKey,pendingCommand,moveSummary:()=>"Demo to Legal",dock:{record:noop},renderBoard:noop,fieldWriteMessage:()=>"",fieldLabel:()=>"Phase",columnLabel:()=>"Legal",showConflict:noop,showToast:noop,say:noop,announce:noop,confirmLocalWrite:noop,refreshPanel:noop,fieldPatch:(field,value)=>({[field]:value}),sendFieldWrite:async()=>({status:"ok",request}),uuidv4:()=>"key",runOutcomeWrite:async(_key,step)=>followUps.push(step),runFollowUp:async(_key,step)=>followUps.push(step),sendPhaseWrite:async()=>{phaseCalls++;if(phaseCalls===1){state.fieldWrites[cellKey("demo","phase")]={request,status:"unknown"};return {status:"unknown",request};}return {status:"ok",request};}},["runMove","retryFieldWrite"]);
   const intent=moveIntent({id:"demo",name:"Demo",phase:"On Deck"},"legal");
   await h.runMove(intent,{evidence:"Demo note",nextStep:"Demo follow-up",nextWhen:"2026-10-01",effectiveDate:"2026-09-30",recordCriticalDate:true,dateSource:"Demo source"});
   assert.equal(followUps.length,0);await h.retryFieldWrite(cellKey("demo","phase"));
@@ -445,7 +446,7 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
   const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:createCommandState(),performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:{},performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
@@ -453,7 +454,7 @@ test("Closing outcome recovery after Dot 21 replays update-deal through the dock
 
 test("PR111 #5: outcome read failure remains retryable from the receipt dock", async () => {
   const writes=[],receipts=[],operations=new Map();let reads=0;let dockOptions;
-  const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:createCommandState(),performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
+  const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:{},performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
   const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","/**\n * The whole Move",globals,["runOutcomeWrite","runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}};
   await h.runOutcomeWrite("close",step,{deal:"demo",name:"Demo"});

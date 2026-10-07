@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/workspace.css">
   <link rel="stylesheet" href="/css/home-dashboard.css">
+  <link rel="stylesheet" href="/css/lease-radar.css">
   <link rel="stylesheet" href="/css/app-shell.css">
   <link rel="stylesheet" href="/css/relationship-network.css">
 </head>
@@ -38,9 +39,11 @@
       <header class="home-panel-head"><h2 id="dealCounts">Active Deals: — <span>Deals in Market: —</span> <span>National Account Deals: —</span></h2><a id="homePrimaryAction" class="home-outline" href="/deals">Deal Room <span aria-hidden="true">↗</span></a></header>
       <div id="dealFlags" class="home-flags"><p class="home-empty">Updating…</p></div>
     </section>
+    <section id="homeInvoices" class="home-panel glass" aria-label="Invoice attention" hidden></section>
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel glass" aria-label="Calendar" hidden></section>
       <section id="homeControl" class="home-panel glass" aria-label="Control room" hidden></section>
+      <section id="homePastClients" class="home-panel glass" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel glass" aria-label="Suggested introductions" hidden></section>
       <section id="homeLeads" class="home-panel glass" aria-label="New leads" hidden></section>
     </div>

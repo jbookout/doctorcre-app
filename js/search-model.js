@@ -230,6 +230,13 @@ export const SEARCH_GROUPS = Object.freeze([
 ]);
 
 export const SEARCH_GROUP_IDS = Object.freeze(SEARCH_GROUPS.map((group) => group.id));
+const isScope = id => id === "none" || SEARCH_GROUP_IDS.includes(id);
+
+export function toggleSearchScope(kinds, id) {
+  const selected = kinds.length === 0 ? [...SEARCH_GROUP_IDS] : kinds.filter(kind => kind !== "none");
+  const next = selected.includes(id) ? selected.filter(kind => kind !== id) : [...selected, id];
+  return next.length === 0 ? ["none"] : next.length === SEARCH_GROUP_IDS.length ? [] : next;
+}
 
 /** Non-null, non-empty strings only. An array of refs is not an array of links. */
 export function refChips(list) {
@@ -349,7 +356,7 @@ export function groupSearchResults(payload) {
  * else. A chip is SELECTED when the scope names it or the scope is empty.
  */
 export function scopeChips(groups, kinds = []) {
-  const chosen = new Set((Array.isArray(kinds) ? kinds : []).filter((id) => SEARCH_GROUP_IDS.includes(id)));
+  const chosen = new Set((Array.isArray(kinds) ? kinds : []).filter((id) => isScope(id)));
   return Object.freeze((Array.isArray(groups) ? groups : []).map((group) => Object.freeze({
     id: group.id, label: group.label, count: group.count,
     selected: chosen.size === 0 || chosen.has(group.id),
@@ -358,7 +365,7 @@ export function scopeChips(groups, kinds = []) {
 
 /** A chip hides rows from the answer already in hand. It asks nothing new. */
 export function applyScope(groups, kinds = []) {
-  const chosen = new Set((Array.isArray(kinds) ? kinds : []).filter((id) => SEARCH_GROUP_IDS.includes(id)));
+  const chosen = new Set((Array.isArray(kinds) ? kinds : []).filter((id) => isScope(id)));
   if (chosen.size === 0) return Object.freeze([...(Array.isArray(groups) ? groups : [])]);
   return Object.freeze((Array.isArray(groups) ? groups : []).filter((group) => chosen.has(group.id)));
 }
@@ -486,7 +493,7 @@ export function acceptsSearchResponse(current, token) {
 export function parseSearchAddress(search) {
   const parameters = new URLSearchParams(String(search || "").replace(/^\?/, ""));
   const query = parameters.get("q");
-  const kinds = (parameters.get("kinds") || "").split(",").map((entry) => entry.trim()).filter((entry) => SEARCH_GROUP_IDS.includes(entry));
+  const kinds = (parameters.get("kinds") || "").split(",").map((entry) => entry.trim()).filter((entry) => isScope(entry));
   return Object.freeze({
     query: typeof query === "string" ? query : "",
     kinds: Object.freeze([...new Set(kinds)]),
@@ -497,10 +504,10 @@ export function parseSearchAddress(search) {
 /** The address a view is restored from. Byte-stable for the same view. */
 export function searchAddress({ query = "", kinds = [] } = {}) {
   const parameters = new URLSearchParams();
-  parameters.set("q", String(query ?? ""));
-  const scope = (Array.isArray(kinds) ? kinds : []).filter((entry) => SEARCH_GROUP_IDS.includes(entry));
+  if (String(query ?? "").trim()) parameters.set("q", String(query));
+  const scope = (Array.isArray(kinds) ? kinds : []).filter((entry) => isScope(entry));
   if (scope.length > 0) parameters.set("kinds", scope.join(","));
-  return `/search?${parameters.toString()}`;
+  return `/search${parameters.size ? `?${parameters.toString()}` : ""}`;
 }
 
 /* ---------------------------------------------------------------- saved views */
@@ -531,7 +538,7 @@ export function readSavedViews(storage) {
     .map((view) => Object.freeze({
       name: view.name,
       query: view.query,
-      kinds: Object.freeze((Array.isArray(view.kinds) ? view.kinds : []).filter((entry) => SEARCH_GROUP_IDS.includes(entry))),
+      kinds: Object.freeze((Array.isArray(view.kinds) ? view.kinds : []).filter((entry) => isScope(entry))),
     })));
 }
 
@@ -551,7 +558,7 @@ export function writeSavedViews(storage, views) {
 export function saveView(views, { name, query, kinds = [] }) {
   const label = String(name ?? "").trim();
   if (label === "") return Object.freeze([...(views || [])]);
-  const entry = Object.freeze({ name: label, query: String(query ?? ""), kinds: Object.freeze((Array.isArray(kinds) ? kinds : []).filter((id) => SEARCH_GROUP_IDS.includes(id))) });
+  const entry = Object.freeze({ name: label, query: String(query ?? ""), kinds: Object.freeze((Array.isArray(kinds) ? kinds : []).filter((id) => isScope(id))) });
   const rest = (views || []).filter((view) => view.name !== label);
   return Object.freeze([...rest, entry].slice(0, SAVED_VIEWS_MAX));
 }
@@ -560,9 +567,4 @@ export function renameView(views, from, to) {
   const label = String(to ?? "").trim();
   if (label === "") return Object.freeze([...(views || [])]);
   return Object.freeze((views || []).map((view) => (view.name === from ? Object.freeze({ ...view, name: label }) : view)));
-}
-
-/** Reset clears the saved views and NOTHING else. */
-export function resetViews() {
-  return Object.freeze([]);
 }

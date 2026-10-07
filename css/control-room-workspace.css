@@ -1,0 +1,61 @@
+/* W7 fills W1b slots. The shared layout owns all navigation and outer sizing. */
+.control-room-workspace {max-width:none!important;width:100%;margin:0!important;padding:18px!important;min-width:0}
+.control-room-workspace .panel {padding:18px;background:linear-gradient(145deg,rgba(15,35,57,.8),rgba(3,13,24,.92));backdrop-filter:blur(18px)}
+.control-room-sidebar {display:grid;gap:14px;min-width:0}
+.control-room-sidebar .panel {margin:0;padding:0;background:none;border:0;box-shadow:none;backdrop-filter:none}
+.control-room-sidebar .panel-heading,.control-room-sidebar .board-counts,.control-room-sidebar .board-published {display:none}
+.control-room-sidebar .board-directory {display:grid;grid-template-columns:1fr;gap:8px}
+.control-room-sidebar .board-link {padding:10px;min-width:0}
+.control-room-sidebar .board-link h3 {font-size:15px;margin:4px 0}
+.control-room-sidebar .work-filters {display:grid;gap:8px;grid-template-columns:1fr}
+.control-room-sidebar .work-filters label {display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.control-room-sidebar input,.control-room-sidebar select {width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:#0a182a;color:var(--ink)}
+.room-name {font-family:'Barlow Condensed',sans-serif;font-size:24px;text-decoration:none}
+.read-recovery button {min-width:36px;min-height:36px;background:none;border:0;color:var(--orange)}
+.connection-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,215px),1fr));gap:12px;margin-top:16px}
+.connection-card {border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;background:rgba(10,25,43,.85);transition:transform 120ms,border-color 120ms}
+.connection-card:hover {transform:translateY(-2px);border-color:var(--orange)}
+.connection-heading {display:flex;gap:10px;align-items:center}
+.connection-heading h3 {margin:0;font-size:21px;font-family:'Barlow Condensed',sans-serif}
+.connection-dot {width:8px;height:8px;border-radius:50%;background:#8497ab}
+[data-state=connected] .connection-dot {background:#7dddc0;box-shadow:0 0 12px #7dddc050;animation:connection-breathe 3.5s ease-in-out infinite}
+[data-state=needs_reconnect] .connection-dot {background:var(--orange);animation:connection-breathe 2s ease-in-out infinite}
+.connection-state,.connection-card time {font-size:12px;color:var(--muted)}
+.connection-spend {font-size:14px}
+.connection-card a {margin-top:auto}
+.calendar-controls {display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.calendar-controls button {min-width:36px;min-height:36px;background:#12243b;color:var(--ink);border:1px solid var(--line);border-radius:8px}
+.automation-calendar {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-top:20px}
+.automation-calendar > [role=status] {grid-column:1 / -1;margin:0}
+.calendar-weekday {text-align:center;font-size:11px;color:var(--muted)}
+.calendar-day {min-height:100px;padding:7px;border:1px solid var(--line);border-radius:10px;background:rgba(6,18,31,.65);min-width:0}
+.calendar-day>time {font-size:12px;color:var(--muted)}
+.automation-job {width:100%;border:1px solid #47799e40;border-radius:7px;background:#15314a;color:#eaf5ff;text-align:left;padding:7px;margin-top:6px;display:grid;gap:5px;cursor:pointer;font-size:12px;overflow-wrap:anywhere;transition:transform 120ms,border-color 120ms}
+.automation-job:hover {transform:translateY(-2px);border-color:var(--orange)}
+.automation-job[data-state=failed],.automation-job[data-state=missed] {border-color:#ff796a}
+.automation-job time,.automation-job small {font-size:10px;color:#a0bed6}
+.automation-undated {margin-top:18px}
+.automation-undated-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.job-dialog {width:min(1080px,calc(100vw - 40px));max-width:none;max-height:88vh;border:1px solid #84aec844;border-radius:20px;background:linear-gradient(140deg,#122943f5,#050e1cf5);color:#f2f6fc;padding:24px;box-shadow:0 32px 120px #000a;backdrop-filter:blur(20px)}
+.job-dialog::backdrop {background:#01040bdd;backdrop-filter:blur(6px)}
+.job-dialog>header {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px}
+.job-dialog h2 {font-family:'Barlow Condensed',sans-serif;font-size:34px;margin:0;overflow-wrap:anywhere}
+.job-dialog button {min-width:44px;min-height:44px;background:#132d45;border:1px solid var(--line);border-radius:10px;color:var(--ink);font-size:24px}
+.job-summary {display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:32px}
+.job-summary p {line-height:1.6;margin-top:16px}
+.job-summary dl {display:grid;grid-template-columns:auto 1fr;gap:14px;margin:0}
+.job-summary dd {margin:0;overflow-wrap:anywhere}
+.job-summary dt {color:var(--muted)}
+.job-links {display:flex;flex-wrap:wrap;gap:16px}
+.job-dialog details {margin-top:24px;border-top:1px solid var(--line);padding-top:20px}
+.job-dialog summary {cursor:pointer;color:var(--blue);min-height:36px}
+.job-dialog pre {white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font-size:12px;line-height:1.6;background:#07111f;padding:16px;border-radius:10px}
+.job-update {font-size:12px;color:var(--muted);margin:8px 0 0}
+@keyframes connection-breathe {50% {opacity:.4}}
+@media(max-width:760px){.control-room-workspace{padding:10px!important}.control-room-workspace .panel{padding:12px}.panel-heading{flex-wrap:wrap}.calendar-day{min-height:70px;padding:3px}.automation-job{font-size:10px;padding:4px}.automation-job time{font-size:9px}.job-dialog{width:calc(100vw - 20px);padding:18px}.job-summary{grid-template-columns:1fr;gap:20px}.job-dialog h2{font-size:28px}}
+@media(prefers-reduced-motion:reduce){.connection-card,.automation-job{transition:none!important;transform:none!important}.connection-dot{animation:none!important}}
+.automation-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;margin-top:16px}
+.automation-list .automation-job {padding:16px;gap:12px;margin:0}
+
+.automation-month-agenda{display:none}
+@media(max-width:760px){.calendar-day{min-height:56px}.calendar-day .automation-job{display:block;width:22px;height:22px;min-height:0;margin:5px auto 0;padding:0;border-radius:50%;background:#f6923640;border-color:#f69236}.calendar-day .automation-job[data-state=failed],.calendar-day .automation-job[data-state=missed]{background:#ff796a40;border-color:#ff796a}.calendar-day .automation-job span{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}.calendar-day .automation-job time,.calendar-day .automation-job small{display:none}.automation-month-agenda{display:grid;gap:12px;margin-top:18px}.automation-month-agenda>div>time{font-size:12px;color:#a0bed6}.automation-month-agenda .automation-job{font-size:13px;padding:10px}.automation-list .automation-job{font-size:13px}}

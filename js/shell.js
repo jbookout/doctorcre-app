@@ -3,8 +3,6 @@
 import { DEFAULT_PREFERENCES, preferenceAttributes, resolvePreferences } from "./visual-system.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 
-export { mountDocDock } from "./doc-dock.js";
-
 export const PREFERENCES_KEY = "doctorcre.visual-preferences";
 export const LEGACY_PREFERENCE_KEYS = Object.freeze(["doctorcre.presentation.v1"]);
 
@@ -178,7 +176,7 @@ export function wireTabs(listId) {
   if (!strip) return null;
   const tabs = [...strip.querySelectorAll('[role="tab"]')];
   if (tabs.length === 0) return null;
-  const select = (tab, focus = true) => {
+  const select = (tab, focus = true, notify = true) => {
     for (const candidate of tabs) {
       const chosen = candidate === tab;
       candidate.setAttribute("aria-selected", String(chosen));
@@ -187,6 +185,7 @@ export function wireTabs(listId) {
       if (panel) panel.hidden = !chosen;
     }
     if (focus) tab.focus();
+    if (notify) strip.dispatchEvent(new strip.ownerDocument.defaultView.CustomEvent("tabchange", { detail: { tab }, bubbles: true }));
   };
   strip.addEventListener("click", (event) => {
     const tab = event.target.closest('[role="tab"]');
@@ -212,5 +211,5 @@ export function wireTabs(listId) {
     document.querySelectorAll(".mobile-nav a").forEach((item) => item.toggleAttribute("aria-current", item === link));
     if (link.hasAttribute("aria-current")) link.setAttribute("aria-current", "page");
   });
-  return { select: (id) => { const tab = document.getElementById(id); if (tab) select(tab); } };
+  return { select: (id) => { const tab = document.getElementById(id); if (tab) select(tab, true, false); } };
 }

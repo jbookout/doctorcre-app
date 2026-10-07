@@ -1,3 +1,4 @@
+import { pageDocContext, selectDocRecord, setDocFilters } from './doc-context.js';
 import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Clients and Vendors: the browser half of the Journey 1 business read.
 //
@@ -141,8 +142,6 @@ function setHealth(state) {
   if (dom.healthLabel) dom.healthLabel.textContent = HEALTH_LABEL[state] || HEALTH_LABEL.unavailable;
 }
 
-/** Where it came from and when, without naming a table. */
-function sourceLabel(source) { return updatedLabel(source?.observed_at); }
 
 // ------------------------------------------------------------- navigation
 
@@ -518,7 +517,7 @@ function renderList() {
     if (dom.source) dom.source.textContent = signedOut ? "Signed out" : "Nothing loaded";
     if (dom.pager) dom.pager.hidden = true;
     renderNotices([]);
-    paintList(`<li class="record-empty"><p class="empty-title">${signedOut ? "Your session has ended" : "This did not load"}</p><p class="empty-copy">${escapeHtml(refusalCopy(list.code || (signedOut ? "AUTHENTICATION_REQUIRED" : "INTERNAL_ERROR")))}</p>${signedOut
+    paintList(`<li class="record-empty" role="alert"><p class="empty-title">${signedOut ? "Your session has ended" : "This did not load"}</p><p class="empty-copy">${escapeHtml(refusalCopy(list.code || (signedOut ? "AUTHENTICATION_REQUIRED" : "INTERNAL_ERROR")))}</p>${signedOut
       ? `<a class="action primary-action" href="/auth/login?return_to=${encodeURIComponent(currentHref())}">Sign in</a>`
       : '<button type="button" class="action secondary-action" data-retry="list" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>'}</li>`);
     return;
@@ -532,8 +531,8 @@ function renderList() {
     dom.viewer.textContent = payload.viewer === "joe" ? "Joe’s workspace" : payload.viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
   }
   if (dom.observedAt) dom.observedAt.textContent = updatedLabel(payload.source.observed_at);
-  if (dom.source) dom.source.textContent = sourceLabel(payload.source, dataset);
-  if (dom.summary) dom.summary.textContent = `${payload.total} ${DATASET_LABEL[dataset].toLowerCase()}`;
+  if (dom.source) dom.source.textContent = updatedLabel(payload.source?.observed_at);
+  if (dom.summary) dom.summary.textContent = `${payload.total} ${(payload.total === 1 ? DATASET_SINGULAR[dataset] : DATASET_LABEL[dataset]).toLowerCase()}`;
   renderNotices(view.failedPage ? [{ kind: 'unavailable', title: 'Could not load more', copy: 'Retrying automatically.', retry: true }]
     : view.loadingMore ? [{ kind: 'loading', title: 'Loading more…', copy: '' }] : []);
 
@@ -637,7 +636,7 @@ function renderRecordPanel() {
     `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.filter(field => !['ETL status','What this status means','Version','What this level means','Vendor reference','Client reference','What they offer','Last touch'].includes(field.label) && field.known).map((field) =>
       `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${(section.title === 'Notes' ? `<p class="note-summary">${escapeHtml(shortNote(field.text))}</p><details class="record-details" data-details-key="notes"><summary>Details</summary><p class="entry-detail">${escapeHtml(field.text)}</p></details>` : escapeHtml(field.text))}${field.known && !field.resolved ? '<span class="unresolved-flag">Not recorded</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(sourceLabel(payload.source))}</p>`;
+    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
     dom.panelBody.dataset.recordId = payload.record.id;
     restorePanelState();
 
@@ -672,9 +671,12 @@ async function loadActivity(id, record) {
   view.activity.id = id;
   view.activity.result = null;
   const request = activityRequest(record);
+  const docTicket=request ? pageDocContext?.begin('businessActivity',[{dataset:view.dataset,id}]) : null;
   const settle = (result) => {
     if (view.activity.sequence !== sequence || view.recordId !== id) return;
     view.activity.result = result;
+    if(['ready','empty'].includes(result.state))pageDocContext?.finish(docTicket,{record,activities:result.rows});
+    else if (docTicket)pageDocContext?.fail(docTicket);
     renderRecordPanel();
   };
   if (!request) return settle({ state: "no_ref" });
@@ -694,6 +696,7 @@ async function loadActivity(id, record) {
  * generations — and repaints as signed out.
  */
 function expireNow() {
+  pageDocContext?.clear();
   view.sessionGeneration++;
   view.panelState = null;
   delete dom.panelBody.dataset.recordId;
@@ -715,6 +718,8 @@ async function loadList(reason = "initial") {
   if (reason !== 'background') view.failedPage = null;
   const key = listRequestUrl(query);
   const sequence = ++view.list.sequence;
+  setDocFilters({ ...query });
+  view.list.docTicket = pageDocContext?.begin('businessList', [{ dataset:view.dataset }]);
   // Remembered answers are only for restoring a place, and only while the
   // session is known good; cachedPayload refuses to open once signed out.
   const cached = reason === "initial" || reason === "history" ? cachedPayload(view, key) : null;
@@ -779,6 +784,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
   // A verified answer is the only thing that proves the session is back.
   if (status === "ready") Object.assign(view, restoreSession(view));
   view.list.status = status;
+  if (status === 'ready') pageDocContext?.finish(view.list.docTicket, payload); else pageDocContext?.fail(view.list.docTicket);
   view.list.code = code;
   // A refused or failed read never keeps an older answer alive as if current.
   view.list.payload = status === "ready" ? payload : null;
@@ -798,6 +804,8 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
   view.evidence.id = id;
   view.evidence.result = null;
   const sequence = ++view.record.sequence;
+  selectDocRecord(view.dataset, id);
+  const docTicket = pageDocContext?.begin('businessRecord', [{ dataset:view.dataset, id }]);
   view.record.id = id;
   if (view.record.payload?.record?.id !== id) { view.record.status = "loading"; view.record.payload = null; }
   view.record.code = null;
@@ -806,6 +814,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
   const settle = (status, code, payload = null) => {
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     view.record.status = status;
+    if (status === 'ready') pageDocContext?.finish(docTicket, payload); else pageDocContext?.fail(docTicket);
     view.record.code = code;
     view.record.payload = payload;
     renderRecordPanel();
@@ -863,6 +872,8 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   if (wantedHref !== currentHref()) {
     window.history.replaceState({ ...(window.history.state || {}) }, "", wantedHref);
   }
+  if (parsed.dataset !== view.dataset) pageDocContext?.navigate(parsed.dataset);
+  if (!parsed.recordId) selectDocRecord(null, null);
   const datasetChanged = parsed.dataset !== view.dataset;
   const queryChanged = datasetChanged || !sameQuery(parsed.query, view.query);
   const recordChanged = parsed.recordId !== view.recordId;

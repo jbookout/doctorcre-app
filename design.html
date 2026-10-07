@@ -53,18 +53,18 @@
       <section class="card glass" aria-labelledby="tokensTitle">
         <div class="card-heading"><div><p class="eyebrow">Tokens</p><h2 id="tokensTitle">Colour by role</h2></div><span class="panel-note">WCAG 2.2 AA · 4.5:1</span></div>
         <div class="swatch-grid" aria-label="Colour roles">
-          <div class="token" style="--t:var(--ground-0)"><span></span><b>--ground-0</b><small>page ground</small></div>
-          <div class="token" style="--t:var(--ground-2)"><span></span><b>--ground-2</b><small>raised ground</small></div>
-          <div class="token" style="--t:var(--text)"><span></span><b>--text</b><small>primary text</small></div>
-          <div class="token" style="--t:var(--muted)"><span></span><b>--muted</b><small>secondary text</small></div>
-          <div class="token" style="--t:var(--quiet)"><span></span><b>--quiet</b><small>labels, as-of</small></div>
-          <div class="token" style="--t:var(--navy)"><span></span><b>--navy</b><small>CARR navy</small></div>
-          <div class="token" style="--t:var(--orange)"><span></span><b>--orange</b><small>the light in the frame</small></div>
-          <div class="token" style="--t:var(--cyan)"><span></span><b>--cyan</b><small>refreshing, data</small></div>
-          <div class="token" style="--t:var(--green)"><span></span><b>--green</b><small>healthy, infra</small></div>
-          <div class="token" style="--t:var(--amber)"><span></span><b>--amber</b><small>deadline, degraded</small></div>
-          <div class="token" style="--t:var(--red)"><span></span><b>--red</b><small>urgent, failed</small></div>
-          <div class="token" style="--t:var(--violet)"><span></span><b>--violet</b><small>blocked, rules</small></div>
+          <div class="token token-ground-0"><span></span><b>--ground-0</b><small>page ground</small></div>
+          <div class="token token-ground-2"><span></span><b>--ground-2</b><small>raised ground</small></div>
+          <div class="token token-text"><span></span><b>--text</b><small>primary text</small></div>
+          <div class="token token-muted"><span></span><b>--muted</b><small>secondary text</small></div>
+          <div class="token token-quiet"><span></span><b>--quiet</b><small>labels, as-of</small></div>
+          <div class="token token-navy"><span></span><b>--navy</b><small>CARR navy</small></div>
+          <div class="token token-orange"><span></span><b>--orange</b><small>the light in the frame</small></div>
+          <div class="token token-cyan"><span></span><b>--cyan</b><small>refreshing, data</small></div>
+          <div class="token token-green"><span></span><b>--green</b><small>healthy, infra</small></div>
+          <div class="token token-amber"><span></span><b>--amber</b><small>deadline, degraded</small></div>
+          <div class="token token-red"><span></span><b>--red</b><small>urgent, failed</small></div>
+          <div class="token token-violet"><span></span><b>--violet</b><small>blocked, rules</small></div>
         </div>
         <table class="data-table" id="contrastTable" data-pairs='[["--text","--ground-0"],["--text","--ground-2"],["--muted","--ground-0"],["--quiet","--ground-1"],["--orange-text","--ground-0"],["--cyan-text","--ground-0"],["--green-text","--ground-0"],["--amber-text","--ground-0"],["--red-text","--ground-0"],["--violet-text","--ground-0"],["--on-accent","--orange"]]'>
           <caption>Contrast of the current theme, computed live in this page.</caption>
@@ -249,20 +249,6 @@
       <div class="dialog-body" id="detailBody"></div>
     </article>
   </dialog>
-
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Visual system</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
 
   <footer class="footer"><span>DoctorCRE · Visual system prototype</span><span>Synthetic examples. No record was read or changed.</span></footer>
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>

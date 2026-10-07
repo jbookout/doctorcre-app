@@ -1,3 +1,4 @@
+import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-C14 — the incident page: DOM wiring only.
 //
@@ -20,11 +21,11 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 //      frozen request; that reconcile is the kernel's and nothing is added to
 //      it here.
 import { createCommandDock } from "./command-dock.js";
-import { createCommandState, performCommand } from "./command-feedback.mjs";
+import { performCommand } from "./command-feedback.mjs";
 import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
-import { mountDocDock, mountNotificationBadge, mountPrefs } from "./shell.js";
+import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import { groupedIncidents, validIncidentBoardPayload } from "./control-room-model.js";
 import {
@@ -49,7 +50,7 @@ const view = {
 };
 
 let client = null;
-let commandState = createCommandState();
+let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -77,7 +78,7 @@ function rowHtml({ title, meta, end = "" }) {
 /** The refusal card and the open list behind it. */
 function renderList() {
   const read = view.list;
-  $("refusalSentence").textContent = "Select an incident below.";
+  $("refusalSentence").textContent = view.refState === "malformed" ? REF_REFUSAL : "Select an incident below.";
   $("listAsOf").textContent = asOf(read);
   const root = $("incidentList");
   const payload = read.state === "read" ? read.payload : null;
@@ -169,6 +170,7 @@ async function take(slot, run) {
 }
 
 async function load() {
+  selectDocRecord('incident', view.refState === 'ok' ? view.ref : null);
   view.sequence += 1;
   if (view.refState === "ok") {
     view.detail = { state: "pending" };
@@ -247,7 +249,7 @@ function mountDock() {
 
 async function boot() {
   mountPrefs();
-  mountDocDock("Incident");
+
   mountDock();
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = refFromSearch(location.search || "");

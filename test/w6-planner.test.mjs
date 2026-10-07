@@ -10,6 +10,22 @@ const html = await readFile(new URL("../tours/index.html", import.meta.url), "ut
 const clientA = "11111111-1111-4111-8111-111111111111", clientB = "22222222-2222-4222-8222-222222222222";
 const record = id => ({ id, name: id === clientA ? "Demo Practice A" : "Demo Practice B", city: "Demo City", state: "FL", vertical: "Demo specialty", notes: "Synthetic original entry" });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+test("R13: Tour day opens its whole surface in a separate tab", async () => {
+  const { detail } = await import("./fixtures/tour-day.synthetic.mjs");
+  const app = harness({ tour: async () => detail });
+  try {
+    await app.view.ready; app.doc.querySelector("[data-tour-id]").click(); await settle();
+    const link = app.doc.querySelector('a[href^="/tours/day.html"]');
+    assert.ok(link); assert.equal(link.target, "_blank"); assert.match(link.rel, /noopener/);
+  } finally { app.close(); }
+});
+async function waitFor(predicate) {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    assert.ok(Date.now() < deadline, 'planner transition did not complete');
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
 function harness(api = {}, beforeMount = () => {}) {
   const dom = new JSDOM(html, { url: "https://example.test/tours", pretendToBeVisual: true });
   const doc = dom.window.document;
@@ -152,7 +168,8 @@ test("detail session transition clears private drafts, files and cached records 
   const app = sessionHarness();
   try {
     await app.view.ready; app.change("#plan-client", clientA); await settle(); app.change("#plan-name", "Private draft A"); stageFile(app);
-    app.session("synthetic-B"); app.doc.querySelector(".tour-button").click(); await settle(); await settle();
+    app.session("synthetic-B"); app.doc.querySelector(".tour-button").click();
+    await waitFor(() => app.doc.querySelector('#plan-name').value === '');
     assert.equal(app.doc.querySelector("#plan-name").value, ""); assert.equal(app.view.files.length, 0);
     assert.equal(app.doc.querySelectorAll(".tour-button").length, 0); assert.equal(app.doc.querySelectorAll("#plan-client option").length, 1);
     assert.equal(app.doc.querySelector("dialog").open, false);
@@ -407,4 +424,27 @@ test("explicitly entered suggestion text becomes an override even when its value
   const draft = createDraft(PLAN_FIELDS); draft.suggest({ area: "Demo area" });
   draft.set("area", "Demo area"); draft.refreshSuggestions({ area: "New source area" });
   assert.equal(draft.values.area, "Demo area");
+});
+
+test('QA-019 packet review retains the client access failure explanation', async () => {
+  const app = sessionHarness();
+  try {
+    await app.view.ready;
+    app.refuse(); await app.view.refresh();
+    assert.equal(app.doc.querySelector('#plan-message').textContent,'Sign in to continue.');
+    app.doc.querySelector('#review-packet').click();
+    assert.equal(app.doc.querySelector('#plan-message').textContent,'Sign in to continue.');
+  } finally {app.close();}
+});
+
+test('QA-019 review guidance while clients load clears when the picker becomes ready', async () => {
+  const clients = deferred(); const app = harness({clients:()=>clients.promise});
+  try {
+    await settle();
+    app.doc.querySelector('#review-packet').click();
+    assert.match(app.doc.querySelector('#plan-message').textContent,/loading/);
+    clients.resolve([record(clientA)]); await app.view.ready;
+    assert.equal(app.doc.querySelector('#plan-client').options.length,2);
+    assert.equal(app.doc.querySelector('#plan-message').textContent,'');
+  } finally {app.close();}
 });

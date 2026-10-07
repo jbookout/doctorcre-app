@@ -1,10 +1,13 @@
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
  */
+import { CONNECTION_NAMES } from './connections-model.js';
 import { uuidv4 } from './uuid.js';
+import { observeDocClient } from './doc-context.js';
 import { PHASES } from './client.js';
 import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
@@ -29,6 +32,7 @@ const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_sta
  * @param {string} [opts.selfActor]
  */
 export async function createFixtureClient(opts = {}) {
+  const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
     if (!r.ok) throw new Error(`fixture seed failed: ${r.status}`);
@@ -1004,6 +1008,7 @@ export async function createFixtureClient(opts = {}) {
   const docSuggestions = new Map([
     ['d0000000-0000-4000-8000-000000000081', {
       id: 'd0000000-0000-4000-8000-000000000081', conversation_id: DOC_PRIVATE,
+      material_facts: { page:'deals', record_kind: 'deal', record_id: 'd14', record_version: 1 },
       obligation_key: 'demo:gulf-breeze:survey-window', material_version: 1, version: 1,
       source_sequence: 1, original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
       polished_text: 'Confirm the survey window before the LOI moves forward.',
@@ -1317,7 +1322,9 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
   const client = {
+    ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
     mode: /** @type {const} */ ('fixture'),
     selfActor,
@@ -1353,7 +1360,7 @@ export async function createFixtureClient(opts = {}) {
       const critical_dates = [];
       if (deal.next_date) {
         critical_dates.push({
-          label: deal.id === 'd14' ? 'Lease commencement' : 'Next date',
+          label: 'Next date',
           date: deal.next_date,
         });
       }
@@ -1365,7 +1372,7 @@ export async function createFixtureClient(opts = {}) {
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [] };
+        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
     },
 
     async readAssuranceHealth(args) {
@@ -1414,9 +1421,9 @@ export async function createFixtureClient(opts = {}) {
       return { schema: 'carr.jev-deal-reading.v1', judged: false, reason: 'jev_unavailable' };
     },
 
-    async getChanges(cursor) {
+    async getChanges(cursor, { since } = {}) {
       pruneLeases();
-      const fresh = eventsAfter(cursor);
+      const fresh = eventsAfter(cursor).filter(event => cursor || !since || Date.parse(event.recorded_at) >= Date.parse(since));
       return {
         events: fresh.map((e) => ({ ...e })),
         presence: [...leases.values()].map((p) => ({ ...p })),
@@ -1688,6 +1695,16 @@ export async function createFixtureClient(opts = {}) {
     // statuses or inbox, so it never answers those rows, and no test may treat
     // it as evidence of what production returns. Dates are minted against the
     // current clock, since a frozen "today" would make every run look overdue.
+    async morningBrief() {
+      const own = row => !row.owner || row.owner === selfActor;
+      const section = items => ({ state: items.length ? 'ready' : 'empty', items });
+      return { state: 'ready', sponsor: selfActor, sections: {
+        today: section((await this.todayTriage()).items.filter(own)),
+        deals: section((await this.getBoard()).deals.filter(own)),
+        loops: section((await this.loopBoard({ owner: selfActor })).loops.filter(own)),
+      } };
+    },
+
     async todayTriage() {
       const today = nowIso().slice(0, 10);
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
@@ -2679,6 +2696,13 @@ export async function createFixtureClient(opts = {}) {
     // batch or proposal is copied here. The timestamps are relative to the
     // current clock so the approvals card's ambient waiting clock exercises all
     // three tempos (under a day, a day or more, past the 48-hour cadence).
+    async readConnections() {
+      const checked_at=nowIso();
+      return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
+    },
+    async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
+    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},
+    async unfinishedWork({live_library=false}={}){if(live_library)return {schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};return {schema:'unfinished-work.v1',items:[{id:'WR-000901',kind:'work_request',human_ref:'WR-000901',title:'Demo dashboard refresh',state:'verification',source:'demo',source_ref:'demo',last_activity_at:nowIso(),age:0,owner:'Demo builder',pr:17,available_triage_actions:[]}],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};},
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -2862,6 +2886,7 @@ export async function createFixtureClient(opts = {}) {
     // it appears on the change feed and advances lastFieldEvent exactly as a
     // live revert would.
     async revertDealField({ event_id, idempotency_key }) {
+      if (activityFixture.owns(event_id)) return activityFixture.undo({ event_id, idempotency_key });
       return withIdem(idempotency_key, () => {
         const event = events.find((e) => e.id === event_id);
         if (!event || event.subject_type !== 'deal' || !event.field || !BASED_FIELDS.includes(event.field)) {
@@ -2899,6 +2924,8 @@ export async function createFixtureClient(opts = {}) {
         };
       });
     },
+
+    async readDocActivity(args = {}) { return activityFixture.read(args); },
 
     async getPendingConfirms() {
       return { proposals: pendingConfirms.map((p) => ({ ...p })) };
@@ -3113,37 +3140,7 @@ export async function createFixtureClient(opts = {}) {
       return { steps };
     },
 
-    /** Test helper: force a conflict by writing without advancing base. */
-    async _forceConflict(deal, field, valueA, valueB) {
-      const key = `${deal}|${field}`;
-      const base = lastFieldEvent.get(key) || null;
-      applyFieldWrite({
-        deal,
-        field,
-        value: valueA,
-        base_event_id: base,
-        actor: partnerActor,
-        verb: 'patch-deal-field',
-      });
-      // second write with stale base
-      return applyFieldWrite({
-        deal,
-        field,
-        value: valueB,
-        base_event_id: base,
-        actor: selfActor,
-        verb: 'patch-deal-field',
-      });
-    },
-
-    _lastFieldEventId(deal, field) {
-      return lastFieldEvent.get(`${deal}|${field}`) || null;
-    },
-
-    _setLastCallAt(iso) {
-      lastCallAt = iso;
-    },
   };
 
-  return client;
+  return opts.docContext === false ? client : observeDocClient(client);
 }

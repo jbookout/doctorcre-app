@@ -206,7 +206,7 @@ function renderVersion() {
   const line = $("atlasVersionLine");
   if (!line) return;
   const payload = view.payload;
-  if (!payload) { line.innerHTML = `<span class="small">Updating…</span>`; return; }
+  if (!payload) { line.innerHTML = `<span class="small">${view.status === "loading" || view.status === "idle" ? "Updating…" : "Unavailable"}</span>`; return; }
   line.innerHTML = `<span class="as-of">${escapeHtml(updatedLabel(payload.observed_at))}</span>`;
 }
 
@@ -690,7 +690,7 @@ function exitTour() {
  * Room's four existing reads must not wait behind this one.
  */
 export function mountAtlas({ outage = null, node = null, getIncidentsRead: incidentsReader = null, client = null, onChange: changed = null } = {}) {
-  if (mounted) return;
+  if (mounted) { selectNode(node, { push: false }); return; }
   mounted = true;
   view.outage = outage;
   // V5-UX-C09: reuse control-room.js's OWN incident-board read (a getter, so
@@ -745,9 +745,10 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
   $("atlasTourNext")?.addEventListener("click", () => advanceTour());
   $("atlasTourPrev")?.addEventListener("click", () => retreatTour());
   $("atlasTourExit")?.addEventListener("click", () => exitTour());
-  if (node) view.selected = node;
   mountAutoRefresh({ document, window: globalThis.window, refresh: ({ signal }) => read(null, { background: true, signal }) });
-  read().then(() => { if (node) selectNode(node, { push: false }); });
+  const initialRead = read();
+  view.selected = node;
+  initialRead.then(() => { if (view.selected) selectNode(view.selected, { push: false }); });
 }
 
 export { view };

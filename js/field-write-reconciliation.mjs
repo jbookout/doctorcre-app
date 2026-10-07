@@ -55,8 +55,7 @@
  */
 
 import {
-  beginCommand, classifyCommandOutcome, createCommandState, pendingCommand,
-  performCommand, settleCommand, stableText,
+  beginCommand, classifyCommandOutcome, pendingCommand, performCommand, settleCommand, stableText,
 } from './command-feedback.mjs';
 
 // Sentence tails. The caller supplies the subject — "Attention flag on
@@ -114,10 +113,6 @@ export function cellKey(deal, field) {
   return `${deal}|${field}`;
 }
 
-/** Per-cell write bookkeeping. Plain data so it stays comparable. */
-export function createFieldWriteState() {
-  return createCommandState();
-}
 
 /**
  * The arguments this attempt is an attempt AT. When an unresolved operation for
@@ -165,41 +160,6 @@ export function settleFieldWrite(state, cell, outcome) {
   return { ...next, [cell]: { ...entry, cell, message: fieldWriteMessage(outcome) } };
 }
 
-/**
- * Classify one patch-deal-field answer. Five outcomes, and the differences
- * between them are the whole reason this exists:
- *
- *   ok       — the server said so. A replayed answer is the recorded result of
- *              the SAME operation, so it counts exactly as much as the first one.
- *              An accepted answer carries the committed event's own identity
- *              (`event_id`, `event_recorded_at`) when the record layer names it,
- *              which is what lets a caller advance that cell's base.
- *   conflict — a real partner conflict: an event this request did not see landed
- *              on this cell first. Settled and server-authoritative; the board
- *              shows it as it always has.
- *   refused  — a DECISION about this request: an invalid base, a missing parking
- *              reason, a key already spent on different arguments, or a 401/403
- *              taken at the door before the verb ran. Terminal, because
- *              re-sending it unchanged cannot change the answer — and for the
- *              401/403 case the change definitively did not land, so nothing is
- *              kept pending and the person is told to sign in, not to retry.
- *   unknown  — we do not know whether it landed, and the evidence is kept apart
- *              because it is different evidence: `no_answer` (nothing came back
- *              at all — the connection, the tab, a request that never returned)
- *              and `server_error` (something came back and it was the server
- *              failing: its own exception on the tool channel, or any other
- *              non-2xx status). A fault must never be badged as a refusal,
- *              because the write may well have committed.
- *
- * `key_reuse` is called out on its own: it means this key already carries a
- * DIFFERENT request, so neither retrying nor assuming success is honest.
- *
- * The table is the kernel's. This wrapper only guarantees the shape the Deal
- * Room already reads.
- */
-export function classifyFieldWriteOutcome({ response = null, error = null } = {}) {
-  return classifyCommandOutcome({ response, error });
-}
 
 /**
  * Has the cell moved on since this request was built — and if it has, was it
@@ -328,10 +288,6 @@ export function unresolvedFieldWrites(state, deal = null) {
     .sort((a, b) => a.cell.localeCompare(b.cell));
 }
 
-/** The retained request for one cell, or null. Nothing here mutates state. */
-export function pendingFieldWrite(state, cell) {
-  return pendingCommand(state, cell);
-}
 
 /**
  * Send one cell change end to end against an injected `patch` — in the app that
@@ -406,7 +362,7 @@ export async function performFieldWrite({ deal, field, value, base = null, extra
     event_recorded_at: result.event_recorded_at,
     conflict: result.conflict,
     request: result.request,
-    pending: pendingFieldWrite(getState(), cell),
+    pending: pendingCommand(getState(), cell),
     message: fieldWriteMessage(outcome),
     response: result.response,
   };
