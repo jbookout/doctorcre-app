@@ -1,0 +1,1315 @@
+{
+ "source": "read-only source sweep of origin/main ca78d88; staging runs e5d664b",
+ "features": [
+  {
+   "id": "home-scope-switch",
+   "area": "A",
+   "screen": "/",
+   "description": "Switch Home between Team View and Just Me",
+   "mutating": false,
+   "calls": "local",
+   "labels": "group 'Home scope': 'Team View','Just Me' aria-pressed",
+   "staging_note": ""
+  },
+  {
+   "id": "home-refresh",
+   "area": "A",
+   "screen": "/",
+   "description": "Refresh Home and see updated time",
+   "mutating": false,
+   "calls": "GET /api/v1/command-center",
+   "labels": "'Refresh Home'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-deal-flags",
+   "area": "A",
+   "screen": "/",
+   "description": "Deal flags header counts match the deals board",
+   "mutating": false,
+   "calls": "/api/v1/command-center",
+   "labels": "'Active Deals: N \u00b7 Deals in Market: N \u00b7 National Account Deals: N'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-invoice-attention",
+   "area": "A",
+   "screen": "/",
+   "description": "Invoice attention panel lists invoices and links to Invoices",
+   "mutating": false,
+   "calls": "read-invoice-tracker",
+   "labels": "'Invoice attention \u00b7 N', 'Invoices \u2197'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-calendar-tasks",
+   "area": "A",
+   "screen": "/",
+   "description": "Calendar & tasks panel opens the calendar",
+   "mutating": false,
+   "calls": "deal-room-board",
+   "labels": "'Open Calendar'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-control-room",
+   "area": "A",
+   "screen": "/",
+   "description": "Control room panel shows attention state and opens Control Room",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Needs attention'/'No issues'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-new-leads",
+   "area": "A",
+   "screen": "/",
+   "description": "New leads widget opens a lead detail dialog",
+   "mutating": false,
+   "calls": "lead-board",
+   "labels": "dialog 'Close details','Leads \u2197'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-past-clients",
+   "area": "A",
+   "screen": "/",
+   "description": "Past clients widget reads lease data",
+   "mutating": false,
+   "calls": "GET /api/v1/business/leases",
+   "labels": "'Past clients'",
+   "staging_note": ""
+  },
+  {
+   "id": "home-suggested-introductions",
+   "area": "A",
+   "screen": "/",
+   "description": "Suggested introduction opens the relationship dialog",
+   "mutating": false,
+   "calls": "relationships",
+   "labels": "'Suggested introductions'",
+   "staging_note": ""
+  },
+  {
+   "id": "charts-pick-slice",
+   "area": "A",
+   "screen": "/?view=charts",
+   "description": "Pick a chart slice, see N of M, clear it, open in Deals board",
+   "mutating": false,
+   "calls": "deal-room-board",
+   "labels": "'Clear this slice','Open in Deals board','N of M records'",
+   "staging_note": ""
+  },
+  {
+   "id": "charts-tabs",
+   "area": "A",
+   "screen": "/?view=charts",
+   "description": "Overview/Charts tabs switch views",
+   "mutating": false,
+   "calls": "",
+   "labels": "tabs 'Overview','Charts'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-owner-view",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Owner chips All/Joe/Dell and Board/List/Parked views filter the board",
+   "mutating": false,
+   "calls": "deal-room-board",
+   "labels": "group 'Deal owner','Deal view'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-move-phase",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Move a deal to another phase via keyboard lift/drop and Move dialog",
+   "mutating": true,
+   "calls": "patch-deal-field",
+   "labels": "Enter lift, arrows, Enter drop; dialog 'Move to the chosen column'; toast '<name> moved to <label>'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-undo-phase",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Undo an automatic phase change",
+   "mutating": true,
+   "calls": "revert-deal-field",
+   "labels": "'Undo phase change on <name>' -> 'Change undone'",
+   "staging_note": "only for automatic moves"
+  },
+  {
+   "id": "deals-record-panel",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Open a deal record panel via card or ?deal=",
+   "mutating": false,
+   "calls": "get-deal-room",
+   "labels": "#recordPanel 'Close deal'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-park",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Park a deal with a reason and revive it",
+   "mutating": true,
+   "calls": "patch-deal-field operating_state",
+   "labels": "'Park reason','Park deal','Revive'; 'Deal parked','Deal revived'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-save-next-step",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Save a next step with due date",
+   "mutating": true,
+   "calls": "set-next-step",
+   "labels": "'Next step','Due date','Save next step'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-add-date",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Add a critical date",
+   "mutating": true,
+   "calls": "add-critical-date",
+   "labels": "'Add date' dialog, 'Save date'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-outlook",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Deal outlook (Jev reading)",
+   "mutating": false,
+   "calls": "POST /api/v1/jev-deal-reading",
+   "labels": "'Deal outlook'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-client-vendor-context",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Client/vendor context drawer in a deal",
+   "mutating": false,
+   "calls": "GET /api/v1/business/clients/:id",
+   "labels": "",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-recent-changes",
+   "area": "A",
+   "screen": "/deals",
+   "description": "Recent changes feed",
+   "mutating": false,
+   "calls": "GET /pipeline/changes",
+   "labels": "'Recent changes N'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-list-filter",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Filter work records (Active, Mine, Needs attention...)",
+   "mutating": false,
+   "calls": "deal-room-board",
+   "labels": "group 'Filter work records'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-list-search",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Search work records",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Search work records\u2026'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-add-work-record",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Add a work record (new deal)",
+   "mutating": true,
+   "calls": "new-deal,set-lead",
+   "labels": "'Add work record' -> 'Create work record' -> 'Work record created in Deals'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-add-national-account",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Create a national account",
+   "mutating": true,
+   "calls": "create-national-account",
+   "labels": "'National account created'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-add-market-deal",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Add a market deal to a national account",
+   "mutating": true,
+   "calls": "create-national-market-deal",
+   "labels": "'Market deal added to <account>'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-flag-attention",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Flag and clear attention with undo",
+   "mutating": true,
+   "calls": "patch-deal-field attention",
+   "labels": "'Flag for attention on <name>' toast with Undo",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-row-phase-owner",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Change phase/owner from a row select",
+   "mutating": true,
+   "calls": "patch-deal-field,set-market-agent",
+   "labels": "'Phase for <name>','Owner for <name>'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-park-restore",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Park a work record and restore it",
+   "mutating": true,
+   "calls": "patch-deal-field",
+   "labels": "'<name> parked','<name> restored to active work'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-next-step",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Set next step from the list",
+   "mutating": true,
+   "calls": "set-next-step",
+   "labels": "'Next step confirmed on <name>'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-review-agenda",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Run a deal review agenda",
+   "mutating": true,
+   "calls": "start-deal-review,review-deal,end-deal-review",
+   "labels": "'Review deals','Reviewed \u2014 next','Finish agenda'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-change-account-owner",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Change a national account owner",
+   "mutating": true,
+   "calls": "set-national-account-owner",
+   "labels": "'<name> owner updated'",
+   "staging_note": ""
+  },
+  {
+   "id": "deals-capture-confirm",
+   "area": "A",
+   "screen": "/deals?view=national",
+   "description": "Confirm or skip call capture suggestions",
+   "mutating": true,
+   "calls": "resolve-candidate",
+   "labels": "dock 'Call capture suggestions'",
+   "staging_note": "needs capture-queue items"
+  },
+  {
+   "id": "calendar-view-step",
+   "area": "A",
+   "screen": "/calendar",
+   "description": "Month/Week views and previous/today/next",
+   "mutating": false,
+   "calls": "deal-room-board",
+   "labels": "'Calendar view','Previous month','Today','Next month'",
+   "staging_note": ""
+  },
+  {
+   "id": "calendar-select-day",
+   "area": "A",
+   "screen": "/calendar",
+   "description": "Select a day and read the agenda",
+   "mutating": false,
+   "calls": "get-deal-room",
+   "labels": "'Selected day','Coming up'",
+   "staging_note": ""
+  },
+  {
+   "id": "relationships-filters",
+   "area": "A",
+   "screen": "/relationships",
+   "description": "Find a relationship by name, territory, vertical",
+   "mutating": false,
+   "calls": "relationships",
+   "labels": "'Find a relationship','Clear filters'",
+   "staging_note": ""
+  },
+  {
+   "id": "relationships-tabs",
+   "area": "A",
+   "screen": "/relationships",
+   "description": "Network/Referrals tabs",
+   "mutating": false,
+   "calls": "",
+   "labels": "tablist 'Relationship views'",
+   "staging_note": ""
+  },
+  {
+   "id": "relationships-network-graph",
+   "area": "A",
+   "screen": "/relationships",
+   "description": "Zoom/Fit graph and open a node",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Zoom in','Zoom out','Fit','Open <name>, <kind>'",
+   "staging_note": ""
+  },
+  {
+   "id": "relationships-dialog",
+   "area": "A",
+   "screen": "/relationships",
+   "description": "Relationship dialog shows deals sent and connections",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Close relationship'",
+   "staging_note": ""
+  },
+  {
+   "id": "leases-controls",
+   "area": "A",
+   "screen": "/leases",
+   "description": "Lease radar find client, Team/Mine, tabs",
+   "mutating": false,
+   "calls": "GET /api/v1/business/leases",
+   "labels": "'Find client','Lease timeline','Missing dates'",
+   "staging_note": ""
+  },
+  {
+   "id": "leases-timeline",
+   "area": "A",
+   "screen": "/leases",
+   "description": "Open a lease from the timeline",
+   "mutating": false,
+   "calls": "",
+   "labels": "quarter marks '<Q>, N leases'",
+   "staging_note": ""
+  },
+  {
+   "id": "invoices-filters",
+   "area": "A",
+   "screen": "/invoices",
+   "description": "Search, owner, status tabs and aging",
+   "mutating": false,
+   "calls": "read-invoice-tracker",
+   "labels": "'Search invoices','Invoice status' tabs",
+   "staging_note": ""
+  },
+  {
+   "id": "invoices-detail",
+   "area": "A",
+   "screen": "/invoices",
+   "description": "Open an invoice commission dialog",
+   "mutating": false,
+   "calls": "",
+   "labels": "dialog 'Commission','Close invoice'",
+   "staging_note": ""
+  },
+  {
+   "id": "invoices-mark-paid",
+   "area": "A",
+   "screen": "/invoices",
+   "description": "Mark an invoice paid",
+   "mutating": true,
+   "calls": "record-commission-receipt",
+   "labels": "'Paid on','Mark paid' -> 'Paid'",
+   "staging_note": "no undo; needs an invoiced commission"
+  },
+  {
+   "id": "leads-hot-claim",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Claim one of the hottest leads",
+   "mutating": true,
+   "calls": "claim-lead",
+   "labels": "'Claim' -> 'Lead claimed'",
+   "staging_note": ""
+  },
+  {
+   "id": "leads-territory-map",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Filter leads by market on the territory map",
+   "mutating": false,
+   "calls": "static geojson",
+   "labels": "'Lead count by market','All markets'",
+   "staging_note": ""
+  },
+  {
+   "id": "leads-filters",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Search leads, owner, stage, market filters",
+   "mutating": false,
+   "calls": "lead-board",
+   "labels": "'Search leads','N leads'",
+   "staging_note": ""
+  },
+  {
+   "id": "leads-move-stage",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Move a lead stage with Alt+arrow and confirm in the Doc dialog",
+   "mutating": true,
+   "calls": "update-lead",
+   "labels": "'Confirm <Stage>' -> 'Moved to <Stage>'",
+   "staging_note": ""
+  },
+  {
+   "id": "leads-undo-doc-move",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Undo a Doc stage move",
+   "mutating": true,
+   "calls": "update-lead undo_event_id",
+   "labels": "'Moved by Doc: ...' 'Undo'",
+   "staging_note": "needs a Doc-made move"
+  },
+  {
+   "id": "leads-link-client",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Link a lead to a possible client",
+   "mutating": true,
+   "calls": "link-lead-client",
+   "labels": "'Link <lead> to <client>' -> 'Client linked'",
+   "staging_note": "needs a possible-client match"
+  },
+  {
+   "id": "leads-detail",
+   "area": "B",
+   "screen": "/leads",
+   "description": "Open lead details with score, stage, correspondence",
+   "mutating": false,
+   "calls": "lead-board",
+   "labels": "'Close lead details'",
+   "staging_note": ""
+  },
+  {
+   "id": "business-search-filter-sort",
+   "area": "B",
+   "screen": "/clients",
+   "description": "Search, filter, sort clients and vendors with chips",
+   "mutating": false,
+   "calls": "/api/v1/business/*",
+   "labels": "'Search','Apply','Reset','Clear all filters'",
+   "staging_note": ""
+  },
+  {
+   "id": "business-record-panel",
+   "area": "B",
+   "screen": "/vendors",
+   "description": "Open a client/vendor record with partnership and correspondence",
+   "mutating": false,
+   "calls": "/api/v1/business/:dataset/:id",
+   "labels": "'Close record'",
+   "staging_note": ""
+  },
+  {
+   "id": "vendor-trust-rating",
+   "area": "B",
+   "screen": "/vendors",
+   "description": "Set and reset a vendor trust rating",
+   "mutating": true,
+   "calls": "update-vendor",
+   "labels": "'Trust rating','Save rating' -> 'Rating confirmed'",
+   "staging_note": ""
+  },
+  {
+   "id": "search-run",
+   "area": "B",
+   "screen": "/search",
+   "description": "Search by name; results and URL",
+   "mutating": false,
+   "calls": "find,find-and-catch-up",
+   "labels": "'Name to search','Search'",
+   "staging_note": ""
+  },
+  {
+   "id": "search-scope-chips",
+   "area": "B",
+   "screen": "/search",
+   "description": "Toggle scope chips over results",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Scope'",
+   "staging_note": ""
+  },
+  {
+   "id": "search-saved-views",
+   "area": "B",
+   "screen": "/search",
+   "description": "Save and reset a saved search view",
+   "mutating": false,
+   "calls": "local",
+   "labels": "'Name for this view','Save this view','Reset'",
+   "staging_note": ""
+  },
+  {
+   "id": "tours-plan-form",
+   "area": "B",
+   "screen": "/tours",
+   "description": "Plan a tour draft and undo an edit",
+   "mutating": false,
+   "calls": "local sessionStorage",
+   "labels": "'Plan a Tour','Undo tour edit'",
+   "staging_note": ""
+  },
+  {
+   "id": "tours-packet-files",
+   "area": "B",
+   "screen": "/tours",
+   "description": "Add a packet file and review the packet draft",
+   "mutating": false,
+   "calls": "local",
+   "labels": "'Review packet draft'; 'Compile packet' disabled",
+   "staging_note": "compile disabled by design"
+  },
+  {
+   "id": "tours-search-space",
+   "area": "B",
+   "screen": "/tours",
+   "description": "Save a space search draft; Find spaces disabled",
+   "mutating": false,
+   "calls": "local",
+   "labels": "'Save search draft' -> 'Search draft saved.'; 'Find spaces' disabled",
+   "staging_note": "MLS unavailable by design"
+  },
+  {
+   "id": "tours-library",
+   "area": "B",
+   "screen": "/tours",
+   "description": "Find a tour and open its details",
+   "mutating": false,
+   "calls": "GET /api/tours/library",
+   "labels": "'Find a tour','Close tour details'",
+   "staging_note": ""
+  },
+  {
+   "id": "tours-territory",
+   "area": "B",
+   "screen": "/tours",
+   "description": "Territory buttons set the search area",
+   "mutating": false,
+   "calls": "",
+   "labels": "Mobile, Pensacola, ...",
+   "staging_note": ""
+  },
+  {
+   "id": "route-create-tour",
+   "area": "B",
+   "screen": "/tours/route-editor.html",
+   "description": "Create a tour in the itinerary composer",
+   "mutating": true,
+   "calls": "POST /api/tours/create",
+   "labels": "'Start a Tour','Create Tour'",
+   "staging_note": ""
+  },
+  {
+   "id": "route-property-search",
+   "area": "B",
+   "screen": "/tours/route-editor.html",
+   "description": "Find properties",
+   "mutating": false,
+   "calls": "POST /api/tours/properties/search",
+   "labels": "'Find properties'",
+   "staging_note": ""
+  },
+  {
+   "id": "route-compose",
+   "area": "B",
+   "screen": "/tours/route-editor.html",
+   "description": "Add stops, save draft, undo",
+   "mutating": true,
+   "calls": "/api/tours/route-*",
+   "labels": "'Add cart properties as stops','Save draft','Undo last edit'",
+   "staging_note": "needs property dataset"
+  },
+  {
+   "id": "route-accept",
+   "area": "B",
+   "screen": "/tours/route-editor.html",
+   "description": "Accept a reviewed route",
+   "mutating": true,
+   "calls": "/api/tours/route-accept",
+   "labels": "'Accept route'",
+   "staging_note": "needs stops"
+  },
+  {
+   "id": "route-share",
+   "area": "B",
+   "screen": "/tours/route-editor.html",
+   "description": "Issue/rotate/revoke confidential link",
+   "mutating": true,
+   "calls": "/api/tours/share/*",
+   "labels": "",
+   "staging_note": "not staging-safe: link host is production"
+  },
+  {
+   "id": "route-pdf",
+   "area": "B",
+   "screen": "/tours/route-editor.html",
+   "description": "Render and review packet PDF",
+   "mutating": true,
+   "calls": "/api/tours/pdf/*",
+   "labels": "'Render packet'",
+   "staging_note": "needs accepted route"
+  },
+  {
+   "id": "tourday-stop-nav",
+   "area": "B",
+   "screen": "/tours/day.html",
+   "description": "Tour day previous/next stop",
+   "mutating": false,
+   "calls": "GET /api/tours/detail",
+   "labels": "'Previous stop','Next stop'",
+   "staging_note": "needs tour with stops"
+  },
+  {
+   "id": "tourday-voice-note",
+   "area": "B",
+   "screen": "/tours/day.html",
+   "description": "Record a voice note",
+   "mutating": false,
+   "calls": "getUserMedia",
+   "labels": "'Record note'",
+   "staging_note": "no microphone on staging runner"
+  },
+  {
+   "id": "ideas-browse",
+   "area": "B",
+   "screen": "/ideas-events",
+   "description": "Search and open ideas",
+   "mutating": false,
+   "calls": "loop-board,read-loop",
+   "labels": "'Search ideas'",
+   "staging_note": "0 ideas on staging"
+  },
+  {
+   "id": "events-add-edit",
+   "area": "B",
+   "screen": "/ideas-events?tab=events",
+   "description": "Add, edit an industry event",
+   "mutating": true,
+   "calls": "add-industry-event,update-industry-event",
+   "labels": "'Add event','Save event' -> '<title> saved. Events refreshed from the record.'",
+   "staging_note": ""
+  },
+  {
+   "id": "incidents-list-detail",
+   "area": "B",
+   "screen": "/incidents",
+   "description": "Open incident detail",
+   "mutating": false,
+   "calls": "incident-board,get-incident",
+   "labels": "'Facts','Occurrences'",
+   "staging_note": "0 incidents on staging"
+  },
+  {
+   "id": "incidents-link-work-request",
+   "area": "B",
+   "screen": "/incidents",
+   "description": "Link a work request to an incident",
+   "mutating": true,
+   "calls": "link-incident-work-request",
+   "labels": "'Link a work request','Link it'",
+   "staging_note": "needs an incident"
+  },
+  {
+   "id": "share-page",
+   "area": "B",
+   "screen": "/share",
+   "description": "Share page stays on staging",
+   "mutating": false,
+   "calls": "",
+   "labels": "",
+   "staging_note": "worker redirects /share to reports.doctorcre.com"
+  },
+  {
+   "id": "shell-nav",
+   "area": "C",
+   "screen": "/",
+   "description": "Primary, workspace, operations navigation reaches every page",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Primary navigation','More'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-theme-toggle",
+   "area": "C",
+   "screen": "/",
+   "description": "Dark mode toggle persists across reload",
+   "mutating": false,
+   "calls": "local",
+   "labels": "'Dark mode' aria-pressed",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-color-assist",
+   "area": "C",
+   "screen": "/",
+   "description": "Color assist toggle",
+   "mutating": false,
+   "calls": "local",
+   "labels": "'Color assist'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-density-motion",
+   "area": "C",
+   "screen": "/",
+   "description": "Density and motion toggles",
+   "mutating": false,
+   "calls": "local",
+   "labels": "'Compact density','Motion paused'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-avatar-menu",
+   "area": "C",
+   "screen": "/",
+   "description": "Account menu: Profile, Theme, Notification preferences, Doc Activity",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Joe: account and settings'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-sidebars",
+   "area": "C",
+   "screen": "/",
+   "description": "Workspace and Today sidebars",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Workspace sidebar','Today sidebar'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-refresh",
+   "area": "C",
+   "screen": "/",
+   "description": "Refresh workspace and sync time",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Refresh workspace'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-search-link",
+   "area": "C",
+   "screen": "/",
+   "description": "Search link opens Search",
+   "mutating": false,
+   "calls": "",
+   "labels": "link 'Search'",
+   "staging_note": ""
+  },
+  {
+   "id": "shell-unread-badge",
+   "area": "C",
+   "screen": "/",
+   "description": "Unread notification badge",
+   "mutating": false,
+   "calls": "notification-feed",
+   "labels": "'N unread notification(s)'",
+   "staging_note": "0 notifications"
+  },
+  {
+   "id": "shell-sign-out",
+   "area": "C",
+   "screen": "/",
+   "description": "Sign out ends the session",
+   "mutating": true,
+   "calls": "POST /auth/signout",
+   "labels": "'Sign out'",
+   "staging_note": "run last; ends shared session"
+  },
+  {
+   "id": "command-dock",
+   "area": "C",
+   "screen": "/",
+   "description": "Command feedback dock shows write receipts",
+   "mutating": false,
+   "calls": "",
+   "labels": "region 'Command feedback'",
+   "staging_note": ""
+  },
+  {
+   "id": "doc-open",
+   "area": "C",
+   "screen": "/",
+   "description": "Open Dr. CRE palette (button and Cmd+K)",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Open Doc'",
+   "staging_note": ""
+  },
+  {
+   "id": "doc-search",
+   "area": "C",
+   "screen": "/",
+   "description": "Search anything in the Doc palette and open a result",
+   "mutating": false,
+   "calls": "find",
+   "labels": "'Search anything or ask Doc'",
+   "staging_note": ""
+  },
+  {
+   "id": "doc-action-refusal",
+   "area": "C",
+   "screen": "/",
+   "description": "Doc refuses action verbs honestly",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Doc actions unavailable'",
+   "staging_note": "by design (#114)"
+  },
+  {
+   "id": "doc-suggestions",
+   "area": "C",
+   "screen": "/",
+   "description": "Approve a Doc suggestion from the palette",
+   "mutating": true,
+   "calls": "decide-doc-suggestion",
+   "labels": "'Suggestions'",
+   "staging_note": "needs suggestions"
+  },
+  {
+   "id": "doc-morning-brief",
+   "area": "C",
+   "screen": "/",
+   "description": "Morning brief",
+   "mutating": false,
+   "calls": "morning-brief",
+   "labels": "'Morning brief'",
+   "staging_note": ""
+  },
+  {
+   "id": "call-mode-open",
+   "area": "C",
+   "screen": "/",
+   "description": "Call Mode button hidden without the local Quill companion",
+   "mutating": false,
+   "calls": "127.0.0.1:4682",
+   "labels": "'Call mode'",
+   "staging_note": "by design: local service"
+  },
+  {
+   "id": "updates-feed",
+   "area": "C",
+   "screen": "/updates",
+   "description": "Notification feed",
+   "mutating": false,
+   "calls": "notification-feed",
+   "labels": "'Notifications'",
+   "staging_note": ""
+  },
+  {
+   "id": "updates-acknowledge",
+   "area": "C",
+   "screen": "/updates",
+   "description": "Acknowledge a notification",
+   "mutating": true,
+   "calls": "acknowledge-notification",
+   "labels": "'Acknowledge this notification'",
+   "staging_note": "needs a notification"
+  },
+  {
+   "id": "updates-preferences",
+   "area": "C",
+   "screen": "/updates",
+   "description": "Save notification preferences and clear quiet hours",
+   "mutating": true,
+   "calls": "set-notification-preference",
+   "labels": "'Save preferences' -> 'Saved'",
+   "staging_note": ""
+  },
+  {
+   "id": "docchats-list",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Open a conversation; show archived",
+   "mutating": false,
+   "calls": "list-doc-conversations,read-doc-conversation",
+   "labels": "'Show archived'",
+   "staging_note": ""
+  },
+  {
+   "id": "docchats-create",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Create a conversation",
+   "mutating": true,
+   "calls": "create-doc-conversation",
+   "labels": "'New conversation','Create this conversation'",
+   "staging_note": ""
+  },
+  {
+   "id": "docchats-rename-pin-archive",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Rename, pin and archive a conversation",
+   "mutating": true,
+   "calls": "rename-doc-conversation",
+   "labels": "'Save the new title','Pin this conversation','Archive this conversation'",
+   "staging_note": ""
+  },
+  {
+   "id": "docchats-share",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Share a conversation with the partner",
+   "mutating": true,
+   "calls": "share-doc-conversation",
+   "labels": "'Shared with <slug>'",
+   "staging_note": ""
+  },
+  {
+   "id": "docchats-outcome-cards",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Outcome cards",
+   "mutating": false,
+   "calls": "read-doc-outcome-cards",
+   "labels": "'What Doc is tracking for you'",
+   "staging_note": ""
+  },
+  {
+   "id": "docchats-decide-suggestion",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Act/Discuss/Snooze/Dismiss a suggestion",
+   "mutating": true,
+   "calls": "decide-doc-suggestion",
+   "labels": "group 'Decide this suggestion'",
+   "staging_note": "needs suggestions"
+  },
+  {
+   "id": "docchats-correct-suggestion",
+   "area": "C",
+   "screen": "/doc-chats",
+   "description": "Propose a correction to a suggestion",
+   "mutating": true,
+   "calls": "propose-doc-correction",
+   "labels": "'Propose correction'",
+   "staging_note": "needs suggestions"
+  },
+  {
+   "id": "work-quick-add",
+   "area": "C",
+   "screen": "/doc-chats/work",
+   "description": "Quick-add a task",
+   "mutating": true,
+   "calls": "add-loop",
+   "labels": "'Quick add','Save'",
+   "staging_note": ""
+  },
+  {
+   "id": "work-task-dialog",
+   "area": "C",
+   "screen": "/doc-chats/work",
+   "description": "Change due date, hand over, complete a task",
+   "mutating": true,
+   "calls": "update-loop,close-loop",
+   "labels": "'Complete','Confirm'",
+   "staging_note": ""
+  },
+  {
+   "id": "work-scope",
+   "area": "C",
+   "screen": "/doc-chats/work",
+   "description": "Team/Mine scope",
+   "mutating": false,
+   "calls": "loop-board",
+   "labels": "group 'Scope'",
+   "staging_note": ""
+  },
+  {
+   "id": "activity-filters",
+   "area": "C",
+   "screen": "/doc-activity",
+   "description": "Filter Doc activity",
+   "mutating": false,
+   "calls": "read-doc-activity",
+   "labels": "Partner, 'Record type', From, Through",
+   "staging_note": ""
+  },
+  {
+   "id": "activity-detail-undo",
+   "area": "C",
+   "screen": "/doc-activity",
+   "description": "Open an activity and undo it",
+   "mutating": true,
+   "calls": "revert-deal-field",
+   "labels": "'Undo' -> 'Change undone'",
+   "staging_note": ""
+  },
+  {
+   "id": "status-overview",
+   "area": "C",
+   "screen": "/status",
+   "description": "Status page with build identity",
+   "mutating": false,
+   "calls": "/app-release",
+   "labels": "'Status','Last updated'",
+   "staging_note": ""
+  },
+  {
+   "id": "status-assurance-health",
+   "area": "C",
+   "screen": "/status",
+   "description": "Assurance health query",
+   "mutating": false,
+   "calls": "read-assurance-health",
+   "labels": "'Assurance health'",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-tabs",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "Control Room section tabs",
+   "mutating": false,
+   "calls": "",
+   "labels": "tablist 'Control Room sections'",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-job-board",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "System job board cards and filters",
+   "mutating": false,
+   "calls": "governance-queue",
+   "labels": "'Key','Live Library'",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-connections",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "Connections tab",
+   "mutating": false,
+   "calls": "read-resource-dashboard",
+   "labels": "",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-action-items",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "Action items",
+   "mutating": false,
+   "calls": "incident-board",
+   "labels": "",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-agents",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "Model Room: send a message, answer form",
+   "mutating": true,
+   "calls": "add-room-turn,answer-work-request-for-joe",
+   "labels": "'Message','Send'",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-system-map",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "System map tour and scene controls",
+   "mutating": false,
+   "calls": "GET /api/v1/atlas-graph",
+   "labels": "'Start Doc's tour','Exploded'",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-sessions",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "Find a session",
+   "mutating": false,
+   "calls": "read-session-identity",
+   "labels": "'Find a session by name or id'",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-triage",
+   "area": "C",
+   "screen": "/control-room",
+   "description": "Review a system work action",
+   "mutating": true,
+   "calls": "review-and-triage etc.",
+   "labels": "#work-triage",
+   "staging_note": ""
+  },
+  {
+   "id": "cr-automations",
+   "area": "C",
+   "screen": "/control-room/automations",
+   "description": "Automations month view",
+   "mutating": false,
+   "calls": "schedule-board",
+   "labels": "'Previous month','Next month'",
+   "staging_note": ""
+  },
+  {
+   "id": "pb-masthead",
+   "area": "C",
+   "screen": "/control-room/progress",
+   "description": "Board switch Project/All repositories and Key",
+   "mutating": false,
+   "calls": "list-progress-boards",
+   "labels": "'Project','All repositories','Key'",
+   "staging_note": ""
+  },
+  {
+   "id": "pb-sections",
+   "area": "C",
+   "screen": "/control-room/progress",
+   "description": "Board sections and filters",
+   "mutating": false,
+   "calls": "read-progress-board",
+   "labels": "'The path to live','Blocked only'",
+   "staging_note": "0 published boards on staging"
+  },
+  {
+   "id": "pb-task-detail",
+   "area": "C",
+   "screen": "/control-room/progress",
+   "description": "Open a board card's work detail",
+   "mutating": false,
+   "calls": "read-progress-board",
+   "labels": "'Open work detail.'",
+   "staging_note": "0 published boards on staging"
+  },
+  {
+   "id": "pb-answer-question",
+   "area": "C",
+   "screen": "/control-room/progress",
+   "description": "Answer a board question",
+   "mutating": true,
+   "calls": "answer-board-question",
+   "labels": "'Send answer'",
+   "staging_note": "0 published boards on staging"
+  },
+  {
+   "id": "pw-sessions",
+   "area": "C",
+   "screen": "/control-room/progress/work",
+   "description": "Session lookup",
+   "mutating": false,
+   "calls": "read-session-identity",
+   "labels": "'Session lookup','Find'",
+   "staging_note": ""
+  },
+  {
+   "id": "pw-queue-add",
+   "area": "C",
+   "screen": "/control-room/progress/work",
+   "description": "Add read-only work to the queue",
+   "mutating": true,
+   "calls": "POST /api/room/turn",
+   "labels": "'Add task' -> 'Task submitted; waiting for the board to update.'",
+   "staging_note": ""
+  },
+  {
+   "id": "pw-wire",
+   "area": "C",
+   "screen": "/control-room/progress/work",
+   "description": "Wire filters and speak into the room",
+   "mutating": true,
+   "calls": "POST /api/room/turn",
+   "labels": "'Speak into the room as Joe\u2026'",
+   "staging_note": ""
+  },
+  {
+   "id": "allwork-kind-filter",
+   "area": "C",
+   "screen": "/all-work",
+   "description": "Work type chips and status filter",
+   "mutating": false,
+   "calls": "GET /api/v1/work-inventory",
+   "labels": "group 'Work types'",
+   "staging_note": ""
+  },
+  {
+   "id": "allwork-records",
+   "area": "C",
+   "screen": "/all-work",
+   "description": "Records list, details, load more",
+   "mutating": false,
+   "calls": "",
+   "labels": "'Open details','Load more'",
+   "staging_note": ""
+  },
+  {
+   "id": "allwork-delivery-stages",
+   "area": "C",
+   "screen": "/all-work",
+   "description": "Delivery stages evidence",
+   "mutating": false,
+   "calls": "",
+   "labels": "table 'Delivery stages'",
+   "staging_note": ""
+  },
+  {
+   "id": "wr-open",
+   "area": "C",
+   "screen": "/work-requests",
+   "description": "Open a work request by ref",
+   "mutating": false,
+   "calls": "GET /api/system-work/:ref",
+   "labels": "'Open'",
+   "staging_note": ""
+  },
+  {
+   "id": "wr-report-problem",
+   "area": "C",
+   "screen": "/work-requests",
+   "description": "Report a system problem",
+   "mutating": true,
+   "calls": "POST /api/system-work/report",
+   "labels": "'Report a system problem','Continue'",
+   "staging_note": ""
+  },
+  {
+   "id": "design-tabs",
+   "area": "C",
+   "screen": "/design-lab",
+   "description": "Design Lab section tabs",
+   "mutating": false,
+   "calls": "",
+   "labels": "tablist 'Visual system sections'",
+   "staging_note": ""
+  }
+ ]
+}

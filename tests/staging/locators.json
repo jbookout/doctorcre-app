@@ -1,0 +1,42 @@
+[
+  { "path": "/", "locators": [
+    { "role": "navigation", "name": "Primary navigation" },
+    { "role": "button", "name": "Dark mode" },
+    { "role": "button", "name": "Color assist" },
+    { "role": "button", "name": "Call mode" },
+    { "role": "button", "name": "Joe: account and settings" },
+    { "role": "link", "name": "Search", "exact": true },
+    { "role": "button", "name": "Open Doc" },
+    { "role": "button", "name": "Refresh workspace" }
+  ]},
+  { "path": "/updates", "locators": [
+    { "role": "heading", "name": "Notifications" },
+    { "label": "Quiet hours start" },
+    { "label": "Quiet hours end" },
+    { "role": "button", "name": "Save preferences" },
+    { "role": "button", "name": "Clear quiet hours" }
+  ]},
+  { "path": "/doc-chats", "locators": [
+    { "role": "button", "name": "Show archived" },
+    { "role": "heading", "name": "What Doc is tracking for you" },
+    { "role": "textbox", "name": "Title", "exact": true },
+    { "role": "button", "name": "Create this conversation" }
+  ]},
+  { "path": "/doc-chats/work", "locators": [
+    { "label": "Sentence" },
+    { "role": "button", "name": "Save", "exact": true },
+    { "role": "group", "name": "Scope" }
+  ]},
+  { "path": "/doc-activity", "locators": [
+    { "label": "Record type" },
+    { "role": "button", "name": "Clear filters" },
+    { "role": "list", "name": "Doc and automation activity" }
+  ]},
+  { "path": "/design-lab", "locators": [
+    { "role": "tab", "name": "Components" },
+    { "role": "tab", "name": "Other" }
+  ]},
+  { "path": "/?view=charts", "locators": [
+    { "text": "By phase", "exact": false }
+  ]}
+]
