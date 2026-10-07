@@ -1,16 +1,16 @@
 {
   "schema": "workflow-action-provenance.v1",
-  "verified_at": "2026-10-04",
+  "verified_at": "2026-10-07",
   "method": "canonical GitHub REST published release + tag commit, independent canonical git ls-remote and action.yml runtime",
   "actions": {
     "actions/checkout": {
-      "sha": "11bd71901bbe5b1630ceea73d27597364c9af683",
-      "tag": "v4.2.2",
-      "release_url": "https://github.com/actions/checkout/releases/tag/v4.2.2",
-      "runtime": "node20",
-      "canonical_tag_sha": "11bd71901bbe5b1630ceea73d27597364c9af683",
-      "tag_url": "https://api.github.com/repos/actions/checkout/git/refs/tags/v4.2.2",
-      "metadata_blob": "6842eb843b7258993656f41f9c358f5c5331fbe7"
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "tag": "v7.0.1",
+      "release_url": "https://github.com/actions/checkout/releases/tag/v7.0.1",
+      "runtime": "node24",
+      "canonical_tag_sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "tag_url": "https://api.github.com/repos/actions/checkout/git/refs/tags/v7.0.1",
+      "metadata_blob": "5b0524f730db83f9513c18ab31a6c086c7239076"
     },
     "actions/setup-node": {
       "sha": "49933ea5288caeca8642d1e84afbd3f7d6820020",
