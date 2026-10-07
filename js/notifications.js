@@ -63,6 +63,7 @@ const view = {
 
 let client = null;
 let commandState = {};
+let preferenceAnchorRevealed = false;
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -157,6 +158,10 @@ function renderPreference() {
   $("prefSummary").textContent = preferenceSummary(model);
   const form = $("prefForm");
   form.hidden = !model;
+  if (model && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
+    preferenceAnchorRevealed = true;
+    requestAnimationFrame(() => { form.scrollIntoView({block:"start",behavior:"instant"}); });
+  }
   form.setAttribute("data-disabled", String(saving));
   for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
     const field = $(id);

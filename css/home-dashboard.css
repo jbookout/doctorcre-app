@@ -15,3 +15,5 @@
 #homeInvoices .home-panel-head h2{min-width:0;overflow-wrap:anywhere}
 
 #homeInvoices .home-flag-light{animation-duration:1s}
+
+:root[data-theme="light"] .home-shell{--text:#172d44;--muted:#425e7b;--quiet:#425e7b}

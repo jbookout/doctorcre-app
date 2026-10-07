@@ -7,6 +7,7 @@ import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups,
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
+  let clientsUnavailable = false;
   let clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
   let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
   const key = "doctorcre-tour-planning-drafts-v1";
@@ -196,6 +197,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     $("#packet-upload").value = "";
   }
   function reviewDraft(trigger) {
+    if (clientsUnavailable) { message("#plan-message", "Clients temporarily unavailable. Use Refresh tours to try again; your draft is saved."); $("#planner-refresh").focus(); return; }
     if (!planClient) { message("#plan-message", "Choose a client."); $("#plan-client").focus(); return; }
     currentTour = null; ++dialogEpoch; showDialog(plan.values.name || "Packet draft", trigger); message("#detail-message", "");
     const body = $("#detail-content"); const facts = element("dl", undefined, "draft-facts");
@@ -220,9 +222,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); }
     else { pageDocContext?.fail(docTicket,results[0].reason); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
+    clientsUnavailable = results[1].status !== "fulfilled";
     if (results[1].status === "fulfilled") {
       clients = results[1].value; fillClients();
-      for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === "Clients temporarily unavailable.") message(target, "");
+      for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent.startsWith("Clients temporarily unavailable.")) message(target, "");
     }
     else { for (const target of ["#plan-message", "#space-message"]) message(target, unavailable(results[1].reason) || "Clients temporarily unavailable."); }
     let current = results.every(result => result.status === "fulfilled");
@@ -252,7 +255,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
     }
     if (!active()) return;
-    if (current) message("#planner-updated", updatedLabel(new Date().toISOString()));
+    message("#planner-updated", current ? updatedLabel(new Date().toISOString()) : "Tours unavailable");
     $(".freshness").classList.toggle("current", current);
   }
   wireDraft("plan", plan); wireDraft("space", search);
