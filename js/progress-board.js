@@ -409,7 +409,7 @@ export function mountBoard(deps = {}) {
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
     renderFilters({repos:view?.repos || [],cards:all,stages});
     deps.onTasks?.(all,{state:boardState});
-    renderCompleted({...view, cards:all});
+    renderCompleted({...view, cards:all,stages});
     const kind = census ? "project" : view.kind;
     pipelineCards = all;
     const container = byId("board-stages");
@@ -580,11 +580,15 @@ export function mountBoard(deps = {}) {
     const box = (byId("completed-list") || byId("board-completed"));
     const focusedId = [...completedNodes].find(([,node])=>node===doc.activeElement)?.[0];
     box.replaceChildren();
-    const live = sortLive(view.cards.filter(card => card.stage === "live"), view.kind);
-    byId("completed-count").textContent = `${live.length} LIVE`;
-    if (!live.length) { box.append(el("p", "empty", "No live tasks yet.")); if (focusedId) (deps.openTask ? byId("board-title") : byId("completed-title")).focus(); return; }
-    for (const card of live) {
-      const item = el("article", "completed-card", undefined, { "data-card-id": card.id, "data-task-id": card.id });
+    const completed = sortLive(view.cards.filter(card => ["live","recorded"].includes(card.stage)), view.kind);
+    const liveCount = completed.filter(card => card.stage === "live").length;
+    const recordedCount = completed.length - liveCount;
+    const hasRecorded = view.stages.some(stage => stage.id === "recorded");
+    byId("completed-count").textContent = hasRecorded ? `${liveCount} LIVE · ${recordedCount} RECORDED` : `${liveCount} LIVE`;
+    if (!completed.length) { box.append(el("p", "empty", hasRecorded ? "No completed records yet." : "No live tasks yet.")); if (focusedId) (deps.openTask ? byId("board-title") : byId("completed-title")).focus(); return; }
+    for (const card of completed) {
+      const item = el("article", "completed-card", undefined, { "data-card-id": card.id, "data-task-id": card.id,
+        "data-stage": card.stage, "aria-label": `${card.title || card.id}, ${STAGE_DEFINITIONS.find(stage => stage.id === card.stage).label}. Open work detail.` });
       const top = el("div", "completed-top");
       top.append(el("strong", "card-title", card.title || card.id, { title: card.title || card.id }),
         el("time", "", formatTime(card.completed_at || card.updated_at)));
@@ -596,10 +600,13 @@ export function mountBoard(deps = {}) {
         el("p", "card-wr", jobLinks(card).workRequest || "Work Request unavailable"), el("p", "card-pr", jobLinks(card).prLabel || "No PR"));
       clickable(item, () => openWork(card.id));
       const kept = completedNodes.get(card.id);
-      if (kept) { kept.replaceChildren(...item.childNodes); box.append(kept); }
+      if (kept) {
+        kept.setAttribute("data-stage",card.stage);kept.setAttribute("aria-label",item.getAttribute("aria-label"));
+        kept.replaceChildren(...item.childNodes); box.append(kept);
+      }
       else { completedNodes.set(card.id,item); box.append(item); }
     }
-    for (const id of completedNodes.keys()) if (!live.some(card=>card.id===id)) completedNodes.delete(id);
+    for (const id of completedNodes.keys()) if (!completed.some(card=>card.id===id)) completedNodes.delete(id);
     if (focusedId) (completedNodes.get(focusedId) || (deps.openTask ? byId("board-title") : byId("completed-title"))).focus();
   }
 

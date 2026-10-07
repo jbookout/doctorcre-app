@@ -498,5 +498,7 @@ test("recorded source cards retain their filter and detail outside the release s
   assert.equal($$("#board-stages [data-stage='recorded'] .board-card").length, 1);
   assert.equal($$("#board-stages [data-stage='live'] .board-card").length, 0);
   assert.equal($$("#board-stages [data-stage='recorded'] .stage-index").length, 0);
+  assert.equal($$("#completed-list [data-stage='recorded']").length, 1);
+  assert.match($("#completed-count").textContent, /1 RECORDED/);
   board.dispose();
 });

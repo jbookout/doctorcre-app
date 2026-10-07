@@ -89,7 +89,9 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  assert.match(await page.locator('[data-task-id="work_request:WR-000901"]').textContent(),/WR-000901.*#17/);
  assert.equal(await page.locator('#board-retry').getAttribute('aria-label'),'Refresh');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- assert.equal(await page.locator('#board-stages .column').count(),6);
+ assert.deepEqual(await page.locator('#board-stages .column').evaluateAll(columns=>columns.map(column=>column.dataset.stage)),['queued','build','review','ci','merged','live','recorded']);
+ assert.equal(await page.locator('#board-stages [data-stage="live"] .board-card').count(),0);
+ assert.equal(await page.locator('#live-library').textContent(),'Completed records');
  assert.equal(await page.locator('#board-stages .board-card').evaluateAll(cards=>cards.every(card=>card.scrollWidth<=card.clientWidth+1)),true,'all task cards fit inside their stage');
  if(width!==320)await capture(page,`board-${width}`);
  const card=page.locator('[data-task-id="work_request:WR-000901"]');await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
@@ -104,25 +106,30 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'||name==='morning-brief'),calls.join(', '));assert.deepEqual(errors,[]);
 });
 
-for(const width of [1440,390])test(`Live work refresh preserves task focus and handles removal at ${width}px`,async t=>{
+for(const width of [1440,390])test(`Recorded work refresh preserves task focus and handles removal at ${width}px`,async t=>{
  const {page,state,errors}=await open(t,{width});
  const refresh=()=>page.locator('#system-work-coverage button').evaluate(button=>button.click());
  state.liveItems=[{id:'demo-live',kind:'progress_task',source:'demo',title:'Demo live task',summary:'First summary',completed:true,state:'measured',evidence:'Synthetic verification',age:0,last_activity_at:'2026-10-02T12:00:00Z',available_triage_actions:[]}];
  await page.locator('#system-work-coverage button').waitFor();await refresh();
  const card=page.locator('#completed-list [data-task-id="progress_task:demo-live"]');
- await card.waitFor();await card.focus();
+ await card.waitFor();assert.equal(await card.getAttribute('data-stage'),'recorded');
+ assert.match(await card.getAttribute('aria-label'),/Recorded/);
+ assert.match(await card.textContent(),/Recorded progress task state: measured/);
+ assert.equal(await page.locator('#completed-count').textContent(),'0 LIVE · 1 RECORDED');
+ await capture(page,`recorded-history-${width}`);
+ await card.focus();
  state.liveItems[0].summary='Updated summary';await refresh();
  await page.waitForFunction(()=>document.querySelector('#completed-list .card-summary')?.textContent==='Updated summary');
  assert.equal(await card.evaluate(node=>node===document.activeElement),true);
- // A separate control must keep focus when Live work changes in the background.
+ // A separate control must keep focus when recorded work changes in the background.
  const outside=page.locator('#board-retry');await outside.focus();
  state.liveItems[0].summary='Another summary';await refresh();
  await page.waitForFunction(()=>document.querySelector('#completed-list .card-summary')?.textContent==='Another summary');
  assert.equal(await outside.evaluate(node=>node===document.activeElement),true);
  await card.focus();state.liveItems=[];await refresh();
- await page.waitForFunction(()=>document.querySelector('#completed-count').textContent==='0 LIVE');
+ await page.waitForFunction(()=>document.querySelector('#completed-count').textContent==='0 LIVE · 0 RECORDED');
  assert.equal(await page.locator('#board-title').evaluate(node=>node===document.activeElement),true);
- assert.match(await page.locator('#completed-list').textContent(),/No live tasks yet/);
+ assert.match(await page.locator('#completed-list').textContent(),/No completed records yet/);
  assert.deepEqual(errors,[]);
 });
 for(const width of [1440,390])test(`W7 Action Items rows open the same wide popup at ${width}px`,async t=>{
