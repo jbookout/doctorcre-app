@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { addMonths, projectLeaseRadar, validLeaseRadar, pastClientTouches, radarToday } from '../js/lease-radar-model.js';
+import { addMonths, projectLeaseRadar, validLeaseRadar, pastClientTouches, radarToday, leaseRadarAddress, parseLeaseRadarAddress } from '../js/lease-radar-model.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { createLeaseRadarClient } from '../js/lease-radar-client.js';
 import { addMonths as calendarAddMonths } from '../js/calendar-model.js';
@@ -101,4 +101,16 @@ test('merged route contract adds leases beside relationships and Progress under 
   assert.equal(routes.routes['/relationships'], 'relationships.html');
   assert.equal(routes.routes['/control-room/progress/work'], 'progress-work.html');
   assert.equal(routes.routes['/deals'], 'pipeline.html');
+});
+
+
+test('QA-022/023 lease filters and selection round-trip without discarding unrelated route state', () => {
+  const state={view:'gaps',scope:'mine',search:'Demo & clinic',quarter:'2027-Q2',lease:'demo-lease-1'};
+  const address=leaseRadarAddress(state,'/leases?mode=fixture#radar');
+  const url=new URL(address,'http://fixture.local');
+  assert.deepEqual(parseLeaseRadarAddress(url.search),state);
+  assert.equal(url.searchParams.get('mode'),'fixture');
+  assert.equal(url.hash,'#radar');
+  assert.equal(leaseRadarAddress({},address),'/leases?mode=fixture#radar');
+  assert.deepEqual(parseLeaseRadarAddress('?view=unknown&scope=other&quarter=2027-Q9'),{view:'timeline',scope:'team',search:'',quarter:null,lease:null});
 });

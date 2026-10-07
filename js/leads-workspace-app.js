@@ -60,7 +60,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
     $("leadCount").textContent = `${active.length}`;
-    $("filterSummary").textContent = `${shown.length} leads`;
+    $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, k.charAt(0).toUpperCase() + k.slice(1)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters);
@@ -88,6 +88,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
     box.hidden = !state.pending && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
+    if (!state.actor && state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ' · <a href="/auth/login?return_to=%2Fleads">Sign in</a>');
     $("checkPending")?.addEventListener("click", executePending);
     if (state.pending && $("stageDialog").open) {
       $("saveStage").textContent = "Check outcome"; $("saveStage").disabled = state.writing;
