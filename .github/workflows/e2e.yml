@@ -43,7 +43,7 @@ jobs:
       - run: npm run check
       - run: node --test test/e2e-suite.test.mjs
       - run: npx playwright install --with-deps chromium
-      # Deterministic journeys only: CI configures no model, so agent steps stay local.
+      # Exact-source deterministic product proof remains independent of model access.
       - run: node scripts/browser-product-proof.mjs
         if: github.event_name == 'pull_request' || github.event_name == 'push'
       - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

@@ -7,10 +7,11 @@ import { chatgpt } from 'e2e/oauth/chatgpt';
 process.env.E2E_TELEMETRY_DISABLED = '1';
 
 // Agent steps run only on a local machine signed in with `npx e2e login openai`.
-// CI configures no model: the deterministic suite never needs one.
+// The local shard config selects a subscription model explicitly.
 const ci = !['', '0', 'false'].includes(process.env.CI ?? '');
 
 export default {
+  tests: ['tests/journeys/**/*.e2e.ts', 'tests/agent/**/*.e2e.ts'],
   workers: 1,
   retries: 0,
   trace: 'retain-on-failure',

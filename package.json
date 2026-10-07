@@ -28,15 +28,21 @@
     "prebuild": "npm run slices:check",
     "preserve": "npm run slices:check",
     "predeployment:check:staging": "npm run slices:check",
-    "predeployment:check:production": "npm run slices:check"
+    "predeployment:check:production": "npm run slices:check",
+    "qa:serve": "node scripts/qa-fixture-server.mjs",
+    "qa:round2": "e2e run tests/qa --config e2e.round2.config.ts --exclude-tag registry",
+    "qa:board-auth": "node scripts/qa-board-auth.mjs --capture",
+    "qa:registry": "e2e run --config e2e.registry.config.ts"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
-    "@e2e-dev/web": "0.11.2",
+    "@e2e-dev/mobile": "0.9.2",
+    "@e2e-dev/web": "0.12.0",
     "ai": "7.0.127",
-    "e2e": "0.16.0",
+    "e2e": "0.17.0",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
-    "wrangler": "4.131.2"
+    "wrangler": "4.131.2",
+    "zod": "4.6.5"
   }
 }
