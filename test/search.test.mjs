@@ -1,3 +1,4 @@
+import { CARR_INTERFACE_VERSION, CARR_PRODUCER_SHA } from './carr-interface-fixture.mjs';
 // V5-UX-B05 — Authorized global search and saved views.
 //
 // One test per clause of the slice record, named B05-1 … B05-14, plus the
@@ -383,8 +384,8 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.20.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.version, "1.43.0", "the current contract retains Search operations");
-  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184", "the producer pin includes the Codex checkpoint read");
+  assert.equal(contract.version, CARR_INTERFACE_VERSION, "the current contract retains Search operations");
+  assert.equal(contract.producer.source_commit, CARR_PRODUCER_SHA, "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");

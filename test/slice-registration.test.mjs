@@ -51,6 +51,7 @@ test('two new slices add route, navigation and page sections without shared sour
   for (const directory of ['css', 'data', 'public-shell', 'reports', 'tours']) await mkdir(join(root, directory));
   await writeFile(join(root, 'manifest.webmanifest'), '{}');
   await writeFile(join(root, 'contracts/carr-interface.v1.json'), JSON.stringify({ schema: 'doctorcre-carr-interface.v1', version: '1.0.0' }));
+  await writeFile(join(root, 'contracts/runtime-errors.v1.json'), JSON.stringify({ schema: 'carr-runtime-errors.v1', version: '1.0.0' }));
   const artifact = await buildArtifact({ root, outDir: join(root, 'dist'), commit: '1'.repeat(40) });
   assert.ok(artifact.manifest.files.some(file => file.path === 'alpha.html'));
   assert.ok(artifact.manifest.files.some(file => file.path === 'beta.html'));

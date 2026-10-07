@@ -1,3 +1,4 @@
+import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -555,7 +556,7 @@ test("today-triage is pinned in the CARR interface as an additive minor bump", (
   assert.ok(carrInterface.mcp_operations.includes("today-triage"));
   assert.ok(carrInterface.mcp_operations.includes("loop-board"));
   assert.deepEqual([...carrInterface.mcp_operations], [...carrInterface.mcp_operations].sort(), "the list stays alphabetical");
-  assert.equal(carrInterface.version, "1.43.0");
+  assert.equal(carrInterface.version, CARR_INTERFACE_VERSION);
 });
 
 test("Home enters in a stagger under a second, answers hover and press, and draws its ambient life from shared keyframes", () => {

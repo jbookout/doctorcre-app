@@ -1,6 +1,7 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
+import { browserError } from '../js/error-tracking.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -133,7 +134,7 @@ function release(env) {
   });
 }
 
-export async function handleDoctorcreRequest(request, env) {
+async function routeDoctorcreRequest(request, env) {
   const url = new URL(request.url);
   const pathname = url.pathname;
   const boardDestination = legacyBoardDestination(url);
@@ -178,6 +179,20 @@ export async function handleDoctorcreRequest(request, env) {
     return carrResponse(request, env);
   }
   return json({ error: "not_found" }, 404);
+}
+
+export async function handleDoctorcreRequest(request, env, ctx) {
+  let response, error;
+  try { response = await routeDoctorcreRequest(request, env); }
+  catch (caught) { error = caught; response = json({ error: 'internal_error' }, 500); }
+  if (response.status >= 500 && new URL(request.url).pathname !== '/api/v1/runtime-errors') {
+    const input = browserError(error || { name: 'Error', message: 'HTTP 5xx response' }, new URL(request.url).pathname, env?.GIT_SHA);
+    if (!error) { input.type = 'HTTP5xx'; input.message = 'HTTP 5xx response'; }
+    const pending = Promise.resolve().then(() => env.CARR_ERRORS.capture(input))
+      .catch(() => console.error(JSON.stringify({ event: 'runtime_error_capture_failed', ...input })));
+    if (ctx?.waitUntil) ctx.waitUntil(pending); else await pending;
+  }
+  return response;
 }
 
 export default { fetch: handleDoctorcreRequest };

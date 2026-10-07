@@ -1,3 +1,4 @@
+import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 // The shared command kernel: what ONE logical operation does when the answer is
 // late, lost, refused, or never comes at all — for any command the product
 // sends, not only a board cell.
@@ -344,7 +345,7 @@ test("checking is a declared state of the shared visual system, and the styleshe
   // The invariant this whole slice exists to keep, pinned where the consumer
   // contract can be read without the code.
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(carr.version, "1.43.0");
+  assert.equal(carr.version, CARR_INTERFACE_VERSION);
   assert.ok(carr.invariants.some((line) => /one idempotency key across double click, reconnect and a second device/.test(line)));
 });
 

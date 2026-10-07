@@ -11,7 +11,7 @@
   "assets": { "directory": "./dist/site", "binding": "ASSETS", "run_worker_first": true },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": { "APP_ENV": "production" },
-  "services": [{ "binding": "CARR", "service": "carr-mcp" }],
+  "services": [{ "binding": "CARR", "service": "carr-mcp" }, { "binding": "CARR_ERRORS", "service": "carr-mcp", "entrypoint": "RuntimeErrorSink" }],
   "observability": { "enabled": true },
   "env": {
     "staging": {
@@ -21,7 +21,7 @@
       "assets": { "directory": "./dist/site", "binding": "ASSETS", "run_worker_first": true },
       "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "vars": { "APP_ENV": "staging" },
-      "services": [{ "binding": "CARR", "service": "carr-mcp-staging" }]
+      "services": [{ "binding": "CARR", "service": "carr-mcp-staging" }, { "binding": "CARR_ERRORS", "service": "carr-mcp-staging", "entrypoint": "RuntimeErrorSink" }]
     }
   }
 }
