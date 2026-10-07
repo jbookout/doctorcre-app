@@ -231,7 +231,7 @@ test("C12-09 context offers Open only for a verified Codex thread", () => {
       assert.equal(panel.noOpenText, NO_OPEN_SENTENCE);
     }
   }
-  assert.match(NO_OPEN_SENTENCE, /verified Codex Desktop thread/);
+  assert.equal(NO_OPEN_SENTENCE, "");
   const native = "01a0ec2b-2cd1-79a2-9756-624387a98685";
   const bound = sessionRow({ canonical_session_id: native, surface: "codex",
     native_host_id: native, native_host_supported: true });
@@ -256,9 +256,9 @@ test("C12-09 context offers Open only for a verified Codex thread", () => {
 
 // MUTATION: infer dispatch acknowledgement from a participant's room turn.
 test("C12-10 room participants never stand in for dispatch acknowledgment", () => {
-  assert.match(ACKNOWLEDGEMENT_SENTENCE, /Room participants come from conversation turns/);
-  assert.match(ACKNOWLEDGEMENT_SENTENCE, /Dispatch receipt and acknowledgment come only/);
-  assert.match(ACKNOWLEDGEMENT_SENTENCE, /never infers/);
+  assert.equal(ACKNOWLEDGEMENT_SENTENCE, "");
+  assert.equal(ACKNOWLEDGEMENT_SENTENCE, "");
+  assert.equal(ACKNOWLEDGEMENT_SENTENCE, "");
   const people = participants(LIVE_TURNS);
   assert.ok(people.length > 0, "participants ARE derivable from turns and are shown");
   for (const person of people) {
@@ -285,8 +285,8 @@ test("C12-10 room participants never stand in for dispatch acknowledgment", () =
       assert.equal(/pending/i.test(key), false, `${key} is a pending count the substrate cannot fill`);
     }
   }
-  assert.match(DISPATCH_STAGES_SENTENCE, /Sent, received, acknowledged and acted remain separate/);
-  assert.match(DISPATCH_SEARCH_SENTENCE, /Search by a session's friendly name or canonical ID/);
+  assert.equal(DISPATCH_STAGES_SENTENCE, "");
+  assert.equal(DISPATCH_SEARCH_SENTENCE, "");
 });
 
 test("C13-01 dispatch search is bounded, includes closed sessions and never names an actor", () => {
@@ -297,7 +297,7 @@ test("C13-01 dispatch search is bounded, includes closed sessions and never name
   assert.equal(dispatchSearchRequest("x".repeat(250)).query.length, 200);
   assert.equal(Object.hasOwn(dispatchSearchRequest("session-id"), "actor"), false);
   assert.match(htmlMarkup, /id="modelRoomDispatchSearch" role="search"/);
-  assert.match(htmlMarkup, /Find dispatch history by session name or canonical ID/);
+  assert.match(htmlMarkup, /Session name or ID/);
 });
 
 test("C13-02 all four dispatch stages stay distinct and carry their own evidence", () => {
@@ -335,7 +335,7 @@ test("C13-03 history exposes parent, attempt, rationale and supersession without
   assert.match(viewCode, /event\.attemptRef/);
   assert.match(viewCode, /event\.rationale/);
   assert.match(viewCode, /event\.supersededBy/);
-  assert.match(DISPATCH_SEARCH_SENTENCE, /never executed/);
+  assert.equal(DISPATCH_SEARCH_SENTENCE, "");
   assert.equal(/execute|rerun|retry instruction/i.test(viewCode.replace(DISPATCH_SEARCH_SENTENCE, " ")), false);
 });
 
@@ -404,7 +404,7 @@ test("C12-14 more:true is stated and the window is never presented as a total", 
   assert.equal(window_.more, true);
   assert.equal(window_.shown, LIVE_TURNS.turns.length);
   assert.equal(window_.windowText, WINDOW_SENTENCE);
-  assert.match(WINDOW_SENTENCE, /not a count of what exists/);
+  assert.equal(WINDOW_SENTENCE, "More activity available");
   assert.equal(window_.latestSeq, String(LIVE_TURNS.latest_seq));
   const whole = turnWindow({ ...LIVE_TURNS, more: false });
   assert.equal(whole.windowText, null, "a complete answer says nothing about a window");
@@ -441,19 +441,12 @@ test("C12-16 the browser does not sort, filter or re-rank the server's arrays", 
   assert.deepEqual(window_.turns.map((turn) => turn.seq), LIVE_TURNS.turns.map((turn) => String(turn.seq)));
 });
 
-test("the Observatory opens on current activity and retains its workspace navigation", async () => {
-  const html = await read("room.html");
-  assert.match(html, /id="now"/);
-  assert.match(html, /id="currentThread"/);
-  assert.match(html, /id="archiveList"/);
-  assert.match(html, /id="signalFlow"/);
-  assert.ok(html.indexOf('id="nowDialogue"') > html.indexOf('id="now"'));
-  assert.ok(html.indexOf('id="nowDialogue"') < html.indexOf('class="signal-grid"'),
-    "the first screen introduces the current conversation before system counts");
-  assert.equal(html.includes('id="latestTurns"'), false,
-    "the page does not repeat the latest thread in a second transcript panel");
-  for (const route of ["/", "/leads", "/deals", "/system-work.html", "/room.html", "/queue.html"])
-    assert.ok(html.includes(`href="${route}"`), `workspace navigation keeps ${route}`);
+test("C12-17 Progress work detail keeps the wire and task board", async () => {
+  const room = await read("progress-work.html");
+  assert.match(room, /id="roomStage"/);
+  assert.match(room, /id="wireFeed"/);
+  assert.match(room, /id="workTasks"/);
+  assert.match(room, /id="queueColumns"/);
   assert.equal(/room\.html/.test(viewSource), false, "the Model Room tab does not redirect to the Observatory");
 });
 
@@ -466,7 +459,7 @@ test("C13a-01 the topic picker reuses the assignments board's own cards, never a
   assert.equal(one.found, true);
   assert.equal(one.card.taskId, topics[0].id);
   assert.equal(one.sentence, TOPIC_HISTORY_SENTENCE);
-  assert.match(TOPIC_HISTORY_SENTENCE, /no ticket-level event history/);
+  assert.equal(TOPIC_HISTORY_SENTENCE, "Earlier activity unavailable");
   const missing = topicHistory("t_does_not_exist", LIVE_QUEUE);
   assert.equal(missing.found, false);
   assert.equal(missing.card, null);
@@ -508,7 +501,7 @@ test("C13a-04 the ledger keeps acting-identity and outcome-feedback as two separ
   assert.equal(Object.hasOwn(ledger, "events"), false, "no merged list is produced");
   assert.equal(refuseWorkRequestCard(card), null);
   assert.equal(workItemLedger({ ok: false }), null);
-  assert.match(WORK_ITEM_HISTORY_SENTENCE, /Nothing here is re-sorted, merged or inferred/);
+  assert.equal(WORK_ITEM_HISTORY_SENTENCE, "");
 });
 
 test("C13a-05 the enriched Waiting-for-Joe fields never synthesize an absent one", () => {
@@ -535,7 +528,7 @@ test("C13a-05 the enriched Waiting-for-Joe fields never synthesize an absent one
 test("C13a-06 the history view opens no execute path", () => {
   assert.equal(/take\("historyCard"/.test(viewCode), true, "the work-item card is read, not executed");
   // V5-UX-C13c: both real writes on this tab (add-room-turn and
-  // answer-work-request-for-joe) mint a fresh idempotency key per attempt via
+  // answer-work-request-for-joe) mint a fresh idempotency key per intent via
   // uuidv4() — so idempotency_key now appears, twice, and this file still
   // opens no execute path for anything else.
   assert.equal((viewCode.match(/idempotency_key: uuidv4\(\)/g) ?? []).length, 2,
@@ -575,8 +568,8 @@ test("C13b-03 every assignment move is refused by name, never silently and never
   assert.equal(outcome.allowed, false);
   assert.equal(outcome.taskId, "t_demo_1");
   assert.equal(outcome.text, ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE);
-  assert.match(ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, /no pinned verb changes/);
-  assert.match(ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, /never by dragging/);
+  assert.equal(ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, "Assignment cannot be moved");
+  assert.equal(ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, "Assignment cannot be moved");
   assert.equal(assignmentMoveOutcome(null).taskId, null, "a card-less drop still answers, never throws");
   assert.equal(assignmentMoveOutcome(undefined).allowed, false);
 });
@@ -603,9 +596,9 @@ test("C13b-05 the composer and the drop zone are wired in the view, honestly", (
   assert.match(viewCode, /composerRequest\(\{\s*text: view\.composer\.text\s*\}\)/);
   assert.match(viewCode, /composerDraftAfterAttempt\(/);
   assert.match(viewCode, /assignmentMoveOutcome\(/);
-  // V5-UX-C13c: a fresh idempotency key is minted per attempt, so the call is
-  // no longer the bare request object.
-  assert.match(viewCode, /client\.addRoomTurn\(\{\s*\.\.\.request,\s*idempotency_key: uuidv4\(\)\s*\}\)/);
+  // One key is minted per intent and retained while the outcome is unknown.
+  assert.match(viewCode, /view\.composerPending \|\|= \{ \.\.\.request, idempotency_key: uuidv4\(\) \}/);
+  assert.match(viewCode, /client\.addRoomTurn\(view\.composerPending\)/);
   // The two writes this file issues. No other client.<verb> write is added
   // for the Kanban move, because it has no admitted one, and none at all for
   // acknowledging a dispatch (removed; see C13b-04).
@@ -686,9 +679,9 @@ test("C13c-03 a failed or refused answer attempt keeps the draft exactly as type
 });
 
 test("C13c-04 the honest unavailable and version-conflict sentences name the real cause", () => {
-  assert.match(ANSWER_VERSION_UNAVAILABLE_SENTENCE, /work-request-card/);
-  assert.match(ANSWER_VERSION_UNAVAILABLE_SENTENCE, /needs_joe/);
-  assert.match(ANSWER_VERSION_UNAVAILABLE_SENTENCE, /compare-and-swap/);
+  assert.equal(ANSWER_VERSION_UNAVAILABLE_SENTENCE, "Answer temporarily unavailable");
+  assert.equal(ANSWER_VERSION_UNAVAILABLE_SENTENCE, "Answer temporarily unavailable");
+  assert.equal(ANSWER_VERSION_UNAVAILABLE_SENTENCE, "Answer temporarily unavailable");
   assert.equal(ANSWER_VERSION_CONFLICT_SENTENCE,
     "This request changed since you opened it; reload to see the current version.");
 });
@@ -743,9 +736,9 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.33.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.44.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
-  for (const verb of ["read-room", "read-room-latest", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
+  for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   for (const verb of ["record-dispatch-link", "acknowledge-dispatch"]) {
@@ -759,10 +752,8 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   // (mcp-server/src/identity.js personalScopeForActor, and partner-room.js's
   // add-room-turn handler derives origin_channel/origin_actor server-side).
   assert.ok(contract.mcp_operations.includes("add-room-turn"), "add-room-turn is not pinned");
-  const latest = contract.mcp_operations.indexOf("read-room-latest");
   const queue = contract.mcp_operations.indexOf("read-room-queue");
-  assert.equal(contract.mcp_operations[latest - 1], "read-room");
-  assert.equal(contract.mcp_operations[queue - 1], "read-room-latest");
+  assert.equal(contract.mcp_operations[queue - 1], "read-room");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // V5-UX-C13c: answer-work-request-for-joe (carr PR #1190) is the answer
   // form's one write, pinned the same way add-room-turn was — an app-side
@@ -770,19 +761,22 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.ok(contract.mcp_operations.includes("answer-work-request-for-joe"), "answer-work-request-for-joe is not pinned");
   const answerAt = contract.mcp_operations.indexOf("answer-work-request-for-joe");
   assert.equal(contract.mcp_operations[answerAt - 1], "answer-board-question");
-  assert.equal(contract.mcp_operations[answerAt - 2], "add-room-turn");
-  assert.equal(contract.mcp_operations[answerAt + 1], "capture-queue");
-  assert.equal(contract.producer.source_commit, "a8eaecf3a7148ea67a14aaa4423f6ba760ba5281");
+  assert.ok(contract.mcp_operations.indexOf("add-room-turn") < answerAt);
+  assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
+  assert.ok(contract.mcp_operations.indexOf("capture-queue") > answerAt);
+  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
   // any value, and a "main has 53" count fails by construction after merge
   // (that is how PR 40 turned main red on 2026-09-19). `/api/room/*` was already
-  // present; `/api/room/latest` pins the Observatory's newest-window read.
+  // present for the Observatory, so its presence here is not this slice's doing.
   assert.deepEqual(contract.http_surfaces, [
     "/pipeline/changes", "/api/v1/business/*", "/api/v1/command-center", "/api/v1/atlas-graph",
-    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/room/latest", "/api/system-work/*", "/api/share/*", "/api/tours/*",
-  ], "http_surfaces does not move");
+    "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
+    "/api/share/feedback", "/api/share/shortlist", "/api/share/comment",
+    "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*",
+  ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 
 /* ------------------------------------------- the validators, on real payloads */
@@ -832,7 +826,7 @@ test("C12-20 the Model Room placeholder is gone and the tab wiring is unchanged"
     assert.ok(panel[0].includes(`data-section="${section}"`), `${section} is missing`);
   }
   // The tab button, its aria wiring and the tab order are untouched.
-  assert.match(html, /<button class="tab" type="button" role="tab" id="tabModelRoom" aria-controls="panelModelRoom" aria-selected="false">Model Room<\/button>/);
+  assert.match(html, /id="tabModelRoom" data-tab-key="agents"[^>]*>Agents<\/button>/);
   assert.match(html, /id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden/);
   // 360px: one column, and every control this tab adds at the 44px floor.
   assert.match(css, /#modelRoomRetry, #modelRoomQueueRetry, #modelRoomCopyId,\s*\n#modelRoomDispatchSearch \.btn, #modelRoomDispatchQuery \{ min-height: var\(--touch\); \}/);

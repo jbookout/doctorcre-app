@@ -1,7 +1,7 @@
 {
   "producer_repository": "jbookout/carr-system",
-  "producer_source_commit": "016dd6aded165d5117f3dd7ad84b483613f09c90",
-  "producer_function": "tools/progress_board.py:task_stage/task_health/pulse_state",
+  "producer_source_commit": "4af24be8b4415290dcf29eecb6091a0d25fc91bd",
+  "producer_function": "tools/progress_board.py:task_stage/task_health/pulse_state/blocked_detail/is_stale/stage_timer",
   "reference_time": "2026-09-28T13:00:00Z",
   "synthetic": true,
   "cases": [
@@ -11,15 +11,17 @@
         "title": "Synthetic queued healthy",
         "status": "running",
         "stage": "queued",
-        "updated_at": "2026-09-28T12:00:00Z"
+        "health": "healthy",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "queued",
       "stage_label": "Queued",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#f2f6fc",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "queued 2h 14m",
+      "blocked": null
     },
     {
       "id": "queued_question",
@@ -27,16 +29,17 @@
         "title": "Synthetic queued question",
         "status": "running",
         "stage": "queued",
+        "health": "question",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "question"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "queued",
       "stage_label": "Queued",
       "producer_health": "question",
       "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#f2f6fc",
-      "pulse_color": "#fb7b32"
+      "stale": false,
+      "stage_timer": "queued 2h 14m",
+      "blocked": null
     },
     {
       "id": "queued_blocked",
@@ -44,16 +47,20 @@
         "title": "Synthetic queued blocked",
         "status": "running",
         "stage": "queued",
+        "health": "blocked",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "blocked"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "queued",
       "stage_label": "Queued",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#f2f6fc",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "queued 2h 14m",
+      "blocked": [
+        "Marked blocked without a recorded reason",
+        "Orchestrator: record the reason and next action"
+      ]
     },
     {
       "id": "build_healthy",
@@ -61,15 +68,17 @@
         "title": "Synthetic build healthy",
         "status": "running",
         "stage": "build",
-        "updated_at": "2026-09-28T12:00:00Z"
+        "health": "healthy",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "build",
       "stage_label": "Building",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "build 2h 14m",
+      "blocked": null
     },
     {
       "id": "build_question",
@@ -77,16 +86,17 @@
         "title": "Synthetic build question",
         "status": "running",
         "stage": "build",
+        "health": "question",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "question"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "build",
       "stage_label": "Building",
       "producer_health": "question",
       "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#fb7b32"
+      "stale": false,
+      "stage_timer": "build 2h 14m",
+      "blocked": null
     },
     {
       "id": "build_blocked",
@@ -94,16 +104,20 @@
         "title": "Synthetic build blocked",
         "status": "running",
         "stage": "build",
+        "health": "blocked",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "blocked"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "build",
       "stage_label": "Building",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "build 2h 14m",
+      "blocked": [
+        "Marked blocked without a recorded reason",
+        "Orchestrator: record the reason and next action"
+      ]
     },
     {
       "id": "review_healthy",
@@ -111,15 +125,17 @@
         "title": "Synthetic review healthy",
         "status": "running",
         "stage": "review",
-        "updated_at": "2026-09-28T12:00:00Z"
+        "health": "healthy",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "review",
       "stage_label": "Review",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#bf9cff",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "review 2h 14m",
+      "blocked": null
     },
     {
       "id": "review_question",
@@ -127,16 +143,17 @@
         "title": "Synthetic review question",
         "status": "running",
         "stage": "review",
+        "health": "question",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "question"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "review",
       "stage_label": "Review",
       "producer_health": "question",
       "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#bf9cff",
-      "pulse_color": "#fb7b32"
+      "stale": false,
+      "stage_timer": "review 2h 14m",
+      "blocked": null
     },
     {
       "id": "review_blocked",
@@ -144,16 +161,20 @@
         "title": "Synthetic review blocked",
         "status": "running",
         "stage": "review",
+        "health": "blocked",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "blocked"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "review",
       "stage_label": "Review",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#bf9cff",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "review 2h 14m",
+      "blocked": [
+        "Marked blocked without a recorded reason",
+        "Orchestrator: record the reason and next action"
+      ]
     },
     {
       "id": "ci_healthy",
@@ -161,15 +182,17 @@
         "title": "Synthetic ci healthy",
         "status": "running",
         "stage": "ci",
-        "updated_at": "2026-09-28T12:00:00Z"
+        "health": "healthy",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "ci",
       "stage_label": "CI",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#ff88bd",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "ci 2h 14m",
+      "blocked": null
     },
     {
       "id": "ci_question",
@@ -177,16 +200,17 @@
         "title": "Synthetic ci question",
         "status": "running",
         "stage": "ci",
+        "health": "question",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "question"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "ci",
       "stage_label": "CI",
       "producer_health": "question",
       "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#ff88bd",
-      "pulse_color": "#fb7b32"
+      "stale": false,
+      "stage_timer": "ci 2h 14m",
+      "blocked": null
     },
     {
       "id": "ci_blocked",
@@ -194,16 +218,20 @@
         "title": "Synthetic ci blocked",
         "status": "running",
         "stage": "ci",
+        "health": "blocked",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "blocked"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "ci",
       "stage_label": "CI",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#ff88bd",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "ci 2h 14m",
+      "blocked": [
+        "Marked blocked without a recorded reason",
+        "Orchestrator: record the reason and next action"
+      ]
     },
     {
       "id": "merged_healthy",
@@ -211,15 +239,17 @@
         "title": "Synthetic merged healthy",
         "status": "running",
         "stage": "merged",
-        "updated_at": "2026-09-28T12:00:00Z"
+        "health": "healthy",
+        "updated_at": "2026-09-28T12:00:00Z",
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "merged",
       "stage_label": "Merged",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#65baff",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "merged 2h 14m",
+      "blocked": null
     },
     {
       "id": "merged_question",
@@ -227,16 +257,17 @@
         "title": "Synthetic merged question",
         "status": "running",
         "stage": "merged",
+        "health": "question",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "question"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "merged",
       "stage_label": "Merged",
       "producer_health": "question",
       "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#65baff",
-      "pulse_color": "#fb7b32"
+      "stale": false,
+      "stage_timer": "merged 2h 14m",
+      "blocked": null
     },
     {
       "id": "merged_blocked",
@@ -244,16 +275,20 @@
         "title": "Synthetic merged blocked",
         "status": "running",
         "stage": "merged",
+        "health": "blocked",
         "updated_at": "2026-09-28T12:00:00Z",
-        "health": "blocked"
+        "stage_entered_at": "2026-09-28T10:46:00Z"
       },
       "stage": "merged",
       "stage_label": "Merged",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#65baff",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "merged 2h 14m",
+      "blocked": [
+        "Marked blocked without a recorded reason",
+        "Orchestrator: record the reason and next action"
+      ]
     },
     {
       "id": "live_healthy",
@@ -261,16 +296,18 @@
         "title": "Synthetic live healthy",
         "status": "running",
         "stage": "live",
+        "health": "healthy",
         "updated_at": "2026-09-28T12:00:00Z",
+        "stage_entered_at": "2026-09-28T10:46:00Z",
         "evidence": "Synthetic proof"
       },
       "stage": "live",
       "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#7dddc0",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "live 2h 14m",
+      "blocked": null
     },
     {
       "id": "live_question",
@@ -278,17 +315,18 @@
         "title": "Synthetic live question",
         "status": "running",
         "stage": "live",
+        "health": "question",
         "updated_at": "2026-09-28T12:00:00Z",
-        "evidence": "Synthetic proof",
-        "health": "question"
+        "stage_entered_at": "2026-09-28T10:46:00Z",
+        "evidence": "Synthetic proof"
       },
       "stage": "live",
       "stage_label": "Live",
-      "producer_health": "question",
-      "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#7dddc0",
-      "pulse_color": "#fb7b32"
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "stale": false,
+      "stage_timer": "live 2h 14m",
+      "blocked": null
     },
     {
       "id": "live_blocked",
@@ -296,17 +334,18 @@
         "title": "Synthetic live blocked",
         "status": "running",
         "stage": "live",
+        "health": "blocked",
         "updated_at": "2026-09-28T12:00:00Z",
-        "evidence": "Synthetic proof",
-        "health": "blocked"
+        "stage_entered_at": "2026-09-28T10:46:00Z",
+        "evidence": "Synthetic proof"
       },
       "stage": "live",
       "stage_label": "Live",
-      "producer_health": "blocked",
-      "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#7dddc0",
-      "pulse_color": "#ff696b"
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "stale": false,
+      "stage_timer": "live 2h 14m",
+      "blocked": null
     },
     {
       "id": "queued_still",
@@ -318,9 +357,9 @@
       "stage_label": "Queued",
       "producer_health": "healthy",
       "pulse": "still",
-      "pulse_period": null,
-      "stage_color": "#f2f6fc",
-      "pulse_color": "#7dddc0"
+      "stale": false,
+      "stage_timer": "queued unknown",
+      "blocked": null
     },
     {
       "id": "done_still",
@@ -328,13 +367,13 @@
         "title": "Synthetic done",
         "status": "done"
       },
-      "stage": "build",
-      "stage_label": "Building",
+      "stage": "live",
+      "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "still",
-      "pulse_period": null,
-      "stage_color": "#fb7b32",
-      "pulse_color": "#7dddc0"
+      "stale": false,
+      "stage_timer": "live unknown",
+      "blocked": null
     },
     {
       "id": "done_merged",
@@ -348,9 +387,42 @@
       "stage_label": "Merged",
       "producer_health": "healthy",
       "pulse": "still",
-      "pulse_period": null,
-      "stage_color": "#65baff",
-      "pulse_color": "#7dddc0"
+      "stale": false,
+      "stage_timer": "merged unknown",
+      "blocked": null
+    },
+    {
+      "id": "done_unmerged",
+      "task": {
+        "title": "Synthetic unmerged",
+        "status": "done",
+        "pr": 85,
+        "pr_phase": "Awaiting review"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "stale": false,
+      "stage_timer": "review unknown",
+      "blocked": null
+    },
+    {
+      "id": "done_leftover_blocked",
+      "task": {
+        "title": "Leftover",
+        "status": "done",
+        "pr": 84,
+        "pr_phase": "Merged",
+        "health": "blocked"
+      },
+      "stage": "merged",
+      "stage_label": "Merged",
+      "producer_health": "healthy",
+      "pulse": "still",
+      "stale": false,
+      "stage_timer": "merged unknown",
+      "blocked": null
     },
     {
       "id": "review_status",
@@ -362,9 +434,9 @@
       "stage_label": "Review",
       "producer_health": "question",
       "pulse": "attention",
-      "pulse_period": "2s",
-      "stage_color": "#bf9cff",
-      "pulse_color": "#fb7b32"
+      "stale": false,
+      "stage_timer": "review unknown",
+      "blocked": null
     },
     {
       "id": "failed_status",
@@ -376,9 +448,171 @@
       "stage_label": "CI",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#ff88bd",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "ci unknown",
+      "blocked": [
+        "Task failed",
+        "Decide: retry, replace, or retire the task"
+      ]
+    },
+    {
+      "id": "closed_unmerged",
+      "task": {
+        "title": "Closed",
+        "status": "failed",
+        "pr": 3,
+        "pr_phase": "Closed unmerged"
+      },
+      "stage": "ci",
+      "stage_label": "CI",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "ci unknown",
+      "blocked": [
+        "PR closed without merging",
+        "Decide: reopen, replace, or retire the task"
+      ]
+    },
+    {
+      "id": "checks_failing",
+      "task": {
+        "title": "Checks",
+        "status": "blocked",
+        "pr": 3,
+        "pr_phase": "Checks failing",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "CI checks are failing on the PR head",
+        "Read the failing check log, fix, and push"
+      ]
+    },
+    {
+      "id": "review_blocked",
+      "task": {
+        "title": "Review",
+        "status": "blocked",
+        "pr": 3,
+        "pr_phase": "Review blocked",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "An independent reviewer posted BLOCK",
+        "Address the review findings and push a new head"
+      ]
+    },
+    {
+      "id": "merge_conflict",
+      "task": {
+        "title": "Conflict",
+        "status": "blocked",
+        "pr": 3,
+        "pr_phase": "Merge conflict",
+        "stage": "review",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "Merge conflict with the base branch",
+        "Merge the base branch and resolve the conflict"
+      ]
+    },
+    {
+      "id": "changes_requested",
+      "task": {
+        "title": "Changes",
+        "status": "blocked",
+        "pr": 3,
+        "pr_phase": "Changes requested",
+        "stage": "review",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "A reviewer requested changes",
+        "Address the requested changes and re-request review"
+      ]
+    },
+    {
+      "id": "explicit_block",
+      "task": {
+        "title": "Explicit",
+        "status": "blocked",
+        "blocked_reason": "Needs a key",
+        "next_action": "Joe adds it",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "Needs a key",
+        "Joe adds it"
+      ]
+    },
+    {
+      "id": "explicit_reason_only",
+      "task": {
+        "title": "Reason only",
+        "status": "blocked",
+        "pr_phase": "Checks failing",
+        "blocked_reason": "Flaky runner",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "Flaky runner",
+        "Read the failing check log, fix, and push"
+      ]
+    },
+    {
+      "id": "legacy_blocked",
+      "task": {
+        "title": "Legacy",
+        "status": "blocked",
+        "updated_at": "2026-09-28T12:30:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "review 30m",
+      "blocked": [
+        "Marked blocked without a recorded reason",
+        "Orchestrator: record the reason and next action"
+      ]
     },
     {
       "id": "running_boundary",
@@ -391,14 +625,14 @@
       "stage_label": "Building",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "build 2h 0m",
+      "blocked": null
     },
     {
-      "id": "running_stale",
+      "id": "running_stuck",
       "task": {
-        "title": "Synthetic stale",
+        "title": "Synthetic stuck",
         "status": "running",
         "updated_at": "2026-09-28T10:59:59Z"
       },
@@ -406,9 +640,63 @@
       "stage_label": "Building",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "build 2h 0m",
+      "blocked": [
+        "No update for 2h 0m",
+        "Check the executor session; post an update or re-dispatch"
+      ]
+    },
+    {
+      "id": "running_stale_boundary",
+      "task": {
+        "title": "Six hours",
+        "status": "running",
+        "updated_at": "2026-09-28T07:00:00Z"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": true,
+      "stage_timer": "build 6h 0m",
+      "blocked": [
+        "No update for 6h 0m",
+        "Check the executor session; post an update or re-dispatch"
+      ]
+    },
+    {
+      "id": "running_not_stale",
+      "task": {
+        "title": "Almost six",
+        "status": "running",
+        "updated_at": "2026-09-28T07:00:01Z"
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "blocked",
+      "pulse": "critical",
+      "stale": false,
+      "stage_timer": "build 5h 59m",
+      "blocked": [
+        "No update for 5h 59m",
+        "Check the executor session; post an update or re-dispatch"
+      ]
+    },
+    {
+      "id": "review_stale",
+      "task": {
+        "title": "Old review",
+        "status": "review",
+        "updated_at": "2026-09-27T12:00:00Z"
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "question",
+      "pulse": "attention",
+      "stale": true,
+      "stage_timer": "review 1d 1h",
+      "blocked": null
     },
     {
       "id": "running_naive_utc",
@@ -421,9 +709,9 @@
       "stage_label": "Building",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "build 1h 0m",
+      "blocked": null
     },
     {
       "id": "running_missing_time",
@@ -435,9 +723,12 @@
       "stage_label": "Building",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "build unknown",
+      "blocked": [
+        "No update recorded",
+        "Check the executor session; post an update or re-dispatch"
+      ]
     },
     {
       "id": "running_invalid_time",
@@ -450,9 +741,12 @@
       "stage_label": "Building",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "build unknown",
+      "blocked": [
+        "No update recorded",
+        "Check the executor session; post an update or re-dispatch"
+      ]
     },
     {
       "id": "measured_without_evidence",
@@ -464,9 +758,9 @@
       "stage_label": "Building",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "build unknown",
+      "blocked": null
     },
     {
       "id": "measured_with_evidence",
@@ -479,9 +773,9 @@
       "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "healthy",
-      "pulse_period": "3.5s",
-      "stage_color": "#7dddc0",
-      "pulse_color": "#65baff"
+      "stale": false,
+      "stage_timer": "live unknown",
+      "blocked": null
     },
     {
       "id": "live_without_evidence",
@@ -490,13 +784,13 @@
         "status": "done",
         "stage": "live"
       },
-      "stage": "build",
-      "stage_label": "Building",
+      "stage": "live",
+      "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "still",
-      "pulse_period": null,
-      "stage_color": "#fb7b32",
-      "pulse_color": "#7dddc0"
+      "stale": false,
+      "stage_timer": "live unknown",
+      "blocked": null
     },
     {
       "id": "live_with_evidence",
@@ -510,9 +804,9 @@
       "stage_label": "Live",
       "producer_health": "healthy",
       "pulse": "still",
-      "pulse_period": null,
-      "stage_color": "#7dddc0",
-      "pulse_color": "#7dddc0"
+      "stale": false,
+      "stage_timer": "live unknown",
+      "blocked": null
     },
     {
       "id": "question_overridden_by_stale",
@@ -526,9 +820,54 @@
       "stage_label": "Building",
       "producer_health": "blocked",
       "pulse": "critical",
-      "pulse_period": "1s",
-      "stage_color": "#fb7b32",
-      "pulse_color": "#ff696b"
+      "stale": false,
+      "stage_timer": "build 2h 0m",
+      "blocked": [
+        "No update for 2h 0m",
+        "Check the executor session; post an update or re-dispatch"
+      ]
+    },
+    {
+      "id": "timer_from_history",
+      "task": {
+        "title": "History",
+        "status": "running",
+        "updated_at": "2026-09-28T12:59:00Z",
+        "stage_history": [
+          {
+            "stage": "build",
+            "entered_at": "2026-09-28T09:00:00Z"
+          }
+        ]
+      },
+      "stage": "build",
+      "stage_label": "Building",
+      "producer_health": "healthy",
+      "pulse": "healthy",
+      "stale": false,
+      "stage_timer": "build 4h 0m",
+      "blocked": null
+    },
+    {
+      "id": "timer_legacy_at",
+      "task": {
+        "title": "Legacy history",
+        "status": "review",
+        "updated_at": "2026-09-28T12:59:00Z",
+        "stage_history": [
+          {
+            "stage": "review",
+            "at": "2026-09-28T12:25:00Z"
+          }
+        ]
+      },
+      "stage": "review",
+      "stage_label": "Review",
+      "producer_health": "question",
+      "pulse": "attention",
+      "stale": false,
+      "stage_timer": "review 35m",
+      "blocked": null
     }
   ]
 }

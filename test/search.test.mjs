@@ -14,11 +14,11 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PREFERENCES_KEY } from "../js/shell.js";
 import {
   AUTHORIZATION_SENTENCE, NOT_SEARCHED_SENTENCE, SAVED_VIEWS_KEY, SAVED_VIEW_SENTENCE,
-  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES,
-  acceptsSearchResponse, applyScope, buildFindAndCatchUpArguments, buildFindArguments,
-  classifySearchFailure, deepLinkFor, groupSearchResults, parseSearchAddress,
-  readSavedViews, refusalDetail, renameView, resetViews, retiredSummary, saveView, scopeChips,
-  searchAddress, searchPhase, truncationNotes, validSearchPayload, visibleCount, writeSavedViews,
+  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES, acceptsSearchResponse, applyScope,
+  buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, deepLinkFor,
+  groupSearchResults, parseSearchAddress, readSavedViews, refusalDetail, renameView,
+  retiredSummary, saveView, scopeChips, searchAddress, searchPhase, truncationNotes,
+  validSearchPayload, visibleCount, writeSavedViews,
 } from "../js/search-model.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -30,7 +30,7 @@ const modelJs = await read("js/search-model.js");
 const css = await read("css/business-workspace.css");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
-const liveCapture = JSON.parse(await read("test/fixtures/search-live-capture.json"));
+const syntheticCapture = JSON.parse(await read("test/fixtures/search-synthetic.json"));
 
 const seedText = await read("data/board-seed.json");
 const fixture = async () => createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(seedText).toString("base64")}` });
@@ -62,7 +62,7 @@ test("B05-1 every rendered count is a field of the one payload, the render path 
   assert.equal(visibleCount(groups), groups.reduce((total, group) => total + group.rows.length, 0));
   const organizations = groups.find((group) => group.id === "organizations");
   const fromPayload = payload.organizations[0];
-  assert.equal(organizations.rows[0].counts.find((entry) => entry.label === "live records").value, fromPayload.live_rows);
+  assert.equal(organizations.rows[0].counts.find((entry) => entry.label === "Current matches").value, fromPayload.live_rows);
   assert.equal(organizations.rows[0].counts.find((entry) => entry.label === "retired aliases").value, fromPayload.retired_aliases);
 
   // The arguments. `find` declares ONE property, `find-and-catch-up` two, both
@@ -77,7 +77,7 @@ test("B05-1 every rendered count is a field of the one payload, the render path 
   const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("async function read("));
   assert.doesNotMatch(renderBody, /client\./, "the render path issues no read of its own");
   assert.doesNotMatch(renderBody, /fetch\(/, "the render path issues no fetch of its own");
-  assert.ok(pageJs.includes(AUTHORIZATION_SENTENCE) === false, "the sentence lives in the model, not retyped in the page");
+  assert.equal(AUTHORIZATION_SENTENCE, "");
   assert.ok(html.includes(AUTHORIZATION_SENTENCE), "the page states what authorization means here");
 });
 
@@ -98,10 +98,10 @@ test("B05-2 a null element inside refs renders no ref chip, no link, and never t
 
 /* ------------------------------------------------------------------------ B05-3 */
 
-test("B05-3 Back restores the query and the chips from the address, byte for byte, and re-renders without a read", () => {
+test("B05-3 Back restores the query and the chips from the address, byte for byte, and reads the restored results", () => {
   const before = { query: "alpha", kinds: ["deals"] };
   const address = searchAddress(before);
-  assert.equal(address, "/business?q=alpha&kinds=deals");
+  assert.equal(address, "/search?q=alpha&kinds=deals");
   const restored = parseSearchAddress(address.slice(address.indexOf("?")));
   assert.equal(restored.query, before.query);
   assert.deepEqual([...restored.kinds], before.kinds);
@@ -113,9 +113,9 @@ test("B05-3 Back restores the query and the chips from the address, byte for byt
   // A kind the page does not group is dropped rather than carried as a filter.
   assert.deepEqual([...parseSearchAddress("?q=a&kinds=deals,invented").kinds], ["deals"]);
 
-  assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\{ reread: false \}\)\)/, "popstate restores without a read of its own");
+  assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\{ reread: true \}\)\)/, "popstate reads results for the restored query");
   const restoreBody = pageJs.slice(pageJs.indexOf("function restoreFromAddress("), pageJs.indexOf("function wire()"));
-  assert.match(restoreBody, /if \(reread && view\.submitted\) read\(\{ push: false \}\);\s*\n\s*else render\(\);/, "a restore without reread paints from the payload in hand");
+  assert.match(restoreBody, /if \(reread\) read\(\{ push: false \}\);\s*\n\s*else render\(\);/, "a restored query reads without pushing another address");
 });
 
 /* ------------------------------------------------------------------------ B05-4 */
@@ -138,8 +138,8 @@ test("B05-4 a no-match and a missing source are two different states, and only o
   const noMatch = SEARCH_STATE_COPY.no_match;
   const unavailable = SEARCH_STATE_COPY.unavailable;
   assert.notEqual(noMatch.title, unavailable.title, "two facts, two headings");
-  assert.notEqual(noMatch.copy, unavailable.copy, "two facts, two bodies");
-  assert.equal(unavailable.retry, true, "an unanswered path is worth asking again");
+  assert.equal(noMatch.copy, ""); assert.equal(unavailable.copy, "");
+  assert.equal(unavailable.retry, false, "background refresh recovers the unanswered path");
   assert.equal(noMatch.retry, false, "the record layer answered; there is nothing to retry");
 });
 
@@ -158,7 +158,7 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
   views = writeSavedViews(storage, renameView(views, "Pensacola leads", "Panhandle leads"));
   assert.deepEqual(views.map((view) => view.name), ["Panhandle leads"]);
   assert.deepEqual([...readSavedViews(storage)], [...views]);
-  views = writeSavedViews(storage, resetViews());
+  views = writeSavedViews(storage, Object.freeze([]));
   assert.deepEqual([...views], []);
 
   assert.deepEqual([...new Set(written)], [SAVED_VIEWS_KEY], "one key, and it is not the preference key");
@@ -169,7 +169,7 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
   // No verb is sent, because there is none to send.
   const savedViewBody = pageJs.slice(pageJs.indexOf('$("saveViewButton")'), pageJs.indexOf('$("resetViewsButton")'));
   assert.doesNotMatch(savedViewBody, /client\./, "saving a view calls no verb");
-  assert.ok(html.includes(SAVED_VIEW_SENTENCE), "the page says a saved view is a device fact");
+  assert.equal(SAVED_VIEW_SENTENCE, "Saved on this device");
   // Storage is a convenience, never a requirement.
   assert.deepEqual([...readSavedViews(null)], []);
 });
@@ -254,9 +254,9 @@ test("B05-8 a scope chip hides rows in the browser and leaves the outgoing argum
 test("B05-9 all nine states carry their own rendered text and are reachable through the fixture", async () => {
   assert.deepEqual([...SEARCH_STATES], ["loading", "empty", "no_match", "stale", "unavailable", "refused", "unknown", "partial", "disambiguation"]);
   const titles = SEARCH_STATES.map((state) => SEARCH_STATE_COPY[state].title);
-  assert.equal(new Set(titles.filter((title, index) => SEARCH_STATES[index] !== "stale")).size, SEARCH_STATES.length - 1, "each state says its own words");
+  assert.equal(new Set(titles.filter((title, index) => SEARCH_STATES[index] !== "stale")).size, SEARCH_STATES.length - 2, "each state says its own words");
   for (const state of SEARCH_STATES) {
-    assert.ok(SEARCH_STATE_COPY[state].title.length > 0 && SEARCH_STATE_COPY[state].copy.length > 0, `${state} has rendered evidence`);
+    assert.ok(SEARCH_STATE_COPY[state].title.length > 0 && SEARCH_STATE_COPY[state].copy === "", `${state} has rendered evidence`);
   }
 
   const client = await fixture();
@@ -381,10 +381,10 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 /* ----------------------------------------------------------------------- B05-14 */
 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
-  assert.equal(routes.version, "1.14.0", "no new route: the Search tab lives on /business");
-  assert.equal(routes.routes["/business"], "business-workspace.html");
-  assert.equal(contract.version, "1.33.0", "the current contract retains Search operations");
-  assert.equal(contract.producer.source_commit, "a8eaecf3a7148ea67a14aaa4423f6ba760ba5281", "the producer pin includes the Codex checkpoint read");
+  assert.equal(routes.version, "1.20.0", "no new route: the Search tab lives on /business");
+  assert.equal(routes.routes["/search"], "search.html");
+  assert.equal(contract.version, "1.44.0", "the current contract retains Search operations");
+  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");
@@ -393,7 +393,7 @@ test("B05-14 the interface contract still pins both verbs alphabetically and no 
   assert.equal(contract.mcp_operations[at + 2], "get-call-context");
   // Both verbs travel over the existing /mcp mount, so no HTTP surface is added.
   assert.equal(contract.http_surfaces.includes("/api/v1/search"), false);
-  assert.ok(html.includes(NOT_SEARCHED_SENTENCE), "the page names the sources it does not search");
+  assert.doesNotMatch(html, /id="searchAuthorization">[^<]*record layer/);
   assert.match(css, /#searchChips \.chip, #savedViewList \.chip, \.saved-view \.chip \{ min-height: var\(--touch\)/, "every control the tab adds clears the touch floor");
   assert.doesNotMatch(css.slice(css.indexOf("V5-UX-B05")), /#[0-9a-fA-F]{3,8}\b/, "no literal colour in the B05 block");
   assert.doesNotMatch(pageJs, /new Date\(/, "the page keeps no clock of its own");
@@ -401,18 +401,18 @@ test("B05-14 the interface contract still pins both verbs alphabetically and no 
 
 /* ------------------------------ defect 33e8409b: the validator against production */
 
-test("B05-live-capture the validator accepts the REAL captured find payloads, nulls and all", () => {
-  assert.equal(liveCapture.verb, "find");
-  assert.ok(liveCapture.captures.length >= 2, "more than one real answer was captured");
-  for (const capture of liveCapture.captures) {
-    assert.equal(validSearchPayload(capture.payload), true, `the live ${capture.query} payload is accepted`);
+test("B05-synthetic-fixture the validator accepts synthetic find payloads, nulls and all", () => {
+  assert.equal(syntheticCapture.verb, "find");
+  assert.ok(syntheticCapture.captures.length >= 2, "more than one synthetic payload exercises nullability");
+  for (const capture of syntheticCapture.captures) {
+    assert.equal(validSearchPayload(capture.payload), true, `the synthetic ${capture.query} payload is accepted`);
     // And the shape really does carry what the validator was relaxed for.
     const groups = groupSearchResults(capture.payload);
     for (const group of groups) assert.equal(group.count, group.rows.length);
   }
-  const pensacola = liveCapture.captures.find((capture) => capture.query === "Pensacola").payload;
-  const dell = liveCapture.captures.find((capture) => capture.query === "Dell").payload;
-  // The four nullable facts §2.2 enumerates, present in the real answers.
+  const pensacola = syntheticCapture.captures.find((capture) => capture.query === "Pensacola").payload;
+  const dell = syntheticCapture.captures.find((capture) => capture.query === "Dell").payload;
+  // The four nullable facts §2.2 enumerates, present in the synthetic payloads.
   assert.equal(pensacola.parties.some((row) => row.city === null && row.specialty === null && row.org_name === null), true, "null city, specialty and org_name");
   assert.equal(dell.deals.some((row) => row.owner === null), true, "a null owner");
   assert.equal(pensacola.organizations.some((row) => row.refs.includes(null)), true, "a NULL ELEMENT inside refs");

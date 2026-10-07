@@ -1,3 +1,4 @@
+import { prepareSlices } from "./slices.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
@@ -7,6 +8,8 @@ const ROOT = new URL("../", import.meta.url);
 const ROOT_PATH = fileURLToPath(ROOT);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
 const json = async (path) => JSON.parse(await read(path));
+
+await prepareSlices(ROOT_PATH);
 
 const fixture = await json("data/board-seed.json");
 assert.equal(fixture.fixture?.synthetic, true, "the local board fixture must be explicitly synthetic");
@@ -33,19 +36,22 @@ assert.ok(contract.mcp_operations.includes("patch-deal-field"));
 for (const verb of ["list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(contract.mcp_operations.includes(verb), `the Events tab needs ${verb} pinned`);
 
 await read("reports/vendor/maplibre-gl-6.4.1/LICENSE.txt");
-for (const path of ["control-room.html", "progress-board.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html"]) await read(path);
+for (const path of ["control-room.html", "automations.html", "workspace.html", "index.html", "leads.html", "business.html", "system-work.html", "room.html", "queue.html", "tasks.html", "pipeline.html", "business-workspace.html", "work-inventory.html", "design.html", "design-business.html", "design-operations.html", "status.html", "incidents.html", "notifications.html", "conversations.html", "calendar.html", "ideas.html", "search.html", "charts.html"]) await read(path);
 
 // The Work Inventory surface is only useful if its consumed path stays pinned in
 // the interface contract and its route stays in the route contract.
 const routes = await json("contracts/app-routes.v1.json");
-assert.equal(routes.routes["/work-inventory"], "work-inventory.html", "the Work Inventory route must stay in the route contract");
+for (const path of new Set(Object.values(routes.routes))) await read(path);
+assert.equal(routes.routes["/doc-activity"], "activity.html");
+assert.equal(routes.routes["/all-work"], "work-inventory.html", "All Work must stay in the route contract");
 assert.ok(contract.http_surfaces.includes("/api/v1/work-inventory"), "the census path must stay pinned in the CARR interface");
 assert.ok(contract.http_surfaces.includes("/api/v1/atlas-graph"), "the atlas path must stay pinned in the CARR interface");
-assert.equal(routes.routes["/tasks"], "tasks.html", "the Tasks route must stay in the route contract");
-assert.equal(routes.routes["/pipeline"], "pipeline.html", "the Deals board route must stay in the route contract");
-assert.equal(routes.routes["/business"], "business-workspace.html", "the business workspace route must stay in the route contract");
+assert.equal(routes.redirects["/tasks"], "/", "old Work links must reach Home");
+assert.equal(routes.routes["/deals"], "pipeline.html", "the Deal Room must stay in the route contract");
+assert.equal(routes.redirects["/pipeline"], "/deals?view=board", "the old board bookmark must reach the Deals board");
+assert.equal(routes.redirects["/business"], "/", "the old business bookmark must reach Home");
 assert.equal(routes.routes["/control-room"], "control-room.html", "the Control Room route must stay in the route contract");
-assert.equal(routes.routes["/progress-board"], "progress-board.html", "the signed-in progress board route must stay pinned");
+assert.equal(routes.routes["/control-room/progress"], "progress-board.html", "the signed-in progress board must stay under Control Room");
 for (const verb of ["read-progress-board", "answer-board-question"]) assert.ok(contract.mcp_operations.includes(verb), `the progress board needs ${verb} pinned`);
 assert.equal(routes.routes["/status"], "status.html", "the independent status route must stay in the route contract");
 for (const verb of ["incident-board", "current-work-item", "current-work-requests"]) assert.ok(contract.mcp_operations.includes(verb), `the Control Room needs ${verb} pinned`);
@@ -54,13 +60,13 @@ assert.equal(routes.routes["/incidents"], "incidents.html", "the incident route 
 for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `the search tab needs ${verb} pinned`);
 assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab needs deal-room-board pinned");
 for (const verb of ["get-incident", "link-incident-work-request"]) assert.ok(contract.mcp_operations.includes(verb), `the incident page needs ${verb} pinned`);
-assert.equal(routes.routes["/notifications"], "notifications.html", "the notifications route must stay in the route contract");
+assert.equal(routes.routes["/updates"], "notifications.html", "Updates must stay in the route contract");
 for (const verb of ["notification-feed", "acknowledge-notification"]) assert.ok(contract.mcp_operations.includes(verb), `the notifications page needs ${verb} pinned`);
 for (const verb of ["read-notification-preferences", "set-notification-preference"]) assert.ok(contract.mcp_operations.includes(verb), `the notifications preference panel needs ${verb} pinned`);
 for (const verb of ["read-session-identity", "read-dispatch-history"]) assert.ok(contract.mcp_operations.includes(verb), `the Sessions tab needs ${verb} pinned`);
 for (const verb of ["read-room-queue", "read-room"]) assert.ok(contract.mcp_operations.includes(verb), `the Model Room tab needs ${verb} pinned`);
 for (const verb of ["current-work-requests", "work-request-card"]) assert.ok(contract.mcp_operations.includes(verb), `the Model Room topic/work-item history (V5-UX-C13a) needs ${verb} pinned`);
-assert.equal(routes.routes["/conversations"], "conversations.html", "the Doc conversations route must stay in the route contract");
+assert.equal(routes.routes["/doc-chats"], "conversations.html", "Doc Chats must stay in the route contract");
 for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) assert.ok(contract.mcp_operations.includes(verb), `the conversations page needs ${verb} pinned`);
 assert.ok(contract.mcp_operations.includes("read-doc-outcome-cards"), "the Doc outcome cards (V5-UX-B09) need read-doc-outcome-cards pinned");
 for (const verb of ["list-doc-suggestions", "decide-doc-suggestion", "propose-doc-correction"])
@@ -73,7 +79,7 @@ for (const verb of ["loop-board", "read-loop", "add-loop", "update-loop", "close
 // V5-UX-B04: the Calendar reads the board and each deal's own record; Ideas read
 // loop-board/read-loop (above); a Vendors or Clients record reads its activity.
 assert.equal(routes.routes["/calendar"], "calendar.html", "the Calendar route must stay in the route contract");
-assert.equal(routes.routes["/ideas"], "ideas.html", "the Ideas route must stay in the route contract");
+assert.equal(routes.routes["/ideas-events"], "ideas.html", "Ideas and Events must stay in the route contract");
 for (const verb of ["deal-room-board", "get-deal-room", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `the B04 surfaces need ${verb} pinned`);
 
 const textExtensions = new Set([".js", ".mjs", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);

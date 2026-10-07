@@ -327,10 +327,6 @@ export function receiptTimeLabel(recordedAt, now = Date.now()) {
   return `${MONTHS[at.getMonth()]} ${at.getDate()} · ${clock}`;
 }
 
-/** Undo bookkeeping, keyed by event id. Plain data so it stays comparable. */
-export function createUndoState() {
-  return {};
-}
 
 /**
  * Claim the single in-flight undo for one event.

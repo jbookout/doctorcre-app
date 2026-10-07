@@ -5,8 +5,8 @@
 // because a page that paints the right words from the wrong decision is the
 // failure this suite exists to catch.
 //
-// Every test that needs a payload uses the REAL captured `deal-room-board`
-// answer (test/fixtures/charts-live-capture.json, 74 deals / 3 accounts), fed
+// Every test that needs a payload uses a synthetic `deal-room-board`
+// fixture (test/fixtures/charts-synthetic.json), fed
 // through the REAL live client adapter over an injected fetch — so the phase
 // vocabulary has exactly one owner and the fixture cannot drift from the wire.
 import test from "node:test";
@@ -37,8 +37,8 @@ const checkScript = await read("scripts/check-repository.mjs");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
 
-/** The real capture, unchanged, exactly as the verb answered it. */
-const capture = JSON.parse(await read("test/fixtures/charts-live-capture.json"));
+/** The synthetic fixture, generated from contract-shaped examples. */
+const capture = JSON.parse(await read("test/fixtures/charts-synthetic.json"));
 
 /** A live client over the captured payload: one call recorded per read. */
 function captureClient(payload = capture, { status = 200, throwStatus = null } = {}) {
@@ -65,7 +65,7 @@ const board = await (async () => {
 
 test("B06-1 the phase chart's rows sum to the board's own row count, and pending is 31", () => {
   const rows = phaseRows(board.deals);
-  assert.equal(board.deals.length, 74, "the capture is the real 74-row board");
+  assert.equal(board.deals.length, 74, "the capture is the synthetic 74-row board");
   assert.equal(rowTotal(rows), board.deals.length, "the eight columns plus unplaced account for every row");
   assert.equal(rows.find((row) => row.key === "pending").count, 31);
   assert.equal(rows.find((row) => row.key === "research").count, 17);
@@ -144,10 +144,10 @@ test("B06-4 the account counts arrive as strings and are narrowed to numbers, wi
     assert.equal(typeof capture.accounts[0][key], "string", `${key} arrives as a string`);
   }
   const rows = accountRows(capture.accounts);
-  const musicologie = rows.find((row) => row.name === "Musicologie");
-  assert.equal(musicologie.counts.find((count) => count.id === "open_deals").value, 15);
-  assert.equal(musicologie.counts.find((count) => count.id === "stale_deals").value, 15);
-  assert.equal(typeof musicologie.counts[0].value, "number", "a count is a number by the time it is rendered");
+  const exampleAccount = rows.find((row) => row.name === "Example Network 1");
+  assert.equal(exampleAccount.counts.find((count) => count.id === "open_deals").value, 15);
+  assert.equal(exampleAccount.counts.find((count) => count.id === "stale_deals").value, 15);
+  assert.equal(typeof exampleAccount.counts[0].value, "number", "a count is a number by the time it is rendered");
 
   // "0" is TRUTHY as a string. Narrowed it is a real zero, and it is still known.
   const zero = countValue("0");
@@ -225,7 +225,7 @@ test("B06-6 a null last_review_at renders never reviewed here, on all three acco
 test("B06-7 empty, no-match, refused and unavailable are four renderings, and only one offers Retry", async () => {
   // An answered board with no deals is an ANSWER, not an outage.
   assert.equal(chartsPhase({ status: "ready", payload: { deals: [], accounts: [] } }), "empty");
-  assert.equal(CHARTS_STATE_COPY.empty.title, "The board answered and holds no open deals");
+  assert.equal(CHARTS_STATE_COPY.empty.title, "No open deals");
   assert.equal(CHARTS_STATE_COPY.empty.retry, false, "there is nothing to retry about an answer");
 
   // 403 is a DECISION taken before the verb ran: named, and no Retry.
@@ -233,15 +233,15 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   assert.equal(refused.status, 403);
   assert.equal(classifyBoardFailure(refused), "refused");
   assert.equal(CHARTS_STATE_COPY.refused.retry, false);
-  assert.equal(CHARTS_STATE_COPY.refused.title, "The record layer refused this read for your session.");
+  assert.equal(CHARTS_STATE_COPY.refused.title, "Sign-in required");
   assert.equal(classifyBoardFailure({ status: 401 }), "refused");
 
   // 5xx and a network throw are a path that did not answer: Retry is offered.
   const down = await captureClient(capture, { throwStatus: 503 }).client.getBoard().catch((error) => error);
   assert.equal(classifyBoardFailure(down), "unavailable");
   assert.equal(classifyBoardFailure(new Error("network")), "unavailable");
-  assert.equal(CHARTS_STATE_COPY.unavailable.retry, true);
-  assert.match(CHARTS_STATE_COPY.unavailable.title, /Nothing here has been inferred/);
+  assert.equal(CHARTS_STATE_COPY.unavailable.retry, false);
+  assert.equal(CHARTS_STATE_COPY.unavailable.title, "Charts temporarily unavailable");
 
   // A payload whose shape this page cannot read paints nothing from it, and it
   // is never parked on a loading that cannot end (advisory A3).
@@ -259,8 +259,8 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   assert.equal(new Set(CHARTS_STATES.map((state) => CHARTS_STATE_COPY[state].title)).size, CHARTS_STATES.length - 1,
     "loading and stale deliberately share one heading; every other state has its own");
 
-  // No refusal body ever reaches a rendered string.
-  assert.equal(refused.body, "a body no surface may render");
+  // Authentication is decided by the status without waiting for a diagnostic body.
+  assert.equal(refused.body, undefined);
   assert.ok(!pageJs.includes(".body"), "the page never reads an error body");
 
   // The empty and unavailable branches draw no chart at all: a chart of zeros
@@ -280,21 +280,21 @@ test("B06-8 an older answer that overtakes a newer one renders nothing", () => {
   const readBody = pageJs.slice(pageJs.indexOf("export async function read("), pageJs.indexOf("function pushAddress()"));
   assert.equal((readBody.match(/if \(!acceptsBoardResponse\(view\.sequence, sequence\)\) return;/g) || []).length, 2);
   assert.match(readBody, /const sequence = \+\+view\.sequence;/);
-  assert.equal(CHARTS_STATE_COPY.stale.copy, "An older answer arrived after a newer one and was dropped.");
+  assert.equal(CHARTS_STATE_COPY.stale.copy, "");
 });
 
 /* ------------------------------------------------------------------------ B06-9 */
 
 test("B06-9 Back restores the selection from the address, and a filtered total is a subset of the one it came from", () => {
   const address = chartsAddress({ group: "segment", pick: "Dental" });
-  assert.equal(address, "/business?charts=1&group=segment&pick=Dental");
+  assert.equal(address, "/?charts=1&group=segment&pick=Dental&view=charts");
   const restored = parseChartsAddress(address.slice(address.indexOf("?")));
   assert.equal(restored.present, true);
   assert.equal(restored.group, "segment");
   assert.equal(restored.pick, "Dental");
   // Byte-equal: the address a restored selection produces is the one it came from.
   assert.equal(chartsAddress(restored), address);
-  assert.equal(chartsAddress({}), "/business?charts=1");
+  assert.equal(chartsAddress({}), "/?charts=1&view=charts");
   // A dimension this page does not group is dropped rather than carried.
   assert.equal(parseChartsAddress("?charts=1&group=invented&pick=x").group, null);
   assert.equal(parseChartsAddress("?q=Dell").present, false, "the Search tab's address does not open the Charts tab");
@@ -310,7 +310,7 @@ test("B06-9 Back restores the selection from the address, and a filtered total i
   assert.equal(filterDeals(board.deals, null, null).length, 74, "no selection filters nothing");
   assert.equal(selectionLabel("segment", "Dental"), "Segment: Dental");
   assert.equal(selectionLabel("segment", NO_VALUE_KEY), "Segment: Not segmented");
-  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due diligence");
+  assert.equal(selectionLabel("phase", "due_diligence"), "Phase: Due Diligence");
 
   // popstate restores and repaints. It reads nothing.
   assert.match(pageJs, /addEventListener\?\.\("popstate", \(\) => restoreFromAddress\(\)\)/);
@@ -365,7 +365,7 @@ test("B06-10 one read per paint: getBoard once, and no other verb at all", async
 /* ----------------------------------------------------------------------- B06-11 */
 
 test("B06-11 the live capture validates, and a payload missing a key is rejected (defect 33e8409b)", () => {
-  // Accepts the REAL production payload, in both the wire and adapted shapes.
+  // Accepts the synthetic contract payload, in both the wire and adapted shapes.
   assert.equal(validBoardPayload(capture), true);
   assert.equal(validBoardPayload(board), true);
   assert.deepEqual(Object.keys(capture).toSorted(), ["accounts", "actor", "deals", "open_session"]);
@@ -404,16 +404,16 @@ test("B06-11 the live capture validates, and a payload missing a key is rejected
 
 test("B06-12 repository invariants: deal-room-board stays pinned, no route moves, and the tab is a query on an admitted path", () => {
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
-  assert.equal(contract.version, "1.33.0", "the current interface retains the Charts read");
-  assert.equal(contract.producer.source_commit, "a8eaecf3a7148ea67a14aaa4423f6ba760ba5281");
+  assert.equal(contract.version, "1.44.0", "the current interface retains the Charts read");
+  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81");
   assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 
   // No route is added. `/business` already resolves, and the gate does not
   // inspect a query string, so `?charts=1` needs no admission of its own.
-  assert.equal(routes.routes["/business"], "business-workspace.html");
+  assert.equal(routes.routes["/"], "workspace.html");
   assert.equal(routes.routes["/charts"], undefined, "the Charts tab adds no route");
   assert.equal(Object.keys(routes.routes).some((route) => route.includes("chart")), false);
-  assert.equal(chartsAddress({ group: "segment", pick: "Dental" }).startsWith("/business?"), true);
+  assert.equal(chartsAddress({ group: "segment", pick: "Dental" }).startsWith("/?"), true);
 
   // The tab, its panel and its wiring are all present, and the tab is selected
   // from the address exactly as the Search tab is.
@@ -453,7 +453,7 @@ test("B06-13 a pick no record carries renders the no-match state and draws no ch
   // It is its OWN state, with its own heading, and it is not `ready`.
   const phase = chartsPhase({ status: "ready", payload: board, group: "segment", pick: "NoSuchSegment" });
   assert.equal(phase, "no_match");
-  assert.equal(CHARTS_STATE_COPY.no_match.title, "Nothing on this board matches that slice");
+  assert.equal(CHARTS_STATE_COPY.no_match.title, "No matches");
   assert.equal(CHARTS_STATE_COPY.no_match.retry, false, "the board answered; there is nothing to retry");
   assert.notEqual(CHARTS_STATE_COPY.no_match.title, CHARTS_STATE_COPY.empty.title, "an empty board and an empty slice say different things");
 
@@ -527,7 +527,7 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
   assert.equal(quickAdd.deals.length, 74);
   const painted = nodes.get("chartsCanvas").innerHTML;
   assert.match(painted, /73 of 74 have no next date on file/, "the tab painted from the page's answer");
-  assert.match(nodes.get("chartsReadAt").textContent, /^Read at \d\d:\d\d$/);
+  assert.match(nodes.get("chartsReadAt").textContent, /^Updated \d\d:\d\d$/);
   assert.equal(nodes.get("chartsState").hidden, true, "a ready paint shows no state block");
 
   // Only a person pressing Retry takes a new one, and that is a new as-of they

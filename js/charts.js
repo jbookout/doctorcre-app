@@ -1,3 +1,4 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B06 — Commercial charts and linked drilldown: DOM wiring only.
 //
 // Every decision this file paints is made in ./charts-model.js. Nothing here
@@ -104,7 +105,7 @@ function accountsHtml(accounts) {
       <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <p class="caption">These counts are the record layer's own totals for each account across the whole board. Choosing a slice above does not filter them, because they are an aggregate this page cannot re-derive from the rows without inventing a total. These five counts arrive from the record layer as text and are read as numbers here. A count this page cannot read as a number says "unknown" rather than nothing, and a record layer that has never recorded a review here says "${escapeHtml(NEVER_REVIEWED)}" rather than a clock of zero days.</p>
+
   </section>`;
 }
 
@@ -132,7 +133,7 @@ function selectionHtml(deals, all) {
     <span class="chip-label">${escapeHtml(label)}</span>
     <span class="chip-list"><span class="chip">${escapeHtml(String(deals.length))} of ${escapeHtml(String(all.length))} records</span>
     <button class="chip" type="button" id="chartsClear">Clear this slice</button>
-    <a class="chip" href="/pipeline">Open in Pipeline</a></span>
+    <a class="chip" href="/deals?view=board">Open in Deals board</a></span>
   </div>`;
 }
 
@@ -147,7 +148,7 @@ function renderState(phase) {
     ? [
       `<h3>${escapeHtml(copy.title)}</h3>`,
       `<p class="small">${escapeHtml(copy.copy)}</p>`,
-      copy.retry ? '<button class="btn" type="button" id="chartsRetry">Retry</button>' : "",
+      copy.retry ? '<button class="btn" type="button" id="chartsRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
     ].join("")
     : "";
   const live = $("chartsLive");
@@ -161,12 +162,12 @@ function render() {
   const canvas = $("chartsCanvas");
 
   const readAt = $("chartsReadAt");
-  if (readAt) readAt.textContent = view.readAt ? `Read at ${view.readAt}` : "Reading the board…";
+  if (readAt) readAt.textContent = view.readAt ? `Updated ${view.readAt}` : "Updating…";
 
   if (canvas) {
     canvas.setAttribute("aria-busy", String(phase === "loading"));
     if (phase === "loading") {
-      canvas.innerHTML = '<section class="card glass chart-card" data-skeleton="true" aria-hidden="true"><p class="caption">Reading the board…</p></section>';
+      canvas.innerHTML = '<section class="card glass chart-card" data-skeleton="true" aria-hidden="true"><p class="caption">Updating…</p></section>';
     } else if (phase === "empty" || phase === "refused" || phase === "unavailable" || phase === "unreadable") {
       // No chart is drawn at all. A chart of zeros here would be a claim.
       canvas.innerHTML = "";
@@ -321,6 +322,7 @@ export function mountCharts({ client: boardClient, storage: storageImpl, board =
   }
   wire();
   const address = restoreFromAddress();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => read({ push: false }) });
   read({ push: false });
   return { view, address };
 }

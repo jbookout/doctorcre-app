@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -188,7 +189,7 @@ test("a due date is the dated marker and a calendar day, and nothing else", () =
 /* ------------------------------------------------------------------ D5 refusals */
 
 test("an ambiguous number is never guessed at", () => {
-  assert.equal(loopRefusalMessage("ambiguous_number", { number: "201" }), "Two open records share number 201; open the record layer to renumber.");
+  assert.equal(loopRefusalMessage("ambiguous_number", { number: "201" }), "Work number 201 matches multiple items.");
   assert.match(loopRefusalMessage("not_found"), /no longer on the board/);
   assert.match(loopRefusalMessage("need_number_or_id"), /without a number/);
   assert.match(loopRefusalMessage(null), /nothing was sent/);
@@ -297,19 +298,18 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   const css = await readFile(`${ROOT}/css/tasks.css`, "utf8");
   const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
-  const artifactScript = await readFile(`${ROOT}/scripts/artifact.mjs`, "utf8");
   const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract, both bumped for an additive change.
-  assert.equal(routes.routes["/tasks"], "tasks.html");
-  assert.equal(routes.version, "1.14.0");
-  assert.equal(carr.version, "1.33.0");
+  assert.equal(routes.redirects["/tasks"], "/");
+  assert.equal(routes.version, "1.20.0");
+  assert.equal(carr.version, "1.44.0");
   for (const verb of ["add-loop", "close-loop", "loop-board", "loop-headers", "read-loop", "update-loop"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort(), "the pinned operations stay sorted");
-  assert.match(artifactScript, /"tasks\.html"/, "the page ships in the artifact");
+  assert.equal(await hasArtifactPage("tasks.html"), true, "the page ships in the verified artifact");
   assert.match(checkScript, /"tasks\.html"/);
   assert.match(summary, /tasks\.html/);
 
@@ -320,8 +320,8 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   assert.match(html, /\/css\/tasks\.css/);
   assert.match(html, /id="taskLive"[^>]*aria-live="polite"/);
   assert.match(html, /<div id="receiptDock" class="receipt-dock"/, "commands report in the shared dock");
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.match(html, /<a href="\/tasks" aria-current="page">Tasks<\/a>/, "the page is listed in the navigation it belongs to");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.match(html, /id="appShell"/, "the page mounts the shared navigation");
   for (const id of ["quickAddForm", "quickAddInput", "quickAddDate", "quickAddParsed", "quickAddQuestion", "quickAddDraft", "scopeSwitch", "taskList", "taskDialog", "taskState", "systemOwned"]) {
     assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
   }
@@ -462,4 +462,8 @@ test("the matched record's id rides into add-loop as source_note prose, because 
   // No resolved record, no source_note from this path at all.
   const unmatched = quickAddPlan(parseQuickAdd("Send the redline friday", { now: Date.parse(NOW), viewer: "joe", records }), { viewer: "joe", sentence: "Send the redline friday" });
   assert.equal("source_note" in unmatched.args, false);
+});
+
+test("canonical loop identity survives the board projection for Doc selection", () => {
+  assert.equal(normalizeBoardRow({...boardRow(),loop_id:"synthetic-loop-a"}).loop_id,"synthetic-loop-a");
 });

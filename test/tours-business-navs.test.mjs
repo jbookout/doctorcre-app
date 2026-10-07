@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { appShellMarkup } from "../js/app-shell.js";
 
 // The second, smaller business nav set (Deals/Clients/Vendors, no Leads) was
 // missed by the earlier /leads-keyed Tours sweep (PR 68). These five pages
@@ -11,7 +12,7 @@ const PAGES = [
   "business.html",
   "index.html",
   "leads.html",
-  "queue.html",
+  "progress-work.html",
   "system-work.html",
   "tasks.html",
   "work-inventory.html",
@@ -26,15 +27,14 @@ const PAGES = [
 for (const page of PAGES) {
   test(`${page} nav links Tours`, () => {
     const html = readFileSync(new URL(`../${page}`, import.meta.url), "utf8");
-    const navs = html.match(/<nav\b[\s\S]*?<\/nav>/g) || [];
-    assert.ok(navs.length > 0, `${page} has a nav`);
-    assert.ok(navs.some((nav) => /<a\b[^>]*href="\/tours"[^>]*>Tours<\/a>/.test(nav)), `${page} nav includes the Tours link`);
+    assert.match(html, /id="appShell"/, `${page} mounts the common navigation`);
+    assert.match(appShellMarkup("/tours"), /href="\/tours" aria-current="page">[\s\S]*?Tours[\s\S]*?<\/a>/);
   });
 }
 
-test("Home Tours card carries no sentence under its title", () => {
+test("Home removes the repeated Tours action tile; shared navigation still offers Tours", () => {
   const html = readFileSync(new URL("../workspace.html", import.meta.url), "utf8");
   const card = /<a class="module-card[^"]*" href="\/tours">[\s\S]*?<\/a>/.exec(html)?.[0] || "";
-  assert.notEqual(card, "", "Home has a Tours module card");
+  assert.equal(card, "", "Home has no repeated Tours module card");
   assert.doesNotMatch(card, /<p>/);
 });

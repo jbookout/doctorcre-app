@@ -13,7 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const SOURCE = fs.readFileSync(new URL("../js/room.js", import.meta.url), "utf8");
+const SOURCE = fs.readFileSync(new URL("../js/progress-wire.js", import.meta.url), "utf8");
 
 function pair(prefix, label = prefix) {
   const m = SOURCE.match(new RegExp(`${prefix}\\s*\\{\\s*rx:\\s*(-?[\\d.]+),\\s*ry:\\s*(-?[\\d.]+)`));

@@ -1,3 +1,5 @@
+import { pageDocContext, selectDocRecord, setDocFilters } from './doc-context.js';
+import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Clients and Vendors: the browser half of the Journey 1 business read.
 //
 // THE URL IS THE VIEW'S MEMORY. Search text, every filter, the sort, the page
@@ -32,6 +34,7 @@ import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge } from "./shell.js";
 import { activityCopy, activityRequest, activityState } from "./record-activity-model.js";
+import { loadEvidence, renderEvidence } from "./correspondence.js";
 
 const EXPIRY_TICK_MS = 5_000;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -78,7 +81,7 @@ const dom = {
 // they go.
 const phoneNavLinks = [...document.querySelectorAll(".mobile-nav a[href]")];
 
-const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[data-scope]")] : [];
+const scopeButtons = dom.scopeSwitch ? [...dom.scopeSwitch.querySelectorAll("[data-owner]")] : [];
 
 // One place holds what this view believes. Every renderer reads it, and the
 // session-state transitions live in the model so they can be tested without a
@@ -88,8 +91,13 @@ const view = Object.assign(createBusinessState(), { freshnessKey: null, returnFo
 // js/record-activity-model.js). Its own sequence, so a slow answer for a record
 // that has since been closed or replaced never paints.
 view.activity = { id: null, sequence: 0, result: null };
+view.evidence = { id: null, sequence: 0, result: null };
+view.sessionGeneration = 0;
+view.panelState = null;
+view.trustOperation = null;
 let searchTimer = null;
 let dealroomClientPromise = null;
+const initialBootMode = resolveDealroomBoot(window.location);
 
 /**
  * The one dealroom client this page builds, for the MCP reads it makes (the
@@ -98,7 +106,7 @@ let dealroomClientPromise = null;
  */
 function dealroomClient() {
   if (!dealroomClientPromise) {
-    const bootMode = resolveDealroomBoot(window.location);
+    const bootMode = initialBootMode;
     dealroomClientPromise = bootMode.mode === "live" ? Promise.resolve(createLiveClient()) : createFixtureClient(bootMode.options);
   }
   return dealroomClientPromise;
@@ -116,14 +124,14 @@ function formatMoment(value) {
 
 function formatDay(value) {
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? null : date.toLocaleDateString([], { dateStyle: "medium" });
+  return Number.isNaN(date.valueOf()) ? null : date.toLocaleDateString([], { dateStyle: "medium", ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? {timeZone:'UTC'} : {}) });
 }
 
 const HEALTH_LABEL = {
   loading: "Checking…",
   refreshing: "Refreshing…",
   available: "Up to date",
-  stale: "Checked a while ago",
+  stale: "Updating…",
   unauthorized: "Signed out",
   unavailable: "Records unavailable",
 };
@@ -134,12 +142,6 @@ function setHealth(state) {
   if (dom.healthLabel) dom.healthLabel.textContent = HEALTH_LABEL[state] || HEALTH_LABEL.unavailable;
 }
 
-/** Where it came from and when, without naming a table. */
-function sourceLabel(source, dataset) {
-  if (!source) return "Source unknown";
-  const current = displayedFreshness(source, dataset) === "fresh";
-  return `${SOURCE_LABEL[dataset]} · checked ${formatMoment(source.observed_at)}${current ? "" : " · not current"}`;
-}
 
 // ------------------------------------------------------------- navigation
 
@@ -223,6 +225,12 @@ function renderControls({ syncSearch = false } = {}) {
       dom.search.value = next;
     }
   }
+  document.querySelector('#territoryField').hidden = dataset !== 'vendors';
+  const territory = document.querySelector('#territoryInput');
+  if (document.activeElement !== territory) territory.value = query.territory || '';
+  document.querySelector('[data-vendor-sort]').hidden = dataset !== 'vendors';
+  document.querySelector('#territories').innerHTML = (facets.territories || []).map(option => `<option value="${escapeHtml(option.slug)}"></option>`).join('');
+  dom.sort.querySelector('[value="deal_type"]').textContent = dataset === 'vendors' ? 'Service' : 'Deal type';
   if (dom.sort) dom.sort.value = SORTS.includes(query.sort) ? query.sort : "name";
   for (const field of FILTER_FIELDS[dataset]) {
     const select = dom[field.select];
@@ -243,7 +251,7 @@ function renderControls({ syncSearch = false } = {}) {
     }
   }
   scopeButtons.forEach((button) => {
-    const selected = button.dataset.scope === query.scope;
+    const selected = button.dataset.owner === query.owner;
     button.setAttribute("aria-pressed", selected ? "true" : "false");
     button.classList.toggle("on", selected);
   });
@@ -286,7 +294,7 @@ function renderChips() {
   if (!dom.chips) return;
   const chips = filterChips(view.query, view.facets);
   if (!chips.length) {
-    dom.chips.innerHTML = '<p class="chip-empty">No filters. Showing everything.</p>';
+    dom.chips.innerHTML = '';
     return;
   }
   dom.chips.innerHTML = `${chips.map((chip) =>
@@ -296,31 +304,131 @@ function renderChips() {
 function renderNotices(notices) {
   if (!dom.notices) return;
   dom.notices.innerHTML = notices.map((notice) =>
-    `<div class="notice notice-${escapeHtml(notice.kind)}"><p class="notice-title">${escapeHtml(notice.title)}</p><p class="notice-copy">${escapeHtml(notice.copy)}</p>${notice.retry ? '<button type="button" class="action secondary-action" data-retry="list">Check again</button>' : ""}</div>`).join("");
+    `<div class="notice notice-${escapeHtml(notice.kind)}"><p class="notice-title">${escapeHtml(notice.title)}</p><p class="notice-copy">${escapeHtml(notice.copy)}</p>${notice.retry ? '<button type="button" class="action secondary-action" data-retry="list" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : ""}</div>`).join("");
 }
 
 // --------------------------------------------------------------- the list
+
+const metric = value => Number.isInteger(value) ? String(value) : '—';
+const winRate = stats => Number.isFinite(stats?.win_rate) ? `${Math.round(stats.win_rate * 100)}%` : '—';
+const shortNote = value => typeof value === 'string' ? value.split(/\n/)[0].slice(0, 140) : '';
+function tierHtml(stats) {
+  const computed = stats?.computed_tier || 'Unrated';
+  const tier = stats?.override?.tier || computed;
+  return `<span class="trust-line"><span class="trust-tier" data-tier="${escapeHtml(tier)}">${escapeHtml(tier)}</span>${stats?.override ? `<span>Computed: ${escapeHtml(computed)}</span>` : ''}</span>`;
+}
+function relationshipHtml(record) {
+  const stats = record.relationship || {};
+  const intro = stats.introductions || [];
+  const list = kind => {
+    const items = intro.filter(item => kind === 'made' ? ['intro','intro_received','introduced'].includes(item.kind) : ['can_introduce','intro_requested'].includes(item.kind));
+    return items.length ? `<ol class="network-list">${items.map(item => `<li>${escapeHtml(item.from_name)} → ${escapeHtml(item.to_name)}<p class="note-summary">${escapeHtml(shortNote(item.note))}</p>${item.occurred_at ? `<time>${escapeHtml(formatDay(item.occurred_at))}</time>` : ''}${kind === 'suggested' ? '<span class="observed">Suggested · not yet made</span>' : ''}${item.note ? `<details class="record-details" data-details-key="intro-${escapeHtml(item.id)}"><summary>Details</summary><p class="entry-detail">${escapeHtml(item.note)}</p></details>` : ''}</li>`).join('')}</ol>` : '<p class="observed">None recorded</p>';
+  };
+  return `<section class="record-section relationship-section" aria-label="Partnership">${tierHtml(stats)}${stats.override ? `<p class="note-summary">${escapeHtml(stats.override.recorded_by)} · ${escapeHtml(formatMoment(stats.override.recorded_at))} · ${escapeHtml(stats.override.reason)}</p>` : ''}<div class="relationship-metrics"><div class="relationship-metric"><strong>${metric(stats.deals_referred)}</strong><span>Deals referred</span></div><div class="relationship-metric"><strong>${metric(stats.deals_worked)}</strong><span>Deals worked</span></div><div class="relationship-metric"><strong>${winRate(stats)}</strong><span>Win rate${stats.win_rate != null ? ` · ${stats.won} won / ${stats.won + stats.lost} resolved` : ''}</span></div><div class="relationship-metric"><strong>${stats.last_contacted_at ? escapeHtml(formatMoment(stats.last_contacted_at)) : '—'}</strong><span>Last contacted</span></div></div><p class="note-summary">${escapeHtml(shortNote(stats.last_contact_note))}</p>${initialBootMode.mode === 'live' ? `<details class="trust-editor" data-details-key="trust"><summary>Trust rating</summary><form class="trust-form" id="trustForm"><label>Tier<select name="tier"><option value="">Use computed tier</option>${['Proven','Established','Trial'].map(tier => `<option${tier === stats.override?.tier ? ' selected' : ''}>${tier}</option>`).join('')}</select></label><label>Reason<input name="reason" maxlength="500" value="${escapeHtml(stats.override?.reason || '')}"></label><button class="action primary-action" type="submit"${view.pendingTrust ? ' disabled' : ''}>Save rating</button><p class="trust-status" role="status" id="trustStatus">${view.trustStatus?.id === record.id ? escapeHtml(view.trustStatus.text) : ''}</p></form></details>` : ''}</section><section class="record-section"><h3>Services & products</h3><p class="note-summary">${escapeHtml(shortNote(record.offers) || 'Not recorded')}</p>${record.offers ? `<details class="record-details" data-details-key="offers"><summary>Details</summary><p class="entry-detail">${escapeHtml(record.offers)}</p></details>` : ''}${record.loan_programs?.length ? `<h3>Loan programs</h3><ul>${record.loan_programs.map(program => `<li>${escapeHtml(program)}</li>`).join('')}</ul>` : ''}</section><section class="record-section"><h3>Networking</h3><div class="network-grid"><div><h4>Introductions made</h4>${list('made')}</div><div><h4>Suggested introductions</h4>${list('suggested')}</div></div></section>${stats.recent_entries?.length ? `<section class="record-section"><h3>Conversations</h3><ol class="network-list">${stats.recent_entries.map(entry => `<li><p class="note-summary">${escapeHtml(shortNote(entry.summary))}</p><time>${escapeHtml(formatMoment(entry.when))}</time>${entry.detail ? `<details class="record-details" data-details-key="entry-${escapeHtml(entry.id)}"><summary>Details</summary><p class="entry-detail">${escapeHtml(entry.detail)}</p></details>` : ''}</li>`).join('')}</ol></section>` : ''}`;
+}
+function capturePanelState() {
+  const id = dom.panelBody.dataset.recordId;
+  if (!id) return;
+  const previous = view.panelState?.id === id ? view.panelState : { id, open: [] };
+  const form = dom.panelBody.querySelector('#trustForm');
+  // Error/loading markup cannot overwrite the last draft or disclosure state.
+  if (!form && !dom.panelBody.querySelector('details')) return;
+  const active = dom.panelBody.contains(document.activeElement) ? document.activeElement : null;
+  view.panelState = {
+    ...previous,
+    open: [...dom.panelBody.querySelectorAll('details[open][data-details-key]')].map(el => el.dataset.detailsKey),
+    ...(form ? { tier: form.elements.tier.value, reason: form.elements.reason.value } : {}),
+    focus: active?.name ? { name: active.name } : active?.matches('summary') ? { disclosure: active.parentElement.dataset.detailsKey } : null,
+    scroll: dom.panel.scrollTop,
+  };
+}
+function restorePanelState() {
+  const state = view.panelState;
+  if (!state || state.id !== view.recordId) return;
+  dom.panelBody.querySelectorAll('details[data-details-key]').forEach(el => { el.open = state.open.includes(el.dataset.detailsKey); });
+  for (const name of ['tier','reason']) {
+    const input = dom.panelBody.querySelector(`[name="${name}"]`);
+    if (state[name] !== undefined && input) input.value = state[name];
+  }
+  const focus = state.focus?.name
+    ? dom.panelBody.querySelector(`[name="${state.focus.name}"]`)
+    : [...dom.panelBody.querySelectorAll('details[data-details-key]')].find(el => el.dataset.detailsKey === state.focus?.disclosure)?.querySelector('summary');
+  focusWithoutScrolling(focus);
+  dom.panel.scrollTop = state.scroll;
+}
+async function saveTrust(event) {
+  if (event.target.id !== 'trustForm') return;
+  event.preventDefault();
+  const form = event.target, record = view.record.payload?.record;
+  if (!record || view.pendingTrust || initialBootMode.mode !== 'live') return;
+  const tier = form.elements.tier.value, reason = form.elements.reason.value.trim();
+  if (tier && !reason) { form.elements.reason.setCustomValidity('Enter a reason'); form.elements.reason.reportValidity(); return; }
+  form.elements.reason.setCustomValidity('');
+  const operation = { vendor: record.ref, base_version: record.record_version, fields: { trust_override: tier ? { tier, reason } : null }, idempotency_key: crypto.randomUUID() };
+  const generation = view.sessionGeneration;
+  view.trustOperation = operation;
+  const active = () => view.trustOperation === operation
+    && view.sessionGeneration === generation && !view.signedOut;
+  view.pendingTrust = operation;
+  view.trustStatus = { id: record.id, text: 'Saving…' };
+  form.querySelector('button').disabled = true;
+  document.querySelector('#trustStatus').textContent = 'Saving…';
+  try {
+    const client = await dealroomClient();
+    if (!active()) return;
+    if (typeof client.updateVendorTrust !== 'function') {
+      view.pendingTrust = null;
+      view.trustStatus = { id: record.id, text: 'Rating unavailable' };
+      renderRecordPanel();
+      return;
+    }
+    let deadline;
+    try { const receipt = await Promise.race([client.updateVendorTrust(operation), new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Unconfirmed')), 15000); })]); if (receipt?.ok !== true || !Array.isArray(receipt.updated) || !receipt.updated.includes('trust_override')) throw new Error('Unconfirmed'); }
+    finally { clearTimeout(deadline); }
+    if (!active()) return;
+    view.pendingTrust = null;
+    view.trustStatus = { id: record.id, text: 'Rating saved' };
+    renderRecordPanel();
+    if (view.recordId === record.id) await loadRecord(record.id);
+    if (active()) await loadList('background');
+  } catch (error) {
+    if (!active()) return;
+    if (error.status === 401) return expireNow();
+    const refused = ['offline','AUTHORIZATION_REFUSED','trust_override_invalid','version_conflict','key_reuse','not_a_vendor','no_updatable_fields'].includes(error.payload?.error);
+    if (refused || error.status === 403) { view.pendingTrust = null; renderRecordPanel(); }
+    // Reconcile the read before allowing any new write. Never replay a write
+    // whose response was lost; it may have committed.
+    if (view.recordId !== record.id) return;
+    await loadRecord(record.id);
+    if (!active() || view.recordId !== record.id) return;
+    const saved = view.record.payload?.record.relationship?.override;
+    const changed = view.record.payload?.record.record_version > operation.base_version;
+    const matches = changed && (tier ? saved?.tier === tier && saved?.reason === reason && saved?.recorded_by === view.record.payload?.viewer : saved === null);
+    if (matches) view.pendingTrust = null;
+    view.trustStatus = { id: record.id, text: matches ? 'Rating confirmed' : 'Rating not confirmed' };
+    renderRecordPanel();
+  }
+}
 
 function rowFacts(dataset, row) {
   const facts = [];
   if (dataset === "clients") {
     const status = recordedCode(row.recorded_status, row.recorded_status_label);
     facts.push({ label: "Status", value: status.text, known: status.known, unresolved: status.known && !status.resolved });
-    const etl = recordedValue(row.recorded_etl_status);
-    facts.push({ label: "ETL", value: etl.text, known: etl.known });
+    facts.push({ label: "Vertical", value: row.vertical || "Not recorded", known: Boolean(row.vertical) });
+    facts.push({ label: "Deal type", value: row.deal_type || "Not recorded", known: Boolean(row.deal_type) });
     const type = recordedCode(row.recorded_client_type, row.recorded_client_type_label);
     facts.push({ label: "Client type", value: type.text, known: type.known, unresolved: type.known && !type.resolved });
   } else {
     const category = recordedCode(row.recorded_category, row.recorded_category_label);
     facts.push({ label: "Category", value: category.text, known: category.known, unresolved: category.known && !category.resolved });
-    const stage = recordedCode(row.recorded_stage, row.recorded_stage_label);
-    facts.push({ label: "Stage", value: stage.text, known: stage.known, unresolved: stage.known && !stage.resolved });
-    const level = recordedCode(row.relationship_level, row.relationship_level_label);
-    // A level with no entry in the list is a bare number; say so rather than
-    // letting it read as a name everyone is supposed to recognise.
-    facts.push({ label: "Relationship", value: level.text, known: level.known, unresolved: level.known && !level.resolved });
-    const touch = row.last_touch ? formatDay(row.last_touch) : null;
-    facts.push({ label: "Last touch", value: touch || "Not recorded", known: Boolean(touch) });
+    const stats = row.relationship;
+    facts.push({ label: 'Territory', value: row.territory || 'Not recorded', known: Boolean(row.territory) });
+    facts.push({ label: 'Referred', value: metric(stats?.deals_referred), known: stats?.deals_referred != null });
+    facts.push({ label: 'Worked', value: metric(stats?.deals_worked), known: stats?.deals_worked != null });
+    facts.push({ label: 'Win rate', value: winRate(stats), known: stats?.win_rate != null });
+    facts.push({ label: 'Last contacted', value: stats?.last_contacted_at ? formatMoment(stats.last_contacted_at) : 'Not recorded', known: Boolean(stats?.last_contacted_at) });
+
   }
   const place = [row.city, row.state].filter(Boolean).join(", ");
   facts.push({ label: "Location", value: place || "Not recorded", known: Boolean(place) });
@@ -334,7 +442,7 @@ function rowHtml(dataset, row, selectedId) {
   const selected = row.id === selectedId;
   const facts = rowFacts(dataset, row).map((fact) =>
     `<span class="row-fact${fact.known ? "" : " unknown"}${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("");
-  return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="row-ref${ref.known ? "" : " unknown"}">${escapeHtml(ref.text)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span><span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
+  return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="row-ref${ref.known ? "" : " unknown"}">${escapeHtml(ref.text)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span>${dataset === "vendors" ? tierHtml(row.relationship) + `<span class="contact-note">${escapeHtml(shortNote(row.relationship?.last_contact_note))}</span>` : ""}<span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
 }
 
 function paintList(html, { busy = false } = {}) {
@@ -354,13 +462,35 @@ function renderEmpty(phase) {
 }
 
 function renderPager(payload) {
-  if (!dom.pager) return;
-  const summary = pageSummary(payload);
-  dom.pager.hidden = summary.pageCount <= 1 && !payload.out_of_range;
-  const link = (id, label, page, enabled, rel) => enabled
-    ? `<a class="action secondary-action" id="${id}" rel="${rel}" href="${escapeHtml(viewHref({ ...view.query, page }))}">${label}</a>`
-    : `<span class="action secondary-action disabled" id="${id}" aria-disabled="true">${label}</span>`;
-  dom.pager.innerHTML = `${link("pagerPrevious", "Previous", Math.max(1, view.query.page - 1), summary.hasPrevious, "prev")}<span class="pager-position">Page ${summary.page} of ${summary.pageCount}</span>${link("pagerNext", "Next", view.query.page + 1, summary.hasNext, "next")}`;
+  const sentinel = document.querySelector('#scrollSentinel');
+  sentinel.hidden = view.loadedPageCount >= payload.page_count;
+}
+
+async function loadMore() {
+  if (view.loadingMore || view.failedPage || view.list.status !== 'ready' || view.loadedPageCount >= view.list.payload?.page_count) return;
+  const operation = {};
+  view.loadingMore = operation;
+  const epoch = view.list.sequence;
+  const query = { ...view.query, page: view.loadedPageCount + 1 };
+  renderList();
+  try {
+    const response = await fetchRead(listRequestUrl(query), { cache: 'no-store' });
+    if (response.status === 401) return expireNow();
+    const payload = response.ok ? await response.json() : null;
+    if (epoch !== view.list.sequence) return;
+    if (!validListPayload(payload, view.dataset) || !echoesQuery(payload, query) || payload.total !== view.list.payload.total) throw new Error('Page unavailable');
+    const ids = new Set(view.loadedRows.map(row => row.id));
+    if (payload.rows.some(row => ids.has(row.id))) throw new Error('Page overlap');
+    view.loadedRows.push(...payload.rows);
+    view.loadedPageCount++;
+  } catch {
+    if (epoch === view.list.sequence) view.failedPage = query.page;
+  } finally {
+    if (view.loadingMore === operation) {
+      view.loadingMore = null;
+      renderList();
+    }
+  }
 }
 
 function renderList() {
@@ -389,7 +519,7 @@ function renderList() {
     renderNotices([]);
     paintList(`<li class="record-empty"><p class="empty-title">${signedOut ? "Your session has ended" : "This did not load"}</p><p class="empty-copy">${escapeHtml(refusalCopy(list.code || (signedOut ? "AUTHENTICATION_REQUIRED" : "INTERNAL_ERROR")))}</p>${signedOut
       ? `<a class="action primary-action" href="/auth/login?return_to=${encodeURIComponent(currentHref())}">Sign in</a>`
-      : '<button type="button" class="action secondary-action" data-retry="list">Check again</button>'}</li>`);
+      : '<button type="button" class="action secondary-action" data-retry="list" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>'}</li>`);
     return;
   }
 
@@ -400,70 +530,36 @@ function renderList() {
   if (dom.viewer) {
     dom.viewer.textContent = payload.viewer === "joe" ? "Joe’s workspace" : payload.viewer === "dell" ? "Dell’s workspace" : "Partner workspace";
   }
-  if (dom.observedAt) dom.observedAt.textContent = `${stale ? "Not current · " : ""}Checked ${formatMoment(payload.source.observed_at)}`;
-  if (dom.source) dom.source.textContent = sourceLabel(payload.source, dataset);
-  const summary = pageSummary(payload);
-  // The server's total, said plainly. An empty page and an empty result are two
-  // different sentences, and neither of them is a bare "0".
-  const noun = DATASET_LABEL[dataset].toLowerCase();
-  const counted = payload.total === 0
-    ? `No ${noun} match this filter`
-    : payload.rows.length === 0
-      ? `No ${noun} on page ${summary.page} · ${payload.total} match this filter`
-      : `${summary.from}–${summary.to} of ${payload.total} ${noun}`;
-  if (dom.summary) dom.summary.textContent = `${counted}${refreshing ? " · refreshing" : ""}`;
-
-  const notices = [];
-  if (stale) {
-    notices.push({ kind: "stale", title: "Checked a while ago",
-      copy: "This list is no longer current. Check again before acting on it.", retry: true });
-  }
-  if (refreshing) {
-    notices.push({ kind: "refreshing", title: "Refreshing", copy: "Showing the previous list while a fresh one loads." });
-  }
-  if (payload.partial) {
-    // The count is records, not cells: one record with two unnamed codes is one
-    // record here, and the read model counts it the same way.
-    notices.push({ kind: "partial", title: `${payload.partial.count} ${payload.partial.count === 1 ? "record uses a code" : "records use codes"} with no name`, copy: payload.partial.note });
-  }
-  if (payload.out_of_range) {
-    notices.push({ kind: "empty", title: "Past the last page",
-      copy: `This page is past the end of the list. ${payload.total} ${payload.total === 1 ? "record matches" : "records match"} this filter.` });
-  }
-  renderNotices(notices);
+  if (dom.observedAt) dom.observedAt.textContent = updatedLabel(payload.source.observed_at);
+  if (dom.source) dom.source.textContent = updatedLabel(payload.source?.observed_at);
+  if (dom.summary) dom.summary.textContent = `${payload.total} ${DATASET_LABEL[dataset].toLowerCase()}`;
+  renderNotices(view.failedPage ? [{ kind: 'unavailable', title: 'Could not load more', copy: 'Retrying automatically.', retry: true }]
+    : view.loadingMore ? [{ kind: 'loading', title: 'Loading more…', copy: '' }] : []);
 
   if (payload.rows.length === 0) {
     renderEmpty(payload.out_of_range ? "out-of-range" : hasActiveFilters(query) ? "empty-no-matches" : "empty-no-records");
   } else {
-    paintList(payload.rows.map((row) => rowHtml(dataset, row, view.recordId)).join(""));
+    paintList((view.loadedRows || payload.rows).map((row) => rowHtml(dataset, row, view.recordId)).join(""));
   }
   renderPager(payload);
 }
 
 // ------------------------------------------------------------- the record
 //
-// THE SAME PANEL IS TWO DIFFERENT THINGS AT TWO WIDTHS. On a desktop it sits
-// beside the list and both are usable, so it stays a non-modal complementary
-// region. On a phone the stylesheet takes it full screen, and a region that
-// COVERS the list while leaving the list tabbable is a trap for anyone not
-// using a mouse — so at that width it becomes a real dialog: aria-modal, the
-// background made inert, Tab kept inside it, and focus handed back to the row
-// that opened it on the way out.
+// The record opens in a modal dialog at every width. Keep keyboard focus inside
+// and restore the launching row on close.
 
-const PHONE_PANEL = typeof window.matchMedia === "function" ? window.matchMedia("(max-width: 767px)") : null;
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = 'summary, a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function panelIsModal() {
-  return panelModality({ recordId: view.recordId, phoneWidth: Boolean(PHONE_PANEL?.matches) }) === "modal";
-}
+function panelIsModal() { return Boolean(view.recordId); }
 
-function backgroundRegions() {
-  return [...document.querySelectorAll("[data-panel-background]")];
-}
+function backgroundRegions() { return [...document.querySelectorAll("[data-panel-background], #appShell")]; }
 
 function applyPanelModality() {
   if (!dom.panel) return;
   const modal = panelIsModal();
+  document.querySelector('#recordBackdrop').hidden = !modal;
+  document.body.classList.toggle('record-open', modal);
   dom.panel.setAttribute("role", modal ? "dialog" : "complementary");
   if (modal) dom.panel.setAttribute("aria-modal", "true");
   else dom.panel.removeAttribute("aria-modal");
@@ -484,7 +580,7 @@ function applyPanelModality() {
  */
 function containPanelFocus(event) {
   if (event.key !== "Tab" || !panelIsModal() || !dom.panel) return;
-  const stops = [...dom.panel.querySelectorAll(FOCUSABLE)];
+  const stops = [...dom.panel.querySelectorAll(FOCUSABLE)].filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
   const active = document.activeElement;
   const target = panelTabTarget({
     inside: dom.panel.contains(active),
@@ -501,6 +597,7 @@ function containPanelFocus(event) {
 function renderRecordPanel() {
   if (!dom.panel) return;
   const { record, dataset } = view;
+  if (!view.signedOut) capturePanelState();
   if (!view.recordId) {
     dom.panel.hidden = true;
     dom.panel.classList.remove("open");
@@ -526,7 +623,7 @@ function renderRecordPanel() {
   }
   if (record.status !== "ready" || !record.payload) {
     if (dom.panelTitle) dom.panelTitle.textContent = record.code === "RECORD_NOT_FOUND" ? "Not here" : "This did not load";
-    if (dom.panelBody) dom.panelBody.innerHTML = `<p class="attention-copy">${escapeHtml(refusalCopy(record.code))}</p><button type="button" class="action secondary-action" data-retry="record">Check again</button>`;
+    if (dom.panelBody) dom.panelBody.innerHTML = `<p class="attention-copy">${escapeHtml(refusalCopy(record.code))}</p><button type="button" class="action secondary-action" data-retry="record" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>`;
     return;
   }
   const payload = record.payload;
@@ -535,17 +632,23 @@ function renderRecordPanel() {
   const owner = ownerPresentation(payload.record);
   const kind = partyKindText(payload.record.party_kind);
   if (dom.panelTitle) dom.panelTitle.textContent = payload.record.name;
-  const sections = recordSections(dataset, payload.record).map((section) =>
-    `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.map((field) =>
-      `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.text)}${field.known && !field.resolved ? '<span class="unresolved-flag">code with no name</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
+  const sections = recordSections(dataset, payload.record).filter(section => !["About this record", "Status on the record", "What they offer and need", "Introduction notes", "Record", "Recorded state"].includes(section.title)).filter(section => section.fields.some(field => field.known && !['Vendor reference','Client reference','What they offer','Last touch'].includes(field.label))).map((section) =>
+    `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.filter(field => !['ETL status','What this status means','Version','What this level means','Vendor reference','Client reference','What they offer','Last touch'].includes(field.label) && field.known).map((field) =>
+      `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${(section.title === 'Notes' ? `<p class="note-summary">${escapeHtml(shortNote(field.text))}</p><details class="record-details" data-details-key="notes"><summary>Details</summary><p class="entry-detail">${escapeHtml(field.text)}</p></details>` : escapeHtml(field.text))}${field.known && !field.resolved ? '<span class="unresolved-flag">Not recorded</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `${current ? "" : '<div class="notice notice-stale"><p class="notice-title">Checked a while ago</p><p class="notice-copy">Check again before acting on it.</p><button type="button" class="action secondary-action" data-retry="record">Check again</button></div>'}<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span class="tone tone-plain${kind.known ? "" : " unknown"}">${escapeHtml(kind.text)}</span></p><p class="record-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</p><p class="record-note">${escapeHtml(payload.recorded_field_note)}</p>${payload.partial ? `<div class="notice notice-partial"><p class="notice-title">Code with no name</p><p class="notice-copy">${escapeHtml(payload.partial.note)}</p></div>` : ""}${sections}${activityHtml(payload.record.id)}<p class="record-note">Not shown here: ${escapeHtml(payload.not_in_this_read.join(", "))}.</p><p class="source">${escapeHtml(sourceLabel(payload.source, dataset))}</p>`;
+    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
+    dom.panelBody.dataset.recordId = payload.record.id;
+    restorePanelState();
+
     // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
     // refuses a `style` attribute written into markup, so the activity-row
     // template above only emits `data-stagger-ms`, and this reads it back.
     dom.panelBody.querySelectorAll(".activity-row").forEach((node) => {
       node.style.setProperty("--stagger", `${node.dataset.staggerMs}ms`);
     });
+    const evidence = document.createElement('div');
+    evidence.innerHTML = renderEvidence(view.evidence.id === payload.record.id ? view.evidence.result || { threads: { state: 'loading' } } : {});
+    dom.panelBody.append(evidence);
   }
 }
 
@@ -556,7 +659,7 @@ function activityHtml(recordId) {
   const body = state.state === "ready"
     ? `<ol class="activity-list">${state.rows.map((row, index) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}" data-stagger-ms="${Math.min(index * 30, 540)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
     : `<p class="record-note activity-note" data-state="${escapeHtml(state.state)}">${escapeHtml(activityCopy(state))}</p>`;
-  return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note">Source: find-and-catch-up, shown only when its one match is this record's own reference.</p></section>`;
+  return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note"></p></section>`;
 }
 
 /**
@@ -568,9 +671,12 @@ async function loadActivity(id, record) {
   view.activity.id = id;
   view.activity.result = null;
   const request = activityRequest(record);
+  const docTicket=request ? pageDocContext?.begin('businessActivity',[{dataset:view.dataset,id}]) : null;
   const settle = (result) => {
     if (view.activity.sequence !== sequence || view.recordId !== id) return;
     view.activity.result = result;
+    if(['ready','empty'].includes(result.state))pageDocContext?.finish(docTicket,{record,activities:result.rows});
+    else if (docTicket)pageDocContext?.fail(docTicket);
     renderRecordPanel();
   };
   if (!request) return settle({ state: "no_ref" });
@@ -590,6 +696,14 @@ async function loadActivity(id, record) {
  * generations — and repaints as signed out.
  */
 function expireNow() {
+  pageDocContext?.clear();
+  view.sessionGeneration++;
+  view.panelState = null;
+  delete dom.panelBody.dataset.recordId;
+  view.trustOperation = null;
+  view.loadingMore = null; view.failedPage = null;
+  view.loadedRows = []; view.loadedPageCount = 0;
+  view.pendingTrust = null; view.trustStatus = null;
   Object.assign(view, expireSession(view));
   renderControls();
   renderChips();
@@ -598,24 +712,33 @@ function expireNow() {
 }
 
 async function loadList(reason = "initial") {
-  const query = view.query;
+  const query = { ...view.query, page: 1 };
+  const targetPages = reason === 'background' ? Math.max(1, view.loadedPageCount || 1, view.failedPage || 1) : 1;
+  view.loadingMore = null;
+  if (reason !== 'background') view.failedPage = null;
   const key = listRequestUrl(query);
   const sequence = ++view.list.sequence;
+  setDocFilters({ ...query });
+  view.list.docTicket = pageDocContext?.begin('businessList', [{ dataset:view.dataset }]);
   // Remembered answers are only for restoring a place, and only while the
   // session is known good; cachedPayload refuses to open once signed out.
   const cached = reason === "initial" || reason === "history" ? cachedPayload(view, key) : null;
   view.list.key = key;
   view.list.code = view.signedOut ? "AUTHENTICATION_REQUIRED" : null;
   if (cached && validListPayload(cached, view.dataset)) {
+    view.loadedRows = [...cached.rows]; view.loadedPageCount = 1;
     view.list.payload = cached;
     view.list.status = "refreshing";
+  } else if (reason === "background" && view.list.payload) {
+    view.list.status = "refreshing";
   } else {
+    view.loadedRows = []; view.loadedPageCount = 0;
     view.list.payload = null;
     view.list.status = view.signedOut ? "unauthorized" : "loading";
   }
   renderList();
   try {
-    const response = await fetch(key, { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(key, { headers: { accept: "application/json" }, cache: "no-store" });
     // THE SIGN-OUT IS HEARD EVEN WHEN THE ANSWER IS STALE. A superseded read is
     // not allowed to paint its DATA, but it still learned something true about
     // this session, and dropping that would leave records on screen that the
@@ -635,6 +758,20 @@ async function loadList(reason = "initial") {
     if (!validListPayload(payload, view.dataset) || !echoesQuery(payload, query)) {
       return settleList({ status: "error", code: "FRESHNESS_UNKNOWN" }, sequence);
     }
+    const refreshedRows = [...payload.rows];
+    for (let page = 2; page <= Math.min(targetPages, payload.page_count); page++) {
+      const nextQuery = { ...query, page };
+      const nextResponse = await fetchRead(listRequestUrl(nextQuery), { cache: 'no-store' });
+      if (nextResponse.status === 401) return expireNow();
+      const next = nextResponse.ok ? await nextResponse.json() : null;
+      if (!acceptsResponse(view.list.sequence, sequence)) return;
+      if (!validListPayload(next, view.dataset) || !echoesQuery(next, nextQuery) || next.total !== payload.total || next.rows.some(row => refreshedRows.some(old => old.id === row.id))) return settleList({ status: 'error', code: 'FRESHNESS_UNKNOWN' }, sequence);
+      refreshedRows.push(...next.rows);
+    }
+    if (!acceptsResponse(view.list.sequence, sequence)) return;
+    view.failedPage = null;
+    view.loadedRows = refreshedRows;
+    view.loadedPageCount = Math.min(targetPages, payload.page_count);
     settleList({ status: "ready", payload }, sequence);
   } catch {
     if (!acceptsResponse(view.list.sequence, sequence)) return;
@@ -647,6 +784,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
   // A verified answer is the only thing that proves the session is back.
   if (status === "ready") Object.assign(view, restoreSession(view));
   view.list.status = status;
+  if (status === 'ready') pageDocContext?.finish(view.list.docTicket, payload); else pageDocContext?.fail(view.list.docTicket);
   view.list.code = code;
   // A refused or failed read never keeps an older answer alive as if current.
   view.list.payload = status === "ready" ? payload : null;
@@ -660,22 +798,29 @@ function settleList({ status, payload = null, code = null }, sequence) {
 }
 
 async function loadRecord(id, { focusOnOpen = false } = {}) {
+  if (view.recordId !== id) return;
+  const pending = view.pendingTrust;
+  const evidenceSequence = ++view.evidence.sequence;
+  view.evidence.id = id;
+  view.evidence.result = null;
   const sequence = ++view.record.sequence;
+  selectDocRecord(view.dataset, id);
+  const docTicket = pageDocContext?.begin('businessRecord', [{ dataset:view.dataset, id }]);
   view.record.id = id;
-  view.record.status = "loading";
-  view.record.payload = null;
+  if (view.record.payload?.record?.id !== id) { view.record.status = "loading"; view.record.payload = null; }
   view.record.code = null;
   renderRecordPanel();
   if (focusOnOpen) focusWithoutScrolling(dom.panelTitle);
   const settle = (status, code, payload = null) => {
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     view.record.status = status;
+    if (status === 'ready') pageDocContext?.finish(docTicket, payload); else pageDocContext?.fail(docTicket);
     view.record.code = code;
     view.record.payload = payload;
     renderRecordPanel();
   };
   try {
-    const response = await fetch(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
     // A record read is as authoritative about the session as a list read, and
     // it stays authoritative after the panel closes or another record is
     // opened. The expiry check runs before the selection and sequence guards
@@ -689,7 +834,23 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     const payload = await response.json().catch(() => null);
     if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
+    if (pending && view.pendingTrust === pending && view.trustOperation === pending && pending.vendor === payload.record.ref) {
+      const expected = pending.fields.trust_override, saved = payload.record.relationship?.override;
+      if (payload.record.record_version > pending.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }
+    }
     settle("ready", null, payload);
+    // The party record read supplies no deal activity/native thread index. This
+    // section reads installation readiness and states unavailable explicitly.
+    // Repainting recent activity must not restart this read or lose its state.
+    dealroomClient().then(client => loadEvidence(client)).then(result => {
+      if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
+      view.evidence.result = result;
+      renderRecordPanel();
+    }).catch(() => {
+      if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
+      view.evidence.result = {};
+      renderRecordPanel();
+    });
     if (acceptsResponse(view.record.sequence, sequence) && view.recordId === id) loadActivity(id, payload.record);
   } catch {
     settle("error", "DEPENDENCY_UNAVAILABLE");
@@ -700,6 +861,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
 
 function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   const parsed = parseViewState(window.location.pathname, window.location.search);
+  if (parsed) parsed.query.page = 1;
   if (!parsed) return;
   // THE ADDRESS AND THE VIEW SAY THE SAME THING. Anything unrecognised was
   // already dropped by the parser; rewriting the current entry to the canonical
@@ -710,19 +872,21 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   if (wantedHref !== currentHref()) {
     window.history.replaceState({ ...(window.history.state || {}) }, "", wantedHref);
   }
+  if (parsed.dataset !== view.dataset) pageDocContext?.navigate(parsed.dataset);
+  if (!parsed.recordId) selectDocRecord(null, null);
   const datasetChanged = parsed.dataset !== view.dataset;
   const queryChanged = datasetChanged || !sameQuery(parsed.query, view.query);
   const recordChanged = parsed.recordId !== view.recordId;
   const hadRecord = Boolean(view.recordId);
+  capturePanelState();
+  if (recordChanged) { view.panelState = null; delete dom.panelBody.dataset.recordId; }
   view.dataset = parsed.dataset;
   view.query = parsed.query;
   view.recordId = parsed.recordId;
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
-    dom.intro.textContent = parsed.dataset === "clients"
-      ? "Everyone the team works with. Search, filter, and open one to see what is on the record."
-      : "Every vendor the team knows. Search, filter, and open one to see what is on the record.";
+    dom.intro.textContent = "";
   }
   if (datasetChanged) {
     view.cache.clear();
@@ -779,6 +943,14 @@ function closeRecord() {
 // ------------------------------------------------------------------ events
 
 function wireControls() {
+  document.querySelector('#refreshList').addEventListener('click', () => loadList('background'));
+  document.querySelector('#recordBackdrop').addEventListener('click', closeRecord);
+  document.querySelector('#territoryInput').addEventListener('change', event => updateQuery({ territory: event.target.value.trim() }));
+  dom.panelBody?.addEventListener('submit', saveTrust);
+  dom.panelBody?.addEventListener('input', event => { if (event.target.name === 'reason') event.target.setCustomValidity(''); });
+  const sentinel = document.querySelector('#scrollSentinel');
+  if (typeof IntersectionObserver === 'function') new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore(); }, { rootMargin: '400px' }).observe(sentinel);
+  window.addEventListener('scroll', () => { if (sentinel.getBoundingClientRect().top < window.innerHeight + 400) loadMore(); }, { passive: true });
   dom.form?.addEventListener("submit", (event) => {
     event.preventDefault();
     if (searchTimer) clearTimeout(searchTimer);
@@ -804,7 +976,7 @@ function wireControls() {
   dom.reset?.addEventListener("click", () => navigate(viewHref(defaultQuery(view.dataset), view.recordId)));
 
   scopeButtons.forEach((button) => {
-    button.addEventListener("click", () => updateQuery({ scope: button.dataset.scope }));
+    button.addEventListener("click", () => updateQuery({ owner: button.dataset.owner, scope: "team" }));
     button.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
@@ -813,7 +985,7 @@ function wireControls() {
         : (index + (event.key === "ArrowRight" ? 1 : scopeButtons.length - 1)) % scopeButtons.length;
       const target = scopeButtons[next];
       focusWithoutScrolling(target);
-      if (target && target.dataset.scope !== view.query.scope) updateQuery({ scope: target.dataset.scope });
+      if (target && target.dataset.owner !== view.query.owner) updateQuery({ owner: target.dataset.owner, scope: "team" });
     });
   });
 
@@ -843,7 +1015,7 @@ function wireControls() {
   });
 
   dom.notices?.addEventListener("click", (event) => {
-    if (event.target.closest("[data-retry='list']")) loadList("retry");
+    if (event.target.closest("[data-retry='list']")) loadList("background");
   });
 
   dom.pager?.addEventListener("click", (event) => {
@@ -859,17 +1031,13 @@ function wireControls() {
   });
 
   document.addEventListener("keydown", (event) => {
-    // On a phone the panel is a dialog, so Tab stays inside it.
+    // Tab stays inside the record dialog.
     containPanelFocus(event);
     if (event.key !== "Escape" || !view.recordId) return;
     // Escape leaves the panel, never the page, and never the reader's place.
     event.preventDefault();
     closeRecord();
   });
-
-  // Rotating the phone or resizing the window changes which of the two panels
-  // this is, so the modality is recomputed rather than fixed at open time.
-  PHONE_PANEL?.addEventListener?.("change", () => applyPanelModality());
 
   window.addEventListener("popstate", (event) => {
     applyLocation({ reason: "history", restoreScroll: Number.isFinite(event.state?.scrollY) ? event.state.scrollY : null });
@@ -902,6 +1070,7 @@ function start() {
   if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   wireControls();
   watchExpiry();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
   mountBadge();

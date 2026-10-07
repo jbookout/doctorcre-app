@@ -48,14 +48,14 @@ test("a card that becomes stale after opening is read-only with an honest explan
   const stale = { ...card, source: { ...card.source, freshness: "stale" } };
   assert.equal(actionForCard(stale), null);
   const html = renderSystemWorkCard(stale);
-  assert.match(html, /read-only until its source is current again/i);
+  assert.match(html, /Updating…/);
   assert.doesNotMatch(html, /class="system-work-primary"/);
 });
 
 test("lifecycle is text and shape based, with no execution or close stage", () => {
   const life = lifecycleForCard({ ...card, state: "ready", outcome_feedback: { feedback_ref: "FEEDBACK-1" } });
   assert.deepEqual(life.map((step) => step.label), [
-    "Source concern", "Captured", "Human triage", "Bounded plan",
+    "Concern", "Captured", "Human triage", "Bounded plan",
     "Plan accepted", "Outcome proposed", "Outcome accepted",
   ]);
   assert.equal(life.at(-1).status, "recorded");
@@ -86,11 +86,11 @@ test("rendered card is truthful, durable, and contains one primary action", () =
 test("first use renders genuine current requests and a safe no-demo empty state", () => {
   const current = renderCurrentWorkRequests([{ human_ref: "WR-000123", title: "Current source review", state: "captured", source: { freshness: "current" }, next_human_action: "Review and triage" }]);
   assert.match(current, /WR-000123/);
-  assert.match(current, /current source/);
+  assert.match(current, /Captured/);
   assert.match(current, /data-open-work-request="WR-000123"/);
   const empty = renderCurrentWorkRequests([]);
   assert.match(empty, /No eligible Work Requests right now/i);
-  assert.match(empty, /safe empty state/i);
-  assert.match(empty, /not an idea, routine question, or a demo/i);
+  assert.doesNotMatch(empty, /safe empty state/i);
+  assert.doesNotMatch(empty, /sourced|doctrine|demo/i);
   assert.doesNotMatch(empty, /WR-\d+/);
 });

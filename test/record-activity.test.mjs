@@ -69,7 +69,7 @@ test("every state has plain copy, and the unverifiable ones say why nothing is s
   for (const state of ["loading", "empty", "not_found", "ambiguous", "mismatch", "no_ref", "unavailable"]) {
     assert.ok(activityCopy({ state, count: 2 }).length > 10, state);
   }
-  assert.match(activityCopy({ state: "ambiguous", count: 2 }), /2 records/);
+  assert.match(activityCopy({ state: "ambiguous", count: 2 }), /2 matching records/);
   assert.match(activityCopy({ state: "mismatch" }), /different record/i);
 });
 

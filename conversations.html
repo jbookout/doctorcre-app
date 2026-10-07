@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE Doc conversations — what you and Doc have said, who else can read it, and what turning sharing off can and cannot undo">
-  <title>Conversations · DoctorCRE</title>
+  <title>Doc Chats · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
@@ -14,62 +14,56 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/conversations.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
 </head>
 <body>
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the conversations</a>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="DoctorCRE Home"><span class="brand-mark" aria-hidden="true">D</span><span>DoctorCRE <small>conversations</small></span></a>
-    <nav class="primary-nav" aria-label="Primary navigation">
-      <a href="/">Home</a>
-      <a href="/control-room">Control Room</a>
-      <a href="/conversations" aria-current="page">Conversations</a>
-      <a href="/notifications">Notifications</a>
-      <a href="/incidents">Incidents</a>
-      <a href="/work-inventory">Inventory</a>
-      <a href="/business?q=">Search</a>
-    </nav>
-    <a class="pref-icon nav-notif" href="/notifications" title="Notifications">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v3.1c0 .86-.34 1.68-.94 2.3L4.6 15h14.8l-1.46-1.6a3.3 3.3 0 0 1-.94-2.3V8a5 5 0 0 0-5-5Z"></path><path d="M9.6 18a2.6 2.6 0 0 0 4.8 0"></path></svg>
-      <span class="sr-only">Notifications</span>
-      <span class="nav-badge" id="navUnreadBadge" hidden></span>
-    </a>
+  <div data-layout-slot="status">
+
+
+
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
-      <button class="pref-icon" type="button" data-pref="theme" data-on="light" data-off="dark" aria-pressed="false" title="Theme" aria-label="Theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="4.5"></circle><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"></path></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="density" data-on="compact" data-off="comfortable" aria-pressed="false" title="Density" aria-label="Density">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><rect class="fillable" x="4" y="9" width="16" height="6" rx="1.5"></rect></svg>
-      </button>
-      <button class="pref-icon" type="button" data-pref="motion" data-on="reduced" data-off="full" aria-pressed="false" title="Motion" aria-label="Motion">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="fillable" cx="12" cy="12" r="3"></circle><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5M12 20.5A8.5 8.5 0 0 1 3.5 12"></path></svg>
-      </button>
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
-  </header>
+  </div>
 
   <main id="main" class="shell">
     <section class="card glass hero-card" data-section="hero" aria-labelledby="pageTitle">
-      <div class="hero">
+      <div data-layout-slot="sidebar" class="hero">
         <div>
-          <p class="eyebrow"><span class="orb" data-state="still" id="conversationOrb" aria-hidden="true"></span> <span class="mono" id="conversationId">no conversation open</span></p>
-          <h1 id="pageTitle">Conversations</h1>
+          <p class="eyebrow"><span class="orb" data-state="still" id="conversationOrb" aria-hidden="true"></span> <span class="mono" id="conversationId" hidden></span></p>
+          <h1 id="pageTitle">Doc Chats</h1>
         </div>
         <div class="hero-meta">
-          <span class="as-of" id="conversationAsOf">unknown</span>
-          <button class="btn" type="button" id="retryRead">Read again</button>
+          <a class="btn" href="/doc-activity">Doc Activity</a>
+          <span class="as-of" id="conversationAsOf" hidden></span>
+          <button class="btn" type="button" data-layout-refresh id="retryRead" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </div>
       </div>
-      <p class="visibility-badge" id="visibilityBadge" data-visibility="none"><span class="lock-glyph" id="visibilityGlyph" aria-hidden="true">🔒</span> <span id="visibilityWord">No conversation is open</span></p>
-      <ul class="hero-facts" id="heroFacts"></ul>
-      <p class="caption" id="titleHistoryLine">unknown</p>
+      <p class="visibility-badge" id="visibilityBadge" data-visibility="none" hidden><span class="lock-glyph" id="visibilityGlyph" aria-hidden="true">🔒</span> <span id="visibilityWord"></span></p>
+      <ul class="hero-facts" id="heroFacts" hidden></ul>
+      <p class="caption" id="titleHistoryLine" hidden></p>
     </section>
 
     <p class="sr-only" id="conversationLive" aria-live="polite" role="status">Reading this conversation…</p>
 
+    <section class="card glass" data-section="list" aria-labelledby="listTitle">
+      <div class="card-heading">
+        <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
+        <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
+      </div>
+      <p class="caption" id="listScope">unknown</p>
+      <p class="headline" id="visibleCountLine">unknown</p>
+      <div class="state-block" id="listState" data-state="loading" hidden><h3 id="listStateTitle"></h3></div>
+      <ul class="work-list" id="conversationList"></ul>
+      <div class="note-act" id="listPagingBlock" hidden><button class="btn" type="button" id="showMoreConversations">Show more conversations</button></div>
+    </section>
+
     <section class="card glass" data-section="outcome-cards" aria-labelledby="outcomeCardsTitle">
       <div class="card-heading">
         <div><p class="eyebrow">Doc outcome cards</p><h2 id="outcomeCardsTitle">What Doc is tracking for you</h2></div>
-        <button class="btn" type="button" id="outcomeCardsRetry">Read again</button>
+        <button class="btn" type="button" id="outcomeCardsRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       </div>
       <p class="caption" id="outcomeCardsNoOpen">unknown</p>
       <div class="state-block" id="outcomeCardsState" data-state="loading" hidden><h3 id="outcomeCardsStateTitle"></h3></div>
@@ -82,24 +76,12 @@
     <section class="card glass suggestion-section" data-section="suggestions" aria-labelledby="suggestionsTitle">
       <div class="card-heading">
         <div><p class="eyebrow">From what was said</p><h2 id="suggestionsTitle">Doc’s suggestions</h2></div>
-        <button class="btn" type="button" id="suggestionsRetry">Read again</button>
+        <button class="btn" type="button" id="suggestionsRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       </div>
       <button class="btn btn-quiet" type="button" id="suggestionsParked" aria-pressed="false">Show snoozed and dismissed</button>
       <div class="state-block" id="suggestionsState" data-state="loading"><h3 id="suggestionsStateTitle">Reading suggestions…</h3></div>
       <ul class="work-list suggestion-list" id="suggestionsList"></ul>
       <p class="sr-only" id="suggestionsLive" aria-live="polite"></p>
-    </section>
-
-    <section class="card glass" data-section="list" aria-labelledby="listTitle">
-      <div class="card-heading">
-        <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
-        <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
-      </div>
-      <p class="caption" id="listScope">unknown</p>
-      <p class="headline" id="visibleCountLine">unknown</p>
-      <div class="state-block" id="listState" data-state="loading" hidden><h3 id="listStateTitle"></h3></div>
-      <ul class="work-list" id="conversationList"></ul>
-      <div class="note-act" id="listPagingBlock" hidden><button class="btn" type="button" id="showMoreConversations">Show more conversations</button></div>
     </section>
 
     <section class="card glass" data-section="turns" id="turnsBlock" aria-labelledby="turnsTitle">
@@ -130,7 +112,7 @@
         <button class="btn" type="button" id="pinToggle" aria-pressed="false">Pin this conversation</button>
         <button class="btn" type="button" id="archiveToggle" aria-pressed="false">Archive this conversation</button>
       </div>
-      <p class="caption" id="identityNote">Rename, pin and archive ride one door on a compare-and-swap. If a partner moved this conversation first, the page re-reads it and asks you to press again.</p>
+      <p class="caption" id="identityNote"></p>
     </section>
 
     <section class="card glass" data-section="create" aria-labelledby="createTitle">
@@ -151,22 +133,8 @@
     </section>
   </main>
 
-  <button class="doc-fab" type="button" id="docFab" aria-expanded="false" aria-controls="docChat" aria-label="Open Doc"><span aria-hidden="true">◍</span></button>
-  <aside class="doc-chat glass" id="docChat" aria-labelledby="docReading" hidden>
-    <div class="doc-chat-head">
-      <div><p class="eyebrow">Doc</p><p class="doc-reading" id="docReading">Doc is reading: Conversations</p></div>
-      <button class="btn icon-btn" type="button" id="docChatClose" aria-label="Close Doc">×</button>
-    </div>
-    <div class="doc-transcript" id="docTranscript" aria-live="polite"></div>
-    <form class="doc-composer" id="docForm">
-      <div class="field"><label for="docInput" class="sr-only">Message to Doc</label><input id="docInput" type="text" autocomplete="off" placeholder="Ask, correct, or explain…"></div>
-      <button class="btn btn-primary" type="submit">Send</button>
-      <button class="btn doc-mic" type="button" id="docMic" aria-pressed="false"><span class="orb" data-state="attention" aria-hidden="true"></span><span class="doc-mic-label">Dictate with Quill</span></button>
-    </form>
-  </aside>
-
   <div id="receiptDock" class="receipt-dock" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small">DoctorCRE · Conversations · Turning sharing off ends future access, and never unreads what was already read.</p></footer>
+  <footer class="shell"><p class="small"></p></footer>
   <script type="module" src="/js/conversations.js"></script>
 </body>
 </html>

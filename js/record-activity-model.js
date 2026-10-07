@@ -63,12 +63,12 @@ export function activityState(record, answer) {
 /** Plain copy for every state that is not a list of rows. */
 export function activityCopy({ state, count = 0 } = {}) {
   switch (state) {
-    case "loading": return "Reading this record's recent activity…";
-    case "empty": return "No activity is recorded on this record yet.";
-    case "not_found": return "The activity read found no live record under this name, so no activity is shown.";
-    case "ambiguous": return `${count} records share this name, and the activity read will not guess which one this is, so none is shown.`;
-    case "mismatch": return "The only match for this name is a different record, so its activity is not shown here.";
-    case "no_ref": return "This record carries no reference the activity read could be checked against, so none is shown.";
-    default: return "Recent activity could not be read. Nothing here has been inferred.";
+    case "loading": return "Loading activity…";
+    case "empty": return "No recent activity";
+    case "not_found": return "Activity unavailable";
+    case "ambiguous": return `${count} matching records. Activity unavailable.`;
+    case "mismatch": return "Activity belongs to a different record.";
+    case "no_ref": return "Activity unavailable";
+    default: return "Activity temporarily unavailable";
   }
 }

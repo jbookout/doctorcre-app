@@ -19,7 +19,7 @@ import { READS, READ_LABEL, coverageLine } from "./control-room-model.js";
 import { formatClock } from "./visual-system.js";
 
 /** The one sentence any refusal becomes, whatever the server said. */
-export const REFUSAL_SENTENCE = "the record layer refused or timed out";
+export const REFUSAL_SENTENCE = "Temporarily unavailable";
 
 /** The app's own read of itself, stated alongside the four record-layer reads. */
 export const APP_READ_ID = "app";
@@ -32,15 +32,11 @@ export const SNAPSHOT_SCHEMA = "doctorcre-status-snapshot.v1";
 /** The only keys a stored read may carry. Anything else is a payload leak. */
 export const SNAPSHOT_READ_KEYS = Object.freeze(["id", "state", "observed_at", "reason", "coverage_word"]);
 
-/**
- * Titles, not descriptions. Each row is the literal word unknown with the
- * reason it is unknown: there is no producer, and simulating one would be the
- * fabrication this whole surface exists to prevent.
- */
+/** Coverage boundaries of the scoped assurance verb; unknown never means zero. */
 export const INTEGRATION_GAPS = Object.freeze([
-  Object.freeze({ id: "v5-a01", title: "Truthful health and scoped degradation (V5-A01)", word: "unknown", reason: "no producer yet" }),
-  Object.freeze({ id: "v5-f08", title: "Backup, restore and degraded-operation posture (V5-F08)", word: "unknown", reason: "no producer yet" }),
-  Object.freeze({ id: "v5-f07", title: "Supervisor and job health (V5-F07)", word: "unknown", reason: "no producer yet" }),
+  Object.freeze({ id: "v5-a01", title: "Truthful health and scoped degradation (V5-A01)", word: "unknown", reason: "Choose a workflow and version" }),
+  Object.freeze({ id: "v5-f08", title: "Backup, restore and degraded-operation posture (V5-F08)", word: "unknown", reason: "Backup status unavailable" }),
+  Object.freeze({ id: "v5-f07", title: "Supervisor and job health (V5-F07)", word: "unknown", reason: "Job status unavailable" }),
 ]);
 
 /** Anchors only. The page never fetches these: CSP connect-src is 'self'. */
@@ -50,7 +46,7 @@ export const PROVIDER_LINKS = Object.freeze([
   Object.freeze({ id: "github", label: "GitHub status", href: "https://www.githubstatus.com/" }),
 ]);
 
-const ACTION_RETRY = "Retry in a minute; if it persists, open the incident queue when the record layer returns.";
+const ACTION_RETRY = "Updates resume automatically";
 const ACTION_PROVIDERS = "Check the provider status pages below.";
 
 const answered = (read) => read?.state === "read";
@@ -76,7 +72,7 @@ export function sanitizeReads(reads) {
 /** The app's own chip, in the same shape `coverageLine` produces. */
 export function appChip(release) {
   const clock = answered(release) ? formatClock(release.observed_at) : null;
-  if (clock) return { id: APP_READ_ID, name: APP_READ_LABEL, state: "read", text: `${APP_READ_LABEL}: read at ${clock}` };
+  if (clock) return { id: APP_READ_ID, name: APP_READ_LABEL, state: "read", text: `${APP_READ_LABEL}: updated ${clock}` };
   const reason = answered(release) ? "the read carried no readable time" : APP_REFUSAL_SENTENCE;
   return { id: APP_READ_ID, name: APP_READ_LABEL, state: "unknown", reason, text: `${APP_READ_LABEL}: unknown (${reason})` };
 }
@@ -97,13 +93,13 @@ export function statusChips({ release, reads }) {
 export function statusHeadline({ release, reads, snapshot = null } = {}) {
   const clean = sanitizeReads(reads);
   const attempted = READS.filter((id) => clean[id]);
-  const silent = attempted.filter((id) => clean[id].state !== "read");
+  const silent = READS.filter((id) => clean[id]?.state !== "read");
 
   if (answered(release)) {
     if (silent.length === 0) {
       return {
         scenario: 1,
-        headline: "DoctorCRE is serving and the record layer answered.",
+        headline: "DoctorCRE is available.",
         action: "Nothing to do.",
         silent: [],
         lastKnown: false,
@@ -111,7 +107,7 @@ export function statusHeadline({ release, reads, snapshot = null } = {}) {
     }
     return {
       scenario: 2,
-      headline: `DoctorCRE is serving; the record layer did not answer for: ${silent.map((id) => READ_LABEL[id]).join(", ")}.`,
+      headline: `Unavailable: ${silent.map((id) => READ_LABEL[id]).join(", ")}`,
       action: ACTION_RETRY,
       silent,
       lastKnown: false,

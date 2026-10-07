@@ -71,8 +71,7 @@ const DEGRADED_REASONS = Object.freeze(["DEPENDENCY_UNAVAILABLE", "INTERNAL_ERRO
 /* ------------------------------------------------------- the frozen sentences */
 
 /** Edges are page-scoped, so a missing relationship is not an absent one. */
-export const PAGE_SCOPE_SENTENCE =
-  "Relationships are shown for nodes on this page. A relationship to a node on another page is not drawn here.";
+export const PAGE_SCOPE_SENTENCE = "";
 
 /** CR-AC-09 asks for a successor; the graph has no such field, so this is said. */
 export const NO_SUCCESSOR_SENTENCE = "This release records no successor for a retired node.";
@@ -89,32 +88,26 @@ export const NO_RUN_HEADING = "No run has been observed for this node";
 export const RUN_HEADING = "What happened on a run";
 
 /** CR-AC-07's out-of-scope half, named rather than left blank. */
-export const VERB_RUN_GAP_SENTENCE =
-  "No run evidence exists for a verb: public.tool_call verb name is a published gap (column_not_granted), so this release draws no traffic for it at all.";
+export const VERB_RUN_GAP_SENTENCE = "Run history unavailable";
 
 /** CR-AC-08's "missing enforcement coverage visibly remains missing". */
 export const NO_ENFORCEMENT_SENTENCE = "No installed enforcement point is recorded for this rule.";
 
 /** CR-AC-08's out-of-scope third leg. */
-export const NO_TEST_EVIDENCE_SENTENCE =
-  "No test relation is read by any leg of this graph, so test coverage for this rule is not shown here and is not claimed to be absent.";
+export const NO_TEST_EVIDENCE_SENTENCE = "Test history unavailable";
 
-export const EXPOSURE_STATEMENT =
-  "This page lists what this system declares it has, what is installed and what has been " +
-  "observed running. It is an inventory of machinery, not of deals, and it holds no client or " +
-  "property information. The record layer's actor check is the only gate and this app adds none. " +
-  "This device remembers the selected node id only, and nothing here is cached offline.";
+export const EXPOSURE_STATEMENT = "";
 
 /** One state, one sentence. Both 404 causes deliberately share one copy. */
 export const ATLAS_STATE_COPY = Object.freeze({
-  idle: Object.freeze({ title: "The atlas has not been read yet", copy: "It is read when this tab is first opened, so the dashboard's own reads are not delayed." }),
-  loading: Object.freeze({ title: "Reading the atlas…", copy: "One request-time read. Nothing below is cached, and no earlier page is left on screen." }),
-  empty: Object.freeze({ title: "No node matches this search.", copy: "The coverage below still names every source that answered and every known gap." }),
-  no_access: Object.freeze({ title: "This session cannot read the atlas. Nothing here has been inferred.", copy: "Sign in again, or ask for the read to be granted. No partial graph is drawn from a refused read." }),
-  not_here: Object.freeze({ title: "The atlas read is not available on this host.", copy: "The host answered 404. That is the same answer whether the surface is switched off or this tenant is out of scope, and this page does not guess which." }),
-  freshness_unknown: Object.freeze({ title: "CARR could not establish the freshness of this atlas, so nothing is shown as current.", copy: "Nothing below is drawn from an earlier read." }),
-  unavailable: Object.freeze({ title: "A source CARR depends on is unavailable right now, so no partial atlas is presented as whole.", copy: "Try again once the source answers." }),
-  offline: Object.freeze({ title: "The atlas read failed. Nothing here has been inferred.", copy: "No earlier page is being shown as current." }),
+  idle: Object.freeze({ title: "System map", copy: "" }),
+  loading: Object.freeze({ title: "Loading…", copy: "" }),
+  empty: Object.freeze({ title: "No matches", copy: "" }),
+  no_access: Object.freeze({ title: "Sign-in required", copy: "" }),
+  not_here: Object.freeze({ title: "System map unavailable", copy: "" }),
+  freshness_unknown: Object.freeze({ title: "Updating…", copy: "" }),
+  unavailable: Object.freeze({ title: "System map temporarily unavailable", copy: "" }),
+  offline: Object.freeze({ title: "Connection interrupted", copy: "" }),
 });
 
 /* ------------------------------------------------------------------ validation */
@@ -363,6 +356,19 @@ export function coverageGroups(coverage) {
 export function atlasDegraded(payload) {
   const rows = Array.isArray(payload?.coverage) ? payload.coverage : [];
   return rows.some((entry) => entry.complete === false && DEGRADED_REASONS.includes(entry.missing_reason));
+}
+
+/**
+ * The sources an atlas read could not read in full, for the Control Room
+ * header. The four declared gaps are excluded: they are on every read. A read
+ * that failed outright counts as one incomplete source; one not yet taken
+ * claims nothing.
+ */
+export function atlasIncompleteSources({ status, payload } = {}) {
+  if (status === "idle" || status === "loading") return [];
+  if (status !== "ready") return ["the atlas"];
+  const rows = Array.isArray(payload?.coverage) ? payload.coverage : [];
+  return rows.filter((entry) => entry?.complete !== true && !isKnownGap(entry)).map((entry) => entry.source_ref);
 }
 
 /* -------------------------------------------------------- the selection contract */
@@ -614,10 +620,7 @@ export const DOC_TOUR_EMPTY = "Doc has nothing to point out on this page yet.";
  * actually been seen running. Nothing new is read for this; it names what
  * C07/C08 already return.
  */
-export const HOW_THIS_WORKS_VS_RUN_SENTENCE =
-  "Declared and installed describe how this system is wired to work. Observed, on a node's own selection, is " +
-  "what has actually been seen running — a separate fact, never inferred from the wiring, and never shown as if " +
-  "it were happening now.";
+export const HOW_THIS_WORKS_VS_RUN_SENTENCE = "";
 
 /**
  * Pure and deterministic: same payload and incident index always produce the

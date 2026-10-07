@@ -1,7 +1,8 @@
 import { groupConversations, labelFor, modelFor, summarizeNow } from './observatory-model.js';
 
 const $ = (id) => document.getElementById(id);
-const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false };
+const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false, searched: false };
+const DEEP_LINK_PAGE_LIMIT = 5;
 const seen = (rows) => new Map(rows.map((row) => [String(row.msg_id || row.seq), row]));
 const merge = (oldRows, incoming) => [...seen([...oldRows, ...incoming]).values()].sort((a, b) => Number(a.seq) - Number(b.seq));
 const formatTime = (at) => at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown time';
@@ -26,7 +27,7 @@ async function readLatest(mode = 'all', before = null) {
   const params = new URLSearchParams({ mode, limit: '200' });
   if (before) params.set('before_seq', String(before));
   const response = await fetch(`/api/room/latest?${params}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
-  if (response.status === 401) { location.href = '/auth/login?return_to=/room.html'; throw new Error('sign_in_required'); }
+  if (response.status === 401) { location.href = `/auth/login?return_to=${encodeURIComponent(location.pathname + location.search)}`; throw new Error('sign_in_required'); }
   if (!response.ok) throw new Error(`Room read failed (${response.status})`);
   return response.json();
 }
@@ -59,8 +60,13 @@ function turnElement(turn) {
 
 function renderThread(thread) {
   const host = clear($('currentThread'));
-  if (!thread) { host.append(node('p', 'empty', 'No conversation turns have been recorded in this window.')); return; }
-  $('conversationTitle').textContent = state.selected ? 'Full thread' : 'Latest thread';
+  $('conversationTitle').textContent = state.selected ? 'Selected thread' : 'Latest thread';
+  if (!thread) {
+    host.append(node('p', 'empty', state.selected
+      ? state.more ? 'Selected thread is outside the loaded history. Load older threads to continue.' : 'Selected thread was not found in the recorded history.'
+      : 'No conversation turns have been recorded in this window.'));
+    return;
+  }
   const header = node('div', 'thread-header');
   const heading = node('div');
   heading.append(node('p', 'eyebrow', 'Model Room thread'), node('h3', '', thread.title));
@@ -79,7 +85,7 @@ function renderArchive(threads, selected) {
   if (!rest.length) host.append(node('p', 'empty', 'No older threads in the loaded history.'));
   for (const thread of rest) {
     const link = node('a', 'archive-item');
-    link.href = `/room.html?thread=${encodeURIComponent(thread.key)}`;
+    link.href = `/control-room/observatory?thread=${encodeURIComponent(thread.key)}`;
     link.append(node('strong', '', thread.title));
     link.append(node('span', '', `${thread.participants.join(' · ')} · ${thread.turnCount} turn${thread.turnCount === 1 ? '' : 's'}`));
     link.append(node('span', 'archive-date', `${formatTime(thread.firstAt)} – ${formatTime(thread.lastAt)}`));
@@ -127,7 +133,7 @@ function renderNow() {
     const title = node('div');
     title.append(node('p', 'eyebrow', `Latest conversation · ${age(thread.lastAt)}`));
     const link = node('a', 'now-dialogue-link', thread.title);
-    link.href = `/room.html?thread=${encodeURIComponent(thread.key)}`;
+    link.href = `/control-room/observatory?thread=${encodeURIComponent(thread.key)}`;
     title.append(link, node('span', 'meta', thread.participants.join(' · ')));
     heading.append(title);
     nowDialogue.append(heading);
@@ -146,7 +152,7 @@ function renderNow() {
 function render() {
   renderNow();
   const threads = groupConversations(state.conversation);
-  const selected = threads.find((thread) => thread.key === state.selected) || threads[0];
+  const selected = state.selected ? threads.find((thread) => thread.key === state.selected) : threads[0];
   renderThread(selected);
   renderArchive(threads, selected);
 }
@@ -172,20 +178,26 @@ async function loadOlder() {
 }
 
 async function refresh() {
+  if (state.loading) return;
+  state.loading = true;
+  $('refreshButton').disabled = true;
+  $('loadOlder').disabled = true;
   try {
     const [activity, conversation] = await Promise.all([readLatest('all'), readLatest('conversation')]);
     state.activity = merge(state.activity, activity.turns || []).slice(-600);
     state.conversation = merge(state.conversation, conversation.turns || []);
     if (state.before === null) { state.before = conversation.before_seq; state.more = Boolean(conversation.more); }
-    // An archive deep link promises the complete thread. Walk the spoken-turn
-    // pages, never the 47k machine receipts, before rendering that one topic.
-    if (state.selected && state.more) {
-      while (state.more) {
+    if (state.selected && !state.searched) {
+      let pages = 0;
+      while (state.more && state.before && pages < DEEP_LINK_PAGE_LIMIT
+        && !groupConversations(state.conversation).some(thread => thread.key === state.selected)) {
         const page = await readLatest('conversation', state.before);
         state.conversation = merge(state.conversation, page.turns || []);
         state.before = page.before_seq;
         state.more = Boolean(page.more && page.turns?.length);
+        pages++;
       }
+      state.searched = true;
     }
     render();
   } catch (error) {
@@ -194,6 +206,10 @@ async function refresh() {
       $('freshness').textContent = `Room read unavailable · ${error.message}`;
       toast(error.message);
     }
+  } finally {
+    state.loading = false;
+    $('refreshButton').disabled = false;
+    $('loadOlder').disabled = false;
   }
 }
 

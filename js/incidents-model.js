@@ -134,7 +134,7 @@ export function linkRows(links) {
       ref: row.ref,
       kind: isText(row.kind) ? row.kind : "link",
       label: isText(row.label) ? row.label : row.ref,
-      href: WORK_REQUEST_REF.test(row.ref) ? "/system-work.html" : null,
+      href: WORK_REQUEST_REF.test(row.ref) ? "/work-requests" : null,
     }));
 }
 

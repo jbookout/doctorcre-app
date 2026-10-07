@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 // V5-UX-B04 — the critical-dates Calendar.
 //
 // The calendar is a READ surface over two verbs the app already pins:
@@ -26,7 +27,7 @@ import {
 
 test("Calendar rereads on return and clears prior-session dates while checking", async () => {
   const source = await readFile(new URL("../js/calendar.js", import.meta.url), "utf8");
-  assert.match(source, /mountReadOnResume\(\{[\s\S]*?refresh:\s*\(\)\s*=>\s*load\(\{\s*failClosed:\s*true\s*\}\)/);
+  assert.match(source, /mountAutoRefresh\(\{[\s\S]*?refresh:\s*\(\)\s*=>\s*load\(\{\s*failClosed:\s*true\s*\}\)/);
   assert.match(source, /if\s*\(failClosed\)\s*\{[\s\S]*?status:\s*["']loading["']/);
   assert.match(source, /asOf\.textContent\s*=\s*""/, "a failed return cannot retain an old read count");
 });
@@ -318,13 +319,12 @@ test("the calendar reads through the fixture adapter's real getBoard/getDeal sha
 test("the Calendar is a routed, shipped surface that reads only pinned verbs", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  const artifact = await read("scripts/artifact.mjs");
   const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.14.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.20.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
-  assert.match(artifact, /"calendar\.html"/);
+  assert.equal(await hasArtifactPage("calendar.html"), true, "the page ships in the verified artifact");
   assert.match(check, /"calendar\.html"/);
   assert.match(summary, /calendar\.html/);
 
@@ -346,9 +346,9 @@ test("the Calendar page carries the shared shell, an accessible grid and an agen
   assert.match(html, /<a class="skip" href="#main">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/calendar\.css">/);
-  assert.match(html, /id="navUnreadBadge" hidden/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.match(html, /id="docReading">Doc is reading: Calendar</);
+  assert.match(html, /id="appShell"/);
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.doesNotMatch(html, /id="docReading">Doc is reading: Calendar</);
   assert.match(html, /id="receiptDock"/);
   assert.match(html, /id="calGrid"[^>]*role="grid"/);
   assert.match(html, /data-view="month"[^>]*aria-pressed="true"/);

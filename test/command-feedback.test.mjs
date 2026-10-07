@@ -12,8 +12,8 @@ import { readFile } from "node:fs/promises";
 
 import {
   beginCommand, classifyCommandOutcome, commandDockHtml, commandMessage, commandReceiptView,
-  createCommandState, feedbackStateFor, pendingCommand, performCommand, sameCommandIntent,
-  settleCommand, unresolvedCommands,
+  feedbackStateFor, pendingCommand, performCommand, sameCommandIntent, settleCommand,
+  unresolvedCommands,
 } from "../js/command-feedback.mjs";
 import { DOCK_ENTRY_CAP, createCommandDock } from "../js/command-dock.js";
 import { FEEDBACK_STATES } from "../js/visual-system.js";
@@ -23,7 +23,7 @@ const read = (file) => readFile(new URL(file, root), "utf8");
 
 /** A surface that owns one command state and one scripted transport. */
 function surface(answers = []) {
-  let state = createCommandState();
+  let state = {};
   const sent = [];
   let minted = 0;
   const queue = [...answers];
@@ -104,7 +104,7 @@ test("every answer the record layer can give is a different state, and the ones 
 // --------------------------------------------------------------- 2. one key
 
 test("a double click is one operation: the second send never leaves the page and no second key is minted", async () => {
-  let state = createCommandState();
+  let state = {};
   const sent = [];
   let minted = 0;
   let release;
@@ -244,7 +244,7 @@ test("the kernel adds one field and no more, sends exactly the frozen request, a
   assert.equal(sameCommandIntent({ a: 1, idempotency_key: "k1" }, { a: 1, idempotency_key: "k2" }), true);
   assert.equal(sameCommandIntent({ a: 1 }, { a: 2 }), false);
   // begin and settle are pure: neither writes into the state it was handed.
-  const state = createCommandState();
+  const state = {};
   const claim = beginCommand(state, { operationKey: "x", args: { a: 1 }, newKey: () => "k" });
   assert.deepEqual(state, {}, "begin returns a new state instead of mutating one");
   assert.deepEqual(settleCommand(claim.state, "x", { status: "ok" }), {});
@@ -344,7 +344,7 @@ test("checking is a declared state of the shared visual system, and the styleshe
   // The invariant this whole slice exists to keep, pinned where the consumer
   // contract can be read without the code.
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(carr.version, "1.33.0");
+  assert.equal(carr.version, "1.44.0");
   assert.ok(carr.invariants.some((line) => /one idempotency key across double click, reconnect and a second device/.test(line)));
 });
 
@@ -416,4 +416,22 @@ test("eviction never changes what the newest four render as", () => {
   }
   assert.equal(after, commandDockHtml([...expected.entries.values()].map(commandReceiptView)));
   assert.equal(after.includes("confirmed 9"), false, "the old ones are gone from the render too");
+});
+
+test('review 5: command deadline retains unknown intent and ignores late transport completion',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ let finish;
+ const ui=surface([()=>new Promise(resolve=>{finish=resolve;}),ok({replayed:true,event_id:'demo-event'})]);
+ const operation='critical-date:demo:rent_start', args={deal:'demo',kind:'rent_start',due_on:'2026-12-01',source:'Demo clause 4'};
+ const sending=ui.send(operation,args);
+ t.mock.timers.tick(30_000);
+ for(let i=0;i<8;i++)await Promise.resolve();
+ assert.equal(pendingCommand(ui.state(),operation)?.status,'unknown');
+ const outcome=await sending;assert.equal(outcome.status,'unknown');assert.equal(outcome.reason,'no_answer');
+ assert.equal(ui.sent.length,1);assert.equal(ui.keys(),1);
+ assert.equal((await ui.send(operation,{...args,due_on:'2026-12-02'})).status,'blocked');
+ const checked=await ui.send(operation,args);assert.equal(checked.status,'ok');
+ assert.equal(checked.replayed,true);assert.equal(ui.keys(),1);assert.strictEqual(ui.sent[1],ui.sent[0]);
+ finish({ok:false});for(let i=0;i<8;i++)await Promise.resolve();
+ assert.equal(pendingCommand(ui.state(),operation),null);
 });

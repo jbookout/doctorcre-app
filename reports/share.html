@@ -9,8 +9,9 @@
     <link rel="stylesheet" href="/share.css">
     <script src="/share-bootstrap.js"></script>
     <script type="module" src="/share.js"></script>
-  </head>
+</head>
   <body>
+    <div id="appShell"></div>
     <a class="skip-link" href="#report-list">Skip to report items</a>
     <main class="shell" aria-labelledby="report-title">
       <header class="masthead">
@@ -20,6 +21,17 @@
       </header>
       <p id="status" class="status" role="status" aria-live="polite"></p>
       <button id="open-tour" type="button" disabled>Open tour</button>
+      <figure class="tour-flow" aria-label="This Tour moves from properties to your choices to broker review">
+        <svg viewBox="0 0 720 120" role="img" aria-labelledby="flow-title flow-description">
+          <title id="flow-title">Tour feedback journey</title>
+          <desc id="flow-description">Three connected stops represent the shared properties, your shortlist and comments, and your broker's review.</desc>
+          <path class="flow-track" d="M132 60 H588"/>
+          <path class="flow-active" d="M132 60 H360"/>
+          <g><circle cx="132" cy="60" r="25"/><text x="132" y="66">1</text><text x="132" y="111">PROPERTIES</text></g>
+          <g><circle cx="360" cy="60" r="25"/><text x="360" y="66">2</text><text x="360" y="111">YOUR CHOICES</text></g>
+          <g><circle cx="588" cy="60" r="25"/><text x="588" y="66">3</text><text x="588" y="111">BROKER REVIEW</text></g>
+        </svg>
+      </figure>
       <section id="map-section" aria-labelledby="map-title" hidden>
         <h2 id="map-title">Tour map</h2>
         <p id="map-note" class="status">Ordered markers show only verified entrance, driveway, or parking-access coordinates. No road-route geometry is implied.</p>
@@ -29,7 +41,7 @@
         <h2 id="items-title">Properties</h2>
         <ol id="report-list" class="report-list" aria-busy="true"></ol>
       </section>
-      <p class="status">This foundation share is read-only. PDF download and client feedback require a future governed permission-scope amendment.</p>
+      <p id="feedback-status" class="status" role="status" aria-live="polite"></p>
     </main>
   </body>
 </html>

@@ -6,6 +6,6 @@ const html = await readFile(new URL("../system-work.html", import.meta.url), "ut
 
 test("System Work carries DoctorCRE workspace branding in its metadata and header", () => {
   assert.match(html, /<meta name="description" content="DoctorCRE workspace system work/);
-  assert.match(html, /<title>System Work · DoctorCRE Workspace<\/title>/);
-  assert.match(html, /class="system-work-brand"><span>DoctorCRE<\/span><strong>System Work<\/strong><\/a>/);
+  assert.match(html, /<title>Work Requests · DoctorCRE<\/title>/);
+  assert.match(html, /class="system-work-brand"><span>DoctorCRE<\/span><strong>Work Requests<\/strong><\/a>/);
 });

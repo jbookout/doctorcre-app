@@ -1,3 +1,5 @@
+import { setDocFilters } from './doc-context.js';
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
 // Every decision this file paints is made in ./search-model.js. Nothing here
@@ -15,12 +17,11 @@
 //      re-renders without a read of its own.
 import {
   AUTHORIZATION_SENTENCE, EXPOSURE_STATEMENT, FIND_CATCH_UP_LIMIT_DEFAULT, NOT_SEARCHED_SENTENCE,
-  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY,
-  acceptsSearchResponse, applyScope, buildFindAndCatchUpArguments, buildFindArguments,
-  classifySearchFailure, groupSearchResults, parseSearchAddress, queryIsSendable,
-  readSavedViews, refusalDetail, renameView, resetViews, retiredSummary, saveView, scopeChips,
-  searchAddress, searchPhase, truncationNotes, validCatchUpPayload, validSearchPayload,
-  visibleCount, writeSavedViews,
+  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, acceptsSearchResponse, applyScope,
+  buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, groupSearchResults,
+  parseSearchAddress, queryIsSendable, readSavedViews, refusalDetail, renameView, retiredSummary,
+  saveView, scopeChips, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
+  validSearchPayload, visibleCount, writeSavedViews,
 } from "./search-model.js";
 
 const IDLE_REREAD_MS = 300;
@@ -68,7 +69,7 @@ function rowHtml(row) {
       ${row.retired ? '<p class="small quiet">retired alias</p>' : ""}
       <div class="work-meta">${counts}</div>
       <div class="chip-list">${refChipHtml(row.refs, "Ref")}${roleRefs}${retiredRefs}</div>
-      ${row.retiredRefsTruncated ? '<p class="small quiet">The record layer truncated this list of retired references.</p>' : ""}
+      ${row.retiredRefsTruncated ? '<p class="small quiet">More previous references available</p>' : ""}
       ${row.allRetired ? '<p class="small quiet">Every record behind this name is retired.</p>' : ""}
     </div>
     <div class="stack-end">${open}</div>
@@ -129,7 +130,7 @@ function renderRetired() {
     // The producer's own sentence, printed rather than paraphrased.
     `<p class="small">${escapeHtml(summary.note)}</p>`,
     summary.retiredParties > 0 ? `<p class="small">${escapeHtml(String(summary.retiredParties))} matched names are retired aliases and open nothing.</p>` : "",
-    summary.organizations.map((row) => `<p class="small">${escapeHtml(row.name)}: ${escapeHtml(String(row.retiredAliases))} retired aliases${row.truncated ? ", list truncated by the record layer" : ""}${row.allRetired ? ", every record behind the name retired" : ""}.</p>`).join(""),
+    summary.organizations.map((row) => `<p class="small">${escapeHtml(row.name)}: ${escapeHtml(String(row.retiredAliases))} retired aliases${row.truncated ? ", additional aliases omitted" : ""}${row.allRetired ? ", every record behind the name retired" : ""}.</p>`).join(""),
   ].join("");
 }
 
@@ -149,7 +150,7 @@ function renderState(phase) {
       phase === "partial" ? notes.map((note) => `<p class="small">${escapeHtml(note)}</p>`).join("") : "",
       // Retry is offered by ONE state. A no-match has nothing to retry: the
       // record layer answered, and it answered with nothing.
-      copy.retry ? '<button class="btn" type="button" id="searchRetry">Retry</button>' : "",
+      copy.retry ? '<button class="btn" type="button" id="searchRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
     ].join("");
   }
   const live = $("searchLive");
@@ -194,12 +195,13 @@ function render() {
  * current query's result stands.
  */
 async function read({ push = true } = {}) {
+  const sequence = ++view.sequence;
+  setDocFilters({query:view.query,kinds:view.kinds});
   if (!queryIsSendable(view.query)) {
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
     return;
   }
-  const sequence = ++view.sequence;
   view.status = "loading";
   view.submitted = true;
   render();
@@ -253,14 +255,14 @@ function replaceAddress() {
 
 /**
  * Back. The query and the chips are restored from the URL and the page
- * re-renders from the payload already in hand — no read of its own.
+ * reads results for that query rather than reusing another query’s payload.
  */
-function restoreFromAddress({ reread = false } = {}) {
+function restoreFromAddress({ reread = true } = {}) {
   const address = parseSearchAddress(globalThis.location?.search || "");
   view.query = address.query;
   view.kinds = [...address.kinds];
   view.submitted = address.present && queryIsSendable(address.query);
-  if (reread && view.submitted) read({ push: false });
+  if (reread) read({ push: false });
   else render();
   return address;
 }
@@ -278,6 +280,7 @@ function wire() {
   // sequence token like every other read.
   $("searchQuery")?.addEventListener("input", () => {
     view.query = $("searchQuery")?.value ?? "";
+    view.sequence += 1;
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => read({ push: false }), IDLE_REREAD_MS);
   });
@@ -322,11 +325,11 @@ function wire() {
   });
 
   $("resetViewsButton")?.addEventListener("click", () => {
-    view.views = writeSavedViews(storage, resetViews());
+    view.views = writeSavedViews(storage, Object.freeze([]));
     render();
   });
 
-  globalThis.addEventListener?.("popstate", () => restoreFromAddress({ reread: false }));
+  globalThis.addEventListener?.("popstate", () => restoreFromAddress({ reread: true }));
 }
 
 /**
@@ -350,6 +353,7 @@ export function mountSearch({ client: searchClient, storage: storageImpl } = {})
   }
   wire();
   const address = restoreFromAddress({ reread: true });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: () => view.query ? read({ push: false }) : undefined });
   return { view, address };
 }
 

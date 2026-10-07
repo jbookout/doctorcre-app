@@ -77,3 +77,11 @@
   .global-controls .btn { min-height: 40px; padding: 6px 10px; font-size: 11px; }
   .footer { display: block; padding-bottom: 160px; }
 }
+.reference-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
+.reference-grid figure{margin:0;padding:12px;border:1px solid rgba(128,171,212,.25);border-radius:14px;background:rgba(8,25,45,.72);backdrop-filter:blur(16px)}
+.reference-grid a{display:block;overflow:hidden;border-radius:8px}
+.reference-grid img{display:block;width:100%;max-height:330px;object-fit:cover;object-position:top;transition:transform .3s ease}
+.reference-grid a:hover img{transform:scale(1.02)}
+.reference-grid figcaption{margin-top:9px;color:#b8cbdc;font-size:12px}
+@media(max-width:680px){.reference-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.reference-grid img{transition:none}.reference-grid a:hover img{transform:none}}

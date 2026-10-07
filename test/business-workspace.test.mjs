@@ -82,7 +82,7 @@ test("each section names the read that feeds it, and Calls names none because no
 });
 
 test("Calls states its absence in the page itself and issues no read", () => {
-  assert.equal(CALLS_ABSENT, "Calls: no record-layer read returns logged calls yet");
+  assert.equal(CALLS_ABSENT, "Calls unavailable");
   assert.ok(html.includes(`<h3>${CALLS_ABSENT}</h3>`), "the absent state is literal markup");
   assert.match(html, /data-section="calls"[\s\S]*?<div class="state-block" id="callsState" data-state="absent">/);
   assert.ok(!pageJs.includes(CALLS_ABSENT), "no renderer writes it, so no read can overwrite it");
@@ -111,23 +111,22 @@ test("Home never ranks the partners against each other", () => {
 
 test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries and 44px controls", () => {
   assert.match(html, /<p class="caption freshness" id="homeFreshness">/, "one freshness line, under the hero");
-  assert.match(pageJs, /`As of \$\{clock \|\| "an unreadable time"\} · \$\{freshness\}`/, "the line states the freshness against the clock now");
+  assert.match(pageJs, /updatedLabel\(payload\.source\.observed_at\)/, "the line displays the successful update clock");
   assert.match(html, /id="receiptDock" class="receipt-dock"/);
-  assert.match(html, /<button class="doc-fab" type="button" id="docFab"/);
-  assert.match(html, /<a class="btn btn-primary" id="signInAgain" href="\/auth\/login\?return_to=\/business"/, "an expired session is offered the way back in");
+  assert.doesNotMatch(html, /<button class="doc-fab" type="button" id="docFab"/);
+  assert.match(html, /<a class="btn btn-primary" id="signInAgain" href="\/auth\/login\?return_to=%2F"/, "an expired session is offered the way back in");
 
-  const tabs = /<div class="tabs" id="businessTabs"[\s\S]*?<\/div>/.exec(html)?.[0] || "";
+  const tabs = /<div data-layout-slot="tabs" class="page-views" id="businessTabs"[\s\S]*?<\/div>/.exec(html)?.[0] || "";
   assert.notEqual(tabs, "", "the page has a tab strip");
-  for (const label of ["Home", "Work", "Pipeline", "Doc history"]) assert.ok(tabs.includes(`>${label}</`), `tab ${label}`);
+  for (const label of ["Home", "Pipeline", "Doc history"]) assert.ok(tabs.includes(`>${label}</`), `tab ${label}`);
   // Work and Pipeline NAVIGATE: they are ordinary links, so Back, a middle
   // click and a screen reader all behave as they always do.
-  assert.match(tabs, /<a class="tab" href="\/tasks">Work<\/a>/);
+  assert.doesNotMatch(tabs, /href="\/tasks"/);
   assert.match(tabs, /<a class="tab" href="\/pipeline">Pipeline<\/a>/);
   assert.match(css, /a\.tab\[aria-current="page"\]/, "an active page tab is marked by aria-current alone");
 
-  const nav = /<nav class="mobile-nav"[\s\S]*?<\/nav>/.exec(html)?.[0] || "";
-  assert.equal([...nav.matchAll(/<a\b/g)].length, 4, "the bottom navigation mirrors the four tabs");
-  for (const label of ["Home", "Work", "Pipeline", "Doc history"]) assert.ok(nav.includes(`${label}</a>`), `bottom entry ${label}`);
+  assert.match(html, /id="appShell"/, "the shared phone menu replaces the local bottom navigation");
+  assert.doesNotMatch(html, /class="mobile-nav"/, "there is one app navigation");
 
   // Every control on the page is one of the four shapes the shared sheet holds
   // at or above the 44px floor. A bare <button> would be under it.
@@ -141,8 +140,8 @@ test("the shell is present: freshness line, dock, Doc, tabs, four bottom entries
 });
 
 test("the page is pinned in the route contract and reads the pinned command-centre path", () => {
-  assert.equal(routes.routes["/business"], "business-workspace.html");
-  assert.equal(routes.routes["/"], "workspace.html", "the old Home keeps serving / until a later slice retires it");
+  assert.equal(routes.redirects["/business"], "/", "the former business page now reaches Home");
+  assert.equal(routes.routes["/"], "workspace.html", "Home serves the canonical route");
   assert.ok(carrInterface.http_surfaces.includes("/api/v1/command-center"));
   assert.match(html, /<script type="module" src="\/js\/business-workspace\.js">/);
   assert.match(pageJs, /client\.commandCenter\(\)/, "the page reads through the client seam, not a second fetch of its own");
@@ -556,7 +555,7 @@ test("today-triage is pinned in the CARR interface as an additive minor bump", (
   assert.ok(carrInterface.mcp_operations.includes("today-triage"));
   assert.ok(carrInterface.mcp_operations.includes("loop-board"));
   assert.deepEqual([...carrInterface.mcp_operations], [...carrInterface.mcp_operations].sort(), "the list stays alphabetical");
-  assert.equal(carrInterface.version, "1.33.0");
+  assert.equal(carrInterface.version, "1.44.0");
 });
 
 test("Home enters in a stagger under a second, answers hover and press, and draws its ambient life from shared keyframes", () => {

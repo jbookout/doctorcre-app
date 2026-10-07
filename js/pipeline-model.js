@@ -42,12 +42,12 @@
  * @type {readonly PipelineColumn[]}
  */
 export const COLUMNS = Object.freeze([
-  { slug: 'pending', value: 'On Deck', label: 'Pending' },
+  { slug: 'pending', value: 'On Deck', label: 'Prospective Client' },
   { slug: 'research', value: 'Research', label: 'Research' },
-  { slug: 'site_selection', value: 'Site selection', label: 'Site selection' },
-  { slug: 'negotiation', value: 'Negotiation', label: 'Negotiation' },
+  { slug: 'site_selection', value: 'Site selection', label: 'Site Selection' },
+  { slug: 'negotiation', value: 'Negotiation', label: 'Negotiating' },
   { slug: 'legal', value: 'Legal', label: 'Legal' },
-  { slug: 'due_diligence', value: 'Diligence', label: 'Due diligence' },
+  { slug: 'due_diligence', value: 'Diligence', label: 'Due Diligence' },
   { slug: 'closing', value: 'Closing', label: 'Closing' },
   { slug: 'closed', value: 'Closed', label: 'Closed' },
 ].map((column) => Object.freeze(column)));
@@ -119,10 +119,6 @@ export function moveIntent(deal, toSlug) {
   });
 }
 
-/** Tap targets use the same move intent as drag and keyboard; never offer a no-op. */
-export function tapMoveTargets(deal) {
-  return COLUMNS.filter((column) => moveIntent(deal, column.slug) !== null);
-}
 
 /** The move, said the way a person reading a receipt would say it. */
 export function moveSummary(intent) {
@@ -179,7 +175,7 @@ export const COMPLETION_CAPTIONS = Object.freeze({
   next: 'Recorded as the next step.',
   effective_off: 'Not recorded anywhere; the move is dated by when it is saved.',
   effective_on: 'Recorded as a critical date on the record.',
-  outcome: 'How this ended. The record layer takes won, lost or paused, and nothing else.',
+  outcome: 'Outcome',
   closed_on: 'The date the record closed, written alongside the outcome.',
   won_value: 'Optional. Recorded only on a won outcome.',
 });
@@ -261,7 +257,7 @@ export function completionPlan(intent, form = {}) {
   const source = text(form.dateSource);
   if (form.recordCriticalDate === true) {
     if (!effective) errors.push('Pick the effective date, or clear the critical-date box.');
-    if (!source) errors.push('Say where the date came from; the record layer records a critical date only with its source.');
+    if (!source) errors.push('Enter a date reference.');
     if (effective && source) {
       steps.push({
         verb: 'add-critical-date',
@@ -276,7 +272,7 @@ export function completionPlan(intent, form = {}) {
     if (!outcome) {
       errors.push('Choose the outcome — Won, Lost or Paused — before closing this record.');
     } else if (!isDealOutcome(outcome)) {
-      errors.push('The record layer records an outcome of won, lost or paused, and nothing else.');
+      errors.push('Select won, lost, or paused.');
     } else {
       const fields = { outcome };
       const closedOn = text(form.closedOn);
@@ -352,87 +348,49 @@ export function presenceChip(presence, dealId, options = {}) {
   return null;
 }
 
-/**
- * The chips over the board, built from what the board actually returns.
- *
- * `deal-room-board` carries a deal `type` (the deal kind: Relocation, Renewal,
- * Startup and so on) and a `segment` (the practice's specialty). It does NOT
- * carry a prospect/client distinction, so this bar cannot offer one without
- * inventing a field. It offers what is there: All, then every type present, in
- * the board's own words.
- */
-export function typeFilters(deals) {
-  const rows = Array.isArray(deals) ? deals : [];
-  const types = [...new Set(rows.map((deal) => text(deal?.type)).filter(Boolean))].sort();
-  return [{ value: 'all', label: 'All' }, ...types.map((value) => ({ value, label: value }))];
-}
+// A note or next step can reach this board as a sentence, an object such as
+// {text, at}, or that object's Python repr printed into a string
+// ("{'text': '...', 'at': '...'}"). Cards and the panel show the sentence only.
+const NOTE_KEYS = ['text', 'note', 'body', 'summary', 'content', 'message'];
+const PY_ESCAPES = { n: '\n', t: '\t', '\\': '\\', "'": "'", '"': '"' };
 
-/** Keep the rows this filter names. "all" — and an unknown filter — keep them all. */
-export function filterDeals(deals, filter) {
-  const rows = Array.isArray(deals) ? deals : [];
-  if (!filter || filter === 'all') return [...rows];
-  return rows.filter((deal) => text(deal?.type) === filter);
-}
-
-/** Cards inside a column, newest attention first, then by name. Stable. */
-export function orderColumn(deals) {
-  return [...(Array.isArray(deals) ? deals : [])].sort((a, b) => {
-    const attention = Number(Boolean(b?.attention)) - Number(Boolean(a?.attention));
-    if (attention !== 0) return attention;
-    return String(a?.name || '').localeCompare(String(b?.name || ''));
-  });
+function dictSentence(raw) {
+  try {
+    return noteText(JSON.parse(raw));
+  } catch { /* not JSON; try the Python repr */ }
+  for (const key of NOTE_KEYS) {
+    const match = new RegExp(`['"]${key}['"]\\s*:\\s*(['"])((?:\\\\.|(?!\\1)[^\\\\])*)\\1`).exec(raw);
+    if (match) return match[2].replace(/\\(.)/g, (_, ch) => PY_ESCAPES[ch] ?? ch).trim();
+  }
+  return '';
 }
 
 /**
- * The sections of the record side panel, in the order Joe's review fixed them.
+ * The sentence a note value carries, or '' when it carries none. A string
+ * shaped like a dict never paints as raw braces.
  *
- * Every value traces to the detail read. A section with nothing recorded says so
- * in plain words; none of them is filled in from somewhere else, and the Doc
- * section states its scope rather than showing work that does not exist yet.
- *
- * @param {Object} detail the answer from `getDeal`
- * @param {{actorLabel?:(slug:string)=>string, dateLabel?:(value:string)=>string}} [options]
+ * @param {unknown} value
+ * @returns {string}
  */
-export function recordPanelSections(detail, options = {}) {
-  const deal = detail?.deal || {};
-  const label = options.actorLabel || ((slug) => slug || 'Unassigned');
-  const date = options.dateLabel || ((value) => String(value ?? ''));
-
-  const situation = [
-    deal.name || 'This record',
-    deal.type ? `${deal.type}` : null,
-    deal.phase ? `${columnLabel(deal.phase)}` : null,
-    `owned by ${label(deal.owner)}`,
-    deal.attention ? 'flagged for attention' : null,
-  ].filter(Boolean).join(' · ');
-
-  const nextAction = deal.next_step
-    ? `${deal.next_step}${deal.next_date ? ` · ${date(deal.next_date)}` : ''}`
-    : 'No next step recorded.';
-
-  const criticalDates = (detail?.critical_dates || [])
-    .map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`);
-
-  const latest = (detail?.thread || [])[0] || null;
-
-  return [
-    { title: 'Situation', lines: [situation] },
-    { title: 'Next action', lines: [nextAction] },
-    { title: 'Critical dates', lines: criticalDates.length ? criticalDates : ['None recorded.'] },
-    { title: 'Blockers', lines: [deal.attention ? 'Flagged for attention on the record.' : 'None recorded.'] },
-    {
-      title: 'Latest communication',
-      lines: [latest ? `${label(latest.actor)}: ${latest.text}` : 'Nothing captured on this record.'],
-    },
-    { title: 'Doc work', lines: ['Not in this release.'], state: 'not_in_release' },
-  ];
+export function noteText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    for (const key of NOTE_KEYS) {
+      const inner = noteText(value[key]);
+      if (inner) return inner;
+    }
+    return '';
+  }
+  const text = String(value).trim();
+  if (/^\{[\s\S]*\}$/.test(text) && (text === '{}' || /^\{\s*['"]/.test(text))) return dictSentence(text);
+  return text;
 }
 
 /* --------------------------------------------------------- V5-UX-B04: context */
 
 // deal_participant carries five roles. 'lead' and 'support' are internal team
-// assignment (actor_id, no party_id) and already own the "Situation" line
-// above; these three carry an external party_id and are what the context
+// assignment (actor_id, no party_id); these three carry an external party_id
+// and are what the context
 // drawer means by "attached parties/vendors".
 const EXTERNAL_PARTY_ROLES = ['client_contact', 'referring_agent', 'listing_side'];
 const PARTY_ROLE_LABEL = {
@@ -517,8 +475,7 @@ function clientContextLines(clientContext) {
 }
 
 /**
- * The context drawer's sections, in the shape `recordPanelSections` already
- * renders in — same section object, same honest-when-empty rule.
+ * Read-only context sections. Empty sections say what is missing.
  *
  * @param {Awaited<ReturnType<typeof loadDealContext>>} context
  * @param {{dateLabel?:(value:string)=>string}} [options]
@@ -531,7 +488,7 @@ export function contextDrawerSections(context, options = {}) {
     : ['No attached parties or vendors recorded on this deal.'];
   const dates = context?.criticalDates || [];
   const dateLines = dates.length
-    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · source ${entry.source}` : ''}`)
+    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`)
     : ['None recorded.'];
 
   return [
@@ -540,4 +497,11 @@ export function contextDrawerSections(context, options = {}) {
     { title: 'Attached parties & vendors', lines: partyLines },
     { title: 'Critical dates', lines: dateLines },
   ];
+}
+
+export function dealInsightLines(reading) {
+  if (!reading?.judged) return [reading?.reason === 'insufficient_recorded_evidence' ? 'Insufficient evidence' : 'Insights unavailable'];
+  return [`Movement ${reading.movement_rung} of ${reading.movement_rungs}`, reading.movement_label,
+    `Waiting on: ${String(reading.waiting_on || 'not recorded').replaceAll('_', ' ')}`,
+    `Estimated silence concern: ${Math.round(Number(reading.silence_is_bad) * 100)}%`];
 }

@@ -89,7 +89,7 @@ const EVENT_STATUSES = ["planned", "attended", "skipped", "cancelled"];
 export function eventWriteRequest(fields, current = null) {
   const text = (name) => String(fields[name] ?? "").trim();
   const required = ["title", "organizer", "source"];
-  if (required.some((name) => !text(name))) return { ok: false, error: "Enter a title, organizer, and source." };
+  if (required.some((name) => !text(name))) return { ok: false, error: "Enter a title, organizer, and reference." };
   if (!EVENT_KINDS.includes(fields.kind) || !ATTENDANCE.includes(fields.attendance_intent)
     || !EVENT_STATUSES.includes(fields.status) || !["joe", "dell"].includes(fields.owner_partner)) {
     return { ok: false, error: "Choose an event type, attendance plan, owner, and status." };
@@ -104,7 +104,7 @@ export function eventWriteRequest(fields, current = null) {
     } catch { return { ok: false, error: "Enter a website starting with https:// or http://." }; }
   }
   if (current && (!current.id || !Number.isInteger(current.version))) {
-    return { ok: false, error: "Read this event again before editing it." };
+    return { ok: false, error: "Event updating." };
   }
   return { ok: true, args: {
     title: text("title"), organizer: text("organizer"), kind: fields.kind,
@@ -129,7 +129,7 @@ const EVENT_FIELD_LABELS = [
   ["starts_at", "Starts"], ["ends_at", "Ends"], ["location", "Location"],
   ["is_virtual", "Virtual event"], ["url", "Website"],
   ["relevance_note", "Why it matters"], ["attendance_intent", "Attendance"],
-  ["owner_partner", "Owner"], ["status", "Status"], ["source", "Source"],
+  ["owner_partner", "Owner"], ["status", "Status"], ["source", "Reference"],
 ];
 
 export function eventChangedFields(before, latest) {
@@ -173,7 +173,7 @@ export function ideaDetailRows(loop) {
     field("Opened", loop?.created_at ? formatCalendarDate(loop.created_at) : null),
     field("Last changed", loop?.updated_at ? formatCalendarDate(loop.updated_at) : null),
     field("Due", due ? formatCalendarDate(due) : null),
-    field("Source", loop?.source_note),
+    field("Reference", loop?.source_note),
     field("Status", loop?.status),
   ];
 }
@@ -192,5 +192,5 @@ export function ideasHref(state) {
   const params = new URLSearchParams({ tab: state.tab });
   if (state.q) params.set("q", state.q);
   if (state.idea) params.set("idea", state.idea);
-  return `/ideas?${params}`;
+  return `/ideas-events?${params}`;
 }

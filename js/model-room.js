@@ -1,3 +1,5 @@
+import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { classifyCommandOutcome } from "./command-feedback.mjs";
 // V5-UX-C12 plus V5-UX-C13 clause 3 plus V5-UX-C13b — the Model Room tab: DOM
 // wiring only.
 //
@@ -111,7 +113,7 @@ function renderAssignments() {
   if (!line || !list) return;
   if (view.queue.state === "loading") {
     line.dataset.state = "loading";
-    line.textContent = "Taking the queue read…";
+    line.textContent = "Updating…";
     list.innerHTML = "";
     if (empty) empty.hidden = true;
     if (dropped) dropped.hidden = true;
@@ -153,7 +155,7 @@ function renderAssignments() {
       ${chip("event", card.event)}
     </div>
     <p class="assignment-summary">${escapeHtml(card.summary)}</p>
-    <p class="assignment-meta small mono">${escapeHtml(card.taskId)} · updated ${escapeHtml(clock(card.updatedAt))} · ${escapeHtml(card.sourceSeqText)}</p>
+    <p class="assignment-meta small mono">${escapeHtml(card.taskId)} · updated ${escapeHtml(clock(card.updatedAt))}</p>
   </article>`).join("");
   if (empty) {
     empty.hidden = board.cards.length > 0;
@@ -244,7 +246,7 @@ function renderSessions() {
   if (!list) return;
   if (view.sessions.state === "loading") {
     list.innerHTML = "";
-    if (counts) counts.textContent = "Taking the session read…";
+    if (counts) counts.textContent = "Updating…";
     return;
   }
   const payload = view.sessions.refusal ? null : view.sessions.payload;
@@ -259,8 +261,7 @@ function renderSessions() {
     const filtered = payload?.permission_filtered === true;
     banner.hidden = !filtered;
     banner.textContent = filtered
-      ? "Permission filtering is on for this answer: the record layer removed sessions you may not see before it "
-        + "counted them."
+      ? "Available sessions"
       : "";
   }
   const cards = sessionCards(payload);
@@ -296,9 +297,9 @@ function dispatchHtml() {
   </p>
   <p class="dispatch-honesty">${escapeHtml(DISPATCH_STAGES_SENTENCE)}</p>
   <p class="dispatch-honesty">${escapeHtml(DISPATCH_SEARCH_SENTENCE)}</p>`;
-  if (view.dispatch.state === "loading") return `${stages}<p class="small">Taking the dispatch read…</p>`;
+  if (view.dispatch.state === "loading") return `${stages}<p class="small">Updating…</p>`;
   if (view.dispatch.refusal) {
-    return `${stages}<p class="small">The dispatch read could not be rendered: ${escapeHtml(view.dispatch.refusal)}.</p>`;
+    return `${stages}<p class="small">History temporarily unavailable.</p>`;
   }
   if (!view.dispatch.payload) return stages;
   const drawer = dispatchView(view.dispatch.payload);
@@ -396,7 +397,7 @@ function renderParticipants() {
   if (view.turns.state === "loading") {
     list.innerHTML = "";
     turnList.innerHTML = "";
-    if (windowLine) windowLine.textContent = "Taking the room read…";
+    if (windowLine) windowLine.textContent = "Updating…";
     return;
   }
   const payload = view.turns.refusal ? null : view.turns.payload;
@@ -405,7 +406,7 @@ function renderParticipants() {
     turnList.innerHTML = "";
     if (windowLine) {
       windowLine.dataset.state = "unavailable";
-      windowLine.textContent = `The room read could not be rendered: ${view.turns.refusal ?? "it did not answer"}.`;
+      windowLine.textContent = `Activity temporarily unavailable.`;
     }
     return;
   }
@@ -476,11 +477,11 @@ function renderHistoryPanel() {
   if (!root) return;
   if (view.historyWorkItemId) {
     if (view.historyCard.state === "loading") {
-      root.innerHTML = "<p class=\"small\">Taking the work-request-card read…</p>";
+      root.innerHTML = "<p class=\"small\">Updating…</p>";
       return;
     }
     if (view.historyCard.refusal) {
-      root.innerHTML = `<p class="small">The work-item history could not be read: ${escapeHtml(view.historyCard.refusal)}.</p>`;
+      root.innerHTML = `<p class="small">History temporarily unavailable.</p>`;
       return;
     }
     const ledger = view.historyCard.payload ? workItemLedger(view.historyCard.payload) : null;
@@ -509,7 +510,7 @@ function renderHistoryPanel() {
         <dt>priority</dt><dd>${escapeHtml(found.card.priority)}</dd>
         <dt>cap</dt><dd>${escapeHtml(found.card.cap)}</dd>
         <dt>summary</dt><dd>${escapeHtml(found.card.summary)}</dd>
-        <dt>${escapeHtml(found.card.sourceSeqText)}</dt><dd></dd>
+
       </dl>`;
     return;
   }
@@ -531,6 +532,8 @@ function renderHistory() {
  * refusal verbatim rather than a paraphrase.
  */
 function renderComposer() {
+  const submit = $("modelRoomComposerForm")?.querySelector('[type="submit"]');
+  if (submit) submit.textContent = view.composerPending ? "Check outcome" : "Send";
   const result = $("modelRoomComposerResult");
   if (result) {
     // Animate exactly on a state change — idle->invalid, invalid->sending,
@@ -552,7 +555,7 @@ async function submitComposer() {
   // A second submit while one is already in flight is refused here rather
   // than re-entered, so a double click cannot post the draft twice.
   if (view.composerSend.state === "sending") return;
-  const request = composerRequest({ text: view.composer.text });
+  const request = view.composerPending || composerRequest({ text: view.composer.text });
   if (!request) {
     view.composer = composerDraftAfterAttempt(view.composer);
     view.composerSend = { state: "invalid", message: "Enter a message before sending; the draft is kept." };
@@ -562,26 +565,31 @@ async function submitComposer() {
   view.composerSend = { state: "sending", message: "Sending…" };
   renderComposer();
   try {
-    // A fresh idempotency key per attempt — minted here, not left to the
-    // client. live-client.js's write() would mint one on its own, but
-    // fixture-client.js requires the caller to supply one; this line is what
-    // makes the composer actually send in fixture/demo mode as well as live.
-    const result = await client.addRoomTurn({ ...request, idempotency_key: uuidv4() });
+    view.composerPending ||= { ...request, idempotency_key: uuidv4() };
+    const result = await client.addRoomTurn(view.composerPending);
+    const acknowledged = typeof result?.seq === "string" ? /^[1-9]\d*$/.test(result.seq) : Number.isSafeInteger(result?.seq) && result.seq > 0;
+    if (!acknowledged || result.ok === false) throw new Error("Room acknowledgment unavailable.");
+    view.composerPending = null;
     // Sent, not fabricated: the confirmation is the server's own answer
     // (its sequence number), never an "ok" this file invented.
-    view.composer = { text: "" };
-    const input = $("modelRoomComposerText");
-    if (input) input.value = "";
+    if (view.composer.text.trim() === request.body) {
+      view.composer = { text: "" };
+      const input = $("modelRoomComposerText");
+      if (input) input.value = "";
+    }
     view.composerSend = { state: "sent", message: `Sent — recorded as turn ${result?.seq ?? "unknown"}.` };
     announce("The Model Room request was sent.");
     if (client.roomTurns) await take("turns", () => client.roomTurns(turnRequest()), refuseRoomTurns);
   } catch (error) {
-    // The draft survives every failure, and the message shown is the
-    // record layer's own refusal, verbatim — never a paraphrase of it.
+    // A lost response retains the original request for reconciliation.
+    // Explicit refusals preserve the draft and display the refusal.
     view.composer = composerDraftAfterAttempt(view.composer);
+    const outcome = classifyCommandOutcome({ error });
+    if (outcome.status !== "unknown") view.composerPending = null;
     view.composerSend = {
-      state: "failed",
-      message: `Not sent: ${String(error?.payload?.error || error?.message || "the write did not answer")}.`,
+      state: outcome.status === "unknown" ? "unknown" : "failed",
+      message: outcome.status === "unknown" ? "Outcome unknown. Check outcome replays the same message request."
+        : `Not sent: ${String(error?.payload?.error || error?.message || "the write was refused")}.`,
     };
   }
   renderComposer();
@@ -656,6 +664,9 @@ function renderAnswer() {
 
 async function submitAnswer() {
   if (view.answerSend.state === "sending") return;
+  const humanRef = view.historyWorkItemId;
+  const draft = view.answer;
+  const submitted = { ...draft };
   const baseVersion = currentAnswerBaseVersion();
   const request = answerWorkRequestRequest({
     humanRef: view.historyWorkItemId,
@@ -677,16 +688,20 @@ async function submitAnswer() {
     // the composer's: fixture-client.js requires one, and this is the one
     // real write this form makes.
     const result = await client.answerWorkRequestForJoe({ ...request, idempotency_key: uuidv4() });
-    view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
+    if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
+    if (Object.keys(submitted).every(key => view.answer[key] === submitted[key])) {
+      view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
+    }
     view.answerSend = { state: "sent", message: `Sent — recorded as ${result?.state ?? "triaged"}.` };
-    announce(`The answer for ${view.historyWorkItemId} was sent.`);
+    announce(`The answer for ${humanRef} was sent.`);
     // Re-read the card and the queue, so the ledger and the picker both show
     // the transition rather than a state this file invented.
-    const args = workRequestCardRequest(view.historyWorkItemId);
+    const args = workRequestCardRequest(humanRef);
     if (args) await take("historyCard", () => client.workRequestCard(args), refuseWorkRequestCard);
     await take("workItems", () => client.currentWorkRequests(),
       (payload) => (validCurrentWorkRequestsPayload(payload) ? null : "current_work_requests_unavailable"));
   } catch (error) {
+    if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
     const code = String(error?.payload?.error || error?.message || "the write did not answer");
     view.answer = answerDraftAfterAttempt(view.answer);
     view.answerSend = {
@@ -746,7 +761,7 @@ async function readAll() {
     take("workItems", () => client.currentWorkRequests(),
       (payload) => (validCurrentWorkRequestsPayload(payload) ? null : "current_work_requests_unavailable")),
   ]);
-  announce("The Model Room reads have answered.");
+  announce("Updated");
 }
 
 function selectHistoryTopic(taskId) {
@@ -910,6 +925,7 @@ export function mountModelRoom({ outage = null } = {}) {
     : createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
   Promise.resolve(boot).then((ready) => {
     client = ready;
+    mountAutoRefresh({ document, window: globalThis.window, refresh: readAll });
     return readAll();
   });
 }

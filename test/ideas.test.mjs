@@ -1,3 +1,4 @@
+import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 // V5-UX-B04 — Ideas and Events browse/detail.
 //
 // Ideas are real records: a loop of kind `idea` (add-loop parks one), read with
@@ -89,7 +90,7 @@ test("the detail distinguishes a recorded value from one that was never recorded
   assert.equal(byLabel.Number.text, "#12");
   assert.equal(byLabel.Owner.text, "Joe");
   assert.equal(byLabel.Domain.text, "Marketing");
-  assert.equal(byLabel.Source.text, "Joe, voice memo");
+  assert.equal(byLabel.Reference.text, "Joe, voice memo");
   assert.equal(byLabel.Due.known, false, "no due date is 'not recorded', never a blank or 'none'");
   assert.equal(byLabel.Due.text, "not recorded");
   assert.equal(byLabel.Opened.known, true);
@@ -102,8 +103,8 @@ test("the address remembers the tab, the search and the open idea", () => {
   assert.deepEqual(parseIdeasState(""), { tab: "ideas", q: "", idea: null });
   const state = parseIdeasState("?tab=events&q=lunch&idea=12");
   assert.deepEqual(state, { tab: "events", q: "lunch", idea: "12" });
-  assert.equal(ideasHref({ tab: "ideas", q: "lunch", idea: "12" }), "/ideas?tab=ideas&q=lunch&idea=12");
-  assert.equal(ideasHref({ tab: "ideas", q: "", idea: null }), "/ideas?tab=ideas");
+  assert.equal(ideasHref({ tab: "ideas", q: "lunch", idea: "12" }), "/ideas-events?tab=ideas&q=lunch&idea=12");
+  assert.equal(ideasHref({ tab: "ideas", q: "", idea: null }), "/ideas-events?tab=ideas");
   assert.deepEqual(parseIdeasState("?tab=nope&idea=%3Cscript%3E"), { tab: "ideas", q: "", idea: null }, "an idea number is digits only");
 });
 
@@ -178,11 +179,11 @@ test("a version conflict names the server fields that changed before a draft can
 test("the Ideas page is routed and uses the pinned idea and event verbs", async () => {
   const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(routes.routes["/ideas"], "ideas.html");
-  assert.equal(carr.version, "1.33.0");
+  assert.equal(routes.routes["/ideas-events"], "ideas.html");
+  assert.equal(carr.version, "1.44.0");
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
-  assert.match(await read("scripts/artifact.mjs"), /"ideas\.html"/);
+  assert.equal(await hasArtifactPage("ideas.html"), true, "the page ships in the verified artifact");
   assert.match(await read("scripts/check-repository.mjs"), /"ideas\.html"/);
   assert.match(await read("SUMMARY.md"), /ideas\.html/);
   const js = await read("js/ideas.js");
@@ -200,9 +201,9 @@ test("the Ideas page carries the shared shell, tabs, a detail popup and the Even
   assert.match(html, /<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
   assert.match(html, /<link rel="stylesheet" href="\/css\/ideas\.css">/);
-  assert.match(html, /id="navUnreadBadge" hidden/);
-  assert.match(html, /id="docReading">Doc is reading: Ideas</);
-  assert.match(html, /<div class="tabs" id="ideaTabs" role="tablist"/);
+  assert.match(html, /id="appShell"/);
+  assert.doesNotMatch(html, /id="docReading"/, "shared Doc presence owns page identity");
+  assert.match(html, /<div data-layout-slot="tabs" class="page-views" id="ideaTabs" role="tablist"/);
   assert.match(html, /role="tab"[^>]*>Ideas</);
   assert.match(html, /role="tab"[^>]*>Events</);
   assert.match(html, /<dialog id="ideaDialog" class="dialog"/);
@@ -269,4 +270,15 @@ test("a phone can reach every timeline node when the SVG exceeds the viewport", 
     "touch swipes stay within the timeline");
   assert.match(await read("js/ideas.js"), /Math\.max\(320, rows\.length \* 126/,
     "four nodes still get their full width instead of being compressed into 390 px");
+});
+
+test("Ideas search field shrinks inside its card at phone width", async () => {
+  const sheet = await read("css/ideas.css");
+  const searchRule = sheet.match(/\.idea-search\s*\{[^}]*\}/)?.[0] || "";
+  assert.ok(searchRule.includes("min-width: 0"), "the field must start from a zero floor");
+  assert.ok(searchRule.includes("max-width: 100%"), "the field cannot exceed its card");
+  assert.ok(!searchRule.includes("min(320px"), "a 320px floor overflows a padded phone-width card");
+  const inputRule = sheet.match(/\.idea-search input\s*\{[^}]*\}/)?.[0] || "";
+  assert.ok(inputRule.includes("width: 100%"), "the input fills the field instead of overflowing");
+  assert.ok(inputRule.includes("min-width: 0"), "the input can shrink with the field");
 });

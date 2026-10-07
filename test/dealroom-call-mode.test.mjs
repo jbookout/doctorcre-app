@@ -110,7 +110,7 @@ function drawnButton(html, attribute, value) {
 
 // ------------------------------------------------------------ fakes
 
-function harness({ agenda = [], state = { state: "idle" }, statuses = [], contextDeals } = {}) {
+function harness({ agenda = [], state = { state: "idle" }, statuses = [], contextDeals, withAgenda = true } = {}) {
   const doc = callModeDocument();
   const requests = [];
   const timers = [];
@@ -149,7 +149,7 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
     agendaDeals: () => agenda,
     scope: () => ({ workspace_kind: "team" }),
     toast: (message) => calls.toasts.push(message),
-    startAgenda: async () => { calls.startAgenda += 1; },
+    ...(withAgenda ? { startAgenda: async () => { calls.startAgenda += 1; } } : {}),
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearInterval: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
     now: () => Date.parse("2026-09-23T15:01:05Z"),
@@ -423,7 +423,7 @@ test("the context index is shaped to the companion's exact contract and never in
 
 test("the shipped Deal Room carries Call Mode: button, consent, both call kinds, Stop and the review panel", async () => {
   const html = await file("index.html");
-  assert.match(html, /<button type="button" class="call-mode-button" id="callModeButton" aria-haspopup="dialog" aria-label="Open Call Mode">/);
+  assert.match(await file("js/app-shell.js"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"/);
   assert.match(html, /<dialog id="callModeDialog"[^>]*aria-labelledby="callModeTitle"/);
   assert.match(html, /<input type="checkbox" id="callModeConsent">/, "consent is an unticked checkbox");
   assert.match(html, /I have told everyone on this call that it will be recorded\./);
@@ -434,7 +434,7 @@ test("the shipped Deal Room carries Call Mode: button, consent, both call kinds,
   assert.match(html, /Nothing is written to a deal and no email draft is created until Joe or Dell approves that item\./);
   assert.doesNotMatch(html, /id="callsButton"|not part of this release/, "the inert Calls notice is gone");
   assert.match(html, /<tbody id="rows">/, "the sentinel the shell boots on");
-  assert.equal((html.match(/<script/g) || []).length, 1, "CSP is script-src 'self': one module tag");
+  assert.equal((html.match(/<script/g) || []).length, 3, "theme boot, app, and shared shell scripts are self-hosted");
 });
 
 test("the shell wires Call Mode to its own controls and boots only inside its own page", async () => {
@@ -451,4 +451,14 @@ test("the shell wires Call Mode to its own controls and boots only inside its ow
   }
   const worker = await file("src/worker.js");
   assert.match(worker, /connect-src 'self' http:\/\/127\.0\.0\.1:4682/, "the CSP admits exactly the loopback companion");
+});
+
+test('shared weekly Call mode records with consent without claiming a page agenda opened',async()=>{
+ const {controller,doc,calls,requests}=harness({agenda:agendaOf(2),withAgenda:false});
+ doc.getElementById('callModeConsent').checked=true;
+ await controller.handleClick(doc.querySelector('[data-call-mode-start="weekly_deal_call"]'));
+ assert.equal(requests.filter(request=>request.url.endsWith('/api/start')).length,1);
+ assert.equal(calls.publishCallContext.length,1);assert.equal(calls.startAgenda,0);
+ assert.ok(calls.toasts.includes('Weekly deal call is recording.'));assert.ok(calls.toasts.every(text=>!text.includes('agenda is open')));
+ assert.equal(controller.state.postCall.status,'context_ready');
 });

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-density="comfortable" data-motion="full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Search · DoctorCRE</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/system.css">
+  <link rel="stylesheet" href="/css/business-workspace.css">
+  <link rel="stylesheet" href="/css/app-shell.css">
+</head>
+<body>
+  <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
+  <a class="skip" href="#main">Skip to search</a>
+  <main id="main" class="shell">
+    <div data-layout-slot="sidebar" class="hero"><div><p class="eyebrow">Across authorized records</p><h1>Search</h1></div></div>
+    <section class="card glass" data-search="ask" aria-labelledby="searchTitle">
+      <div class="card-heading"><h2 id="searchTitle">Find a record</h2></div>
+      <form id="searchForm"><div class="field"><label for="searchQuery">Name to search</label><input id="searchQuery" type="search" maxlength="200" autocomplete="off" placeholder="Person, practice, building, deal, lead or vendor"></div><div class="row-wrap"><button class="btn btn-primary" type="submit">Search</button><span class="small" id="searchCount"></span></div></form>
+      <p class="caption" id="searchAuthorization"></p>
+    </section>
+    <p class="sr-only" id="searchLive" aria-live="polite" role="status"></p>
+    <div class="state-block" id="searchState" data-state="empty" hidden></div>
+    <div class="card glass" id="searchRefusal" data-search="refusal" hidden></div>
+    <div class="card glass" id="searchCandidates" data-search="disambiguation" hidden></div>
+    <div id="searchResults" class="search-results" aria-busy="false"></div>
+    <div class="card glass" id="searchRetired" data-search="retired" hidden></div>
+    <section class="card glass" data-search="scope" aria-labelledby="searchScopeTitle"><div class="card-heading"><h2 id="searchScopeTitle">Scope</h2></div><div class="chip-bar"><span class="chip-list" id="searchChips"></span></div><p class="caption" id="searchScopeNote">These chips filter the answer already received.</p></section>
+    <section class="card glass" data-search="views" aria-labelledby="savedViewTitle"><div class="card-heading"><h2 id="savedViewTitle">Saved views</h2></div><div class="field"><label for="saveViewName">Name for this view</label><input id="saveViewName" type="text" maxlength="60" autocomplete="off"></div><div class="row-wrap"><button class="btn" type="button" id="saveViewButton">Save this view</button><button class="btn btn-quiet" type="button" id="resetViewsButton">Reset</button></div><div class="chip-bar"><span class="chip-list" id="savedViewList"></span></div><p class="caption" id="savedViewNote">Saved views stay in this browser.</p></section>
+    <section class="card glass" data-search="not_searched" aria-labelledby="searchNotSearchedTitle"><div class="card-heading"><h2 id="searchNotSearchedTitle">Search coverage</h2></div><p class="caption" id="searchNotSearched">People, practices, buildings, deals, leads and vendors.</p><p class="caption" id="searchExposure">Search terms remain in this browser's address bar until cleared.</p></section>
+  </main>
+  <script type="module" src="/js/search-page.js"></script>
+</body>
+</html>

@@ -1,21 +1,26 @@
+import { dealInsightLines } from './pipeline-model.js';
+import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
+import { entryDetailsHtml } from './entry-details.mjs';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
 import { createPostCallClient } from './post-call-client.js';
 import { createCallMode, CALL_MODE_URL, CALL_MODE_HEADER } from './call-mode.js';
 import {
-  REVERTIBLE_FIELDS, escapeText, parkingReasonLabel, ingestChangeEvents,
-  receiptViews, receiptListHtml, receiptsSignature, receiptsAnnouncement,
-  createFeedProgress, observeChangeBatch, createUndoState, performUndo, fieldLabel, readableValue,
+  REVERTIBLE_FIELDS, escapeText, parkingReasonLabel, ingestChangeEvents, receiptViews,
+  receiptListHtml, receiptsSignature, receiptsAnnouncement, createFeedProgress, observeChangeBatch,
+  performUndo, fieldLabel, readableValue,
 } from './change-receipts.mjs';
 import {
   createBoardSync, batchTouchesBoard, resolveCurrentRow, SYNC_STATES, HEALTH,
 } from './board-sync.mjs';
 import {
-  cellKey, createFieldWriteState, performFieldWrite, unresolvedFieldWrites,
-  pendingFieldWrite, fieldWriteMessage, nextCellBase,
+  cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
-import { classifyCommandOutcome, commandMessage } from './command-feedback.mjs';
+import { classifyCommandOutcome, commandMessage, pendingCommand } from './command-feedback.mjs';
+import { renderAccountCards } from './account-cards.js';
+import { mountEvidence } from './correspondence.js';
+import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -55,14 +60,14 @@ const state = {
   // request as it was sent — value, base and idempotency key — so a retry is the
   // SAME operation and not a second one. Never a value store; the board's values
   // come from a snapshot. See field-write-reconciliation.mjs.
-  fieldWrites: createFieldWriteState(),
+  fieldWrites: {},
   nextStepRequests: new Map(), nextStepInFlight: new Set(),
   presence: [], captureSessions: [],
   confirms: [], review: null, pollTimer: null, boardRefreshTimer: null,
   // Recent changes are session memory only: bounded, never stored, and never
   // a substitute for the deal's own Change history. The feed cursor starts at
   // the beginning of the log, so nothing is shown until it reaches the present.
-  receipts: [], undo: createUndoState(), feed: createFeedProgress(),
+  receipts: [], undo: {}, feed: createFeedProgress(),
   receiptSignature: null, receiptFocus: null, receiptAnnounced: null,
   // What the unconfirmed-changes bar last drew, so a poll does not rewrite it —
   // a render memo, exactly like receiptSignature. The operations themselves live
@@ -81,7 +86,9 @@ const account = () => state.accounts.find((item) => item.account_client_id === s
 
 function daysFromNow(value) {
   if (!value) return null;
-  return Math.round((new Date(`${value}T12:00:00`) - today()) / 864e5);
+  const baseline = today();
+  baseline.setHours(12);
+  return Math.round((new Date(`${value}T12:00:00`) - baseline) / 864e5);
 }
 
 function dateLabel(value) {
@@ -176,19 +183,11 @@ function syncDetailNode() {
  */
 function syncDetail(status) {
   const at = status.last_read_at ? clockLabel(status.last_read_at) : null;
-  const board = status.board_health === HEALTH.OK
-    ? `Board values are from the last successful read at ${at}; they change when the next read succeeds.`
-    : status.board_health === HEALTH.RENDER_FAILED
-      ? `The last board snapshot could not be shown${status.board_error ? ` (${status.board_error})` : ''}, so what is on screen is older than the answer that arrived.`
-      : at
-        ? `The board could not be re-read${status.board_error ? ` (${status.board_error})` : ''}. Values are from the last successful read at ${at}.`
-        : 'No board read has succeeded yet in this session.';
-  const feed = status.feed_health === HEALTH.OK
-    ? 'The change feed answered on its last read.'
-    : status.feed_health === HEALTH.FAILED
-      ? `The change feed is not answering${status.feed_error ? ` (${status.feed_error})` : ''}, so new receipts and presence may be missing.`
-      : 'The change feed has not been read yet.';
-  return `${board} ${feed}`;
+  const board = status.board_health === HEALTH.OK ? `Updated ${at}`
+    : status.board_health === HEALTH.RENDER_FAILED ? `Display unavailable · Updated ${at || 'unknown'}`
+    : at ? `Connection interrupted · Updated ${at}` : 'Updating…';
+  const feed = status.feed_health === HEALTH.FAILED ? 'Activity temporarily unavailable' : '';
+  return `${board}${feed ? ` · ${feed}` : ''}`;
 }
 
 /**
@@ -201,8 +200,8 @@ function setSync(status) {
   const live = state.mode === 'live';
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
-    : status.state === SYNC_STATES.RECONNECTING ? (live ? 'Reconnecting' : 'Fixture unavailable')
-    : status.state === SYNC_STATES.READY ? (live ? 'Live sync' : 'Fixture ready')
+    : status.state === SYNC_STATES.RECONNECTING ? 'Reconnecting'
+    : status.state === SYNC_STATES.READY ? 'Current'
     : 'Syncing…';
   el.classList.toggle('offline',
     [SYNC_STATES.OFFLINE, SYNC_STATES.RECONNECTING, SYNC_STATES.ERROR].includes(status.state));
@@ -253,7 +252,7 @@ function applyBoardSnapshot(home) {
   state.accounts = home.accounts || [];
   for (const deal of state.deals.values()) if (!deal.last_review_at) state.changed.add(deal.id);
   $('#selfAvatar').textContent = state.selfActor === 'dell' ? 'D' : state.selfActor === 'joe' ? 'J' : '?';
-  $('#selfAvatar').setAttribute('aria-label', `Signed in as ${actorName(state.selfActor)}`);
+  document.dispatchEvent(new CustomEvent('doctorcre:partner', { detail: state.selfActor }));
 }
 
 async function pollOnce(initial = false, { force = false } = {}) {
@@ -381,7 +380,12 @@ function render() {
 }
 
 function renderChrome() {
-  $$('.workspace').forEach((button) => button.classList.toggle('on', button.dataset.workspace === state.workspace));
+  $$('.workspace').forEach((button) => {
+    const active = button.dataset.workspace === state.workspace;
+    button.classList.toggle('on', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   $$('.filter').forEach((button) => button.classList.toggle('on', button.dataset.filter === state.filter));
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
@@ -393,10 +397,7 @@ function renderChrome() {
   // description sentence under its title (2026-09-16 review).
   $('#workspaceTitle').textContent = state.query ? 'Search results' : state.workspace === 'team' ? 'Deals'
     : selected?.account_name || 'National Accounts';
-  $('#workspaceSubtitle').textContent = state.query ? 'Searching work records across the territory and every national account.'
-    : state.workspace === 'team' ? ''
-    : selected ? `${actorName(selected.account_owner)} owns the account; each market deal keeps its assigned agent and owner.`
-    : 'One account can hold dozens of market-level transactions without crowding the territory agenda.';
+  $('#workspaceSubtitle').textContent = state.query ? 'Searching work records across the territory and every national account.' : '';
   const addLabel = state.workspace === 'national_account' ? (selected ? 'Add market deal' : 'Add national account') : 'Add work record';
   $('#stickyAddButton').textContent = `+ ${addLabel}`;
   $('#stickyAddButton').setAttribute('aria-label', addLabel);
@@ -411,15 +412,7 @@ function renderChrome() {
 
 function renderAccounts() {
   const grid = $('#accountGrid');
-  grid.innerHTML = state.accounts.length ? state.accounts.map((item) => `
-    <button type="button" class="account-card" data-account="${esc(item.account_client_id)}">
-      <header><div><p class="eyebrow">${esc(item.account_client_ref || 'National account')}</p><h2>${esc(item.account_name)}</h2></div>
-        <span class="account-owner" title="Owned by ${esc(actorName(item.account_owner))}">${item.account_owner === 'dell' ? 'D' : item.account_owner === 'joe' ? 'J' : '?'}</span></header>
-      <div class="account-metrics"><div><b>${Number(item.open_deals || 0)}</b><span>Active work</span></div>
-        <div><b>${Number(item.attention_deals || 0)}</b><span>Attention</span></div>
-        <div><b>${Number(item.stale_deals || 0)}</b><span>Gone quiet</span></div></div>
-      <footer>${Number(item.parked_deals || 0)} parked · Last account review: ${esc(relative(item.last_review_at))} · Open agenda →</footer>
-    </button>`).join('') : '<div class="empty">No national accounts yet. Add the first portfolio when it is won.</div>';
+  grid.innerHTML = renderAccountCards(state.accounts, { esc, relative, actorName });
 }
 
 /**
@@ -483,6 +476,8 @@ function renderBoardOnly() {
   renderPendingWrites();
   if ($('#boardSection').hidden) return;
   const deals = workspaceDeals();
+  setDocFilters({ workspace:state.workspace, account:state.accountId, filter:state.filter, query:state.query });
+  if (state.boardSync?.status().board_health === 'ok' && !state.boardSync.status().board_read_in_flight) publishDocRead('getBoard', { deals }, []);
   renderStats(deals);
   renderFocus(deals);
   const rows = $('#rows');
@@ -655,7 +650,8 @@ function focusReceipt(eventId) {
 function goToReceipts() {
   const panel = $('#receiptsPanel');
   if (panel.hidden) return;
-  panel.scrollIntoView({ block: 'start' });
+  document.dispatchEvent(new Event('doctorcre:open-today'));
+  if (!document.getElementById('appToday')) panel.scrollIntoView({ block: 'start' });
   $('#receiptsTitle').focus({ preventScroll: true });
 }
 
@@ -876,7 +872,7 @@ function reconcileNewerState(dealId, field, result, options = {}) {
  * the key, the base and the value identical.
  */
 async function retryCellWrite(cell, trigger = null) {
-  const entry = pendingFieldWrite(state.fieldWrites, cell);
+  const entry = pendingCommand(state.fieldWrites, cell);
   if (!entry) { renderBoardOnly(); return null; }
   const { deal, field, value } = entry.request;
   // The retry is answered on the surface it was asked from: a Retry pressed in
@@ -1037,7 +1033,9 @@ function marketAgentForm(dealId) {
 }
 
 function addTeamDealForm() {
-  openForm({ title:'Add work record', submit:'Create work record', body:`
+  const pending = state.pendingDealCreation?.request;
+  openForm({ title:'Add work record', submit:pending ? 'Check creation outcome' : 'Create work record', body:pending ? `
+    <div class="field"><b>${esc(pending.name)}</b><p>Client: ${esc(pending.client)}</p><p>${esc(pending.deal_type || 'other')} · ${esc(pending.phase || 'On Deck')} · ${esc(pending.market || '')} · ${esc(pending.segment || '')}</p><small>Check creation outcome continues this retained work record.</small></div>` : `
     <div class="field"><label for="clientRef">Existing client</label><input id="clientRef" name="client" required placeholder="C-127 or exact client name"><small>A work record always belongs to a client. This prevents free-floating or duplicate records.</small></div>
     <div class="field"><label for="dealName">Record name</label><input id="dealName" name="name" required></div>
     <div class="field-row"><div class="field"><label for="dealType">Type</label><select id="dealType" name="deal_type"><option value="startup">Startup</option><option value="relocation">Relocation</option><option value="additional_office">Additional office</option><option value="renewal">Renewal</option><option value="expansion">Expansion</option><option value="purchase">Purchase</option><option value="other">Other</option></select></div>
@@ -1045,8 +1043,17 @@ function addTeamDealForm() {
     <div class="field-row"><div class="field"><label for="dealMarket">Market</label><input id="dealMarket" name="market"></div><div class="field"><label for="dealSegment">Healthcare vertical</label><input id="dealSegment" name="segment" placeholder="Dental, Vet, DPC…"></div></div>`,
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
-      await state.client.createDeal({ ...args, lane:'territory', idempotency_key:uuidv4() });
+      const signature = JSON.stringify(args);
+      if (!pending && state.pendingDealCreation && state.pendingDealCreation.signature !== signature) throw new Error('Reopen Add work record to check the retained creation before changing its fields.');
+      state.pendingDealCreation ||= { signature, request: { ...args, lane:'territory', idempotency_key:uuidv4() } };
+      const operation = state.pendingDealCreation;
+      try { await state.client.createDeal(operation.request); }
+      catch (error) {
+        if (error.creationRefused && state.pendingDealCreation === operation) state.pendingDealCreation = null;
+        throw error;
+      }
       await loadHome(); showToast('Work record created in Deals');
+      state.pendingDealCreation = null;
     } });
 }
 
@@ -1112,8 +1119,25 @@ function detailRows(items, renderer, empty='Nothing captured yet.') {
   return items?.length ? items.map(renderer).join('') : `<div class="detail-row">${esc(empty)}</div>`;
 }
 
-async function openDeal(dealId) {
+let disposeDealEvidence = null;
+let dealDetailSequence = 0;
+let dealDetailSnapshot = null;
+async function openDeal(dealId, { background = false } = {}) {
+  if (!background) selectDocRecord('deal', dealId);
+  const dialog = $('#dealDialog');
+  if (background && (!dialog.open || dialog.dataset.dealId !== dealId)) return;
+  const sequence = ++dealDetailSequence;
   const detail = await state.client.getDeal(dealId);
+  if (sequence !== dealDetailSequence) return;
+  if (background && (!dialog.open || dialog.dataset.dealId !== dealId || $('#formDialog').open || dialog.querySelector('[data-jev-deal]:disabled'))) return;
+  // Interaction may have changed during the read. Capture it at paint time.
+  const scroll = dialog.scrollTop;
+  const disclosures = background ? [...dialog.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent) : [];
+  const advice = background ? dialog.querySelector('[data-jev-result]')?.innerHTML : null;
+  const focused = background && dialog.contains(document.activeElement) ? document.activeElement : null;
+  const focusAttributes = focused ? [...focused.attributes].filter(a => a.name === 'id' || a.name.startsWith('data-')).map(a => [a.name, a.value]) : [];
+  const unchanged = JSON.stringify(detail) === dealDetailSnapshot;
+  dealDetailSnapshot = JSON.stringify(detail);
   const deal = detail.deal;
   const parked = deal.operating_state === 'parked';
   const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
@@ -1122,41 +1146,42 @@ async function openDeal(dealId) {
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
       <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.market_agent || actorName(deal.owner))}</p></div>
       <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
-      <section class="detail-section"><h3>Jev deal reading</h3><p class="subhead">On-demand advice from the recorded evidence. It does not change the deal.</p><button type="button" data-jev-deal="${esc(deal.id)}">Read this deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
+      <section class="detail-section"><h3>Insights</h3><button type="button" class="secondary" data-jev-deal="${esc(deal.id)}">Review deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
       <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))} · source: ${esc(d.source || 'not captured')}</small></div>`)}</div></section>
+      <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Premises</h3><div class="detail-list">${detailRows(detail.premises, (p) => `<div class="detail-row"><b>${esc(p.label)}</b><small>${esc([p.address,p.suite,p.city,p.state].filter(Boolean).join(' · '))}${p.area_amount ? ` · ${esc(p.area_amount)} ${esc(p.area_basis || 'SF')}` : ''}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Negotiation rounds</h3><div class="detail-list">${detailRows(detail.negotiation_rounds, (n) => `<div class="detail-row"><b>Round ${esc(n.round_no)} · ${esc(n.side)}</b><small>${esc(n.rate_amount ? `${n.rate_amount} ${n.rate_basis || ''}` : 'Rate not captured')} · ${esc(n.term_months ? `${n.term_months} months` : 'Term not captured')}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Participants</h3><div class="detail-list">${detailRows(detail.participants, (p) => `<div class="detail-row"><b>${esc(p.name)}</b><small>${esc(String(p.role).replaceAll('_',' '))}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Recent activity</h3><div class="detail-list">${detailRows(detail.activities, (a) => `<div class="detail-row"><b>${esc(a.summary)}</b><small>${esc(actorName(a.actor))} · ${esc(relative(a.occurred_at))} · ${esc(a.kind)}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${esc(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
+      <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${entryDetailsHtml(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}</small></div>`)}</div></section>
       <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
     </div>`;
+  disposeDealEvidence?.();
   $('#dealDetail').innerHTML = html;
-  $('#dealDialog').showModal();
+  const clock = document.createElement('time'); clock.className = 'as-of'; clock.textContent = updatedLabel(new Date().toISOString());
+  $('#dealDetail header').append(clock);
+  const evidenceRoot = document.createElement('div');
+  $('#dealDetail .deal-content').append(evidenceRoot);
+  disposeDealEvidence = mountEvidence(evidenceRoot, { client: state.client, detail });
+  dialog.dataset.dealId = dealId;
+  if (unchanged && advice) dialog.querySelector('[data-jev-result]').innerHTML = advice;
+  for (const node of dialog.querySelectorAll('details')) node.open = disclosures.includes(node.querySelector('summary')?.textContent);
+  if (!dialog.open) dialog.showModal();
+  if (background) dialog.scrollTop = scroll;
+  if (focused) [...dialog.querySelectorAll(focused.tagName)].find(node =>
+    focusAttributes.length ? focusAttributes.every(([name, value]) => node.getAttribute(name) === value) : node.textContent === focused.textContent)?.focus({ preventScroll: true });
 }
 
 async function readJevDeal(button) {
   const target = $('#dealDialog [data-jev-result]');
   button.disabled = true;
-  target.innerHTML = '<div class="detail-row">Reading recorded evidence…</div>';
+  target.innerHTML = '<div class="detail-row">Reviewing…</div>';
   try {
     const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
-    if (!reading.judged) {
-      const message = reading.reason === 'insufficient_recorded_evidence'
-        ? 'Not enough recorded deal evidence for a reliable reading yet.'
-        : 'Jev is unavailable for this reading.';
-      target.innerHTML = `<div class="detail-row">${esc(message)}</div>`;
-      return;
-    }
-    const waiting = String(reading.waiting_on || 'not recorded').replaceAll('_', ' ');
-    const silence = Math.round(Number(reading.silence_is_bad) * 100);
-    target.innerHTML = `<div class="detail-row"><b>Movement ${esc(reading.movement_rung)} of ${esc(reading.movement_rungs)}</b><small>${esc(reading.movement_label)}</small></div>
-      <div class="detail-row"><b>Waiting on: ${esc(waiting)}</b><small>Jev judgment; verify against the record.</small></div>
-      <div class="detail-row"><b>Silence concern: ${esc(silence)}%</b><small>Model probability, not a deal-close forecast.</small></div>`;
+    target.innerHTML = dealInsightLines(reading).map(line => `<div class="detail-row">${esc(line)}</div>`).join('');
   } catch {
-    target.innerHTML = '<div class="detail-row">Jev is unavailable for this reading.</div>';
+    target.innerHTML = `<div class="detail-row">${esc(dealInsightLines(null)[0])}</div>`;
   } finally {
     button.disabled = false;
   }
@@ -1208,11 +1233,15 @@ function renderAgenda() {
 async function advanceAgenda(disposition) {
   const review = state.review;
   const deal = review?.deals[review.index];
-  if (!review || !deal) return;
-  await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
-  review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
-  review.index += 1;
-  renderAgenda();
+  if (!review || !deal || review.advancing) return;
+  review.advancing = true;
+  try {
+    await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
+    if (state.review !== review) return;
+    review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
+    review.index += 1;
+    renderAgenda();
+  } finally { review.advancing = false; }
 }
 
 async function finishAgenda(status = 'completed') {
@@ -1226,9 +1255,19 @@ async function finishAgenda(status = 'completed') {
 }
 
 function wireEvents() {
+  $('#dealDialog').addEventListener('close', () => {
+    ++dealDetailSequence;
+    disposeDealEvidence?.();
+    disposeDealEvidence = null;
+  });
   document.addEventListener('click', async (event) => {
     const workspace = event.target.closest('[data-workspace]');
-    if (workspace) { state.workspace = workspace.dataset.workspace; state.accountId = null; state.filter = 'active'; state.deepLinkMine = false; state.query = ''; $('#search').value = ''; render(); return; }
+    if (workspace) {
+      state.workspace = workspace.dataset.workspace;
+      state.accountId = null; state.filter = 'active'; state.deepLinkMine = false; state.query = ''; $('#search').value = '';
+      history.pushState({ dealView: state.workspace }, '', state.workspace === 'team' ? '/deals' : '/deals?view=national');
+      render(); return;
+    }
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
     const retryWrite = event.target.closest('[data-retry-write]');
@@ -1274,16 +1313,7 @@ function wireEvents() {
   $('#agendaSkip').onclick = () => advanceAgenda('skipped');
   $('#agendaEnd').onclick = () => finishAgenda('completed');
   $('#agendaClose').onclick = () => finishAgenda('abandoned');
-  $('#themeButton').onclick = () => { document.body.classList.toggle('night'); localStorage.setItem('dealroom-theme',document.body.classList.contains('night')?'night':'light'); };
-  $('#colorAssistButton').onclick = () => {
-    const enabled = !document.body.classList.contains('color-assist');
-    document.body.classList.toggle('color-assist', enabled);
-    const button = $('#colorAssistButton');
-    button.setAttribute('aria-pressed', String(enabled));
-    button.setAttribute('aria-label', `${enabled ? 'Turn off' : 'Turn on'} color-blind-friendly view`);
-    localStorage.setItem('dealroom-color-assist', enabled ? 'on' : 'off');
-    showToast(enabled ? 'Color-friendly view on · patterns and labels supplement color' : 'Color-friendly view off');
-  };
+
   // Coming back is not the same as being current: BOTH reads start again from
   // scratch, and `force` supersedes whatever was left hanging when the
   // connection went away rather than queueing behind it. Without the forced
@@ -1303,15 +1333,23 @@ function wireEvents() {
 }
 
 async function boot() {
-  if (localStorage.getItem('dealroom-theme') === 'night') document.body.classList.add('night');
-  if (localStorage.getItem('dealroom-color-assist') === 'on') {
+  let savedTheme = 'dark', colorAssist = false;
+  try { savedTheme = localStorage.getItem('dealroom-theme') || 'dark'; colorAssist = localStorage.getItem('dealroom-color-assist') === 'on'; } catch {}
+  document.body.classList.toggle('night', savedTheme !== 'light');
+  if (colorAssist) {
     document.body.classList.add('color-assist');
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');
-    $('#colorAssistButton').setAttribute('aria-label', 'Turn off color-blind-friendly view');
+    $('#colorAssistButton').setAttribute('aria-label', 'Color assist');
   }
   const bootConfig = resolveDealroomBoot(location);
   const params = new URLSearchParams(location.search);
   if (params.get('workspace') === 'team') state.workspace = 'team';
+  if (params.get('view') === 'national') state.workspace = 'national_account';
+  window.addEventListener('popstate', () => {
+    state.workspace = new URLSearchParams(location.search).get('view') === 'national' ? 'national_account' : 'team';
+    state.accountId = null;
+    render();
+  });
   if (params.get('filter') === 'flagged') { state.filter = 'flagged'; state.deepLinkMine = params.get('owner') === 'me'; }
   const identity = deploymentIdentity(bootConfig.mode);
   state.mode = bootConfig.mode;
@@ -1321,6 +1359,7 @@ async function boot() {
   badge.title = identity.detail;
   badge.setAttribute('aria-label', identity.detail);
   state.client = await createClient(bootConfig.mode, bootConfig.options);
+  mountAutoRefresh({ document, window, shouldRefresh: () => $('#dealDialog').open && !$('#formDialog').open && !$('#dealDialog').querySelector('[data-jev-deal]:disabled'), refresh: () => openDeal($('#dealDialog').dataset.dealId, { background: true }) });
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace:'all' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
@@ -1332,6 +1371,7 @@ async function boot() {
   installCallMode();
   wireEvents();
   await loadHome();
+  const linkedDeal = params.get('deal');
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one.
@@ -1347,6 +1387,15 @@ async function boot() {
   state.boardRefreshTimer = setInterval(() => {
     state.boardSync.requestRefresh('periodic');
   }, BOARD_REFRESH_MS);
+  if (linkedDeal && state.deals.has(linkedDeal)) {
+    try { await openDeal(linkedDeal); }
+    catch (error) {
+      $('#dealDetail').innerHTML = '<header><h2>Deal details unavailable.</h2><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></header>';
+      $('#dealDialog').dataset.dealId = linkedDeal;
+      $('#dealDialog').showModal();
+      console.error('Linked deal details unavailable', error);
+    }
+  }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(()=>{});
 }
 
@@ -1361,3 +1410,5 @@ if (typeof document !== 'undefined' && document.getElementById('rows')) {
     document.body.insertAdjacentHTML('afterbegin', `<div class="offline">Deal Room could not start: ${esc(error.message)}</div>`);
   });
 }
+
+if (typeof document !== 'undefined') document.getElementById('dealDialog')?.addEventListener('close', () => selectDocRecord(null, null));

@@ -1,15 +1,28 @@
+import { createInvoiceFixture } from './invoice-tracker-fixture.js';
+import { relationshipNetworkFixture } from './relationship-network-fixture.js';
+import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
 /**
  * Fixture client: full WO-1 contract against in-memory state seeded from
  * data/board-seed.json. Zero network. Live and fixture share one interface.
  */
+import { CONNECTION_NAMES } from './connections-model.js';
 import { uuidv4 } from './uuid.js';
+import { observeDocClient } from './doc-context.js';
 import { PHASES } from './client.js';
+import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
+import { readinessRequest, threadRequest } from './correspondence-model.js';
 import {
   MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
 } from './workspace-command-center-model.js';
 
 const LEASE_TTL_MS = 3000;
 const IDEM_TTL_MS = 60 * 60 * 1000;
+const CORRESPONDENCE_CEILING = {
+  dispatchable: false, provider_operation: null, send_authority_holder: 'human_partner_outside_carr',
+  send_authority_seam: 'step:v5-representative-workflow-external-send-authority-decision', automatic_internal_update: false,
+  effects: { creates_effect: false, database_writes: 0, network_calls: 0, provider_actions: 0,
+    notifications: 0, schedules: 0, deployments: 0, activations: 0, acceptances: 0 },
+};
 /** The cells patch-deal-field bases on; mirrors the record layer's DEAL_ROOM_FIELDS. */
 const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_state'];
 
@@ -19,6 +32,7 @@ const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_sta
  * @param {string} [opts.selfActor]
  */
 export async function createFixtureClient(opts = {}) {
+  const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
   const seedUrl = opts.seedUrl || new URL('../data/board-seed.json', import.meta.url).href;
   const seed = await fetch(seedUrl).then((r) => {
     if (!r.ok) throw new Error(`fixture seed failed: ${r.status}`);
@@ -261,11 +275,20 @@ export async function createFixtureClient(opts = {}) {
       // The partner's own words, carried on the event and nowhere else: they
       // describe the change, not the deal, so the deal row never learns them.
       change_reason: partial.change_reason ?? null,
+      automatic: partial.automatic ?? false,
+      evidence_date: partial.evidence_date ?? null,
       human_quote: partial.human_quote ?? null,
     };
     events.push(e);
     if (e.field) lastFieldEvent.set(`${e.subject_id}|${e.field}`, e.id);
     return e;
+  }
+
+  function phaseChangeFor(id) {
+    const e = [...events].reverse().find(e => e.subject_id === id && e.field === 'phase');
+    return e ? { event_id:e.id, prior_phase:e.old_value, phase:e.new_value,
+      automatic:e.automatic === true && e.verb !== 'revert-deal-field', reason:e.change_reason,
+      evidence_date:e.evidence_date, recorded_at:e.recorded_at } : null;
   }
 
   /**
@@ -426,7 +449,7 @@ export async function createFixtureClient(opts = {}) {
         closure: { work: facet('complete', 'demo-merge-903', 'all planned slices have a bound receipt and independent pass'), proof: unresolved('receipts are executor claims until independently reviewed'), explanation: facet('complete', 'demo-explain-903', 'derived from canonical persisted facts'), release: facet('complete', 'demo-release-903', 'all required slices are verified'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
     ['WR-000904', { ref: 'WR-000904', title: 'Demo captured in error', state: 'captured', version: 1, portfolio_ref: null, passport: null }],
     ['WR-000905', { ref: 'WR-000905', title: 'Demo stale plan', state: 'ready', version: 3, portfolio_ref: 'PF-DEMO-1',
-      passport: passport({ work_request: 'WR-000905', closure_state: 'complete', stale: true, slices: [slice('SL-905-1', 'verified_complete')],
+      passport: passport({ work_request: 'WR-000905', closure_state: 'complete', stale: true, slices: [slice('SC-901-1', 'verified_complete')],
         closure: { work: facet('complete', 'demo-merge-905', 'all planned slices have a bound receipt and independent pass'), proof: facet('complete', 'demo-proof-905', 'all receipts are independently reviewed'), explanation: facet('complete', 'demo-explain-905', 'derived from canonical persisted facts'), release: facet('complete', 'demo-release-905', 'all required slices are verified'), learning: { state: 'unresolved', route: null, evidence_refs: [], note: 'learning remains a proposal/disposition seam' } } }) }],
   ]);
   const portfolios = new Map([
@@ -459,158 +482,10 @@ export async function createFixtureClient(opts = {}) {
    * Every name starts with "Demo " so nothing here can be mistaken for a record.
    */
 
-  /* ------------------------------------------- Sessions tab fixtures (V5-UX-S02)
-   *
-   * The identity corpus is the REAL production answer, captured read-only as Joe
-   * on 2026-09-18 against producer 0f6cb388 and held verbatim in
-   * test/fixtures/session-identity.json. Three numbers in it are the point:
-   * total_seen 603, total_returned 124, and 25 rows. `total_returned` is the
-   * post-permission-filter total BEFORE `limit`, so a fixture whose
-   * total_returned equalled sessions.length would hide the one invariant this
-   * tab exists to render honestly, and is forbidden.
-   *
-   * Every live row carries the same seven constants — harvested surface, derived
-   * alias, unknown state, harvest observation, unsupported host, unknown parent,
-   * one attempt — so they are spelled once in `harvested()` and the 25 rows below
-   * differ only where the production rows differ. Test S02-20 compares the whole
-   * corpus against the captured file, so "verbatim" is checked rather than
-   * asserted.
-   *
-   * FOUR synthetic rows follow, and no more. Each one exists for a branch the
-   * live corpus cannot reach, each is named with the branch it serves, and each
-   * is marked `synthetic: true` in the capture file. That marker is NOT part of
-   * the payload the page sees: the page must not be able to render it.
-   */
-  const harvested = (id, name, affinity, evidence, observedAt) => ({
-    canonical_session_id: id,
-    surface: 'harvested',
-    display_name: name,
-    alias_source: 'derived',
-    parent_session_id: null,
-    parent_known: false,
-    native_host_id: null,
-    native_host_supported: false,
-    work_state: 'unknown',
-    work_state_evidence: evidence,
-    last_observed_at: observedAt,
-    observation_source: 'harvest',
-    project_affinity: affinity,
-    latest_cwd: null,
-    latest_model_id: null,
-    attempt_count: 1,
-    latest_attempt_ref: null,
-  });
+  // Synthetic session pages preserve the three independent counts and lineage cases.
+  const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
 
-  const SESSION_LIVE_ROWS = [
-    harvested("promise:phone-doc-no-claude", "Phone Doc does not spawn Claude", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("promise:loop-455-waits-fable", "Loop 455 waits for Fable", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("promise:codex-trees-stay", "Codex control-plane trees stay", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("promise:bot-mode-parked", "Bot Mode parked", "promise", "harvest row observed at 2026-08-22T01:33:11Z, age 28 days 01:40:28.271514; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:11.526676+00:00"),
-    harvested("kanban:t_deed8d22", "Partner line: cross-Mac relay Joe Claude to Dell Claude", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("kanban:t_93cfd1ee", "STANDING: land or kill \u2014 3 live, local CI, one paid run", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("kanban:t_1d8844ea", "Build the Doc\u2194Claude live bridge (named inject, not claude -p)", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("kanban:t_0834239a", "Post-turn review writes to Neon, not MEMORY.md", "kanban", "harvest row observed at 2026-08-22T01:33:10Z, age 28 days 01:40:29.240986; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:10.557204+00:00"),
-    harvested("hermes_session:20260821_164448_e1a4cc", "Create Designer agent prof   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260821_160917_5b69c4", "Industry strategies for AI   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112318_0b157a", "work kanban task t_4d48865   \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112218_4c7b27", "\u2014                            \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112117_f34276", "\u2014                            \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260820_112017_8e5ae8", "work kanban task t_4d48865   \u2014", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260819_141911_fd5c46", "Create Dell systems connec   carr-system        2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260819_070417_0cb77a", "Merge Pelham Tire property   carr-system        2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260819_001819_7ab8f5", "Work kanban task t_3c1b692   \u2014                  2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260818_215618_9476d2", "Work kanban task t_bfeef20   \u2014                  2d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260818_200318_ec907827", "Friendly greeting            \u2014                  3d", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("hermes_session:20260816_102322_1bf766", "Reply with exactly: defaul   carr-system        just", "hermes_session", "harvest row observed at 2026-08-22T01:33:08Z, age 28 days 01:40:31.021729; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:08.776461+00:00"),
-    harvested("worktree:/private/tmp/claude-501/-Users-booko-carr-system/b491f57b-8a8b-4456-967f-5173fe0f5934/scratchpad/carr-mainchk", "carr-mainchk", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-typed-guidance-final-ci.aARZr2/worktree", "worktree", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-system-release-418", "carr-system-release-418", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-system-program6-final2", "carr-system-program6-final2", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-    harvested("worktree:/private/tmp/carr-system-program6-final", "carr-system-program6-final", "worktree", "harvest row observed at 2026-08-22T01:33:07Z, age 28 days 01:40:31.910454; the harvest stamps its own run time and is not scheduled, so liveness is not claimed", "2026-08-22T01:33:07.887736+00:00"),
-  ];
-
-  const SESSION_SYNTHETIC_ROWS = [
-    // retry — attempt_count > 1 with a latest_attempt_ref; rule 1 of the lineage procedure. No live row reaches it.
-    {
-          "canonical_session_id": "11111111-1111-4111-8111-111111111111",
-          "surface": "claude",
-          "display_name": "Synthetic retry seat",
-          "alias_source": "derived",
-          "parent_session_id": null,
-          "parent_known": false,
-          "native_host_id": null,
-          "native_host_supported": false,
-          "work_state": "working",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T12:00:00+00:00",
-          "observation_source": "continuity_event",
-          "project_affinity": "doctorcre-app",
-          "latest_cwd": "/synthetic/doctorcre-app",
-          "latest_model_id": "claude-opus-5[1m]",
-          "attempt_count": 3,
-          "latest_attempt_ref": "WR-000117#3"
-    },
-    // replacement — a non-null parent_session_id; rule 2. No live row reaches it.
-    {
-          "canonical_session_id": "22222222-2222-4222-8222-222222222222",
-          "surface": "codex",
-          "display_name": "Synthetic replacement seat",
-          "alias_source": "derived",
-          "parent_session_id": "11111111-1111-4111-8111-111111111111",
-          "parent_known": true,
-          "native_host_id": null,
-          "native_host_supported": false,
-          "work_state": "idle",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T11:30:00+00:00",
-          "observation_source": "checkpoint",
-          "project_affinity": "doctorcre-app",
-          "latest_cwd": null,
-          "latest_model_id": null,
-          "attempt_count": 1,
-          "latest_attempt_ref": null
-    },
-    // resume — parent_known true with a null parent and attempt_count 1; rule 3. No live row reaches it.
-    {
-          "canonical_session_id": "33333333-3333-4333-8333-333333333333",
-          "surface": "capability",
-          "display_name": "Synthetic resumed root",
-          "alias_source": "derived",
-          "parent_session_id": null,
-          "parent_known": true,
-          "native_host_id": null,
-          "native_host_supported": false,
-          "work_state": "complete_unacknowledged",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T10:00:00+00:00",
-          "observation_source": "server_session",
-          "project_affinity": null,
-          "latest_cwd": null,
-          "latest_model_id": null,
-          "attempt_count": 1,
-          "latest_attempt_ref": null
-    },
-    // host title mismatch — native_host_supported true with a native_host_id the display_name differs from; the third branch of clause 2. No live row reaches it.
-    {
-          "canonical_session_id": "44444444-4444-4444-8444-444444444444",
-          "surface": "claude",
-          "display_name": "Synthetic mismatched title",
-          "alias_source": "derived",
-          "parent_session_id": null,
-          "parent_known": false,
-          "native_host_id": "host-window-7",
-          "native_host_supported": true,
-          "work_state": "disconnected",
-          "work_state_evidence": "continuity event observed at 2026-09-18T12:00:00Z; the seat recorded the turn itself, so the state is the seat's own report",
-          "last_observed_at": "2026-09-18T09:00:00+00:00",
-          "observation_source": "continuity_event",
-          "project_affinity": null,
-          "latest_cwd": null,
-          "latest_model_id": "claude-opus-5[1m]",
-          "attempt_count": 1,
-          "latest_attempt_ref": null
-    },
-  ];
+  const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
 
   const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
@@ -773,7 +648,7 @@ export async function createFixtureClient(opts = {}) {
       },
     },
     {
-      card_id: "card:doc-outcome:3", requested_outcome: "Reconcile the migration receipt with the record layer",
+      card_id: "card:doc-outcome:3", requested_outcome: "Review the demo update",
       intent_kind: "submission", work_request_ref: "WR-000142", owner: "joe", controlled_phase: "confirmed_closed",
       source_freshness: { state: "stale", observed_at: "2026-09-20T09:00:00+00:00", source_ref: "work-request:WR-000142" },
       routing_state: "verified", state_evidence: { observed_at: "2026-09-20T09:00:00+00:00", routing_source: "canonical_work_request" },
@@ -1133,6 +1008,7 @@ export async function createFixtureClient(opts = {}) {
   const docSuggestions = new Map([
     ['d0000000-0000-4000-8000-000000000081', {
       id: 'd0000000-0000-4000-8000-000000000081', conversation_id: DOC_PRIVATE,
+      material_facts: { page:'deals', record_kind: 'deal', record_id: 'd14', record_version: 1 },
       obligation_key: 'demo:gulf-breeze:survey-window', material_version: 1, version: 1,
       source_sequence: 1, original_text: docConversations.get(DOC_PRIVATE).turns[1].body,
       polished_text: 'Confirm the survey window before the LOI moves forward.',
@@ -1202,7 +1078,7 @@ export async function createFixtureClient(opts = {}) {
     held({ human_ref: 'WR-000903', title: 'Demo bounded request: verify the demo release evidence', state: 'verification', owner: 'dell', executor: 'dell', done_predicate: ['A demo consumer receipt exists for every clause'], sequence: 3, held_since: '2026-09-15T16:30:00.000Z', hours_since_last_change: 19 }),
   ];
   const sharedRequests = [
-    { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window in the record layer' },
+    { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window' },
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
     // V5-UX-C13a: two more shared requests, distinct from WR-000901..905 above
     // (those keep the sparse engineering-passport card shape B10a already
@@ -1321,7 +1197,7 @@ export async function createFixtureClient(opts = {}) {
 
   const searchParties = [
     { name: 'Demo Pensacola Family Dentistry', city: 'Pensacola', specialty: 'General dentistry', org_name: 'Demo Gulf Coast Dental Group', ref: 'L-901', kind: 'lead', merged: false },
-    { name: 'Demo Pensacola Orthopedic Partners', city: null, specialty: null, org_name: null, ref: 'C-902', kind: 'client', merged: false },
+    { name: 'Demo Pensacola Orthopedic Partners', city: null, specialty: null, org_name: null, ref: 'C-900', kind: 'client', merged: false },
     { name: 'Demo Pensacola Buildout Contractors', city: 'Pensacola', specialty: null, org_name: null, ref: 'V-903', kind: 'vendor', merged: false },
     // A bare party: no kind of its own beyond "party", and no ref at all. The
     // producer selects `ref` as a plain column and guards it with a string test,
@@ -1335,7 +1211,7 @@ export async function createFixtureClient(opts = {}) {
   const searchOrganizations = [
     // The observed shape: a live row whose aggregated ref is a NULL ELEMENT.
     { name: 'Demo Pensacola Imaging Partners', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
-    { name: 'Demo Specialty Center Of Pensacola', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 1, role_refs: ['L-905'], all_retired: false },
+    { name: 'Demo Example Organization 093', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 1, role_refs: ['C-901'], all_retired: false },
     { name: 'Demo Pensacola Surgical Suites', live_rows: 2, refs: ['P-906', 'P-907'], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
     { name: 'Demo Pensacola Retired Holdings', live_rows: 0, refs: [], retired_aliases: 3, retired_refs: ['P-908', 'P-909', 'P-910'], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: true },
     // Twelve retired aliases, ten refs listed: the producer truncates at
@@ -1344,27 +1220,27 @@ export async function createFixtureClient(opts = {}) {
   ];
 
   const searchDeals = [
-    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-902' },
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-900' },
     // TWO deals sharing a name. The producer does NOT deduplicate deals when it
     // derives candidates, and a fixture that did would certify a client that
     // silently drops one of them.
     { name: 'Demo Pensacola medical office building', phase: 'research', owner: 'joe', client_ref: null },
-    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-902' },
+    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-900' },
   ];
 
   const searchConnections = [
     { from_ref: 'P-906', from_name: 'Demo Pensacola Surgical Suites', kind: 'refers_to', to_ref: 'L-901', to_name: 'Demo Pensacola Family Dentistry', note: 'introduced at a demo society meeting' },
-    { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-902', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
+    { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-900', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
   ];
 
   /** Each of the three `link_basis` values the producer can report. */
   const searchLeadClientLinks = [
-    { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
-    { lead_ref: 'L-905', lead_name: 'Demo Specialty Center Of Pensacola', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
-    { lead_ref: 'L-904', lead_name: 'Demo Pensacola Smiles (retired alias)', client_ref: 'C-902', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_org' },
+    { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
+    { lead_ref: 'C-901', lead_name: 'Demo Example Organization 093', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
+    { lead_ref: 'L-904', lead_name: 'Demo Pensacola Smiles (retired alias)', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_org' },
   ];
   const searchDealsViaLink = [
-    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', client_ref: 'C-902', link_basis: 'conversion' },
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', client_ref: 'C-900', link_basis: 'conversion' },
   ];
 
   /**
@@ -1446,7 +1322,10 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
   const client = {
+    ...invoices,
+    async getRelationshipNetwork() { return relationshipNetworkFixture(); },
     mode: /** @type {const} */ ('fixture'),
     selfActor,
 
@@ -1458,7 +1337,7 @@ export async function createFixtureClient(opts = {}) {
         // field_base, the same shape the live read returns: the latest committed
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
-        deals: [...deals.values()].map((d) => ({ ...d, field_base: fieldBaseFor(d.id) })),
+        deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
@@ -1481,19 +1360,51 @@ export async function createFixtureClient(opts = {}) {
       const critical_dates = [];
       if (deal.next_date) {
         critical_dates.push({
-          label: deal.id === 'd14' ? 'Lease commencement' : 'Next date',
+          label: 'Next date',
           date: deal.next_date,
         });
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
-      return { deal, thread, critical_dates, history: hist,
+      return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
         next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
-        premises: [], negotiation_rounds: [], documents: [] };
+        premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
+    },
+
+    async readAssuranceHealth(args) {
+      const { scope } = assuranceHealthRequest(args);
+      refuseIfOutage('assurance', 'read-assurance-health');
+      const evidence = Object.fromEntries(ASSURANCE_LAYERS.map(layer => [layer, {
+        layer, state: layer === 'actual_business_outcome' && !scope.work_request_id ? 'unbindable' : 'missing', present: false, scope: { ...scope },
+      }]));
+      return { schema_version: 'assurance-health.v1', scope, state: 'unknown', green: false,
+        state_reason: 'Demo fixture: authoritative workflow truth is unavailable.', capability_stage: 'unavailable',
+        capability_stage_attributable_to_findings: 'unavailable',
+        workflow_truth: { available: false, source: 'V5-F09 workflow census', reason: 'Demo workflow truth is unavailable.' },
+        owner: { kind: 'record_layer', ref: 'ops.assurance_health_evidence' }, evidence,
+        failing_layers: [], indeterminate_layers: [], missing_layers: ASSURANCE_LAYERS.filter(layer => evidence[layer].state === 'missing'),
+        unbindable_layers: ASSURANCE_LAYERS.filter(layer => evidence[layer].state === 'unbindable'), reasons: [],
+        impact: { scope_limited_to: { ...scope }, withdrawn_stages: ['act', 'draft', 'read'] }, recovery: { required_evidence: [...ASSURANCE_LAYERS] } };
+    },
+    async correspondenceReadiness(args = {}) {
+      readinessRequest(args);
+      // Synthetic installation fixture; counts never stand in for deal evidence.
+      return structuredClone({ ok: true, schema_version: 'doctorcre-v5-j103-correspondence-store.v1',
+        readiness: { server_instant: '2026-09-30T12:00:00Z', partners: [{ partner_slug: 'demo-partner',
+          consents_in_force: 0, consents_revoked: 0, read_receipts: 0, drafts: 0 }], read_receipt_writer_granted_to_runtime: false },
+        mailbox_reads_possible: false, activation: { human_step: { step: 'demo-local-store-consent', owner: 'Demo partner', what: 'Synthetic consent step' },
+          status: 'consent_not_recorded', note: 'Synthetic adapter unavailable' },
+        owed: [], kernel_gaps: [], policy: { correspondence: 'demo-policy', journey: 'demo-journey-policy' },
+        consentable_operations: [], never_consentable_operations: [], ...CORRESPONDENCE_CEILING });
+    },
+    async readCorrespondenceThread(args) {
+      return structuredClone({ ok: true, decision: 'unavailable', reason_id: 'j103.store.no_read_receipt',
+        owed_seam: 'step:journey-one-authorized-adapter-read-receipt', native_identity: threadRequest(args),
+        receipts: [], ...CORRESPONDENCE_CEILING });
     },
 
     // V5-UX-B04: fixture stand-in for the pinned `/api/v1/business/{dataset}/<id>`
@@ -1510,9 +1421,9 @@ export async function createFixtureClient(opts = {}) {
       return { schema: 'carr.jev-deal-reading.v1', judged: false, reason: 'jev_unavailable' };
     },
 
-    async getChanges(cursor) {
+    async getChanges(cursor, { since } = {}) {
       pruneLeases();
-      const fresh = eventsAfter(cursor);
+      const fresh = eventsAfter(cursor).filter(event => cursor || !since || Date.parse(event.recorded_at) >= Date.parse(since));
       return {
         events: fresh.map((e) => ({ ...e })),
         presence: [...leases.values()].map((p) => ({ ...p })),
@@ -1784,6 +1695,16 @@ export async function createFixtureClient(opts = {}) {
     // statuses or inbox, so it never answers those rows, and no test may treat
     // it as evidence of what production returns. Dates are minted against the
     // current clock, since a frozen "today" would make every run look overdue.
+    async morningBrief() {
+      const own = row => !row.owner || row.owner === selfActor;
+      const section = items => ({ state: items.length ? 'ready' : 'empty', items });
+      return { state: 'ready', sponsor: selfActor, sections: {
+        today: section((await this.todayTriage()).items.filter(own)),
+        deals: section((await this.getBoard()).deals.filter(own)),
+        loops: section((await this.loopBoard({ owner: selfActor })).loops.filter(own)),
+      } };
+    },
+
     async todayTriage() {
       const today = nowIso().slice(0, 10);
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
@@ -2169,15 +2090,14 @@ export async function createFixtureClient(opts = {}) {
     // the verb declares zero properties under additionalProperties:false.
     // ------------------------------------ session identity and dispatch (S02)
     // Both are READS and neither takes an actor, exactly as the verbs declare.
-    // `total_seen` and `total_returned` are the production numbers and do NOT
+    // `total_seen` and `total_returned` are synthetic scenario totals and do NOT
     // move with `limit` — that is what makes the three-number counts line
     // testable here instead of only against production.
     async sessionIdentity({ query = null, limit = null, include_closed = false } = {}) {
       refuseIfOutage('sessions', 'read-session-identity');
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
       // `include_closed` is passed through to the producer and changes nothing
-      // here: no captured row carries a closed state, so a fixture that made the
-      // toggle move rows would be inventing a corpus production did not return.
+      // here: no example row carries a closed state in this scenario.
       void include_closed;
       // BOTH fields, because clause 1 is "name/ID lookup" and a fixture that
       // matched on the name alone would let an id lookup pass while broken.
@@ -2196,7 +2116,7 @@ export async function createFixtureClient(opts = {}) {
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
       const page = matched.slice(0, capped);
-      // 603 and 124 are production's own numbers for the unfiltered page, and
+      // 603 and 124 exercise separate seen and visible totals, and
       // they do NOT shrink when `limit` does.
       const seen = text.length === 0 ? 603 : matched.length;
       const visible = text.length === 0 ? 124 : matched.length;
@@ -2602,8 +2522,8 @@ export async function createFixtureClient(opts = {}) {
         return {
           state: 'not_found', query, candidates: [], retired_matches: retired,
           hint: retired > 0
-            ? 'Only retired aliases matched; no live record stands behind this name.'
-            : 'No live record matched this name.',
+            ? 'Only previous names matched.'
+            : 'No current match.',
         };
       }
       if (candidates.length === 1) {
@@ -2776,11 +2696,18 @@ export async function createFixtureClient(opts = {}) {
     // batch or proposal is copied here. The timestamps are relative to the
     // current clock so the approvals card's ambient waiting clock exercises all
     // three tempos (under a day, a day or more, past the 48-hour cadence).
+    async readConnections() {
+      const checked_at=nowIso();
+      return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
+    },
+    async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
+    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},
+    async unfinishedWork({live_library=false}={}){if(live_library)return {schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};return {schema:'unfinished-work.v1',items:[{id:'WR-000901',kind:'work_request',human_ref:'WR-000901',title:'Demo dashboard refresh',state:'verification',source:'demo',source_ref:'demo',last_activity_at:nowIso(),age:0,owner:'Demo builder',pr:17,available_triage_actions:[]}],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};},
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
       const rules = [
-        { rule_id: 'd0000000-0000-4000-8000-00000000c141', statement: 'Demo rule: a demo surface names its missing read instead of drawing a zero.', human_quote: 'demo partner words about honest zeros', scope: 'demo', taught_at: ago(74), enforcement_class: 'demo_hook', binding_moment: 'before a demo surface ships', admission_reason: 'Demo admission: enforcement checked against the demo fixture', enforcement_status: 'checked', fixture_refs: [], admitted_at: ago(72) },
+        { rule_id: 'd0000000-0000-4000-8000-00000000c141', statement: 'Demo rule: a demo surface marks unavailable information.', human_quote: 'demo partner words about honest zeros', scope: 'demo', taught_at: ago(74), enforcement_class: 'demo_hook', binding_moment: 'before a demo surface ships', admission_reason: 'Demo admission: enforcement checked against the demo fixture', enforcement_status: 'checked', fixture_refs: [], admitted_at: ago(72) },
       ];
       const batches = [
         { batch_id: 'd0000000-0000-4000-8000-00000000c142', manifest_digest: `sha256:${'d'.repeat(64)}`, reason: 'Demo guidance import: three demo leasing notes', staging_key: 'demo-leasing-notes', staged_at: ago(30), entry_count: 3 },
@@ -2959,6 +2886,7 @@ export async function createFixtureClient(opts = {}) {
     // it appears on the change feed and advances lastFieldEvent exactly as a
     // live revert would.
     async revertDealField({ event_id, idempotency_key }) {
+      if (activityFixture.owns(event_id)) return activityFixture.undo({ event_id, idempotency_key });
       return withIdem(idempotency_key, () => {
         const event = events.find((e) => e.id === event_id);
         if (!event || event.subject_type !== 'deal' || !event.field || !BASED_FIELDS.includes(event.field)) {
@@ -2996,6 +2924,8 @@ export async function createFixtureClient(opts = {}) {
         };
       });
     },
+
+    async readDocActivity(args = {}) { return activityFixture.read(args); },
 
     async getPendingConfirms() {
       return { proposals: pendingConfirms.map((p) => ({ ...p })) };
@@ -3210,37 +3140,7 @@ export async function createFixtureClient(opts = {}) {
       return { steps };
     },
 
-    /** Test helper: force a conflict by writing without advancing base. */
-    async _forceConflict(deal, field, valueA, valueB) {
-      const key = `${deal}|${field}`;
-      const base = lastFieldEvent.get(key) || null;
-      applyFieldWrite({
-        deal,
-        field,
-        value: valueA,
-        base_event_id: base,
-        actor: partnerActor,
-        verb: 'patch-deal-field',
-      });
-      // second write with stale base
-      return applyFieldWrite({
-        deal,
-        field,
-        value: valueB,
-        base_event_id: base,
-        actor: selfActor,
-        verb: 'patch-deal-field',
-      });
-    },
-
-    _lastFieldEventId(deal, field) {
-      return lastFieldEvent.get(`${deal}|${field}`) || null;
-    },
-
-    _setLastCallAt(iso) {
-      lastCallAt = iso;
-    },
   };
 
-  return client;
+  return opts.docContext === false ? client : observeDocClient(client);
 }

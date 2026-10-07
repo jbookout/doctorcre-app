@@ -8,7 +8,11 @@ export function timeOf(turn) {
 
 export function labelFor(turn) {
   const seat = String(turn?.seat || "system").toLowerCase();
-  if (seat === "human") return turn?.sponsor === "dell" ? "Dell" : "Joe";
+  if (seat === "human") {
+    if (turn?.sponsor === "joe") return "Joe";
+    if (turn?.sponsor === "dell") return "Dell";
+    return "Partner";
+  }
   return ({ codex: "Codex", sol: "Sol", claude: "Claude", opus: "Opus",
     sonnet: "Sonnet", hermes: "Hermes", grok: "Grok", flash: "Flash" })[seat]
     || seat.charAt(0).toUpperCase() + seat.slice(1);
