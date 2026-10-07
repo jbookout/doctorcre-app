@@ -12,7 +12,7 @@ const strings = value => Array.isArray(value) && value.every(item => typeof item
 const pair = (target, path) => JSON.stringify([target, path]);
 const requireCheckpoint = value => { if (!value) throw new Error('Staging sweep checkpoint is invalid; no screen was retried'); };
 const sourceRelease = release => release?.service === 'doctorcre-app' && release.environment === 'staging' && /^[0-9a-f]{40}$/.test(release.source_commit || '') && release.carr_source_commit === contract.producer.source_commit;
-const complete = screen => screen?.reached === true && screen.in_progress !== true && !screen.failure && !screen.exhausted && screen.controls.length > 0 && screen.controls.every(row => !['ERROR', 'UNREACHABLE'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided'));
+const complete = screen => screen?.reached === true && screen.in_progress !== true && !screen.failure && !screen.exhausted && screen.controls.length > 0 && screen.controls.every(row => typeof row.evidence_path === 'string' && row.evidence_path.trim() && !['ERROR', 'UNREACHABLE'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided'));
 
 export async function readSweepCheckpoint(output) {
   try { return JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')); }

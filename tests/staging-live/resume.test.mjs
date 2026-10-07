@@ -184,3 +184,24 @@ test('incremental checkpoints retain interrupted DEAD rows without archiving eve
   retry.record(screen('desktop', '/?view=charts'));
   assert.equal(retry.snapshot().history.length, 1);
 });
+
+test('completion requires captured evidence for every retained control without discarding interrupted measurements', () => {
+  for (const status of ['OBSERVED', 'DEAD', 'DISABLED']) for (const evidence of [undefined, '', '   ']) {
+    const measured = screen();
+    Object.assign(measured.controls[0], { status, reason: 'Requires a selected record', evidence_path: evidence });
+    const prior = { release, screens: [measured] }, original = structuredClone(prior);
+    const state = run(prior);
+    assert.ok(state.pending.some(({ target, screen }) => target.name === 'desktop' && screen.path === '/'));
+    assert.equal(state.verdict([]).completed, false);
+    assert.deepEqual(state.snapshot().screens[0], measured);
+    assert.deepEqual(prior, original);
+    // A later verified attempt retains the interrupted observation in history.
+    for (const { target, screen: planned } of state.pending) state.record(screen(target.name, planned.path));
+    assert.equal(state.verdict([]).completed, true);
+    assert.deepEqual(state.snapshot().history[0].screen, measured);
+    assert.deepEqual(run({ release, ...state.snapshot() }).snapshot().history, state.snapshot().history);
+    if (status === 'DEAD') assert.deepEqual(state.verdict([]).newDeadControls, [measured.controls[0].key]);
+    measured.controls[0].evidence_path = '/synthetic/captured.png';
+    assert.ok(!run({ release, screens: [measured] }).pending.some(({ target, screen }) => target.name === 'desktop' && screen.path === '/'));
+  }
+});
