@@ -23,11 +23,21 @@ const makeRun = prior => createSweepRun({ targets, routedScreens: routes, prior 
 const fixture = (path, query) => path !== '/ideas-events'
   ? '<main><a id="source-nav" href="/ideas-events?tab=events">Events</a></main>'
   : '<main><a id="ideas" href="/ideas-events?tab=ideas">Ideas</a><a id="events" href="/ideas-events?tab=events">Events</a><button id="drawer" onclick="document.querySelector(\'#panel\').hidden=false">Open ' + query + ' drawer</button><section id="panel" hidden><button id="nested" onclick="document.querySelector(\'#result\').textContent=\'changed\'">Nested ' + query + '</button></section><output id="result"></output></main>';
-async function browserFixture(t) {
+async function deferSourceNavigation(page) {
+  await page.addInitScript(() => document.addEventListener('click', event => {
+    const link = event.target.closest('a[id^="source-"]');
+    if (!link) return;
+    event.preventDefault();
+    document.querySelector('main').setAttribute('aria-busy', 'true');
+    setTimeout(() => location.assign(link.href), 100);
+  }));
+}
+async function browserFixture(t, deferred = false) {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   return (target, screen, spec) => async () => {
     const page = await browser.newPage({ viewport: target.viewport });
+    if (deferred) await deferSourceNavigation(page);
     await page.route(origin + '/**', route => {
       const url = new URL(route.request().url());
       return route.fulfill({ contentType: 'text/html', body: fixture(url.pathname, url.searchParams.get('tab')) });
@@ -43,8 +53,8 @@ async function sourceSweep(run, factory, target, screen, checkpoint) {
   return result;
 }
 
-test('multiple source roots retain nav presses and both tab obligations; owners cover local drawers separately on both viewports', async t => {
-  const factory = await browserFixture(t), run = makeRun();
+for (const deferred of [false, true]) test('multiple source roots retain nav presses and both tab obligations; owners cover local drawers separately on both viewports' + (deferred ? ' with deferred navigation' : ''), async t => {
+  const factory = await browserFixture(t, deferred), run = makeRun();
   for (const target of targets) for (const screen of routes) {
     const result = await sourceSweep(run, factory, target, screen);
     assert.equal(result.failure, null);
@@ -77,10 +87,10 @@ test('multiple source roots retain nav presses and both tab obligations; owners 
   assert.throws(() => makeRun({ release, ...tampered }), /state obligation/);
 });
 
-test('a killed canonical publish leaves pending delegation; resume registers both obligations without replacing source evidence', async t => {
+for (const deferred of [false, true]) test('a killed canonical publish leaves pending delegation; resume registers both obligations without replacing source evidence' + (deferred ? ' with deferred navigation' : ''), async t => {
   const output = await mkdtemp(join(tmpdir(), 'doctorcre-owner-kill-'));
   t.after(() => rm(output, { recursive: true, force: true }));
-  const factory = await browserFixture(t), run = makeRun();
+  const factory = await browserFixture(t, deferred), run = makeRun();
   let pending, delegated;
   const result = await sourceSweep(run, factory, targets[0], routes[0], async partial => {
     await persistSweepReport(output, run, setup);
@@ -223,7 +233,7 @@ test('Calendar preflight failure preserves an existing owner frontier and preven
   assert.doesNotThrow(() => createSweepRun({ targets: [targets[0]], routedScreens: [screen], prior: { release, ...resumed.snapshot() } }));
 });
 
-test('board desktop and phone delegate Ideas and Calendar to matching app owners, retaining source evidence across checkpoint resume', async t => {
+for (const deferred of [false, true]) test('board desktop and phone delegate Ideas and Calendar to matching app owners, retaining source evidence across checkpoint resume' + (deferred ? ' with deferred navigation' : ''), async t => {
   const crossTargets = [
     { name: 'staging-live', surface: 'app', viewport: { width: 1440, height: 960 } },
     { name: 'staging-live-phone', surface: 'app', viewport: { width: 390, height: 844 } },
@@ -243,6 +253,7 @@ test('board desktop and phone delegate Ideas and Calendar to matching app owners
   t.after(() => rm(output, { recursive: true, force: true }));
   const factory = (target, screen, spec) => async () => {
     const page = await browser.newPage({ viewport: target.viewport });
+    if (deferred) await deferSourceNavigation(page);
     await page.route(origin + '/**', route => {
       const url = new URL(route.request().url());
       return route.fulfill({ contentType: 'text/html', body: url.pathname === crossRoutes[0].path ? boardHTML

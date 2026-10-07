@@ -263,7 +263,14 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     if (next.length) queue.push({ openers, controls: next });
   };
   const resolveDiscovery = async (page, openers, control, beforeURL) => {
-    const decision = destinationOwnership({ beforeURL, afterURL: page.url(), control, routedPaths });
+    const ownership = () => destinationOwnership({ beforeURL, afterURL: page.url(), control, routedPaths });
+    let decision = ownership(), exposed;
+    if (decision.kind === 'discover') {
+      exposed = await settle(page, 'discovery', control.selector);
+      // A source URL can still be visible while navigation is committing.
+      // Classify the settled destination before queuing any of its controls.
+      decision = ownership();
+    }
     if (decision.kind === 'unclassified') throw new SweepFailure('ownership', decision.reason, control.selector);
     if (decision.kind === 'delegate' || decision.kind === 'calendar-operation') {
       const witness = decision.kind === 'calendar-operation' ? await assertCalendarAction(page, control, beforeURL) : null;
@@ -277,7 +284,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
       // Persist the measured binding, which may already contain scrubbed
       // display metadata. Only the uniquely matched live action is executed.
       const measured = controls.at(-1);
-      enqueue([...openers, measured], await settle(page, 'discovery', control.selector));
+      enqueue([...openers, measured], exposed);
     }
     pending = null;
     await publishProgress();
