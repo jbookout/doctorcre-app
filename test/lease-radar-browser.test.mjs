@@ -212,3 +212,29 @@ test('Home rejects a previous-day lease horizon and closes its outdated detail',
   assert.equal(await page.locator('#pastLeaseDetail').evaluate(n => n.open), false);
   assert.equal(await page.locator('#homePastClients .lease-card').count(), 0);
 });
+
+
+test('PR182 queued native lease close wins over a successful refresh in the same task', async t => {
+  const { page, payload } = await open(t);
+  await page.route('http://localhost/lease-race', route => route.fulfill({contentType:'text/html',body:`<input id="leaseSearch"><select id="leaseScope"><option value="team">Team</option></select><button id="refreshLeases">Refresh</button><div id="leaseRadar"></div><span id="leaseWindow"></span><span id="leaseGapCount"></span><span id="leaseTotal"></span><span id="leaseUpdated"></span><div id="leaseNotice"></div><dialog id="leaseDetail"></dialog>`}));
+  await page.goto('http://localhost/lease-race');
+  const result = await page.evaluate(async payload => {
+    const { mountLeaseRadar } = await import('/js/lease-radar.js');
+    let resolveRead, reads = 0;
+    const client = { readLeaseRadar() { return ++reads === 1 ? Promise.resolve(payload) : new Promise(resolve => { resolveRead = resolve; }); } };
+    const radar = mountLeaseRadar({document,window,client,now:()=>new Date('2026-10-01T18:00:00Z')});
+    await radar.refresh();
+    const dialog = document.querySelector('#leaseDetail');
+    document.querySelector('[data-lease="demo-lease-1"]').click();
+    const refresh = radar.refresh();
+    const closed = new Promise(resolve => dialog.addEventListener('close',resolve,{once:true}));
+    dialog.close();
+    resolveRead(payload);
+    await refresh;
+    await closed;
+    const result = {open:dialog.open,lease:new URL(location.href).searchParams.get('lease')};
+    radar.dispose();
+    return result;
+  }, payload);
+  assert.deepEqual(result, {open:false,lease:null});
+});

@@ -9,33 +9,22 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/observatory.css?v=now-threads-v1">
+  <link rel="stylesheet" href="/css/app-shell.css">
   <title>Observatory · The Deal Room</title>
 </head>
 <body class="room-body">
+<div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#now">Skip to current activity</a>
 
-  <header class="room-header">
-    <a class="room-wordmark" href="/">Observa<span>tory</span></a>
-    <span class="live-badge" aria-hidden="true">Live</span>
-    <p class="room-presence" id="roomPresence">
-      <span class="dot" id="presenceDot" data-state="dormant"></span>
-      <span id="presenceText">Reading the wire…</span>
-    </p>
-    <div class="room-figures">
-      <span class="figure"><span class="figure-label">Cycle</span><span class="figure-value" id="figCycle">—</span></span>
-      <span class="figure"><span class="figure-label">Bridge</span><span class="figure-value" id="figBridge">—</span></span>
-      <span class="figure"><span class="figure-label">Desks</span><span class="figure-value" id="figDesks">—</span></span>
-    </div>
-    <nav class="room-nav" aria-label="Workspaces">
-      <a href="/">Home</a>
-      <a href="/business">Business</a>
-      <a href="/control-room">Control Room</a>
-      <a href="/control-room/progress/work">Project activity</a>
-      <a href="/control-room/observatory" aria-current="page">Observatory</a>
-    </nav>
-  </header>
-
   <main class="observatory" id="main">
+    <div class="room-status">
+      <p class="room-presence" id="roomPresence"><span class="live-orb" id="presenceDot" data-state="dormant" aria-hidden="true"></span><span id="presenceText">Reading the wire…</span></p>
+      <div class="room-figures">
+        <span class="figure"><span class="figure-label">Cycle</span><span id="figCycle">—</span></span>
+        <span class="figure"><span class="figure-label">Bridge</span><span id="figBridge">—</span></span>
+        <span class="figure"><span class="figure-label">Desks</span><span id="figDesks">—</span></span>
+      </div>
+    </div>
     <section class="now-hero glass" id="now" aria-labelledby="nowTitle">
       <div class="now-heading">
         <div><p class="eyebrow">Model Room · live wire</p><h1 id="nowTitle">Now</h1></div>

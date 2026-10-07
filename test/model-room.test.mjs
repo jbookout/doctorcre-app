@@ -753,7 +753,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   // add-room-turn handler derives origin_channel/origin_actor server-side).
   assert.ok(contract.mcp_operations.includes("add-room-turn"), "add-room-turn is not pinned");
   const queue = contract.mcp_operations.indexOf("read-room-queue");
-  assert.equal(contract.mcp_operations[queue - 1], "read-room");
+  assert.equal(contract.mcp_operations[queue - 1], "read-room-latest");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // V5-UX-C13c: answer-work-request-for-joe (carr PR #1190) is the answer
   // form's one write, pinned the same way add-room-turn was — an app-side
