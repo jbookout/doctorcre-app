@@ -407,6 +407,7 @@ export function mountBoard(deps = {}) {
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
+    renderFilters({repos:view?.repos || [],cards:all,stages});
     deps.onTasks?.(all,{state:boardState});
     renderCompleted({...view, cards:all});
     const kind = census ? "project" : view.kind;
@@ -847,7 +848,6 @@ export function mountBoard(deps = {}) {
     renderSync(view);
     renderHeadline(view);
     renderRepos(view);
-    renderFilters(view);
     renderStages(view);
     renderBlocked(view);
     renderQuestions(view);
