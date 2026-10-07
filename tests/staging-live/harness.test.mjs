@@ -494,7 +494,27 @@ test('share credentials are masked from pixels under the deployed CSP', async ()
   await browser.close();
 });
 
+
+async function captureControlEvidence(t) {
+  const root = await mkdtemp(join(tmpdir(), 'staging-control-evidence-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  let number = 0;
+  return async page => {
+    const path = join(root, String(++number).padStart(5, '0') + '.png');
+    await page.screenshot({ path });
+    return path;
+  };
+}
+async function assertCapturedPNGs(controls) {
+  for (const row of controls) {
+    assert.ok(row.evidence_path, 'Completed fixture control requires captured evidence');
+    const bytes = await readFile(row.evidence_path);
+    assert.deepEqual(bytes.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+}
+
 test('killing an owned browser sweep after one control preserves durable incomplete evidence', async t => {
+  const evidence = await captureControlEvidence(t);
   const output = await mkdtemp(join(tmpdir(), 'staging-killed-screen-'));
   t.after(() => rm(output, { recursive: true, force: true }));
   const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
@@ -547,12 +567,13 @@ test('killing an owned browser sweep after one control preserves durable incompl
   assert.deepEqual(resumed.verdict([]).newDeadControls, [row.key]);
   assert.throws(() => resumed.record({ ...checkpoint.screens[0], controls: [{ ...row, status: 'OBSERVED' }] }), /Measured control evidence/);
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const continued = await sweepScreen({ screen: routedScreens[0], target: 'desktop', prior: checkpoint.screens[0], waitMs: 20,
+  const continued = await sweepScreen({ screen: routedScreens[0], target: 'desktop', prior: checkpoint.screens[0], waitMs: 20, evidence,
     freshPage: async () => { const page = await browser.newPage(); await page.setContent('<main><button id=dead>Dead</button><button id=later>Later</button></main>'); return page; },
   });
   assert.equal(continued.controls.length, 2);
   assert.equal(continued.controls.filter(control => control.selector === '#dead').length, 1);
   assert.equal(continued.controls[0].status, 'DEAD');
+  await assertCapturedPNGs(continued.controls);
   resumed.record(continued);
   assert.equal(resumed.verdict([]).completed, true);
   assert.equal(resumed.snapshot().history.length, 0);
@@ -612,11 +633,12 @@ test('session preflight retries bounded transient failures and never retries aut
 const frontierFixture = '<main><button id=open aria-expanded=false onclick="const x=document.querySelector(\'#panel\');x.hidden=!x.hidden;this.setAttribute(\'aria-expanded\',String(!x.hidden))">Open drawer</button><section id=panel hidden><button id=child>Nested action</button></section></main>';
 
 test('interruption before post-click discovery resumes the opener frontier without dropping its child', async t => {
+  const evidence = await captureControlEvidence(t);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const freshPage = async () => { const page = await browser.newPage(); await page.setContent(frontierFixture); return page; };
   const screen = { name: 'Synthetic', path: '/', surface: 'app' };
   let partial;
-  await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, checkpoint: async row => {
+  await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, evidence, checkpoint: async row => {
     if (!partial) { partial = structuredClone(row); throw new Error('Synthetic process interruption after durable control record'); }
   } });
   assert.equal(partial.controls.length, 1);
@@ -631,7 +653,7 @@ test('interruption before post-click discovery resumes the opener frontier witho
   await persistSweepReport(output, initial, setup);
   const checkpoint = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8'));
   const resumed = createSweepRun({ ...plan, prior: checkpoint }); resumed.assertRelease(release);
-  const continued = await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, prior: resumed.priorScreen('desktop', '/'),
+  const continued = await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, evidence, prior: resumed.priorScreen('desktop', '/'),
     checkpoint: async row => { validateTraversal(row); resumed.record(row); await persistSweepReport(output, resumed, setup); },
   });
   assert.equal(continued.failure, null);
@@ -639,6 +661,7 @@ test('interruption before post-click discovery resumes the opener frontier witho
   assert.equal(continued.controls.filter(row => row.selector === '#child').length, 1);
   assert.equal(continued.controls.filter(row => row.identity === partial.controls[0].identity).length, 1);
   assert.deepEqual(continued.controls[0], checkpoint.screens[0].controls[0]);
+  await assertCapturedPNGs(continued.controls);
   resumed.record(continued); await persistSweepReport(output, resumed, setup);
   assert.equal(resumed.verdict([]).completed, true);
   assert.equal(resumed.snapshot().history.length, 0);
@@ -675,13 +698,14 @@ test('persisted frontier refuses malformed state and changed opener identity bef
 });
 
 test('killing frontier publication before canonical commit retains pending discovery and all child coverage', async t => {
+  const evidence = await captureControlEvidence(t);
   const root = await mkdtemp(join(tmpdir(), 'staging-frontier-publish-'));
   const output = join(root, 'report'); t.after(() => rm(root, { recursive: true, force: true }));
   const browser = await chromium.launch(); t.after(() => browser.close());
   const freshPage = async () => { const page = await browser.newPage(); await page.setContent(frontierFixture); return page; };
   const screen = { name: 'Synthetic', path: '/', surface: 'app' };
   let partial;
-  await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, checkpoint: async row => {
+  await sweepScreen({ freshPage, screen, target: 'desktop', waitMs: 20, evidence, checkpoint: async row => {
     if (!partial) { partial = structuredClone(row); throw new Error('Synthetic initial interruption'); }
   } });
   const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
@@ -720,12 +744,13 @@ test('killing frontier publication before canonical commit retains pending disco
   assert.equal(unpublished.screens[0].traversal.pending_discovery, null);
   assert.equal(unpublished.screens[0].traversal.known_remaining, 2);
   const checkpoint = JSON.parse(original), run = createSweepRun({ ...plan, prior: checkpoint }); run.assertRelease(release);
-  const result = await sweepScreen({ freshPage, screen, target: 'desktop', prior: run.priorScreen('desktop', '/'), waitMs: 20,
+  const result = await sweepScreen({ freshPage, screen, target: 'desktop', prior: run.priorScreen('desktop', '/'), waitMs: 20, evidence,
     checkpoint: async row => { run.record(row); await persistSweepReport(output, run, setup); },
   });
   assert.equal(result.failure, null);
   assert.equal(result.controls.length, 3);
   assert.equal(result.controls.filter(row => row.selector === '#child').length, 1);
+  await assertCapturedPNGs(result.controls);
   run.record(result); await persistSweepReport(output, run, setup);
   assert.equal(run.verdict([]).completed, true);
   assert.equal(run.snapshot().history.length, 0);
@@ -756,6 +781,7 @@ test('session-preflight failure retains the unpressed frontier and resumes witho
 });
 
 test('scrubbed share URLs and nested selectors resume through real live actions without identity collisions', async t => {
+  const evidence = await captureControlEvidence(t);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const tokens = ['A','B','C','D','E'].map(letter => letter.repeat(43));
   const [first, second, nested, optionA, optionB] = tokens;
@@ -764,7 +790,7 @@ test('scrubbed share URLs and nested selectors resume through real live actions 
   const screen = { name: 'Synthetic', path: '/', surface: 'app' };
   const plan = { targets: [{ name: 'desktop', surface: 'app' }], routedScreens: [screen] };
   let partial;
-  await sweepScreen({ freshPage: () => freshPage(), screen, target: 'desktop', waitMs: 20, checkpoint: async row => {
+  await sweepScreen({ freshPage: () => freshPage(), screen, target: 'desktop', waitMs: 20, evidence, checkpoint: async row => {
     if (!partial && row.traversal.pending_discovery?.control.selector === '#' + nested) {
       partial = structuredClone(row); throw new Error('Synthetic interruption before nested discovery');
     }
@@ -789,7 +815,7 @@ test('scrubbed share URLs and nested selectors resume through real live actions 
   const resumed = createSweepRun({ ...plan, prior: saved });
   const selected = new Set();
   const continued = await sweepScreen({ freshPage: () => freshPage(), screen, target: 'desktop', waitMs: 20, prior: resumed.priorScreen('desktop','/'),
-    evidence: async (page,row) => { if (row.selector === '#choice') selected.add(await page.locator('#choice').inputValue()); },
+    evidence: async (page,row) => { if (row.selector === '#choice') selected.add(await page.locator('#choice').inputValue()); return evidence(page); },
     checkpoint: async row => {
       resumed.record(row); await writeReport(output, { ...resumed.snapshot(), release });
       const persisted = JSON.parse(await readFile(join(output,'controls.json'),'utf8'));
@@ -800,6 +826,7 @@ test('scrubbed share URLs and nested selectors resume through real live actions 
   assert.deepEqual(continued.controls.slice(0, saved.screens[0].controls.length), saved.screens[0].controls);
   assert.ok(selected.has(optionA) && selected.has(optionB), 'Resume used redacted option metadata instead of the uniquely matched live values');
   assert.ok(continued.controls.some(row => row.selector === '#leaf' && row.status === 'OBSERVED'));
+  await assertCapturedPNGs(continued.controls);
   resumed.record(continued); await writeReport(output, { ...resumed.snapshot(), release });
   assert.equal(resumed.verdict([]).completed, true);
   const finalBytes = await readFile(join(output,'controls.json'),'utf8');
