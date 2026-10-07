@@ -6,7 +6,7 @@ import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
 import { mountCostView } from './progress-board-costs.js';
 import {
-  jobLinks, STAGES, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
+  jobLinks, STAGES, RECORDED_STAGE, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
   answerRequest, taskSummary, modelLine, stageEnteredAt, ageText,
   executorGlyph, executorPool, taskRepo, liveView, readLivePreference,
   writeLivePreference, filterCards, groupByRepo, boardFromSearch, safeHref, sortLive,
@@ -190,7 +190,7 @@ export function mountBoard(deps = {}) {
   }
 
   function stageColor(id) {
-    return STAGES.find(stage => stage.id === id)?.color || "#f2f6fc";
+    return [...STAGES, RECORDED_STAGE].find(stage => stage.id === id)?.color || "#f2f6fc";
   }
 
   function clickable(node, open) {
@@ -338,12 +338,15 @@ export function mountBoard(deps = {}) {
     return pipelineCards.find(card => card.id === cardId) || currentView?.cards.find(card => card.id === cardId) || null;
   }
 
-  function renderRail(visible) {
+  function renderRail(visible, stages) {
     const rail = byId("board-rail");
     rail.replaceChildren();
-    const step = 600 / STAGES.length;
-    rail.append(svg("path", "rail-line", { d: `M ${step / 2} 20 H ${600 - step / 2}` }));
-    STAGES.forEach((stage, index) => {
+    const step = 600 / stages.length;
+    stages.forEach((stage, index) => {
+      if (index < stages.length - 1 && stage.sequence !== false && stages[index + 1].sequence !== false)
+        rail.append(svg("path", "rail-line", { d: `M ${step / 2 + index * step} 20 H ${step / 2 + (index + 1) * step}` }));
+    });
+    stages.forEach((stage, index) => {
       const x = step / 2 + index * step;
       const count = visible.filter(card => card.stage === stage.id).length;
       rail.append(svg("circle", "rail-node", { cx: x, cy: 20, r: 7, style: `--stage-accent:${stage.color}`,
@@ -358,7 +361,7 @@ export function mountBoard(deps = {}) {
     repo.replaceChildren(el("option", "", "All", { value: "" }),
       ...repos.map(name => el("option", "", name.split("/")[1], { value: name })));
     stage.replaceChildren(el("option", "", "All", { value: "" }),
-      ...STAGES.map(item => el("option", "", item.label, { value: item.id })));
+      ...view.stages.map(item => el("option", "", item.label, { value: item.id })));
     if (!repos.includes(filters.repo)) filters.repo = "";
     repo.value = filters.repo;
     stage.value = filters.stage;
@@ -399,7 +402,8 @@ export function mountBoard(deps = {}) {
     const approvals = governanceTasks(governanceRead);
     const approvalCards = approvals && boardView({snapshot:{board_id:boardId, version:1,
       snapshot_json:{tasks:Object.fromEntries(approvals.map(task=>[task.id, {...task, source_state:governanceState}]))}}},currentNow()).cards;
-    const merged = withGovernance({stages:STAGES.map(stage=>({...stage,
+    const stages = census ? censusPipeline.stages : view.stages;
+    const merged = withGovernance({stages:stages.map(stage=>({...stage,
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
@@ -414,14 +418,14 @@ export function mountBoard(deps = {}) {
     const visible = filterCards(all, filters);
     const grouped = kind === ALL_REPOS_BOARD;
     byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
-    renderRail(visible);
-    STAGES.forEach((stage, index) => {
+    renderRail(visible, stages);
+    stages.forEach((stage, index) => {
       const cards = visible.filter(card => card.stage === stage.id);
       const column = el("section", "column", undefined,
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
-      head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")),
-        el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
+      if (stage.sequence !== false) head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")));
+      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
       column.append(head);
       const body = el("div", "column-body");
       if (stage.id === "live") {

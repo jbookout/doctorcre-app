@@ -19,6 +19,12 @@ export const STAGES = [
   { id: "live", label: "Live", color: "#7dddc0", meaning: "Released and verified where it runs" },
 ];
 
+export const RECORDED_STAGE = {
+  id: "recorded", label: "Recorded", color: "#f2f6fc", sequence: false,
+  meaning: "Completed in its source record; live consumer verification is separate",
+};
+const STAGE_DEFINITIONS = [...STAGES, RECORDED_STAGE];
+
 // Executor pools, in ledger order. Glyphs match the CARR producer's POOLS.
 export const EXECUTORS = [
   { pool: "codex", glyph: "C", label: "Codex" },
@@ -44,7 +50,7 @@ const IN_FLIGHT = new Set(["running", "review", "blocked"]);
 // Every indicator a card can carry. cardIndicators() only ever returns ids
 // from this list, and the legend is built from it.
 export const INDICATORS = [
-  ...STAGES.map(stage => ({ id: `stage-${stage.id}`, group: "Stage colour", swatch: stage.color,
+  ...STAGE_DEFINITIONS.map(stage => ({ id: `stage-${stage.id}`, group: "Stage colour", swatch: stage.color,
     label: stage.label, meaning: stage.meaning })),
   ...EXECUTORS.map(executor => ({ id: `glyph-${executor.pool}`, group: "Executor", glyph: executor.glyph,
     label: executor.label, meaning: `Work done by ${executor.label}` })),
@@ -150,6 +156,7 @@ export function relatedQuestions(task, questions) {
 
 // Mirrors task_stage in carr-system tools/progress_board.py at the pinned producer revision.
 export function taskStage(task) {
+  if (task.stage === RECORDED_STAGE.id) return RECORDED_STAGE.id;
   // Live means complete: a done card with no PR has nothing left to merge or release.
   if (task.status === "done" && task.pr == null) return "live";
   let requested = task.stage === "measured" ? "live" : task.stage;
@@ -257,7 +264,7 @@ export function deliveryDetail(card, at = new Date()) {
     if (value !== undefined && value !== null && String(value).trim() !== "") rows.push([label, String(value)]);
   };
   const stageId = card.stage || taskStage(card);
-  const stage = STAGES.find(item => item.id === stageId);
+  const stage = STAGE_DEFINITIONS.find(item => item.id === stageId);
   if (stage) add("Stage", `${stage.label} · ${ageText(stageEnteredAt(card), at)} in this stage`);
   const blocked = card.blocked === undefined ? blockedDetail(card, at) : card.blocked;
   if (blocked) {
@@ -269,7 +276,7 @@ export function deliveryDetail(card, at = new Date()) {
   add("Model line", modelLine(card));
   if (typeof card.question === "string") add("Question", card.question);
   const history = stageDurations(card, at).map(entry => ({
-    ...entry, label: STAGES.find(item => item.id === entry.stage)?.label || entry.stage }));
+    ...entry, label: STAGE_DEFINITIONS.find(item => item.id === entry.stage)?.label || entry.stage }));
   return { rows, history };
 }
 
@@ -435,7 +442,8 @@ export function boardView(read, at = new Date()) {
     card.sync_failed = failedCards.has(card.id) || failedRepos.has(taskRepo(card));
     if (card.sync_failed) card.indicators.push("flag-unrefreshed");
   }
-  const stages = STAGES.map(stage => ({ ...stage, tasks: cards.filter(card => card.stage === stage.id) }));
+  const definitions = cards.some(card => card.stage === RECORDED_STAGE.id) ? STAGE_DEFINITIONS : STAGES;
+  const stages = definitions.map(stage => ({ ...stage, tasks: cards.filter(card => card.stage === stage.id) }));
   const live = stages.find(stage => stage.id === "live");
   live.tasks = sortLive(live.tasks, kind);
   const ledgerRows = rows(data.ledger, row => typeof row.pool === "string");
