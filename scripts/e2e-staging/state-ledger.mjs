@@ -8,6 +8,18 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
   requireState(Array.isArray(prior));
   const plan = new Map(targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface).map(screen => [target.name + '|' + screen.path, { target, screen }])));
   const entries = new Map();
+  const ownerFor = (sourceTarget, spec) => {
+    const source = targets.find(target => target.name === sourceTarget);
+    requireState(source && validateStateSpec(spec));
+    const direct = plan.get(sourceTarget + '|' + spec.owner);
+    if (direct) return direct.target.name;
+    // A source press belongs to its source surface. Its destination executes
+    // on the owning surface at the identical viewport, never on the source.
+    const candidates = [...plan.values()].filter(({ target, screen }) =>
+      screen.path === spec.owner && JSON.stringify(target.viewport || null) === JSON.stringify(source.viewport || null));
+    requireState(candidates.length === 1);
+    return candidates[0].target.name;
+  };
   const keyFor = (target, spec) => 'state/' + target + spec.owner + '/' + spec.id;
   const validate = entry => {
     const owner = plan.get(entry?.target + '|' + entry?.spec?.owner);
@@ -22,7 +34,7 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     for (const source of entry.sources) {
       requireState(source && typeof source.kind === 'string');
       if (source.kind === 'control') {
-        requireState(source.target === entry.target && plan.has(source.target + '|' + source.path) && typeof source.identity === 'string');
+        requireState(plan.has(source.target + '|' + source.path) && ownerFor(source.target, entry.spec) === entry.target && typeof source.identity === 'string');
         requireState(source.key === source.target + '/' + source.path + '/' + identityKey(source.identity));
         requireState(Array.isArray(source.openers) && typeof source.observed_destination === 'string' && typeof source.evidence_path === 'string' && source.evidence_path);
       } else requireState(source.kind === 'calendar-read' && source.target === entry.target && source.path === '/calendar' && source.entry_binding === entry.spec.entry_binding && entry.spec.kind === 'calendar-record' && typeof source.evidence_path === 'string' && source.evidence_path);
@@ -44,7 +56,8 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     requireState(entry.status !== 'passed' || entry.result && (entry.spec.kind === 'calendar-operation' ? entry.result.status === 'passed' : complete(entry.result)));
   };
   for (const entry of prior) { validate(entry); requireState(!entries.has(entry.key)); entries.set(entry.key, copy(entry)); }
-  const register = (target, spec, source) => {
+  const register = (sourceTarget, spec, source) => {
+    const target = ownerFor(sourceTarget, spec);
     const key = keyFor(target, spec), owner = plan.get(target + '|' + spec.owner);
     requireState(owner && validateStateSpec(spec));
     let entry = entries.get(key);

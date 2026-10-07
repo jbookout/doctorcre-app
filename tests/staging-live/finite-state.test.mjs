@@ -222,3 +222,117 @@ test('Calendar preflight failure preserves an existing owner frontier and preven
   assert.equal(resumed.verdict([]).completed, false);
   assert.doesNotThrow(() => createSweepRun({ targets: [targets[0]], routedScreens: [screen], prior: { release, ...resumed.snapshot() } }));
 });
+
+test('board desktop and phone delegate Ideas and Calendar to matching app owners, retaining source evidence across checkpoint resume', async t => {
+  const crossTargets = [
+    { name: 'staging-live', surface: 'app', viewport: { width: 1440, height: 960 } },
+    { name: 'staging-live-phone', surface: 'app', viewport: { width: 390, height: 844 } },
+    { name: 'staging-live-board', surface: 'board', viewport: { width: 1440, height: 960 } },
+    { name: 'staging-live-board-phone', surface: 'board', viewport: { width: 390, height: 844 } },
+  ];
+  const crossRoutes = [
+    { name: 'Board', path: '/control-room/progress', surface: 'board' },
+    { name: 'Ideas', path: '/ideas-events', surface: 'app' },
+    { name: 'Calendar', path: '/calendar', surface: 'app' },
+  ];
+  const calendarPath = '/calendar?view=week&d=2028-02-29&day=2028-02-29';
+  const boardHTML = '<main><a id="source-events" href="/ideas-events?tab=events">Events</a><a id="source-calendar" href="' + calendarPath + '">Calendar</a></main>';
+  const calendarHTML = '<main><button id="drawer" onclick="document.querySelector(\'#panel\').hidden=false">Calendar record drawer</button><section id="panel" hidden><button id="nested" onclick="document.querySelector(\'#result\').textContent=\'changed\'">Record action</button></section><output id="result"></output></main>';
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const output = await mkdtemp(join(tmpdir(), 'doctorcre-cross-surface-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const factory = (target, screen, spec) => async () => {
+    const page = await browser.newPage({ viewport: target.viewport });
+    await page.route(origin + '/**', route => {
+      const url = new URL(route.request().url());
+      return route.fulfill({ contentType: 'text/html', body: url.pathname === crossRoutes[0].path ? boardHTML
+        : url.pathname === '/calendar' ? calendarHTML : fixture(url.pathname, url.searchParams.get('tab')) });
+    });
+    await page.goto(origin + (spec?.url || screen.path));
+    return page;
+  };
+  let run = createSweepRun({ targets: crossTargets, routedScreens: crossRoutes });
+  let interrupted = false;
+  const measureBoard = async (target, allowInterruption) => {
+    const result = await fastSweep({ freshPage: factory(target, crossRoutes[0]), screen: crossRoutes[0], target: target.name,
+      routedPaths: crossRoutes.map(row => row.path), evidence, prior: run.priorScreen(target.name, crossRoutes[0].path),
+      checkpoint: async partial => {
+        run.record(partial);
+        await persistSweepReport(output, run, setup);
+        if (allowInterruption && !interrupted && partial.traversal.pending_discovery) {
+          interrupted = true; throw new Error('Synthetic stop before cross-surface delegation');
+        }
+      } });
+    run.record(result); await persistSweepReport(output, run, setup);
+    return result;
+  };
+  const partial = await measureBoard(crossTargets[2], true);
+  assert.ok(partial.traversal.pending_discovery);
+  assert.equal(partial.controls.length, 1);
+  const saved = await readSweepCheckpoint(output);
+  const prefix = structuredClone(saved.screens.find(row => row.target === crossTargets[2].name).controls);
+  run = createSweepRun({ targets: crossTargets, routedScreens: crossRoutes, prior: saved });
+  const desktop = await measureBoard(crossTargets[2], false);
+  assert.equal(desktop.failure, null);
+  assert.deepEqual(desktop.controls.slice(0, prefix.length), prefix);
+  assert.equal(desktop.controls.length, 2);
+  interrupted = false;
+  const phonePartial = await measureBoard(crossTargets[3], true);
+  assert.ok(phonePartial.traversal.pending_discovery);
+  assert.equal(phonePartial.controls.length, 1);
+  const phoneSaved = await readSweepCheckpoint(output);
+  const phonePrefix = structuredClone(phoneSaved.screens.find(row => row.target === crossTargets[3].name).controls);
+  run = createSweepRun({ targets: crossTargets, routedScreens: crossRoutes, prior: phoneSaved });
+  const phone = await measureBoard(crossTargets[3], false);
+  assert.equal(phone.failure, null);
+  assert.deepEqual(phone.controls.slice(0, phonePrefix.length), phonePrefix);
+  assert.equal(phone.controls.length, 2);
+  assert.ok([...desktop.controls, ...phone.controls].every(row => row.status === 'OBSERVED' && row.evidence_path));
+  const beforeOwners = run.snapshot();
+  const delegated = beforeOwners.stateObligations.filter(entry => entry.sources.some(source => source.target.includes('-board')));
+  assert.equal(delegated.length, 6, 'both tab owners and the exact Calendar state on each app viewport');
+  for (const entry of delegated) {
+    const source = entry.sources.find(row => row.target.includes('-board'));
+    const ownerName = source.target === 'staging-live-board' ? 'staging-live' : 'staging-live-phone';
+    assert.equal(entry.target, ownerName);
+    assert.deepEqual(entry.viewport, crossTargets.find(row => row.name === source.target).viewport);
+    assert.equal(source.path, crossRoutes[0].path);
+    assert.ok(source.key.startsWith(source.target + '/' + source.path + '/'));
+    if (entry.spec.owner === '/calendar') assert.equal(entry.spec.url, calendarPath);
+  }
+  run = createSweepRun({ targets: crossTargets, routedScreens: crossRoutes, prior: await readSweepCheckpoint(output) });
+  for (const entry of delegated) {
+    const target = crossTargets.find(row => row.name === entry.target), screen = crossRoutes.find(row => row.path === entry.spec.owner);
+    const result = await fastSweep({ freshPage: factory(target, screen, entry.spec), target: target.name, screen, identityScope: entry.key,
+      routedPaths: crossRoutes.map(row => row.path), evidence, checkpoint: async partial => {
+        run.recordState(entry.key, partial); await persistSweepReport(output, run, setup);
+      } });
+    assert.equal(result.failure, null);
+    assert.ok(result.controls.some(row => row.selector === '#nested'));
+    run.recordState(entry.key, result);
+    await persistSweepReport(output, run, setup);
+  }
+  const completeOwners = await readSweepCheckpoint(output);
+  for (const entry of delegated) {
+    const completed = completeOwners.stateObligations.find(row => row.key === entry.key);
+    assert.equal(completed.status, 'passed');
+    assert.equal(completed.result.target, entry.target);
+    assert.ok(completed.result.controls.every(row => row.target === entry.target && row.state_scope === entry.key));
+    assert.ok(completed.sources.some(source => source.target.includes('-board')));
+  }
+  assert.doesNotThrow(() => createSweepRun({ targets: crossTargets, routedScreens: crossRoutes, prior: completeOwners }));
+  assert.equal(run.verdict([]).completed, false, 'functional Calendar and full base coverage remain required');
+  const wrongViewport = structuredClone(completeOwners);
+  const desktopEntry = wrongViewport.stateObligations.find(entry => entry.target === 'staging-live' && entry.sources.some(row => row.target === 'staging-live-board'));
+  const phoneBinding = wrongViewport.stateObligations.find(entry => entry.target === 'staging-live-phone' && entry.spec.id === desktopEntry.spec.id)
+    .sources.find(row => row.target === 'staging-live-board-phone');
+  desktopEntry.sources[desktopEntry.sources.findIndex(row => row.target === 'staging-live-board')] = structuredClone(phoneBinding);
+  assert.throws(() => createSweepRun({ targets: crossTargets, routedScreens: crossRoutes, prior: wrongViewport }), /state obligation/);
+  const wrongOwner = structuredClone(completeOwners);
+  wrongOwner.stateObligations.find(entry => entry.target === 'staging-live' && entry.spec.owner === '/calendar').target = 'staging-live-board';
+  assert.throws(() => createSweepRun({ targets: crossTargets, routedScreens: crossRoutes, prior: wrongOwner }), /state obligation/);
+  const missing = createSweepRun({ targets: crossTargets.filter(row => row.surface === 'board'), routedScreens: crossRoutes });
+  assert.throws(() => missing.record(desktop), /state obligation/);
+  const ambiguous = createSweepRun({ targets: [...crossTargets, { ...crossTargets[0], name: 'second-desktop-app' }], routedScreens: crossRoutes });
+  assert.throws(() => ambiguous.record(desktop), /state obligation/);
+});
