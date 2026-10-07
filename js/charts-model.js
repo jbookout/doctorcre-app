@@ -377,15 +377,6 @@ export function chartsPhase({ status, payload, group = null, pick = null }) {
   return "ready";
 }
 
-/**
- * The sequence guard. A response paints only when no newer read has been
- * started since it left; an older answer that overtakes a newer one renders
- * NOTHING rather than replacing what is on screen.
- */
-export function acceptsBoardResponse(current, token) {
-  return Number(current) === Number(token);
-}
-
 /* ------------------------------------------------------------ the device fact */
 
 /**

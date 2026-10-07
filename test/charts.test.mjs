@@ -19,7 +19,7 @@ import { PREFERENCES_KEY } from "../js/shell.js";
 import { SAVED_VIEWS_KEY } from "../js/search-model.js";
 import {
   CHARTS_STATES, CHARTS_STATE_COPY, CHARTS_VIEW_KEY, DIMENSION_IDS, NEVER_REVIEWED, NO_VALUE_KEY,
-  accountRows, acceptsBoardResponse, barShare, bucketRows, chartsAddress, chartsPhase,
+  accountRows, barShare, bucketRows, chartsAddress, chartsPhase,
   classifyBoardFailure, countValue, filterDeals, nextDateCoverage, ownerRows, parseChartsAddress,
   phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage, validBoardPayload,
   waitingSummary, writeChartsView,
@@ -270,18 +270,6 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
 });
 
 /* ------------------------------------------------------------------------ B06-8 */
-
-test("B06-8 an older answer that overtakes a newer one renders nothing", () => {
-  assert.equal(acceptsBoardResponse(2, 2), true);
-  assert.equal(acceptsBoardResponse(2, 1), false, "the older read's token is refused once a newer read has started");
-  assert.equal(acceptsBoardResponse(1, 2), false);
-  // The guard runs on BOTH legs — the thrown path and the resolved path — so a
-  // late failure cannot blank a good newer answer either.
-  const readBody = pageJs.slice(pageJs.indexOf("export async function read("), pageJs.indexOf("function pushAddress()"));
-  assert.equal((readBody.match(/if \(!acceptsBoardResponse\(view\.sequence, sequence\)\) return;/g) || []).length, 2);
-  assert.match(readBody, /const sequence = \+\+view\.sequence;/);
-  assert.equal(CHARTS_STATE_COPY.stale.copy, "");
-});
 
 /* ------------------------------------------------------------------------ B06-9 */
 
@@ -542,7 +530,6 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
   assert.match(workspaceJs, /function readBoard\(\) \{\s*return client\.getBoard\(\{ workspace: 'all' \}\);\s*\}/);
   assert.match(workspaceJs, /async function loadBoardRecords\(boardRead\) \{/, "Quick add is handed the read rather than taking one");
   assert.match(workspaceJs, /board = await boardRead;/);
-  assert.match(pageJs, /const pending = sharedBoard \|\| client\.getBoard\(\{ workspace: "all" \}\);\s*\n\s*sharedBoard = null;/);
   // popstate restores the TAB as well as the selection (advisory A6).
   assert.match(pageJs, /if \(address\.present\) selectTab\?\.\(\);/);
   assert.match(workspaceJs, /onRestore: \(\) => tabs\?\.select\("tabCharts"\)/);

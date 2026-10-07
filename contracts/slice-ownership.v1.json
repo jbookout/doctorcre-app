@@ -146,6 +146,10 @@
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs",
     "tours/vendor/tour-map-route-state.js",
-    "js/progress-board-route.js"
+    "js/progress-board-route.js",
+    "test/mcp-requests.test.mjs",
+    "js/mcp-requests.mjs",
+    "js/current-read.mjs",
+    "test/current-read.test.mjs"
   ]
 }

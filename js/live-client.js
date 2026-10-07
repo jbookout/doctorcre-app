@@ -8,7 +8,8 @@
 import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
-import { fetchRead, readWithDeadline } from './auto-refresh.mjs';
+import { fetchRead, readWithDeadline } from './current-read.mjs';
+import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
@@ -32,51 +33,27 @@ export function createLiveClient(opts = {}) {
   let selfActor = opts.selfActor || null;
   const fetchImpl = opts.fetchImpl || ((path, init) => fetch(`${baseUrl}${path}`, init));
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
-  let rpcId = 0;
+  const requestMcp = createMcpRequests({ fetchImpl, typedContent: false });
   const dealCreations = new Map();
   const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
 
-  const rpc = (verb, args = {}, signal) => readWithDeadline(
-    currentSignal => rawRpc(verb, args, currentSignal), { timeoutMs: opts.readTimeoutMs || 10_000, signal });
+  const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
 
-  async function rawRpc(verb, args = {}, signal) {
-    const res = await fetchImpl('/mcp', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      ...(signal ? { signal } : {}),
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: ++rpcId,
-        method: 'tools/call',
-        params: { name: verb, arguments: args },
-      }),
-    });
-    if (!res.ok) {
-      // The status is the only thing that says whether this request was DECIDED
-      // or merely unanswered, and throwing it away made every failure look the
-      // same to a caller. A 401 or 403 is a decision taken before the verb ever
-      // ran: the change was not saved, and inviting a retry would be wrong. A
-      // 5xx, a proxy's 502, a gateway timeout is the path failing around a
-      // request that may well have been applied. Callers need to tell those apart.
-      //
-      // The BODY does not go into the message. A 500's body is a server stack
-      // written for whoever maintains the verb — it is not a statement about this
-      // deal, and this page prints `error.message` at partners. It travels on the
-      // error for the console and for a bug report, and no surface renders it.
-      const error = new Error(`live ${verb} -> HTTP ${res.status}`);
-      error.status = res.status;
-      // Authentication is decided by the headers; a stalled diagnostic body
-      // must never hide that decision behind a generic read timeout.
-      if (res.status === 401 || res.status === 403) throw error;
-      const body = await res.text().catch(() => '');
-      error.body = body.slice(0, 500);
+  async function rawRpc(verb, args = {}, signal, timeoutMs) {
+    const outcome = await requestMcp(verb, args, { signal, timeoutMs });
+    if (outcome.kind === 'authorization' || outcome.reason === 'http') {
+      const error = new Error(`live ${verb} -> HTTP ${outcome.status}`);
+      error.status = outcome.status;
+      if (outcome.kind !== 'authorization') error.body = outcome.body;
       throw error;
     }
-    const envelope = await res.json();
-    if (envelope.error) throw new Error(`live ${verb} rpc error: ${envelope.error.message}`);
-    const payload = JSON.parse(envelope.result?.content?.[0]?.text ?? 'null');
-    if (envelope.result?.isError) {
+    if (outcome.kind === 'unconfirmed') {
+      if (outcome.reason === 'rpc') throw new Error(`live ${verb} rpc error: ${outcome.cause.message}`);
+      if (['network', 'deadline', 'envelope', 'payload'].includes(outcome.reason)) throw outcome.cause;
+      throw unknownMcpOutcome(outcome.cause);
+    }
+    const { payload, isError } = outcome;
+    if (isError) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
@@ -94,7 +71,7 @@ export function createLiveClient(opts = {}) {
       throw error;
     }
     const request = { ...args, idempotency_key: args.idempotency_key || uuidv4() };
-    return timeoutMs ? readWithDeadline(signal => rawRpc(verb, request, signal), { timeoutMs }) : rawRpc(verb, request);
+    return rawRpc(verb, request, undefined, timeoutMs);
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -440,7 +417,7 @@ export function createLiveClient(opts = {}) {
     // `read-loop` answers a miss IN the payload with `isError` false, so a
     // not_found or an ambiguous number arrives here as an ordinary answer and
     // is returned as one. Only a real refusal throws.
-    async loopBoard(args = {}) { return rpc('loop-board', args); },
+    async loopBoard(args = {}, { signal } = {}) { return rpc('loop-board', args, signal); },
     async readLoop(args = {}) { return rpc('read-loop', args); },
     async loopHeaders(args = {}) { return rpc('loop-headers', args); },
     async addLoop(args) { return write('add-loop', args); },
@@ -653,8 +630,8 @@ export function createLiveClient(opts = {}) {
     // under additionalProperties:false, so a third argument is refused by the
     // gateway with `unregistered_operation_fields` before the handler runs.
     // They go through `rpc` because they carry no idempotency key.
-    async find(args = {}) { return rpc('find', args); },
-    async findAndCatchUp(args = {}) { return rpc('find-and-catch-up', args); },
+    async find(args = {}, { signal } = {}) { return rpc('find', args, signal); },
+    async findAndCatchUp(args = {}, { signal } = {}) { return rpc('find-and-catch-up', args, signal); },
 
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },

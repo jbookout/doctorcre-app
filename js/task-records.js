@@ -29,10 +29,11 @@ import {
   TASK_KINDS, handoverArgs, handoverTarget, loopRefusalMessage, normalizeBoardRow, operationKeys,
   orderTaskRows, partnerName, quickAddPlan, quickAddRecords, quickAddStartsOpen, scopeRows, taskDetailRows, closeArgs,
   dueDateArgs, validBoardPayload, taskDialogTransition, draftIdentityPlan,
-  invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry,
+  shouldFocusTaskRetry,
 } from "./task-records-model.js";
 import { uuidv4 } from "./uuid.js";
 import { browserDraftStorage, createLocalDrafts, matchingDraftId } from "./local-drafts.mjs";
+import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 
 const $ = (id) => document.getElementById(id);
@@ -49,7 +50,6 @@ const view = {
   open: null,
   openViewer: null,
   closing: null,
-  sequence: 0,
 };
 
 let client = null;
@@ -65,7 +65,8 @@ const operations = new Map();
 let heldDialog = null;
 let unverifiedPreviousActor = null;
 let heldQuickAdd = null;
-let viewerSequence = 0;
+const viewerReads = createCurrentRead();
+const taskReads = createCurrentRead();
 let retryFocusPending = false;
 
 function announce(text) {
@@ -227,7 +228,8 @@ function settleTaskReadFocus(dialogAction) {
 
 function refuseUnverifiedViewer() {
   // Invalidate every board request started by a previously verified actor.
-  invalidateTaskRead(view, "unverified", "Sign in to continue.");
+  taskReads.invalidate();
+  Object.assign(view, { status: "unverified", rows: [], message: "Sign in to continue." });
   heldDialog = null;
   if (draftViewer) {
     unverifiedPreviousActor = draftViewer;
@@ -250,50 +252,51 @@ function refuseUnverifiedViewer() {
 
 /* --------------------------------------------------------------------- reading */
 
-async function load() {
-  const sequence = ++view.sequence;
+async function load({ signal } = {}) {
   let dialogAction = null;
   if (view.status !== "ready") { view.status = "loading"; render(); }
-  try {
-    const payloads = await Promise.all(TASK_KINDS.map((kind) => client.loopBoard({
-      kind, status: "open", limit: 300, summary: false,
-    })));
-    if (!isCurrentTaskRead(view, sequence)) return;
-    const rows = [];
-    for (const payload of payloads) {
-      if (!validBoardPayload(payload)) {
-        view.status = "error";
-        view.rows = [];
-        view.message = "The board answered in a shape this page cannot read, so no part of it is shown as a record.";
-        dialogAction = reconcileTaskDialog();
-        render();
-        renderQuickAdd();
-        settleTaskReadFocus(dialogAction);
-        return;
+  const settled = () => {
+    render(); renderDrafts(); renderQuickAdd(); settleTaskReadFocus(dialogAction);
+  };
+  return taskReads.run(({ signal }) => Promise.all(TASK_KINDS.map((kind) => client.loopBoard({
+    kind, status: "open", limit: 300, summary: false,
+  }, { signal }))), {
+    signal,
+    success(payloads) {
+      const rows = [];
+      for (const payload of payloads) {
+        if (!validBoardPayload(payload)) {
+          view.status = "error";
+          view.rows = [];
+          view.message = "The board answered in a shape this page cannot read, so no part of it is shown as a record.";
+          dialogAction = reconcileTaskDialog();
+          render();
+          renderQuickAdd();
+          settleTaskReadFocus(dialogAction);
+          return;
+        }
+        for (const row of payload.loops) {
+          const normalized = normalizeBoardRow(row);
+          if (normalized) rows.push(normalized);
+        }
       }
-      for (const row of payload.loops) {
-        const normalized = normalizeBoardRow(row);
-        if (normalized) rows.push(normalized);
-      }
-    }
-    view.rows = rows;
-    view.status = "ready"; view.updatedAt = new Date().toISOString();
-    view.message = null;
-    reconcileTaskDialog();
-  } catch (error) {
-    if (!isCurrentTaskRead(view, sequence)) return;
-    const status = Number(error?.status || 0);
-    view.status = status === 401 || status === 403 ? "unauthorized" : "error";
-    view.rows = [];
-    view.message = view.status === "unauthorized"
-      ? "Sign in again to read the shared record. Nothing is shown from a session that has ended."
-      : "The shared record could not be read. Nothing here has been inferred.";
-    dialogAction = reconcileTaskDialog();
-  }
-  render();
-  renderDrafts();
-  renderQuickAdd();
-  settleTaskReadFocus(dialogAction);
+      view.rows = rows;
+      view.status = "ready"; view.updatedAt = new Date().toISOString();
+      view.message = null;
+      reconcileTaskDialog();
+      settled();
+    },
+    failure(error) {
+      const status = Number(error?.status || 0);
+      view.status = status === 401 || status === 403 ? "unauthorized" : "error";
+      view.rows = [];
+      view.message = view.status === "unauthorized"
+        ? "Sign in again to read the shared record. Nothing is shown from a session that has ended."
+        : "The shared record could not be read. Nothing here has been inferred.";
+      dialogAction = reconcileTaskDialog();
+      settled();
+    },
+  });
 }
 
 /** The fresh read every write is built from. Errors arrive in the payload. */
@@ -659,57 +662,56 @@ function mountDock() {
   dock.mount();
 }
 
-async function loadViewer() {
-  const identityRead = ++viewerSequence;
+async function loadViewer({ signal } = {}) {
   // Conceal rows, modal details, and actor-scoped drafts while the session's
   // current identity is unknown. This also fences off older board responses.
-  invalidateTaskRead(view, "loading");
+  taskReads.invalidate();
+  Object.assign(view, { status: "loading", rows: [], message: null });
   if (reconcileTaskDialog() === "conceal") retryFocusPending = true;
   render();
   renderDrafts();
-  try {
-    const board = await client.getBoard({ workspace: 'all' });
-    if (identityRead !== viewerSequence) return null;
-    if (!board?.actor) return false;
-    const plan = draftIdentityPlan(unverifiedPreviousActor || draftViewer, board.actor);
-    if (plan === "reuse" && !unverifiedPreviousActor) return true;
-    if (plan === "replace") {
-      if ($("quickAddInput")) $("quickAddInput").value = "";
-      if ($("quickAddDate")) $("quickAddDate").value = "";
-    }
-    if (plan !== "reuse") {
-      const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
-      if (plan === "first") for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
-      localDrafts = saved;
-    }
-    draftViewer = board.actor;
-    if (plan === "reuse" && unverifiedPreviousActor && heldQuickAdd?.actor === board.actor) {
-      if ($("quickAddInput")) $("quickAddInput").value = heldQuickAdd.sentence;
-      if ($("quickAddDate")) $("quickAddDate").value = heldQuickAdd.dueDate;
-    }
-    unverifiedPreviousActor = null;
-    heldQuickAdd = null;
-    restoredDraftId = null;
-    viewer = board.actor;
-    // The prior actor's board cannot be rendered under the newly verified name.
-    // The next load() owns the only transition back to ready.
-    reconcileTaskDialog();
-    renderDrafts();
-    renderQuickAdd();
-    render();
-    return true;
-  } catch {
-    if (identityRead !== viewerSequence) return null;
+  return viewerReads.run(({ signal }) => client.getBoard({ workspace: 'all', signal }), {
+    signal,
+    success(board) {
+      if (!board?.actor) return false;
+      const plan = draftIdentityPlan(unverifiedPreviousActor || draftViewer, board.actor);
+      if (plan === "reuse" && !unverifiedPreviousActor) return true;
+      if (plan === "replace") {
+        if ($("quickAddInput")) $("quickAddInput").value = "";
+        if ($("quickAddDate")) $("quickAddDate").value = "";
+      }
+      if (plan !== "reuse") {
+        const saved = createLocalDrafts({ storage: browserDraftStorage(), viewer: board.actor });
+        if (plan === "first") for (const draft of localDrafts.list()) saved.save(draft.sentence, draft.dueDate);
+        localDrafts = saved;
+      }
+      draftViewer = board.actor;
+      if (plan === "reuse" && unverifiedPreviousActor && heldQuickAdd?.actor === board.actor) {
+        if ($("quickAddInput")) $("quickAddInput").value = heldQuickAdd.sentence;
+        if ($("quickAddDate")) $("quickAddDate").value = heldQuickAdd.dueDate;
+      }
+      unverifiedPreviousActor = null;
+      heldQuickAdd = null;
+      restoredDraftId = null;
+      viewer = board.actor;
+      // The prior actor's board cannot be rendered under the newly verified name.
+      // The next load() owns the only transition back to ready.
+      reconcileTaskDialog();
+      renderDrafts();
+      renderQuickAdd();
+      render();
+      return true;
+    },
     // A disconnected page can keep drafts in memory until identity is verified.
-    return false;
-  }
+    failure() { return false; },
+  });
 }
 
-async function refreshVerified() {
-  const verified = await loadViewer();
-  if (verified === null) return;
+async function refreshVerified({ signal } = {}) {
+  const verified = await loadViewer({ signal });
+  if (verified == null) return;
   if (!verified) { refuseUnverifiedViewer(); return; }
-  await load();
+  await load({ signal });
 }
 
 /* ------------------------------------------------------------------------ boot */
@@ -740,8 +742,8 @@ async function boot() {
     if (!client) return;
     await refreshVerified();
   });
-  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => {
-    await refreshVerified();
+  mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => {
+    await refreshVerified({ signal });
     renderQuickAdd();
   } });
   renderDrafts();
