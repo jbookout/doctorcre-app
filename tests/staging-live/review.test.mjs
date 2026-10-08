@@ -4,6 +4,47 @@ import { randomUUID } from 'node:crypto';
 import { chromium, fixtureServer } from '../../test/browser-harness.mjs';
 import { inventory, pressControl, sweepScreen } from '../../scripts/e2e-staging/controls.mjs';
 
+test('form submissions are attributed only to the pressed submitter', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(`<main><button id="dead">Dead</button><form id="form"><button id="save" type="submit">Save</button><output id="out"></output></form></main><script>document.querySelector('#form').addEventListener('submit', event => {event.preventDefault();document.querySelector('#out').textContent='Saved'})</script>`);
+  const rows = await inventory(page);
+  assert.equal((await pressControl(page, rows.find(row => row.selector === '#save'))).status, 'OBSERVED');
+  assert.equal(await page.locator('#out').textContent(), 'Saved');
+  await page.evaluate(() => setTimeout(() => {
+    document.querySelector('#out').textContent = '';
+    document.querySelector('#form').requestSubmit(document.querySelector('#save'));
+  }, 100));
+  assert.equal((await pressControl(page, rows.find(row => row.selector === '#dead'))).status, 'DEAD');
+  assert.equal(await page.locator('#out').textContent(), 'Saved');
+});
+
+test('native await continuations retain the initiating interaction through chained timers', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(`<main><button id="live">Save</button><output id="out"></output><time id="tick"></time></main><script>setInterval(()=>document.querySelector('#tick').textContent=String(Date.now()),15);document.querySelector('#live').addEventListener('click',async()=>{await new Promise(resolve=>setTimeout(resolve,10));await new Promise(resolve=>setTimeout(resolve,10));document.querySelector('#out').textContent='Saved'})</script>`);
+  const result = await pressControl(page, (await inventory(page))[0]);
+  assert.equal(await page.locator('#out').textContent(), 'Saved');
+  assert.equal(result.status, 'OBSERVED');
+  assert.ok(result.signals.includes('main DOM mutation'));
+});
+
+test('a mounted Tours submission observes visible criteria validation', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(`${server.origin}/tours?demo=1`);
+  await page.locator('#space-area').fill('Synthetic area');
+  await page.locator('#space-minSize').fill('2');
+  await page.locator('#space-maxSize').fill('1');
+  await page.locator('#space-message').evaluate(element => { element.textContent = ''; });
+  const row = (await inventory(page)).find(row => row.selector === '#save-search');
+  const result = await pressControl(page, row);
+  assert.match(await page.locator('#space-message').textContent(), /maximum|minimum/i);
+  assert.equal(result.status, 'OBSERVED');
+  assert.ok(result.signals.includes('main DOM mutation'));
+});
+
 test('a handlerless control in the mounted app stays DEAD while Doc ticks with its dialog closed', async t => {
   const server = await fixtureServer();
   t.after(() => server.close());

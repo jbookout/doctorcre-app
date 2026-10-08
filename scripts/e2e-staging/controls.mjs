@@ -125,12 +125,12 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
     const target = document.querySelector(selector);
     const state = window.__controlObservation = { mutations: 0, focus: 0, aria: 0, target, beforeOpen: target?.tagName === 'SUMMARY' ? target.parentElement.open : null, beforeValue: target?.value ?? null, beforeChecked: target?.checked ?? null, valueChanged: false, requests: [], deadline: Infinity };
     const active = () => !state.snapshot && Date.now() <= state.deadline;
-    const events = ['click', 'input', 'change', 'keydown'];
-    let inCallback = false, pendingFocus = 0;
+    const events = ['click', 'input', 'change', 'keydown', 'submit'];
+    let inCallback = false, pendingFocus = 0, callbackGeneration = 0;
     // window.event identifies the native dispatch while existing app handlers
     // run. Async work inherits attribution only when scheduled by that dispatch
     // or its callbacks. Pre-existing timers and polling never inherit it.
-    const matches = event => event.composedPath().includes(target);
+    const matches = event => event.type === 'submit' ? event.submitter === target : event.composedPath().includes(target);
     const caused = () => active() && (inCallback || (window.event && events.includes(window.event.type) && matches(window.event)));
     const visible = node => {
       const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
@@ -158,15 +158,23 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
     };
     const originals = { setTimeout: window.setTimeout, setInterval: window.setInterval, requestAnimationFrame: window.requestAnimationFrame, queueMicrotask: window.queueMicrotask, fetch: window.fetch, then: Promise.prototype.then, xhrOpen: XMLHttpRequest.prototype.open, xhrSend: XMLHttpRequest.prototype.send };
     const promises = new WeakSet(), xhrURLs = new WeakMap();
+    const finishCallback = generation => originals.queueMicrotask.call(window, () => {
+      if (generation !== callbackGeneration) return;
+      flush(); inCallback = false;
+    });
     const inherit = callback => typeof callback !== 'function' ? callback : function (...args) {
       if (!active()) return callback.apply(this, args);
       window.__controlObserver.takeRecords(); pendingFocus = 0;
-      const previous = inCallback; inCallback = true;
+      const generation = ++callbackGeneration; inCallback = true;
       try {
         const result = callback.apply(this, args);
         if (result instanceof Promise) promises.add(result);
         return result;
-      } finally { flush(); inCallback = previous; }
+      // Resolving an awaited promise queues the native continuation before
+      // this cleanup microtask. Promise.then wrappers cannot see native await.
+      // Flush its effects before clearing attribution, without extending it to
+      // the next timer task (which may belong to unrelated idle rendering).
+      } finally { flush(); finishCallback(generation); }
     };
     for (const key of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'queueMicrotask']) window[key] = function (callback, ...args) {
       return originals[key].call(this, caused() ? inherit(callback) : callback, ...args);
@@ -192,7 +200,10 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
       const metadata = xhrURLs.get(this); if (metadata) request(...metadata);
       return originals.xhrSend.apply(this, args);
     };
-    const interaction = event => { if (matches(event)) flush(); };
+    const interaction = event => {
+      if (!matches(event)) return;
+      flush(); inCallback = true; finishCallback(++callbackGeneration);
+    };
     for (const event of events) window.addEventListener(event, interaction);
     window.__controlFocus = () => {
       if (!active()) return;
