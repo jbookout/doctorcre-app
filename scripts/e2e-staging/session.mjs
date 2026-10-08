@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { request as playwrightRequest } from 'playwright';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { BudgetRefusal } from './run-budget.mjs';
 
 export const STAGING_ORIGIN = contract.origin;
 export const SECRET_PATH = join(homedir(), '.config/carr/e2e-session-secret');
@@ -30,42 +31,65 @@ export class SessionPreflightFailure extends Error {
   constructor(code) { super('staging session preflight failed: ' + code); this.code = code; }
 }
 
-export async function preflightRequest(phase, operation, { pause = delay } = {}) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+// Retries are a budget property: each attempt is its own debited dispatch, and
+// the approved Home smoke allows none (attempts = retries + 1 = 1).
+export async function preflightRequest(phase, operation, { pause = delay, attempts = 1 } = {}) {
+  for (let attempt = 1; ; attempt++) {
     try {
       const response = await operation();
       if (![429, 502, 503, 504].includes(response.status())) return response;
-      if (attempt === 2) throw new SessionPreflightFailure(phase + '-http-' + response.status());
+      if (attempt >= attempts) throw new SessionPreflightFailure(phase + '-http-' + response.status());
     } catch (error) {
-      if (error instanceof SessionPreflightFailure) throw error;
-      if (attempt === 2) throw new SessionPreflightFailure(phase + '-transport-failed');
+      if (error instanceof SessionPreflightFailure || error instanceof BudgetRefusal) throw error;
+      if (attempt >= attempts) throw new SessionPreflightFailure(phase + '-transport-failed');
     }
-    await pause(250 * (attempt + 1));
+    await pause(250 * attempt);
   }
 }
 
-export async function stagingSession(baseURL = STAGING_ORIGIN) {
+// Charges a buffered API response against the run's ingress bytes: the
+// declared length first, then the received body. Playwright's request API has
+// already buffered the body by then, so the per-response cap is enforced on
+// what was received rather than while it streamed.
+export async function chargeBody(budget, response) {
+  const meter = budget.ingressMeter();
+  try {
+    await meter.declare(Number(response.headers?.()['content-length'] ?? NaN));
+    const body = await response.body?.();
+    if (body?.length) await meter.take(body.length);
+  } finally { await meter.settle(); }
+  return response;
+}
+
+// Every preflight request is reserved against the run budget before it is
+// sent. A caller without a budget is unsupported ingress and refuses.
+export async function stagingSession(baseURL = STAGING_ORIGIN, {
+  budget, requestFactory = options => playwrightRequest.newContext(options), readSecret = readSessionSecret,
+} = {}) {
+  if (!budget) throw new BudgetRefusal('http-not-budgeted');
   const origin = assertStagingURL(baseURL);
+  const attempts = budget.profile.retries + 1;
+  const preflight = (phase, send) => preflightRequest(phase, () => budget.dispatch('preflight', async () => chargeBody(budget, await send())), { attempts });
   let api, phase = 'context';
   try {
-    api = await playwrightRequest.newContext({ baseURL: origin, timeout: 30_000 });
+    api = await requestFactory({ baseURL: origin, timeout: budget.timeoutMs() });
     phase = 'app-release';
-    const release = await preflightRequest(phase, () => api.get('/app-release', { maxRedirects: 0 }));
+    const release = await preflight(phase, () => api.get('/app-release', { maxRedirects: 0 }));
     const identity = release.ok() ? await release.json() : {};
     if (identity.environment !== 'staging' || identity.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity.source_commit || ''))
       throw new SessionPreflightFailure('app-release-invalid');
     phase = 'carr-release';
-    const carrRelease = await preflightRequest(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }));
+    const carrRelease = await preflight(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }));
     const carr = carrRelease.ok() ? await carrRelease.json() : {};
     if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit)
       throw new SessionPreflightFailure('carr-source-pair-refused');
     phase = 'secret';
-    const secret = await readSessionSecret();
+    const secret = await readSecret();
     phase = 'session-exchange';
-    const response = await preflightRequest(phase, () => api.post('/auth/e2e-session', { headers: { authorization: 'Bearer ' + secret }, maxRedirects: 0 }));
+    const response = await preflight(phase, () => api.post('/auth/e2e-session', { headers: { authorization: 'Bearer ' + secret }, maxRedirects: 0 }));
     if (!response.ok()) throw new SessionPreflightFailure('session-exchange-refused-' + response.status());
     phase = 'session-confirm';
-    const session = await preflightRequest(phase, () => api.get('/auth/session', { maxRedirects: 0 }));
+    const session = await preflight(phase, () => api.get('/auth/session', { maxRedirects: 0 }));
     const actor = session.ok() ? await session.json() : {};
     if (actor.actor?.slug !== 'joe' || actor.e2e_principal !== 'e2e-joe') throw new SessionPreflightFailure('dedicated-principal-refused');
     phase = 'cookie';
@@ -74,8 +98,44 @@ export async function stagingSession(baseURL = STAGING_ORIGIN) {
       throw new SessionPreflightFailure('secure-cookie-refused');
     return { state, release: { ...identity, carr_source_commit: contract.producer.source_commit } };
   } catch (error) {
-    if (error instanceof SessionPreflightFailure) throw error;
+    if (error instanceof SessionPreflightFailure || error instanceof BudgetRefusal) throw error;
     // Never forward a provider error: request objects can include credentials.
     throw new SessionPreflightFailure(phase + '-failed');
   } finally { if (api) await api.dispose().catch(() => { throw new SessionPreflightFailure('context-dispose-failed'); }); }
+}
+
+// Reads a fetch() response body chunk by chunk, refusing before the declared
+// length or the received bytes cross the meter's caps; the bytes that arrived
+// are settled (charged) even when the read is refused part-way.
+export async function readMetered(response, meter) {
+  const chunks = [];
+  try {
+    await meter.declare(Number(response.headers.get('content-length') ?? NaN));
+    if (response.body) {
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await meter.take(value.byteLength);
+          chunks.push(Buffer.from(value));
+        }
+      } finally { reader.cancel().catch(() => {}); }
+    }
+  } finally { await meter.settle(); }
+  return Buffer.concat(chunks);
+}
+
+// A charged re-check of the deployed app source, for long runs that must not
+// repeat the full preflight per screen (the preflight count is capped at 8).
+export async function checkStagingRelease(budget, origin = STAGING_ORIGIN) {
+  const identity = await budget.dispatch('http', async signal => {
+    const response = await fetch(new URL('/app-release', assertStagingURL(origin)), { redirect: 'manual', signal: AbortSignal.any([signal, AbortSignal.timeout(budget.timeoutMs())]) });
+    const body = await readMetered(response, budget.ingressMeter());
+    if (!response.ok) throw new SessionPreflightFailure('release-recheck-http-' + response.status);
+    return JSON.parse(body.toString('utf8'));
+  });
+  if (identity?.environment !== 'staging' || identity?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity?.source_commit || ''))
+    throw new SessionPreflightFailure('release-recheck-invalid');
+  return { ...identity, carr_source_commit: contract.producer.source_commit };
 }
