@@ -85,3 +85,16 @@
 .reference-grid figcaption{margin-top:9px;color:#b8cbdc;font-size:12px}
 @media(max-width:680px){.reference-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.reference-grid img{transition:none}.reference-grid a:hover img{transform:none}}
+
+.token-ground-0 { --t: var(--ground-0); }
+.token-ground-2 { --t: var(--ground-2); }
+.token-text { --t: var(--text); }
+.token-muted { --t: var(--muted); }
+.token-quiet { --t: var(--quiet); }
+.token-navy { --t: var(--navy); }
+.token-orange { --t: var(--orange); }
+.token-cyan { --t: var(--cyan); }
+.token-green { --t: var(--green); }
+.token-amber { --t: var(--amber); }
+.token-red { --t: var(--red); }
+.token-violet { --t: var(--violet); }

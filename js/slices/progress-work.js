@@ -9,7 +9,7 @@ export default {
     "js/progress-work.js",
     "js/queue-model.mjs",
     "js/queue.js",
-    "js/room.js",
+    "js/progress-wire.js",
     "progress-work.html",
     "queue.html",
     "room.html",

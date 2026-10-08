@@ -117,7 +117,7 @@ test('projecting one source does not restore another or turn a failed source int
 test('R17 deleted mounting interface has no callers or fallback',async()=>{
  const {readdir}=await import('node:fs/promises');
  for(const file of await readdir(new URL('../js/',import.meta.url)))if(file.endsWith('.js')){
-  const source=await readFile(new URL('../js/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/mountDocDock/,file);
+  const source=await readFile(new URL('../js/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/mountDocDock|docFab/,file);
  }
  const source=await readFile(new URL('../js/business-workspace.js',import.meta.url),'utf8');
  assert.doesNotMatch(source,/doc\?\.openHistory|doc\?\.open/);

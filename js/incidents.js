@@ -78,7 +78,7 @@ function rowHtml({ title, meta, end = "" }) {
 /** The refusal card and the open list behind it. */
 function renderList() {
   const read = view.list;
-  $("refusalSentence").textContent = "Select an incident below.";
+  $("refusalSentence").textContent = view.refState === "malformed" ? REF_REFUSAL : "Select an incident below.";
   $("listAsOf").textContent = asOf(read);
   const root = $("incidentList");
   const payload = read.state === "read" ? read.payload : null;

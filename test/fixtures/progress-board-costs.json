@@ -1,0 +1,78 @@
+{
+  "schema": "carr-system-costs.v1",
+  "observed_at": "2026-10-05T08:00:00Z",
+  "month": "2026-10",
+  "through": "2026-10-04",
+  "state": "partial",
+  "budget_usd": 70,
+  "providers": [
+    {
+      "provider": "jev",
+      "label": "Jev",
+      "plan": "Per call",
+      "mtd_usd": 12,
+      "projection_usd": 93,
+      "budget_usd": 80,
+      "state": "ready",
+      "daily": [
+        {
+          "day": "2026-09-20",
+          "usd": 50,
+          "drivers": {
+            "review": 50
+          }
+        },
+        {
+          "day": "2026-10-01",
+          "usd": 2,
+          "drivers": {
+            "review": 2
+          }
+        },
+        {
+          "day": "2026-10-04",
+          "usd": 10,
+          "drivers": {
+            "review": 9,
+            "routing": 1
+          }
+        }
+      ],
+      "call_sites": {
+        "review": 11,
+        "routing": 1
+      }
+    },
+    {
+      "provider": "neon",
+      "label": "Neon",
+      "plan": "Usage",
+      "mtd_usd": null,
+      "projection_usd": null,
+      "budget_usd": 25,
+      "state": "unavailable",
+      "reason": "NEON_BILLING_READ_TOKEN missing",
+      "daily": [],
+      "call_sites": {}
+    }
+  ],
+  "months": [
+    {
+      "month": "2026-09",
+      "usd": 50,
+      "providers": {
+        "jev": 50
+      }
+    }
+  ],
+  "alerts": [
+    {
+      "provider": "jev",
+      "driver": "review",
+      "kind": "daily_spike",
+      "amount_usd": 10,
+      "threshold_usd": 4
+    }
+  ],
+  "action": "Finance Ops: inspect provider driver; verify next collection; auto-clear below thresholds."
+}
