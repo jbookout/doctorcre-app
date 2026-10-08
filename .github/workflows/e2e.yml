@@ -43,6 +43,7 @@ jobs:
       - run: npm run check
       - run: node --test test/e2e-suite.test.mjs
       - run: npx playwright install --with-deps chromium
+      - run: npm run e2e:staging:selftest
       # Deterministic journeys only: CI configures no model, so agent steps stay local.
       - run: node scripts/browser-product-proof.mjs
         if: github.event_name == 'pull_request' || github.event_name == 'push'

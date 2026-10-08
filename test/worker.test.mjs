@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+test('production refuses E2E session exchange before it can reach CARR', async () => {
+  let calls = 0;
+  const env = environment({ carr: { fetch: async () => { calls++; return new Response('{}'); } } });
+  env.APP_ENV = 'production';
+  env.E2E_SESSION_SECRET = 'synthetic-irrelevant-secret';
+  const response = await handleDoctorcreRequest(new Request('https://app.doctorcre.com/auth/e2e-session', { method: 'POST' }), env);
+  assert.equal(response.status, 404);
+  assert.equal(calls, 0);
+});
+
 test('blocking 1: Leads map module, CSS and derived worker URLs pass through deployed asset routing',async()=>{
  const {readFile}=await import('node:fs/promises');
  const html=await readFile(new URL('../leads.html',import.meta.url),'utf8');
@@ -230,7 +240,8 @@ test("signed-out Ideas Events visits return to the requested path and query", as
 });
 
 test("share links remain on the isolated reports host and release identity is explicit", async () => {
-  const share = await handleDoctorcreRequest(request("/share?tour=T-1"), environment());
+  const prod = environment(); prod.APP_ENV = 'production';
+  const share = await handleDoctorcreRequest(request("/share?tour=T-1"), prod);
   assert.equal(share.status, 302);
   assert.equal(share.headers.get("location"), "https://reports.doctorcre.com/share?tour=T-1");
   const release = await (await handleDoctorcreRequest(request("/app-release"), environment())).json();
@@ -241,6 +252,22 @@ test("share links remain on the isolated reports host and release identity is ex
     carr_contract: { schema: "doctorcre-carr-interface.v1", version: "1.44.0" },
     route_contract: { schema: "doctorcre-app-routes.v1", version: "1.20.0" },
   });
+});
+
+test('staging report stays signed in on the staging origin; production keeps its isolated host', async () => {
+  let gatePath;
+  const env = environment({ carr: { fetch: async value => { gatePath = new URL(value.url).pathname; return new Response(null); } } });
+  const share = await handleDoctorcreRequest(request('/share'), env);
+  assert.equal(share.status, 200);
+  assert.equal(gatePath, '/control-room');
+  assert.equal(await share.text(), 'asset:/reports/share.html');
+  for (const name of ['share.css', 'share.js', 'share-bootstrap.js', ...['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css'].map(file => `vendor/maplibre-gl-6.4.1/${file}`)]) {
+    const asset = await handleDoctorcreRequest(request(`/${name}`), env);
+    assert.equal(await asset.text(), `asset:/reports/${name}`);
+  }
+  env.APP_ENV = 'production';
+  assert.equal((await handleDoctorcreRequest(request('/share'), env)).status, 302);
+  assert.equal((await handleDoctorcreRequest(request('/share.js'), env)).status, 404);
 });
 
 
