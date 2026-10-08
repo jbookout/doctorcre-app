@@ -12,6 +12,7 @@ export { scrubEvidence } from './evidence.mjs';
 import { prepareStagingRecords } from './records.mjs';
 import { sweepOwnerStates } from './owner-states.mjs';
 import { prepareCalendarRecord } from './calendar-coverage.mjs';
+import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint, sweepOptions } from './resume.mjs';
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
@@ -19,13 +20,16 @@ export async function persistSweepReport(output, run, setup, { publishFile } = {
   await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
 }
 
-export async function sweep({ resume = false } = {}) {
+export async function sweep({ resume = false, recordedActionProof } = {}) {
   if (typeof resume !== 'boolean') throw new Error('Staging sweep resume must be a boolean');
   process.env.E2E_TELEMETRY_DISABLED = '1';
   const output = outputPath();
   const routedScreens = await screens();
-  const prior = resume ? await readSweepCheckpoint(output) : undefined;
+  let prior = resume ? await readSweepCheckpoint(output) : undefined;
   if (resume && !prior) throw new Error('Resume requires an existing staging sweep checkpoint');
+  if (recordedActionProof && !resume) throw new Error('Recorded action recovery requires resume');
+  const continuation = recordedActionProof ? await createRecordedActionContinuation({ prior, proof: recordedActionProof }) : null;
+  if (continuation) prior = continuation.prior;
   const run = createSweepRun({ targets, routedScreens, prior });
   const setup = await prepareStagingRecords(output, { reuseOnly: resume, session: async origin => {
     const current = await stagingSession(origin);
@@ -76,7 +80,7 @@ export async function sweep({ resume = false } = {}) {
       const freshPage = freshPageFor(target, screen);
       let result;
       try {
-        result = await sweepScreen({ freshPage, screen, target: target.name, prior: run.priorScreen(target.name, screen.path), routedPaths: routedScreens.map(screen => screen.path), checkpoint: async partial => {
+        result = await sweepScreen({ freshPage, screen, target: target.name, prior: run.priorScreen(target.name, screen.path), routedPaths: routedScreens.map(screen => screen.path), recordedActionRuntime: target.name === 'staging-live' && screen.path === '/' ? continuation?.runtime : undefined, checkpoint: async partial => {
           run.record(partial);
           await persistSweepReport(output, run, setup);
         }, evidence });

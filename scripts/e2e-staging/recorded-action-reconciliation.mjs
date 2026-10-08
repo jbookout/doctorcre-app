@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { settledInventory } from './controls.mjs';
-import { canonicalIdentity, validateTraversal } from './traversal.mjs';
+import { canonicalIdentity, validateTraversal, canContinueTraversal } from './traversal.mjs';
 import { STAGING_ORIGIN } from './session.mjs';
+import { sweepFindings } from './report.mjs';
 
 const execute = promisify(execFile);
 const refusal = value => assert.ok(value, 'Recorded action proof refused; no action or checkpoint was changed');
@@ -39,10 +40,16 @@ function legacy(row) {
 function latestEffect(args, receipt, room) {
   refusal(room.deal_id === args.deal || room.id === args.deal);
   refusal(room.next_step === args.text && (room.next_date || null) === args.next_date);
-  const steps = (room.thread || []).filter(row => row.kind === 'next_step')
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  const current = steps[0];
-  refusal(current?.id === receipt.next_step_id && current.text === args.text &&
+  refusal(typeof receipt.next_step_id === 'string' && receipt.next_step_id.trim() &&
+    typeof receipt.created_at === 'string' && Number.isFinite(Date.parse(receipt.created_at)));
+  const steps = (room.thread || []).filter(row => row.kind === 'next_step');
+  refusal(steps.length > 0 && steps.every(row => typeof row.id === 'string' && row.id.trim() &&
+    typeof row.created_at === 'string' && Number.isFinite(Date.parse(row.created_at))));
+  const latest = Math.max(...steps.map(row => Date.parse(row.created_at)));
+  const winners = steps.filter(row => Date.parse(row.created_at) === latest);
+  refusal(winners.length === 1);
+  const current = winners[0];
+  refusal(current.id === receipt.next_step_id && current.text === args.text &&
     current.created_at === receipt.created_at);
   const action = receipt.next_action_id
     ? (room.next_actions || []).find(row => row.id === receipt.next_action_id) : null;
@@ -187,7 +194,8 @@ export async function observeRecordedActionReadProof({ page, prior, release, scr
     producer_sha256: await recordedActionProducerDigest(), blocked_non_read_requests: blocked,
     observed_at: new Date().toISOString(), observations: [{
       queued_identity: identity(queued), original_identity: identity(original), openers: path,
-      raw_current: raw[0], current: matching[0], addition, save_binding: saveBinding, form_values: values,
+      raw_current: raw[0], current: matching[0], inventory: listed.controls, raw_inventory: listed.raw,
+      addition, save_binding: saveBinding, form_values: values,
       read_response: response,
     }] };
 }
@@ -198,15 +206,25 @@ async function retainedEvidence(row) {
   return JSON.parse(stdout);
 }
 
-// REVIEW-ONLY ledger: this does not edit a checkpoint, rows, seen, frontiers or
-// runtime guard. Unproved controls remain explicit blockers, never skipped.
+function recordedActionSourceScreen(prior) {
+  const current = prior.screens.find(row => row.target === 'staging-live' && row.path === '/');
+  if (!current?.recorded_action_ledger) return current;
+  const matches = (prior.history || []).map(entry => entry.screen).filter(row =>
+    row.target === current.target && row.path === current.path &&
+    row.attempt_id === current.recorded_action_ledger.source_attempt);
+  refusal(matches.length === 1);
+  return matches[0];
+}
+
+// Pure evidence planner. Runtime consumption below revalidates the proof and
+// records equivalence separately from measured rows and their seen identities.
 export async function planRecordedActionReconciliations({ prior, proof }) {
   refusal(proof.schema === 'recorded-action-read-proof.v1' &&
     proof.checkpoint_sha256 === hash(prior) && same(proof.release, prior.release) &&
     proof.producer_sha256 === await recordedActionProducerDigest() &&
     proof.blocked_non_read_requests === 0 && proof.origin === STAGING_ORIGIN &&
     proof.root_path === '/' && Array.isArray(proof.observations));
-  const screen = prior.screens.find(row => row.target === 'staging-live' && row.path === '/');
+  const screen = recordedActionSourceScreen(prior);
   refusal(screen && proof.screen_sha256 === hash(screen) && proof.source_attempt === screen.attempt_id);
   validateTraversal(screen);
   const states = [screen.traversal.active, ...screen.traversal.queue, ...screen.traversal.destructive].filter(Boolean);
@@ -288,4 +306,167 @@ export function admitRecordedAction(plan, { queued_identity, value_sha256, effec
   refusal(aliases.length === 1 && aliases[0].value_sha256 === value_sha256 &&
     aliases[0].effect_sha256 === effect_sha256);
   return { decision: 'already-measured-equivalent', reconciliation: structuredClone(aliases[0]), action_executed: false };
+}
+
+
+const runtimes = new WeakSet();
+export const isRecordedActionRuntime = runtime => runtimes.has(runtime);
+
+// Prepare a new attempt without changing the retained failed attempt or creating
+// a measurement. The complete original remains in history, including failures.
+export async function createRecordedActionContinuation({ prior, proof }) {
+  const plan = await planRecordedActionReconciliations({ prior, proof });
+  const fresh = () => refusal(Number.isFinite(Date.parse(proof.observed_at)) &&
+    Date.now() >= Date.parse(proof.observed_at) && Date.now() - Date.parse(proof.observed_at) <= 300_000);
+  fresh();
+  refusal(plan.aliases.length > 0);
+  const original = recordedActionSourceScreen(prior);
+  const observations = proof.observations;
+  const mappings = new Map(), paths = new Map(), aliases = new Map(plan.aliases.map(row => [row.queued_identity, row]));
+  for (const alias of plan.aliases) {
+    const observation = observations.find(row => row.queued_identity === alias.queued_identity);
+    refusal(Array.isArray(observation.inventory) && Array.isArray(observation.raw_inventory) &&
+      same(observation.inventory.map(identity), observation.raw_inventory.map(identity)));
+    const old = legacy(original.controls.find(row => identity(row) === alias.original_identity));
+    const after = legacy(observation.raw_current).context[1];
+    const roots = observation.openers.map(entry => original.controls.find(row => identity(row) === entry.expected_identity));
+    paths.set(alias.original_identity, roots);
+    const candidates = [...original.controls,
+      ...[original.traversal.active, ...original.traversal.queue, ...original.traversal.destructive]
+        .filter(Boolean).flatMap(state => state.controls || [])];
+    for (const row of candidates) {
+      let binding;
+      try { binding = legacy(row); } catch { continue; }
+      if (binding.url !== old.url || !same(binding.context, old.context)) continue;
+      const derived = canonicalIdentity(JSON.stringify([old.context[0], after, ...old.context.slice(2)]) + '|' + binding.suffix);
+      const current = observation.inventory.filter(control => identity(control) === derived && sameAction(control, row));
+      const raw = observation.raw_inventory.filter(control => identity(control) === derived && sameAction(control, row));
+      if (current.length !== 1 || raw.length !== 1) continue;
+      const previous = mappings.get(identity(row));
+      refusal(!previous || identity(previous) === derived);
+      mappings.set(identity(row), current[0]);
+    }
+  }
+  const recovered = structuredClone(prior), screen = recovered.screens.find(row => row.target === 'staging-live' && row.path === '/');
+  const restoring = Boolean(screen.recorded_action_ledger);
+  if (restoring) {
+    validateTraversal(screen);
+    refusal(canContinueTraversal(screen));
+    const ledger = screen.recorded_action_ledger;
+    refusal(ledger.schema === 'recorded-action-runtime.v1' && same(ledger.release, prior.release) &&
+      ledger.source_attempt === original.attempt_id &&
+      /^[a-f0-9]{64}$/.test(ledger.checkpoint_sha256) && /^[a-f0-9]{64}$/.test(ledger.proof_sha256) &&
+      ledger.aliases.length === plan.aliases.length);
+    const verificationFields = new Set(['checkpoint_sha256', 'read_proof_sha256', 'observed_at']);
+    const semantic = alias => Object.fromEntries(Object.entries(alias).filter(([key]) => !verificationFields.has(key)));
+    for (const stored of ledger.aliases) {
+      const fresh = plan.aliases.filter(row => row.queued_identity === stored.queued_identity);
+      refusal(fresh.length === 1 && same(semantic(stored), semantic(fresh[0])) &&
+        stored.checkpoint_sha256 === ledger.checkpoint_sha256 && stored.read_proof_sha256 === ledger.proof_sha256);
+    }
+    // Existing audit records, resolved credit, measured prefix and attempt are
+    // immutable. A fresh restore observation is a separate verification record.
+    ledger.restore_verifications ||= [];
+    ledger.restore_verifications.push({ checkpoint_sha256: hash(prior), read_proof_sha256: hash(proof),
+      observed_at: proof.observed_at, source_attempt: original.attempt_id,
+      producer_sha256: proof.producer_sha256 });
+    plan.aliases = structuredClone(ledger.aliases);
+    aliases.clear();
+    for (const alias of ledger.aliases) aliases.set(alias.queued_identity, alias);
+  } else {
+    const failures = screen.controls.filter(row => ['ERROR', 'UNREACHABLE'].includes(row.status));
+    refusal(!screen.exhausted && !screen.traversal.pending_discovery);
+    // Only a validation failure without a press is recoverable here. Ambiguous
+    // press/evidence failures require an independent receipt/read reconciliation.
+    refusal(!screen.failure || screen.failure.phase === 'frontier-validation' &&
+      screen.failure.code === 'control-state-changed' && failures.length === 1 &&
+      failures[0] === screen.controls.at(-1) && failures[0].status === 'UNREACHABLE' &&
+      mappings.has(identity(failures[0])));
+    const states = [screen.traversal.active, ...screen.traversal.queue, ...screen.traversal.destructive].filter(Boolean);
+    for (const state of states) {
+      const last = state.openers.at(-1), roots = paths.get(last && identity(last));
+      if (roots) {
+        refusal(same(state.openers.slice(0, -1).map(identity), roots.map(identity)));
+        state.openers = structuredClone(roots);
+      }
+      state.controls = state.controls?.map(row => structuredClone(mappings.get(identity(row)) || row)) || null;
+    }
+    if (failures.length) {
+      const row = mappings.get(identity(failures[0]));
+      const roots = [...paths.values()][0];
+      if (!states.some(state => state.controls?.some(control => identity(control) === identity(row))))
+        screen.traversal.queue.unshift({ openers: structuredClone(roots), controls: [structuredClone(row)] });
+    }
+    recovered.history ||= [];
+    recovered.history.push({ screen: structuredClone(original), findings: sweepFindings([original]) });
+    screen.attempt_id = randomUUID();
+    screen.controls = screen.controls.filter(row => !['ERROR', 'UNREACHABLE'].includes(row.status));
+    screen.failure = null;
+    screen.prior_failures = [...(screen.prior_failures || []),
+      ...(original.failure ? [{ ...original.failure, retained_controls: screen.controls.length }] : [])];
+    screen.traversal.seen = screen.controls.map(row => identity(row));
+    // Deduplicate only exact queued identities after proved catalog rebinding.
+    const scheduled = new Set(), seen = new Set(screen.traversal.seen);
+    const filter = state => {
+      if (!state) return null;
+      if (state.controls) state.controls = state.controls.filter(row =>
+        !seen.has(identity(row)) && !scheduled.has(identity(row)) && scheduled.add(identity(row)));
+      return state.controls?.length === 0 ? null : state;
+    };
+    screen.traversal.active = filter(screen.traversal.active);
+    screen.traversal.queue = screen.traversal.queue.map(filter).filter(Boolean);
+    screen.traversal.destructive = screen.traversal.destructive.map(filter).filter(Boolean);
+    screen.traversal.known_remaining = scheduled.size;
+    screen.traversal.max_opener_depth = Math.max(0, ...[screen.traversal.active,
+      ...screen.traversal.queue, ...screen.traversal.destructive].filter(Boolean).map(state => state.openers.length));
+    screen.recorded_action_ledger = { schema: 'recorded-action-runtime.v1', release: structuredClone(prior.release),
+      source_attempt: original.attempt_id, checkpoint_sha256: hash(prior), proof_sha256: hash(proof),
+      aliases: structuredClone(plan.aliases), resolved: [],
+      recovered_failure_identity: failures.length ? identity(failures[0]) : null };
+  }
+  validateTraversal(screen);
+  const runtime = {
+    screen_sha256: hash(screen),
+    original_sha256: hash(prior),
+    guardOpener(opener) {
+      refusal(!paths.has(identity(opener)) && opener.name !== 'Save next step' && opener.inputType !== 'submit');
+    },
+    async consume(page, control) {
+      refusal(new URL(page.url()).origin === STAGING_ORIGIN);
+      const alias = aliases.get(identity(control));
+      if (!alias) return null;
+      // Re-run the original evidence reader at consumption, not just preparation.
+      const source = original.controls.find(row => identity(row) === alias.original_identity);
+      const evidence = await retainedEvidence(source);
+      refusal(evidence.png_sha256 === alias.original_evidence.png_sha256 &&
+        evidence.trace_sha256 === alias.original_evidence.trace_sha256);
+      const listed = await settledInventory(page);
+      refusal(listed.filter(row => identity(row) === alias.queued_identity && sameAction(row, control)).length === 1);
+      const binding = await page.locator(control.selector).evaluate(node => ({
+        tag: node.tagName, type: node.getAttribute('type'), form_id: node.form?.id || null,
+        form_action: node.form?.getAttribute('action') || null, form_method: node.form?.getAttribute('method') || null,
+      }));
+      refusal(same(binding, observations.find(row => row.queued_identity === alias.queued_identity).save_binding));
+      const values = await page.locator('#detailNextForm').evaluate(form => ({
+        text: form.elements.namedItem('text').value.trim(),
+        next_date: form.elements.namedItem('date').value || null,
+      }));
+      refusal(hash(values) === alias.value_sha256);
+      const read = await page.evaluate(async ({ origin, record }) => {
+        const response = await fetch(origin + '/mcp', { method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 'recorded-action-read',
+            method: 'tools/call', params: { name: 'get-deal-room', arguments: { deal: record } } }) });
+        const body = await response.json(), content = body.result?.content;
+        if (!response.ok || body.error || body.result?.isError || content?.length !== 1 || content[0].type !== 'text')
+          return null;
+        return JSON.parse(content[0].text);
+      }, { origin: STAGING_ORIGIN, record: evidence.arguments.deal });
+      refusal(hash(latestEffect(evidence.arguments, evidence.receipt, read)) === alias.effect_sha256);
+      return admitRecordedAction(plan, { queued_identity: alias.queued_identity,
+        value_sha256: hash(values), effect_sha256: alias.effect_sha256 }).reconciliation;
+    },
+  };
+  runtimes.add(runtime);
+  return { prior: recovered, runtime, plan: { ...plan, runtime_integration: 'validated traversal consumption', restored_existing_attempt: restoring, can_resume: true } };
 }

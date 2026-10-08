@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto';
 import { canonicalIdentity, identityKey, canContinueTraversal, traversalSnapshot } from './traversal.mjs';
+
+import { isRecordedActionRuntime } from './recorded-action-reconciliation.mjs';
 
 import { destinationOwnership } from './state-plan.mjs';
 import { assertCalendarAction } from './calendar-coverage.mjs';
@@ -216,16 +219,21 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = 5000, routedPaths = [] }) {
+export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = 5000, routedPaths = [], recordedActionRuntime }) {
+  if (prior?.recorded_action_ledger && (!isRecordedActionRuntime(recordedActionRuntime) ||
+      recordedActionRuntime.screen_sha256 !== createHash('sha256').update(JSON.stringify(prior)).digest('hex')))
+    throw new SweepFailure('recorded-action', 'unvalidated-runtime');
   const continuing = canContinueTraversal(prior);
   const saved = continuing ? structuredClone(prior.traversal) : null;
   const queue = saved ? [...(saved.active ? [saved.active] : []), ...saved.queue] : [{ openers: [], controls: null }];
   const destructive = saved?.destructive || [], seen = new Set((saved?.seen || []).map(canonicalIdentity)), controls = continuing ? structuredClone(prior.controls) : [];
+  const ledger = continuing && prior.recorded_action_ledger ? structuredClone(prior.recorded_action_ledger) : null;
+  const resolved = new Set((ledger?.resolved || []).map(row => row.queued_identity));
   let active = null, pending = saved?.pending_discovery || null;
   const priorFailures = continuing ? [...(prior.prior_failures || []), ...(prior.failure ? [{ ...prior.failure, retained_controls: prior.controls.length }] : [])] : [];
   const failureEvidence = priorFailures.length ? { prior_failures: priorFailures } : {};
   const delegations = continuing ? structuredClone(prior.delegations || []) : [];
-  const stateEvidence = () => ({ ...(identityScope ? { state_scope: identityScope } : {}), ...(delegations.length ? { delegations } : {}) });
+  const stateEvidence = () => ({ ...(identityScope ? { state_scope: identityScope } : {}), ...(delegations.length ? { delegations } : {}), ...(ledger ? { recorded_action_ledger: ledger } : {}) });
   const stableMs = waitMs < 2000 ? waitMs : 1500;
   const settle = async (page, phase, selector) => {
     try { await page.waitForLoadState('networkidle', { timeout: 30_000 }); }
@@ -236,6 +244,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   const replayOpeners = async (page, openers, strict = continuing) => {
     let listed, lastAction, lastBeforeURL;
     for (const opener of openers) {
+      recordedActionRuntime?.guardOpener(opener);
       let action = opener;
       if (strict) {
         listed ||= await settle(page, 'frontier-validation', opener.selector);
@@ -264,12 +273,16 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   };
   const publishProgress = async () => {
     if (!checkpoint) return;
-    try { await checkpoint(structuredClone({ ...screen, ...failureEvidence, ...stateEvidence(), target, reached, exhausted, controls, failure, in_progress: true, traversal: traversalSnapshot({ queue, destructive, active, pending, seen }) })); }
+    try { await checkpoint(structuredClone({ ...screen, ...failureEvidence, ...stateEvidence(), target, reached, exhausted, controls, failure, in_progress: true, traversal: traversalSnapshot({ queue, destructive, active, pending, seen, resolved }) })); }
     catch { failure ||= { phase: 'checkpoint', code: 'checkpoint-write-failed', openers: [] }; }
   };
-  const enqueue = (openers, exposed) => {
+  const enqueue = async (page, openers, exposed) => {
+    // A later form/effect change must not disappear merely because the DOM
+    // identity is unchanged. Revalidate already resolved actions on discovery.
+    for (const row of exposed) if (resolved.has(canonicalIdentity(row.identity)))
+      await recordedActionRuntime.consume(page, row);
     const scheduled = new Set([...(active?.controls || []), ...queue.flatMap(state => state.controls || []), ...destructive.flatMap(state => state.controls || [])].map(row => canonicalIdentity(row.identity)));
-    const next = exposed.filter(row => !seen.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)));
+    const next = exposed.filter(row => !resolved.has(canonicalIdentity(row.identity)) && !seen.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)));
     if (next.length) queue.push({ openers, controls: next });
   };
   const resolveDiscovery = async (page, openers, control, beforeURL) => {
@@ -294,7 +307,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
       // Persist the measured binding, which may already contain scrubbed
       // display metadata. Only the uniquely matched live action is executed.
       const measured = controls.at(-1);
-      enqueue([...openers, measured], exposed);
+      await enqueue(page, [...openers, measured], exposed);
     }
     pending = null;
     await publishProgress();
@@ -313,7 +326,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     if (controls.length >= limit) { exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
     if (state.controls) {
-      state.controls = state.controls.filter(control => !seen.has(canonicalIdentity(control.identity)));
+      state.controls = state.controls.filter(control => !resolved.has(canonicalIdentity(control.identity)) && !seen.has(canonicalIdentity(control.identity)));
       if (!state.controls.length) continue;
     }
     active = { ...state, controls: state.controls ? [...state.controls] : null };
@@ -335,9 +348,26 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
         if (failure) break;
         if (controls.length >= limit) { exhausted = true; break; }
         active.controls.shift();
-        if (seen.has(canonicalIdentity(control.identity))) continue;
+        if (seen.has(canonicalIdentity(control.identity)) || resolved.has(canonicalIdentity(control.identity))) continue;
         if (!state.destructive && /(?:delete|archive|send draft|send-draft|sign out)/i.test(control.name)) {
           destructive.push({ openers: state.openers, controls: [control], destructive: true });
+          continue;
+        }
+        if (ledger?.aliases.some(row => row.queued_identity === canonicalIdentity(control.identity))) {
+          let fresh;
+          try {
+            fresh = await freshPage();
+            await replayOpeners(fresh, state.openers);
+            const entry = await recordedActionRuntime.consume(fresh, control);
+            if (!entry) throw new SweepFailure('recorded-action', 'equivalence-unproved', control.selector);
+            ledger.resolved.push(entry);
+            resolved.add(entry.queued_identity);
+            await publishProgress();
+          } catch (error) {
+            active.controls.unshift(control);
+            fail(error, 'recorded-action', state.openers, control, 'equivalence-unproved');
+          } finally { await close(fresh, state.openers, control); }
+          if (failure) await publishProgress();
           continue;
         }
         seen.add(canonicalIdentity(control.identity));
@@ -387,5 +417,5 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     if (!failure && !exhausted) active = null;
     if (failure && failure.phase !== 'checkpoint') await publishProgress();
   }
-  return { ...screen, ...failureEvidence, ...stateEvidence(), target, reached, exhausted, controls, failure, ...(failure || exhausted ? { in_progress: true, traversal: traversalSnapshot({ queue, destructive, active, pending, seen }) } : {}) };
+  return { ...screen, ...failureEvidence, ...stateEvidence(), target, reached, exhausted, controls, failure, ...(failure || exhausted ? { in_progress: true, traversal: traversalSnapshot({ queue, destructive, active, pending, seen, resolved }) } : {}) };
 }

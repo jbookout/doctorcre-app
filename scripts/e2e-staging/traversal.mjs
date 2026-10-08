@@ -19,6 +19,20 @@ export function validateTraversal(screen) {
     requireFrontier(row.key === screen.target + '/' + screen.path + '/' + identityKey(row.identity));
     measured.set(canonicalIdentity(row.identity), row);
   }
+  const ledger = screen.recorded_action_ledger;
+  const resolved = new Set();
+  if (ledger) {
+    requireFrontier(ledger.schema === 'recorded-action-runtime.v1' && Array.isArray(ledger.aliases) && Array.isArray(ledger.resolved));
+    for (const entry of ledger.resolved) {
+      const alias = ledger.aliases.filter(row => row.queued_identity === entry.queued_identity);
+      requireFrontier(alias.length === 1 && JSON.stringify(alias[0]) === JSON.stringify(entry) &&
+        entry.action_executed === false && entry.measurement_credit === 'original observation only' &&
+        measured.get(entry.original_identity)?.status === 'OBSERVED' &&
+        measured.get(entry.original_identity)?.evidence_path === entry.original_evidence.png &&
+        !seen.has(entry.queued_identity) && !resolved.has(entry.queued_identity));
+      resolved.add(entry.queued_identity);
+    }
+  }
   const scheduled = new Set();
   const validateMeasuredAction = opener => {
     requireFrontier(control(opener));
@@ -38,7 +52,7 @@ export function validateTraversal(screen) {
     requireFrontier(state.controls === null || Array.isArray(state.controls));
     if (state.controls === null) requireFrontier(screen.controls.length === 0 && state.openers.length === 0);
     for (const row of state.controls || []) {
-      requireFrontier(control(row) && !seen.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)));
+      requireFrontier(control(row) && !seen.has(canonicalIdentity(row.identity)) && !resolved.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)));
       scheduled.add(canonicalIdentity(row.identity));
     }
   };
@@ -63,12 +77,12 @@ export function canContinueTraversal(screen) {
   return screen.in_progress === true && !screen.exhausted && screen.controls.every(row => !['ERROR', 'UNREACHABLE'].includes(row.status));
 }
 
-export function traversalSnapshot({ queue, destructive, active, pending, seen }) {
+export function traversalSnapshot({ queue, destructive, active, pending, seen, resolved = new Set() }) {
   const scheduled = new Set();
   const copyState = state => {
     if (!state) return null;
     const copy = structuredClone(state);
-    if (copy.controls) copy.controls = copy.controls.filter(row => !seen.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)) && scheduled.add(canonicalIdentity(row.identity)));
+    if (copy.controls) copy.controls = copy.controls.filter(row => !seen.has(canonicalIdentity(row.identity)) && !resolved.has(canonicalIdentity(row.identity)) && !scheduled.has(canonicalIdentity(row.identity)) && scheduled.add(canonicalIdentity(row.identity)));
     return copy.controls && !copy.controls.length ? null : copy;
   };
   const current = copyState(active), queued = queue.map(copyState).filter(Boolean), deferred = destructive.map(copyState).filter(Boolean);

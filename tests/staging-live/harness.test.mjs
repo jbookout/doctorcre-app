@@ -953,8 +953,8 @@ test('inventory reobserves navigation context loss within its deadline and keeps
   });
 });
 
-test('recorded action ledger binds evidence and read semantics while all three proposed identities avoid repeated Save', async t => {
-  const { planRecordedActionReconciliations, observeRecordedActionReadProof, admitRecordedAction } =
+test('recorded action proof refuses unbound identities and runtime traversal recovers Home without repeating Save', async t => {
+  const { planRecordedActionReconciliations, observeRecordedActionReadProof, admitRecordedAction, createRecordedActionContinuation } =
     await import('../../scripts/e2e-staging/recorded-action-reconciliation.mjs');
   const { canonicalIdentity, identityKey, traversalSnapshot } =
     await import('../../scripts/e2e-staging/traversal.mjs');
@@ -970,7 +970,7 @@ test('recorded action ledger binds evidence and read semantics while all three p
     next_action_id: null, supersedes: [], created_at: '2026-10-08T00:00:00.000Z' };
   let room = { id: record, deal_id: record, next_step: '', next_date: null,
     thread: [], next_actions: [] };
-  const fixture = () => '<main><section role="dialog"><button id="morningClose" type="button" onclick="this.closest(\'section\').hidden=true">Dismiss</button></section><section id="homeCalendar"><div><a hidden>1</a><a hidden>2</a><a hidden>3</a><a href="/deals?deal=synthetic-record" onclick="event.preventDefault();history.pushState({},\'\',this.getAttribute(\'href\'));document.querySelector(\'#recordPanel\').hidden=false;loadRoom()">Open record</a></div></section></main><section id="recordPanel" role="dialog" aria-label="Synthetic record" hidden><form id="detailNextForm" onsubmit="event.preventDefault();saveStep()"><textarea name="text">Follow up</textarea><input name="date" type="date"><button type="submit">Save next step</button></form><button id="outlook" type="button">Deal outlook</button><div id="timeline">' + (saveMutations ? '<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07">Oct7</button>' : '') + '</div></section><script>async function rpc(name,args){const r=await fetch("/mcp",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name,arguments:args}})});return JSON.parse((await r.json()).result.content[0].text)}async function loadRoom(){const room=await rpc("get-deal-room",{deal:"synthetic-record"});document.querySelector("textarea").value=room.next_step||"Follow up";document.querySelector("input").value=room.next_date||""}async function saveStep(){await fixtureSaveAttempt();await rpc("set-next-step",{deal:"synthetic-record",text:document.querySelector("textarea").value.trim(),next_date:document.querySelector("input").value||null,idempotency_key:"synthetic-original-key"});if(!document.querySelector("#timelineDay"))document.querySelector("#timeline").innerHTML=\'<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07">Oct7</button>\';await loadRoom()}</script>';
+  const fixture = () => '<main><section role="dialog"><button id="morningClose" type="button" onclick="this.closest(\'section\').hidden=true">Dismiss</button></section><section id="homeCalendar"><div><a hidden>1</a><a hidden>2</a><a hidden>3</a><a href="/deals?deal=synthetic-record" onclick="event.preventDefault();history.pushState({},\'\',this.getAttribute(\'href\'));document.querySelector(\'#recordPanel\').hidden=false;loadRoom()">Open record</a></div></section></main><section id="recordPanel" role="dialog" aria-label="Synthetic record" hidden><form id="detailNextForm" onsubmit="event.preventDefault();saveStep()"><textarea name="text" readonly>Follow up</textarea><input name="date" type="date" readonly><button type="submit">Save next step</button></form><button id="outlook" type="button" onclick="document.querySelector(\'#status\').textContent=\'Outlook\'">Deal outlook</button><button id="context" type="button" onclick="document.querySelector(\'#status\').textContent=\'Context\'">Context</button><output id="status"></output><div id="timeline">' + (saveMutations ? '<button id="timelineDay" type="button" onclick="document.querySelector(\'#status\').textContent=\'Timeline\'" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07">Oct7</button>' : '') + '</div></section><script>async function rpc(name,args){const r=await fetch("/mcp",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name,arguments:args}})});return JSON.parse((await r.json()).result.content[0].text)}async function loadRoom(){const room=await rpc("get-deal-room",{deal:"synthetic-record"});document.querySelector("textarea").value=room.next_step||"Follow up";document.querySelector("input").value=room.next_date||""}async function saveStep(){await fixtureSaveAttempt();await rpc("set-next-step",{deal:"synthetic-record",text:document.querySelector("textarea").value.trim(),next_date:document.querySelector("input").value||null,idempotency_key:"synthetic-original-key"});if(!document.querySelector("#timelineDay"))document.querySelector("#timeline").innerHTML=\'<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07">Oct7</button>\';await loadRoom()}</script>';
   const freshPage = async (navigate = true) => {
     const page = await browser.newPage();
     await page.exposeFunction('fixtureSaveAttempt', () => { saveAttempts++; });
@@ -1098,6 +1098,10 @@ test('recorded action ledger binds evidence and read semantics while all three p
     value => { value.observations[0].read_response.room.next_step = 'Different persisted value'; },
     value => { value.observations[0].read_response.room.thread[0].id = 'different-effect'; },
     value => { value.observations[0].read_response.room.thread[0].actor = 'different-effect-actor'; },
+    value => { value.observations[0].read_response.room.thread.push({
+      ...value.observations[0].read_response.room.thread[0], id: 'tied-competing-step' }); },
+    value => { delete value.observations[0].read_response.room.thread[0].id; },
+    value => { value.observations[0].read_response.room.thread[0].created_at = 'invalid'; },
     value => { value.observations[0].current.identity = canonicalIdentity('different-current'); },
     value => { value.observations[0].raw_current.identity = value.observations[0].raw_current.identity.replace('#timelineDay', '#nonTimelineControl'); },
     value => { value.observations[0].addition.detail_focus = 'not-a-day'; },
@@ -1126,6 +1130,269 @@ test('recorded action ledger binds evidence and read semantics while all three p
   ]) {
     const changed = structuredClone(proof); mutate(changed);
     await assert.rejects(planRecordedActionReconciliations({ prior, proof: changed }), /proof refused/);
+  }
+
+  await t.test('real continuation measures Outlook, context and timeline, consumes the proved Save, and retains the failed attempt', async () => {
+    const oldOutlook = before.raw.find(row => row.selector === '#outlook');
+    const seed = structuredClone(screen);
+    seed.traversal = traversalSnapshot({ queue: [
+      { openers: opening, controls: [oldOutlook] },
+      { openers: [...opening, saved], controls: [queued] },
+    ], destructive: [], active: null, pending: null,
+      seen: new Set(seed.controls.map(row => row.identity)) });
+    const failed = await sweepScreen({ freshPage, screen: { path: '/', name: 'Synthetic', surface: 'app' },
+      target: 'staging-live', prior: seed, waitMs: 20, evidence: capture });
+    failed.attempt_id = seed.attempt_id;
+    assert.equal(failed.failure.code, 'control-state-changed');
+    assert.equal(failed.controls.at(-1).status, 'UNREACHABLE');
+    assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+    const input = { ...prior, screens: [failed] }, bytes = JSON.stringify(input);
+    const reader = await freshPage(false);
+    const observation = await observeRecordedActionReadProof({ page: reader, prior: input,
+      release: input.release, screen: failed, original: saved, queued, openers: opening });
+    await reader.context().close();
+    const recovery = await createRecordedActionContinuation({ prior: input, proof: observation });
+    assert.equal(recovery.plan.can_resume, true);
+    assert.equal(JSON.stringify(input), bytes);
+    assert.deepEqual(recovery.prior.history.at(-1).screen, failed);
+    const continued = recovery.prior.screens[0];
+    assert.throws(() => recovery.runtime.guardOpener({ ...saved,
+      identity: canonicalIdentity('different-recorded-Save-opener') }), /proof refused/);
+    await assert.rejects(sweepScreen({ freshPage, screen: { path: '/', name: 'Synthetic', surface: 'app' },
+      target: 'staging-live', prior: continued, waitMs: 20 }), /unvalidated-runtime/);
+    const checkpoints = [];
+    const realNow = Date.now;
+    let result;
+    try {
+      Date.now = () => realNow() + 360_000;
+      assert.ok(Date.now() - Date.parse(observation.observed_at) > 300_000);
+      result = await sweepScreen({ freshPage, screen: { path: '/', name: 'Synthetic', surface: 'app' },
+        target: 'staging-live', prior: continued, recordedActionRuntime: recovery.runtime,
+        waitMs: 20, evidence: capture, checkpoint: async row => {
+          validateTraversal(row); checkpoints.push(structuredClone(row));
+        } });
+    } finally { Date.now = realNow; }
+    assert.equal(result.failure, null, JSON.stringify(result.failure));
+    assert.equal(result.in_progress, undefined);
+    assert.equal(result.recorded_action_ledger.resolved.length, 1);
+    assert.equal(result.controls.filter(row => row.name === 'Save next step').length, 1);
+    for (const selector of ['#outlook', '#context', '#timelineDay'])
+      assert.ok(result.controls.some(row => row.selector === selector && row.status === 'OBSERVED' && row.evidence_path), selector);
+    assert.deepEqual(result.controls.slice(0, screen.controls.length), screen.controls);
+    assert.ok(checkpoints.length >= 3);
+    for (const partial of checkpoints)
+      assert.equal(partial.traversal.seen.length, partial.controls.length, 'Aliases never fabricate seen measurements');
+    assert.equal(saveAttempts, 1, 'Real traversal never presses recorded Save or replays it as opener');
+    assert.equal(saveMutations, 1);
+    assert.equal(JSON.stringify(input), bytes);
+    const run = createSweepRun({ targets: [{ name: 'staging-live', surface: 'app' }],
+      routedScreens: [{ path: '/', name: 'Synthetic', surface: 'app' }], prior: recovery.prior });
+    run.record(result);
+    assert.deepEqual(run.snapshot().history.at(-1).screen, failed);
+  });
+
+
+  await t.test('durable resume restores the progressed ledger after alias consumption and completes without a second Save', async () => {
+    const probe = await freshPage();
+    for (const opener of opening) await pageClick(probe, opener.selector);
+    const untested = (await inventory(probe)).filter(row => ['#outlook', '#context', '#timelineDay'].includes(row.selector));
+    await probe.context().close();
+    const input = structuredClone(prior);
+    input.screens[0].traversal = traversalSnapshot({ queue: [
+      { openers: [...opening, saved], controls: [queued] },
+      { openers: opening, controls: untested },
+    ], destructive: [], active: null, pending: null, seen: new Set(screen.controls.map(row => row.identity)) });
+    const reader = await freshPage(false);
+    const observation = await observeRecordedActionReadProof({ page: reader, prior: input,
+      release: input.release, screen: input.screens[0], original: saved, queued, openers: opening });
+    await reader.context().close();
+    const recovery = await createRecordedActionContinuation({ prior: input, proof: observation });
+    const targets = [{ name: 'staging-live', surface: 'app' }];
+    const routedScreens = [{ path: '/', name: 'Synthetic', surface: 'app' }];
+    const run = createSweepRun({ targets, routedScreens, prior: recovery.prior });
+    let persisted;
+    const interrupted = await sweepScreen({ freshPage, screen: routedScreens[0], target: targets[0].name,
+      prior: run.priorScreen('staging-live', '/'), recordedActionRuntime: recovery.runtime,
+      waitMs: 20, evidence: capture, checkpoint: async partial => {
+        run.record(partial);
+        persisted = { ...run.snapshot(), release: input.release };
+        if (partial.recorded_action_ledger.resolved.length)
+          throw new Error('Synthetic interruption immediately after durable alias checkpoint');
+      } });
+    assert.equal(interrupted.failure.phase, 'checkpoint');
+    assert.equal(persisted.screens[0].recorded_action_ledger.resolved.length, 1);
+    assert.equal(persisted.screens[0].traversal.known_remaining, 3);
+    const durable = JSON.parse(JSON.stringify(persisted));
+    const bytes = JSON.stringify(durable), attempt = durable.screens[0].attempt_id;
+    const measured = structuredClone(durable.screens[0].controls);
+    const resolved = structuredClone(durable.screens[0].recorded_action_ledger.resolved);
+    await assert.rejects(sweepScreen({ freshPage, screen: routedScreens[0], target: 'staging-live',
+      prior: durable.screens[0], recordedActionRuntime: recovery.runtime, waitMs: 20 }), /unvalidated-runtime/);
+    const source = durable.history.find(entry => entry.screen.attempt_id ===
+      durable.screens[0].recorded_action_ledger.source_attempt).screen;
+    const freshReader = await freshPage(false);
+    const freshProof = await observeRecordedActionReadProof({ page: freshReader, prior: durable,
+      release: durable.release, screen: source, original: saved, queued, openers: opening });
+    await freshReader.context().close();
+    const restored = await createRecordedActionContinuation({ prior: durable, proof: freshProof });
+    assert.equal(restored.plan.restored_existing_attempt, true);
+    assert.equal(restored.prior.screens[0].attempt_id, attempt);
+    assert.deepEqual(restored.prior.screens[0].controls, measured);
+    assert.deepEqual(restored.prior.screens[0].recorded_action_ledger.resolved, resolved);
+    assert.deepEqual(restored.prior.history, durable.history);
+    assert.equal(restored.prior.screens[0].recorded_action_ledger.restore_verifications.length, 1);
+    for (const tamper of [
+      value => { value.screens[0].recorded_action_ledger.schema = 'unproved'; },
+      value => { value.screens[0].recorded_action_ledger.aliases[0].value_sha256 = '0'.repeat(64); },
+      value => { value.screens[0].recorded_action_ledger.release.source_commit = 'b'.repeat(40); },
+      value => { value.screens[0].recorded_action_ledger.source_attempt = 'missing-attempt'; },
+    ]) {
+      const changed = structuredClone(durable); tamper(changed);
+      const bound = structuredClone(freshProof); bound.checkpoint_sha256 = digest(changed);
+      await assert.rejects(createRecordedActionContinuation({ prior: changed, proof: bound }));
+    }
+    const resumed = createSweepRun({ targets, routedScreens, prior: restored.prior });
+    const completed = await sweepScreen({ freshPage, screen: routedScreens[0], target: 'staging-live',
+      prior: resumed.priorScreen('staging-live', '/'), recordedActionRuntime: restored.runtime,
+      waitMs: 20, evidence: capture, checkpoint: partial => resumed.record(partial) });
+    assert.equal(completed.failure, null, JSON.stringify(completed.failure));
+    assert.equal(completed.in_progress, undefined);
+    resumed.record(completed);
+    assert.equal(resumed.snapshot().screens[0].attempt_id, attempt);
+    assert.deepEqual(completed.controls.slice(0, measured.length), measured);
+    assert.deepEqual(completed.recorded_action_ledger.resolved, resolved);
+    for (const selector of ['#outlook', '#context', '#timelineDay'])
+      assert.ok(completed.controls.some(row => row.selector === selector && row.status === 'OBSERVED' && row.evidence_path));
+    assert.equal(JSON.stringify(durable), bytes);
+    assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+  });
+  await t.test('runtime recomputes changed form values and persisted effects and refuses forged or stale admission', async () => {
+    const input = structuredClone(prior);
+    input.screens[0].traversal = traversalSnapshot({ queue: [{ openers: [...opening, saved], controls: [queued] }],
+      destructive: [], active: null, pending: null, seen: new Set(screen.controls.map(row => row.identity)) });
+    const reader = await freshPage(false);
+    const observation = await observeRecordedActionReadProof({ page: reader, prior: input,
+      release: input.release, screen: input.screens[0], original: saved, queued, openers: opening });
+    await reader.context().close();
+    const stale = structuredClone(observation);
+    stale.observed_at = new Date(Date.now() - 300_001).toISOString();
+    await assert.rejects(createRecordedActionContinuation({ prior: input, proof: stale }), /proof refused/);
+    const recovery = await createRecordedActionContinuation({ prior: input, proof: observation });
+    const alias = recovery.plan.aliases[0];
+    const fake = admitRecordedAction(recovery.plan, { queued_identity: alias.queued_identity,
+      value_sha256: alias.value_sha256, effect_sha256: alias.effect_sha256 });
+    await assert.rejects(sweepScreen({ freshPage, screen: { path: '/', name: 'Synthetic', surface: 'app' },
+      target: 'staging-live', prior: recovery.prior.screens[0], recordedActionRuntime: fake,
+      waitMs: 20 }), /unvalidated-runtime/);
+    const modifiedValuePage = async () => {
+      const page = await freshPage();
+      await page.evaluate(() => {
+        const textarea = document.querySelector('textarea');
+        Object.defineProperty(textarea, 'value', { get: () => 'Changed proposed value', set: () => {} });
+      });
+      return page;
+    };
+    const changed = await sweepScreen({ freshPage: modifiedValuePage,
+      screen: { path: '/', name: 'Synthetic', surface: 'app' }, target: 'staging-live',
+      prior: recovery.prior.screens[0], recordedActionRuntime: recovery.runtime, waitMs: 20 });
+    assert.equal(changed.failure.code, 'equivalence-unproved');
+    assert.equal(changed.recorded_action_ledger.resolved.length, 0);
+    assert.equal(changed.traversal.known_remaining, 1);
+    validateTraversal(changed);
+    const previous = room;
+    room = { ...room, thread: [{ ...room.thread[0], actor: 'changed-live-actor' }] };
+    const drift = await sweepScreen({ freshPage, screen: { path: '/', name: 'Synthetic', surface: 'app' },
+      target: 'staging-live', prior: recovery.prior.screens[0],
+      recordedActionRuntime: recovery.runtime, waitMs: 20 });
+    room = previous;
+    assert.equal(drift.failure.code, 'equivalence-unproved');
+    assert.equal(drift.recorded_action_ledger.resolved.length, 0);
+    validateTraversal(drift);
+    assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+  });
+  await t.test('retained trace requires causal post-write readback and complete receipt fields', async () => {
+    const { cp } = await import('node:fs/promises');
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const directory = await mkdtemp(join(tmpdir(), 'recorded-action-causal-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    for (const change of ['prewrite-read', 'missing-id', 'missing-time', 'invalid-time']) {
+      const png = join(directory, change + '.png');
+      await cp(saved.evidence_path, png);
+      await cp(saved.evidence_path.replace(/\.png$/, '.zip'), png.replace(/\.png$/, '.zip'));
+      await promisify(execFile)('python3', ['-c', `
+import json,sys,zipfile
+path,change=sys.argv[1:]
+with zipfile.ZipFile(path) as z: files={n:z.read(n) for n in z.namelist()}
+lines=[json.loads(x) for x in files['trace.network'].splitlines()]
+writes=[];reads=[]
+for row in lines:
+ s=row['snapshot'];ref=s.get('request',{}).get('postData',{}).get('_file')
+ if ref not in files: continue
+ body=json.loads(files[ref]);name=body.get('params',{}).get('name')
+ if name=='set-next-step':writes.append(s)
+ if name=='get-deal-room':reads.append(s)
+assert len(writes)==1
+if change=='prewrite-read':
+ for r in reads:r['_monotonicTime']=writes[0]['_monotonicTime']-1
+else:
+ ref=writes[0]['response']['content']['_file']
+ body=json.loads(files[ref]);receipt=json.loads(body['result']['content'][0]['text'])
+ if change=='missing-id':receipt.pop('next_step_id')
+ if change=='missing-time':receipt.pop('created_at')
+ if change=='invalid-time':receipt['created_at']='invalid'
+ body['result']['content'][0]['text']=json.dumps(receipt)
+ files[ref]=json.dumps(body).encode()
+files['trace.network']=b'\\n'.join(json.dumps(x).encode() for x in lines)+b'\\n'
+with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as z:
+ for name,value in files.items():z.writestr(name,value)
+`, png.replace(/\.png$/, '.zip'), change]);
+      const input = structuredClone(prior);
+      input.screens[0].controls.find(row => row.name === 'Save next step').evidence_path = png;
+      const altered = structuredClone(proof);
+      altered.checkpoint_sha256 = digest(input);
+      altered.screen_sha256 = digest(input.screens[0]);
+      const result = await planRecordedActionReconciliations({ prior: input, proof: altered });
+      assert.equal(result.aliases.length, 0, change);
+      assert.equal(result.blocked.length, 3);
+    }
+    assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+  });
+  await t.test('three actual legacy DOM identities are exercised through traversal; unproved successors remain unresolved', async () => {
+    const probe = await freshPage();
+    for (const opener of opening) await pageClick(probe, opener.selector);
+    const actual = (await rawInventory(probe)).raw.find(row => row.name === 'Save next step');
+    await probe.evaluate(() => history.pushState({}, '', '/deals?deal=other-record'));
+    const wrongRecord = (await rawInventory(probe)).raw.find(row => row.name === 'Save next step');
+    await probe.evaluate(() => {
+      history.pushState({}, '', '/deals?deal=synthetic-record');
+      document.querySelector('#timeline').insertAdjacentHTML('beforeend', '<button id="unprovedDay" type="button" data-timeline-day="2026-10-08" data-detail-focus="day:2026-10-08">Oct8</button>');
+    });
+    const otherCatalog = (await rawInventory(probe)).raw.find(row => row.name === 'Save next step');
+    await probe.context().close();
+    assert.equal(new Set([actual, wrongRecord, otherCatalog].map(row => canonicalIdentity(row.identity))).size, 3);
+    assert.ok([actual, wrongRecord, otherCatalog].every(row => row.identity.startsWith('[')));
+    const live = structuredClone(screen);
+    live.traversal = traversalSnapshot({ queue: [actual, wrongRecord, otherCatalog].map(control =>
+      ({ openers: [...opening, saved], controls: [control] })),
+      destructive: [], active: null, pending: null, seen: new Set(live.controls.map(row => row.identity)) });
+    const input = { ...prior, screens: [live] };
+    const reader = await freshPage(false);
+    const observation = await observeRecordedActionReadProof({ page: reader, prior: input,
+      release: input.release, screen: live, original: saved, queued: actual, openers: opening });
+    await reader.context().close();
+    const recovery = await createRecordedActionContinuation({ prior: input, proof: observation });
+    assert.equal(recovery.plan.aliases.length, 1); assert.equal(recovery.plan.blocked.length, 2);
+    const result = await sweepScreen({ freshPage, screen: { path: '/', name: 'Synthetic', surface: 'app' },
+      target: 'staging-live', prior: recovery.prior.screens[0], recordedActionRuntime: recovery.runtime,
+      waitMs: 20, evidence: capture });
+    assert.ok(result.failure, 'Unproved catalog/record obligations cannot silently complete');
+    assert.equal(result.recorded_action_ledger.resolved.length, 1);
+    assert.ok(result.traversal.known_remaining > 0, 'Unproved frontier remains retained');
+    assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+  });
+  async function pageClick(page, selector) {
+    await page.locator(selector).click(); await page.waitForLoadState('networkidle');
   }
   assert.equal(JSON.stringify(proof), proofBytes);
   assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
