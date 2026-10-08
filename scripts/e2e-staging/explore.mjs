@@ -7,7 +7,7 @@ import { writeReport, explorationEvidence } from './report.mjs';
 import { outputPath, scrubEvidence } from './sweep.mjs';
 import { prepareStagingRecords } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
-import { configureExplorationModelCallBudget, formatExplorationCallPlan } from './model-room.mjs';
+import { configureExplorationModelCallBudget, createExplorationBatchPlan, formatExplorationBatchPlan, formatExplorationCallPlan } from './model-room.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -23,6 +23,25 @@ export function buildExplorationGoal({ screen, setup }) {
 export async function runExplorationAttempt(explore, options) {
   try { return { result: await explore(options), error: null }; }
   catch (error) { return { result: null, error }; }
+}
+
+export function createExplorationRunSignals(events = process) {
+  const interrupt = new AbortController();
+  const force = new AbortController();
+  const stop = () => {
+    if (!interrupt.signal.aborted) interrupt.abort();
+    else if (!force.signal.aborted) force.abort();
+  };
+  events.on('SIGINT', stop);
+  events.on('SIGTERM', stop);
+  return Object.freeze({
+    interruptSignal: interrupt.signal,
+    forceSignal: force.signal,
+    dispose() {
+      events.off('SIGINT', stop);
+      events.off('SIGTERM', stop);
+    },
+  });
 }
 
 const explorationKey = row => JSON.stringify([row.target, row.path, row.agent]);
@@ -41,12 +60,12 @@ export function createExplorationSchedule({ targets: targetSet, routedScreens, p
     }));
   }));
   const current = new Map(prior.map(row => [explorationKey(row), row]));
-  const completed = planned.flatMap(row => current.get(explorationKey(row))?.status === 'completed' ? [current.get(explorationKey(row))] : []);
+  const completed = planned.flatMap(row => ['completed', 'finished'].includes(current.get(explorationKey(row))?.status) ? [current.get(explorationKey(row))] : []);
   const completeKeys = new Set(completed.map(explorationKey));
   return Object.freeze({ planned, completed, pending: planned.filter(row => !completeKeys.has(explorationKey(row))) });
 }
 
-export async function exploreAll() {
+async function exploreAllWithSignals(runSignals) {
   process.env.E2E_TARGET = 'staging-live';
   process.env.E2E_TELEMETRY_DISABLED = '1';
   process.env.DO_NOT_TRACK = '1';
@@ -54,18 +73,21 @@ export async function exploreAll() {
   const routedScreens = await screens();
   const checkpoint = await readSweepCheckpoint(output);
   const schedule = createExplorationSchedule({ targets, routedScreens, prior: checkpoint?.explorations });
-  const callPlan = configureExplorationModelCallBudget(schedule.pending.length);
+  const batchPlan = createExplorationBatchPlan(schedule.pending.length);
+  console.log(formatExplorationBatchPlan(batchPlan));
+  const pending = schedule.pending.slice(0, batchPlan.batches[0]?.goalCount || 0);
+  const callPlan = configureExplorationModelCallBudget(pending.length);
   console.log(formatExplorationCallPlan(callPlan));
   let setup = await prepareStagingRecords(output);
   const { release } = setup;
-  const explore = schedule.pending.length > 0 ? await explorer40() : null;
+  const explore = pending.length > 0 ? await explorer40() : null;
   const explorations = [...schedule.completed];
   const findingMap = new Map([...(checkpoint?.findings || []), ...setup.findings].map(row => [row.id, row]));
   const findings = [...findingMap.values()];
   const sweep = createSweepRun({ targets, routedScreens, prior: checkpoint || undefined });
   sweep.assertRelease(release);
   const expectedExplorations = schedule.planned.length;
-  for (const planned of schedule.pending) {
+  for (const planned of pending) {
     const target = targets.find(row => row.name === planned.target);
     const screen = routedScreens.find(row => row.surface === planned.surface && row.path === planned.path);
     const { agent } = planned;
@@ -79,7 +101,7 @@ export async function exploreAll() {
     console.log(`Exploring ${target.name} ${screen.path} as ${agent}; max-steps ${callPlan.perGoal}`);
     const goal = buildExplorationGoal({ screen, setup });
     let status = 'ERROR', steps = 0, failure = null;
-    const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: callPlan.perGoal, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
+    const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: callPlan.perGoal, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true, interruptSignal: runSignals.interruptSignal, forceSignal: runSignals.forceSignal });
     if (attempt.result) {
       const result = attempt.result;
       steps = result.explore.steps.length;
@@ -103,6 +125,13 @@ export async function exploreAll() {
     if (failure) throw failure;
     if (status === 'ERROR') throw new Error(`Exploration infrastructure failed at ${runId}. Evidence retained; no login was attempted.`);
   }
+  if (schedule.pending.length > pending.length) console.log(`Exploration batch complete; ${schedule.pending.length - pending.length} goals remain at the saved sweep checkpoint`);
   if (explorations.some(row => ['time','stuck','aborted','step-limit'].includes(row.status))) throw new Error('Some exploration goals stopped incomplete. See coverage.md.');
+}
+
+export async function exploreAll() {
+  const runSignals = createExplorationRunSignals();
+  try { return await exploreAllWithSignals(runSignals); }
+  finally { runSignals.dispose(); }
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) exploreAll().catch(error => { console.error(error.message); process.exitCode = 1; });

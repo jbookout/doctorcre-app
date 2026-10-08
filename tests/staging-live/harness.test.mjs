@@ -79,7 +79,7 @@ test('observable changes and disabled reasons are classified; nested controls ar
   const controls = await inventory(page);
   assert.equal(controls.find(c => c.name === 'Disabled').reason, 'Requires a selected record');
   const dead = await pressControl(page, controls.find(c => c.name === 'Dead'), { waitMs: 50 });
-  assert.equal(dead.status, 'OBSERVED');
+  assert.equal(dead.status, 'DEAD');
   await page.setContent(html.replace(' onclick="this.blur()"', ''));
   assert.equal((await pressControl(page, (await inventory(page)).find(c => c.name === 'Dead'), { waitMs: 50 })).status, 'DEAD');
   assert.equal((await pressControl(page, (await inventory(page)).find(c => c.name === 'Live'), { waitMs: 50 })).status, 'OBSERVED');

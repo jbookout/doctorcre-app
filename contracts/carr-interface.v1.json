@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.43.0",
+  "version": "1.43.1",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "2f531c295f37757899ca432dfb04a9b95e8d5184"
@@ -21,6 +21,7 @@
     "add-deal-note",
     "add-industry-event",
     "add-loop",
+    "add-party",
     "add-room-turn",
     "advance-workflow-cutover-stage",
     "answer-board-question",
@@ -63,13 +64,16 @@
     "loop-board",
     "loop-headers",
     "morning-brief",
+    "new-client",
     "new-deal",
+    "new-lead",
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
     "propose-doc-correction",
     "read-assurance-health",
     "read-correspondence-thread",
+    "read-deal-reconciliation",
     "read-dispatch-history",
     "read-doc-activity",
     "read-doc-conversation",

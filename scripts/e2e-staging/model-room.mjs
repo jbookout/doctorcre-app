@@ -1,12 +1,18 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({ perGoal: 40, hardGlobalCeiling: 5_000 });
+const EXPLORATION_CALLS_PER_GOAL = EXPLORATION_MODEL_CALL_POLICY.perGoal * 2 + 1;
+const EXPLORATION_BATCH_GOAL_LIMIT = 50;
 export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
-  revision: 'carr-model-room-dispatch@64f1220c9144b62511be8d8a41f9fd41791f1b4c',
+  revision: 'carr-model-room-dispatch@0b2c8ec8be07df142519e6638da9ec3329edcef2',
+  repository: 'jbookout/carr-system',
+  relativePath: 'tools/room-bridge/dispatch.py',
+  sha256: '64e801f718242cf4bbd9a056a3b11e9d4faeea907c74ca0e18ca438fb2b2c61c',
   argv: Object.freeze(['send', '{desk}', '-', '--fresh']),
 });
 const DISPATCH_TERMINATION_GRACE_MS = 250;
@@ -18,15 +24,34 @@ const dispatcherEnvelopeKeys = new Set([
 export function createExplorationCallPlan(goalCount) {
   if (!Number.isSafeInteger(goalCount) || goalCount < 0) throw new Error('Exploration goal count must be a non-negative integer');
   const { perGoal, hardGlobalCeiling } = EXPLORATION_MODEL_CALL_POLICY;
-  const scheduled = perGoal * goalCount;
+  const callsPerGoal = EXPLORATION_CALLS_PER_GOAL;
+  const scheduled = callsPerGoal * goalCount;
   if (!Number.isSafeInteger(scheduled) || scheduled > hardGlobalCeiling) {
     throw new Error(`Exploration schedule requires ${scheduled} model calls, above the hard global ceiling of ${hardGlobalCeiling}`);
   }
-  return Object.freeze({ goalCount, perGoal, scheduled, limit: scheduled, hardGlobalCeiling });
+  return Object.freeze({ goalCount, perGoal, callsPerGoal, scheduled, limit: scheduled, hardGlobalCeiling });
 }
 
 export function formatExplorationCallPlan(plan) {
-  return `Model Room budget: ${plan.perGoal} calls per goal × ${plan.goalCount} goals = ${plan.scheduled}; finite run cap ${plan.limit}; hard global ceiling ${plan.hardGlobalCeiling}`;
+  return `Model Room budget: ${plan.callsPerGoal} planned calls per goal × ${plan.goalCount} goals = ${plan.scheduled}; finite run cap ${plan.limit}; hard global ceiling ${plan.hardGlobalCeiling}; exploration step limit ${plan.perGoal}`;
+}
+
+export function createExplorationBatchPlan(goalCount) {
+  if (!Number.isSafeInteger(goalCount) || goalCount < 0) throw new Error('Exploration goal count must be a non-negative integer');
+  const batches = [];
+  for (let start = 0; start < goalCount; start += EXPLORATION_BATCH_GOAL_LIMIT) {
+    const goals = Math.min(EXPLORATION_BATCH_GOAL_LIMIT, goalCount - start);
+    const plan = createExplorationCallPlan(goals);
+    batches.push(Object.freeze({ number: batches.length + 1, start, goalCount: goals, plannedCalls: plan.scheduled }));
+  }
+  const totalCalls = EXPLORATION_CALLS_PER_GOAL * goalCount;
+  if (!Number.isSafeInteger(totalCalls)) throw new Error('Exploration batch total exceeds the safe integer range');
+  return Object.freeze({ goalCount, callsPerGoal: EXPLORATION_CALLS_PER_GOAL, totalCalls, batches: Object.freeze(batches) });
+}
+
+export function formatExplorationBatchPlan(plan) {
+  const batches = plan.batches.map(batch => `batch ${batch.number}: ${batch.goalCount} goals / ${batch.plannedCalls} calls`).join('; ') || 'no pending batches';
+  return `Model Room sweep plan: ${plan.goalCount} pending goals × ${plan.callsPerGoal} planned calls = ${plan.totalCalls} total; ${batches}`;
 }
 
 function modelCallBudget(limit, allowZero = false) {
@@ -166,12 +191,20 @@ function signalProcessGroup(child, name) {
   }
 }
 
-export async function dispatchThroughModelRoom({ desk, task, fresh, signal, dispatcherPath, environment }) {
+async function assertDispatcherContract(dispatcher, contract) {
+  let digest;
+  try { digest = createHash('sha256').update(await readFile(dispatcher)).digest('hex'); }
+  catch { throw new Error(`CARR_MODEL_ROOM_DISPATCH does not match the pinned Model Room dispatcher ${contract.revision}`); }
+  if (digest !== contract.sha256) throw new Error(`CARR_MODEL_ROOM_DISPATCH does not match the pinned Model Room dispatcher ${contract.revision}`);
+}
+
+export async function dispatchThroughModelRoom({ desk, task, fresh, signal, dispatcherPath, environment, dispatcherContract = MODEL_ROOM_DISPATCH_CONTRACT }) {
   const dispatcher = (dispatcherPath || process.env.CARR_MODEL_ROOM_DISPATCH)?.trim();
   if (!dispatcher || !isAbsolute(dispatcher)) throw new Error('CARR_MODEL_ROOM_DISPATCH must name the absolute Model Room dispatcher path');
   if (fresh !== true) throw new Error('DoctorCRE E2E Model Room dispatches must use a fresh desk turn');
+  await assertDispatcherContract(dispatcher, dispatcherContract);
   return new Promise((resolve, reject) => {
-    const args = MODEL_ROOM_DISPATCH_CONTRACT.argv.map(value => value === '{desk}' ? desk : value);
+    const args = dispatcherContract.argv.map(value => value === '{desk}' ? desk : value);
     const child = spawn(process.env.PYTHON || 'python3', [dispatcher, ...args], {
       detached: process.platform !== 'win32',
       env: environment || process.env,

@@ -45,9 +45,12 @@ npx e2e run tests/agent      # agent.act/agent.assert variants, local only
 The local agent suite routes model work through a named CARR Model Room desk.
 `CARR_MODEL_ROOM_DISPATCH` must name the absolute sanctioned dispatcher path;
 `E2E_MODEL_ROOM_DESK` selects the registered desk and defaults to
-`doctorcre-e2e`. The desk owns model selection and authentication. One shared
-in-process budget caps a run at 20 model calls. CI configures no model and never
-runs the agent suite.
+`doctorcre-e2e`. The desk owns model selection and authentication. Exploration
+runs split unfinished goals into 50-goal batches. Each goal keeps the 40-step
+limit with 81 planned model calls per goal and 4,050 calls per full batch,
+below the 5,000-call hard ceiling. The runner prints every batch and the finite total
+before starting, checkpoints each finished goal, and resumes with the next
+unfinished goal. CI configures no model and never runs the agent suite.
 
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either
