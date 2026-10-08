@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium, settles } from './browser-harness.mjs';
+import { chromium, settles, animationsSettled } from './browser-harness.mjs';
 import routes from '../contracts/app-routes.v1.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
@@ -530,8 +530,8 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
-test('directory opens, board → project → task uses one tap each and breadcrumbs return to the parent',async t=>{
-  const {page,errors}=await open(t,{path:'/control-room/progress'});
+for (const width of [390, 820, 1440]) test(`directory opens, board → project → task uses one tap each and breadcrumbs return to the parent at ${width}px`,async t=>{
+  const {page,errors}=await open(t,{width,path:'/control-room/progress'});
   await page.locator('.directory-summary').click();
   await page.locator('[data-board-id="demo-project"]').evaluate(node=>node.removeAttribute("target"));
   await page.locator('[data-board-id="demo-project"]').click();
@@ -539,6 +539,14 @@ test('directory opens, board → project → task uses one tap each and breadcru
   await page.locator(`.board-card[data-card-id="${taskId}"]`).first().click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
+  await animationsSettled(page);
+  for (const link of await page.locator('#workBreadcrumbs a').all()) {
+    assert.equal(await link.evaluate(node => {
+      const box = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return hit === node || node.contains(hit);
+    }), true, `${width}px: breadcrumb remains reachable beside the rail and above the status bar`);
+  }
   await page.locator('#workBreadcrumbs a').nth(1).click();
   await page.waitForURL('**/control-room/progress/board/demo-project');assert.deepEqual(errors,[]);
 });

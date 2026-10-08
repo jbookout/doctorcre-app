@@ -3,6 +3,7 @@ export default {
   "files": [
     "css/progress-board.css",
     "js/progress-board.js",
+    "js/progress-board-costs.js",
     "progress-board.html",
     "js/progress-pipeline.js",
     "js/system-work-board.js",
@@ -11,6 +12,7 @@ export default {
     "test/progress-board-directory-layout.test.mjs",
     "test/progress-board-review.test.mjs",
     "test/progress-board.test.mjs",
+    "test/progress-board-costs.test.mjs",
     "test/progress-board-page-browser.test.mjs",
     "test/progress-directory-browser.test.mjs",
     "test/system-work-board-browser.test.mjs",

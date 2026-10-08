@@ -211,7 +211,7 @@ function renderStatus(status) {
   if (asOf) {
     asOf.textContent = status.last_read_at
       ? `Updated ${new Date(status.last_read_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true})}`
-      : 'Updating…';
+      : [SYNC_STATES.STARTING, SYNC_STATES.SYNCING].includes(status.state) ? 'Updating…' : 'Unavailable';
   }
 }
 
@@ -1100,6 +1100,9 @@ function wire() {
     const chip = event.target.closest('button[data-filter]');
     if (!chip) return;
     state.personalScope = false; state.filter = chip.dataset.filter;
+    const url = new URL(location.href);
+    if (state.filter === 'all') url.searchParams.delete('owner'); else url.searchParams.set('owner',state.filter);
+    history.replaceState({},'',url);
     renderChips();
     renderBoard();
     say(`Showing ${state.filter === 'all' ? 'all owners' : actorName(state.filter)} on the board.`);

@@ -204,6 +204,7 @@
   gap: 12px;
 }
 .relationship-card {
+  color: #e7f0fc;
   width: 100%;
   text-align: left;
   display: grid;

@@ -289,6 +289,42 @@ footer { padding-top: 8px; }
 #work-triage::backdrop {background:rgba(0,5,13,.8);backdrop-filter:blur(8px);}#work-triage-form {display:grid;gap:16px;}#work-triage-form h2 {overflow-wrap:anywhere;}#work-triage-form textarea {min-height:110px;}
 @media(prefers-reduced-motion:reduce) {.work-card {transition:none;}.work-card:hover{transform:none;}}
 
+.cost-panel { overflow: hidden; }
+.cost-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+.cost-controls label { display: grid; gap: 6px; flex: 1 1 160px; min-width: 0; color: var(--muted); font-size: .8rem; }
+.cost-controls select { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #06182b; color: var(--ink); font: inherit; transition: border-color .2s; }
+.cost-controls select:hover { border-color: var(--orange); }
+.cost-controls select:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.cost-open-day { align-self: end; min-width: 44px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 10px; background: #173b5e; color: var(--ink); font: inherit; cursor: pointer; }
+.cost-open-day:hover { border-color: var(--orange); }
+.cost-open-day:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.cost-content { animation: card-in .4s ease-out; }
+.cost-meta,.cost-coverage,.cost-day-detail { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.cost-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
+.cost-metrics div { display: grid; gap: 8px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: rgba(3,15,31,.7); }
+.cost-metrics span { color: var(--muted); font-size: .72rem; }
+.cost-metrics strong { font-family: 'Roboto Condensed',sans-serif; font-size: clamp(1.2rem,3vw,2rem); overflow-wrap: anywhere; }
+.cost-state { display: inline-flex; align-items: center; gap: 8px; color: var(--blue); font-size: .8rem; }
+.cost-state::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 3.5s ease-in-out infinite; }
+.cost-state[data-state="alert"],.cost-state[data-state="partial"],.cost-state[data-state="unavailable"] { color: var(--orange); }
+.cost-state[data-state="alert"]::before,.cost-state[data-state="partial"]::before,.cost-state[data-state="unavailable"]::before { animation-duration: 2s; border-radius: 2px; }
+.cost-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.cost-chart text { fill: var(--muted); font: 13px 'DM Sans',sans-serif; }
+.cost-bar { fill: var(--orange); cursor: pointer; transition: fill .2s,opacity .2s; }
+.cost-bar-partial { fill: #183852; stroke: var(--orange); stroke-dasharray: 3 2; }
+.cost-bar:hover,.cost-bar:focus { fill: var(--blue); outline: none; stroke: var(--ink); stroke-width: 2px; }
+.cost-warning,.cost-alerts { color: #ffd479; font-size: .8rem; overflow-wrap: anywhere; }
+.cost-action { padding: 12px; border-left: 3px solid var(--orange); background: rgba(251,123,50,.07); font-size: .8rem; overflow-wrap: anywhere; }
+.cost-dialog { width: min(540px,calc(100vw - 40px)); box-sizing: border-box; padding: 24px; border: 1px solid var(--orange); border-radius: 16px; color: var(--ink); background: #06182b; overflow-wrap: anywhere; }
+.cost-dialog::backdrop { background: rgba(0,5,13,.8); backdrop-filter: blur(8px); }
+.cost-dialog button { padding: 10px 16px; min-height: 44px; color: var(--ink); background: #173b5e; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.cost-dialog button:focus-visible { outline: 2px solid var(--blue); }
+.cost-call-sites { font-size: .85rem; overflow-wrap: anywhere; }
+.cost-coverage,.cost-call-sites ul,.cost-alerts { padding-left: 20px; }
+.cost-coverage li,.cost-call-sites li,.cost-alerts li { margin: 6px 0; }
+@media(max-width:680px) { .cost-metrics { grid-template-columns: minmax(0,1fr); } }
+@media(prefers-reduced-motion:reduce) { .cost-content,.cost-state::before { animation: none !important; } .cost-bar,.cost-controls select { transition: none; } }
+
 /* The independent system-work census diagram. */
 .flow-wrap { margin-top: 16px; overflow: hidden; }
 .pipeline-diagram { display: block; width: 100%; height: auto; }

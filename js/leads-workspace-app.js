@@ -14,7 +14,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
-  const state = { board: null, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
     detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -60,7 +60,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
     $("leadCount").textContent = `${active.length}`;
-    $("filterSummary").textContent = `${shown.length} leads`;
+    $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, k.charAt(0).toUpperCase() + k.slice(1)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters);
@@ -78,8 +78,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || '<p class="stage-empty">—</p>'}</div></section>`;
       }).join("")}</div>`;
     }
-    $("boardUpdated").textContent = updatedLabel(state.board?.generated_at);
-    $("boardUpdated").dateTime = state.board?.generated_at || "";
+    $("boardUpdated").textContent = state.readFailed ? "Unavailable" : updatedLabel(state.board?.generated_at);
+    $("boardUpdated").dateTime = state.readFailed ? "" : state.board?.generated_at || "";
     $("searchUpdated").textContent = `New-lead search ${state.board?.last_search_at ? stamp(state.board.last_search_at) : "—"}`;
     if (focused?.container) restoreFocus(focused);
   }
@@ -88,6 +88,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
     box.hidden = !state.pending && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
+    if (!state.actor && state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ' · <a href="/auth/login?return_to=%2Fleads">Sign in</a>');
     $("checkPending")?.addEventListener("click", executePending);
     if (state.pending && $("stageDialog").open) {
       $("saveStage").textContent = "Check outcome"; $("saveStage").disabled = state.writing;
@@ -127,7 +128,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.epoch) return;
       validateLeadWorkspace(next);
       state.connectionFeedback = null;
-      state.board = next; render();
+      state.readFailed = false; state.board = next; render();
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
         const move = current?.last_stage_move;
@@ -155,6 +156,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       }
     } catch (error) {
       if (epoch !== state.epoch) return;
+      state.readFailed = true;
       if (authorizationFailure(error)) return;
       // A refused verification/read cannot leave the previous private snapshot visible.
       if (!state.identityReady) state.board = null;
