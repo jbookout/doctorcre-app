@@ -2,6 +2,8 @@ import { navigationItems } from "../js/app-shell.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
+import { createQaServer } from '../scripts/qa-fixture-server.mjs';
+import { fileURLToPath } from 'node:url';
 import { chromium, settles, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
@@ -154,4 +156,42 @@ test('PR182 account portal preserves immediate forward and return keyboard paths
   await page.keyboard.press('Tab');
   assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
+});
+
+
+for (const { name, path, updated, retry, error } of [
+  { name:'Leads', path:'/leads?mode=live', updated:'#boardUpdated', retry:'#refreshBoard', error:'#leadBoardError' },
+  { name:'Deals', path:'/deals?mode=live', updated:'#boardAsOf', retry:'#retryRead', error:'#boardStatusLabel' },
+]) for (const status of [503,401,403]) test(`QA-008 ${name} failure and recovery after ${status}`, async t => {
+  const {server}=await createQaServer({buildRoot:fileURLToPath(new URL('../dist/site',import.meta.url))});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const origin=`http://127.0.0.1:${server.address().port}`;
+  const response=await fetch(origin+'/api/test/seed',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:`freshness-${name.toLowerCase()}-${status}`,viewer:'joe',variant:'realistic'})});
+  assert.equal(response.status,200);
+  const {cookie}=await response.json();
+  const browser=await chromium.launch();t.after(()=>browser.close());
+  const page=await browser.newPage();
+  await page.context().addCookies([cookie]);
+  let refused=true;
+  const intercept=route=>refused?route.fulfill({status,json:{ok:false,error:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable',code:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable'}}):route.continue();
+  await page.route('**/api/**',intercept);
+  await page.route('**/mcp',intercept);
+  await page.goto(origin+path);
+  await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
+  assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
+  await page.locator(retry).click();
+  if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+  await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
+  assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
+  refused=false;
+  await page.locator(retry).click();
+  if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+  await page.waitForFunction(({updated})=>document.querySelector(updated)?.textContent.startsWith('Updated '),{updated});
+  assert.match(await page.locator(updated).textContent(),/^Updated /);
+  refused=true;
+  await page.locator(retry).click();
+  if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+  await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
+  assert.doesNotMatch(await page.locator(updated).textContent(),/Updating/);
 });
