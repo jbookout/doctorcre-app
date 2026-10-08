@@ -47,6 +47,20 @@ export async function preflightRequest(phase, operation, { pause = delay, attemp
   }
 }
 
+// Charges a buffered API response against the run's ingress bytes: the
+// declared length first, then the received body. Playwright's request API has
+// already buffered the body by then, so the per-response cap is enforced on
+// what was received rather than while it streamed.
+export async function chargeBody(budget, response) {
+  const meter = budget.ingressMeter();
+  try {
+    await meter.declare(Number(response.headers?.()['content-length'] ?? NaN));
+    const body = await response.body?.();
+    if (body?.length) await meter.take(body.length);
+  } finally { await meter.settle(); }
+  return response;
+}
+
 // Every preflight request is reserved against the run budget before it is
 // sent. A caller without a budget is unsupported ingress and refuses.
 export async function stagingSession(baseURL = STAGING_ORIGIN, {
@@ -55,7 +69,7 @@ export async function stagingSession(baseURL = STAGING_ORIGIN, {
   if (!budget) throw new BudgetRefusal('http-not-budgeted');
   const origin = assertStagingURL(baseURL);
   const attempts = budget.profile.retries + 1;
-  const preflight = (phase, send) => preflightRequest(phase, () => budget.dispatch('preflight', send), { attempts });
+  const preflight = (phase, send) => preflightRequest(phase, () => budget.dispatch('preflight', async () => chargeBody(budget, await send())), { attempts });
   let api, phase = 'context';
   try {
     api = await requestFactory({ baseURL: origin, timeout: budget.timeoutMs() });
@@ -88,4 +102,40 @@ export async function stagingSession(baseURL = STAGING_ORIGIN, {
     // Never forward a provider error: request objects can include credentials.
     throw new SessionPreflightFailure(phase + '-failed');
   } finally { if (api) await api.dispose().catch(() => { throw new SessionPreflightFailure('context-dispose-failed'); }); }
+}
+
+// Reads a fetch() response body chunk by chunk, refusing before the declared
+// length or the received bytes cross the meter's caps; the bytes that arrived
+// are settled (charged) even when the read is refused part-way.
+export async function readMetered(response, meter) {
+  const chunks = [];
+  try {
+    await meter.declare(Number(response.headers.get('content-length') ?? NaN));
+    if (response.body) {
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await meter.take(value.byteLength);
+          chunks.push(Buffer.from(value));
+        }
+      } finally { reader.cancel().catch(() => {}); }
+    }
+  } finally { await meter.settle(); }
+  return Buffer.concat(chunks);
+}
+
+// A charged re-check of the deployed app source, for long runs that must not
+// repeat the full preflight per screen (the preflight count is capped at 8).
+export async function checkStagingRelease(budget, origin = STAGING_ORIGIN) {
+  const identity = await budget.dispatch('http', async signal => {
+    const response = await fetch(new URL('/app-release', assertStagingURL(origin)), { redirect: 'manual', signal: AbortSignal.any([signal, AbortSignal.timeout(budget.timeoutMs())]) });
+    const body = await readMetered(response, budget.ingressMeter());
+    if (!response.ok) throw new SessionPreflightFailure('release-recheck-http-' + response.status);
+    return JSON.parse(body.toString('utf8'));
+  });
+  if (identity?.environment !== 'staging' || identity?.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity?.source_commit || ''))
+    throw new SessionPreflightFailure('release-recheck-invalid');
+  return { ...identity, carr_source_commit: contract.producer.source_commit };
 }

@@ -31,6 +31,7 @@
     "predeployment:check:production": "npm run slices:check",
     "test:regressions": "e2e run --config e2e.regressions.config.ts",
     "e2e:staging:home-smoke": "node scripts/e2e-staging/home-smoke.mjs",
+    "e2e:staging:authorize": "node scripts/e2e-staging/run-budget.mjs authorize",
     "e2e:staging:stop": "node scripts/e2e-staging/run-budget.mjs stop",
     "e2e:staging:explore": "node scripts/e2e-staging/explore.mjs",
     "e2e:staging:sweep": "node scripts/e2e-staging/sweep.mjs",

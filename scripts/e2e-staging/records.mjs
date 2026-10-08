@@ -3,7 +3,8 @@ import { mkdir, open, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { request as playwrightRequest } from 'playwright';
-import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
+import { assertStagingURL, chargeBody, stagingSession, STAGING_ORIGIN } from './session.mjs';
+import { BudgetRefusal } from './run-budget.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 
@@ -35,14 +36,62 @@ async function readPrivateJSON(path) {
   finally { await handle.close(); }
 }
 
+// The pinned CARR interface has no verb that removes or archives a synthetic
+// party, client, deal, lead, conversation or tour. A run may only create a
+// fixture it can remove again, so fresh fixture creation stays refused until
+// each record kind has a pinned removal verb here.
+export const REMOVAL_VERBS = Object.freeze({});
+const FIXTURE_KINDS = ['party', 'client', 'deal', 'invoice', 'lead_party', 'lead', 'conversation', 'tour'];
+
+const defaultRequestFactory = options => playwrightRequest.newContext(options);
+
+// Every request through a budgeted API is a charged dispatch; its response
+// body is charged as ingress.
+function budgetedApi(api, budget) {
+  const send = (method, kind) => (path, options) => budget.dispatch(kind, async () => chargeBody(budget, await api[method](path, options)));
+  return {
+    get: send('get', 'http'),
+    post: (path, options) => send('post', options?.data?.method === 'tools/call' && !READ_RPCS.has(options.data.params?.name) ? 'mutation' : 'http')(path, options),
+    dispose: () => api.dispose(),
+  };
+}
+const READ_RPCS = new Set(['get-deal-room', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation']);
+
+// Removes the fixtures one run created, each removal charged as a mutation on
+// the same budget. The first failure stops the run and writes a receipt naming
+// every record left behind.
+export async function cleanupStagingRecords({ budget, created, remove = unavailableRemoval }) {
+  const removed = [];
+  for (const [index, entry] of created.entries()) {
+    try {
+      await budget.dispatch('mutation', () => remove(entry));
+      removed.push(entry.id);
+    } catch (error) {
+      const left_behind = created.slice(index).map(({ record, id }) => ({ record, id }));
+      const code = error instanceof BudgetRefusal && error.code !== 'cleanup-unavailable' ? error.code : 'cleanup-failed';
+      await budget.stop(code).catch(() => {});
+      await budget.finish({ schema: 'sweep-explore-receipt.v1', qualified: false, removed, left_behind, failure: { phase: 'cleanup', code } }).catch(() => {});
+      throw new BudgetRefusal(code);
+    }
+  }
+  return { removed, left_behind: [] };
+}
+
+// No record kind has a pinned removal verb yet (see REMOVAL_VERBS).
+async function unavailableRemoval() {
+  throw new BudgetRefusal('cleanup-unavailable');
+}
+
 export async function prepareStagingRecords(output, {
-  origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  requestFactory = options => playwrightRequest.newContext(options),
+  origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false, budget,
+  requestFactory = defaultRequestFactory,
 } = {}) {
   origin = assertStagingURL(origin);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (!budget && requestFactory === defaultRequestFactory) throw new BudgetRefusal('http-not-budgeted');
+  if (budget && !existing && FIXTURE_KINDS.some(kind => !REMOVAL_VERBS[kind])) throw new BudgetRefusal('cleanup-unavailable');
   if (reuseOnly && (!existing || existing.schema !== 'doctorcre-staging-records-plan.v1' || existing.origin !== STAGING_ORIGIN ||
       !/^[0-9a-f]{40}$/.test(existing.release?.source_commit || '') || existing.release?.carr_source_commit !== contract.producer.source_commit ||
       ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !UUID.test(existing.records?.[name]?.id || '')) || !UUID.test(existing.records?.invoice?.deal_id || ''))) {
@@ -70,7 +119,8 @@ export async function prepareStagingRecords(output, {
   let api;
   const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
   try {
-    api = await requestFactory({ baseURL: STAGING_ORIGIN, storageState: state, timeout: 30_000 });
+    api = await requestFactory({ baseURL: STAGING_ORIGIN, storageState: state, timeout: budget ? budget.timeoutMs() : 30_000 });
+    if (budget) api = budgetedApi(api, budget);
     async function json(path, data) {
       assertStagingURL(new URL(path, STAGING_ORIGIN).href);
       const options = { headers, maxRedirects: 0, ...(data === undefined ? {} : { data }) };
@@ -218,11 +268,13 @@ export async function prepareStagingRecords(output, {
       ...(tourRead.subject_id !== plan.records.client.id || tourRead.subject_type !== 'client' ? [limited('tour', 'subject_changed', 'Use the normal UI to select the original invented client if available, or create another invented draft tour for those controls.')] : []),
     ];
     const result = { schema: 'doctorcre-staging-records.v1', origin: STAGING_ORIGIN, release, complete: true, records: plan.records, eligibleLead: leadEligible, findings: [], needs_restore };
+    budget?.tagFixtures(Object.values(plan.records).flatMap(record => [record.id, record.deal_id, record.ref]));
     await privateJSON(join(output, 'staging-records.json'), result);
     plan.state = 'complete';
     await privateJSON(planPath, plan);
     return result;
-  } catch {
+  } catch (error) {
+    if (error instanceof BudgetRefusal) throw error;
     throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
   } finally { if (api) await api.dispose().catch(() => {}); }
 }

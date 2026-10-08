@@ -1,8 +1,12 @@
 import { web, surfaceOf } from '@e2e-dev/web';
 import { defineEngine } from 'e2e/engine';
 import { STAGING_ORIGIN } from './session.mjs';
+import { BudgetRefusal, activeBudget } from './run-budget.mjs';
+import { installBudgetedRoute } from './budgeted-route.mjs';
 
-export const stagingRequestAllowed = url => url.origin === STAGING_ORIGIN || ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname);
+// Only the exact staging origin. Web fonts and every other third party are
+// refused locally, so a staging run contacts no one else.
+export const stagingRequestAllowed = url => url.origin === STAGING_ORIGIN;
 
 // Runs in the page: keeps a share URL's credential out of every screenshot.
 export function hideCredentialPixels() {
@@ -13,9 +17,12 @@ export function hideCredentialPixels() {
   new MutationObserver(hide).observe(document, { childList: true, subtree: true });
 }
 
-export async function installStagingGuard(context) {
-  await context.route(url => !stagingRequestAllowed(url), route => route.abort());
-  await context.addInitScript(hideCredentialPixels);
+// Every context the e2e SDK opens for a staging target is charged and routed
+// through the active run budget; without one, the context refuses to start.
+export async function installStagingGuard(context, budget = activeBudget()) {
+  if (!budget) throw new BudgetRefusal('staging-not-budgeted');
+  await budget.reserve('context');
+  await installBudgetedRoute(context, budget);
 }
 
 export function stagingWeb(options) {

@@ -194,17 +194,30 @@ test('the pinned explorer runs with a forty-step goal budget', async () => {
   assert.equal(module.STEP_BOUNDS.max, 40);
 });
 
+// The staging guard charges a run budget; these tests authorize one in a
+// private temporary directory, never the machine-wide state.
+async function sweepBudget() {
+  const { authorizeRun, openRunBudget } = await import('../../scripts/e2e-staging/run-budget.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'staging-guard-budget-'));
+  await authorizeRun({ dir, profile: 'sweep-explore', reason: 'mock-only harness test' });
+  return openRunBudget({ dir, profile: 'sweep-explore' });
+}
+
 test('both explorers and sweep block production egress at the browser context', async () => {
   const { stagingRequestAllowed, stagingWeb, installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
+  const budget = await sweepBudget();
   assert.equal(stagingRequestAllowed(new URL('https://app.doctorcre.com/mcp')), false);
   assert.equal(stagingRequestAllowed(new URL('https://reports.doctorcre.com/share')), false);
   assert.equal(stagingRequestAllowed(new URL('https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/mcp')), true);
   assert.equal(stagingWeb({ viewport: { width: 390, height: 844 } }).name, 'web');
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await installStagingGuard(page.context());
-  await assert.rejects(page.goto('https://reports.doctorcre.com/share'), /ERR_FAILED|ERR_ABORTED/);
+  await assert.rejects(installStagingGuard(page.context(), null), /staging-not-budgeted/);
+  await installStagingGuard(page.context(), budget);
+  await assert.rejects(page.goto('https://reports.doctorcre.com/share'), /ERR_FAILED|ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/);
+  assert.equal(budget.spent.http, 0);
   await browser.close();
+  await budget.close();
 });
 
 test('shared controls are swept again in each discovered drawer state', async () => {
@@ -484,14 +497,16 @@ test('late controls settle before enumeration and empty screens fail completenes
 
 test('share credentials are masked from pixels under the deployed CSP', async () => {
   const { installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
+  const budget = await sweepBudget();
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await installStagingGuard(page.context());
+  await installStagingGuard(page.context(), budget);
   await page.goto('about:blank');
   await page.setContent('<meta http-equiv="Content-Security-Policy" content="style-src \'self\'"><main><input id="share-url" value="synthetic-grant"></main>');
   await page.waitForFunction(() => getComputedStyle(document.querySelector('#share-url')).opacity === '0');
   assert.equal(await page.locator('#share-url').inputValue(), 'synthetic-grant');
   await browser.close();
+  await budget.close();
 });
 
 
