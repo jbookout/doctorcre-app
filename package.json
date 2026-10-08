@@ -32,13 +32,14 @@
     "e2e:staging:explore": "node scripts/e2e-staging/explore.mjs",
     "e2e:staging:sweep": "node scripts/e2e-staging/sweep.mjs",
     "e2e:staging:selftest": "node --test tests/staging-live/*.test.mjs && python3 tests/staging-live/scrub.test.py",
-    "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs"
+    "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs",
+    "test:regressions": "e2e run --config e2e.regressions.config.ts"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
-    "@e2e-dev/web": "0.11.2",
+    "@e2e-dev/web": "0.12.0",
     "ai": "7.0.127",
-    "e2e": "0.16.0",
+    "e2e": "0.17.0",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
     "wrangler": "4.131.2"

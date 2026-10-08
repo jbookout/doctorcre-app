@@ -18,7 +18,7 @@ import {
   buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, deepLinkFor,
   groupSearchResults, parseSearchAddress, readSavedViews, refusalDetail, renameView,
   retiredSummary, saveView, scopeChips, searchAddress, searchPhase, truncationNotes,
-  validSearchPayload, visibleCount, writeSavedViews,
+  validSearchPayload, visibleCount, writeSavedViews, toggleSearchScope, SEARCH_GROUP_IDS,
 } from "../js/search-model.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -277,16 +277,15 @@ test("B05-9 all nine states carry their own rendered text and are reachable thro
 
 /* ----------------------------------------------------------------------- B05-10 */
 
-test("B05-10 a needs_disambiguation answer renders the count, the candidates and the producer's hint, and opens none of them", async () => {
+test("B05-10 disambiguation renders the producer's count and candidates with guidance the UI can fulfill", async () => {
   const client = await fixture();
   const answer = await client.findAndCatchUp({ query: "Pensacola" });
   assert.equal(answer.state, "needs_disambiguation");
   assert.equal(answer.candidate_count, answer.candidates.length + (answer.candidates_truncated ? answer.candidate_count - answer.candidates.length : 0));
   assert.ok(answer.candidates.length > 1);
   assert.equal(answer.hint, "Choose one exact target and call catch-me-up; this verb never guesses.");
-  // The hint is printed verbatim — it is not rewritten anywhere in this app.
-  assert.doesNotMatch(pageJs, /never guesses/, "the hint is the producer's sentence, not the page's");
-  assert.match(pageJs, /escapeHtml\(payload\.hint\)/, "the page prints the hint it was given");
+  assert.doesNotMatch(pageJs, /escapeHtml\(payload\.hint\)/, "raw verb instructions are not human UI guidance");
+  assert.match(pageJs, /Choose a matching result below and select Open where available/);
   const disambiguationBody = pageJs.slice(pageJs.indexOf("function renderDisambiguation()"), pageJs.indexOf("function renderRetired()"));
   assert.doesNotMatch(disambiguationBody, /location\.|href=|client\./, "the page opens no candidate on its own");
   assert.match(disambiguationBody, /escapeHtml\(String\(payload\.candidate_count\)\)/, "the producer's own count is what is shown");
@@ -429,4 +428,17 @@ test("B05-synthetic-fixture the validator accepts synthetic find payloads, nulls
   assert.equal(deepLinkFor({ kind: "vendor", name: "A B", merged: false }), "/vendors?q=A%20B");
   assert.equal(deepLinkFor({ kind: "lead", name: "A B", merged: false }), null, "no page reads a lead by address");
   assert.equal(deepLinkFor({ kind: "client", name: "A B", merged: true }), null, "a retired alias opens nothing");
+});
+
+
+test('QA-007 every scope can be disabled, persisted, and enabled independently', () => {
+  let kinds = [];
+  for (const id of SEARCH_GROUP_IDS) kinds = toggleSearchScope(kinds, id);
+  assert.deepEqual(kinds, ['none']);
+  const address = searchAddress({query:'Demo', kinds});
+  assert.deepEqual([...parseSearchAddress(address.split('?')[1]).kinds], ['none']);
+  assert.equal(applyScope(groupSearchResults(syntheticCapture.captures[0].payload), kinds).length, 0);
+  assert.deepEqual([...saveView([], {name:'No scopes', query:'Demo', kinds})[0].kinds], ['none']);
+  assert.deepEqual(toggleSearchScope(kinds, 'leads'), ['leads']);
+  assert.equal(searchAddress({query:'', kinds:[]}), '/search');
 });
