@@ -42,10 +42,12 @@ npx e2e run tests/journeys   # deterministic, no model; the CI e2e job runs this
 npx e2e run tests/agent      # agent.act/agent.assert variants, local only
 ```
 
-The agent suite uses Joe's ChatGPT subscription, never an API key. Sign in once
-per machine with `npx e2e login openai` (add `--device` to use a code instead of
-a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
-lists the ids the login serves. CI configures no model and never runs it.
+The local agent suite routes model work through a named CARR Model Room desk.
+`CARR_MODEL_ROOM_DISPATCH` must name the absolute sanctioned dispatcher path;
+`E2E_MODEL_ROOM_DESK` selects the registered desk and defaults to
+`doctorcre-e2e`. The desk owns model selection and authentication. One shared
+in-process budget caps a run at 20 model calls. CI configures no model and never
+runs the agent suite.
 
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either

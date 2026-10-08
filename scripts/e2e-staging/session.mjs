@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { request as playwrightRequest } from 'playwright';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { stagingAuth } from './auth-contract.mjs';
 
 export const STAGING_ORIGIN = contract.origin;
 export const SECRET_PATH = join(homedir(), '.config/carr/e2e-session-secret');
@@ -36,13 +37,13 @@ export async function stagingSession(baseURL = STAGING_ORIGIN) {
     const carr = carrRelease.ok() ? await carrRelease.json() : {};
     if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit) throw new Error('staging CARR release differs from the pinned E2E session contract');
     const secret = await readSessionSecret();
-    const response = await api.post('/auth/e2e-session', { headers: { authorization: `Bearer ${secret}` }, maxRedirects: 0 });
+    const response = await api.fetch(stagingAuth.exchange.path, stagingAuth.exchange.request(secret));
     if (!response.ok()) throw new Error(`staging E2E session exchange refused (${response.status()}); provision the staging route and secret`);
-    const session = await api.get('/auth/session', { maxRedirects: 0 });
+    const session = await api.get(stagingAuth.session.path, { maxRedirects: 0 });
     const actor = session.ok() ? await session.json() : {};
-    if (actor.actor?.slug !== 'joe' || actor.e2e_principal !== 'e2e-joe') throw new Error('staging session did not authenticate the dedicated e2e-joe partner');
+    if (!stagingAuth.session.matches(actor)) throw new Error('staging session did not authenticate the dedicated E2E partner');
     const state = await api.storageState();
-    if (!state.cookies.some(cookie => cookie.name === '__Host-dealroom_session' && cookie.httpOnly && cookie.secure)) throw new Error('staging exchange did not set the normal secure session cookie');
+    if (!stagingAuth.session.hasSecureCookie(state.cookies)) throw new Error('staging exchange did not set the normal secure session cookie');
     return { state, release: { ...identity, carr_source_commit: contract.producer.source_commit } };
   } catch (error) {
     // Provider error objects can carry request headers. Only our own bounded messages escape.

@@ -10,6 +10,20 @@ import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
+export function buildExplorationGoal({ screen, setup }) {
+  const recovery = setup.needs_restore.length > 0
+    ? 'Some prepared records need recovery. Use normal UI filters and recovery controls, or create another invented record through the UI.'
+    : 'Prepared records are ready for use.';
+  const goal = `Navigate first to ${screen.path}. Explore every part of the ${screen.name} workspace on staging as the signed-in E2E Joe partner. Open every drawer, menu and tab. Exercise every control and form, including delete, archive and send-draft, using only disposable synthetic staging records. Test empty and error recovery, keyboard use and mobile layout. Keep this goal within the assigned workspace and follow its detail screens. Record each observed defect with reproduction steps, expected and actual behavior, and screenshots. ${recovery} Do not log in. Stay on staging and never navigate to production or an external destination.`;
+  if (goal.length > 2_000) throw new Error(`Internal exploration goal exceeds the pinned 2000-character limit (${goal.length})`);
+  return goal;
+}
+
+export async function runExplorationAttempt(explore, options) {
+  try { return { result: await explore(options), error: null }; }
+  catch (error) { return { result: null, error }; }
+}
+
 export async function exploreAll() {
   process.env.E2E_TARGET = 'staging-live';
   process.env.E2E_TELEMETRY_DISABLED = '1';
@@ -36,10 +50,11 @@ export async function exploreAll() {
       const destination = join(output, 'evidence', 'explore', runId);
       await mkdir(local, { recursive: true, mode: 0o700 });
       console.log(`Exploring ${target.name} ${screen.path} as ${agent}; max-steps 40`);
-      const goal = `Navigate first to ${screen.path}. Explore every part of the ${screen.name} workspace on staging as the signed-in E2E Joe partner. Open every drawer, menu and tab, exercise every control and form including delete, archive and send-draft on disposable staging records. Test empty/error recovery, keyboard and mobile layout. Keep this one goal scoped to this workspace; follow its detail screens. Record every observed defect with steps, expected/actual behavior and screenshots. Prepared synthetic records: ${JSON.stringify(setup.records)}. Records needing recovery after the control sweep: ${JSON.stringify(setup.needs_restore)}. Use the normal parked or archived filters and restore controls when needed to reach their details; create additional invented records through the UI if this workspace needs them. No browser login. Staging only. Never navigate to production or external destinations.`;
-      let status = 'ERROR', steps = 0;
-      try {
-        const result = await explore({ cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: 40, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
+      const goal = buildExplorationGoal({ screen, setup });
+      let status = 'ERROR', steps = 0, failure = null;
+      const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: 40, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
+      if (attempt.result) {
+        const result = attempt.result;
         steps = result.explore.steps.length;
         status = result.explore.ended;
         const report = JSON.parse(await readFile(join(local, 'report.json'), 'utf8'));
@@ -52,12 +67,13 @@ export async function exploreAll() {
             source: `explore:${agent}`, suspected_area: item.path || screen.path,
           });
         }
-      } catch { status = 'ERROR'; }
+      } else { failure = attempt.error; }
       scrubEvidence(local);
       await mkdir(destination, { recursive: true, mode: 0o700 });
       await cp(local, destination, { recursive: true });
       explorations.push({ target: target.name, screen: screen.name, path: screen.path, agent, steps, status, evidence: destination });
       await writeReport(output, { ...sweep.snapshot(), explorations, release, findings, setup, expectedExplorations });
+      if (failure) throw failure;
       if (status === 'ERROR') throw new Error(`Exploration infrastructure failed at ${runId}. Evidence retained; no login was attempted.`);
     }
   }

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { request as playwrightRequest } from 'playwright';
 import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
+import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 
@@ -89,8 +90,8 @@ export async function prepareStagingRecords(output, {
       requireValue(!answer.result?.isError && !value.error && value.ok !== false);
       return value;
     }
-    const actor = await json('/auth/session');
-    requireValue(actor.actor?.slug === 'joe' && actor.e2e_principal === 'e2e-joe' && typeof actor.csrf_token === 'string' && actor.csrf_token);
+    const actor = await json(stagingAuth.session.path);
+    requireValue(stagingAuth.session.matches(actor) && typeof actor.csrf_token === 'string' && actor.csrf_token);
     if (!existing) {
       await mkdir(output, { recursive: true, mode: 0o700 });
       await privateJSON(planPath, plan, true);
