@@ -74,7 +74,7 @@ async function inventoryState(page) {
       ownership.set(selector, { owner: ownerOf(element), workspace: workspaceOf(element), panels, disclosure: element.getAttribute('aria-expanded') ?? (element.tagName === 'SUMMARY' ? String(element.parentElement.open) : '') });
       const role = element.getAttribute('role') || (element.tagName === 'A' ? 'link' : element.tagName.toLowerCase());
       const reason = (element.getAttribute('aria-describedby') || '').split(/\s+/).map(id => document.getElementById(id)?.textContent || '').join(' ').trim() || element.getAttribute('title') || element.getAttribute('data-disabled-reason') || '';
-      return { selector, name, role, inputType: element.getAttribute('type'), workspace: element.matches(workspaceSelector), aria: ['aria-selected','aria-expanded','aria-pressed','aria-checked'].map(key => element.getAttribute(key)).join('|'), options: element.tagName === 'SELECT' ? [...element.options].filter(option => !option.disabled).map(option => ({ value: option.value, text: option.textContent })) : null, href: element.getAttribute('href'), disabled: element.matches(':disabled,[aria-disabled="true"]'), reason, identity: `${location.pathname}${location.search}|${selector}|${role}|${element.getAttribute('href') || ''}` };
+      return { selector, name, role, inputType: element.getAttribute('type'), workspace: element.matches(workspaceSelector), aria: ['aria-selected','aria-expanded','aria-pressed','aria-checked'].map(key => element.getAttribute(key)).join('|'), checked: element.matches('input[type="checkbox"],input[type="radio"]') ? element.checked : null, options: element.tagName === 'SELECT' ? [...element.options].filter(option => !option.disabled).map(option => ({ value: option.value, text: option.textContent })) : null, href: element.getAttribute('href'), disabled: element.matches(':disabled,[aria-disabled="true"]'), reason, identity: `${location.pathname}${location.search}|${selector}|${role}|${element.getAttribute('href') || ''}` };
     });
     const localControls = new Map(), workspaceViews = new Map();
     for (const row of rows) {
@@ -89,7 +89,7 @@ async function inventoryState(page) {
     const controls = rows.flatMap(row => {
       const { owner, workspace, panels, disclosure } = ownership.get(row.selector);
       const context = JSON.stringify([cssPath(owner), localControls.get(owner), workspaceViews.get(workspace) || [], panels]);
-      const identity = `${context}|${row.identity}|${disclosure}|${row.disabled}`;
+      const identity = `${context}|${row.identity}|${disclosure}|${row.disabled}|${JSON.stringify([row.name, row.aria, row.checked])}`;
       return row.options?.length ? row.options.map(option => ({ ...row, name: `${row.name}: ${option.text}`, optionValue: option.value, identity: `${identity}|${option.value}` })) : [{ ...row, identity }];
     });
     return { rows: controls, busy: [...document.querySelectorAll('[aria-busy="true"]')].some(busyVisible) };
@@ -123,27 +123,95 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   await page.evaluate(selector => {
     const root = document.querySelector('main,[role="main"],#appMain,#mainContent') || document.body;
     const target = document.querySelector(selector);
-    const state = window.__controlObservation = { mutations: 0, focus: 0, aria: 0, target, beforeValue: target?.value ?? null, deadline: Infinity };
+    const state = window.__controlObservation = { mutations: 0, focus: 0, aria: 0, target, beforeOpen: target?.tagName === 'SUMMARY' ? target.parentElement.open : null, beforeValue: target?.value ?? null, beforeChecked: target?.checked ?? null, valueChanged: false, requests: [], deadline: Infinity };
     const active = () => !state.snapshot && Date.now() <= state.deadline;
-    window.__controlObserver = new MutationObserver(records => {
+    const events = ['click', 'input', 'change', 'keydown'];
+    let inCallback = false, pendingFocus = 0;
+    // window.event identifies the native dispatch while existing app handlers
+    // run. Async work inherits attribution only when scheduled by that dispatch
+    // or its callbacks. Pre-existing timers and polling never inherit it.
+    const matches = event => event.composedPath().includes(target);
+    const caused = () => active() && (inCallback || (window.event && events.includes(window.event.type) && matches(window.event)));
+    const visible = node => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      return element?.checkVisibility({ visibilityProperty: true }) && !element.closest('[hidden],[inert],dialog:not([open])');
+    };
+    const observe = records => {
       if (!active()) return;
       for (const record of records) {
+        if (!visible(record.target)) continue;
+        if (record.type === 'attributes' && record.oldValue === record.target.getAttribute(record.attributeName)) continue;
+        if (record.type === 'characterData' && record.oldValue === record.target.textContent) continue;
         if (root.contains(record.target) || record.target === root || record.target.closest?.('[role="dialog"],[role="status"],[role="alert"],dialog,.toast,.sheet')) state.mutations++;
         if (record.type === 'attributes' && /^(aria-|open|checked|disabled)/.test(record.attributeName)) state.aria++;
       }
-    });
-    window.__controlObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
-    window.__controlFocus = () => { if (active()) state.focus++; };
+    };
+    // Unattributed asynchronous rendering is discarded at its microtask, not
+    // carried forward and credited to the next interaction.
+    window.__controlObserver = new MutationObserver(records => { if (caused()) observe(records); });
+    window.__controlObserver.observe(document.body, { subtree: true, childList: true, characterData: true, characterDataOldValue: true, attributes: true, attributeOldValue: true });
+    const flush = () => {
+      observe(window.__controlObserver.takeRecords());
+      if (!active()) return;
+      state.focus += pendingFocus; pendingFocus = 0;
+      if (target?.isConnected && ((target.value ?? null) !== state.beforeValue || (target.checked ?? null) !== state.beforeChecked)) state.valueChanged = true;
+    };
+    const originals = { setTimeout: window.setTimeout, setInterval: window.setInterval, requestAnimationFrame: window.requestAnimationFrame, queueMicrotask: window.queueMicrotask, fetch: window.fetch, then: Promise.prototype.then, xhrOpen: XMLHttpRequest.prototype.open, xhrSend: XMLHttpRequest.prototype.send };
+    const promises = new WeakSet(), xhrURLs = new WeakMap();
+    const inherit = callback => typeof callback !== 'function' ? callback : function (...args) {
+      if (!active()) return callback.apply(this, args);
+      window.__controlObserver.takeRecords(); pendingFocus = 0;
+      const previous = inCallback; inCallback = true;
+      try {
+        const result = callback.apply(this, args);
+        if (result instanceof Promise) promises.add(result);
+        return result;
+      } finally { flush(); inCallback = previous; }
+    };
+    for (const key of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'queueMicrotask']) window[key] = function (callback, ...args) {
+      return originals[key].call(this, caused() ? inherit(callback) : callback, ...args);
+    };
+    Promise.prototype.then = function (fulfilled, rejected) {
+      const attributed = caused() || promises.has(this);
+      const result = originals.then.call(this, attributed ? inherit(fulfilled) : fulfilled, attributed ? inherit(rejected) : rejected);
+      if (attributed) promises.add(result);
+      return result;
+    };
+    const request = (url, method) => { if (caused()) state.requests.push([new URL(url, location.href).href, method.toUpperCase()]); };
+    window.fetch = function (input, options) {
+      request(input instanceof Request ? input.url : String(input), options?.method || (input instanceof Request ? input.method : 'GET'));
+      const result = originals.fetch.call(this, input, options);
+      if (caused()) promises.add(result);
+      return result;
+    };
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      xhrURLs.set(this, [url, method]);
+      return originals.xhrOpen.call(this, method, url, ...args);
+    };
+    XMLHttpRequest.prototype.send = function (...args) {
+      const metadata = xhrURLs.get(this); if (metadata) request(...metadata);
+      return originals.xhrSend.apply(this, args);
+    };
+    const interaction = event => { if (matches(event)) flush(); };
+    for (const event of events) window.addEventListener(event, interaction);
+    window.__controlFocus = () => {
+      if (!active()) return;
+      pendingFocus++;
+      originals.queueMicrotask.call(window, () => { if (caused()) { state.focus += pendingFocus; } pendingFocus = 0; });
+    };
     document.addEventListener('focusin', window.__controlFocus);
     document.addEventListener('focusout', window.__controlFocus);
     window.__controlFinish = () => {
       if (state.snapshot) return state.snapshot;
       clearTimeout(state.timer);
       window.__controlObserver.disconnect();
+      for (const event of events) window.removeEventListener(event, interaction);
       document.removeEventListener('focusin', window.__controlFocus);
       document.removeEventListener('focusout', window.__controlFocus);
-      state.snapshot = { mutations: state.mutations, focus: state.focus, aria: state.aria, url: location.href,
-        valueChanged: Boolean(state.target?.isConnected && (state.target.value ?? null) !== state.beforeValue) };
+      for (const key of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'queueMicrotask', 'fetch']) window[key] = originals[key];
+      Promise.prototype.then = originals.then;
+      XMLHttpRequest.prototype.open = originals.xhrOpen; XMLHttpRequest.prototype.send = originals.xhrSend;
+      state.snapshot = { mutations: state.mutations, focus: state.focus, aria: state.aria, url: location.href, valueChanged: state.valueChanged, requests: state.requests };
       state.target = null;
       return state.snapshot;
     };
@@ -151,7 +219,8 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   const signals = new Set();
   let deadline = Infinity;
   const record = signal => { if (Date.now() <= deadline) signals.add(signal); };
-  const request = () => record('network request');
+  const requests = [];
+  const request = value => { if (Date.now() <= deadline) requests.push([value.url(), value.method()]); };
   const dialog = async value => { record('dialog'); await value.accept().catch(() => {}); };
   const popup = () => record('new tab');
   const download = () => record('download');
@@ -177,6 +246,9 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
     await page.evaluate(deadline => {
       const state = window.__controlObservation;
       if (!state) return;
+      // Native summary default actions run after bubbling. Read their state
+      // immediately after the press, before waiting for asynchronous effects.
+      if (state.target?.isConnected && state.beforeOpen !== null && state.target.parentElement.open !== state.beforeOpen) state.aria++;
       state.deadline = deadline;
       state.timer = setTimeout(window.__controlFinish, Math.max(0, deadline - Date.now()));
     }, deadline).catch(() => {});
@@ -186,6 +258,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
     page.off('request', request); page.off('dialog', dialog); page.off('popup', popup); page.off('download', download); page.off('filechooser', filechooser); page.off('framenavigated', navigation);
     observed = await page.evaluate(() => window.__controlFinish?.() || null).catch(() => null);
   }
+  if (observed?.requests.some(initiated => requests.some(actual => actual[0] === initiated[0] && actual[1] === initiated[1]))) signals.add('network request');
   if (observed?.valueChanged) signals.add('main form state change');
   if (observed && observed.url !== beforeURL) signals.add('URL change');
   if (observed?.mutations) signals.add('main DOM mutation');

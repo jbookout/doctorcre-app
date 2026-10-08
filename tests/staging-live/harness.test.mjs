@@ -331,7 +331,8 @@ test('independent pressed preferences do not multiply workspace states', async (
   const html = `<main>${Array.from({ length: 5 }, (_, i) => `<button id="preference${i}" aria-pressed="false" onclick="this.setAttribute('aria-pressed',String(this.getAttribute('aria-pressed')!=='true'))">Preference ${i}</button>`).join('')}</main>`;
   const result = await sweepScreen({ freshPage: async () => { const page = await browser.newPage(); await page.setContent(html); return page; }, screen: { path: '/', name: 'Preferences' }, target: 'test', waitMs: 20, limit: 40 });
   assert.equal(result.exhausted, false);
-  assert.equal(result.controls.length, 5);
+  assert.equal(result.controls.length, 10);
+  for (let index = 0; index < 5; index++) assert.equal(result.controls.filter(row => row.selector === `#preference${index}`).length, 2, 'each preference is pressed in both states');
   await browser.close();
 });
 

@@ -9,6 +9,39 @@ import { prepareStagingRecords } from './records.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
+const recordScopes = {
+  '/': ['client', 'deal', 'lead', 'conversation', 'tour'],
+  '/deals': ['client', 'deal'], '/clients': ['client', 'deal'],
+  '/leads': ['lead'], '/doc-chats': ['conversation'], '/doc-chats/work': ['conversation'],
+  '/doc-activity': ['conversation'], '/invoices': ['client', 'invoice'],
+  '/tours': ['client', 'tour', 'deal'], '/tours/day.html': ['client', 'tour', 'deal'],
+  '/calendar': ['client', 'deal', 'tour'], '/search': ['client', 'deal', 'lead'],
+  '/relationships': ['client', 'lead'], '/leases': ['client', 'deal'],
+};
+
+export function explorationGoal(screen, setup) {
+  const path = screen.path.split('?')[0];
+  const charter = `Navigate first to ${screen.path}. Explore the ${screen.name} workspace on staging as E2E Joe. Open drawers, menus, tabs and detail screens; exercise every control and form, including delete, archive and send-draft on disposable invented records. Test empty/error recovery, keyboard and mobile layout. Record defects with steps, expected/actual behavior and screenshots. Use parked/archived filters and normal restore controls for recovery; reopen closed deals if available or create invented replacements through the UI. No browser login. Staging only. Never navigate to production or external destinations.`;
+  const context = (recordScopes[path] || []).flatMap(record => {
+    const row = setup.records?.[record];
+    if (!row) return [];
+    const recovery = (setup.needs_restore || []).filter(item => item.record === record);
+    const current = recovery.find(item => item.current_name)?.current_name;
+    const state = Object.fromEntries(['current_owner', 'current_phase', 'current_visibility'].flatMap(key => {
+      const value = recovery.find(item => Object.hasOwn(item, key))?.[key];
+      return value === undefined ? [] : [[key, value]];
+    }));
+    return [{ record, ...state, id: row.id || row.deal_id, ...(row.ref ? { ref: row.ref } : {}), name: (current || row.name || '').slice(0, 64), recovery: [...new Set(recovery.map(item => item.reason))] }];
+  });
+  const prefix = `${charter} Prepared synthetic records and recovery: `;
+  // Whole entries keep the identifiers and recovery reasons intact. Names are
+  // optional search hints; omit them if they would exceed the runner contract.
+  let goal = prefix + JSON.stringify(context);
+  if (goal.length > 2000) goal = prefix + JSON.stringify(context.map(({ name, ...row }) => row));
+  if (goal.length > 2000) throw new Error('Workspace exploration context exceeds the pinned runner goal contract');
+  return goal;
+}
+
 export async function exploreAll() {
   process.env.E2E_TARGET = 'staging-live';
   process.env.E2E_TELEMETRY_DISABLED = '1';
@@ -35,7 +68,7 @@ export async function exploreAll() {
       const destination = join(output, 'evidence', 'explore', runId);
       await mkdir(local, { recursive: true, mode: 0o700 });
       console.log(`Exploring ${target.name} ${screen.path} as ${agent}; max-steps 40`);
-      const goal = `Navigate first to ${screen.path}. Explore every part of the ${screen.name} workspace on staging as the signed-in E2E Joe partner. Open every drawer, menu and tab, exercise every control and form including delete, archive and send-draft on disposable staging records. Test empty/error recovery, keyboard and mobile layout. Keep this one goal scoped to this workspace; follow its detail screens. Record every observed defect with steps, expected/actual behavior and screenshots. Prepared synthetic records: ${JSON.stringify(setup.records)}. Records needing recovery after the control sweep: ${JSON.stringify(setup.needs_restore)}. Use the normal parked or archived filters and restore controls when needed to reach their details; create additional invented records through the UI if this workspace needs them. No browser login. Staging only. Never navigate to production or external destinations.`;
+      const goal = explorationGoal(screen, setup);
       let status = 'ERROR', steps = 0;
       try {
         const result = await explore({ cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: 40, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
