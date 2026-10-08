@@ -78,17 +78,19 @@ test('deadline lets the leader finish browser cleanup without killing its proces
   assert.equal(marker,'closed','leader-only SIGTERM must leave its child alive long enough to close');
   assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
 });
-test('deadline waits for graceful shutdown then reaps a SIGTERM-resistant descendant', async t => {
+test('npm-to-node deadline forwards shutdown then reaps a SIGTERM-resistant descendant', async t => {
   const {root,git}=await fixture(t,clean);
   const descendant=`require('fs').writeFileSync('.e2e/logs/descendant.log',String(process.pid)); process.on('SIGTERM',()=>{}); setInterval(()=>{},100);`;
-  await writeFile(join(root,'scripts/parent.cjs'),`require('fs').mkdirSync('.e2e/logs',{recursive:true}); require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'}); setInterval(()=>{},100);`);
+  await writeFile(join(root,'scripts/parent.cjs'),`const fs=require('fs'); fs.mkdirSync('.e2e/logs',{recursive:true}); require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'}); process.on('SIGTERM',()=>fs.writeFileSync('.e2e/logs/parent-sigterm.log','received')); setInterval(()=>{},100);`);
+  await writeFile(join(root,'package.json'),JSON.stringify({scripts:{test:'node scripts/parent.cjs'}}));
   commit(git);
   let pid;
   t.after(()=>{if(pid) try {process.kill(pid,'SIGKILL');} catch {}});
   const started=Date.now();
-  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/parent.cjs'],root,timeoutMs:1000});
+  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:1000});
   pid=Number(await readFile(join(root,'.e2e/logs/descendant.log'),'utf8'));
-  assert.equal(result.timedOut,true);
+  assert.equal(receipt.reason,'deadline');
+  assert.equal(await readFile(join(root,'.e2e/logs/parent-sigterm.log'),'utf8'),'received');
   assert.ok(Date.now()-started>=15000,'group escalation must follow the graceful shutdown window');
   // Allow the OS to reap an orphan after the group has been killed.
   await delay(100);
