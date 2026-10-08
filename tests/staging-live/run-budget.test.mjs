@@ -16,10 +16,10 @@ import {
   parseBudgetCommand, describeAuthorization, canonicalJSON, setActiveBudget,
 } from '../../scripts/e2e-staging/run-budget.mjs';
 import { homeSmoke, parseHomeSmokeArgs, runHomeSmoke } from '../../scripts/e2e-staging/home-smoke.mjs';
-import { installBudgetedRoute, READ_VERBS } from '../../scripts/e2e-staging/budgeted-route.mjs';
+import { installBudgetedRoute, READ_VERBS, streamingFetch } from '../../scripts/e2e-staging/budgeted-route.mjs';
 import { budgetedModel } from '../../scripts/e2e-staging/budgeted-model.mjs';
 import { prepareStagingRecords, cleanupStagingRecords, REMOVAL_VERBS } from '../../scripts/e2e-staging/records.mjs';
-import { stagingSession, STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
+import { readMetered, stagingSession, STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import { parseVmStat, portListening, localModelPortStatus, localModelHeadroom, LOCAL_MODEL_PORT } from '../../scripts/e2e-staging/host-headroom.mjs';
 import { sweep } from '../../scripts/e2e-staging/sweep.mjs';
 import { exploreAll } from '../../scripts/e2e-staging/explore.mjs';
@@ -410,6 +410,186 @@ test('the sweep refuses before setup unless sweep-explore is authorized, and the
   } finally { await browser.close(); await budget.close(); await home.close(); }
 });
 
+test('an authorized sweep runs past setup through a routed control and a completed receipt', async () => {
+  const dir = await budgetDir();
+  const output = await budgetDir();
+  await authorizeRun({ dir, profile: SWEEP_EXPLORE, reason: 'mock-only test' });
+  const target = { name: 'staging-live', surface: 'app', viewport: { width: 800, height: 600 } };
+  const screen = { path: '/', name: 'Mock Home', surface: 'app' };
+  let loadedScreens = 0, setup = 0, sessions = 0, releaseChecks = 0, routed = 0, contexts = 0, controls = 0;
+  let currentURL = STAGING_ORIGIN;
+  const context = {
+    routeWebSocket: async () => { routed++; },
+    route: async () => { routed++; },
+    addInitScript: async () => { routed++; },
+    newPage: async () => ({
+      goto: async url => { currentURL = url; return { ok: () => true }; },
+      waitForLoadState: async () => {},
+      url: () => currentURL,
+      context: () => context,
+    }),
+    close: async () => {},
+  };
+  const browser = { newContext: async () => { contexts++; return context; }, close: async () => {} };
+  const runtime = {
+    targets: [target],
+    screens: async () => { loadedScreens++; return [screen]; },
+    session: async (origin, { budget }) => {
+      sessions++;
+      assert.equal(origin, STAGING_ORIGIN);
+      return budget.dispatch('preflight', async () => ({ release, state: { cookies: [], origins: [] } }));
+    },
+    checkRelease: async budget => {
+      releaseChecks++;
+      return budget.dispatch('http', async () => release);
+    },
+    sweepScreen: async ({ freshPage, screen: planned, target: targetName }) => {
+      controls++;
+      const page = await freshPage();
+      assert.equal(page.url(), STAGING_ORIGIN + '/');
+      await page.context().close();
+      return {
+        ...planned, target: targetName, reached: true,
+        controls: [{
+          target: targetName, path: planned.path, screen: planned.name,
+          key: `${targetName}/${planned.path}/0123456789abcdef`, status: 'OBSERVED', selector: '#mock-control',
+          openers: [], signals: ['main DOM mutation'], evidence_path: 'mock/observed.png',
+        }],
+      };
+    },
+    sweepOwnerStates: async ({ run }) => run.snapshot().stateObligations,
+    readAllowlist: async () => [],
+  };
+  const receipt = await sweep({
+    budgetDir: dir, output, host: clearHost, runtime, launch: async () => browser,
+    prepareRecords: async () => {
+      setup++;
+      assert.equal(loadedScreens, 1, 'the injected mock runtime must be active before setup');
+      return { release, complete: true, records: {}, needs_restore: [], findings: [] };
+    },
+  });
+  assert.equal(receipt.qualified, true);
+  assert.deepEqual([loadedScreens, setup, sessions, releaseChecks, routed, contexts, controls], [1, 1, 1, 1, 3, 1, 1]);
+  const state = await readState(dir);
+  assert.deepEqual([state.spent.target, state.spent.viewport, state.spent.context, state.spent.preflight, state.spent.http], [1, 1, 1, 1, 2]);
+  assert.equal(state.stopped.reason, 'completed');
+});
+
+function capturedRouteContext() {
+  const captured = { websocket: null, route: null };
+  return {
+    captured,
+    routeWebSocket: async (_matches, handle) => { captured.websocket = handle; },
+    route: async (_matches, handle) => { captured.route = handle; },
+    addInitScript: async () => {},
+  };
+}
+
+function stubRouteRequest({ url, method = 'GET', body } = {}) {
+  return {
+    url: () => url,
+    method: () => method,
+    postDataJSON: () => body,
+    postDataBuffer: () => body === undefined ? null : Buffer.from(JSON.stringify(body)),
+    allHeaders: async () => body === undefined ? {} : { 'content-type': 'application/json' },
+  };
+}
+
+function stubRouteBudget({ mutation = 0, fixtureIds = new Set() } = {}) {
+  const calls = { dispatch: 0, stops: [] };
+  return {
+    calls, fixtureIds, profile: { mutation },
+    dispatch: async (_kind, send) => { calls.dispatch++; return send(new AbortController().signal); },
+    stop: async reason => { calls.stops.push(reason); },
+  };
+}
+
+test('the budgeted route registers a WebSocket guard and closes the socket without a browser', async () => {
+  const context = capturedRouteContext();
+  await installBudgetedRoute(context, stubRouteBudget());
+  assert.equal(typeof context.captured.websocket, 'function');
+  let closed = 0;
+  context.captured.websocket({ close: () => { closed++; } });
+  assert.equal(closed, 1);
+});
+
+test('the budgeted route aborts a disallowed origin without dispatching', async () => {
+  const context = capturedRouteContext();
+  const budget = stubRouteBudget();
+  await installBudgetedRoute(context, budget, {
+    allowed: url => url.origin === 'https://allowed.example',
+    transport: async () => ({ status: 200, headers: {}, body: Buffer.alloc(0) }),
+  });
+  let aborted = 0, fulfilled = 0;
+  await context.captured.route({
+    request: () => stubRouteRequest({ url: 'https://blocked.example/read' }),
+    abort: async () => { aborted++; },
+    fulfill: async () => { fulfilled++; },
+  });
+  assert.deepEqual([aborted, fulfilled, budget.calls.dispatch], [1, 0, 0]);
+});
+
+test('the streaming transport dead-ends redirects and enforces declared, streamed, and total byte limits', async () => {
+  const home = await loopbackHome();
+  const context = { cookies: async () => [] };
+  const request = path => stubRouteRequest({ url: home.origin + path });
+  const send = (path, budget) => streamingFetch(context, request(path), budget, new AbortController().signal);
+  try {
+    const redirect = await createRunBudget({ dir: await budgetDir(), profile: HOME_SMOKE });
+    const redirected = await send('/redirect', redirect);
+    assert.equal(redirected.status, 302);
+    assert.equal(redirected.headers.location, undefined);
+    assert.deepEqual(home.hits, ['GET /redirect']);
+    await redirect.close();
+
+    const declared = await createRunBudget({ dir: await budgetDir(), profile: tiny({ responseBytes: 64 * 1024 }) });
+    let readers = 0;
+    await assert.rejects(readMetered({
+      headers: { get: () => String(200 * 1024) },
+      body: { getReader: () => { readers++; return { read: async () => ({ done: true }), cancel: async () => {} }; } },
+    }, declared.ingressMeter()), refusal('response-oversize'));
+    assert.equal(readers, 0, 'a declared oversize refuses before the body reader opens');
+    await declared.close();
+
+    for (const path of ['/declared-large', '/streamed-large']) {
+      const limited = await createRunBudget({ dir: await budgetDir(), profile: tiny({ responseBytes: 64 * 1024 }) });
+      await assert.rejects(send(path, limited), refusal('response-oversize'));
+      await limited.close();
+    }
+
+    const total = await createRunBudget({ dir: await budgetDir(), profile: tiny({ ingress: 64 * 1024, responseBytes: 64 * 1024 }) });
+    const first = total.ingressMeter();
+    await first.take(40 * 1024);
+    await first.settle();
+    const second = total.ingressMeter();
+    await second.take(20 * 1024);
+    await assert.rejects(second.take(8 * 1024), refusal('ingress-exhausted'));
+    await second.settle().catch(() => {});
+    await total.close();
+  } finally { await home.close(); }
+});
+
+test('the budgeted route refuses an untagged write without dispatching', async () => {
+  const context = capturedRouteContext();
+  const fixtureId = '11111111-1111-4111-8111-111111111111';
+  const budget = stubRouteBudget({ mutation: 2, fixtureIds: new Set([fixtureId]) });
+  await installBudgetedRoute(context, budget, {
+    allowed: url => url.origin === 'https://allowed.example',
+    transport: async () => ({ status: 200, headers: {}, body: Buffer.alloc(0) }),
+  });
+  let aborted = 0, fulfilled = 0;
+  await context.captured.route({
+    request: () => stubRouteRequest({
+      url: 'https://allowed.example/mcp', method: 'POST',
+      body: { method: 'tools/call', params: { name: 'update-deal', arguments: { id: '22222222-2222-4222-8222-222222222222' } } },
+    }),
+    abort: async () => { aborted++; },
+    fulfill: async () => { fulfilled++; },
+  });
+  assert.deepEqual([aborted, fulfilled, budget.calls.dispatch], [1, 0, 0]);
+  assert.deepEqual(budget.calls.stops, ['mutation-untagged']);
+});
+
 // A routed page under one budget, for the ingress tests below.
 async function routedPage(home, budget, options = {}) {
   const browser = await chromium.launch();
@@ -425,7 +605,7 @@ test('a WebSocket is closed before connecting, although the server really accept
   const home = await loopbackHome();
   const dir = await budgetDir();
   const budget = await createRunBudget({ dir, profile: HOME_SMOKE });
-  const { browser, page } = await routedPage(home, budget);
+  const { browser, page } = await routedPage(home, budget, { allowed: url => url.host === new URL(home.origin).host });
   try {
     const before = (await readState(dir)).spent.http;
     const result = await page.evaluate(origin => new Promise(resolve => {
@@ -1051,9 +1231,23 @@ test('memory is re-checked between viewports: a host that crowds mid-run never s
   } finally { await browser.close(); await home.close(); }
 });
 
+test('Home smoke rechecks headroom before opening the first viewport context', async () => {
+  const dir = await budgetDir();
+  const budget = await createRunBudget({ dir, profile: HOME_SMOKE });
+  let probes = 0, contexts = 0;
+  const host = { portOpen: async () => false, freeInactiveBytes: async () => (++probes === 1 ? 40 * GiB : 4 * GiB) };
+  const browser = { newContext: async () => { contexts++; throw new Error('a crowded host must not open a context'); } };
+  const receipt = await homeSmoke({ budget, browser, origin: STAGING_ORIGIN, host,
+    session: async () => ({ state: { cookies: [], origins: [] } }) });
+  assert.deepEqual([probes, contexts], [2, 0]);
+  assert.equal(receipt.failure.cause, 'memory-below-floor');
+  assert.equal(receipt.stopped.reason, 'local_model_resident');
+});
+
 test('the local model probe covers IPv4 and IPv6 loopback and treats a timeout as a refusal', async () => {
   const server = createServer(() => {});
   server.listen(0, '::1');
+  server.unref();
   await once(server, 'listening');
   const { port } = server.address();
   assert.equal(await localModelPortStatus({ port }), 'open', 'a server on ::1 only is still found');

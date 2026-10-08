@@ -28,27 +28,38 @@ export async function persistSweepReport(output, run, setup, { publishFile } = {
   await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
 }
 
+const LIVE_SWEEP_RUNTIME = Object.freeze({
+  targets,
+  screens,
+  session: stagingSession,
+  checkRelease: checkStagingRelease,
+  sweepScreen,
+  sweepOwnerStates,
+  readAllowlist: () => readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8').then(JSON.parse),
+});
+
 export async function sweep({
   resume = false, recordedActionProof, prepareRecords = prepareStagingRecords, budgetDir = BUDGET_DIR, host = HOST_PROBE,
-  output = outputPath(), launch = () => chromium.launch(), clock,
+  output = outputPath(), launch = () => chromium.launch(), clock, runtime = {},
 } = {}) {
   if (typeof resume !== 'boolean') throw new Error('Staging sweep resume must be a boolean');
+  const adapter = { ...LIVE_SWEEP_RUNTIME, ...runtime };
   const budget = await openWithHeadroom({ dir: budgetDir, profile: SWEEP_EXPLORE.name, host, clock });
   let verdict = null, failure = null, browser = null;
   try {
     process.env.E2E_TELEMETRY_DISABLED = '1';
-    const routedScreens = await screens();
+    const routedScreens = await adapter.screens();
     let prior = resume ? await readSweepCheckpoint(output) : undefined;
     if (resume && !prior) throw new Error('Resume requires an existing staging sweep checkpoint');
     if (recordedActionProof && !resume) throw new Error('Recorded action recovery requires resume');
     const continuation = recordedActionProof ? await createRecordedActionContinuation({ prior, proof: recordedActionProof }) : null;
     if (continuation) prior = continuation.prior;
-    const run = createSweepRun({ targets, routedScreens, prior });
+    const run = createSweepRun({ targets: adapter.targets, routedScreens, prior });
     // One preflight for the whole run; the cap of eight preflight requests
     // does not allow one per screen.
     let preflighted = null;
     const session = async origin => {
-      preflighted ??= await stagingSession(origin, { budget });
+      preflighted ??= await adapter.session(origin, { budget });
       run.assertRelease(preflighted.release);
       return preflighted;
     };
@@ -68,7 +79,7 @@ export async function sweep({
       let context, phase = 'release-check', code = 'release-check-failed';
       try {
         await startTarget(target);
-        const current = await checkStagingRelease(budget);
+        const current = await adapter.checkRelease(budget);
         if (current.source_commit !== release.source_commit || current.carr_source_commit !== release.carr_source_commit) throw new SweepFailure('session-preflight', 'source-pair-changed');
         phase = 'context'; code = 'context-creation-failed';
         await budget.reserve('context');
@@ -111,7 +122,7 @@ export async function sweep({
       const freshPage = freshPageFor(target, screen);
       let result;
       try {
-        result = await sweepScreen({ freshPage, screen, target: target.name, prior: run.priorScreen(target.name, screen.path), routedPaths: routedScreens.map(row => row.path), recordedActionRuntime: target.name === 'staging-live' && screen.path === '/' ? continuation?.runtime : undefined, checkpoint: async partial => {
+        result = await adapter.sweepScreen({ freshPage, screen, target: target.name, prior: run.priorScreen(target.name, screen.path), routedPaths: routedScreens.map(row => row.path), recordedActionRuntime: target.name === 'staging-live' && screen.path === '/' ? continuation?.runtime : undefined, checkpoint: async partial => {
           await chargeControls(key, partial);
           run.record(partial);
           await persistSweepReport(output, run, setup);
@@ -123,10 +134,10 @@ export async function sweep({
       console.log(`${result.controls.length} enumerated; ${result.controls.filter(row => row.status === 'DEAD').length} DEAD`);
       if (result.failure) console.log(`Sweep stopped: ${result.failure.phase}/${result.failure.code}`);
     }
-    if (!budget.stopped) await sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence,
+    if (!budget.stopped) await adapter.sweepOwnerStates({ run, targets: adapter.targets, routedScreens, freshPageFor, evidence,
       admit: () => budget.reserve('ownerState'), persist: () => persistSweepReport(output, run, setup) });
     if (!run.pending.length) await persistSweepReport(output, run, setup);
-    const allowlist = JSON.parse(await readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8'));
+    const allowlist = await adapter.readAllowlist();
     verdict = run.verdict(allowlist);
     await writeFile(join(output, 'sweep-verdict.json'), JSON.stringify({ ...verdict, measuredAt: new Date().toISOString(), release }, null, 2) + '\n');
   } catch (error) {
