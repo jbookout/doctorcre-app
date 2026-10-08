@@ -557,6 +557,20 @@ test('the streaming transport dead-ends redirects and enforces declared, streame
       await limited.close();
     }
 
+    const coalescedDir = await budgetDir();
+    const coalesced = await createRunBudget({ dir: coalescedDir, profile: tiny({ responseBytes: 64 * 1024 }) });
+    let read = false;
+    await assert.rejects(readMetered({
+      headers: { get: () => null },
+      body: { getReader: () => ({
+        read: async () => read ? { done: true } : (read = true, { done: false, value: Buffer.alloc(80 * 1024) }),
+        cancel: async () => {},
+      }) },
+    }, coalesced.ingressMeter()), refusal('response-oversize'));
+    assert.equal((await readState(coalescedDir)).spent.ingress, 64 * 1024,
+      'the bounded portion of a coalesced chunk that already arrived is charged');
+    await coalesced.close();
+
     const total = await createRunBudget({ dir: await budgetDir(), profile: tiny({ ingress: 64 * 1024, responseBytes: 64 * 1024 }) });
     const first = total.ingressMeter();
     await first.take(40 * 1024);

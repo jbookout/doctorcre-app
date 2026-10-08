@@ -453,9 +453,9 @@ class RunBudget {
   }
 
   // Meters one response body. `declare` refuses a declared length over the
-  // per-response cap; `take` refuses before a chunk would cross that cap or the
-  // run's ingress total (counting other bodies still streaming); `settle`
-  // makes the bytes that actually arrived durable, even after a refusal.
+  // per-response cap; `take` credits an arrived chunk up to the first cap it
+  // reaches, then refuses rather than accepting bytes beyond that boundary.
+  // `settle` makes the credited bytes durable, even after a refusal.
   ingressMeter() {
     const { responseBytes, ingress } = this.#state.profile;
     let taken = 0, settled = false;
@@ -464,9 +464,12 @@ class RunBudget {
       declare: async length => { if (Number.isFinite(length) && length > responseBytes) await refuse('response-oversize'); },
       take: async bytes => {
         if (this.#state.stopped) throw new BudgetRefusal(this.#state.stopped.reason);
-        if (taken + bytes > responseBytes) await refuse('response-oversize');
-        if (this.#state.spent.ingress + this.#ingressInflight + bytes > ingress) await refuse('ingress-exhausted');
-        taken += bytes; this.#ingressInflight += bytes;
+        const responseRemaining = responseBytes - taken;
+        const ingressRemaining = ingress - this.#state.spent.ingress - this.#ingressInflight;
+        const credited = Math.max(0, Math.min(bytes, responseRemaining, ingressRemaining));
+        taken += credited; this.#ingressInflight += credited;
+        if (bytes > responseRemaining) await refuse('response-oversize');
+        if (bytes > ingressRemaining) await refuse('ingress-exhausted');
       },
       settle: async () => {
         if (settled) return;
