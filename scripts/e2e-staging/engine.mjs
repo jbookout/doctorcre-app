@@ -17,7 +17,9 @@ export async function installStagingGuard(context, fixtureGuard = stagingFixture
         : route.fetch({ maxRetries: 0, maxRedirects: 0, timeout: 30_000 }));
       if (!read) await route.fulfill({ response });
     } catch (error) {
-      refusals.push({ reason: error.code || 'fixture-guard-unavailable' });
+      // A read transport failure still reaches the client's normal retry path.
+      // The policy marks its own refusals, including uncertain write outcomes.
+      if (error.fixturePolicy) refusals.push({ reason: error.code });
       await route.abort();
     }
   });

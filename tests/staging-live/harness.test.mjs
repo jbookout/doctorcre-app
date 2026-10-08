@@ -1404,13 +1404,14 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
   t.after(() => rm(output, { recursive: true, force: true }));
   const id = n => '60000000-0000-4000-8000-' + String(n).padStart(12, '0');
   const release = { source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
-  let providerWrites = 0, providerReads = 0;
+  let providerWrites = 0, providerReads = 0, transportFailNext = false;
   const server = createServer(async (request, response) => {
     let raw = '';
     for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw);
     if (body.params.name === 'get-deal-room') {
       providerReads++;
+      if (transportFailNext) { transportFailNext = false; request.socket.destroy(); return; }
       if (providerReads % 2) { response.writeHead(503, { 'content-type': 'application/json' }); response.end('{}'); return; }
     } else {
       providerWrites++;
@@ -1484,8 +1485,13 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
     assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 503);
     assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 200);
     assert.equal(stagingWriteRefusals(context).length, 15, 'read retry adds no mutation refusal');
+    transportFailNext = true;
+    assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), null);
+    assert.equal(stagingWriteRefusals(context).length, 15, 'a read transport failure is not a fixture policy refusal');
+    assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 200);
+    assert.equal(stagingWriteRefusals(context).length, 15, 'transport retry preserves policy accounting');
     await page.close();
   }
   assert.equal(providerWrites, 2);
-  assert.equal(providerReads, 4);
+  assert.equal(providerReads, 8);
 });
