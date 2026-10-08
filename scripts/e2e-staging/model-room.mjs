@@ -2,23 +2,89 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
-export const EXPLORATION_MODEL_CALL_LIMIT = 20;
+export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({ perGoal: 40, hardGlobalCeiling: 5_000 });
+export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
+  revision: 'carr-model-room-dispatch@64f1220c9144b62511be8d8a41f9fd41791f1b4c',
+  argv: Object.freeze(['send', '{desk}', '-', '--fresh']),
+});
+const DISPATCH_TERMINATION_GRACE_MS = 250;
+const dispatcherEnvelopeKeys = new Set([
+  'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'status', 'result', 'thread_id', 'resumed',
+  'actual_model', 'finish', 'provider', 'retrieval', 'code', 'detail', 'error', 'retry_after',
+]);
 
-export function createModelCallBudget(limit = EXPLORATION_MODEL_CALL_LIMIT) {
-  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Model Room call limit must be a positive integer');
+export function createExplorationCallPlan(goalCount) {
+  if (!Number.isSafeInteger(goalCount) || goalCount < 0) throw new Error('Exploration goal count must be a non-negative integer');
+  const { perGoal, hardGlobalCeiling } = EXPLORATION_MODEL_CALL_POLICY;
+  const scheduled = perGoal * goalCount;
+  if (!Number.isSafeInteger(scheduled) || scheduled > hardGlobalCeiling) {
+    throw new Error(`Exploration schedule requires ${scheduled} model calls, above the hard global ceiling of ${hardGlobalCeiling}`);
+  }
+  return Object.freeze({ goalCount, perGoal, scheduled, limit: scheduled, hardGlobalCeiling });
+}
+
+export function formatExplorationCallPlan(plan) {
+  return `Model Room budget: ${plan.perGoal} calls per goal × ${plan.goalCount} goals = ${plan.scheduled}; finite run cap ${plan.limit}; hard global ceiling ${plan.hardGlobalCeiling}`;
+}
+
+function modelCallBudget(limit, allowZero = false) {
+  if (!Number.isSafeInteger(limit) || limit < (allowZero ? 0 : 1)) throw new Error('Model Room call limit must be a positive integer');
+  let maximum = limit;
   let used = 0;
-  return Object.freeze({
+  const budget = Object.freeze({
     reserve() {
-      if (used >= limit) throw new Error(`Exploration aggregate model-call limit of ${limit} reached`);
+      if (used >= maximum) throw new Error(`Exploration aggregate model-call limit of ${maximum} reached; resume from the saved sweep checkpoint`);
       used += 1;
       return used;
     },
-    snapshot() { return Object.freeze({ used, limit, remaining: limit - used }); },
+    snapshot() { return Object.freeze({ used, limit: maximum, remaining: maximum - used }); },
   });
+  return {
+    budget,
+    setLimit(next) {
+      if (used !== 0) throw new Error('Model Room call budget cannot be reconfigured after use');
+      if (!Number.isSafeInteger(next) || next < 0) throw new Error('Model Room call limit must be a non-negative integer');
+      maximum = next;
+    },
+  };
 }
 
-function parseDeskResult(row) {
+export function createModelCallBudget(limit = EXPLORATION_MODEL_CALL_POLICY.hardGlobalCeiling) {
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Model Room call limit must be a positive integer');
+  return modelCallBudget(limit).budget;
+}
+
+function requireDispatcherEnvelope(row, expected) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`unknown Model Room dispatcher envelope for ${MODEL_ROOM_DISPATCH_CONTRACT.revision}`);
+  const unknown = Object.keys(row).filter(key => !dispatcherEnvelopeKeys.has(key));
+  const optionalTypes = [
+    ['thread_id', value => typeof value === 'string'],
+    ['resumed', value => typeof value === 'boolean'],
+    ['actual_model', value => typeof value === 'string'],
+    ['finish', value => typeof value === 'string'],
+    ['provider', value => typeof value === 'string'],
+    ['retrieval', value => value && typeof value === 'object' && !Array.isArray(value)],
+    ['code', value => Number.isSafeInteger(value)],
+    ['detail', value => typeof value === 'string'],
+    ['error', value => typeof value === 'string'],
+    ['retry_after', value => value === null || typeof value === 'string'],
+  ];
+  const valid = unknown.length === 0
+    && typeof row.msg_id === 'string'
+    && row.desk === expected.desk
+    && typeof row.kind === 'string'
+    && row.task === expected.task
+    && typeof row.dispatched_at === 'string'
+    && typeof row.status === 'string'
+    && optionalTypes.every(([key, accepts]) => !(key in row) || accepts(row[key]));
+  if (!valid) throw new Error(`unknown Model Room dispatcher envelope for ${MODEL_ROOM_DISPATCH_CONTRACT.revision}`);
+  return row;
+}
+
+function parseDeskResult(row, expected) {
+  requireDispatcherEnvelope(row, expected);
   if (row?.status !== 'completed' || typeof row.result !== 'string') {
     throw new Error(`Model Room desk did not complete: ${row?.detail || row?.status || 'invalid response'}`);
   }
@@ -91,34 +157,60 @@ async function modelRoomTask(options) {
   return { task, cleanup: () => rm(directory, { recursive: true, force: true }) };
 }
 
-export async function dispatchThroughModelRoom({ desk, task, fresh, signal }) {
-  const dispatcher = process.env.CARR_MODEL_ROOM_DISPATCH?.trim();
+function signalProcessGroup(child, name) {
+  try {
+    if (process.platform === 'win32') child.kill(name);
+    else process.kill(-child.pid, name);
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error;
+  }
+}
+
+export async function dispatchThroughModelRoom({ desk, task, fresh, signal, dispatcherPath, environment }) {
+  const dispatcher = (dispatcherPath || process.env.CARR_MODEL_ROOM_DISPATCH)?.trim();
   if (!dispatcher || !isAbsolute(dispatcher)) throw new Error('CARR_MODEL_ROOM_DISPATCH must name the absolute Model Room dispatcher path');
   if (fresh !== true) throw new Error('DoctorCRE E2E Model Room dispatches must use a fresh desk turn');
   return new Promise((resolve, reject) => {
-    const child = spawn(process.env.PYTHON || 'python3', [dispatcher, 'send', desk, '-', '--fresh'], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', settled = false;
+    const args = MODEL_ROOM_DISPATCH_CONTRACT.argv.map(value => value === '{desk}' ? desk : value);
+    const child = spawn(process.env.PYTHON || 'python3', [dispatcher, ...args], {
+      detached: process.platform !== 'win32',
+      env: environment || process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '', settled = false, terminating = false;
     const finish = (error, value) => {
       if (settled) return;
       settled = true;
       signal?.removeEventListener('abort', abort);
       error ? reject(error) : resolve(value);
     };
+    let closeResolve;
+    const closed = new Promise(resolveClose => { closeResolve = resolveClose; });
+    const terminate = async error => {
+      if (terminating || settled) return;
+      terminating = true;
+      signalProcessGroup(child, 'SIGTERM');
+      const exited = await Promise.race([closed.then(() => true), delay(DISPATCH_TERMINATION_GRACE_MS, false)]);
+      if (!exited) signalProcessGroup(child, 'SIGKILL');
+      await closed;
+      finish(error);
+    };
     const append = (current, chunk) => {
       const next = current + chunk.toString('utf8');
       if (next.length > 2_000_000) {
-        child.kill('SIGTERM');
-        finish(new Error('Model Room dispatcher output exceeded 2000000 characters'));
+        void terminate(new Error('Model Room dispatcher output exceeded 2000000 characters'));
       }
       return next;
     };
-    const abort = () => { child.kill('SIGTERM'); finish(new Error('Model Room dispatch aborted')); };
+    const abort = () => { void terminate(new Error('Model Room dispatch aborted')); };
     signal?.addEventListener('abort', abort, { once: true });
     child.once('error', error => finish(error));
+    child.stdin.once('error', error => { if (!terminating) finish(error); });
     child.stdout.on('data', chunk => { stdout = append(stdout, chunk); });
     child.stderr.on('data', chunk => { stderr = append(stderr, chunk); });
     child.once('close', code => {
-      if (settled) return;
+      closeResolve();
+      if (settled || terminating) return;
       if (code !== 0) return finish(new Error(`Model Room dispatcher failed (${code}): ${stderr.trim().slice(-500)}`));
       try { finish(null, JSON.parse(stdout)); }
       catch (cause) { finish(new Error('Model Room dispatcher returned invalid JSON', { cause })); }
@@ -143,7 +235,8 @@ export function createModelRoomModel({
       const prepared = await modelRoomTask(options);
       try {
         budget.reserve();
-        return parseDeskResult(await dispatch({ desk, task: prepared.task, fresh: true, signal: options.abortSignal }));
+        const row = await dispatch({ desk, task: prepared.task, fresh: true, signal: options.abortSignal });
+        return parseDeskResult(row, { desk, task: prepared.task });
       } finally { await prepared.cleanup(); }
     },
     async doStream() { throw new Error('DoctorCRE E2E Model Room adapter does not stream'); },
@@ -152,5 +245,11 @@ export function createModelRoomModel({
 
 // Config modules are re-evaluated for every exploration, while their imports
 // remain shared in-process. One exported model therefore owns the aggregate cap.
-export const explorationModelCallBudget = createModelCallBudget();
+const sharedExplorationBudget = modelCallBudget(EXPLORATION_MODEL_CALL_POLICY.hardGlobalCeiling, true);
+export const explorationModelCallBudget = sharedExplorationBudget.budget;
+export function configureExplorationModelCallBudget(goalCount) {
+  const plan = createExplorationCallPlan(goalCount);
+  sharedExplorationBudget.setLimit(plan.limit);
+  return plan;
+}
 export const modelRoomExplorationModel = createModelRoomModel({ budget: explorationModelCallBudget });

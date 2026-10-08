@@ -1,7 +1,7 @@
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 import { stagingTargets } from './scripts/e2e-staging/screens.mjs';
-import { modelRoomExplorationModel } from './scripts/e2e-staging/model-room.mjs';
+import { EXPLORATION_MODEL_CALL_POLICY, modelRoomExplorationModel } from './scripts/e2e-staging/model-room.mjs';
 
 // No usage telemetry from any run, local or CI. The CLI reads this when it
 // flushes, after the config has loaded.
@@ -26,8 +26,8 @@ export default {
     },
   }],
   ...(ci && !staging ? {} : { agents: { default: { model: modelRoomExplorationModel },
-    'bug-hunter': { model: modelRoomExplorationModel, maxSteps: 40, system: 'Inspect the entire assigned staging workspace. Exercise forms, menus, drawers, tabs, recovery and destructive controls. Report only observed defects with reproduction steps.' },
-    'first-time-ux': { model: modelRoomExplorationModel, maxSteps: 40, system: 'Explore the assigned staging workspace as a first-time partner. Check discovery, copy, keyboard navigation and recovery. Record evidence for every finding.' },
-    'phone-reviewer': { model: modelRoomExplorationModel, maxSteps: 40, system: 'Inspect the complete assigned workspace at phone width. Open collapsed drawers and menus. Check tap targets, clipping, scrolling, forms and every tab.' },
+    'bug-hunter': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the entire assigned staging workspace. Exercise forms, menus, drawers, tabs, recovery and destructive controls. Report only observed defects with reproduction steps.' },
+    'first-time-ux': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Explore the assigned staging workspace as a first-time partner. Check discovery, copy, keyboard navigation and recovery. Record evidence for every finding.' },
+    'phone-reviewer': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the complete assigned workspace at phone width. Open collapsed drawers and menus. Check tap targets, clipping, scrolling, forms and every tab.' },
   } }),
 } satisfies E2EConfig;

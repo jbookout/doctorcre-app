@@ -1,6 +1,8 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
+import e2eStagingContract from "../contracts/e2e-staging.v1.json" with { type: "json" };
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
+import { readStagingAuthContract } from '../scripts/e2e-staging/auth-contract.mjs';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -136,11 +138,11 @@ function release(env) {
   });
 }
 
-export async function handleDoctorcreRequest(request, env) {
+async function handleRequest(request, env, e2eExchangePath) {
   const url = new URL(request.url);
   const pathname = url.pathname;
   const staging = env?.APP_ENV === 'staging' && url.hostname === STAGING_HOST;
-  if (pathname === '/auth/e2e-session' && !staging) return json({ error: 'not_found' }, 404);
+  if (pathname === e2eExchangePath && !staging) return json({ error: 'not_found' }, 404);
   const boardDestination = legacyBoardDestination(url);
   if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
     ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
@@ -193,5 +195,12 @@ export async function handleDoctorcreRequest(request, env) {
   }
   return json({ error: "not_found" }, 404);
 }
+
+export function createDoctorcreRequestHandler(contract = e2eStagingContract) {
+  const e2eExchangePath = readStagingAuthContract(contract).exchange.path;
+  return (request, env) => handleRequest(request, env, e2eExchangePath);
+}
+
+export const handleDoctorcreRequest = createDoctorcreRequestHandler();
 
 export default { fetch: handleDoctorcreRequest };

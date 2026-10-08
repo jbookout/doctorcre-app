@@ -55,11 +55,28 @@ test('production config routes agents through the Model Room adapter', async () 
 });
 
 test('Model Room model uses a named desk and enforces one aggregate call ceiling', async () => {
-  const { EXPLORATION_MODEL_CALL_LIMIT, createModelCallBudget, createModelRoomModel, explorationModelCallBudget } = await import('../../scripts/e2e-staging/model-room.mjs');
+  const {
+    EXPLORATION_MODEL_CALL_POLICY,
+    MODEL_ROOM_DISPATCH_CONTRACT,
+    createExplorationCallPlan,
+    createModelCallBudget,
+    createModelRoomModel,
+    formatExplorationCallPlan,
+  } = await import('../../scripts/e2e-staging/model-room.mjs');
   const calls = [];
   const dispatch = async request => {
     calls.push(request);
-    return { status: 'completed', result: JSON.stringify({ content: [{ type: 'text', text: '{}' }] }) };
+    return {
+      msg_id: '40000000-0000-4000-8000-000000000001',
+      desk: request.desk,
+      kind: 'codex-session',
+      task: request.task,
+      dispatched_at: '2026-10-08T12:00:00+00:00',
+      thread_id: 'synthetic-thread',
+      resumed: false,
+      status: 'completed',
+      result: JSON.stringify({ content: [{ type: 'text', text: '{}' }] }),
+    };
   };
   const model = createModelRoomModel({ desk: 'doctorcre-e2e', budget: createModelCallBudget(2), dispatch });
   const options = { prompt: [{ role: 'user', content: [{ type: 'text', text: 'inspect the synthetic screen' }] }] };
@@ -68,19 +85,57 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
   await assert.rejects(() => model.doGenerate(options), /aggregate model-call limit of 2/);
   assert.equal(model.provider, 'carr-model-room');
   assert.equal(model.modelId, 'doctorcre-e2e');
-  assert.equal(EXPLORATION_MODEL_CALL_LIMIT, 20);
-  assert.deepEqual(explorationModelCallBudget.snapshot(), { used: 0, limit: 20, remaining: 20 });
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.desk === 'doctorcre-e2e' && call.fresh === true));
 
   const toolModel = createModelRoomModel({
     desk: 'doctorcre-e2e',
     budget: createModelCallBudget(1),
-    dispatch: async () => ({ status: 'completed', result: JSON.stringify({ content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'click', input: { target: 7 } }] }) }),
+    dispatch: async request => ({ ...await dispatch(request), result: JSON.stringify({ content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'click', input: { target: 7 } }] }) }),
   });
   const toolResult = await toolModel.doGenerate(options);
   assert.deepEqual(toolResult.content, [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'click', input: '{"target":7}' }]);
   assert.equal(toolResult.finishReason.unified, 'tool-calls');
+
+  const plan = createExplorationCallPlan(90);
+  assert.deepEqual(plan, { goalCount: 90, perGoal: 40, scheduled: 3_600, limit: 3_600, hardGlobalCeiling: 5_000 });
+  assert.match(formatExplorationCallPlan(plan), /40 calls per goal × 90 goals = 3600; finite run cap 3600; hard global ceiling 5000/);
+  assert.deepEqual(EXPLORATION_MODEL_CALL_POLICY, { perGoal: 40, hardGlobalCeiling: 5_000 });
+  assert.deepEqual(MODEL_ROOM_DISPATCH_CONTRACT, {
+    revision: 'carr-model-room-dispatch@64f1220c9144b62511be8d8a41f9fd41791f1b4c',
+    argv: ['send', '{desk}', '-', '--fresh'],
+  });
+  assert.throws(() => createExplorationCallPlan(126), /hard global ceiling/);
+
+  const unknownEnvelope = createModelRoomModel({
+    desk: 'doctorcre-e2e',
+    budget: createModelCallBudget(1),
+    dispatch: async request => ({ ...await dispatch(request), envelope_revision: 'unknown-v2' }),
+  });
+  await assert.rejects(() => unknownEnvelope.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  const changedEnvelope = createModelRoomModel({
+    desk: 'doctorcre-e2e',
+    budget: createModelCallBudget(1),
+    dispatch: async request => ({ ...await dispatch(request), resumed: 'not-a-boolean' }),
+  });
+  await assert.rejects(() => changedEnvelope.doGenerate(options), /unknown Model Room dispatcher envelope/);
+});
+
+test('exploration schedule resumes after the finite cap without replaying completed goals', async () => {
+  const { createExplorationSchedule } = await import('../../scripts/e2e-staging/explore.mjs');
+  const targets = [
+    { name: 'desktop', surface: 'app' },
+    { name: 'phone', surface: 'app' },
+  ];
+  const routedScreens = Array.from({ length: 30 }, (_, index) => ({ name: `Workspace ${index}`, path: `/workspace-${index}`, surface: 'app' }));
+  const initial = createExplorationSchedule({ targets, routedScreens });
+  assert.equal(initial.planned.length, 90);
+  const completed = initial.planned.slice(0, 20).map(row => ({ ...row, status: 'completed', steps: 1 }));
+  const interrupted = { ...initial.planned[20], status: 'ERROR', steps: 0 };
+  const resumed = createExplorationSchedule({ targets, routedScreens, prior: [...completed, interrupted] });
+  assert.equal(resumed.completed.length, 20);
+  assert.equal(resumed.pending.length, 70);
+  assert.ok(resumed.pending.some(row => row.target === interrupted.target && row.screen === interrupted.screen && row.agent === interrupted.agent));
 });
 
 test('staging auth consumers follow every contract value when the contract changes', async () => {
@@ -107,8 +162,20 @@ test('staging auth consumers follow every contract value when the contract chang
 
   const sessionSource = await readFile(new URL('../../scripts/e2e-staging/session.mjs', import.meta.url), 'utf8');
   const recordsSource = await readFile(new URL('../../scripts/e2e-staging/records.mjs', import.meta.url), 'utf8');
+  const workerSource = await readFile(new URL('../../src/worker.js', import.meta.url), 'utf8');
   for (const literal of ['/auth/e2e-session', '/auth/session', '__Host-dealroom_session', 'e2e-joe']) {
     assert.equal(sessionSource.includes(literal), false, `session consumer repeated ${literal}`);
     assert.equal(recordsSource.includes(literal), false, `records consumer repeated ${literal}`);
+    assert.equal(workerSource.includes(literal), false, `Worker consumer repeated ${literal}`);
   }
+
+  let carrCalls = 0;
+  const { createDoctorcreRequestHandler } = await import('../../src/worker.js');
+  const handle = createDoctorcreRequestHandler(contract);
+  const response = await handle(new Request('https://app.doctorcre.com/changed/exchange', { method: 'PUT' }), {
+    APP_ENV: 'production',
+    CARR: { fetch: async () => { carrCalls += 1; return new Response('proxied'); } },
+  });
+  assert.equal(response.status, 404);
+  assert.equal(carrCalls, 0, 'a changed E2E exchange path must never fall through the generic auth proxy');
 });
