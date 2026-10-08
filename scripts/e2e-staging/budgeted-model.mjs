@@ -25,7 +25,6 @@ async function call(target, method, options = {}) {
   return budget.dispatch('model', async signal => {
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(new BudgetRefusal('model-timeout')), timeoutMs);
-    timer.unref?.();
     const timedOut = new Promise((_, reject) => deadline.signal.addEventListener('abort', () => reject(new BudgetRefusal('model-timeout')), { once: true }));
     timedOut.catch(() => {});
     const abortSignal = AbortSignal.any([signal, deadline.signal, ...(options.abortSignal ? [options.abortSignal] : [])]);

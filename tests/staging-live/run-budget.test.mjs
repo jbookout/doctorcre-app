@@ -994,6 +994,30 @@ test('every model call is charged, bounded to 4k output tokens and a hard timeou
   } finally { setActiveBudget(null); }
 });
 
+test('a hung model call keeps the process alive until its hard timeout fires', async () => {
+  const dir = await budgetDir();
+  const profile = tinySweep({ model: 1, modelTimeoutMs: 50 });
+  await authorizeRun({ dir, profile, reason: 'mock-only timeout proof' });
+  const budgetModule = new URL('../../scripts/e2e-staging/run-budget.mjs', import.meta.url).href;
+  const modelModule = new URL('../../scripts/e2e-staging/budgeted-model.mjs', import.meta.url).href;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    const { openRunBudget, setActiveBudget } = await import(${JSON.stringify(budgetModule)});
+    const { budgetedModel } = await import(${JSON.stringify(modelModule)});
+    const budget = await openRunBudget({ dir: ${JSON.stringify(dir)}, profile: 'sweep-explore.v1' });
+    setActiveBudget(budget);
+    const model = budgetedModel({ modelId: 'hung', doGenerate: () => new Promise(() => {}) });
+    try { await model.doGenerate({ prompt: [] }); }
+    catch (error) { process.stdout.write(error.code); }
+    finally { setActiveBudget(null); await budget.close(); }`],
+  { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '';
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const [code] = await once(child, 'exit');
+  assert.equal(code, 0, stderr);
+  assert.equal(stdout, 'model-timeout');
+});
+
 test('the sweep-explore route forwards a charged write only for a fixture-tagged record and stops on any other write', async () => {
   const home = await loopbackHome();
   const dir = await budgetDir();
