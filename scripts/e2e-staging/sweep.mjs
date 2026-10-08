@@ -3,13 +3,13 @@ import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stagingSession, STAGING_ORIGIN, SessionPreflightFailure } from './session.mjs';
-import { installStagingGuard } from './engine.mjs';
+import { installStagingGuard, stagingWriteRefusals } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen, SweepFailure } from './controls.mjs';
 import { writeReport } from './report.mjs';
 import { scrubEvidence } from './evidence.mjs';
 export { scrubEvidence } from './evidence.mjs';
-import { prepareStagingRecords } from './records.mjs';
+import { prepareStagingRecords, stagingFixtureWriteGuard } from './records.mjs';
 import { sweepOwnerStates } from './owner-states.mjs';
 import { prepareCalendarRecord } from './calendar-coverage.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
@@ -37,6 +37,7 @@ export async function sweep({ resume = false, recordedActionProof } = {}) {
     return current;
   } });
   const { release } = setup;
+  const fixtureGuard = stagingFixtureWriteGuard({ output, release });
   const privateEvidence = fileURLToPath(new URL('../../.e2e/staging-private-evidence/', import.meta.url));
   const browser = run.pending.length || run.pendingStates().length ? await chromium.launch() : null;
   const freshPageFor = (target, screen, spec) => async (request = {}) => {
@@ -47,7 +48,7 @@ export async function sweep({ resume = false, recordedActionProof } = {}) {
       phase = 'context'; code = 'context-creation-failed';
       context = await browser.newContext({ viewport: target.viewport, storageState: state, serviceWorkers: 'block' });
       code = 'guard-install-failed';
-      await installStagingGuard(context);
+      await installStagingGuard(context, fixtureGuard);
       code = 'page-creation-failed';
       const page = await context.newPage();
       phase = 'navigation'; code = 'navigation-failed';
@@ -65,6 +66,10 @@ export async function sweep({ resume = false, recordedActionProof } = {}) {
     }
   };
   const evidence = async (page, row) => {
+    if (stagingWriteRefusals(page.context()).length) {
+      row.status = 'ERROR'; row.reason = 'Test fixture write policy refused; coverage remains incomplete';
+      throw new SweepFailure('fixture-scope', 'write-scope-unproved');
+    }
     const paths = run.evidencePaths(output, privateEvidence, row.status === 'passed' ? 'OBSERVED' : row.status === 'failed' ? 'ERROR' : row.status);
     await mkdir(paths.privateDir, { recursive: true, mode: 0o700 });
     await page.screenshot({ path: paths.png, fullPage: true });

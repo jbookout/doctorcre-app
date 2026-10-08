@@ -5,7 +5,7 @@ import { explorer40 } from './explorer.mjs';
 import { screens, targets } from './screens.mjs';
 import { writeReport, explorationEvidence } from './report.mjs';
 import { outputPath, scrubEvidence } from './sweep.mjs';
-import { prepareStagingRecords } from './records.mjs';
+import { prepareStagingRecords, readStagingWriteRefusals } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -36,12 +36,13 @@ export async function exploreAll() {
       const destination = join(output, 'evidence', 'explore', runId);
       await mkdir(local, { recursive: true, mode: 0o700 });
       console.log(`Exploring ${target.name} ${screen.path} as ${agent}; max-steps 40`);
-      const goal = `Navigate first to ${screen.path}. Explore every part of the ${screen.name} workspace on staging as the signed-in E2E Joe partner. Open every drawer, menu and tab, exercise every control and form including delete, archive and send-draft on disposable staging records. Test empty/error recovery, keyboard and mobile layout. Keep this one goal scoped to this workspace; follow its detail screens. Record every observed defect with steps, expected/actual behavior and screenshots. Prepared synthetic records: ${JSON.stringify(setup.records)}. Records needing recovery after the control sweep: ${JSON.stringify(setup.needs_restore)}. Use the normal parked or archived filters and restore controls when needed to reach their details; create additional invented records through the UI if this workspace needs them. No browser login. Staging only. Never navigate to production or external destinations.`;
+      const goal = `Navigate first to ${screen.path}. Explore every part of the ${screen.name} workspace on staging as the signed-in E2E Joe partner. Open every drawer, menu and tab, exercise every control and form including delete, archive and send-draft on disposable staging records. Test empty/error recovery, keyboard and mobile layout. Keep this one goal scoped to this workspace; follow its detail screens. Record every observed defect with steps, expected/actual behavior and screenshots. Prepared synthetic records: ${JSON.stringify(setup.records)}. Records needing recovery after the control sweep: ${JSON.stringify(setup.needs_restore)}. Use only prepared fixture records for writes. The harness admits only reviewed deal next-step/note, conversation rename/pin/archive, lead claim/stage-without-evidence-references, and fixture-lead-to-fixture-client link shapes. Unknown, account, runtime, global, creator and unproved-reference mutations are blocked before dispatch. Record blocked controls as incomplete coverage; do not bypass the guard, replay an uncertain write, create replacement records, or treat a refusal as successful control coverage. No browser login. Staging only. Never navigate to production or external destinations.`;
       let status = 'ERROR', steps = 0;
       try {
         const result = await explore({ cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: 40, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
         steps = result.explore.steps.length;
         status = result.explore.ended;
+        if ((await readStagingWriteRefusals(output)).length) status = 'ERROR';
         const report = JSON.parse(await readFile(join(local, 'report.json'), 'utf8'));
         for (const item of result.explore.findings) {
           findings.push({

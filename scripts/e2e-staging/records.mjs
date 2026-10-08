@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { mkdir, open, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { request as playwrightRequest } from 'playwright';
 import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
@@ -225,4 +225,188 @@ export async function prepareStagingRecords(output, {
   } catch {
     throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
   } finally { if (api) await api.dispose().catch(() => {}); }
+}
+
+const browserReads = new Set(["capture-queue", "correspondence-readiness", "current-work-item", "deal-room-board", "engineering-passport", "find", "find-and-catch-up", "get-call-context", "get-deal-room", "get-incident", "governance-queue", "incident-board", "lead-board", "list-doc-conversations", "list-doc-suggestions", "list-industry-events", "list-my-codex-sessions", "list-progress-boards", "loop-board", "loop-headers", "morning-brief", "notification-feed", "read-assurance-health", "read-correspondence-thread", "read-dispatch-history", "read-doc-activity", "read-doc-conversation", "read-doc-outcome-cards", "read-invoice-tracker", "read-loop", "read-notification-preferences", "read-portfolio", "read-progress-board", "read-resource-dashboard", "read-room", "read-room-queue", "read-session-identity", "schedule-board", "today-triage", "unfinished-work", "work-request-card"]);
+
+const fixtureWrites = {
+  'set-next-step': { record: 'deal', field: 'deal', keys: ['deal', 'text', 'next_date', 'idempotency_key'], values: ['text', 'next_date'] },
+  'add-deal-note': { record: 'deal', field: 'deal', keys: ['deal', 'text', 'idempotency_key'], values: ['text'] },
+  'rename-doc-conversation': { record: 'conversation', field: 'conversation_id',
+    keys: ['conversation_id', 'base_version', 'title', 'pinned', 'archived', 'idempotency_key'], values: ['title', 'pinned', 'archived'] },
+  'claim-lead': { record: 'lead', field: 'lead', keys: ['lead', 'base_version', 'expected_actor', 'idempotency_key'], values: [] },
+  'update-lead': { record: 'lead', field: 'lead',
+    keys: ['lead', 'base_version', 'expected_actor', 'fields', 'stage_review', 'idempotency_key'], values: ['fields'] },
+  'link-lead-client': { record: 'lead', field: 'lead',
+    keys: ['lead', 'base_version', 'expected_actor', 'client_id', 'confirmed', 'idempotency_key'], values: ['client_id'] },
+};
+const stable = value => Array.isArray(value) ? value.map(stable)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+const digest = value => createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+const policyFailure = code => { throw Object.assign(new Error('Staging fixture write refused: ' + code), { code, fixturePolicy: true }); };
+
+// One test-harness seam, using the existing private setup/receipt store.
+// Unsupported global/account/runtime operations remain explicit coverage gaps.
+export function stagingFixtureWriteGuard({ output, release, persist = privateJSON } = {}) {
+  const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
+  const refusals = [];
+  let serial = Promise.resolve();
+  const locked = work => {
+    const next = serial.then(work);
+    serial = next.catch(() => {});
+    return next;
+  };
+  const currentPlan = async () => {
+    if (!planPath) policyFailure('fixture-provenance-missing');
+    const plan = await readPrivateJSON(planPath);
+    if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' ||
+        plan.state !== 'complete' || plan.inflight || plan.origin !== STAGING_ORIGIN ||
+        !UUID.test(plan.run || '') || plan.release?.source_commit !== release?.source_commit ||
+        plan.release?.carr_source_commit !== release?.carr_source_commit ||
+        release?.carr_source_commit !== contract.producer.source_commit ||
+        !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || !plan.records || !plan.receipts)
+      policyFailure('fixture-provenance-missing');
+    return plan;
+  };
+  const owned = (plan, record, reference) => {
+    const row = plan.records[record], step = record === 'invoice' ? 'invoice_deal' : record;
+    const field = { deal: 'deal_id', invoice: 'deal_id', client: 'client_id', lead: 'lead_id', conversation: 'conversation_id' }[record];
+    const id = row?.id || row?.deal_id;
+    return field && UUID.test(id || '') && plan.receipts[step]?.[field] === id &&
+      (reference === id || record === 'lead' && row.ref && reference === row.ref) ? id : null;
+  };
+  return {
+    refusals,
+    assertCoverage() { if (refusals.length) policyFailure('write-coverage-incomplete'); },
+    async handle(request, forward) {
+      let name = 'unknown-operation', token, dispatched = false;
+      try {
+        const url = new URL(request.url());
+        if (url.origin !== STAGING_ORIGIN || url.username || url.password) policyFailure('origin-unproved');
+        if (['GET', 'HEAD'].includes(request.method())) {
+          // Login/callback/reauth establish or change session state even on GET.
+          // The preflight session read is the only admitted authentication route.
+          if (url.pathname.startsWith('/auth/') && url.pathname !== '/auth/session')
+            policyFailure('authentication-mutation-unproved');
+          return forward();
+        }
+        let body;
+        try { body = request.postDataJSON(); } catch {}
+        if (request.method() !== 'POST' || url.pathname !== '/mcp' || url.search || url.hash ||
+            body?.jsonrpc !== '2.0' || body.method !== 'tools/call')
+          policyFailure('operation-scope-unproved');
+        name = body.params?.name;
+        const args = body.params?.arguments;
+        if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
+        if (browserReads.has(name)) return forward();
+        const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
+        if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
+            !UUID.test(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
+        const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
+        const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
+        if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
+            name === 'set-next-step' && args.next_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date) ||
+            name === 'rename-doc-conversation' && (!version ||
+              !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
+              args.title !== undefined && !text(args.title) ||
+              ['pinned', 'archived'].some(key => args[key] !== undefined && typeof args[key] !== 'boolean')) ||
+            spec.record === 'lead' && (!version || args.expected_actor !== 'joe') ||
+            name === 'link-lead-client' && args.confirmed !== true)
+          policyFailure('operation-shape-unproved');
+        if (name === 'update-lead') {
+          const review = args.stage_review;
+          if (!args.fields || Array.isArray(args.fields) || Object.keys(args.fields).length !== 1 ||
+              !text(args.fields.stage) || !review || Array.isArray(review) ||
+              Object.keys(review).some(key => !['reason', 'evidence_ids', 'human_quote'].includes(key)) ||
+              !text(review.reason) || !Array.isArray(review.evidence_ids) || review.evidence_ids.length ||
+              review.human_quote !== undefined && !text(review.human_quote))
+            policyFailure('operation-shape-unproved');
+        }
+        token = await locked(async () => {
+          const plan = await currentPlan();
+          const id = owned(plan, spec.record, args[spec.field]) ||
+            spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
+          if (!id) policyFailure('record-outside-fixtures');
+          const ids = new Set([id]);
+          if (name === 'link-lead-client') {
+            const client = owned(plan, 'client', args.client_id);
+            if (!client) policyFailure('reference-outside-fixtures');
+            ids.add(client);
+          }
+          // No nested additional record references may ride through review
+          // metadata. Text values are ordinary content, not inferred identity.
+          const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
+            val && typeof val === 'object' ? referencesOwned(val) :
+              key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
+          if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
+          const fingerprint = digest([name, id, Object.fromEntries(spec.values.map(key => [key, args[key] ?? null]))]);
+          plan.browser_write_attempts ||= [];
+          if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
+              plan.browser_write_attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
+            policyFailure('duplicate-attempt-requires-reconciliation');
+          if (plan.browser_write_attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
+              row.record_ids.some(record => ids.has(record))))
+            policyFailure('ambiguous-record-requires-reconciliation');
+          const intent = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
+            operation: name, record_ids: [...ids], arguments: structuredClone(args),
+            state: 'inflight', dispatched_outcome: 'unknown', attempted_at: new Date().toISOString() };
+          plan.browser_write_attempts.push(intent);
+          await persist(planPath, plan); // MUST succeed before forward().
+          return { run: plan.run, fingerprint };
+        });
+        dispatched = true;
+        const response = await forward();
+        await locked(async () => {
+          const plan = await currentPlan();
+          if (plan.run !== token.run) policyFailure('fixture-provenance-changed');
+          const intent = plan.browser_write_attempts.find(row => row.fingerprint === token.fingerprint);
+          if (!intent || intent.state !== 'inflight') policyFailure('intent-binding-changed');
+          let rpc;
+          try { rpc = await response.json(); } catch {}
+          let receipt;
+          try { receipt = JSON.parse(rpc.result.content[0].text); } catch {}
+          const acknowledged = response.status() === 200 && !rpc?.error && !rpc?.result?.isError &&
+            Array.isArray(rpc?.result?.content) && rpc.result.content.length === 1 &&
+            rpc.result.content[0].type === 'text' && receipt?.ok === true && !receipt.error;
+          intent.state = acknowledged ? 'acknowledged' : 'unresolved';
+          intent.dispatched_outcome = acknowledged ? 'response-retained; effect not independently verified' : 'unknown';
+          intent.response = { http_status: response.status(), sha256: digest(rpc ?? null), acknowledged };
+          await persist(planPath, plan);
+          if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
+        });
+        return response;
+      } catch (error) {
+        const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
+          reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
+          forwarded: dispatched, at: new Date().toISOString() };
+        refusals.push(gap);
+        // Refusal metadata contains no URL, arguments, record IDs or payload.
+        // Failure to retain it never permits dispatch or clears an intent.
+        try {
+          await locked(async () => {
+            const plan = planPath ? await readPrivateJSON(planPath) : null;
+            if (plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete') {
+              plan.browser_write_refusals ||= []; plan.browser_write_refusals.push(gap);
+              await persist(planPath, plan);
+            }
+          });
+        } catch {}
+        policyFailure(gap.reason);
+      }
+    },
+  };
+}
+
+export async function readStagingWriteRefusals(output) {
+  const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
+  return plan?.browser_write_refusals || [];
+}
+
+export async function readStagingFixtureRelease(output) {
+  const setup = await readPrivateJSON(join(output, 'staging-records.json'));
+  if (setup?.schema !== 'doctorcre-staging-records.v1' || setup.origin !== STAGING_ORIGIN ||
+      setup.complete !== true || !/^[0-9a-f]{40}$/.test(setup.release?.source_commit || '') ||
+      setup.release?.carr_source_commit !== contract.producer.source_commit)
+    policyFailure('fixture-provenance-missing');
+  return setup.release;
 }

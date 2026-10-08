@@ -1397,3 +1397,93 @@ with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as z:
   assert.equal(JSON.stringify(proof), proofBytes);
   assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
 });
+
+test('the browser guard stops unproved mutations before dispatch at desktop and phone widths', async t => {
+  const { createServer } = await import('node:http');
+  const { installStagingGuard, stagingWriteRefusals } = await import('../../scripts/e2e-staging/engine.mjs');
+  const { stagingFixtureWriteGuard } = await import('../../scripts/e2e-staging/records.mjs');
+  const { STAGING_ORIGIN } = await import('../../scripts/e2e-staging/session.mjs');
+  const output = await mkdtemp(join(tmpdir(), 'fixture-browser-boundary-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const id = n => '60000000-0000-4000-8000-' + String(n).padStart(12, '0');
+  const release = { source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  let providerWrites = 0, providerReads = 0;
+  const server = createServer(async (request, response) => {
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    if (body.params.name === 'get-deal-room') {
+      providerReads++;
+      if (providerReads % 2) { response.writeHead(503, { 'content-type': 'application/json' }); response.end('{}'); return; }
+    } else {
+      providerWrites++;
+      const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+      assert.equal(plan.browser_write_attempts.at(-1).state, 'inflight');
+      assert.deepEqual(plan.browser_write_attempts.at(-1).arguments, body.params.arguments);
+    }
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ result: { content: [{ type: 'text', text: '{"ok":true}' }] } }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const local = 'http://127.0.0.1:' + server.address().port + '/mcp';
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
+    const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: STAGING_ORIGIN, state: 'complete', release, run: id(1),
+      records: { deal: { id: id(2) } }, receipts: { deal: { deal_id: id(2) } } };
+    await writeFile(join(output, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
+    const page = await browser.newPage({ viewport }), context = page.context();
+    // Test transport substitutes only the provider endpoint with loopback.
+    // Real context routing, request parsing, journal and refusal paths run.
+    const route = context.route.bind(context);
+    context.route = (matcher, handler) => route(matcher, real => handler(new Proxy(real, {
+      get(target, key) {
+        if (key === 'fetch') return options => {
+          assert.equal(options.maxRetries, 0); assert.equal(options.maxRedirects, 0);
+          return real.fetch({ ...options, url: local });
+        };
+        const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+      },
+    })));
+    const guard = stagingFixtureWriteGuard({ output, release });
+    await installStagingGuard(context, guard);
+    await page.route(STAGING_ORIGIN + '/', real => real.fulfill({ contentType: 'text/html', body: '<main><button id="send">Save</button><output id="status"></output></main>' }));
+    await page.goto(STAGING_ORIGIN + '/');
+    await page.evaluate(() => {
+      window.testRequest = async (name, args) => {
+        try {
+          const response = await fetch('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
+          document.querySelector('#status').textContent = response.ok ? 'Acknowledged' : 'Read failed';
+          return response.status;
+        } catch { document.querySelector('#status').textContent = 'Blocked or unresolved; coverage incomplete'; return null; }
+      };
+    });
+    const args = { deal: id(2), text: 'Fictional step', next_date: null, idempotency_key: id(3) };
+    assert.equal(await page.evaluate(args => window.testRequest('set-next-step', args), args), 200);
+    const writes = providerWrites;
+    for (const [name, requestArgs] of [
+      ['set-next-step', { ...args, deal: id(99), idempotency_key: id(4) }],
+      ['set-next-step', { ...args, idempotency_key: id(5) }],
+      ['set-notification-preference', { idempotency_key: id(6) }],
+    ]) assert.equal(await page.evaluate(([name, args]) => window.testRequest(name, args), [name, requestArgs]), null);
+    for (const path of ['/auth/login', '/auth/callback', '/auth/reauth']) {
+      assert.equal(await page.evaluate(async path => {
+        try { await fetch(path); return 'Forwarded'; } catch { return 'Blocked'; }
+      }, path), 'Blocked');
+    }
+    assert.equal(providerWrites, writes);
+    assert.equal(stagingWriteRefusals(context).length, 6);
+    assert.throws(() => guard.assertCoverage(), /write-coverage-incomplete/);
+    assert.match(await page.locator('#status').textContent(), /coverage incomplete/);
+    const box = await page.locator('#status').boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= viewport.width);
+    assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 503);
+    assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 200);
+    assert.equal(stagingWriteRefusals(context).length, 6, 'read retry adds no mutation refusal');
+    await page.close();
+  }
+  assert.equal(providerWrites, 2);
+  assert.equal(providerReads, 4);
+});

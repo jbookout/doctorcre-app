@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareStagingRecords } from '../../scripts/e2e-staging/records.mjs';
+import { prepareStagingRecords, stagingFixtureWriteGuard } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
@@ -409,4 +409,182 @@ test('completed closed-view recovery refuses wrong not-found identity, nonclosed
       assert.deepEqual(fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name), failure.calls);
     }
   } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+const browserKey = number => '50000000-0000-4000-8000-' + String(number).padStart(12, '0');
+const browserRequest = (name, args = {}, { method = 'POST', path = '/mcp' } = {}) => ({
+  method: () => method, url: () => STAGING_ORIGIN + path,
+  postDataJSON: () => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+});
+async function browserFixtures(t) {
+  const output = await mkdtemp(join(tmpdir(), 'staging-browser-fixtures-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const setup = await prepareStagingRecords(output, fakeAPI(output));
+  const path = join(output, 'staging-records-plan.json');
+  const read = async () => JSON.parse(await readFile(path, 'utf8'));
+  const write = plan => writeFile(path, JSON.stringify(plan), { mode: 0o600 });
+  return { output, path, setup, read, write, guard: stagingFixtureWriteGuard({ output, release }) };
+}
+const nextStep = (f, key = 1, text = 'Fictional next step') => ({
+  deal: f.setup.records.deal.id, text, next_date: null, idempotency_key: browserKey(key),
+});
+
+test('browser writes prove creation ownership and retain exact intent before a single dispatch', async t => {
+  const f = await browserFixtures(t);
+  let dispatches = 0;
+  const args = nextStep(f);
+  const response = await f.guard.handle(browserRequest('set-next-step', args), async () => {
+    dispatches++;
+    const plan = await f.read();
+    assert.equal(plan.browser_write_attempts.length, 1);
+    assert.deepEqual(plan.browser_write_attempts[0].arguments, args);
+    assert.equal(plan.browser_write_attempts[0].state, 'inflight');
+    assert.equal((await stat(f.path)).mode & 0o777, 0o600);
+    return envelope({ ok: true });
+  });
+  assert.equal(response.status(), 200);
+  const intent = (await f.read()).browser_write_attempts[0];
+  assert.equal(intent.state, 'acknowledged');
+  assert.match(intent.dispatched_outcome, /effect not independently verified/);
+  assert.equal(dispatches, 1);
+  for (const changed of [{ ...args, idempotency_key: browserKey(2) }, { ...args, text: 'Other text' }])
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', changed), () => assert.fail('duplicate must not dispatch')), /duplicate-attempt/);
+});
+
+test('browser policy rejects nonfixture IDs, mixed references, globals and unreviewed shapes before dispatch', async t => {
+  const f = await browserFixtures(t), external = browserKey(90);
+  const lead = { lead: f.setup.records.lead.id, base_version: 1, expected_actor: 'joe', idempotency_key: browserKey(3) };
+  const requests = [
+    browserRequest('set-next-step', { ...nextStep(f), deal: external }),
+    browserRequest('link-lead-client', { ...lead, client_id: external, confirmed: true }),
+    browserRequest('update-lead', { ...lead, fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [external] } }),
+    browserRequest('rename-doc-conversation', { conversation_id: external, base_version: 1, pinned: true, idempotency_key: browserKey(4) }),
+    browserRequest('set-next-step', { ...nextStep(f), party_id: f.setup.records.party.id }),
+    browserRequest('claim-lead', { ...lead, expected_actor: 'another-actor' }),
+    browserRequest('rename-doc-conversation', { conversation_id: f.setup.records.conversation.id, base_version: 1, pinned: 'true', idempotency_key: browserKey(4) }),
+    browserRequest('set-notification-preference', { idempotency_key: browserKey(5) }),
+    browserRequest('private-operation-name-canary', { secret: 'private-arguments-canary' }),
+    browserRequest('__proto__', {}),
+    ...['login', 'callback', 'reauth', 'logout', 'signout'].map(path =>
+      browserRequest('unused', {}, { method: 'GET', path: '/auth/' + path })),
+    browserRequest('set-next-step', nextStep(f), { path: '/api/tours/update' }),
+    browserRequest('set-next-step', nextStep(f), { method: 'DELETE' }),
+  ];
+  for (const request of requests) await assert.rejects(f.guard.handle(request, () => assert.fail('scope refusal must precede dispatch')), /Staging fixture write refused/);
+  const plan = await f.read();
+  assert.equal(plan.browser_write_attempts, undefined);
+  assert.equal(plan.browser_write_refusals.length, requests.length);
+  assert.doesNotMatch(JSON.stringify(plan.browser_write_refusals), /private-operation-name-canary|private-arguments-canary|50000000|another-actor/);
+});
+
+test('missing or mismatched fixture provenance never dispatches, including forged ownership receipts', async t => {
+  for (const kind of ['missing', 'receipt', 'source', 'inflight', 'permissions', 'schema', 'run', 'records', 'release']) await t.test(kind, async t => {
+    const f = await browserFixtures(t), plan = await f.read();
+    if (kind === 'missing') await rm(f.path);
+    else {
+      if (kind === 'receipt') plan.receipts.deal.deal_id = browserKey(90);
+      if (kind === 'source') plan.release.source_commit = 'b'.repeat(40);
+      if (kind === 'inflight') plan.inflight = { name: 'setup-write' };
+      if (kind === 'schema') plan.schema = 'unexpected';
+      if (kind === 'run') delete plan.run;
+      if (kind === 'records') delete plan.records;
+      if (kind === 'release') delete plan.release;
+      await f.write(plan);
+      if (kind === 'permissions') await chmod(f.path, 0o644);
+    }
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', nextStep(f)), () => assert.fail('missing provenance must not dispatch')), /refused/);
+  });
+});
+
+test('intent storage failure stops dispatch and does not manufacture an acknowledgement', async t => {
+  const f = await browserFixtures(t);
+  const guard = stagingFixtureWriteGuard({ output: f.output, release, persist: async () => { throw new Error('private-storage-canary'); } });
+  await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), () => assert.fail('storage must precede dispatch')), /intent-or-provenance-unavailable/);
+  assert.equal((await f.read()).browser_write_attempts, undefined);
+  assert.throws(() => guard.assertCoverage(), /write-coverage-incomplete/);
+  assert.doesNotMatch(JSON.stringify(guard.refusals), /private-storage-canary/);
+});
+
+test('interruption after dispatch and a restarted guard preserve one-attempt reconciliation', async t => {
+  const f = await browserFixtures(t);
+  let dispatches = 0;
+  await assert.rejects(f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => {
+    dispatches++;
+    throw Object.assign(new Error('private-response-canary'), { code: 'private-error-code-canary' });
+  }), /dispatch-outcome-unresolved/);
+  assert.equal((await f.read()).browser_write_attempts[0].state, 'inflight');
+  const restarted = stagingFixtureWriteGuard({ output: f.output, release });
+  for (const [name, args] of [
+    ['set-next-step', nextStep(f, 2)],
+    ['add-deal-note', { deal: f.setup.records.deal.id, text: 'Other mutation', idempotency_key: browserKey(3) }],
+  ]) await assert.rejects(restarted.handle(browserRequest(name, args), () => { dispatches++; }), /duplicate-attempt|ambiguous-record/);
+  assert.equal(dispatches, 1);
+  assert.doesNotMatch(JSON.stringify((await f.read()).browser_write_refusals), /private-response-canary|private-error-code-canary/);
+});
+
+test('ambiguous responses and post-dispatch storage failure cannot release a record for retry', async t => {
+  for (const kind of ['unreadable', 'error', 'multiple-content', 'storage']) await t.test(kind, async t => {
+    const f = await browserFixtures(t);
+    const response = kind === 'unreadable' ? { status: () => 200, json: async () => { throw new Error('Unparsed'); } }
+      : kind === 'error' ? envelope({ ok: false, error: 'refused' })
+      : kind === 'multiple-content' ? reply({ result: { content: [{ type: 'text', text: '{"ok":true}' }, { type: 'text', text: '{"ok":false}' }] } })
+      : envelope({ ok: true });
+    let stored = 0;
+    const guard = kind !== 'storage' ? f.guard : stagingFixtureWriteGuard({ output: f.output, release,
+      persist: async (path, plan) => { if (++stored === 1) await f.write(plan); else throw new Error('Storage stopped'); },
+    });
+    if (kind === 'storage') await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), async () => response));
+    else await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), async () => response), /dispatch-outcome-unresolved/);
+    assert.equal((await f.read()).browser_write_attempts[0].state, kind === 'storage' ? 'inflight' : 'unresolved');
+    await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).handle(
+      browserRequest('set-next-step', nextStep(f, 2)), () => assert.fail('ambiguous write cannot replay')), /duplicate-attempt/);
+  });
+});
+
+test('concurrent same-record attempts dispatch only once while intent is unresolved', async t => {
+  const f = await browserFixtures(t);
+  let dispatched;
+  const atDispatch = new Promise(resolve => { dispatched = resolve; });
+  let complete;
+  const completion = new Promise(resolve => { complete = resolve; });
+  const first = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => { dispatched(); await completion; return envelope({ ok: true }); });
+  await atDispatch;
+  await assert.rejects(f.guard.handle(browserRequest('add-deal-note', { deal: f.setup.records.deal.id, text: 'Another write', idempotency_key: browserKey(2) }),
+    () => assert.fail('concurrent write must not dispatch')), /ambiguous-record/);
+  complete();
+  await first;
+});
+
+test('benign reads, including failed reads followed by retries, need no fixture writes or provenance', async () => {
+  const guard = stagingFixtureWriteGuard();
+  let reads = 0;
+  for (const request of [browserRequest('get-deal-room', { deal: 'read-only-external-record' }), browserRequest('lead-board'),
+    browserRequest('unused', {}, { method: 'GET', path: '/auth/session' }), browserRequest('unused', {}, { method: 'HEAD', path: '/' })]) {
+    await assert.rejects(guard.handle(request, async () => { reads++; throw new Error('Read failed'); }), /Read failed/);
+    assert.equal(await guard.handle(request, async () => { reads++; return 'Read succeeded'; }), 'Read succeeded');
+  }
+  assert.equal(reads, 8);
+  assert.deepEqual(guard.refusals, []);
+  assert.doesNotThrow(() => guard.assertCoverage());
+  await assert.rejects(guard.handle(browserRequest('claim-lead', { lead: browserKey(1), expected_actor: 'joe', base_version: 1, idempotency_key: browserKey(2) }),
+    () => assert.fail('write without fixture plan cannot dispatch')), /fixture-provenance-missing/);
+});
+
+test('each admitted operation binds only creation-proved fixture records', async t => {
+  const f = await browserFixtures(t), r = f.setup.records;
+  const lead = { lead: r.lead.ref, base_version: 1, expected_actor: 'joe' };
+  const operations = [
+    ['add-deal-note', { deal: r.deal.id, text: 'Fictional note' }],
+    ['set-next-step', { deal: r.invoice.deal_id, text: 'Fictional step', next_date: '2026-10-08' }],
+    ['rename-doc-conversation', { conversation_id: r.conversation.id, base_version: 1, title: 'Fictional rename', pinned: true, archived: false }],
+    ['claim-lead', lead],
+    ['update-lead', { ...lead, fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [], human_quote: 'Reviewed' } }],
+    ['link-lead-client', { ...lead, client_id: r.client.id, confirmed: true }],
+  ];
+  for (const [index, [name, args]] of operations.entries())
+    await f.guard.handle(browserRequest(name, { ...args, idempotency_key: browserKey(20 + index) }), async () => envelope({ ok: true }));
+  const intents = (await f.read()).browser_write_attempts;
+  assert.equal(intents.length, operations.length);
+  assert.deepEqual(intents.at(-1).record_ids, [r.lead.id, r.client.id]);
+  assert.ok(intents.every(row => row.state === 'acknowledged'));
 });
