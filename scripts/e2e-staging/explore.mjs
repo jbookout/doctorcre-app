@@ -5,7 +5,7 @@ import { explorer40 } from './explorer.mjs';
 import { screens, targets } from './screens.mjs';
 import { writeReport, explorationEvidence } from './report.mjs';
 import { outputPath, scrubEvidence } from './sweep.mjs';
-import { prepareStagingRecords, readStagingWriteRefusals } from './records.mjs';
+import { prepareStagingRecords, assertStagingWriteCoverage } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -42,7 +42,7 @@ export async function exploreAll() {
         const result = await explore({ cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: 40, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
         steps = result.explore.steps.length;
         status = result.explore.ended;
-        if ((await readStagingWriteRefusals(output)).length) status = 'ERROR';
+        await assertStagingWriteCoverage(output);
         const report = JSON.parse(await readFile(join(local, 'report.json'), 'utf8'));
         for (const item of result.explore.findings) {
           findings.push({

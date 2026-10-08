@@ -11,9 +11,10 @@ import { eligibleLead } from '../../js/leads-model.js';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUUID = value => typeof value === 'string' && UUID.test(value);
 const fail = () => { throw new Error('Staging record contract refused'); };
 const requireValue = condition => { if (!condition) fail(); };
-const recordId = value => { requireValue(UUID.test(value || '')); return value; };
+const recordId = value => { requireValue(isUUID(value || '')); return value; };
 
 async function privateJSON(path, value, exclusive = false) {
   const destination = exclusive ? path : `${path}.${randomUUID()}.tmp`;
@@ -47,7 +48,7 @@ export async function prepareStagingRecords(output, {
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
   if (reuseOnly && (!existing || existing.schema !== 'doctorcre-staging-records-plan.v1' || existing.origin !== STAGING_ORIGIN ||
       !/^[0-9a-f]{40}$/.test(existing.release?.source_commit || '') || existing.release?.carr_source_commit !== contract.producer.source_commit ||
-      ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !UUID.test(existing.records?.[name]?.id || '')) || !UUID.test(existing.records?.invoice?.deal_id || ''))) {
+      ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !isUUID(existing.records?.[name]?.id || '')) || !isUUID(existing.records?.invoice?.deal_id || ''))) {
     throw new Error('Resume requires an existing complete private staging records plan; no record write was attempted');
   }
   const { state, release } = await session(origin);
@@ -102,7 +103,7 @@ export async function prepareStagingRecords(output, {
       plan.inflight = { name, arguments: { ...args, idempotency_key: plan.keys[step] } };
       await privateJSON(planPath, plan);
       const result = await rpc(name, plan.inflight.arguments);
-      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => UUID.test(result[field] || '')).map(field => [field, result[field]]));
+      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
       plan.inflight = null;
       await privateJSON(planPath, plan);
       return result;
@@ -197,7 +198,7 @@ export async function prepareStagingRecords(output, {
     requireValue(conversationRead.identity?.id === plan.records.conversation.id && boundedText(conversationRead.identity.visibility));
     requireValue(existing || conversationRead.identity.visibility === 'private');
     const tourRead = (await json(`/api/tours/detail?tour_id=${plan.records.tour.id}`)).data;
-    requireValue(tourRead?.id === plan.records.tour.id && UUID.test(tourRead.subject_id || '') && boundedText(tourRead.subject_type));
+    requireValue(tourRead?.id === plan.records.tour.id && isUUID(tourRead.subject_id || '') && boundedText(tourRead.subject_type));
     requireValue(existing || (tourRead.subject_id === plan.records.client.id && tourRead.subject_type === 'client'));
     const limited = (record, reason, guidance, current = {}) => ({
       record, id: plan.records[record].id || plan.records[record].deal_id, name: plan.records[record].name,
@@ -291,21 +292,21 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || receipt.ok !== true || receipt.error)
     return null;
   const primary = recordIDs[0];
-  const timestamp = value => Number.isFinite(Date.parse(value)) && Date.parse(value) >= Date.parse(attemptedAt) - 5000 && Date.parse(value) <= Date.now() + 5000;
+  const timestamp = value => typeof value === 'string' && typeof attemptedAt === 'string' && Number.isFinite(Date.parse(value)) && Date.parse(value) >= Date.parse(attemptedAt) - 5000 && Date.parse(value) <= Date.now() + 5000;
   const keys = allowed => Object.keys(receipt).every(key => ['ok', 'replayed', ...allowed].includes(key)) &&
     (receipt.replayed === undefined || receipt.replayed === false);
   let effect;
   if (name === 'set-next-step' && keys(['deal_id', 'next_step_id', 'next_action_id', 'supersedes', 'created_at']) &&
-      receipt.deal_id === primary && UUID.test(receipt.next_step_id || '') && UUID.test(receipt.next_action_id || '') &&
-      new Set([primary, receipt.next_step_id, receipt.next_action_id]).size === 3 && (receipt.supersedes === null || UUID.test(receipt.supersedes || '')) &&
+      receipt.deal_id === primary && isUUID(receipt.next_step_id || '') && isUUID(receipt.next_action_id || '') &&
+      new Set([primary, receipt.next_step_id, receipt.next_action_id]).size === 3 && (receipt.supersedes === null || isUUID(receipt.supersedes || '')) &&
       timestamp(receipt.created_at)) effect = { next_step_id: receipt.next_step_id, next_action_id: receipt.next_action_id, created_at: receipt.created_at };
   if (name === 'add-deal-note' && keys(['deal_id', 'note_id', 'created_at']) &&
-      receipt.deal_id === primary && UUID.test(receipt.note_id || '') && receipt.note_id !== primary && timestamp(receipt.created_at))
+      receipt.deal_id === primary && isUUID(receipt.note_id || '') && receipt.note_id !== primary && timestamp(receipt.created_at))
     effect = { note_id: receipt.note_id, created_at: receipt.created_at };
   if (name === 'rename-doc-conversation' && keys(['conversation_id', 'version', 'title', 'pinned', 'archived']) &&
       receipt.conversation_id === primary && receipt.version === args.base_version + 1 &&
       typeof receipt.title === 'string' && receipt.title.trim() && typeof receipt.pinned === 'boolean' && typeof receipt.archived === 'boolean' &&
-      ['title', 'pinned', 'archived'].every(key => args[key] === undefined || receipt[key] === (key === 'title' ? args[key].trim() : args[key])))
+      ['title', 'pinned', 'archived'].every(key => args[key] === undefined || receipt[key] === args[key]))
     effect = { version: receipt.version, title: receipt.title, pinned: receipt.pinned, archived: receipt.archived };
   if (name === 'claim-lead' && keys(['lead_id', 'owner']) && receipt.lead_id === primary && receipt.owner === args.expected_actor)
     effect = { owner: receipt.owner };
@@ -315,11 +316,24 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
   return effect ? { operation: name, record_ids: recordIDs, arguments_sha256: digest(args), effect } : null;
 }
 
+function requirePlanCoverage(plan) {
+  if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
+      plan.state !== 'complete' || plan.inflight) policyFailure('fixture-provenance-missing');
+  const attempts = plan.browser_write_attempts ?? [], refusals = plan.browser_write_refusals ?? [];
+  if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
+      attempts.some(row => {
+        if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
+            !Array.isArray(row.record_ids) || !row.record_ids.length || !row.record_ids.every(isUUID)) return true;
+        const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at);
+        return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding);
+      })) policyFailure('write-coverage-incomplete');
+}
+
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
 export function stagingFixtureWriteGuard({ output, release, persist = privateJSON } = {}) {
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
-  const refusals = [];
+  const refusals = [], pending = new Set();
   let serial = Promise.resolve();
   const locked = work => {
     const next = serial.then(work);
@@ -331,7 +345,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
     const plan = await readPrivateJSON(planPath);
     if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' ||
         plan.state !== 'complete' || plan.inflight || plan.origin !== STAGING_ORIGIN ||
-        !UUID.test(plan.run || '') || plan.release?.source_commit !== release?.source_commit ||
+        !isUUID(plan.run || '') || plan.release?.source_commit !== release?.source_commit ||
         plan.release?.carr_source_commit !== release?.carr_source_commit ||
         release?.carr_source_commit !== contract.producer.source_commit ||
         !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || !plan.records || !plan.receipts)
@@ -342,14 +356,45 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
     const row = plan.records[record], step = record === 'invoice' ? 'invoice_deal' : record;
     const field = { deal: 'deal_id', invoice: 'deal_id', client: 'client_id', lead: 'lead_id', conversation: 'conversation_id' }[record];
     const id = row?.id || row?.deal_id;
-    return field && UUID.test(id || '') && plan.receipts[step]?.[field] === id &&
+    return field && isUUID(id || '') && plan.receipts[step]?.[field] === id &&
       (reference === id || record === 'lead' && row.ref && reference === row.ref) ? id : null;
   };
   return {
     refusals,
-    assertCoverage() { if (refusals.length) policyFailure('write-coverage-incomplete'); },
+    async assertCoverage({ timeoutMs = 30_000 } = {}) {
+      const budget = Math.min(30_000, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : 30_000));
+      const deadline = Date.now() + budget;
+      while (pending.size) {
+        let timer;
+        const expired = new Promise(resolve => { timer = setTimeout(() => resolve(true), Math.max(0, deadline - Date.now())); });
+        let timedOut;
+        try { timedOut = await Promise.race([Promise.all([...pending].map(flight => flight.done)).then(() => false), expired]); }
+        finally { clearTimeout(timer); }
+        if (timedOut) {
+          for (const flight of pending) flight.timedOut = true;
+          refusals.push({ operation: 'unknown-operation', reason: 'dispatch-settlement-timeout', forwarded: true, at: new Date().toISOString() });
+          policyFailure('dispatch-settlement-timeout');
+        }
+      }
+      if (refusals.length) policyFailure('write-coverage-incomplete');
+      if (planPath) requirePlanCoverage(await currentPlan());
+      if (pending.size) policyFailure('dispatch-settlement-pending');
+    },
     async handle(request, forward) {
-      let name = 'unknown-operation', token, dispatched = false;
+      const flight = { timedOut: false };
+      flight.done = new Promise(resolve => { flight.finish = resolve; });
+      pending.add(flight);
+      let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
+      const forwardRead = async () => {
+        admittedRead = true;
+        const response = await forward();
+        if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
+        // Never give the browser a redirect to follow outside interception.
+        // Known aliases also remain coverage gaps until directly addressed.
+        if (response.status() >= 300 && response.status() < 400 && response.status() !== 304)
+          policyFailure('read-redirect-unproved');
+        return response;
+      };
       try {
         const url = new URL(request.url());
         if (url.username || url.password) policyFailure('origin-unproved');
@@ -357,7 +402,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
         if (url.origin !== STAGING_ORIGIN) {
           const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
             url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
-          if (font) return forward();
+          if (font) return await forwardRead();
           policyFailure('origin-unproved');
         }
         if (['GET', 'HEAD'].includes(request.method())) {
@@ -366,7 +411,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
           if (url.pathname.startsWith('/auth/') && url.pathname !== '/auth/session')
             policyFailure('authentication-mutation-unproved');
           if (!await knownBrowserRead(url)) policyFailure('read-path-unproved');
-          return forward();
+          return await forwardRead();
         }
         let body;
         try { body = request.postDataJSON(); } catch {}
@@ -376,14 +421,14 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
         name = body.params?.name;
         const args = body.params?.arguments;
         if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
-        if (browserReads.has(name)) return forward();
+        if (browserReads.has(name)) return await forwardRead();
         const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
         if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
-            !UUID.test(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
+            !isUUID(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
         const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
         const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
         if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
-            name === 'set-next-step' && args.next_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date) ||
+            name === 'set-next-step' && args.next_date != null && (typeof args.next_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date)) ||
             name === 'rename-doc-conversation' && (!version ||
               !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
               args.title !== undefined && !text(args.title) ||
@@ -419,7 +464,10 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
             val && typeof val === 'object' ? referencesOwned(val) :
               key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
           if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
-          const fingerprint = digest([name, id, Object.fromEntries(spec.values.map(key => [key, args[key] ?? null]))]);
+          const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
+            ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
+              ? args[key].trim() : args[key] ?? null]));
+          const fingerprint = digest([name, id, fingerprintValues]);
           plan.browser_write_attempts ||= [];
           if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
               plan.browser_write_attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
@@ -434,6 +482,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
           await persist(planPath, plan); // MUST succeed before forward().
           return { run: plan.run, fingerprint };
         });
+        if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
         dispatched = true;
         const response = await forward();
         await locked(async () => {
@@ -449,19 +498,24 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
             !rpc.error && !rpc.result?.isError && Array.isArray(rpc.result?.content) && rpc.result.content.length === 1 &&
             rpc.result.content[0].type === 'text'
             ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at) : null;
-          const acknowledged = Boolean(bound);
+          const acknowledged = Boolean(bound) && !flight.timedOut;
           intent.state = acknowledged ? 'acknowledged' : 'unresolved';
           intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified' : 'unknown';
           intent.response = { http_status: response.status(), sha256: digest(rpc ?? null), acknowledged };
-          if (bound) intent.response.binding = bound;
+          if (bound) {
+            intent.response.binding = bound;
+            intent.response.receipt = structuredClone(receipt);
+          }
+          if (flight.timedOut) intent.coverage_timeout = true;
           await persist(planPath, plan);
           if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
         });
         return response;
       } catch (error) {
+        if (admittedRead && !error.fixturePolicy) throw error;
         const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
-          forwarded: dispatched, at: new Date().toISOString() };
+          forwarded: dispatched || admittedRead, at: new Date().toISOString() };
         refusals.push(gap);
         // Refusal metadata contains no URL, arguments, record IDs or payload.
         // Failure to retain it never permits dispatch or clears an intent.
@@ -475,14 +529,13 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
           });
         } catch {}
         policyFailure(gap.reason);
-      }
+      } finally { pending.delete(flight); flight.finish(); }
     },
   };
 }
 
-export async function readStagingWriteRefusals(output) {
-  const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
-  return plan?.browser_write_refusals || [];
+export async function assertStagingWriteCoverage(output) {
+  requirePlanCoverage(await readPrivateJSON(join(output, 'staging-records-plan.json')));
 }
 
 export async function readStagingFixtureRelease(output) {

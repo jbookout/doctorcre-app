@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareStagingRecords, stagingFixtureWriteGuard } from '../../scripts/e2e-staging/records.mjs';
+import { prepareStagingRecords, stagingFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
@@ -430,7 +430,7 @@ function operationReceipt(name, args, primary = args.deal || args.conversation_i
     next_action_id: browserKey(902), supersedes: null, created_at: new Date().toISOString() };
   if (name === 'add-deal-note') return { ok: true, deal_id: primary, note_id: browserKey(903), created_at: new Date().toISOString() };
   if (name === 'rename-doc-conversation') return { ok: true, conversation_id: primary, version: args.base_version + 1,
-    title: args.title?.trim() || 'Fictional conversation', pinned: args.pinned ?? false, archived: args.archived ?? false };
+    title: args.title || 'Fictional conversation', pinned: args.pinned ?? false, archived: args.archived ?? false };
   if (name === 'claim-lead') return { ok: true, lead_id: primary, owner: args.expected_actor };
   if (name === 'link-lead-client') return { ok: true, lead_id: primary, client_id: args.client_id };
   if (name === 'update-lead') return { ok: true, updated: ['stage'] }; // Actual pinned response has no identity/value binding.
@@ -512,7 +512,7 @@ test('intent storage failure stops dispatch and does not manufacture an acknowle
   const guard = stagingFixtureWriteGuard({ output: f.output, release, persist: async () => { throw new Error('private-storage-canary'); } });
   await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), () => assert.fail('storage must precede dispatch')), /intent-or-provenance-unavailable/);
   assert.equal((await f.read()).browser_write_attempts, undefined);
-  assert.throws(() => guard.assertCoverage(), /write-coverage-incomplete/);
+  await assert.rejects(guard.assertCoverage(), /write-coverage-incomplete/);
   assert.doesNotMatch(JSON.stringify(guard.refusals), /private-storage-canary/);
 });
 
@@ -572,11 +572,12 @@ test('benign reads, including failed reads followed by retries, need no fixture 
   for (const request of [browserRequest('get-deal-room', { deal: 'read-only-external-record' }), browserRequest('lead-board'),
     browserRequest('unused', {}, { method: 'GET', path: '/auth/session' }), browserRequest('unused', {}, { method: 'HEAD', path: '/' })]) {
     await assert.rejects(guard.handle(request, async () => { reads++; throw new Error('Read failed'); }), /Read failed/);
-    assert.equal(await guard.handle(request, async () => { reads++; return 'Read succeeded'; }), 'Read succeeded');
+    const readResponse = reply({ read: 'succeeded' });
+    assert.equal(await guard.handle(request, async () => { reads++; return readResponse; }), readResponse);
   }
   assert.equal(reads, 8);
   assert.deepEqual(guard.refusals, []);
-  assert.doesNotThrow(() => guard.assertCoverage());
+  await guard.assertCoverage();
   await assert.rejects(guard.handle(browserRequest('claim-lead', { lead: browserKey(1), expected_actor: 'joe', base_version: 1, idempotency_key: browserKey(2) }),
     () => assert.fail('write without fixture plan cannot dispatch')), /fixture-provenance-missing/);
 });
@@ -615,7 +616,7 @@ test('known GET/HEAD reads and exact static assets pass; unknown paths and auth 
   known[known.length - 1] = '/' + manifest.files.find(row => row.path.startsWith('css/')).path;
   let forwarded = 0;
   for (const method of ['GET', 'HEAD']) {
-    for (const path of known) assert.equal(await f.guard.handle(browserRequest('unused', {}, { method, path }), async () => { forwarded++; return 'read'; }), 'read');
+    for (const path of known) assert.equal((await f.guard.handle(browserRequest('unused', {}, { method, path }), async () => { forwarded++; return reply({ read: true }); })).status(), 200);
     for (const path of ['/auth/login', '/auth/callback', '/auth/reauth', '/auth/logout', '/api/system-work/challenge',
       '/api/system-work/WR-1/plan/accept', '/api/tours/create', '/api/v1/unknown-write', '/unknown-path', '/js/not-a-built-asset.js']) {
       await assert.rejects(f.guard.handle(browserRequest('unused', {}, { method, path }), () => assert.fail('unknown or auth GET must not dispatch')), /authentication-mutation-unproved|read-path-unproved/);
@@ -680,4 +681,113 @@ test('receipt correlation, replay and future timestamps cannot release an ambigu
     await assert.rejects(f.guard.handle(browserRequest('set-next-step', args), async () => response), /dispatch-outcome-unresolved/);
     assert.equal((await f.read()).browser_write_attempts[0].state, 'unresolved');
   });
+});
+
+test('admitted read redirects retain a refusal while HTTP and transport failures preserve normal read handling', async t => {
+  const f = await browserFixtures(t);
+  for (const request of [
+    browserRequest('unused', {}, { method: 'GET', path: '/app-release' }),
+    browserRequest('unused', {}, { method: 'HEAD', path: '/app-release' }),
+    browserRequest('get-deal-room', { deal: 'read-only-external-record' }),
+  ]) {
+    await assert.rejects(f.guard.handle(request, async () => ({ status: () => 302 })), /read-redirect-unproved/);
+    await assert.rejects(f.guard.handle(request, async () => { throw new Error('Read connection interrupted'); }), /Read connection interrupted/);
+    assert.equal((await f.guard.handle(request, async () => ({ status: () => 503 }))).status(), 503);
+    assert.equal((await f.guard.handle(request, async () => ({ status: () => 200 }))).status(), 200);
+  }
+  const plan = await f.read();
+  assert.equal(plan.browser_write_attempts, undefined);
+  assert.equal(plan.browser_write_refusals.length, 3);
+  assert.ok(plan.browser_write_refusals.every(row => row.reason === 'read-redirect-unproved' && row.forwarded));
+});
+
+test('producer-trimmed note and next-step text share a fingerprint while actual request evidence is retained', async t => {
+  for (const name of ['add-deal-note', 'set-next-step']) await t.test(name, async t => {
+    const f = await browserFixtures(t);
+    const args = { deal: f.setup.records.deal.id, text: '  Same note  ', idempotency_key: browserKey(1),
+      ...(name === 'set-next-step' ? { next_date: null } : {}) };
+    await f.guard.handle(browserRequest(name, args), async () => envelope(operationReceipt(name, args)));
+    assert.equal((await f.read()).browser_write_attempts[0].arguments.text, '  Same note  ');
+    await assert.rejects(f.guard.handle(browserRequest(name, { ...args, text: 'Same note', idempotency_key: browserKey(2) }),
+      () => assert.fail('whitespace-equivalent producer write cannot dispatch twice')), /duplicate-attempt/);
+  });
+});
+
+test('conversation title remains exact in fingerprint, request evidence and receipt binding', async t => {
+  const f = await browserFixtures(t);
+  const args = { conversation_id: f.setup.records.conversation.id, base_version: 1,
+    title: '  Exact title  ', idempotency_key: browserKey(1) };
+  await f.guard.handle(browserRequest('rename-doc-conversation', args), async () => envelope(operationReceipt('rename-doc-conversation', args)));
+  const second = { ...args, base_version: 2, title: 'Exact title', idempotency_key: browserKey(2) };
+  await f.guard.handle(browserRequest('rename-doc-conversation', second), async () => envelope(operationReceipt('rename-doc-conversation', second)));
+  const intents = (await f.read()).browser_write_attempts;
+  assert.equal(intents[0].response.binding.effect.title, args.title);
+  assert.notEqual(intents[0].fingerprint, intents[1].fingerprint, 'producer stores title verbatim');
+  await f.guard.assertCoverage();
+});
+
+test('array-shaped receipt IDs, supersedes and timestamps stay unresolved and block different later writes', async t => {
+  for (const [name, field] of [['set-next-step', 'next_step_id'], ['set-next-step', 'next_action_id'],
+    ['set-next-step', 'supersedes'], ['set-next-step', 'created_at'], ['add-deal-note', 'note_id'], ['add-deal-note', 'created_at']])
+    await t.test(name + '/' + field, async t => {
+      const f = await browserFixtures(t), args = { ...nextStep(f), ...(name === 'add-deal-note' ? {} : {}) };
+      if (name === 'add-deal-note') delete args.next_date;
+      const payload = operationReceipt(name, args);
+      payload[field] = [field === 'supersedes' ? browserKey(99) : payload[field]];
+      await assert.rejects(f.guard.handle(browserRequest(name, args), async () => envelope(payload)), /dispatch-outcome-unresolved/);
+      assert.equal((await f.read()).browser_write_attempts[0].state, 'unresolved');
+      await assert.rejects(f.guard.handle(browserRequest('add-deal-note', {
+        deal: args.deal, text: 'Different later note', idempotency_key: browserKey(2),
+      }), () => assert.fail('malformed receipt must not release the record')), /ambiguous-record|duplicate-attempt/);
+      await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
+    });
+});
+
+test('request keys and dates require their scalar contract types before intent or dispatch', async t => {
+  const f = await browserFixtures(t);
+  for (const key of [[browserKey(1)], { value: browserKey(1) }, null, 1])
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', { ...nextStep(f), idempotency_key: key }),
+      () => assert.fail('nonstring key cannot dispatch')), /operation-scope-unproved/);
+  await assert.rejects(f.guard.handle(browserRequest('set-next-step', { ...nextStep(f), next_date: ['2026-10-08'] }),
+    () => assert.fail('nonstring date cannot dispatch')), /operation-shape-unproved/);
+  assert.equal((await f.read()).browser_write_attempts, undefined);
+});
+
+test('coverage waits for a pending write and restarted guards reject its durable inflight intent', async t => {
+  const f = await browserFixtures(t);
+  let began, finish;
+  const atDispatch = new Promise(resolve => { began = resolve; });
+  const responseReady = new Promise(resolve => { finish = resolve; });
+  const writing = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => {
+    began(); await responseReady; return envelope(operationReceipt('set-next-step', nextStep(f)));
+  });
+  await atDispatch;
+  await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
+  await assert.rejects(assertStagingWriteCoverage(f.output), /write-coverage-incomplete/);
+  let coverageFinished = false;
+  const checking = f.guard.assertCoverage({ timeoutMs: 5000 }).then(() => { coverageFinished = true; });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(coverageFinished, false);
+  finish(); await writing; await checking;
+  assert.equal(coverageFinished, true);
+  await stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage();
+  await assertStagingWriteCoverage(f.output);
+});
+
+test('bounded settlement timeout never becomes coverage success after a late complete receipt', async t => {
+  const f = await browserFixtures(t);
+  let began, finish;
+  const atDispatch = new Promise(resolve => { began = resolve; });
+  const responseReady = new Promise(resolve => { finish = resolve; });
+  const writing = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => {
+    began(); await responseReady; return envelope(operationReceipt('set-next-step', nextStep(f)));
+  });
+  await atDispatch;
+  await assert.rejects(f.guard.assertCoverage({ timeoutMs: 20 }), /dispatch-settlement-timeout/);
+  finish();
+  await assert.rejects(writing, /dispatch-outcome-unresolved/);
+  const intent = (await f.read()).browser_write_attempts[0];
+  assert.equal(intent.state, 'unresolved'); assert.equal(intent.coverage_timeout, true);
+  await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
+  await assert.rejects(assertStagingWriteCoverage(f.output), /write-coverage-incomplete/);
 });

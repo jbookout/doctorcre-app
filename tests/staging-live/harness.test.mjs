@@ -1478,7 +1478,7 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
     }
     assert.equal(providerWrites, writes);
     assert.equal(stagingWriteRefusals(context).length, 15);
-    assert.throws(() => guard.assertCoverage(), /write-coverage-incomplete/);
+    await assert.rejects(guard.assertCoverage(), /write-coverage-incomplete/);
     assert.match(await page.locator('#status').textContent(), /coverage incomplete/);
     const box = await page.locator('#status').boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= viewport.width);
@@ -1494,4 +1494,173 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
   }
   assert.equal(providerWrites, 2);
   assert.equal(providerReads, 8);
+});
+
+test('admitted GET/HEAD redirects cannot reach auth or external targets, including document navigation', async t => {
+  const { createServer } = await import('node:http');
+  const { installStagingGuard, stagingWriteRefusals } = await import('../../scripts/e2e-staging/engine.mjs');
+  const { stagingFixtureWriteGuard } = await import('../../scripts/e2e-staging/records.mjs');
+  const { STAGING_ORIGIN } = await import('../../scripts/e2e-staging/session.mjs');
+  let externalHits = 0, authHits = 0, sourceHits = 0, destination, mode = 'redirect';
+  const external = createServer((request, response) => { externalHits++; response.end('Must never arrive'); });
+  external.listen(0, '127.0.0.1'); await once(external, 'listening');
+  t.after(() => new Promise(resolve => external.close(resolve)));
+  const externalURL = 'http://127.0.0.1:' + external.address().port + '/blocked-target';
+  const provider = createServer((request, response) => {
+    if (request.url === '/auth/login') { authHits++; response.end('Must never arrive'); return; }
+    assert.equal(request.url, '/app-release'); sourceHits++;
+    response.writeHead(mode === 'redirect' ? 302 : mode === 'failure' ? 503 : 200,
+      mode === 'redirect' ? { location: destination } : { 'content-type': 'application/json' });
+    response.end('{}');
+  });
+  provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
+  t.after(() => new Promise(resolve => provider.close(resolve)));
+  const localOrigin = 'http://127.0.0.1:' + provider.address().port;
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
+    const page = await browser.newPage({ viewport }), context = page.context();
+    const route = context.route.bind(context);
+    context.route = (matcher, handler) => route(matcher, real => handler(new Proxy(real, {
+      get(target, key) {
+        if (key === 'fetch') return options => {
+          assert.equal(options.maxRedirects, 0); assert.equal(options.maxRetries, 0);
+          const url = new URL(real.request().url());
+          return real.fetch({ ...options, url: localOrigin + url.pathname + url.search });
+        };
+        const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+      },
+    })));
+    const guard = stagingFixtureWriteGuard();
+    await installStagingGuard(context, guard);
+    await page.route(STAGING_ORIGIN + '/', real => real.fulfill({ contentType: 'text/html', body: '<main>Isolated redirect probe</main>' }));
+    await page.goto(STAGING_ORIGIN + '/');
+    mode = 'redirect';
+    for (destination of ['/auth/login', externalURL]) for (const method of ['GET', 'HEAD']) {
+      assert.equal(await page.evaluate(async method => {
+        try { return (await fetch('/app-release', { method })).status; } catch { return null; }
+      }, method), null);
+    }
+    assert.equal(stagingWriteRefusals(context).length, 4);
+    assert.equal(guard.refusals.length, 4);
+    assert.ok(guard.refusals.every(row => row.reason === 'read-redirect-unproved'));
+    mode = 'failure';
+    assert.equal(await page.evaluate(async () => (await fetch('/app-release')).status), 503);
+    mode = 'ok';
+    assert.equal(await page.evaluate(async () => (await fetch('/app-release')).status), 200);
+    assert.equal(stagingWriteRefusals(context).length, 4, 'real HTTP failures are not policy refusals');
+    mode = 'redirect'; destination = '/auth/login';
+    await assert.rejects(page.goto(STAGING_ORIGIN + '/app-release'), /ERR_FAILED|ERR_ABORTED/);
+    assert.equal(stagingWriteRefusals(context).length, 5);
+    assert.equal(authHits, 0); assert.equal(externalHits, 0);
+    await page.close();
+  }
+  assert.equal(sourceHits, 14);
+  assert.equal(authHits, 0); assert.equal(externalHits, 0);
+});
+
+test('pinned web with staging headers blocks service workers and performs no app navigation before lifecycle guards', async t => {
+  const { web, surfaceOf } = await import('@e2e-dev/web');
+  const { createServer } = await import('node:http');
+  const { fileURLToPath } = await import('node:url');
+  const pkg = JSON.parse(await readFile(new URL('../../node_modules/@e2e-dev/web/package.json', import.meta.url), 'utf8'));
+  assert.equal(pkg.version, '0.13.0', 'dependency drift requires interception review');
+  let documents = 0, workerScripts = 0;
+  const server = createServer((request, response) => {
+    if (request.url === '/sw.js') { workerScripts++; response.writeHead(200, { 'content-type': 'application/javascript' }); response.end('self.addEventListener("fetch",e=>e.respondWith(new Response("worker bypass")))'); }
+    else { documents++; response.writeHead(200, { 'content-type': 'text/html' }); response.end('<main>Local service worker probe</main>'); }
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const artifactsDir = await mkdtemp(join(tmpdir(), 'staging-web-lifecycle-'));
+  t.after(() => rm(artifactsDir, { recursive: true, force: true }));
+  // Same pinned engine/options seam used by stagingWeb; no provider/CDP/profile.
+  const engine = web({ browser: 'chromium', headers: { 'x-e2e-staging-run': '1' } });
+  const signal = new AbortController().signal;
+  const operation = { signal, timeoutMs: 30_000 };
+  t.after(() => engine.dispose(operation));
+  await engine.init({ app: {}, projectRoot: fileURLToPath(new URL('../../', import.meta.url)), headed: false, signal });
+  await engine.startAttempt({ signal, artifactsDir, attemptId: 'synthetic-service-worker-proof' });
+  const live = surfaceOf(engine);
+  async function probe() {
+    const context = live.context();
+    assert.ok(context.pages().every(page => page.url() === 'about:blank'), 'no app navigation before project guard installation');
+    const priorDocuments = documents;
+    await context.route(url => !['127.0.0.1', 'localhost'].includes(url.hostname), route => route.abort());
+    const page = await context.newPage(); await page.goto(origin + '/');
+    const registered = await page.evaluate(async () => {
+      try { return Boolean(await navigator.serviceWorker.register('/sw.js')); } catch { return false; }
+    });
+    assert.equal(registered, false); assert.equal(context.serviceWorkers().length, 0);
+    assert.equal(workerScripts, 0);
+    assert.equal(documents, priorDocuments + 1);
+    await page.close();
+  }
+  await probe();
+  await engine.session.restart(operation); await probe();
+  const state = await engine.state.capture(operation);
+  await engine.state.restore(state, operation); await probe();
+  await engine.session.reset(operation); await probe();
+  assert.equal(documents, 4); assert.equal(workerScripts, 0);
+});
+
+test('a write failing after the two-second observation window cannot receive evidence or clean coverage', async t => {
+  const { createServer } = await import('node:http');
+  const { installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
+  const { stagingFixtureWriteGuard, assertStagingWriteCoverage } = await import('../../scripts/e2e-staging/records.mjs');
+  const { STAGING_ORIGIN } = await import('../../scripts/e2e-staging/session.mjs');
+  const output = await mkdtemp(join(tmpdir(), 'staging-delayed-write-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const id = n => '70000000-0000-4000-8000-' + String(n).padStart(12, '0');
+  const release = { source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  await writeFile(join(output, 'staging-records-plan.json'), JSON.stringify({
+    schema: 'doctorcre-staging-records-plan.v1', origin: STAGING_ORIGIN, state: 'complete', run: id(1), release,
+    records: { deal: { id: id(2) } }, receipts: { deal: { deal_id: id(2) } },
+  }), { mode: 0o600 });
+  let dispatched = 0;
+  const provider = createServer(async (request, response) => {
+    let raw = ''; for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw); assert.equal(body.params.name, 'set-next-step'); dispatched++;
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(plan.browser_write_attempts[0].state, 'inflight');
+    setTimeout(() => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { isError: true, content: [{ type: 'text', text: '{"error":"synthetic_late_failure"}' }] } }));
+    }, 3200);
+  });
+  provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
+  t.after(() => new Promise(resolve => provider.close(resolve)));
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage(), context = page.context();
+  const route = context.route.bind(context);
+  context.route = (matcher, handler) => route(matcher, real => handler(new Proxy(real, {
+    get(target, key) {
+      if (key === 'fetch') return options => real.fetch({ ...options, url: 'http://127.0.0.1:' + provider.address().port + '/mcp' });
+      const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+    },
+  })));
+  const guard = stagingFixtureWriteGuard({ output, release }); await installStagingGuard(context, guard);
+  await page.route(STAGING_ORIGIN + '/', real => real.fulfill({ contentType: 'text/html', body: '<main><button id="save">Save</button><output id="status"></output></main>' }));
+  await page.goto(STAGING_ORIGIN + '/');
+  await page.evaluate(({ deal, key }) => {
+    document.querySelector('#save').onclick = () => {
+      document.querySelector('#status').textContent = 'Saving';
+      fetch('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'set-next-step',
+          arguments: { deal, text: 'Fictional delayed step', next_date: null, idempotency_key: key } } }) })
+        .then(() => { document.querySelector('#status').textContent = 'Responded'; })
+        .catch(() => { document.querySelector('#status').textContent = 'Unresolved'; });
+    };
+  }, { deal: id(2), key: id(3) });
+  const row = await pressControl(page, (await inventory(page)).find(row => row.selector === '#save'), { waitMs: 2000 });
+  assert.equal(row.status, 'OBSERVED', 'the raw DOM/network signal alone is insufficient');
+  let evidenceCaptured = false;
+  await assert.rejects((async () => {
+    await guard.assertCoverage(); // Same guard gate used by sweep evidence.
+    evidenceCaptured = true;
+  })(), /write-coverage-incomplete/);
+  assert.equal(evidenceCaptured, false); assert.equal(dispatched, 1);
+  const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+  assert.equal(plan.browser_write_attempts[0].state, 'unresolved');
+  await assert.rejects(assertStagingWriteCoverage(output), /write-coverage-incomplete/);
 });

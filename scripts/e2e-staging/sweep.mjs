@@ -66,8 +66,11 @@ export async function sweep({ resume = false, recordedActionProof } = {}) {
     }
   };
   const evidence = async (page, row) => {
-    if (stagingWriteRefusals(page.context()).length) {
-      row.status = 'ERROR'; row.reason = 'Test fixture write policy refused; coverage remains incomplete';
+    try {
+      await fixtureGuard.assertCoverage();
+      if (stagingWriteRefusals(page.context()).length) throw new Error('Fixture scope incomplete');
+    } catch {
+      row.status = 'ERROR'; row.reason = 'Test fixture write policy refused or unsettled; coverage remains incomplete';
       throw new SweepFailure('fixture-scope', 'write-scope-unproved');
     }
     const paths = run.evidencePaths(output, privateEvidence, row.status === 'passed' ? 'OBSERVED' : row.status === 'failed' ? 'ERROR' : row.status);
@@ -104,6 +107,8 @@ export async function sweep({ resume = false, recordedActionProof } = {}) {
   }
   const allowlist = JSON.parse(await readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8'));
   const verdict = run.verdict(allowlist);
+  try { await fixtureGuard.assertCoverage(); verdict.fixtureWriteScopeComplete = true; }
+  catch { verdict.fixtureWriteScopeComplete = false; verdict.completed = false; }
   await writeFile(join(output, 'sweep-verdict.json'), JSON.stringify({ ...verdict, measuredAt: new Date().toISOString(), release }, null, 2) + '\n');
   if (verdict.newDeadControls.length || !verdict.completed) throw new Error(`Staging sweep failed: ${verdict.newDeadControls.length} new DEAD controls; completeness ${verdict.completed ? 'passed' : 'FAILED'}. See coverage.md.`);
 }

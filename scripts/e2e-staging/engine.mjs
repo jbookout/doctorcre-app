@@ -12,10 +12,10 @@ export async function installStagingGuard(context, fixtureGuard = stagingFixture
     const request = route.request();
     try {
       // Every method crosses the same policy before any request is forwarded.
-      const read = ['GET', 'HEAD'].includes(request.method());
-      const response = await fixtureGuard.handle(request, () => read ? route.fallback()
-        : route.fetch({ maxRetries: 0, maxRedirects: 0, timeout: 30_000 }));
-      if (!read) await route.fulfill({ response });
+      // Do not use fallback: interception is not re-run for redirect targets.
+      const response = await fixtureGuard.handle(request, () =>
+        route.fetch({ maxRetries: 0, maxRedirects: 0, timeout: 30_000 }));
+      await route.fulfill({ response });
     } catch (error) {
       // A read transport failure still reaches the client's normal retry path.
       // The policy marks its own refusals, including uncertain write outcomes.
@@ -49,8 +49,8 @@ export function stagingWeb(options) {
     startAttempt: async context => { await engine.startAttempt(context); await guard(); },
     // In-memory refusal state survives unavailable storage and context replacement.
     // Normal settle runs first so its artifacts/cleanup are still attempted.
-    settleAttempt: async context => { await engine.settleAttempt(context); fixtureGuard?.assertCoverage(); },
-    state: { capture: async (...args) => { fixtureGuard?.assertCoverage(); return engine.state.capture(...args); }, restore: async (...args) => { await engine.state.restore(...args); await guard(); } },
+    settleAttempt: async context => { await engine.settleAttempt(context); await fixtureGuard?.assertCoverage(); },
+    state: { capture: async (...args) => { await fixtureGuard?.assertCoverage(); return engine.state.capture(...args); }, restore: async (...args) => { await engine.state.restore(...args); await guard(); } },
     session: {
       ...engine.session,
       restart: async (...args) => { await engine.session.restart(...args); await guard(); },
