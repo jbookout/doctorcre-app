@@ -42,6 +42,18 @@ npx e2e run tests/journeys   # deterministic, no model; the CI e2e job runs this
 npx e2e run tests/agent      # agent.act/agent.assert variants, local only
 ```
 
+The staging control sweep uses a separate Playwright Test configuration.
+Playwright Test owns browser and context lifecycle, the four target projects,
+native retries and deadlines, failure traces and screenshots, and list, JSON,
+and HTML reports. A storageState setup project authenticates once before the
+ordered targets run. DoctorCRE keeps the exhaustive control frontier, source
+binding, fixture receipts, resume checkpoint, and exact evidence policy.
+
+```bash
+npm run e2e:staging:sweep
+npm run e2e:staging:sweep:resume
+```
+
 The local agent suite routes model work through a named CARR Model Room desk.
 `CARR_MODEL_ROOM_DISPATCH` must name the absolute sanctioned dispatcher path;
 `E2E_MODEL_ROOM_DESK` selects the registered desk and defaults to
