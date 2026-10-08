@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, stat, rm, chmod } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareStagingRecords } from '../../scripts/e2e-staging/records.mjs';
@@ -13,7 +13,7 @@ const release = { service: 'doctorcre-app', environment: 'staging', source_commi
 const reply = body => ({ ok: () => true, status: () => 200, json: async () => body });
 const envelope = body => reply({ result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
 
-function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = false } = {}) {
+function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = false, beforeReadback } = {}) {
   const calls = [], rows = { deals: new Map() };
   let disposed = 0;
   const id = number => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -21,7 +21,7 @@ function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = fal
     async get(path, options) {
       calls.push({ path, options });
       if (path === '/auth/session') return reply({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe', csrf_token: 'private-csrf-canary' });
-      if (path.startsWith('/api/v1/business/clients/')) return reply({ record: { id: rows.client, name: 'Synthetic Staging Fixture' } });
+      if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
       if (path.startsWith('/api/tours/detail?')) return reply({ data: rows.tour });
       assert.fail(`Unexpected read ${path}`);
     },
@@ -43,7 +43,17 @@ function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = fal
       }
       if (name === 'new-client') { rows.client = id(1); return envelope({ ok: true, client_id: rows.client, ref: 'C-001' }); }
       if (name === 'new-deal') { const deal_id = id(rows.deals.size + 2); rows.deals.set(deal_id, { deal_id, id: deal_id, name: args.name, phase: 'pending', owner: null, lane: 'territory', base_version: 1, operating_state: 'active' }); return envelope({ ok: true, deal_id }); }
-      if (name === 'get-deal-room' || name === 'read-deal-reconciliation') return envelope(rows.deals.get(args.deal));
+      if (name === 'get-deal-room') {
+        const row = rows.deals.get(args.deal);
+        const error = rows.roomError || (row?.phase === 'closed' ? { error: 'not_found', table: 'deal', id: args.deal } : null);
+        if (error) return reply({ result: { isError: true, content: [{ type: 'text', text: JSON.stringify(error) }] } });
+        return envelope(row);
+      }
+      if (name === 'read-deal-reconciliation') {
+        if (rows.reconciliationError) return reply({ result: { isError: true, content: [{ type: 'text', text: JSON.stringify(rows.reconciliationError) }] } });
+        const row = rows.deals.get(args.deal);
+        return envelope(row && { id: row.id, name: row.name, phase: row.phase, base_version: row.base_version, lane: row.lane });
+      }
       if (name === 'set-lead') { const row = rows.deals.get(args.deal); assert.equal(args.base_version, row.base_version); row.owner = 'joe'; row.base_version++; return envelope({ ok: true }); }
       if (name === 'update-deal') { const row = rows.deals.get(args.deal); assert.equal(args.base_version, row.base_version); row.phase = args.fields.phase; row.base_version++; return envelope({ ok: true }); }
       if (name === 'new-lead') { rows.lead = { id: id(4), stage: 'new', name: rows.leadParty?.name || 'Synthetic Staging Fixture', owner: 'joe', party_id: args.party_id, is_client: args.party_id === fixture, linked_client: linkedLead, is_deal: false, suppressed: false }; return envelope({ ok: true, lead_id: rows.lead.id, ref: 'L-001' }); }
@@ -67,6 +77,42 @@ test('record setup rejects production origins before authentication, files or re
       origin, session: () => assert.fail('must not authenticate'), requestFactory: () => assert.fail('must not request'),
     }), /exact.*staging origin/);
   }
+});
+
+test('resume reuse refuses missing, unsafe or unresolved setup before authentication', async t => {
+  for (const kind of ['missing', 'pending', 'inflight', 'permissions', 'schema', 'origin']) await t.test(kind, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-records-reuse-only-'));
+    try {
+      if (kind !== 'missing') {
+        const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: STAGING_ORIGIN, state: 'complete', release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit } };
+        if (kind === 'pending') plan.state = 'pending';
+        if (kind === 'inflight') plan.inflight = { name: 'new-deal' };
+        if (kind === 'schema') plan.schema = 'unexpected';
+        if (kind === 'origin') plan.origin = 'https://app.doctorcre.com';
+        await writeFile(join(output, 'staging-records-plan.json'), JSON.stringify(plan), { mode: kind === 'permissions' ? 0o644 : 0o600 });
+      }
+      let authenticated = 0;
+      await assert.rejects(prepareStagingRecords(output, {
+        reuseOnly: true,
+        session: async () => { authenticated++; throw new Error('Synthetic authentication was reached'); },
+        requestFactory: () => assert.fail('resume must not issue business requests'),
+      }), /existing complete|partial plan|private regular/);
+      assert.equal(authenticated, 0);
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
+});
+
+test('resume reuse reads existing synthetic records without repeating mutations', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-reuse-only-readback-'));
+  try {
+    const fake = fakeAPI(output);
+    const first = await prepareStagingRecords(output, fake);
+    fake.calls.length = 0;
+    const reused = await prepareStagingRecords(output, { ...fake, reuseOnly: true });
+    assert.deepEqual(reused.records, first.records);
+    assert.deepEqual(fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name), ['get-deal-room', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation']);
+    assert.ok(fake.calls.every(call => call.path === '/mcp' || call.options.data === undefined));
+  } finally { await rm(output, { recursive: true, force: true }); }
 });
 
 test('normal staging APIs create representative records with private durable keys and receipts', async () => {
@@ -213,5 +259,154 @@ test('fresh setup still refuses a lead that cannot expose Leads UI controls', as
     const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
     assert.equal(plan.state, 'pending');
     await assert.rejects(prepareStagingRecords(output, { session: () => assert.fail('must not authenticate') }), /partial plan requires reconciliation/);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('completed setup reports mutable fixture changes as UI guidance without issuing business writes', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-lifecycle-'));
+  try {
+    const fake = fakeAPI(output);
+    const first = await prepareStagingRecords(output, fake);
+    fake.rows.clientName = 'Renamed invented staging client';
+    const deal = fake.rows.deals.get(first.records.deal.id);
+    Object.assign(deal, { name: 'Renamed invented staging deal', owner: 'dell', phase: 'active' });
+    fake.rows.deals.get(first.records.invoice.deal_id).phase = 'pending';
+    fake.rows.conversation.visibility = 'shared';
+    fake.rows.tour.subject_id = first.records.lead_party.id;
+    fake.calls.length = 0;
+    const refreshed = await prepareStagingRecords(output, fake);
+    assert.deepEqual(refreshed.records, first.records, 'owned IDs and original fixture names remain unchanged');
+    assert.deepEqual(refreshed.needs_restore.map(row => [row.record, row.reason]), [
+      ['client', 'name_changed'], ['deal', 'name_changed'], ['deal', 'owner_changed'],
+      ['deal', 'phase_changed'], ['invoice', 'phase_changed'], ['conversation', 'visibility_changed'], ['tour', 'subject_changed'],
+    ]);
+    for (const row of refreshed.needs_restore) {
+      assert.equal(row.coverage_limited, true);
+      assert.match(row.guidance, /normal UI/);
+    }
+    assert.equal(refreshed.needs_restore.find(row => row.record === 'client').current_name, fake.rows.clientName);
+    assert.equal(refreshed.needs_restore.find(row => row.reason === 'owner_changed').current_owner, 'dell');
+    assert.deepEqual(fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name),
+      ['get-deal-room', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation']);
+    assert.ok(fake.calls.every(call => call.path === '/mcp' || call.options.data === undefined));
+    assert.deepEqual(JSON.parse(await readFile(join(output, 'staging-records.json'), 'utf8')), refreshed);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('fresh setup keeps mutable fixture proof strict and incomplete proof cannot be retried', async () => {
+  const changes = [
+    rows => { rows.clientName = 'Unexpected initial client name'; },
+    rows => { [...rows.deals.values()][0].name = 'Unexpected initial deal name'; },
+    rows => { [...rows.deals.values()][0].owner = 'dell'; },
+    rows => { [...rows.deals.values()][0].phase = 'active'; },
+    rows => { [...rows.deals.values()][0].phase = 'closed'; },
+    rows => { [...rows.deals.values()][1].phase = 'pending'; },
+    rows => { rows.conversation.visibility = 'shared'; },
+    rows => { rows.tour.subject_id = rows.leadParty.id; },
+  ];
+  for (const beforeReadback of changes) {
+    const output = await mkdtemp(join(tmpdir(), 'staging-records-fresh-proof-'));
+    try {
+      const fake = fakeAPI(output, { beforeReadback });
+      await assert.rejects(prepareStagingRecords(output, fake), /stopped at readback/);
+      const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+      assert.equal(plan.state, 'pending');
+      await assert.rejects(prepareStagingRecords(output, { session: () => assert.fail('must not authenticate') }), /partial plan requires reconciliation/);
+    } finally { await rm(output, { recursive: true, force: true }); }
+  }
+});
+
+test('completed setup still refuses wrong, absent or malformed primary IDs without reseeding', async () => {
+  const wrongID = '40000000-0000-4000-8000-000000000099';
+  const changes = [
+    rows => { rows.client = wrongID; },
+    rows => { [...rows.deals.values()][0].deal_id = wrongID; },
+    rows => { [...rows.deals.values()][1].id = wrongID; },
+    rows => { rows.lead.id = wrongID; },
+    rows => { rows.conversation.id = wrongID; },
+    rows => { rows.tour.id = wrongID; },
+    rows => { delete [...rows.deals.values()][0].deal_id; },
+    rows => { rows.tour.id = 'malformed'; },
+  ];
+  for (const change of changes) {
+    const output = await mkdtemp(join(tmpdir(), 'staging-records-primary-identity-'));
+    try {
+      const fake = fakeAPI(output);
+      await prepareStagingRecords(output, fake);
+      change(fake.rows);
+      fake.calls.length = 0;
+      await assert.rejects(prepareStagingRecords(output, fake), /stopped at readback/);
+      assert.ok(fake.calls.filter(call => call.path === '/mcp').every(call =>
+        ['get-deal-room', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation'].includes(call.options.data.params.name)));
+      assert.ok(fake.calls.every(call => call.path === '/mcp' || call.options.data === undefined));
+    } finally { await rm(output, { recursive: true, force: true }); }
+  }
+});
+
+test('an unresolved intent refuses before authentication even if the plan claims complete', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-inflight-'));
+  try {
+    const fake = fakeAPI(output);
+    await prepareStagingRecords(output, fake);
+    const path = join(output, 'staging-records-plan.json');
+    const plan = JSON.parse(await readFile(path, 'utf8'));
+    plan.inflight = { name: 'set-lead', arguments: { idempotency_key: plan.keys.deal_lead } };
+    await writeFile(path, JSON.stringify(plan));
+    await assert.rejects(prepareStagingRecords(output, {
+      session: () => assert.fail('must not authenticate unresolved intent'),
+      requestFactory: () => assert.fail('must not reconnect unresolved intent'),
+    }), /partial plan requires reconciliation/);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('completed closed deal uses exact open-view not-found plus same-ID closed proof, without writes', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-closed-view-'));
+  try {
+    const fake = fakeAPI(output);
+    const first = await prepareStagingRecords(output, fake);
+    fake.rows.deals.get(first.records.deal.id).phase = 'closed';
+    fake.calls.length = 0;
+    const refreshed = await prepareStagingRecords(output, fake);
+    assert.deepEqual(refreshed.records, first.records);
+    assert.deepEqual(refreshed.needs_restore.map(row => [row.record, row.reason, row.coverage_limited]), [['deal', 'closed', true]]);
+    assert.match(refreshed.needs_restore[0].guidance, /normal UI/);
+    const calls = fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params);
+    assert.deepEqual(calls.map(call => call.name), ['get-deal-room', 'read-deal-reconciliation', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation']);
+    assert.equal(calls[1].arguments.deal, first.records.deal.id);
+    assert.ok(fake.calls.every(call => call.path === '/mcp' || call.options.data === undefined));
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('completed closed-view recovery refuses wrong not-found identity, nonclosed proof, missing IDs and API errors', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-closed-refusal-'));
+  try {
+    const fake = fakeAPI(output);
+    const first = await prepareStagingRecords(output, fake);
+    const deal = fake.rows.deals.get(first.records.deal.id);
+    const exact = { error: 'not_found', table: 'deal', id: first.records.deal.id };
+    const failures = [
+      { room: { ...exact, id: first.records.invoice.deal_id }, calls: ['get-deal-room'] },
+      { room: { error: 'not_found', table: 'deal' }, calls: ['get-deal-room'] },
+      { room: { ...exact, table: 'client' }, calls: ['get-deal-room'] },
+      { room: { error: 'unauthorized' }, calls: ['get-deal-room'] },
+      { room: { error: 'database_refused_the_statement', fault: 'private-provider-canary' }, calls: ['get-deal-room'] },
+      { room: exact, phase: 'pending', calls: ['get-deal-room', 'read-deal-reconciliation'] },
+      { room: exact, id: first.records.invoice.deal_id, calls: ['get-deal-room', 'read-deal-reconciliation'] },
+      { room: exact, id: null, calls: ['get-deal-room', 'read-deal-reconciliation'] },
+      { room: exact, reconciliation: { error: 'not_found', table: 'deal', id: first.records.deal.id }, calls: ['get-deal-room', 'read-deal-reconciliation'] },
+    ];
+    for (const failure of failures) {
+      fake.rows.roomError = failure.room;
+      fake.rows.reconciliationError = failure.reconciliation;
+      deal.id = Object.hasOwn(failure, 'id') ? failure.id : first.records.deal.id;
+      deal.phase = failure.phase || 'closed';
+      fake.calls.length = 0;
+      await assert.rejects(prepareStagingRecords(output, fake), error => {
+        assert.match(error.message, /stopped at readback/);
+        assert.doesNotMatch(error.message, /private-provider-canary|fault|unauthorized/);
+        return true;
+      });
+      assert.deepEqual(fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name), failure.calls);
+    }
   } finally { await rm(output, { recursive: true, force: true }); }
 });
