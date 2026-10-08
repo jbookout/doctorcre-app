@@ -583,6 +583,26 @@ test('the streaming transport dead-ends redirects and enforces declared, streame
   } finally { await home.close(); }
 });
 
+test('a dispatch does not surface a response stop before arrived ingress is durable', async () => {
+  const dir = await budgetDir();
+  const budget = await createRunBudget({ dir, profile: tiny({ responseBytes: 64 * 1024 }) });
+  let read = false;
+  const response = {
+    headers: { get: () => null },
+    body: { getReader: () => ({
+      read: async () => read ? { done: true } : (read = true, { done: false, value: Buffer.alloc(80 * 1024) }),
+      cancel: async () => {},
+    }) },
+  };
+
+  await assert.rejects(
+    budget.dispatch('http', () => readMetered(response, budget.ingressMeter())),
+    refusal('response-oversize'),
+  );
+  assert.equal((await readState(dir)).spent.ingress, 64 * 1024);
+  await budget.close();
+});
+
 test('the budgeted route refuses an untagged write without dispatching', async () => {
   const context = capturedRouteContext();
   const fixtureId = '11111111-1111-4111-8111-111111111111';

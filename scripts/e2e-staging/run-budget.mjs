@@ -459,7 +459,19 @@ class RunBudget {
   ingressMeter() {
     const { responseBytes, ingress } = this.#state.profile;
     let taken = 0, settled = false;
-    const refuse = async reason => { await this.#stopNow(reason).catch(() => {}); throw new BudgetRefusal(reason); };
+    const settle = async () => {
+      if (settled) return;
+      settled = true;
+      if (taken) await this.#serial(() => {
+        this.#ingressInflight -= taken;
+        return this.#reserve({ ingress: taken }, { received: true });
+      });
+    };
+    const refuse = async reason => {
+      try { await settle(); }
+      finally { await this.#stopNow(reason).catch(() => {}); }
+      throw new BudgetRefusal(reason);
+    };
     return {
       declare: async length => { if (Number.isFinite(length) && length > responseBytes) await refuse('response-oversize'); },
       take: async bytes => {
@@ -471,12 +483,7 @@ class RunBudget {
         if (bytes > responseRemaining) await refuse('response-oversize');
         if (bytes > ingressRemaining) await refuse('ingress-exhausted');
       },
-      settle: async () => {
-        if (settled) return;
-        settled = true;
-        this.#ingressInflight -= taken;
-        if (taken) await this.#serial(() => this.#reserve({ ingress: taken }, { received: true }));
-      },
+      settle,
     };
   }
 
