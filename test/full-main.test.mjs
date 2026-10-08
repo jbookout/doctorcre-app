@@ -66,17 +66,30 @@ test('ignored runtime imports and changed tracked screenshot inputs cannot borro
   await writeFile(baseline,'changed input');
   assert.equal((await runner.runFullMain({root:other.root,suite:'app',timeoutMs:5000})).reason,'source_changed');
 });
-test('deadline terminates a SIGTERM-resistant descendant before returning', async t => {
+test('deadline lets the leader finish browser cleanup without killing its process group', async t => {
+  const {root,git}=await fixture(t,clean);
+  const browserLikeChild=`require('fs').writeFileSync('.e2e/logs/browser-child.log',String(process.pid)); process.on('SIGTERM',()=>{}); setTimeout(()=>{require('fs').writeFileSync('.e2e/logs/browser-closed.log','closed');process.exit(0);},4000);`;
+  await writeFile(join(root,'scripts/parent.cjs'),`require('fs').mkdirSync('.e2e/logs',{recursive:true}); const child=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(browserLikeChild)}],{stdio:'ignore'}); process.on('SIGTERM',()=>child.once('exit',()=>process.exit(0))); setInterval(()=>{},100);`);
+  commit(git);
+  const started=Date.now();
+  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/parent.cjs'],root,timeoutMs:1000});
+  const marker=await readFile(join(root,'.e2e/logs/browser-closed.log'),'utf8').catch(()=>null);
+  assert.equal(result.timedOut,true);
+  assert.equal(marker,'closed','leader-only SIGTERM must leave its child alive long enough to close');
+  assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
+});
+test('deadline waits for graceful shutdown then reaps a SIGTERM-resistant descendant', async t => {
   const {root,git}=await fixture(t,clean);
   const descendant=`require('fs').writeFileSync('.e2e/logs/descendant.log',String(process.pid)); process.on('SIGTERM',()=>{}); setInterval(()=>{},100);`;
   await writeFile(join(root,'scripts/parent.cjs'),`require('fs').mkdirSync('.e2e/logs',{recursive:true}); require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'}); setInterval(()=>{},100);`);
-  await writeFile(join(root,'package.json'),JSON.stringify({scripts:{test:'node scripts/parent.cjs'}})); commit(git);
+  commit(git);
   let pid;
   t.after(()=>{if(pid) try {process.kill(pid,'SIGKILL');} catch {}});
-  // The deadline includes npm startup and both Node processes installing handlers.
-  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
+  const started=Date.now();
+  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/parent.cjs'],root,timeoutMs:1000});
   pid=Number(await readFile(join(root,'.e2e/logs/descendant.log'),'utf8'));
-  assert.equal(receipt.reason,'deadline');
+  assert.equal(result.timedOut,true);
+  assert.ok(Date.now()-started>=15000,'group escalation must follow the graceful shutdown window');
   // Allow the OS to reap an orphan after the group has been killed.
   await delay(100);
   assert.throws(()=>process.kill(pid,0),{code:'ESRCH'});
@@ -169,6 +182,7 @@ async function browserFixture(t, change = () => {}) {
     test('synthetic continuity',()=>{});
     process.on('beforeExit',()=>console.log('# Candidate browser proof written to .e2e/proof/packet.json'));`;
   await writeFile(join(f.root,'scripts/browser-product-proof.mjs'),script);
+  await writeFile(join(f.root,'scripts/run-child.mjs'),'// synthetic signal-forwarding dependency');
   commit(f.git);
   return f;
 }
@@ -208,4 +222,13 @@ test('e2e does not reuse a prior packet after an empty rerun',async t=>{
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'passed');
   await writeFile(join(root,'scripts/browser-product-proof.mjs'),''); commit(git);
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'unknown');
+});
+test('e2e source binding includes the signal-forwarding helper',async t=>{
+  const {root,git}=await browserFixture(t);
+  const before=await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000});
+  await writeFile(join(root,'scripts/run-child.mjs'),'// changed signal-forwarding dependency');
+  commit(git);
+  const after=await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000});
+  assert.equal(after.status,'passed');
+  assert.notEqual(after.inventoryDigest,before.inventoryDigest);
 });

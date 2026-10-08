@@ -8,6 +8,8 @@ import { validateBrowserCompletion } from './browser-proof-contract.mjs';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const commands={app:['npm','test'],'app-e2e':[process.execPath,'scripts/browser-product-proof.mjs']};
+const GRACEFUL_SHUTDOWN_MS=15_000;
+const GROUP_TERMINATION_MS=1_000;
 // Node's TAP totals are accepted only after every numbered result and plan
 // agrees, including nested tests and suite diagnostics. No test text is retained.
 function tapCompletion() {
@@ -78,6 +80,33 @@ function tapCompletion() {
     },
   };
 }
+const processGroupExists=pid=>{
+  try {process.kill(-pid,0);return true;} catch(error) {return error?.code==='EPERM';}
+};
+const terminateLeaderThenGroup=child=>new Promise(done=>{
+  if(!child.pid) return done();
+  let finished=false,escalating=false,forceTimer;
+  const finish=()=>{
+    if(finished) return;
+    finished=true;
+    clearTimeout(graceTimer);
+    clearTimeout(forceTimer);
+    child.off('close',leaderClosed);
+    done();
+  };
+  const killGroup=signal=>{try{process.kill(-child.pid,signal);}catch{}};
+  const escalate=()=>{
+    if(escalating||finished) return;
+    escalating=true;
+    killGroup('SIGTERM');
+    forceTimer=setTimeout(()=>{killGroup('SIGKILL');finish();},GROUP_TERMINATION_MS);
+  };
+  const leaderClosed=()=>{if(!processGroupExists(child.pid)) finish();};
+  const graceTimer=setTimeout(escalate,GRACEFUL_SHUTDOWN_MS);
+  child.once('close',leaderClosed);
+  try{child.kill('SIGTERM');}catch{}
+  if(!processGroupExists(child.pid)) finish();
+});
 async function execute(command,root,timeoutMs,allowedFailures) {
   return new Promise(resolveRun=>{
     let lineBuffer='',timedOut=false,spawnFailed=false;
@@ -105,12 +134,9 @@ async function execute(command,root,timeoutMs,allowedFailures) {
     // Consume errors without storing or forwarding client identifiers or secrets.
     child.stderr.on('data',()=>{});
     child.on('error',()=>{spawnFailed=true;});
-    const kill=signal=>{try{process.kill(-child.pid,signal);}catch{}};
     const timer=setTimeout(()=>{
       timedOut=true;
-      kill('SIGTERM');
-      // The group outlives its leader. Always finish escalation before returning.
-      cleanup=new Promise(done=>setTimeout(()=>{kill('SIGKILL');done();},1000));
+      cleanup=terminateLeaderThenGroup(child);
     },timeoutMs);
     child.on('close',async(code,signal)=>{
       clearTimeout(timer);
@@ -120,6 +146,8 @@ async function execute(command,root,timeoutMs,allowedFailures) {
     });
   });
 }
+export const executeFullMainCommand=({command,root,timeoutMs,allowedFailures=new Set()})=>
+  execute(command,root,timeoutMs,allowedFailures);
 async function e2eCounts(root,source,counts) {
   const native=JSON.parse(await readFile(join(root,'.e2e/report.json'),'utf8'));
   const packet=JSON.parse(await readFile(join(root,'.e2e/proof/packet.json'),'utf8'));
@@ -136,13 +164,13 @@ export async function runFullMain({root,suite,timeoutMs=suite==='app'?900000:540
   if(!commands[suite]||!Number.isSafeInteger(timeoutMs)||timeoutMs<=0||timeoutMs>1200000) throw Error('invalid full-main invocation');
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',timeout:10000}).trim();
   const source={sha:git('rev-parse','HEAD'),tree:git('rev-parse','HEAD^{tree}')};
-  const paths=suite==='app'?(await readdir(join(root,'test'))).filter(name=>name.endsWith('.test.mjs')).map(name=>`test/${name}`).sort():['scripts/browser-product-proof.mjs',...(await readdir(join(root,'tests/journeys')).catch(()=>[])).filter(name=>name.endsWith('.e2e.ts')).map(name=>`tests/journeys/${name}`).sort()];
+  const paths=suite==='app'?(await readdir(join(root,'test'))).filter(name=>name.endsWith('.test.mjs')).map(name=>`test/${name}`).sort():['scripts/browser-product-proof.mjs','scripts/run-child.mjs',...(await readdir(join(root,'tests/journeys')).catch(()=>[])).filter(name=>name.endsWith('.e2e.ts')).map(name=>`tests/journeys/${name}`).sort()];
   const inventory=async()=>digest(JSON.stringify(await Promise.all(paths.map(async path=>[path,digest(await readFile(join(root,path)))]))));
   const inventoryDigest=await inventory();
   const tracked=git('ls-files','--',suite==='app'?'test':'tests/journeys').split('\n').filter(path=>suite==='app'?path.endsWith('.test.mjs'):path.endsWith('.e2e.ts')).sort();
-  const declared=suite==='app'?paths:paths.slice(1);
+  const declared=suite==='app'?paths:paths.slice(2);
   const trackedInventory=JSON.stringify(tracked)===JSON.stringify(declared);
-  const fileCount=suite==='app'?paths.length:paths.length-1;
+  const fileCount=suite==='app'?paths.length:paths.length-2;
   const startedAt=new Date().toISOString();
   if(suite==='app-e2e') {
     for(const file of ['.e2e/report.json','.e2e/proof/packet.json','.e2e/proof/coverage.json']) await rm(join(root,file),{force:true});
