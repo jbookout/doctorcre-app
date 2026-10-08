@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { mkdtemp, writeFile, chmod, readFile, rm, readdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -9,7 +10,8 @@ import { chromium } from '../../test/browser-harness.mjs';
 import { CONTROL_SELECTOR, inventory, pressControl, sweepScreen, settledInventory, SweepFailure } from '../../scripts/e2e-staging/controls.mjs';
 import { assertStagingURL, readSessionSecret, preflightRequest, SessionPreflightFailure } from '../../scripts/e2e-staging/session.mjs';
 import { newDeadControls, explorationEvidence, writeReport } from '../../scripts/e2e-staging/report.mjs';
-import { validateTraversal } from '../../scripts/e2e-staging/traversal.mjs';
+import { validateTraversal, canonicalIdentity, identityKey, traversalSnapshot } from '../../scripts/e2e-staging/traversal.mjs';
+import { reconcileRecordedPanelFrontier } from '../../scripts/e2e-staging/reconcile-panel-frontier.mjs';
 import { persistSweepReport } from '../../scripts/e2e-staging/sweep.mjs';
 import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
@@ -951,4 +953,109 @@ test('inventory reobserves navigation context loss within its deadline and keeps
     const closed = new Error('Execution context was destroyed');
     await assert.rejects(settledInventory(wrap(page, () => { throw closed; })), error => error === closed);
   });
+});
+
+test('recorded panel additions reconcile explicit work mappings without relaxing identity or losing the failed observation', async t => {
+  const capture = await captureControlEvidence(t);
+  const evidence = async page => {
+    const path = await capture(page);
+    await page.context().tracing.stop({ path: path.replace(/\.png$/, '.zip') });
+    return path;
+  };
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  let saved = false, outlookPresses = 0;
+  const fixture = () => '<main><button id="open" type="button" onclick="this.hidden=true;document.querySelector(\'#recordPanel\').hidden=false;history.pushState({},\'\',\'/deals?deal=synthetic-record\')">Open record</button></main><section id="recordPanel" role="dialog" aria-label="Synthetic record" hidden><form onsubmit="event.preventDefault();saveStep()"><button id="save" type="submit">Save next step</button></form><button id="outlook" type="button" onclick="fixtureOutlook();document.querySelector(\'#result\').textContent=\'Outlook shown\'">Deal outlook</button><details id="full"><summary id="fullSummary">Full record</summary><p>Recorded fields</p></details><button id="context" type="button" onclick="document.querySelector(\'#result\').textContent=\'Context opened\'">Open context</button><div id="timeline">' + (saved ? '<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07" onclick="document.querySelector(\'#result\').textContent=\'Day focused\'">Oct7</button>' : '') + '</div><output id="result"></output></section><script>async function saveStep(){await fixtureSave();if(!document.querySelector("#timelineDay"))document.querySelector("#timeline").innerHTML=\'<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07" onclick="document.querySelector(&quot;#result&quot;).textContent=&quot;Day focused&quot;">Oct7</button>\';document.querySelector("#result").textContent="Next step saved"}</script>';
+  const freshPage = async () => {
+    const page = await browser.newPage();
+    await page.exposeFunction('fixtureSave', () => { saved = true; });
+    await page.exposeFunction('fixtureOutlook', () => { outlookPresses++; });
+    await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: fixture() }));
+    await page.goto('https://fixture.invalid/');
+    await page.context().tracing.start({ screenshots: true, snapshots: true, sources: false });
+    return page;
+  };
+  const withRawInventory = async page => {
+    let raw;
+    const proxy = new Proxy(page, { get(target, key) {
+      if (key === 'locator') return (...args) => {
+        const locator = target.locator(...args);
+        return new Proxy(locator, { get(inner, name) {
+          if (name === 'evaluateAll') return async (...xs) => {
+            const result = await inner.evaluateAll(...xs);
+            if (result?.rows) raw = result.rows;
+            return result;
+          };
+          const value = Reflect.get(inner, name);
+          return typeof value === 'function' ? value.bind(inner) : value;
+        } });
+      };
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    return { controls: await inventory(proxy), get raw() { return raw; } };
+  };
+  const screen = { path: '/', name: 'Synthetic', surface: 'app' }, target = 'staging-live';
+  const seedPage = await freshPage();
+  const opening = (await inventory(seedPage))[0];
+  const opened = await pressControl(seedPage, opening, { waitMs: 20 });
+  const openingRow = { ...opening, ...opened, key: target + '/' + screen.path + '/' + identityKey(opening.identity), target, path: screen.path, screen: screen.name, openers: [], evidence_path: await evidence(seedPage) };
+  const legacy = await withRawInventory(seedPage);
+  const seed = { ...screen, target, reached: true, controls: [openingRow], failure: null, in_progress: true, attempt_id: randomUUID(),
+    traversal: traversalSnapshot({ queue: [], destructive: [], active: { openers: [openingRow], controls: legacy.raw }, pending: null, seen: new Set([openingRow.identity]) }) };
+  await seedPage.context().close();
+  const failed = await sweepScreen({ freshPage, screen, target, prior: seed, waitMs: 20, evidence });
+  assert.equal(failed.failure.code, 'control-state-changed');
+  assert.equal(failed.controls.at(-1).selector, '#outlook');
+  assert.equal(failed.controls.at(-1).status, 'UNREACHABLE');
+  assert.equal(outlookPresses, 0, 'The stale failed control is refused before execution');
+  const plan = { targets: [{ name: target, surface: 'app' }], routedScreens: [screen] };
+  const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
+  const initial = createSweepRun(plan); initial.record(failed);
+  const prior = { ...initial.snapshot(), release };
+  const readPage = await freshPage();
+  await readPage.locator('#open').click();
+  const current = await withRawInventory(readPage);
+  const context = JSON.parse(current.raw.find(row => row.selector === '#outlook').identity.split('|')[0]);
+  const observation = { release, controls: current.controls, failed_control_pressed: false, blocked_non_read_requests: 0,
+    context: { owner: context[0], local_controls: context[1], workspace_views: context[2], panels: context[3].map(([selector, label]) => ({ selector, label_sha256: createHash('sha256').update(label).digest('hex') })) },
+    added_context_controls: [{ selector: '#timelineDay', data: [{ is_timeline_day: true, detail_focus_is_day: true, timeline_day: '2026-10-07' }] }] };
+  await readPage.context().close();
+  const originalBytes = JSON.stringify(prior);
+  const { checkpoint, reconciliation } = reconcileRecordedPanelFrontier({ prior, observation, newAttemptID: randomUUID() });
+  assert.equal(JSON.stringify(prior), originalBytes, 'Reconciliation cannot mutate its input');
+  assert.deepEqual(checkpoint.screens[0].controls, prior.screens[0].controls.slice(0, -1));
+  assert.deepEqual(checkpoint.history.at(-1).screen, prior.screens[0]);
+  assert.equal(checkpoint.history.at(-1).screen.controls.at(-1).status, 'UNREACHABLE');
+  assert.equal(reconciliation.original_state_complete, false);
+  assert.equal(reconciliation.mappings.length, 2, 'Failed outlook and stale context remain mapped to queued successor work');
+  assert.equal(reconciliation.unchanged_active.length, 1, 'The still-valid Full record obligation remains active');
+  assert.equal(outlookPresses, 0, 'The pure operation never presses the failed control');
+  validateTraversal(checkpoint.screens[0]);
+  const resumed = createSweepRun({ ...plan, prior: checkpoint });
+  const continued = await sweepScreen({ freshPage, screen, target, prior: resumed.priorScreen(target, '/'), waitMs: 20, evidence });
+  assert.equal(continued.failure, null);
+  assert.equal(continued.in_progress, undefined);
+  assert.deepEqual(continued.controls.slice(0, checkpoint.screens[0].controls.length), checkpoint.screens[0].controls);
+  assert.equal(outlookPresses, 1, 'Only the new validated successor is exercised in the synthetic fixture');
+  assert.ok(continued.controls.some(row => row.selector === '#timelineDay' && row.status === 'OBSERVED'));
+  await assertCapturedPNGs(continued.controls);
+  resumed.record(continued);
+  assert.equal(resumed.verdict([]).completed, true);
+  assert.equal(resumed.snapshot().history.at(-1).screen.controls.at(-1).status, 'UNREACHABLE');
+  for (const mutate of [
+    value => { value.failed_control_pressed = true; },
+    value => { value.blocked_non_read_requests = 1; },
+    value => { value.release.source_commit = 'b'.repeat(40); },
+    value => { value.context.owner = '#otherRecordPanel'; },
+    value => { value.context.panels[0].label_sha256 = '0'.repeat(64); },
+    value => { value.context.local_controls = value.context.local_controls.filter(selector => selector !== '#save'); },
+    value => { value.controls = value.controls.filter(row => row.selector !== '#outlook'); },
+    value => { value.controls.find(row => row.selector === '#outlook').state_url = '/deals?deal=other-record'; },
+    value => { value.added_context_controls[0].data[0].is_timeline_day = false; },
+  ]) {
+    const changed = structuredClone(observation); mutate(changed);
+    assert.throws(() => reconcileRecordedPanelFrontier({ prior, observation: changed, newAttemptID: randomUUID() }), /proof refused/);
+    assert.equal(JSON.stringify(prior), originalBytes);
+  }
 });
