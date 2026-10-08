@@ -36,13 +36,18 @@ async function readPrivateJSON(path) {
 }
 
 export async function prepareStagingRecords(output, {
-  origin = STAGING_ORIGIN, session = stagingSession,
+  origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
   requestFactory = options => playwrightRequest.newContext(options),
 } = {}) {
   origin = assertStagingURL(origin);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
-  if (existing && existing.state !== 'complete') throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (reuseOnly && (!existing || existing.schema !== 'doctorcre-staging-records-plan.v1' || existing.origin !== STAGING_ORIGIN ||
+      !/^[0-9a-f]{40}$/.test(existing.release?.source_commit || '') || existing.release?.carr_source_commit !== contract.producer.source_commit ||
+      ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !UUID.test(existing.records?.[name]?.id || '')) || !UUID.test(existing.records?.invoice?.deal_id || ''))) {
+    throw new Error('Resume requires an existing complete private staging records plan; no record write was attempted');
+  }
   const { state, release } = await session(origin);
   if (release?.environment !== 'staging' || release?.service !== 'doctorcre-app' ||
       !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || release?.carr_source_commit !== contract.producer.source_commit) {
@@ -74,12 +79,14 @@ export async function prepareStagingRecords(output, {
       return response.json();
     }
     let sequence = 0;
-    async function rpc(name, args = {}) {
+    async function rpc(name, args = {}, notFoundDealID) {
       const answer = await json('/mcp', { jsonrpc: '2.0', id: ++sequence, method: 'tools/call', params: { name, arguments: args } });
-      requireValue(!answer.error && !answer.result?.isError);
+      requireValue(!answer.error);
       const text = answer.result?.content?.find(item => item.type === 'text')?.text;
       const value = JSON.parse(text);
-      requireValue(value && typeof value === 'object' && !value.error && value.ok !== false);
+      requireValue(value && typeof value === 'object' && !Array.isArray(value));
+      if (existing && name === 'get-deal-room' && notFoundDealID && answer.result?.isError === true && value.error === 'not_found' && value.table === 'deal' && value.id === notFoundDealID) return value;
+      requireValue(!answer.result?.isError && !value.error && value.ok !== false);
       return value;
     }
     const actor = await json('/auth/session');
@@ -161,27 +168,54 @@ export async function prepareStagingRecords(output, {
     }
     plan.current_step = 'readback';
     await privateJSON(planPath, plan);
+    const boundedText = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
     const clientRead = await json(`/api/v1/business/clients/${plan.records.client.id}`);
-    requireValue(clientRead.record?.id === plan.records.client.id && clientRead.record.name === plan.records.client.name);
-    const dealRead = await rpc('get-deal-room', { deal: plan.records.deal.id });
-    requireValue(dealRead.deal_id === plan.records.deal.id && dealRead.name === plan.records.deal.name && dealRead.owner === 'joe');
+    requireValue(clientRead.record?.id === plan.records.client.id && boundedText(clientRead.record.name));
+    requireValue(existing || clientRead.record.name === plan.records.client.name);
+    const dealView = await rpc('get-deal-room', { deal: plan.records.deal.id }, existing ? plan.records.deal.id : undefined);
+    const closedDeal = dealView.error === 'not_found';
+    const dealRead = closedDeal ? await rpc('read-deal-reconciliation', { deal: plan.records.deal.id }) : dealView;
+    if (closedDeal) requireValue(dealRead.id === plan.records.deal.id && dealRead.phase === 'closed');
+    else {
+      requireValue(dealRead.deal_id === plan.records.deal.id && boundedText(dealRead.name) &&
+        (dealRead.owner === null || boundedText(dealRead.owner)) && boundedText(dealRead.phase));
+      requireValue(existing || (dealRead.name === plan.records.deal.name && dealRead.owner === 'joe' && dealRead.phase === 'pending'));
+    }
     const invoiceRead = await rpc('read-deal-reconciliation', { deal: plan.records.invoice.deal_id });
-    requireValue(invoiceRead.id === plan.records.invoice.deal_id && invoiceRead.phase === 'closed');
-    requireValue((await rpc('read-invoice-tracker')).entries?.some(row => row.deal_id === plan.records.invoice.deal_id));
+    requireValue(invoiceRead.id === plan.records.invoice.deal_id && boundedText(invoiceRead.phase));
+    const tracker = await rpc('read-invoice-tracker');
+    requireValue(Array.isArray(tracker.entries));
+    const invoiceVisible = tracker.entries.some(row => row.deal_id === plan.records.invoice.deal_id);
+    requireValue(existing || (invoiceRead.phase === 'closed' && invoiceVisible));
     const leadRead = await rpc('lead-board', { workspace: 'leads', lead_id: plan.records.lead.id });
     requireValue(leadRead.detail?.id === plan.records.lead.id && leadRead.detail.party_id === plan.records.lead_party.id);
     const leadEligible = eligibleLead(leadRead.detail);
     requireValue(existing || leadEligible);
     const conversationRead = await rpc('read-doc-conversation', { conversation_id: plan.records.conversation.id, limit: 1 });
-    requireValue(conversationRead.identity?.id === plan.records.conversation.id && conversationRead.identity.visibility === 'private');
+    requireValue(conversationRead.identity?.id === plan.records.conversation.id && boundedText(conversationRead.identity.visibility));
+    requireValue(existing || conversationRead.identity.visibility === 'private');
     const tourRead = (await json(`/api/tours/detail?tour_id=${plan.records.tour.id}`)).data;
-    requireValue(tourRead?.id === plan.records.tour.id && tourRead.subject_id === plan.records.client.id);
+    requireValue(tourRead?.id === plan.records.tour.id && UUID.test(tourRead.subject_id || '') && boundedText(tourRead.subject_type));
+    requireValue(existing || (tourRead.subject_id === plan.records.client.id && tourRead.subject_type === 'client'));
+    const limited = (record, reason, guidance, current = {}) => ({
+      record, id: plan.records[record].id || plan.records[record].deal_id, name: plan.records[record].name,
+      reason, coverage_limited: true, guidance, ...current,
+    });
     const needs_restore = [
-      ...(dealRead.operating_state === 'parked' ? [{ record: 'deal', id: plan.records.deal.id, name: plan.records.deal.name, reason: 'parked' }] : []),
+      ...(clientRead.record.name !== plan.records.client.name ? [limited('client', 'name_changed', 'Find the invented client by its current name in the normal UI, or rename it there for the remaining controls.', { current_name: clientRead.record.name })] : []),
+      ...(closedDeal ? [limited('deal', 'closed', 'The original deal is closed and absent from the active Deal Room. Use the normal UI to reopen it if available, or create another invented deal for active deal controls.', boundedText(dealRead.name) ? { current_name: dealRead.name } : {})] : [
+        ...(dealRead.name !== plan.records.deal.name ? [limited('deal', 'name_changed', 'Find the invented deal by its current name in the normal UI, or rename it there for the remaining controls.', { current_name: dealRead.name })] : []),
+        ...(dealRead.owner !== 'joe' ? [limited('deal', 'owner_changed', 'Use the normal UI to select the current owner or assign the invented deal back to Joe for the remaining controls.', { current_owner: dealRead.owner })] : []),
+        ...(dealRead.phase !== 'pending' ? [limited('deal', 'phase_changed', 'Use the normal UI to work in the current phase or return the invented deal to pending for the remaining controls.', { current_phase: dealRead.phase })] : []),
+        ...(dealRead.operating_state === 'parked' ? [{ record: 'deal', id: plan.records.deal.id, name: plan.records.deal.name, reason: 'parked' }] : []),
+      ]),
+      ...(invoiceRead.phase !== 'closed' || !invoiceVisible ? [limited('invoice', invoiceRead.phase !== 'closed' ? 'phase_changed' : 'not_in_invoice_tracker', 'Use the normal UI to return the invented deal to closed if available, or create another invented closed deal for invoice controls.', { current_phase: invoiceRead.phase })] : []),
       ...(!leadEligible ? [{ record: 'lead', id: plan.records.lead.id, name: plan.records.lead.name, reason: 'ui_ineligible', coverage_limited: true,
         guidance: 'The original lead is ineligible for the Leads UI. Create another invented lead through the normal UI to cover lead controls.' }]
         : leadRead.detail.stage === 'archived' ? [{ record: 'lead', id: plan.records.lead.id, name: plan.records.lead.name, reason: 'archived' }] : []),
       ...(conversationRead.identity.archived_at ? [{ record: 'conversation', id: plan.records.conversation.id, name: plan.records.conversation.name, reason: 'archived' }] : []),
+      ...(conversationRead.identity.visibility !== 'private' ? [limited('conversation', 'visibility_changed', 'Use the normal UI to return the invented conversation to private if available, or create another invented private conversation for those controls.', { current_visibility: conversationRead.identity.visibility })] : []),
+      ...(tourRead.subject_id !== plan.records.client.id || tourRead.subject_type !== 'client' ? [limited('tour', 'subject_changed', 'Use the normal UI to select the original invented client if available, or create another invented draft tour for those controls.')] : []),
     ];
     const result = { schema: 'doctorcre-staging-records.v1', origin: STAGING_ORIGIN, release, complete: true, records: plan.records, eligibleLead: leadEligible, findings: [], needs_restore };
     await privateJSON(join(output, 'staging-records.json'), result);

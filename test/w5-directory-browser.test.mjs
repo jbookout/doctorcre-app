@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
-import { chromium, fixtureServer, settles } from './browser-harness.mjs';
+import { chromium, fixtureServer, settles, waitForAsync } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 let server, origin;
 before(async()=>{
@@ -65,7 +65,19 @@ test('W5 filters, traversal and autonomous refresh recover without losing search
   await page.locator('#searchInput').fill('Demo');await page.clock.fastForward(400);await searchRead;
   await page.waitForFunction(()=>location.search.includes('q=Demo') && document.querySelectorAll('.record-row').length===25 && document.querySelector('#listRegion').getAttribute('aria-busy')==='false');
   await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>25);
-  const count=await page.locator('.record-row').count();await page.clock.fastForward(31000);await page.waitForTimeout(80);assert.ok(await page.locator('.record-row').count()>=count);assert.equal(await page.locator('#searchInput').inputValue(),'Demo');
+  const count=await page.locator('.record-row').count(), held=[], lastPage=String(Math.ceil(count/25));
+  // Keep the final page pending so retained rows cannot masquerade as a settled poll.
+  await page.route('**/api/v1/business/vendors?**',r=>{
+    const url=new URL(r.request().url());
+    return url.searchParams.get('q')==='Demo'&&url.searchParams.get('page')===lastPage?held.push(r):r.fallback();
+  });
+  await page.clock.fastForward(31000);await settles(()=>assert.equal(held.length,1));
+  assert.equal(await page.evaluate(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().state),'updating');
+  assert.ok(await page.locator('.record-row').count()>=count);assert.equal(await page.locator('#searchInput').inputValue(),'Demo');
+  await page.unroute('**/api/v1/business/vendors?**');await held[0].fulfill({json:directoryFixture(held[0].request().url())});
+  // Online coalesces with an in-flight poll; start the failure only after that read settles.
+  await waitForAsync(page,async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().state==='ready');
+  assert.ok(await page.locator('.record-row').count()>=count);assert.equal(await page.locator('#searchInput').inputValue(),'Demo');
   h.setFail(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('.record-empty');h.setFail(false);await page.clock.fastForward(31000);await page.waitForSelector('.record-row');assert.deepEqual(h.errors,[]);
 });
 test('W5 reduced motion stops hover travel and pulse while keeping content visible',async t=>{
