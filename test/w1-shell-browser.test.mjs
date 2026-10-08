@@ -177,21 +177,34 @@ for (const { name, path, updated, retry, error } of [
   const intercept=route=>refused?route.fulfill({status,json:{ok:false,error:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable',code:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable'}}):route.continue();
   await page.route('**/api/**',intercept);
   await page.route('**/mcp',intercept);
+  const retryAndSettle = async outcome => {
+    const before = name === 'Deals'
+      ? await page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.stats()) : null;
+    await page.locator(retry).click();
+    if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+    else await page.waitForFunction(async ({before,outcome}) => {
+      const sync = (await import('/js/pipeline.js')).state.boardSync;
+      const stats = sync.stats(), status = sync.status();
+      return stats.board_reads > before.board_reads && stats[outcome] > before[outcome]
+        && !status.board_read_in_flight && !status.refresh_pending;
+    }, {before,outcome});
+  };
   await page.goto(origin+path);
   await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
   assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
-  await page.locator(retry).click();
-  if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+  if (name === 'Deals') await page.waitForFunction(async () => {
+    const sync = (await import('/js/pipeline.js')).state.boardSync;
+    return sync.stats().board_failed > 0 && !sync.status().board_read_in_flight && !sync.status().refresh_pending;
+  });
+  await retryAndSettle('board_failed');
   await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
   assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
   refused=false;
-  await page.locator(retry).click();
-  if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+  await retryAndSettle('board_applied');
   await page.waitForFunction(({updated})=>document.querySelector(updated)?.textContent.startsWith('Updated '),{updated});
   assert.match(await page.locator(updated).textContent(),/^Updated /);
   refused=true;
-  await page.locator(retry).click();
-  if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+  await retryAndSettle('board_failed');
   await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
   assert.doesNotMatch(await page.locator(updated).textContent(),/Updating/);
 });
