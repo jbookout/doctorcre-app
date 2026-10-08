@@ -4,15 +4,18 @@ import { STAGING_ORIGIN } from './session.mjs';
 
 export const stagingRequestAllowed = url => url.origin === STAGING_ORIGIN || ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname);
 
+// Runs in the page: keeps a share URL's credential out of every screenshot.
+export function hideCredentialPixels() {
+  const hide = () => {
+    document.querySelector('#share-url')?.style.setProperty('opacity', '0', 'important');
+  };
+  hide();
+  new MutationObserver(hide).observe(document, { childList: true, subtree: true });
+}
+
 export async function installStagingGuard(context) {
   await context.route(url => !stagingRequestAllowed(url), route => route.abort());
-  await context.addInitScript(() => {
-    const hideCredentialPixels = () => {
-      document.querySelector('#share-url')?.style.setProperty('opacity', '0', 'important');
-    };
-    hideCredentialPixels();
-    new MutationObserver(hideCredentialPixels).observe(document, { childList: true, subtree: true });
-  });
+  await context.addInitScript(hideCredentialPixels);
 }
 
 export function stagingWeb(options) {

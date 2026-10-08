@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { request as playwrightRequest } from 'playwright';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { BudgetRefusal } from './run-budget.mjs';
 
 export const STAGING_ORIGIN = contract.origin;
 export const SECRET_PATH = join(homedir(), '.config/carr/e2e-session-secret');
@@ -30,42 +31,51 @@ export class SessionPreflightFailure extends Error {
   constructor(code) { super('staging session preflight failed: ' + code); this.code = code; }
 }
 
-export async function preflightRequest(phase, operation, { pause = delay } = {}) {
-  for (let attempt = 0; attempt < 3; attempt++) {
+// Retries are a budget property: each attempt is its own debited dispatch, and
+// the approved Home smoke allows none (attempts = retries + 1 = 1).
+export async function preflightRequest(phase, operation, { pause = delay, attempts = 1 } = {}) {
+  for (let attempt = 1; ; attempt++) {
     try {
       const response = await operation();
       if (![429, 502, 503, 504].includes(response.status())) return response;
-      if (attempt === 2) throw new SessionPreflightFailure(phase + '-http-' + response.status());
+      if (attempt >= attempts) throw new SessionPreflightFailure(phase + '-http-' + response.status());
     } catch (error) {
-      if (error instanceof SessionPreflightFailure) throw error;
-      if (attempt === 2) throw new SessionPreflightFailure(phase + '-transport-failed');
+      if (error instanceof SessionPreflightFailure || error instanceof BudgetRefusal) throw error;
+      if (attempt >= attempts) throw new SessionPreflightFailure(phase + '-transport-failed');
     }
-    await pause(250 * (attempt + 1));
+    await pause(250 * attempt);
   }
 }
 
-export async function stagingSession(baseURL = STAGING_ORIGIN) {
+// Every preflight request is reserved against the run budget before it is
+// sent. A caller without a budget is unsupported ingress and refuses.
+export async function stagingSession(baseURL = STAGING_ORIGIN, {
+  budget, requestFactory = options => playwrightRequest.newContext(options), readSecret = readSessionSecret,
+} = {}) {
+  if (!budget) throw new BudgetRefusal('http-not-budgeted');
   const origin = assertStagingURL(baseURL);
+  const attempts = budget.profile.retries + 1;
+  const preflight = (phase, send) => preflightRequest(phase, () => budget.dispatch('preflight', send), { attempts });
   let api, phase = 'context';
   try {
-    api = await playwrightRequest.newContext({ baseURL: origin, timeout: 30_000 });
+    api = await requestFactory({ baseURL: origin, timeout: budget.timeoutMs() });
     phase = 'app-release';
-    const release = await preflightRequest(phase, () => api.get('/app-release', { maxRedirects: 0 }));
+    const release = await preflight(phase, () => api.get('/app-release', { maxRedirects: 0 }));
     const identity = release.ok() ? await release.json() : {};
     if (identity.environment !== 'staging' || identity.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity.source_commit || ''))
       throw new SessionPreflightFailure('app-release-invalid');
     phase = 'carr-release';
-    const carrRelease = await preflightRequest(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }));
+    const carrRelease = await preflight(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }));
     const carr = carrRelease.ok() ? await carrRelease.json() : {};
     if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit)
       throw new SessionPreflightFailure('carr-source-pair-refused');
     phase = 'secret';
-    const secret = await readSessionSecret();
+    const secret = await readSecret();
     phase = 'session-exchange';
-    const response = await preflightRequest(phase, () => api.post('/auth/e2e-session', { headers: { authorization: 'Bearer ' + secret }, maxRedirects: 0 }));
+    const response = await preflight(phase, () => api.post('/auth/e2e-session', { headers: { authorization: 'Bearer ' + secret }, maxRedirects: 0 }));
     if (!response.ok()) throw new SessionPreflightFailure('session-exchange-refused-' + response.status());
     phase = 'session-confirm';
-    const session = await preflightRequest(phase, () => api.get('/auth/session', { maxRedirects: 0 }));
+    const session = await preflight(phase, () => api.get('/auth/session', { maxRedirects: 0 }));
     const actor = session.ok() ? await session.json() : {};
     if (actor.actor?.slug !== 'joe' || actor.e2e_principal !== 'e2e-joe') throw new SessionPreflightFailure('dedicated-principal-refused');
     phase = 'cookie';
@@ -74,7 +84,7 @@ export async function stagingSession(baseURL = STAGING_ORIGIN) {
       throw new SessionPreflightFailure('secure-cookie-refused');
     return { state, release: { ...identity, carr_source_commit: contract.producer.source_commit } };
   } catch (error) {
-    if (error instanceof SessionPreflightFailure) throw error;
+    if (error instanceof SessionPreflightFailure || error instanceof BudgetRefusal) throw error;
     // Never forward a provider error: request objects can include credentials.
     throw new SessionPreflightFailure(phase + '-failed');
   } finally { if (api) await api.dispose().catch(() => { throw new SessionPreflightFailure('context-dispose-failed'); }); }

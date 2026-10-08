@@ -693,16 +693,20 @@ test('exhausted duplicate discovery states do not reopen and replay tested contr
   assert.equal(pages, 7, 'only the initial and first revealed inventory need base pages');
 });
 
-test('session preflight retries bounded transient failures and never retries authentication refusals', async () => {
+test('session preflight retries only the attempts it is given and never retries authentication refusals', async () => {
   for (const mode of ['transport', 'unavailable']) {
     let calls = 0;
     const response = await preflightRequest('session-exchange', async () => {
       calls++;
       if (calls < 3 && mode === 'transport') throw new Error('private provider credential canary');
       return { status: () => calls < 3 ? 503 : 200 };
-    }, { pause: async () => {} });
+    }, { pause: async () => {}, attempts: 3 });
     assert.equal(calls, 3); assert.equal(response.status(), 200);
   }
+  let once = 0;
+  await assert.rejects(preflightRequest('app-release', async () => { once++; return { status: () => 503 }; }, { pause: async () => {} }),
+    error => error instanceof SessionPreflightFailure && error.code === 'app-release-http-503');
+  assert.equal(once, 1, 'the default is one attempt: no automatic retry');
   let denied = 0;
   assert.equal((await preflightRequest('session-exchange', async () => { denied++; return { status: () => 401 }; }, { pause: async () => {} })).status(), 401);
   assert.equal(denied, 1);

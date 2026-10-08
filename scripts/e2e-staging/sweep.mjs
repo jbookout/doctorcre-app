@@ -14,13 +14,18 @@ import { sweepOwnerStates } from './owner-states.mjs';
 import { prepareCalendarRecord } from './calendar-coverage.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint, sweepOptions } from './resume.mjs';
+import { assertProfilePermits } from './run-budget.mjs';
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
 export async function persistSweepReport(output, run, setup, { publishFile } = {}) {
   await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
 }
 
-export async function sweep({ resume = false, recordedActionProof } = {}) {
+export async function sweep({ resume = false, recordedActionProof, prepareRecords = prepareStagingRecords } = {}) {
+  // The full sweep creates staging fixtures and presses destructive controls.
+  // No approved run budget funds either, so it refuses before any setup.
+  assertProfilePermits('fixture');
+  assertProfilePermits('mutation');
   if (typeof resume !== 'boolean') throw new Error('Staging sweep resume must be a boolean');
   process.env.E2E_TELEMETRY_DISABLED = '1';
   const output = outputPath();
@@ -31,7 +36,7 @@ export async function sweep({ resume = false, recordedActionProof } = {}) {
   const continuation = recordedActionProof ? await createRecordedActionContinuation({ prior, proof: recordedActionProof }) : null;
   if (continuation) prior = continuation.prior;
   const run = createSweepRun({ targets, routedScreens, prior });
-  const setup = await prepareStagingRecords(output, { reuseOnly: resume, session: async origin => {
+  const setup = await prepareRecords(output, { reuseOnly: resume, session: async origin => {
     const current = await stagingSession(origin);
     run.assertRelease(current.release);
     return current;

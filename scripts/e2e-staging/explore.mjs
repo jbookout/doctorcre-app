@@ -7,17 +7,22 @@ import { writeReport, explorationEvidence } from './report.mjs';
 import { outputPath, scrubEvidence } from './sweep.mjs';
 import { prepareStagingRecords } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
+import { assertProfilePermits } from './run-budget.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
-export async function exploreAll() {
+export async function exploreAll({ loadExplorer = explorer40, prepareRecords = prepareStagingRecords } = {}) {
+  // Exploration is model-driven and creates fixtures. No approved run budget
+  // funds a model call, so it refuses before setup or loading the provider.
+  assertProfilePermits('model');
+  assertProfilePermits('fixture');
   process.env.E2E_TARGET = 'staging-live';
   process.env.E2E_TELEMETRY_DISABLED = '1';
   process.env.DO_NOT_TRACK = '1';
   const output = outputPath();
-  let setup = await prepareStagingRecords(output);
+  let setup = await prepareRecords(output);
   const { release } = setup;
-  const explore = await explorer40();
+  const explore = await loadExplorer();
   const explorations = [], findings = [...setup.findings];
   let sequence = 0;
   const routedScreens = await screens();
@@ -28,7 +33,7 @@ export async function exploreAll() {
   for (const target of targets) for (const screen of routedScreens.filter(screen => screen.surface === target.surface)) {
     const agents = target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux'];
     for (const agent of agents) {
-      setup = await prepareStagingRecords(output);
+      setup = await prepareRecords(output);
       const current = setup.release;
       if (current.source_commit !== release.source_commit || current.carr_source_commit !== release.carr_source_commit) throw new Error('Staging source changed during workspace exploration');
       const runId = `${String(++sequence).padStart(3, '0')}-${target.name}-${agent}`;
