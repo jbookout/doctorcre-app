@@ -952,3 +952,181 @@ test('inventory reobserves navigation context loss within its deadline and keeps
     await assert.rejects(settledInventory(wrap(page, () => { throw closed; })), error => error === closed);
   });
 });
+
+test('recorded action ledger binds evidence and read semantics while all three proposed identities avoid repeated Save', async t => {
+  const { planRecordedActionReconciliations, observeRecordedActionReadProof, admitRecordedAction } =
+    await import('../../scripts/e2e-staging/recorded-action-reconciliation.mjs');
+  const { canonicalIdentity, identityKey, traversalSnapshot } =
+    await import('../../scripts/e2e-staging/traversal.mjs');
+  const { createHash, randomUUID } = await import('node:crypto');
+  const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const capture = await captureControlEvidence(t);
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  let saveAttempts = 0, saveMutations = 0;
+  const { STAGING_ORIGIN } = await import('../../scripts/e2e-staging/session.mjs');
+  const record = 'synthetic-record';
+  const receipt = { ok: true, deal_id: record, next_step_id: 'synthetic-step',
+    next_action_id: null, supersedes: [], created_at: '2026-10-08T00:00:00.000Z' };
+  let room = { id: record, deal_id: record, next_step: '', next_date: null,
+    thread: [], next_actions: [] };
+  const fixture = () => '<main><section role="dialog"><button id="morningClose" type="button" onclick="this.closest(\'section\').hidden=true">Dismiss</button></section><section id="homeCalendar"><div><a hidden>1</a><a hidden>2</a><a hidden>3</a><a href="/deals?deal=synthetic-record" onclick="event.preventDefault();history.pushState({},\'\',this.getAttribute(\'href\'));document.querySelector(\'#recordPanel\').hidden=false;loadRoom()">Open record</a></div></section></main><section id="recordPanel" role="dialog" aria-label="Synthetic record" hidden><form id="detailNextForm" onsubmit="event.preventDefault();saveStep()"><textarea name="text">Follow up</textarea><input name="date" type="date"><button type="submit">Save next step</button></form><button id="outlook" type="button">Deal outlook</button><div id="timeline">' + (saveMutations ? '<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07">Oct7</button>' : '') + '</div></section><script>async function rpc(name,args){const r=await fetch("/mcp",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name,arguments:args}})});return JSON.parse((await r.json()).result.content[0].text)}async function loadRoom(){const room=await rpc("get-deal-room",{deal:"synthetic-record"});document.querySelector("textarea").value=room.next_step||"Follow up";document.querySelector("input").value=room.next_date||""}async function saveStep(){await fixtureSaveAttempt();await rpc("set-next-step",{deal:"synthetic-record",text:document.querySelector("textarea").value.trim(),next_date:document.querySelector("input").value||null,idempotency_key:"synthetic-original-key"});if(!document.querySelector("#timelineDay"))document.querySelector("#timeline").innerHTML=\'<button id="timelineDay" type="button" data-timeline-day="2026-10-07" data-detail-focus="day:2026-10-07">Oct7</button>\';await loadRoom()}</script>';
+  const freshPage = async (navigate = true) => {
+    const page = await browser.newPage();
+    await page.exposeFunction('fixtureSaveAttempt', () => { saveAttempts++; });
+    await page.route('**/*', async route => {
+      if (new URL(route.request().url()).pathname === '/mcp') {
+        const body = route.request().postDataJSON();
+        let result = room;
+        if (body.params.name === 'set-next-step') {
+          saveMutations++;
+          room = { ...room, next_step: body.params.arguments.text,
+            next_date: body.params.arguments.next_date,
+            thread: [{ id: receipt.next_step_id, kind: 'next_step',
+              text: body.params.arguments.text, created_at: receipt.created_at }] };
+          result = receipt;
+        }
+        return route.fulfill({ contentType: 'application/json',
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1,
+            result: { content: [{ type: 'text', text: JSON.stringify(result) }] } }) });
+      }
+      return route.fulfill({ contentType: 'text/html', body: fixture() });
+    });
+    if (navigate) await page.goto(STAGING_ORIGIN + '/');
+    return page;
+  };
+  const rawInventory = async page => {
+    let raw;
+    const proxy = new Proxy(page, { get(target, key) {
+      if (key === 'locator') return (...args) => {
+        const locator = target.locator(...args);
+        return new Proxy(locator, { get(inner, name) {
+          if (name === 'evaluateAll') return async (...xs) => {
+            const result = await inner.evaluateAll(...xs);
+            if (result?.rows) raw = result.rows;
+            return result;
+          };
+          const value = Reflect.get(inner, name);
+          return typeof value === 'function' ? value.bind(inner) : value;
+        } });
+      };
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    const controls = await inventory(proxy);
+    return { controls, raw };
+  };
+  const screen = { path: '/', name: 'Synthetic', surface: 'app', target: 'staging-live',
+    reached: true, in_progress: true, attempt_id: randomUUID(), controls: [] };
+  const page = await freshPage();
+  const opening = [];
+  for (const selector of ['#morningClose', '#homeCalendar > div:nth-of-type(1) > a:nth-of-type(4)']) {
+    const control = (await inventory(page)).find(row => row.selector === selector);
+    await page.context().tracing.start({ screenshots: true, snapshots: true, sources: false });
+    const result = await pressControl(page, control, { waitMs: 20 });
+    await page.waitForLoadState('networkidle');
+    const path = await capture(page);
+    await page.context().tracing.stop({ path: path.replace(/\.png$/, '.zip') });
+    const row = { ...control, ...result, key: screen.target + '/' + screen.path + '/' + identityKey(control.identity),
+      target: screen.target, path: screen.path, screen: screen.name, openers: [],
+      evidence_path: path };
+    screen.controls.push(row); opening.push(row);
+  }
+  const before = await rawInventory(page);
+  const original = before.raw.find(row => row.name === 'Save next step');
+  await page.context().tracing.start({ screenshots: true, snapshots: true, sources: false });
+  const result = await pressControl(page, original, { waitMs: 20 });
+  await page.waitForLoadState('networkidle');
+  const path = await capture(page);
+  await page.context().tracing.stop({ path: path.replace(/\.png$/, '.zip') });
+  const saved = { ...original, ...result, key: screen.target + '/' + screen.path + '/' + identityKey(original.identity),
+    target: screen.target, path: screen.path, screen: screen.name,
+    openers: opening.map(row => row.name), evidence_path: path };
+  screen.controls.push(saved);
+  const queued = (await inventory(page)).find(row => row.name === 'Save next step');
+  const unresolved = [1, 2].map(index => ({ ...queued,
+    identity: canonicalIdentity('unproved-legacy-record-binding-' + index) }));
+  screen.traversal = traversalSnapshot({ queue: [queued, ...unresolved].map(control => ({
+    openers: [...opening, saved], controls: [control] })),
+    destructive: [], active: null, pending: null, seen: new Set(screen.controls.map(row => row.identity)) });
+  await page.context().close();
+  validateTraversal(screen);
+  assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+  const prior = { release: { service: 'doctorcre-app', environment: 'staging',
+    source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit },
+    screens: [screen], history: [], stateObligations: [] };
+  const readPage = await freshPage(false);
+  const proof = await observeRecordedActionReadProof({ page: readPage, prior, release: prior.release,
+    screen, original: saved, queued, openers: opening });
+  await readPage.context().close();
+  const priorBytes = JSON.stringify(prior), proofBytes = JSON.stringify(proof);
+  const plan = await planRecordedActionReconciliations({ prior, proof });
+  assert.equal(plan.aliases.length, 1);
+  assert.equal(plan.blocked.length, 2, 'Unproved record/action/value bindings remain blocked');
+  assert.equal(plan.can_resume, false, 'Ledger design does not enable a runtime handoff');
+  assert.equal(JSON.stringify(prior), priorBytes);
+  assert.equal(JSON.stringify(proof), proofBytes);
+  assert.equal(plan.aliases[0].original_evidence.png, saved.evidence_path);
+  assert.equal(plan.aliases[0].original_idempotency_key_sha256.length, 64);
+  assert.equal(plan.aliases[0].removed_write_opener, canonicalIdentity(saved.identity));
+  for (const control of [queued, ...unresolved]) {
+    const alias = plan.aliases.find(row => row.queued_identity === canonicalIdentity(control.identity));
+    const candidate = { queued_identity: canonicalIdentity(control.identity),
+      value_sha256: alias?.value_sha256 || '0'.repeat(64),
+      effect_sha256: alias?.effect_sha256 || '0'.repeat(64) };
+    if (alias) {
+      const admission = admitRecordedAction(plan, candidate);
+      assert.equal(admission.decision, 'already-measured-equivalent');
+      assert.equal(admission.action_executed, false);
+      assert.throws(() => admitRecordedAction(plan, { ...candidate, as_opener: true }), /proof refused/);
+      assert.throws(() => admitRecordedAction(plan, { ...candidate, value_sha256: '0'.repeat(64) }), /proof refused/);
+    } else assert.throws(() => admitRecordedAction(plan, candidate), /proof refused/);
+    assert.equal(saveAttempts, 1, 'No queued identity or admission decision attempts Save');
+    assert.equal(saveMutations, 1, 'No duplicate Save mutation across any of the three identities');
+  }
+  const mutatingPage = await freshPage(false);
+  await assert.rejects(observeRecordedActionReadProof({ page: mutatingPage, prior,
+    release: prior.release, screen, original: saved, queued, openers: [...opening, saved] }), /proof refused/);
+  await mutatingPage.context().close();
+  assert.equal(saveAttempts, 1, 'Mutating opener replay is rejected before clicking');
+  assert.equal(saveMutations, 1);
+  for (const mutate of [
+    value => { value.observations[0].form_values.text = 'Different proposed value'; },
+    value => { value.observations[0].save_binding.form_id = 'other-form'; },
+    value => { value.observations[0].save_binding.form_action = '/mutating-action'; },
+    value => { value.observations[0].current.aria = '|||true'; },
+    value => { value.observations[0].read_response.room.next_step = 'Different persisted value'; },
+    value => { value.observations[0].read_response.room.thread[0].id = 'different-effect'; },
+    value => { value.observations[0].read_response.room.thread[0].actor = 'different-effect-actor'; },
+    value => { value.observations[0].current.identity = canonicalIdentity('different-current'); },
+    value => { value.observations[0].raw_current.identity = value.observations[0].raw_current.identity.replace('#timelineDay', '#nonTimelineControl'); },
+    value => { value.observations[0].addition.detail_focus = 'not-a-day'; },
+    value => { value.observations[0].openers[0].policy = 'unproved-button'; },
+    value => { value.observations[0].openers[0].dom.form = 'mutating-form'; },
+    value => { value.observations[0].openers[1].dom.href = '/deals?deal=other-record'; },
+    value => { value.observations[0].openers[0].raw_before.identity = canonicalIdentity('wrong-opener'); },
+    value => { value.observations[0].openers.push(value.observations[0].openers[0]); },
+  ]) {
+    const changed = structuredClone(proof); mutate(changed);
+    const refused = await planRecordedActionReconciliations({ prior, proof: changed });
+    assert.equal(refused.aliases.length, 0);
+    assert.equal(refused.blocked.length, 3);
+    assert.equal(JSON.stringify(prior), priorBytes);
+    assert.equal(saveMutations, 1);
+  }
+  for (const mutate of [
+    value => { value.checkpoint_sha256 = '0'.repeat(64); },
+    value => { value.screen_sha256 = '0'.repeat(64); },
+    value => { value.source_attempt = randomUUID(); },
+    value => { value.release.source_commit = 'b'.repeat(40); },
+    value => { value.producer_sha256 = '0'.repeat(64); },
+    value => { value.origin = 'https://unproved.invalid'; },
+    value => { value.root_path = '/other'; },
+    value => { value.blocked_non_read_requests = 1; },
+  ]) {
+    const changed = structuredClone(proof); mutate(changed);
+    await assert.rejects(planRecordedActionReconciliations({ prior, proof: changed }), /proof refused/);
+  }
+  assert.equal(JSON.stringify(proof), proofBytes);
+  assert.equal(saveAttempts, 1); assert.equal(saveMutations, 1);
+});
