@@ -11,7 +11,7 @@ import { eligibleLead } from '../../js/leads-model.js';
 const fixture = 'fc08d2f4-a951-5679-9f34-40d0f4278842';
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
 const reply = body => ({ ok: () => true, status: () => 200, json: async () => body });
-const envelope = body => reply({ result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
+const envelope = body => reply({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
 
 function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = false, beforeReadback } = {}) {
   const calls = [], rows = { deals: new Map() };
@@ -425,6 +425,17 @@ async function browserFixtures(t) {
   const write = plan => writeFile(path, JSON.stringify(plan), { mode: 0o600 });
   return { output, path, setup, read, write, guard: stagingFixtureWriteGuard({ output, release }) };
 }
+function operationReceipt(name, args, primary = args.deal || args.conversation_id || args.lead) {
+  if (name === 'set-next-step') return { ok: true, deal_id: primary, next_step_id: browserKey(901),
+    next_action_id: browserKey(902), supersedes: null, created_at: new Date().toISOString() };
+  if (name === 'add-deal-note') return { ok: true, deal_id: primary, note_id: browserKey(903), created_at: new Date().toISOString() };
+  if (name === 'rename-doc-conversation') return { ok: true, conversation_id: primary, version: args.base_version + 1,
+    title: args.title?.trim() || 'Fictional conversation', pinned: args.pinned ?? false, archived: args.archived ?? false };
+  if (name === 'claim-lead') return { ok: true, lead_id: primary, owner: args.expected_actor };
+  if (name === 'link-lead-client') return { ok: true, lead_id: primary, client_id: args.client_id };
+  if (name === 'update-lead') return { ok: true, updated: ['stage'] }; // Actual pinned response has no identity/value binding.
+  assert.fail('Unknown synthetic operation');
+}
 const nextStep = (f, key = 1, text = 'Fictional next step') => ({
   deal: f.setup.records.deal.id, text, next_date: null, idempotency_key: browserKey(key),
 });
@@ -440,7 +451,7 @@ test('browser writes prove creation ownership and retain exact intent before a s
     assert.deepEqual(plan.browser_write_attempts[0].arguments, args);
     assert.equal(plan.browser_write_attempts[0].state, 'inflight');
     assert.equal((await stat(f.path)).mode & 0o777, 0o600);
-    return envelope({ ok: true });
+    return envelope(operationReceipt('set-next-step', args));
   });
   assert.equal(response.status(), 200);
   const intent = (await f.read()).browser_write_attempts[0];
@@ -547,7 +558,7 @@ test('concurrent same-record attempts dispatch only once while intent is unresol
   const atDispatch = new Promise(resolve => { dispatched = resolve; });
   let complete;
   const completion = new Promise(resolve => { complete = resolve; });
-  const first = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => { dispatched(); await completion; return envelope({ ok: true }); });
+  const first = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => { dispatched(); await completion; return envelope(operationReceipt('set-next-step', nextStep(f))); });
   await atDispatch;
   await assert.rejects(f.guard.handle(browserRequest('add-deal-note', { deal: f.setup.records.deal.id, text: 'Another write', idempotency_key: browserKey(2) }),
     () => assert.fail('concurrent write must not dispatch')), /ambiguous-record/);
@@ -578,13 +589,95 @@ test('each admitted operation binds only creation-proved fixture records', async
     ['set-next-step', { deal: r.invoice.deal_id, text: 'Fictional step', next_date: '2026-10-08' }],
     ['rename-doc-conversation', { conversation_id: r.conversation.id, base_version: 1, title: 'Fictional rename', pinned: true, archived: false }],
     ['claim-lead', lead],
-    ['update-lead', { ...lead, fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [], human_quote: 'Reviewed' } }],
     ['link-lead-client', { ...lead, client_id: r.client.id, confirmed: true }],
+    ['update-lead', { ...lead, fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [], human_quote: 'Reviewed' } }],
   ];
-  for (const [index, [name, args]] of operations.entries())
-    await f.guard.handle(browserRequest(name, { ...args, idempotency_key: browserKey(20 + index) }), async () => envelope({ ok: true }));
+  for (const [index, [name, args]] of operations.entries()) {
+    const requestArgs = { ...args, idempotency_key: browserKey(20 + index) };
+    const result = f.guard.handle(browserRequest(name, requestArgs), async () =>
+      envelope(operationReceipt(name, requestArgs, name.includes('lead') ? r.lead.id : args.deal || args.conversation_id)));
+    if (name === 'update-lead') await assert.rejects(result, /dispatch-outcome-unresolved/);
+    else await result;
+  }
   const intents = (await f.read()).browser_write_attempts;
   assert.equal(intents.length, operations.length);
-  assert.deepEqual(intents.at(-1).record_ids, [r.lead.id, r.client.id]);
-  assert.ok(intents.every(row => row.state === 'acknowledged'));
+  assert.deepEqual(intents.at(-2).record_ids, [r.lead.id, r.client.id]);
+  assert.ok(intents.slice(0, -1).every(row => row.state === 'acknowledged' && row.response.binding.operation === row.operation));
+  assert.equal(intents.at(-1).state, 'unresolved', 'pinned stage receipt cannot prove record or changed value');
+});
+
+test('known GET/HEAD reads and exact static assets pass; unknown paths and auth mutations retain refusals before dispatch', async t => {
+  const f = await browserFixtures(t);
+  const known = ['/', '/calendar', '/auth/session', '/app-release', '/pipeline/changes',
+    '/api/v1/business/clients/' + f.setup.records.client.id, '/api/tours/library', '/api/system-work/current', '/js/live-client.js', '/css/shell.css'];
+  // Use a known stylesheet from the existing build manifest, not a made-up prefix grant.
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  known[known.length - 1] = '/' + manifest.files.find(row => row.path.startsWith('css/')).path;
+  let forwarded = 0;
+  for (const method of ['GET', 'HEAD']) {
+    for (const path of known) assert.equal(await f.guard.handle(browserRequest('unused', {}, { method, path }), async () => { forwarded++; return 'read'; }), 'read');
+    for (const path of ['/auth/login', '/auth/callback', '/auth/reauth', '/auth/logout', '/api/system-work/challenge',
+      '/api/system-work/WR-1/plan/accept', '/api/tours/create', '/api/v1/unknown-write', '/unknown-path', '/js/not-a-built-asset.js']) {
+      await assert.rejects(f.guard.handle(browserRequest('unused', {}, { method, path }), () => assert.fail('unknown or auth GET must not dispatch')), /authentication-mutation-unproved|read-path-unproved/);
+    }
+  }
+  assert.equal(forwarded, known.length * 2);
+  const plan = await f.read();
+  assert.equal(plan.browser_write_attempts, undefined);
+  assert.equal(plan.browser_write_refusals.length, 20);
+  assert.ok(plan.browser_write_refusals.every(row => row.forwarded === false));
+});
+
+test('wrong-record, incomplete and wrong-effect success responses remain unresolved and block later fingerprints', async t => {
+  const names = ['set-next-step', 'add-deal-note', 'rename-doc-conversation', 'claim-lead', 'link-lead-client', 'update-lead'];
+  for (const name of names) for (const failure of ['wrong-record', 'incomplete', 'wrong-effect']) await t.test(name + '/' + failure, async t => {
+    const f = await browserFixtures(t), r = f.setup.records;
+    const args = name === 'set-next-step' ? nextStep(f) :
+      name === 'add-deal-note' ? { deal: r.deal.id, text: 'Fictional note', idempotency_key: browserKey(1) } :
+      name === 'rename-doc-conversation' ? { conversation_id: r.conversation.id, base_version: 1, title: 'Fictional rename', pinned: true, idempotency_key: browserKey(1) } :
+      { lead: r.lead.id, base_version: 1, expected_actor: 'joe', idempotency_key: browserKey(1),
+        ...(name === 'link-lead-client' ? { client_id: r.client.id, confirmed: true } : {}),
+        ...(name === 'update-lead' ? { fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [] } } : {}) };
+    const good = operationReceipt(name, args);
+    const payload = failure === 'incomplete' ? { ok: true } : { ...good };
+    if (failure === 'wrong-record') {
+      if (name.includes('doc-conversation')) payload.conversation_id = browserKey(99);
+      else if (name.includes('lead')) payload.lead_id = browserKey(99);
+      else payload.deal_id = browserKey(99);
+    }
+    if (failure === 'wrong-effect') {
+      if (name === 'set-next-step') payload.next_action_id = undefined;
+      if (name === 'add-deal-note') payload.created_at = '2000-01-01T00:00:00Z';
+      if (name === 'rename-doc-conversation') payload.pinned = false;
+      if (name === 'claim-lead') payload.owner = 'another-actor';
+      if (name === 'link-lead-client') payload.client_id = browserKey(99);
+      if (name === 'update-lead') payload.updated = ['notes'];
+    }
+    let dispatches = 0;
+    await assert.rejects(f.guard.handle(browserRequest(name, args), async () => { dispatches++; return envelope(payload); }), /dispatch-outcome-unresolved/);
+    const stored = (await f.read()).browser_write_attempts[0];
+    assert.equal(stored.state, 'unresolved');
+    assert.equal(stored.response.acknowledged, false);
+    assert.equal(stored.response.binding, undefined);
+    // Change the fingerprint, not just the key; the unresolved record still blocks it.
+    const laterName = name.includes('lead') ? 'link-lead-client' : name === 'rename-doc-conversation' ? name : 'add-deal-note';
+    const later = laterName === 'link-lead-client' ? { lead: r.lead.id, base_version: 2, expected_actor: 'joe',
+      client_id: r.client.id, confirmed: true, idempotency_key: browserKey(2) } :
+      laterName === 'rename-doc-conversation' ? { conversation_id: r.conversation.id, base_version: 2, archived: true, idempotency_key: browserKey(2) } :
+      { deal: r.deal.id, text: 'Distinct later action', idempotency_key: browserKey(2) };
+    await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).handle(browserRequest(laterName, later),
+      () => { dispatches++; }), /ambiguous-record|duplicate-attempt/);
+    assert.equal(dispatches, 1);
+  });
+});
+
+test('receipt correlation, replay and future timestamps cannot release an ambiguous fixture', async t => {
+  for (const kind of ['wrong-rpc-id', 'replayed', 'future']) await t.test(kind, async t => {
+    const f = await browserFixtures(t), args = nextStep(f), payload = operationReceipt('set-next-step', args);
+    if (kind === 'replayed') payload.replayed = true;
+    if (kind === 'future') payload.created_at = '2999-01-01T00:00:00Z';
+    const response = kind === 'wrong-rpc-id' ? reply({ jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }) : envelope(payload);
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', args), async () => response), /dispatch-outcome-unresolved/);
+    assert.equal((await f.read()).browser_write_attempts[0].state, 'unresolved');
+  });
 });

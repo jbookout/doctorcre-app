@@ -2,27 +2,20 @@ import { web, surfaceOf } from '@e2e-dev/web';
 import { defineEngine } from 'e2e/engine';
 import { stagingFixtureWriteGuard, readStagingFixtureRelease } from './records.mjs';
 import { resolve } from 'node:path';
-import { STAGING_ORIGIN } from './session.mjs';
-
-export const stagingRequestAllowed = url => url.origin === STAGING_ORIGIN || ['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname);
-
 const contextRefusals = new WeakMap();
 export const stagingWriteRefusals = context => contextRefusals.get(context) || [];
 
 export async function installStagingGuard(context, fixtureGuard = stagingFixtureWriteGuard()) {
-  await context.route(url => !stagingRequestAllowed(url), route => route.abort());
   const refusals = [];
   contextRefusals.set(context, refusals);
   await context.route('**/*', async route => {
     const request = route.request();
-    if (!stagingRequestAllowed(new URL(request.url()))) return route.abort();
     try {
-      if (['GET', 'HEAD'].includes(request.method())) {
-        if (new URL(request.url()).origin !== STAGING_ORIGIN) return route.fallback();
-        return await fixtureGuard.handle(request, () => route.fallback());
-      }
-      const response = await fixtureGuard.handle(request, () => route.fetch({ maxRetries: 0, maxRedirects: 0, timeout: 30_000 }));
-      await route.fulfill({ response });
+      // Every method crosses the same policy before any request is forwarded.
+      const read = ['GET', 'HEAD'].includes(request.method());
+      const response = await fixtureGuard.handle(request, () => read ? route.fallback()
+        : route.fetch({ maxRetries: 0, maxRedirects: 0, timeout: 30_000 }));
+      if (!read) await route.fulfill({ response });
     } catch (error) {
       refusals.push({ reason: error.code || 'fixture-guard-unavailable' });
       await route.abort();

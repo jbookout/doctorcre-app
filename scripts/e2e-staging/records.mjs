@@ -1,10 +1,12 @@
 import { constants } from 'node:fs';
-import { mkdir, open, rename } from 'node:fs/promises';
+import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { request as playwrightRequest } from 'playwright';
 import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
@@ -229,6 +231,43 @@ export async function prepareStagingRecords(output, {
 
 const browserReads = new Set(["capture-queue", "correspondence-readiness", "current-work-item", "deal-room-board", "engineering-passport", "find", "find-and-catch-up", "get-call-context", "get-deal-room", "get-incident", "governance-queue", "incident-board", "lead-board", "list-doc-conversations", "list-doc-suggestions", "list-industry-events", "list-my-codex-sessions", "list-progress-boards", "loop-board", "loop-headers", "morning-brief", "notification-feed", "read-assurance-health", "read-correspondence-thread", "read-dispatch-history", "read-doc-activity", "read-doc-conversation", "read-doc-outcome-cards", "read-invoice-tracker", "read-loop", "read-notification-preferences", "read-portfolio", "read-progress-board", "read-resource-dashboard", "read-room", "read-room-queue", "read-session-identity", "schedule-board", "today-triage", "unfinished-work", "work-request-card"]);
 
+// Known app documents, audited HTTP reads and exact built static assets only.
+// API and auth prefixes are deliberately not read grants.
+const browserPages = new Set([...Object.keys(appRoutes.routes), ...Object.keys(appRoutes.redirects || {})]);
+const httpReads = new Set([
+  '/auth/session', '/app-release', '/pipeline/changes', '/api/call-context',
+  '/api/v1/command-center', '/api/v1/work-inventory', '/api/v1/atlas-graph', '/api/v1/jev-deal-reading',
+  '/api/v1/business/clients', '/api/v1/business/vendors', '/api/v1/business/leases', '/api/v1/business/relationships',
+  '/api/room/turns', '/api/room/queue', '/api/system-work/session', '/api/system-work/current',
+  '/api/tours/library', '/api/tours/detail', '/api/tours/selection-cart', '/api/tours/property-evidence/v1',
+  '/api/tours/feedback', '/api/tours/projection/candidates',
+]);
+let builtStaticPaths;
+async function knownBrowserRead(url) {
+  if (browserPages.has(url.pathname) || httpReads.has(url.pathname) ||
+      /^\/control-room\/progress\/board\/[^/%]+$/.test(url.pathname) ||
+      /^\/api\/v1\/business\/(clients|vendors)\/[0-9a-f-]{36}$/i.test(url.pathname) ||
+      /^\/api\/system-work\/WR-\d+$/.test(url.pathname)) return true;
+  builtStaticPaths ||= readFile(fileURLToPath(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url)), 'utf8')
+    .then(text => {
+      const manifest = JSON.parse(text);
+      if (manifest.schema !== 'doctorcre-static-artifact.v1' || !Array.isArray(manifest.files)) throw new Error('Static manifest unavailable');
+      const files = new Set(manifest.files.map(row => row.path));
+      const paths = new Set([...files].filter(path => /^(css|data|js|public-shell|tours)\//.test(path)).map(path => '/' + path));
+      for (const [route, asset] of [
+        ['/manifest.webmanifest', 'manifest.webmanifest'], ['/sw.js', 'public-shell/sw.js'],
+        ['/offline.html', 'public-shell/offline.html'], ['/favicon.ico', 'public-shell/icons/dealroom.svg'],
+        ['/share.css', 'reports/share.css'], ['/share.js', 'reports/share.js'], ['/share-bootstrap.js', 'reports/share-bootstrap.js'],
+      ]) if (files.has(asset)) paths.add(route);
+      for (const asset of files) {
+        if (asset.startsWith('public-shell/icons/')) paths.add('/icons/' + asset.slice('public-shell/icons/'.length));
+        if (asset.startsWith('reports/vendor/')) paths.add('/vendor/' + asset.slice('reports/vendor/'.length));
+      }
+      return paths;
+    }).catch(() => new Set()); // Missing inventory never widens the read grant.
+  return (await builtStaticPaths).has(url.pathname);
+}
+
 const fixtureWrites = {
   'set-next-step': { record: 'deal', field: 'deal', keys: ['deal', 'text', 'next_date', 'idempotency_key'], values: ['text', 'next_date'] },
   'add-deal-note': { record: 'deal', field: 'deal', keys: ['deal', 'text', 'idempotency_key'], values: ['text'] },
@@ -244,6 +283,37 @@ const stable = value => Array.isArray(value) ? value.map(stable)
   : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const digest = value => createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 const policyFailure = code => { throw Object.assign(new Error('Staging fixture write refused: ' + code), { code, fixturePolicy: true }); };
+
+// Match the pinned producer's actual response shapes. A transport success is
+// not a receipt. update-lead returns only updated column names: it cannot bind
+// the target/value and therefore remains unresolved until separate reconciliation.
+function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || receipt.ok !== true || receipt.error)
+    return null;
+  const primary = recordIDs[0];
+  const timestamp = value => Number.isFinite(Date.parse(value)) && Date.parse(value) >= Date.parse(attemptedAt) - 5000 && Date.parse(value) <= Date.now() + 5000;
+  const keys = allowed => Object.keys(receipt).every(key => ['ok', 'replayed', ...allowed].includes(key)) &&
+    (receipt.replayed === undefined || receipt.replayed === false);
+  let effect;
+  if (name === 'set-next-step' && keys(['deal_id', 'next_step_id', 'next_action_id', 'supersedes', 'created_at']) &&
+      receipt.deal_id === primary && UUID.test(receipt.next_step_id || '') && UUID.test(receipt.next_action_id || '') &&
+      new Set([primary, receipt.next_step_id, receipt.next_action_id]).size === 3 && (receipt.supersedes === null || UUID.test(receipt.supersedes || '')) &&
+      timestamp(receipt.created_at)) effect = { next_step_id: receipt.next_step_id, next_action_id: receipt.next_action_id, created_at: receipt.created_at };
+  if (name === 'add-deal-note' && keys(['deal_id', 'note_id', 'created_at']) &&
+      receipt.deal_id === primary && UUID.test(receipt.note_id || '') && receipt.note_id !== primary && timestamp(receipt.created_at))
+    effect = { note_id: receipt.note_id, created_at: receipt.created_at };
+  if (name === 'rename-doc-conversation' && keys(['conversation_id', 'version', 'title', 'pinned', 'archived']) &&
+      receipt.conversation_id === primary && receipt.version === args.base_version + 1 &&
+      typeof receipt.title === 'string' && receipt.title.trim() && typeof receipt.pinned === 'boolean' && typeof receipt.archived === 'boolean' &&
+      ['title', 'pinned', 'archived'].every(key => args[key] === undefined || receipt[key] === (key === 'title' ? args[key].trim() : args[key])))
+    effect = { version: receipt.version, title: receipt.title, pinned: receipt.pinned, archived: receipt.archived };
+  if (name === 'claim-lead' && keys(['lead_id', 'owner']) && receipt.lead_id === primary && receipt.owner === args.expected_actor)
+    effect = { owner: receipt.owner };
+  if (name === 'link-lead-client' && keys(['lead_id', 'client_id']) &&
+      receipt.lead_id === primary && receipt.client_id === args.client_id && recordIDs.includes(receipt.client_id))
+    effect = { client_id: receipt.client_id };
+  return effect ? { operation: name, record_ids: recordIDs, arguments_sha256: digest(args), effect } : null;
+}
 
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
@@ -282,12 +352,20 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
       let name = 'unknown-operation', token, dispatched = false;
       try {
         const url = new URL(request.url());
-        if (url.origin !== STAGING_ORIGIN || url.username || url.password) policyFailure('origin-unproved');
+        if (url.username || url.password) policyFailure('origin-unproved');
+        const read = ['GET', 'HEAD'].includes(request.method());
+        if (url.origin !== STAGING_ORIGIN) {
+          const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
+            url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
+          if (font) return forward();
+          policyFailure('origin-unproved');
+        }
         if (['GET', 'HEAD'].includes(request.method())) {
           // Login/callback/reauth establish or change session state even on GET.
           // The preflight session read is the only admitted authentication route.
           if (url.pathname.startsWith('/auth/') && url.pathname !== '/auth/session')
             policyFailure('authentication-mutation-unproved');
+          if (!await knownBrowserRead(url)) policyFailure('read-path-unproved');
           return forward();
         }
         let body;
@@ -322,6 +400,8 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
               review.human_quote !== undefined && !text(review.human_quote))
             policyFailure('operation-shape-unproved');
         }
+        if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
+          policyFailure('operation-shape-unproved');
         token = await locked(async () => {
           const plan = await currentPlan();
           const id = owned(plan, spec.record, args[spec.field]) ||
@@ -365,12 +445,15 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
           try { rpc = await response.json(); } catch {}
           let receipt;
           try { receipt = JSON.parse(rpc.result.content[0].text); } catch {}
-          const acknowledged = response.status() === 200 && !rpc?.error && !rpc?.result?.isError &&
-            Array.isArray(rpc?.result?.content) && rpc.result.content.length === 1 &&
-            rpc.result.content[0].type === 'text' && receipt?.ok === true && !receipt.error;
+          const bound = response.status() === 200 && rpc?.jsonrpc === '2.0' && rpc.id === body.id &&
+            !rpc.error && !rpc.result?.isError && Array.isArray(rpc.result?.content) && rpc.result.content.length === 1 &&
+            rpc.result.content[0].type === 'text'
+            ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at) : null;
+          const acknowledged = Boolean(bound);
           intent.state = acknowledged ? 'acknowledged' : 'unresolved';
-          intent.dispatched_outcome = acknowledged ? 'response-retained; effect not independently verified' : 'unknown';
+          intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified' : 'unknown';
           intent.response = { http_status: response.status(), sha256: digest(rpc ?? null), acknowledged };
+          if (bound) intent.response.binding = bound;
           await persist(planPath, plan);
           if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
         });

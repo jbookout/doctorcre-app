@@ -195,10 +195,7 @@ test('the pinned explorer runs with a forty-step goal budget', async () => {
 });
 
 test('both explorers and sweep block production egress at the browser context', async () => {
-  const { stagingRequestAllowed, stagingWeb, installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
-  assert.equal(stagingRequestAllowed(new URL('https://app.doctorcre.com/mcp')), false);
-  assert.equal(stagingRequestAllowed(new URL('https://reports.doctorcre.com/share')), false);
-  assert.equal(stagingRequestAllowed(new URL('https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/mcp')), true);
+  const { stagingWeb, installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
   assert.equal(stagingWeb({ viewport: { width: 390, height: 844 } }).name, 'web');
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -1422,7 +1419,11 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
       assert.deepEqual(plan.browser_write_attempts.at(-1).arguments, body.params.arguments);
     }
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ result: { content: [{ type: 'text', text: '{"ok":true}' }] } }));
+    const payload = body.params.name === 'get-deal-room' ? { ok: true } : {
+      ok: true, deal_id: body.params.arguments.deal, next_step_id: id(20 + providerWrites * 2),
+      next_action_id: id(21 + providerWrites * 2), supersedes: null, created_at: new Date().toISOString(),
+    };
+    response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -1468,20 +1469,21 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
       ['set-next-step', { ...args, idempotency_key: id(5) }],
       ['set-notification-preference', { idempotency_key: id(6) }],
     ]) assert.equal(await page.evaluate(([name, args]) => window.testRequest(name, args), [name, requestArgs]), null);
-    for (const path of ['/auth/login', '/auth/callback', '/auth/reauth']) {
-      assert.equal(await page.evaluate(async path => {
-        try { await fetch(path); return 'Forwarded'; } catch { return 'Blocked'; }
-      }, path), 'Blocked');
+    for (const path of ['/auth/login', '/auth/callback', '/auth/reauth', '/api/system-work/challenge',
+      '/api/tours/create', '/js/not-a-built-asset.js']) for (const method of ['GET', 'HEAD']) {
+      assert.equal(await page.evaluate(async ({ path, method }) => {
+        try { await fetch(path, { method }); return 'Forwarded'; } catch { return 'Blocked'; }
+      }, { path, method }), 'Blocked');
     }
     assert.equal(providerWrites, writes);
-    assert.equal(stagingWriteRefusals(context).length, 6);
+    assert.equal(stagingWriteRefusals(context).length, 15);
     assert.throws(() => guard.assertCoverage(), /write-coverage-incomplete/);
     assert.match(await page.locator('#status').textContent(), /coverage incomplete/);
     const box = await page.locator('#status').boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= viewport.width);
     assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 503);
     assert.equal(await page.evaluate(() => window.testRequest('get-deal-room', { deal: 'nonfixture-read' })), 200);
-    assert.equal(stagingWriteRefusals(context).length, 6, 'read retry adds no mutation refusal');
+    assert.equal(stagingWriteRefusals(context).length, 15, 'read retry adds no mutation refusal');
     await page.close();
   }
   assert.equal(providerWrites, 2);
