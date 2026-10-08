@@ -6,13 +6,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from './artifact.mjs';
 import { journeyFiles, continuityCases, requiredNativeEntries, validateNativeCompletion, validateBrowserCompletion } from './browser-proof-contract.mjs';
+import { runChild } from './run-child.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const output=join(root,'.e2e/proof');
 const buildRoot=join(root,'.e2e/proof-build');
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8'}).trim();
-const run=(args,env={})=>execFileSync(process.execPath,args,{cwd:root,env:{...process.env,CI:'1',E2E_TELEMETRY_DISABLED:'1',...env},stdio:'inherit',timeout:480_000});
+const run=(args,env={})=>runChild(process.execPath,args,{cwd:root,env:{...process.env,CI:'1',E2E_TELEMETRY_DISABLED:'1',...env},stdio:'inherit',timeout:480_000});
 async function filesDigest(paths) {
   return sha(JSON.stringify(await Promise.all(paths.sort().map(async path=>[path,sha(await readFile(join(root,path)))]))));
 }
@@ -29,23 +30,23 @@ try {
   const sourceCommit=git('rev-parse','HEAD');
   phase='build';
   const built=await buildArtifact({root,outDir:join(root,'dist'),commit:sourceCommit});
-  run(['scripts/build-artifact.mjs','verify']);
+  await run(['scripts/build-artifact.mjs','verify']);
   // Build is generated here, verified before extraction, and contains only files.
   execFileSync('tar',['-xf',join(root,'dist/doctorcre-app.tar'),'-C',buildRoot],{cwd:root,timeout:30_000});
   const servedBuild={sourceCommit,manifestDigest:sha(await readFile(join(root,'dist/doctorcre-app.manifest.json')))};
   const runtime={e2e:JSON.parse(await readFile(join(root,'node_modules/e2e/package.json'))).version,web:JSON.parse(await readFile(join(root,'node_modules/@e2e-dev/web/package.json'))).version,playwright:JSON.parse(await readFile(join(root,'node_modules/playwright/package.json'))).version,node:process.versions.node,browser:'chromium'};
   const requiredNativeTests=requiredNativeEntries.map(row=>`${row.file}::${encodeURIComponent(row.title)}`);
-  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','scripts/browser-proof-contract.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/test.mjs','tests/journeys/browser-continuity.mjs',...journeyFiles]);
+  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','scripts/run-child.mjs','scripts/browser-proof-contract.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/test.mjs','tests/journeys/browser-continuity.mjs',...journeyFiles]);
   const fixtureDigest=await filesDigest(['data/board-seed.json','tests/journeys/browser-continuity.mjs']);
   // Run from this invocation's extracted archive. Old reports cannot satisfy it.
   phase='native-journeys';
-  run(['node_modules/e2e/dist/cli/bin.js','run','tests/journeys','--reporter','list,junit'],{BROWSER_PROOF_ROOT:buildRoot,BROWSER_PROOF_BINDING:JSON.stringify(servedBuild)});
+  await run(['node_modules/e2e/dist/cli/bin.js','run','tests/journeys','--reporter','list,junit'],{BROWSER_PROOF_ROOT:buildRoot,BROWSER_PROOF_BINDING:JSON.stringify(servedBuild)});
   const native=JSON.parse(await readFile(join(root,'.e2e/report.json')));
   validateNativeCompletion(native,sourceCommit);
   const binding={repo:'jbookout/doctorcre-app',sourceCommit,buildDigest:built.archiveSha256,buildConfigDigest,fixtureDigest,runtime,runId:native.run.id,workflowRunId:process.env.GITHUB_RUN_ID||'local',attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   await writeFile(join(output,'binding.json'),JSON.stringify(binding));
   phase='continuity';
-  run(['--test','test/browser-product-proof.test.mjs'],{BROWSER_PROOF_DIR:output,DOCTORCRE_FIXTURE_ROOT:buildRoot,BROWSER_PROOF_BINDING:JSON.stringify(servedBuild)});
+  await run(['--test','test/browser-product-proof.test.mjs'],{BROWSER_PROOF_DIR:output,DOCTORCRE_FIXTURE_ROOT:buildRoot,BROWSER_PROOF_BINDING:JSON.stringify(servedBuild)});
   phase='packet';
   const rows=[];
   for(const id of journeys) {

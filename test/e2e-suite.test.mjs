@@ -54,6 +54,7 @@ test("CI runs only the deterministic suite, with no model and no telemetry", asy
   const producer=await read('scripts/browser-product-proof.mjs');
   assert.match(producer, /'run','tests\/journeys','--reporter'/);
   assert.match(producer, /--test','test\/browser-product-proof\.test\.mjs/);
+  assert.match(producer, /'scripts\/run-child\.mjs'/);
   assert.match(workflow, /E2E_TELEMETRY_DISABLED: "1"/);
   assert.match(workflow, /- run: npm run privacy:check\n        env:\n          DOCTORCRE_PRIVACY_CORPUS_JSON: \$\{\{ secrets\.DOCTORCRE_PRIVACY_CORPUS_JSON \}\}/);
   const withoutPrivacySecret = workflow.replace('${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}', '');
