@@ -14,7 +14,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
-  const state = { board: null, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
     detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -78,8 +78,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || '<p class="stage-empty">—</p>'}</div></section>`;
       }).join("")}</div>`;
     }
-    $("boardUpdated").textContent = updatedLabel(state.board?.generated_at);
-    $("boardUpdated").dateTime = state.board?.generated_at || "";
+    $("boardUpdated").textContent = state.readFailed ? "Unavailable" : updatedLabel(state.board?.generated_at);
+    $("boardUpdated").dateTime = state.readFailed ? "" : state.board?.generated_at || "";
     $("searchUpdated").textContent = `New-lead search ${state.board?.last_search_at ? stamp(state.board.last_search_at) : "—"}`;
     if (focused?.container) restoreFocus(focused);
   }
@@ -130,7 +130,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.epoch) return;
       validateLeadWorkspace(next);
       state.connectionFeedback = null;
-      state.board = next; render();
+      state.readFailed = false; state.board = next; render();
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
         const move = current?.last_stage_move;
@@ -159,6 +159,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       return true;
     } catch (error) {
       if (epoch !== state.epoch) return;
+      state.readFailed = true;
       if (authorizationFailure(error)) return;
       // A refused verification/read cannot leave the previous private snapshot visible.
       if (!state.identityReady) state.board = null;
