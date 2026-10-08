@@ -163,7 +163,7 @@ for (const { name, path, updated, retry, error } of [
   { name:'Leads', path:'/leads?mode=live', updated:'#boardUpdated', retry:'#refreshBoard', error:'#leadBoardError' },
   { name:'Deals', path:'/deals?mode=live', updated:'#boardAsOf', retry:'#retryRead', error:'#boardStatusLabel' },
 ]) for (const status of [503,401,403]) test(`QA-008 ${name} failure and recovery after ${status}`, async t => {
-  const {server}=await createQaServer({buildRoot:fileURLToPath(new URL('../dist/site',import.meta.url))});
+  const {server}=await createQaServer({buildRoot:fileURLToPath(root)});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   const origin=`http://127.0.0.1:${server.address().port}`;
@@ -182,7 +182,7 @@ for (const { name, path, updated, retry, error } of [
       ? await page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.stats()) : null;
     await page.locator(retry).click();
     if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
-    else await page.waitForFunction(async ({before,outcome}) => {
+    else await waitForAsync(page, async ({before,outcome}) => {
       const sync = (await import('/js/pipeline.js')).state.boardSync;
       const stats = sync.stats(), status = sync.status();
       return stats.board_reads > before.board_reads && stats[outcome] > before[outcome]
@@ -192,7 +192,7 @@ for (const { name, path, updated, retry, error } of [
   await page.goto(origin+path);
   await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
   assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
-  if (name === 'Deals') await page.waitForFunction(async () => {
+  if (name === 'Deals') await waitForAsync(page, async () => {
     const sync = (await import('/js/pipeline.js')).state.boardSync;
     return sync.stats().board_failed > 0 && !sync.status().board_read_in_flight && !sync.status().refresh_pending;
   });
