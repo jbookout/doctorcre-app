@@ -1,11 +1,10 @@
-import { boundedRequestContext, currentRun, requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 import { constants } from 'node:fs';
 import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
-import { request as playwrightRequest } from 'playwright';
-import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
+import { assertStagingURL, createStagingRequestContext, stagingSession, STAGING_ORIGIN } from './session.mjs';
 import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
@@ -18,10 +17,10 @@ const fail = () => { throw new Error('Staging record contract refused'); };
 const requireValue = condition => { if (!condition) fail(); };
 const recordId = value => { requireValue(isUUID(value || '')); return value; };
 
-async function privateJSON(path, value, exclusive = false) {
+async function privateJSON(path, value, exclusive = false, run) {
+  run = requireSupervisedRun(undefined, run);
   const data = JSON.stringify(value, null, 2) + '\n';
-  const run = currentRun();
-  run?.check(); run?.reserveBytes(Buffer.byteLength(data));
+  run.reserveBytes(Buffer.byteLength(data));
   const destination = exclusive ? path : `${path}.${randomUUID()}.tmp`;
   const handle = await open(destination, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try { await handle.writeFile(data); await handle.sync(); }
@@ -45,10 +44,13 @@ async function readPrivateJSON(path) {
 
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  requestFactory = options => playwrightRequest.newContext(options), run = currentRun(output), signal = run?.signal,
+  requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
+  run = requireSupervisedRun(output, run);
+  signal ??= run.signal;
+  const persist = (path, value, exclusive) => privateJSON(path, value, exclusive, run);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
@@ -79,7 +81,7 @@ export async function prepareStagingRecords(output, {
   let api, removeAbort = () => {};
   const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
   try {
-    api = boundedRequestContext(await requestFactory({ baseURL: STAGING_ORIGIN, storageState: state, timeout: RUN_LIMITS.httpTimeoutMs }), run);
+    api = await createStagingRequestContext({ baseURL: origin, storageState: state, requestFactory, run });
     const abort = () => { void api.dispose().catch(() => {}); };
     signal?.addEventListener('abort', abort, { once: true });
     removeAbort = () => signal?.removeEventListener('abort', abort);
@@ -107,21 +109,21 @@ export async function prepareStagingRecords(output, {
     requireValue(stagingAuth.session.matches(actor) && typeof actor.csrf_token === 'string' && actor.csrf_token);
     if (!existing) {
       await mkdir(output, { recursive: true, mode: 0o700 });
-      await privateJSON(planPath, plan, true);
+      await persist(planPath, plan, true);
     }
     async function write(step, name, args) {
       signal?.throwIfAborted();
       plan.current_step = step;
       plan.inflight = { name, arguments: { ...args, idempotency_key: plan.keys[step] } };
-      await privateJSON(planPath, plan);
+      await persist(planPath, plan);
       signal?.throwIfAborted();
       const result = await rpc(name, plan.inflight.arguments);
       plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
       plan.inflight = null;
-      await privateJSON(planPath, plan);
+      await persist(planPath, plan);
       return result;
     }
-    async function remember(name, record) { plan.records[name] = record; await privateJSON(planPath, plan); }
+    async function remember(name, record) { plan.records[name] = record; await persist(planPath, plan); }
     if (!existing) {
       const party = await write('party', 'add-party', { name: FIXTURE.name, kind: 'org' });
       if (party.needs_confirm) {
@@ -173,7 +175,7 @@ export async function prepareStagingRecords(output, {
         idempotency_key: plan.keys.tour, tour_name: plan.names.tour, subject_type: 'client', subject_id: plan.records.client.id,
         canonical_dataset_version: 'synthetic-staging-qa-v1', start_point: point('start'), end_point: point('end'),
       } };
-      await privateJSON(planPath, plan);
+      await persist(planPath, plan);
       signal?.throwIfAborted();
       const tour = await api.post('/api/tours/create', {
         maxRedirects: 0, headers: { ...headers, 'x-carr-csrf': actor.csrf_token },
@@ -184,7 +186,7 @@ export async function prepareStagingRecords(output, {
       plan.inflight = null;
     }
     plan.current_step = 'readback';
-    await privateJSON(planPath, plan);
+    await persist(planPath, plan);
     const boundedText = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
     const clientRead = await json(`/api/v1/business/clients/${plan.records.client.id}`);
     requireValue(clientRead.record?.id === plan.records.client.id && boundedText(clientRead.record.name));
@@ -235,11 +237,12 @@ export async function prepareStagingRecords(output, {
       ...(tourRead.subject_id !== plan.records.client.id || tourRead.subject_type !== 'client' ? [limited('tour', 'subject_changed', 'Use the normal UI to select the original invented client if available, or create another invented draft tour for those controls.')] : []),
     ];
     const result = { schema: 'doctorcre-staging-records.v1', origin: STAGING_ORIGIN, release, complete: true, records: plan.records, eligibleLead: leadEligible, findings: [], needs_restore };
-    await privateJSON(join(output, 'staging-records.json'), result);
+    await persist(join(output, 'staging-records.json'), result);
     plan.state = 'complete';
-    await privateJSON(planPath, plan);
+    await persist(planPath, plan);
     return result;
-  } catch {
+  } catch (error) {
+    if (error instanceof RunLimitError) throw error;
     signal?.throwIfAborted();
     run?.check();
     throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
@@ -347,7 +350,7 @@ function requirePlanCoverage(plan) {
 
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
-export function stagingFixtureWriteGuard({ output, release, persist = privateJSON, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined } = {}) {
+export function stagingFixtureWriteGuard({ output, release, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined, persist = (path, value) => privateJSON(path, value, false, run) } = {}) {
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
   let serial = Promise.resolve();
@@ -403,7 +406,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
       pending.add(flight);
       const dispatch = () => {
         if (!run) throw new RunLimitError('supervised-run-required');
-        run.check();
+        requireSupervisedRun(output, run);
         return run.http(forward);
       };
       let name = 'unknown-operation', token, dispatched = false, admittedRead = false;

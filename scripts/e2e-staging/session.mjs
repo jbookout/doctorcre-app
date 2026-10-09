@@ -1,4 +1,4 @@
-import { boundedRequestContext, currentRun, RUN_LIMITS } from './run-limits.mjs';
+import { boundedRequestContext, requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { constants } from 'node:fs';
 import { chmod, mkdir, open, writeFile } from 'node:fs/promises';
@@ -17,6 +17,33 @@ export function assertStagingURL(value) {
   const url = new URL(value);
   if (url.origin !== STAGING_ORIGIN || url.username || url.password) throw new Error('staging-live requires the exact isolated DoctorCRE staging origin');
   return url.origin;
+}
+
+// All staging API contexts, including supplied contexts, enter through this factory.
+// The outer proxy rechecks admission when used; the inner proxy owns HTTP accounting.
+const stagingContexts = new WeakMap();
+export async function createStagingRequestContext({
+  baseURL = STAGING_ORIGIN, requestContext, requestFactory = options => playwrightRequest.newContext(options),
+  storageState, run,
+} = {}) {
+  const origin = assertStagingURL(baseURL);
+  run = requireSupervisedRun(undefined, run);
+  if (requestContext && stagingContexts.get(requestContext)?.run === run) return stagingContexts.get(requestContext).proxy;
+  const raw = requestContext || await requestFactory({ baseURL: origin, timeout: run.limits.httpTimeoutMs, ...(storageState === undefined ? {} : { storageState }) });
+  try { requireSupervisedRun(undefined, run); }
+  catch (error) { if (!requestContext) await raw.dispose().catch(() => {}); throw error; }
+  const bounded = boundedRequestContext(raw, run);
+  const proxy = new Proxy(bounded, { get(target, key) {
+    const value = target[key];
+    if (['fetch', 'get', 'post', 'put', 'patch', 'delete', 'head', 'storageState'].includes(key)) return (...args) => {
+      requireSupervisedRun(undefined, run);
+      return value(...args);
+    };
+    return value;
+  } });
+  stagingContexts.set(raw, { run, proxy });
+  stagingContexts.set(proxy, { run, proxy });
+  return proxy;
 }
 
 export async function readSessionSecret(path = process.env.E2E_SESSION_SECRET_FILE || SECRET_PATH) {
@@ -43,17 +70,19 @@ export async function preflightRequest(phase, operation, { pause = delay, signal
       if (attempt === RUN_LIMITS.preflightAttempts - 1) throw new SessionPreflightFailure(phase + '-http-' + response.status());
     } catch (error) {
       signal?.throwIfAborted();
-      if (error instanceof SessionPreflightFailure) throw error;
+      if (error instanceof SessionPreflightFailure || error instanceof RunLimitError) throw error;
       if (attempt === RUN_LIMITS.preflightAttempts - 1) throw new SessionPreflightFailure(phase + '-transport-failed');
     }
     await pause(250 * (attempt + 1), undefined, { signal });
   }
 }
 
-export async function stagingRelease(api, baseURL = STAGING_ORIGIN, { run = currentRun(), signal = run?.signal } = {}) {
+export async function stagingRelease(api, baseURL = STAGING_ORIGIN, { run, signal } = {}) {
   assertStagingURL(baseURL);
   signal?.throwIfAborted();
-  api = boundedRequestContext(api, run);
+  run = requireSupervisedRun(undefined, run);
+  signal ??= run.signal;
+  api = await createStagingRequestContext({ requestContext: api, baseURL, run });
   let phase = 'app-release';
   try {
     phase = 'app-release';
@@ -69,30 +98,32 @@ export async function stagingRelease(api, baseURL = STAGING_ORIGIN, { run = curr
     return { ...identity, carr_source_commit: contract.producer.source_commit };
   } catch (error) {
     signal?.throwIfAborted();
-    if (error instanceof SessionPreflightFailure) throw error;
+    if (error instanceof SessionPreflightFailure || error instanceof RunLimitError) throw error;
     throw new SessionPreflightFailure(phase + '-failed');
   }
 }
 
-export async function writeStagingStorageState(api, path, run = currentRun()) {
-  run?.check();
+export async function writeStagingStorageState(api, path, run) {
+  run = requireSupervisedRun(undefined, run);
+  api = await createStagingRequestContext({ requestContext: api, run });
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await chmod(dirname(path), 0o700);
   const state = await api.storageState();
   const data = JSON.stringify(state);
-  if (run) await run.writeFile(path, data, (target, value) => writeFile(target, value, { mode: 0o600 }));
-  else await writeFile(path, data, { mode: 0o600 });
+  await run.writeFile(path, data, (target, value) => writeFile(target, value, { mode: 0o600 }));
   await chmod(path, 0o600);
   return state;
 }
 
-export async function stagingSession(baseURL = STAGING_ORIGIN, { requestContext, storageStatePath, exchange = true, run = currentRun(), signal = run?.signal } = {}) {
+export async function stagingSession(baseURL = STAGING_ORIGIN, { requestContext, storageStatePath, exchange = true, run, signal } = {}) {
   const origin = assertStagingURL(baseURL);
-  signal?.throwIfAborted();
+  run = requireSupervisedRun(undefined, run);
+  signal ??= run.signal;
+  signal.throwIfAborted();
   let api, phase = 'context';
   try {
-    api = boundedRequestContext(requestContext || await playwrightRequest.newContext({ baseURL: origin, timeout: RUN_LIMITS.httpTimeoutMs }), run);
-    const release = await stagingRelease(api, origin, { signal, run: null });
+    api = await createStagingRequestContext({ baseURL: origin, requestContext, run });
+    const release = await stagingRelease(api, origin, { signal, run });
     if (exchange) {
       phase = 'secret';
       signal?.throwIfAborted();
@@ -112,7 +143,7 @@ export async function stagingSession(baseURL = STAGING_ORIGIN, { requestContext,
     return { state, release };
   } catch (error) {
     signal?.throwIfAborted();
-    if (error instanceof SessionPreflightFailure) throw error;
+    if (error instanceof SessionPreflightFailure || error instanceof RunLimitError) throw error;
     // Never forward a provider error: request objects can include credentials.
     throw new SessionPreflightFailure(phase + '-failed');
   } finally { if (api && !requestContext) await api.dispose().catch(() => { throw new SessionPreflightFailure('context-dispose-failed'); }); }

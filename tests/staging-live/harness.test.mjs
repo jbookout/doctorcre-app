@@ -16,7 +16,9 @@ import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' }
 import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
 
 import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { admitFixtureRun } from './fixture-admission.mjs';
 async function fixtureBudget(t, output) {
+  admitFixtureRun(t);
   if (!output) {
     output = await mkdtemp(join(tmpdir(), 'staging-browser-budget-'));
     t.after(() => rm(output, { recursive: true, force: true }));

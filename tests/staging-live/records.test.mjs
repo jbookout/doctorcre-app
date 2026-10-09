@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import test, { afterEach } from 'node:test';
+import test, { afterEach, beforeEach } from 'node:test';
 import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareStagingRecords, stagingFixtureWriteGuard as createFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
+import { prepareStagingRecords as createStagingRecords, stagingFixtureWriteGuard as createFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import { stagingAuth } from '../../scripts/e2e-staging/auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
@@ -11,7 +11,16 @@ import { eligibleLead } from '../../js/leads-model.js';
 
 import { mkdtempSync } from 'node:fs';
 import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { admitFixtureRun } from './fixture-admission.mjs';
+beforeEach(admitFixtureRun);
 const fixtureRuns = new Map(), temporaryRuns = [];
+function fixtureBudget(root) {
+  if (!fixtureRuns.has(root)) fixtureRuns.set(root, openRun(root, { runId: 'synthetic-fixture-run', events: null }));
+  return fixtureRuns.get(root);
+}
+function prepareStagingRecords(output, options = {}) {
+  return createStagingRecords(output, { run: fixtureBudget(output), ...options });
+}
 afterEach(async () => {
   for (const run of fixtureRuns.values()) run.dispose();
   fixtureRuns.clear();
@@ -20,8 +29,7 @@ afterEach(async () => {
 function stagingFixtureWriteGuard(options = {}) {
   const root = options.output || mkdtempSync(join(tmpdir(), 'staging-read-budget-'));
   if (!options.output) temporaryRuns.push(root);
-  if (!fixtureRuns.has(root)) fixtureRuns.set(root, openRun(root, { runId: 'synthetic-fixture-run', events: null }));
-  return createFixtureWriteGuard({ ...options, run: fixtureRuns.get(root) });
+  return createFixtureWriteGuard({ ...options, run: fixtureBudget(root) });
 }
 
 const fixture = 'fc08d2f4-a951-5679-9f34-40d0f4278842';
@@ -89,7 +97,7 @@ function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = fal
 
 test('record setup rejects production origins before authentication, files or requests', async () => {
   for (const origin of ['https://app.doctorcre.com', 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev.evil.test', 'http://doctorcre-app-staging.joe-bookout-carr-us.workers.dev', 'https://user:canary@doctorcre-app-staging.joe-bookout-carr-us.workers.dev']) {
-    await assert.rejects(prepareStagingRecords('/unused', {
+    await assert.rejects(createStagingRecords('/unused', {
       origin, session: () => assert.fail('must not authenticate'), requestFactory: () => assert.fail('must not request'),
     }), /exact.*staging origin/);
   }

@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { admitFixtureRun } from './fixture-admission.mjs';
+
 import { targets } from '../../scripts/e2e-staging/screens.mjs';
 
 test('Playwright Test owns the staging project matrix, deadlines, artifacts and reporters', async () => {
@@ -138,12 +141,15 @@ test('the setup project writes storageState as a private runtime credential', as
   await mkdir(join(root, 'private'), { mode: 0o755 });
   const state = { cookies: [{ name: 'synthetic' }], origins: [] };
   const { writeStagingStorageState } = await import('../../scripts/e2e-staging/session.mjs');
+  admitFixtureRun(t);
+  const run = openRun(root, { runId: 'synthetic-state-run', events: null });
+  t.after(() => run.dispose());
   assert.equal(await writeStagingStorageState({
     async storageState(options) {
       assert.equal(options, undefined, 'credential stays in memory until bounded private publication');
       return state;
     },
-  }, path), state);
+  }, path, run), state);
   assert.equal((await stat(join(root, 'private'))).mode & 0o777, 0o700);
   assert.equal((await stat(path)).mode & 0o777, 0o600);
 });

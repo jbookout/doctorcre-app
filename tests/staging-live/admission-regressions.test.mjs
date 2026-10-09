@@ -8,6 +8,8 @@ import { stagingFixtureWriteGuard } from '../../scripts/e2e-staging/records.mjs'
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import { openRun, RUN_LIMITS } from '../../scripts/e2e-staging/run-limits.mjs';
 
+import { admitFixtureRun } from './fixture-admission.mjs';
+
 const request = { url: () => STAGING_ORIGIN + '/app-release', method: () => 'GET' };
 
 test('sweep refuses skipped setup before the session callback without target or supervision', async t => {
@@ -41,6 +43,7 @@ test('browser forwarding enforces the unchanged 400 request ceiling', async t =>
   t.after(() => rm(root, { recursive: true, force: true }));
   const run = openRun(root, { runId: 'synthetic-request-run', events: null });
   t.after(() => run.dispose());
+  admitFixtureRun(t);
   const guard = stagingFixtureWriteGuard({ run });
   let forwarded = 0;
   const forward = async () => { forwarded++; return { status: () => 200 }; };

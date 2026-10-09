@@ -223,10 +223,10 @@ export function currentRun(output = process.env.E2E_V2_OUTPUT) {
   return activeRun;
 }
 
-export function requireSupervisedRun(output) {
+export function requireSupervisedRun(output, suppliedRun) {
   if (process.env.E2E_TARGET !== 'staging-live') throw new RunLimitError('staging-target-required');
   if (process.env.E2E_RUN_SUPERVISED !== '1') throw new RunLimitError('supervised-run-required');
-  const run = currentRun(output);
+  const run = suppliedRun === undefined ? currentRun(output) : suppliedRun;
   if (!run) throw new RunLimitError('supervised-run-required');
   run.check();
   return run;
