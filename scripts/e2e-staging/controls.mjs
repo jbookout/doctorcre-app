@@ -353,7 +353,8 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   };
   let reached = continuing ? prior.reached : false, exhausted = false, failure = null;
   const fail = (error, phase, openers, control, code = `${phase}-failed`) => {
-    const bounded = error instanceof SweepFailure ? error.failure : { phase, code };
+    const bounded = error instanceof RunLimitError ? { phase: 'run-limit', code: error.code }
+      : error instanceof SweepFailure ? error.failure : { phase, code };
     failure ||= { ...bounded, ...(control && !bounded.selector ? { selector: control.selector } : {}), openers: openers.map(opener => opener.name) };
   };
   const close = async (page, openers, control) => {
@@ -493,6 +494,15 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
             await resolveDiscovery(fresh, state.openers, action, beforeURL);
           }
         } catch (error) {
+          if (row && phase === 'evidence' && error instanceof SweepFailure &&
+              error.failure.phase === 'fixture-scope' && error.failure.code === 'write-scope-unproved') {
+            row.status = 'ERROR';
+            row.reason = 'Test fixture write policy refused or unsettled; coverage remains incomplete';
+            row.failure = { ...error.failure };
+            pending = null;
+            await publishProgress();
+            continue;
+          }
           fail(error, phase, state.openers, control);
           if (!row && ['replay','press'].includes(phase)) {
             row = { ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: failure.phase + ': ' + failure.code, signals: [] };

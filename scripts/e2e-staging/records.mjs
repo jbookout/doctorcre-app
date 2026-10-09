@@ -263,6 +263,7 @@ const httpReads = new Set([
   '/api/tours/feedback', '/api/tours/projection/candidates',
 ]);
 let builtStaticPaths;
+const builtStaticFiles = new Map();
 export async function assertStagingBrowserInventory() {
   builtStaticPaths ||= readFile(fileURLToPath(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url)), 'utf8')
     .then(text => {
@@ -273,6 +274,9 @@ export async function assertStagingBrowserInventory() {
           !['css/', 'js/'].every(prefix => manifest.files.some(row => row.path.startsWith(prefix))))
         throw new Error('Static manifest unavailable');
       const files = new Set(manifest.files.map(row => row.path));
+      for (const row of manifest.files) if (/^(js|css)\/.*\.(?:m?js|css)$/.test(row.path) &&
+          /^[a-f0-9]{64}$/.test(row.sha256 || '') && Number.isSafeInteger(row.bytes) && row.bytes >= 0)
+        builtStaticFiles.set('/' + row.path, { bytes: row.bytes, sha256: row.sha256 });
       const paths = new Set([...files].filter(path => /^(css|data|js|public-shell|tours)\//.test(path)).map(path => '/' + path));
       for (const [route, asset] of [
         ['/manifest.webmanifest', 'manifest.webmanifest'], ['/sw.js', 'public-shell/sw.js'],
@@ -362,6 +366,10 @@ function requirePlanCoverage(plan) {
 export function stagingFixtureWriteGuard({ output, release, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined, persist = (path, value) => privateJSON(path, value, false, run) } = {}) {
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
+  const staticCache = new Map();
+  const cacheCeiling = Math.min(effectiveRunLimits(run).artifactBytes, 8 * 1024 * 1024);
+  let cachedBytes = 0;
+  run?.onStop(() => { staticCache.clear(); cachedBytes = 0; });
   let serial = Promise.resolve();
   const locked = work => {
     const next = serial.then(work);
@@ -418,15 +426,40 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         requireSupervisedRun(output, run);
         return run.http(forward);
       };
-      let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
-      const forwardRead = async () => {
+      let name = 'unknown-operation', token, dispatched = false, admittedRead = false, localCompanionRead = false;
+      const forwardRead = async (staticURL) => {
         admittedRead = true;
+        const asset = staticURL && request.method() === 'GET' && !staticURL.search && !staticURL.hash
+          ? builtStaticFiles.get(staticURL.pathname) : null;
+        const cacheKey = asset && JSON.stringify([release?.source_commit, release?.carr_source_commit, staticURL.pathname]);
+        const cached = cacheKey && staticCache.get(cacheKey);
+        if (cached) {
+          requireSupervisedRun(output, run);
+          return { cachedRead: true, status: () => 200, headers: () => ({ ...cached.headers }), body: async () => Buffer.from(cached.body) };
+        }
         const response = await dispatch();
         if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
         // Never give the browser a redirect to follow outside interception.
         // Known aliases also remain coverage gaps until directly addressed.
         if (response.status() >= 300 && response.status() < 400 && response.status() !== 304)
           policyFailure('read-redirect-unproved');
+        if (asset && response.status() === 200 && typeof response.headers === 'function' && typeof response.body === 'function' &&
+            asset.bytes <= cacheCeiling - cachedBytes) {
+          const headers = response.headers();
+          if (!Object.keys(headers).some(key => key.toLowerCase() === 'set-cookie')) {
+            const body = await response.body();
+            run.check();
+            // Replay only exact built bytes fetched under this source pair.
+            // Documents, APIs, fonts, query variants and mismatches stay live.
+            if (body.length === asset.bytes && createHash('sha256').update(body).digest('hex') === asset.sha256 &&
+                !staticCache.has(cacheKey) && body.length <= cacheCeiling - cachedBytes) {
+              const decodedHeaders = Object.fromEntries(Object.entries(headers).filter(([key]) =>
+                !['content-encoding', 'content-length'].includes(key.toLowerCase())));
+              staticCache.set(cacheKey, { headers: decodedHeaders, body: Buffer.from(body) });
+              cachedBytes += body.length;
+            }
+          }
+        }
         return response;
       };
       try {
@@ -434,6 +467,12 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         if (url.username || url.password) policyFailure('origin-unproved');
         const read = ['GET', 'HEAD'].includes(request.method());
         if (url.origin !== STAGING_ORIGIN) {
+          // The app probes its optional local companion on every boot. Refuse
+          // this exact read without treating companion absence as a staging write.
+          if (request.method() === 'GET' && url.href === 'http://127.0.0.1:4682/api/state') {
+            localCompanionRead = true;
+            throw Object.assign(new Error('Local companion read blocked'), { code: 'local-companion-read-blocked' });
+          }
           const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
             url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
           if (font) return await forwardRead();
@@ -445,7 +484,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           if (url.pathname.startsWith('/auth/') && url.pathname !== stagingAuth.session.path)
             policyFailure('authentication-mutation-unproved');
           if (!await knownBrowserRead(url)) policyFailure('read-path-unproved');
-          return await forwardRead();
+          return await forwardRead(url);
         }
         let body;
         try { body = request.postDataJSON(); } catch {}
@@ -546,6 +585,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         });
         return response;
       } catch (error) {
+        if (localCompanionRead) throw error;
         if (admittedRead && !error.fixturePolicy) throw error;
         const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),

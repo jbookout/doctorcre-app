@@ -56,7 +56,7 @@ test('missing static inventory reproduces read refusal and poisoned coverage; bu
     const missing = process.argv[2] === 'missing';
     if (missing) {
       await assert.rejects(assertStagingBrowserInventory(), e => e.code === 'browser-inventory-unavailable');
-      const guard = stagingFixtureWriteGuard({ run: { check() {} } });
+      const guard = stagingFixtureWriteGuard({ run: { check() {}, onStop() {} } });
       await assert.rejects(guard.handle({ method: () => 'GET', url: () => STAGING_ORIGIN + '/js/client.js' },
         () => assert.fail('unproved static read forwarded')), e => e.code === 'browser-inventory-unavailable');
       await assert.rejects(guard.assertCoverage(), e => e.code === 'write-coverage-incomplete');

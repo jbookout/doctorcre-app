@@ -16,7 +16,9 @@ export async function installStagingGuard(context, fixtureGuard = stagingFixture
       // Do not use fallback: interception is not re-run for redirect targets.
       const response = await fixtureGuard.handle(request, () =>
         route.fetch({ maxRetries: effectiveRunLimits().retries, maxRedirects: 0, timeout: effectiveRunLimits().httpTimeoutMs }));
-      await route.fulfill({ response });
+      await route.fulfill(response.cachedRead === true
+        ? { status: response.status(), headers: response.headers(), body: await response.body() }
+        : { response });
     } catch (error) {
       // A read transport failure still reaches the client's normal retry path.
       // The policy marks its own refusals, including uncertain write outcomes.

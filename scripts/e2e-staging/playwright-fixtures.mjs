@@ -1,4 +1,4 @@
-import { currentRun, requireSupervisedRun, effectiveRunLimits } from './run-limits.mjs';
+import { currentRun, requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test as base } from 'playwright/test';
@@ -11,8 +11,7 @@ import { stagingRelease, stagingSession, SessionPreflightFailure, STAGING_ORIGIN
 
 const sameRelease = (left, right) => left?.source_commit === right?.source_commit && left?.carr_source_commit === right?.carr_source_commit;
 
-export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, installGuard = installStagingGuard, releaseProbe }) {
-  const run = currentRun();
+export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, installGuard = installStagingGuard, releaseProbe, run = currentRun() }) {
   const contexts = new Set();
   const guards = new Set();
   const freshPage = async ({ target, screen, release, fixtureGuard, path = screen.path, spec }) => {
@@ -40,6 +39,8 @@ export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, insta
       return page;
     } catch (error) {
       if (context) await context.close().catch(() => {});
+      run?.check();
+      if (error instanceof RunLimitError) throw error;
       throw error instanceof SweepFailure ? error : new SweepFailure(phase, error instanceof SessionPreflightFailure ? error.code : code);
     }
   };

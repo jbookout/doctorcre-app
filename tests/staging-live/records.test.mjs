@@ -464,6 +464,98 @@ const nextStep = (f, key = 1, text = 'Fictional next step') => ({
   deal: f.setup.records.deal.id, text, next_date: null, idempotency_key: browserKey(key),
 });
 
+test('the boot-time local companion GET is blocked without poisoning staging write coverage', async t => {
+  const f = await browserFixtures(t);
+  const request = { url: () => 'http://127.0.0.1:4682/api/state', method: () => 'GET' };
+  await assert.rejects(f.guard.handle(request, () => assert.fail('local companion must never be contacted')),
+    error => error.code === 'local-companion-read-blocked' && !error.fixturePolicy);
+  assert.deepEqual(f.guard.refusals, []);
+  await f.guard.assertCoverage();
+  assert.equal((await f.read()).browser_write_refusals, undefined);
+  for (const change of [
+    { method: () => 'POST' }, { url: () => 'http://127.0.0.1:4682/api/state?token=private-canary' },
+    { url: () => 'http://127.0.0.1:4682/api/start' }, { url: () => 'http://localhost:4682/api/state' },
+  ]) await assert.rejects(f.guard.handle({ ...request, ...change }, () => assert.fail('unproved request must stay blocked')),
+    error => error.code === 'origin-unproved' && error.fixturePolicy);
+  assert.equal(f.guard.refusals.length, 4);
+  await assert.rejects(f.guard.assertCoverage(), /write-coverage-incomplete/);
+});
+
+test('two measurement contexts per screen reuse verified static bytes while every staging fetch stays counted', async t => {
+  const f = await browserFixtures(t);
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  const assets = manifest.files.filter(row => /^(js|css)\//.test(row.path)).slice(0, 124);
+  assert.equal(assets.length, 124);
+  const data = new Map(await Promise.all(assets.map(async row => [row.path,
+    await readFile(new URL('../../dist/site/' + row.path, import.meta.url))])));
+  const load = async guard => {
+    let forwarded = 0;
+    for (let context = 0; context < 2; context++) {
+      const scopedGuard = typeof guard === 'function' ? guard() : guard;
+      for (const path of ['/', ...assets.map(row => '/' + row.path)]) {
+        const bytes = data.get(path.slice(1)) || Buffer.from('<main>Fresh authenticated document</main>');
+        const response = await scopedGuard.handle(browserRequest('unused', {}, { method: 'GET', path }), async () => {
+          forwarded++;
+          return { status: () => 200, headers: () => ({ 'content-type': 'text/plain', 'cache-control': 'no-cache' }), body: async () => bytes };
+        });
+        assert.deepEqual(await response.body(), bytes);
+      }
+    }
+    return forwarded;
+  };
+  const before = await load(() => stagingFixtureWriteGuard({ output: f.output, release }));
+  assert.equal(before, 250, 'cold per-screen inventory plus measurement contexts');
+  const baseline = fixtureBudget(f.output).snapshot().httpRequests;
+  const first = await load(f.guard), after = await load(f.guard);
+  assert.equal(first, 126, '124 verified assets fetched once, plus two live documents');
+  assert.equal(after, 2, 'warm screens still fetch both authenticated documents');
+  assert.equal(fixtureBudget(f.output).snapshot().httpRequests - baseline, 128);
+  t.diagnostic(`Requests per synthetic screen: uncached ${before}, initial verified-cache screen ${first}, warm ${after}`);
+});
+
+test('static replay refuses mismatched bytes, cookie responses, errors, HEAD and query variants', async t => {
+  const f = await browserFixtures(t);
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  const asset = manifest.files.find(row => row.path.startsWith('js/') && row.path.endsWith('.js'));
+  const bytes = await readFile(new URL('../../dist/site/' + asset.path, import.meta.url));
+  for (const scenario of ['mismatch', 'cookie', 'error', 'head', 'query']) {
+    const guard = stagingFixtureWriteGuard({ output: f.output, release });
+    let forwarded = 0;
+    for (let i = 0; i < 2; i++) await guard.handle(browserRequest('unused', {}, {
+      method: scenario === 'head' ? 'HEAD' : 'GET', path: '/' + asset.path + (scenario === 'query' ? '?v=other' : ''),
+    }), async () => {
+      forwarded++;
+      return { status: () => scenario === 'error' ? 503 : 200,
+        headers: () => scenario === 'cookie' ? { 'Set-Cookie': 'private-cookie-canary' } : {},
+        body: async () => scenario === 'mismatch' ? Buffer.from('different staging source bytes') : bytes };
+    });
+    assert.equal(forwarded, 2, scenario);
+  }
+});
+
+test('browser interception fulfills verified replay bytes and a stopped run cannot replay an asset', async t => {
+  const { installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
+  const f = await browserFixtures(t);
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  const asset = manifest.files.find(row => row.path.startsWith('css/'));
+  const bytes = await readFile(new URL('../../dist/site/' + asset.path, import.meta.url));
+  const request = browserRequest('unused', {}, { method: 'GET', path: '/' + asset.path });
+  let intercept, forwarded = 0;
+  const fulfilled = [];
+  await installStagingGuard({ route: async (_pattern, handle) => { intercept = handle; }, addInitScript: async () => {} }, f.guard);
+  const route = { request: () => request, abort: async () => assert.fail('verified assets should be delivered'),
+    fetch: async () => { forwarded++; return { status: () => 200,
+      headers: () => ({ 'content-type': 'text/css', 'content-encoding': 'br', 'content-length': '1' }), body: async () => bytes }; },
+    fulfill: async response => fulfilled.push(response),
+  };
+  await intercept(route); await intercept(route);
+  assert.equal(forwarded, 1);
+  assert.ok(fulfilled[0].response);
+  assert.deepEqual(fulfilled[1], { status: 200, headers: { 'content-type': 'text/css' }, body: bytes });
+  fixtureBudget(f.output).stop('stop-signal');
+  await assert.rejects(f.guard.handle(request, () => assert.fail('stopped asset must not fetch')), /stop-signal/);
+});
+
 test('browser writes prove creation ownership and retain exact intent before a single dispatch', async t => {
   const f = await browserFixtures(t);
   let dispatches = 0;
