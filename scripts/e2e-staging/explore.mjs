@@ -1,4 +1,4 @@
-import { currentRun, RUN_LIMITS, RunLimitError, modelCallsAllowed } from './run-limits.mjs';
+import { currentRun, effectiveRunLimits, RunLimitError, modelCallsAllowed } from './run-limits.mjs';
 import { readFile, mkdir, cp } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
@@ -47,7 +47,9 @@ export function explorationGoal(screen, setup) {
 }
 
 export async function runExplorationAttempt(explore, options) {
-  try { return { result: await explore(options), error: null }; }
+  const ceiling = effectiveRunLimits().goalTimeoutMs;
+  const timeoutMs = Math.min(ceiling, Number.isSafeInteger(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : ceiling);
+  try { return { result: await explore({ ...options, timeoutMs }), error: null }; }
   catch (error) { return { result: null, error }; }
 }
 
@@ -113,7 +115,7 @@ async function exploreWithRun(run) {
     console.log(`Exploring ${target.name} ${screen.path} as ${agent}; max-steps ${callPlan.perGoal}`);
     const goal = explorationGoal(screen, setup);
     let status = 'ERROR', steps = 0, failure = null;
-    const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: callPlan.perGoal, timeoutMs: RUN_LIMITS.goalTimeoutMs, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'off', video: 'off', aiTrace: false, interruptSignal: run.signal, forceSignal: run.signal });
+    const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: callPlan.perGoal, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'off', video: 'off', aiTrace: false, interruptSignal: run.signal, forceSignal: run.signal });
     try {
       if (attempt.result) {
         const result = attempt.result;

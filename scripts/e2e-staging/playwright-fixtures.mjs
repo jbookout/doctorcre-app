@@ -1,4 +1,4 @@
-import { currentRun, requireSupervisedRun, RUN_LIMITS } from './run-limits.mjs';
+import { currentRun, requireSupervisedRun, effectiveRunLimits } from './run-limits.mjs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test as base } from 'playwright/test';
@@ -32,10 +32,10 @@ export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, insta
       code = 'page-creation-failed';
       const page = await context.newPage();
       phase = 'navigation'; code = 'navigation-failed';
-      const response = await page.goto(new URL(path, origin).href, { waitUntil: 'domcontentloaded', timeout: RUN_LIMITS.httpTimeoutMs });
+      const response = await page.goto(new URL(path, origin).href, { waitUntil: 'domcontentloaded', timeout: effectiveRunLimits().httpTimeoutMs });
       if (!response?.ok() || page.url().includes('/auth/') || new URL(page.url()).origin !== origin) throw new SweepFailure('navigation', 'screen-response-refused');
       phase = 'load'; code = 'network-idle-failed';
-      await page.waitForLoadState('networkidle', { timeout: RUN_LIMITS.httpTimeoutMs });
+      await page.waitForLoadState('networkidle', { timeout: effectiveRunLimits().httpTimeoutMs });
       if (spec?.kind === 'calendar-record') await prepareCalendarRecord(page, spec);
       return page;
     } catch (error) {

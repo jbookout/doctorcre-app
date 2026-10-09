@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));

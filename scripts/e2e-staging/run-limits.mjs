@@ -246,6 +246,10 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
 }
 
 let activeRun;
+export function effectiveRunLimits(run = activeRun) {
+  return run?.limits ?? runLimitsFromEnvironment();
+}
+
 export function currentRun(output = process.env.E2E_V2_OUTPUT) {
   if (!activeRun && process.env.E2E_RUN_SUPERVISED === '1') {
     if (!output || !process.env.E2E_RUN_ID) throw new RunLimitError('run-directory-required');
@@ -273,7 +277,7 @@ export function boundedRequestContext(api, run) {
     if (key === 'dispose') return async () => { remove(); return target.dispose(); };
     const value = target[key];
     if (['fetch', 'get', 'post', 'put', 'patch', 'delete', 'head'].includes(key))
-      return (url, options = {}) => run.http(() => value.call(target, url, { ...options, maxRetries: RUN_LIMITS.retries, maxRedirects: 0, timeout: run.limits.httpTimeoutMs }));
+      return (url, options = {}) => run.http(() => value.call(target, url, { ...options, maxRetries: run.limits.retries, maxRedirects: 0, timeout: run.limits.httpTimeoutMs }));
     return typeof value === 'function' ? value.bind(target) : value;
   } });
   boundedContexts.set(api, { run, proxy });

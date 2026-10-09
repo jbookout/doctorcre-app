@@ -4,7 +4,7 @@ import promises from 'node:fs/promises';
 import { relative, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { syncBuiltinESMExports } from 'node:module';
-import { currentRun, artifactWriteIsAccounted, withAccountedArtifactWrite, artifactCopyBytes, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { currentRun, artifactWriteIsAccounted, withAccountedArtifactWrite, artifactCopyBytes, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 
 // SDK writers and detached browsers must obey the same run boundary as fixtures.
 if (process.env.E2E_RUN_SUPERVISED === '1') {
@@ -83,11 +83,12 @@ if (process.env.E2E_RUN_SUPERVISED === '1') {
   };
   const spawn = childProcess.spawn;
 
+  const limits = effectiveRunLimits(currentRun());
   process.on('SIGTERM', () => {}); process.on('SIGINT', () => {});
   childProcess.spawn = function (...args) {
     const options = Array.isArray(args[1]) ? args[2] : args[1];
     const inspect = pid => {
-      const result = childProcess.spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout: RUN_LIMITS.dispatcherGraceMs });
+      const result = childProcess.spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout: limits.dispatcherGraceMs });
       if (result.error || result.status !== 0 || !result.stdout?.trim()) throw new RunLimitError('process-inspection-unavailable');
       return result.stdout.trim();
     };
@@ -111,7 +112,7 @@ if (process.env.E2E_RUN_SUPERVISED === '1') {
         child.stdio[ack].end('1');
         // Leader close is not proof that its process group is empty.
         child.once('close', () => {
-          const deadline = Date.now() + RUN_LIMITS.stopGraceMs + RUN_LIMITS.cleanupVerifyMs;
+          const deadline = Date.now() + limits.stopGraceMs + limits.cleanupVerifyMs;
           const retire = () => {
             try { process.kill(-child.pid, 0); }
             catch (error) {
@@ -119,13 +120,13 @@ if (process.env.E2E_RUN_SUPERVISED === '1') {
               // macOS reports EPERM for a group whose leader is an unreaped zombie: still present, so keep polling.
               if (error.code !== 'EPERM') return;
             }
-            if (Date.now() < deadline) setTimeout(retire, RUN_LIMITS.monitorIntervalMs).unref();
+            if (Date.now() < deadline) setTimeout(retire, limits.monitorIntervalMs).unref();
           };
           retire();
         });
       } catch (error) {
         try { child.kill('SIGKILL'); process.kill(-child.pid, 'SIGKILL'); } catch (failure) { if (failure.code !== 'ESRCH') throw new RunLimitError('process-cleanup-unverified'); }
-        const deadline = Date.now() + RUN_LIMITS.cleanupVerifyMs;
+        const deadline = Date.now() + limits.cleanupVerifyMs;
         for (;;) {
           try { process.kill(child.pid, 0); }
           catch (failure) { if (failure.code === 'ESRCH') { release?.(); break; } throw new RunLimitError('process-cleanup-unverified'); }

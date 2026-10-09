@@ -1,4 +1,4 @@
-import { requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { constants } from 'node:fs';
 import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -389,8 +389,8 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
   };
   return {
     refusals,
-    async assertCoverage({ timeoutMs = RUN_LIMITS.settlementMs } = {}) {
-      const budget = Math.min(RUN_LIMITS.settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : RUN_LIMITS.settlementMs));
+    async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}) {
+      const budget = Math.min(effectiveRunLimits(run).settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : effectiveRunLimits(run).settlementMs));
       const deadline = Date.now() + budget;
       while (pending.size) {
         let timer;

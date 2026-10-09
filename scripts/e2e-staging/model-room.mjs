@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { targetExists, signalTarget } from './process-liveness.mjs';
-import { RUN_LIMITS, currentRun, modelCallsAllowed, RunLimitError } from './run-limits.mjs';
+import { effectiveRunLimits, currentRun, modelCallsAllowed, RunLimitError } from './run-limits.mjs';
 
-export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({ perGoal: RUN_LIMITS.explorationSteps, hardGlobalCeiling: RUN_LIMITS.modelCalls });
-const EXPLORATION_CALLS_PER_GOAL = EXPLORATION_MODEL_CALL_POLICY.perGoal * 2 + 1;
-const EXPLORATION_BATCH_GOAL_LIMIT = RUN_LIMITS.batchGoals;
+export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({
+  get perGoal() { return effectiveRunLimits().explorationSteps; },
+  get hardGlobalCeiling() { return effectiveRunLimits().modelCalls; },
+});
 export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
   revision: 'carr-model-room-dispatch@0b2c8ec8be07df142519e6638da9ec3329edcef2',
   repository: 'jbookout/carr-system',
@@ -17,7 +18,6 @@ export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
   sha256: '64e801f718242cf4bbd9a056a3b11e9d4faeea907c74ca0e18ca438fb2b2c61c',
   argv: Object.freeze(['send', '{desk}', '-', '--fresh']),
 });
-const DISPATCH_TERMINATION_GRACE_MS = RUN_LIMITS.dispatcherGraceMs;
 const dispatcherEnvelopeKeys = new Set([
   'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'status', 'result', 'thread_id', 'resumed',
   'actual_model', 'finish', 'provider', 'retrieval', 'code', 'detail', 'error', 'retry_after',
@@ -26,7 +26,7 @@ const dispatcherEnvelopeKeys = new Set([
 export function createExplorationCallPlan(goalCount) {
   if (!Number.isSafeInteger(goalCount) || goalCount < 0) throw new Error('Exploration goal count must be a non-negative integer');
   const { perGoal, hardGlobalCeiling } = EXPLORATION_MODEL_CALL_POLICY;
-  const callsPerGoal = EXPLORATION_CALLS_PER_GOAL;
+  const callsPerGoal = perGoal * 2 + 1;
   const scheduled = callsPerGoal * goalCount;
   if (!Number.isSafeInteger(scheduled) || scheduled > hardGlobalCeiling) {
     throw new Error(`Exploration schedule requires ${scheduled} model calls, above the hard global ceiling of ${hardGlobalCeiling}`);
@@ -41,14 +41,16 @@ export function formatExplorationCallPlan(plan) {
 export function createExplorationBatchPlan(goalCount) {
   if (!Number.isSafeInteger(goalCount) || goalCount < 0) throw new Error('Exploration goal count must be a non-negative integer');
   const batches = [];
-  for (let start = 0; start < goalCount; start += EXPLORATION_BATCH_GOAL_LIMIT) {
-    const goals = Math.min(EXPLORATION_BATCH_GOAL_LIMIT, goalCount - start);
+  const { batchGoals, explorationSteps } = effectiveRunLimits();
+  const callsPerGoal = explorationSteps * 2 + 1;
+  for (let start = 0; start < goalCount; start += batchGoals) {
+    const goals = Math.min(batchGoals, goalCount - start);
     const plan = createExplorationCallPlan(goals);
     batches.push(Object.freeze({ number: batches.length + 1, start, goalCount: goals, plannedCalls: plan.scheduled }));
   }
-  const totalCalls = EXPLORATION_CALLS_PER_GOAL * goalCount;
+  const totalCalls = callsPerGoal * goalCount;
   if (!Number.isSafeInteger(totalCalls)) throw new Error('Exploration batch total exceeds the safe integer range');
-  return Object.freeze({ goalCount, callsPerGoal: EXPLORATION_CALLS_PER_GOAL, totalCalls, batches: Object.freeze(batches) });
+  return Object.freeze({ goalCount, callsPerGoal, totalCalls, batches: Object.freeze(batches) });
 }
 
 export function formatExplorationBatchPlan(plan) {
@@ -234,14 +236,14 @@ function dispatcherExists(child) {
   return false;
 }
 
-async function clearDispatcher(child) {
+async function clearDispatcher(child, limits) {
   if (!child.pid) return;
   signalDispatcher(child, 'SIGTERM');
-  const deadline = Date.now() + DISPATCH_TERMINATION_GRACE_MS;
-  while (dispatcherExists(child) && Date.now() < deadline) await delay(10);
+  const deadline = Date.now() + limits.dispatcherGraceMs;
+  while (dispatcherExists(child) && Date.now() < deadline) await delay(Math.min(10, deadline - Date.now()));
   if (dispatcherExists(child)) signalDispatcher(child, 'SIGKILL');
-  const forcedDeadline = Date.now() + DISPATCH_TERMINATION_GRACE_MS;
-  while (dispatcherExists(child) && Date.now() < forcedDeadline) await delay(10);
+  const forcedDeadline = Date.now() + limits.dispatcherGraceMs;
+  while (dispatcherExists(child) && Date.now() < forcedDeadline) await delay(Math.min(10, forcedDeadline - Date.now()));
   if (dispatcherExists(child)) throw new RunLimitError('dispatcher-cleanup-unverified');
 }
 
@@ -261,6 +263,7 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
   run.check();
   signal?.throwIfAborted();
   run.reserveModel();
+  const limits = effectiveRunLimits(run);
   return new Promise((resolve, reject) => {
     const args = dispatcherContract.argv.map(value => value === '{desk}' ? desk : value);
     const child = spawn(process.env.PYTHON || 'python3', [dispatcher, ...args], {
@@ -270,7 +273,7 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
     });
     dispatcherOwnership('staging-dispatcher', child.pid);
     let stdout = '', outputBytes = 0, cleanup, groupCleanup;
-    const reap = () => groupCleanup ||= clearDispatcher(child);
+    const reap = () => groupCleanup ||= clearDispatcher(child, limits);
     const finish = (error, value) => {
       if (cleanup) return cleanup;
       signal?.removeEventListener('abort', abort);
@@ -286,7 +289,7 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
       if (cleanup) return current;
       try {
         outputBytes += chunk.byteLength;
-        if (outputBytes > RUN_LIMITS.dispatcherOutputBytes) throw new RunLimitError('dispatcher-output-byte-limit');
+        if (outputBytes > limits.dispatcherOutputBytes) throw new RunLimitError('dispatcher-output-byte-limit');
         run?.reserveBytes(chunk.byteLength);
         return current + chunk.toString('utf8');
       } catch (error) {
@@ -295,7 +298,7 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
       }
     };
     const abort = () => { void finish(new Error('Model Room dispatch aborted')); };
-    const timer = setTimeout(() => { void finish(new RunLimitError('dispatcher-deadline')); }, RUN_LIMITS.goalTimeoutMs);
+    const timer = setTimeout(() => { void finish(new RunLimitError('dispatcher-deadline')); }, limits.goalTimeoutMs);
     signal?.addEventListener('abort', abort, { once: true });
     run?.signal.addEventListener('abort', abort, { once: true });
     child.once('error', error => { void finish(error); });
