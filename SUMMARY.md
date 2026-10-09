@@ -70,7 +70,7 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `js/status.js` | Status DOM wiring over `GET /app-release` and the four Control Room reads, each settled on its own |
 | `js/shell.js` | The shell every surface shares: the three presentation icons (one storage key, legacy key migrated), the tab strip, and the floating Doc |
 | `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
-| `js/doc-dock.js` | The one floating Doc icon and its chat window, shared by every surface |
+| `js/doc-presence.js` and `js/doc-command-bar.js` | The persistent Doc and its command bar, shared by every surface |
 | `js/client.js` | Small client interface selected by the app |
 | `js/live-client.js` | Authenticated same-origin CARR adapter |
 | `js/fixture-client.js` | In-memory synthetic adapter |
