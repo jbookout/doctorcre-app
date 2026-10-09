@@ -209,7 +209,7 @@ test("Dot 25: a task due today is not overdue at 8 AM Central", () => {
 
 function tourHarness() {
   const $=elements(); const replies=new Map(); const state={tour:{id:"A"},feedbackSeq:0,hydrationSeq:0,cheatDirty:false};
-  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
+  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},routeDraft:{read:tourId=>replies.get(tourId),open:()=>({changed:false,blocked:false})}},["loadTour"]);
   return {h,state,$,replies};
 }
 test("Dot 1: current main serializes Tour navigation instead of applying out-of-order loads", async () => {
@@ -508,11 +508,11 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
     state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
-    request:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),
+    request:noop,routeDraft:{read:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),open:()=>({changed:false,blocked:false})},
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",renderFeedback:noop,renderShareGrants:noop,
     cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,
-    renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
+    renderCreate:noop,initComposer:noop,
     renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},
   },["loadTour"]);
   await reload.loadTour("A");assert.equal(state.projectionId,"projection-B");
@@ -530,7 +530,7 @@ for (const rotate of [false,true]) test(`PR111 R2: corrected ${rotate ? "rotatio
   const {h,state,$}=shareHarness(null,rotate);const requests=[];let tokens=0,keys=0;
   h.newShareToken=()=>`token-${++tokens}`;h.uuid=()=>`key-${++keys}`;
   $("#receipt-digest").value="sha256:"+"A".repeat(64);
-  const transport=handlers("tours/app.js","  async function request(","  function validateDetail(",{
+  const transport=handlers("tours/app.js","  async function request(","  let createPending",{
     state,sessionBinding:"binding",AbortController,
     fetch:async(path,init)=>{
       const payload=JSON.parse(init.body);requests.push({path,payload});
@@ -550,7 +550,7 @@ for (const rotate of [false,true]) test(`PR111 R2: corrected ${rotate ? "rotatio
 
 for (const response of [new Response("",{status:400}),new Response(JSON.stringify({error:"timeout"}),{status:408})]) test(`PR111 R2: ambiguous HTTP ${response.status} keeps the exact share request`, async () => {
   const {h,state,$}=shareHarness(null);const requests=[];
-  const transport=handlers("tours/app.js","  async function request(","  function validateDetail(",{
+  const transport=handlers("tours/app.js","  async function request(","  let createPending",{
     state,sessionBinding:"binding",AbortController,
     fetch:async(path,init)=>{requests.push({path,payload:JSON.parse(init.body)});return requests.length===1 ? response : new Response(JSON.stringify({data:{share_grant_id:grantId}}));},
   },["post"]);
