@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { JSDOM } from 'jsdom';
+import { openDom } from './jsdom-harness.mjs';
 import { pressControl } from '../scripts/e2e-staging/controls.mjs';
 import { canonicalIdentity, identityKey, traversalSnapshot, validateTraversal } from '../scripts/e2e-staging/traversal.mjs';
 
-function syntheticPage(t, html) {
-  const dom = new JSDOM(html, { url: 'https://synthetic.invalid/', runScripts: 'dangerously', pretendToBeVisual: true });
-  t.after(() => dom.window.close());
+function syntheticPage(html) {
+  const dom = openDom(html, { url: 'https://synthetic.invalid/', runScripts: 'dangerously', pretendToBeVisual: true });
   const { window } = dom;
   window.Request = Request;
   window.Element.prototype.checkVisibility = function () {
@@ -36,8 +35,8 @@ function syntheticPage(t, html) {
 for (const action of [
   "this.closest('section').hidden=true",
   "this.closest('section').style.display='none'",
-]) test('dismissal remains measured after its visible dialog disappears: ' + action, async t => {
-  const { page } = syntheticPage(t, '<main><section role="dialog"><button id="dismiss" onclick="' + action + '">Dismiss</button></section></main>');
+]) test('dismissal remains measured after its visible dialog disappears: ' + action, async () => {
+  const { page } = syntheticPage('<main><section role="dialog"><button id="dismiss" onclick="' + action + '">Dismiss</button></section></main>');
   const control = { selector: '#dismiss', role: 'button', name: 'Dismiss', inputType: null, href: null, disabled: false,
     identity: canonicalIdentity('synthetic-dismiss') };
   const result = await pressControl(page, control, { waitMs: 20 });
@@ -51,17 +50,17 @@ for (const action of [
   assert.equal(validateTraversal(screen), screen.traversal);
 });
 
-test('hidden rendering and unrelated visible timers cannot credit a dead control', async t => {
-  const { page, window } = syntheticPage(t, '<main><button id="dead" onclick="document.querySelector(\'#hidden\').textContent=\'Changed\'">Dead</button><output id="visible"></output><output id="hidden" hidden></output></main>');
+test('hidden rendering and unrelated visible timers cannot credit a dead control', async () => {
+  const { page, window } = syntheticPage('<main><button id="dead" onclick="document.querySelector(\'#hidden\').textContent=\'Changed\'">Dead</button><output id="visible"></output><output id="hidden" hidden></output></main>');
   window.setTimeout(() => { window.document.querySelector('#visible').textContent = 'Unrelated'; }, 10);
   const result = await pressControl(page, { selector: '#dead', role: 'button' }, { waitMs: 30 });
   assert.equal(result.status, 'DEAD');
   assert.deepEqual(result.signals, []);
 });
 
-test('an asynchronous test counter does not gate the Save request', async t => {
+test('an asynchronous test counter does not gate the Save request', async () => {
   for (const awaitCounter of [true, false]) {
-    const { page, window, listeners } = syntheticPage(t, '<main><form onsubmit="event.preventDefault();saveStep()"><button id="save" type="submit">Save</button><output id="status"></output></form></main>');
+    const { page, window, listeners } = syntheticPage('<main><form onsubmit="event.preventDefault();saveStep()"><button id="save" type="submit">Save</button><output id="status"></output></form></main>');
     let attempts = 0, writes = 0;
     window.fixtureSaveAttempt = () => new window.Promise(resolve => {
       setTimeout(() => { attempts++; resolve(); }, 10);
