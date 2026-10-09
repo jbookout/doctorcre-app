@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareStagingRecords } from '../../scripts/e2e-staging/records.mjs';
+import { prepareStagingRecords, stagingFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
@@ -11,7 +11,7 @@ import { eligibleLead } from '../../js/leads-model.js';
 const fixture = 'fc08d2f4-a951-5679-9f34-40d0f4278842';
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
 const reply = body => ({ ok: () => true, status: () => 200, json: async () => body });
-const envelope = body => reply({ result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
+const envelope = body => reply({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
 
 function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = false, beforeReadback } = {}) {
   const calls = [], rows = { deals: new Map() };
@@ -77,6 +77,42 @@ test('record setup rejects production origins before authentication, files or re
       origin, session: () => assert.fail('must not authenticate'), requestFactory: () => assert.fail('must not request'),
     }), /exact.*staging origin/);
   }
+});
+
+test('resume reuse refuses missing, unsafe or unresolved setup before authentication', async t => {
+  for (const kind of ['missing', 'pending', 'inflight', 'permissions', 'schema', 'origin']) await t.test(kind, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-records-reuse-only-'));
+    try {
+      if (kind !== 'missing') {
+        const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: STAGING_ORIGIN, state: 'complete', release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit } };
+        if (kind === 'pending') plan.state = 'pending';
+        if (kind === 'inflight') plan.inflight = { name: 'new-deal' };
+        if (kind === 'schema') plan.schema = 'unexpected';
+        if (kind === 'origin') plan.origin = 'https://app.doctorcre.com';
+        await writeFile(join(output, 'staging-records-plan.json'), JSON.stringify(plan), { mode: kind === 'permissions' ? 0o644 : 0o600 });
+      }
+      let authenticated = 0;
+      await assert.rejects(prepareStagingRecords(output, {
+        reuseOnly: true,
+        session: async () => { authenticated++; throw new Error('Synthetic authentication was reached'); },
+        requestFactory: () => assert.fail('resume must not issue business requests'),
+      }), /existing complete|partial plan|private regular/);
+      assert.equal(authenticated, 0);
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
+});
+
+test('resume reuse reads existing synthetic records without repeating mutations', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-reuse-only-readback-'));
+  try {
+    const fake = fakeAPI(output);
+    const first = await prepareStagingRecords(output, fake);
+    fake.calls.length = 0;
+    const reused = await prepareStagingRecords(output, { ...fake, reuseOnly: true });
+    assert.deepEqual(reused.records, first.records);
+    assert.deepEqual(fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name), ['get-deal-room', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation']);
+    assert.ok(fake.calls.every(call => call.path === '/mcp' || call.options.data === undefined));
+  } finally { await rm(output, { recursive: true, force: true }); }
 });
 
 test('normal staging APIs create representative records with private durable keys and receipts', async () => {
@@ -373,4 +409,385 @@ test('completed closed-view recovery refuses wrong not-found identity, nonclosed
       assert.deepEqual(fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name), failure.calls);
     }
   } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+const browserKey = number => '50000000-0000-4000-8000-' + String(number).padStart(12, '0');
+const browserRequest = (name, args = {}, { method = 'POST', path = '/mcp' } = {}) => ({
+  method: () => method, url: () => STAGING_ORIGIN + path,
+  postDataJSON: () => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+});
+async function browserFixtures(t) {
+  const output = await mkdtemp(join(tmpdir(), 'staging-browser-fixtures-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const setup = await prepareStagingRecords(output, fakeAPI(output));
+  const path = join(output, 'staging-records-plan.json');
+  const read = async () => JSON.parse(await readFile(path, 'utf8'));
+  const write = plan => writeFile(path, JSON.stringify(plan), { mode: 0o600 });
+  return { output, path, setup, read, write, guard: stagingFixtureWriteGuard({ output, release }) };
+}
+function operationReceipt(name, args, primary = args.deal || args.conversation_id || args.lead) {
+  if (name === 'set-next-step') return { ok: true, deal_id: primary, next_step_id: browserKey(901),
+    next_action_id: browserKey(902), supersedes: null, created_at: new Date().toISOString() };
+  if (name === 'add-deal-note') return { ok: true, deal_id: primary, note_id: browserKey(903), created_at: new Date().toISOString() };
+  if (name === 'rename-doc-conversation') return { ok: true, conversation_id: primary, version: args.base_version + 1,
+    title: args.title || 'Fictional conversation', pinned: args.pinned ?? false, archived: args.archived ?? false };
+  if (name === 'claim-lead') return { ok: true, lead_id: primary, owner: args.expected_actor };
+  if (name === 'link-lead-client') return { ok: true, lead_id: primary, client_id: args.client_id };
+  if (name === 'update-lead') return { ok: true, updated: ['stage'] }; // Actual pinned response has no identity/value binding.
+  assert.fail('Unknown synthetic operation');
+}
+const nextStep = (f, key = 1, text = 'Fictional next step') => ({
+  deal: f.setup.records.deal.id, text, next_date: null, idempotency_key: browserKey(key),
+});
+
+test('browser writes prove creation ownership and retain exact intent before a single dispatch', async t => {
+  const f = await browserFixtures(t);
+  let dispatches = 0;
+  const args = nextStep(f);
+  const response = await f.guard.handle(browserRequest('set-next-step', args), async () => {
+    dispatches++;
+    const plan = await f.read();
+    assert.equal(plan.browser_write_attempts.length, 1);
+    assert.deepEqual(plan.browser_write_attempts[0].arguments, args);
+    assert.equal(plan.browser_write_attempts[0].state, 'inflight');
+    assert.equal((await stat(f.path)).mode & 0o777, 0o600);
+    return envelope(operationReceipt('set-next-step', args));
+  });
+  assert.equal(response.status(), 200);
+  const intent = (await f.read()).browser_write_attempts[0];
+  assert.equal(intent.state, 'acknowledged');
+  assert.match(intent.dispatched_outcome, /effect not independently verified/);
+  assert.equal(dispatches, 1);
+  for (const changed of [{ ...args, idempotency_key: browserKey(2) }, { ...args, text: 'Other text' }])
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', changed), () => assert.fail('duplicate must not dispatch')), /duplicate-attempt/);
+});
+
+test('browser policy rejects nonfixture IDs, mixed references, globals and unreviewed shapes before dispatch', async t => {
+  const f = await browserFixtures(t), external = browserKey(90);
+  const lead = { lead: f.setup.records.lead.id, base_version: 1, expected_actor: 'joe', idempotency_key: browserKey(3) };
+  const requests = [
+    browserRequest('set-next-step', { ...nextStep(f), deal: external }),
+    browserRequest('link-lead-client', { ...lead, client_id: external, confirmed: true }),
+    browserRequest('update-lead', { ...lead, fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [external] } }),
+    browserRequest('rename-doc-conversation', { conversation_id: external, base_version: 1, pinned: true, idempotency_key: browserKey(4) }),
+    browserRequest('set-next-step', { ...nextStep(f), party_id: f.setup.records.party.id }),
+    browserRequest('claim-lead', { ...lead, expected_actor: 'another-actor' }),
+    browserRequest('rename-doc-conversation', { conversation_id: f.setup.records.conversation.id, base_version: 1, pinned: 'true', idempotency_key: browserKey(4) }),
+    browserRequest('set-notification-preference', { idempotency_key: browserKey(5) }),
+    browserRequest('private-operation-name-canary', { secret: 'private-arguments-canary' }),
+    browserRequest('__proto__', {}),
+    ...['login', 'callback', 'reauth', 'logout', 'signout'].map(path =>
+      browserRequest('unused', {}, { method: 'GET', path: '/auth/' + path })),
+    browserRequest('set-next-step', nextStep(f), { path: '/api/tours/update' }),
+    browserRequest('set-next-step', nextStep(f), { method: 'DELETE' }),
+  ];
+  for (const request of requests) await assert.rejects(f.guard.handle(request, () => assert.fail('scope refusal must precede dispatch')), /Staging fixture write refused/);
+  const plan = await f.read();
+  assert.equal(plan.browser_write_attempts, undefined);
+  assert.equal(plan.browser_write_refusals.length, requests.length);
+  assert.doesNotMatch(JSON.stringify(plan.browser_write_refusals), /private-operation-name-canary|private-arguments-canary|50000000|another-actor/);
+});
+
+test('missing or mismatched fixture provenance never dispatches, including forged ownership receipts', async t => {
+  for (const kind of ['missing', 'receipt', 'source', 'inflight', 'permissions', 'schema', 'run', 'records', 'release']) await t.test(kind, async t => {
+    const f = await browserFixtures(t), plan = await f.read();
+    if (kind === 'missing') await rm(f.path);
+    else {
+      if (kind === 'receipt') plan.receipts.deal.deal_id = browserKey(90);
+      if (kind === 'source') plan.release.source_commit = 'b'.repeat(40);
+      if (kind === 'inflight') plan.inflight = { name: 'setup-write' };
+      if (kind === 'schema') plan.schema = 'unexpected';
+      if (kind === 'run') delete plan.run;
+      if (kind === 'records') delete plan.records;
+      if (kind === 'release') delete plan.release;
+      await f.write(plan);
+      if (kind === 'permissions') await chmod(f.path, 0o644);
+    }
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', nextStep(f)), () => assert.fail('missing provenance must not dispatch')), /refused/);
+  });
+});
+
+test('intent storage failure stops dispatch and does not manufacture an acknowledgement', async t => {
+  const f = await browserFixtures(t);
+  const guard = stagingFixtureWriteGuard({ output: f.output, release, persist: async () => { throw new Error('private-storage-canary'); } });
+  await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), () => assert.fail('storage must precede dispatch')), /intent-or-provenance-unavailable/);
+  assert.equal((await f.read()).browser_write_attempts, undefined);
+  await assert.rejects(guard.assertCoverage(), /write-coverage-incomplete/);
+  assert.doesNotMatch(JSON.stringify(guard.refusals), /private-storage-canary/);
+});
+
+test('interruption after dispatch and a restarted guard preserve one-attempt reconciliation', async t => {
+  const f = await browserFixtures(t);
+  let dispatches = 0;
+  await assert.rejects(f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => {
+    dispatches++;
+    throw Object.assign(new Error('private-response-canary'), { code: 'private-error-code-canary' });
+  }), /dispatch-outcome-unresolved/);
+  assert.equal((await f.read()).browser_write_attempts[0].state, 'inflight');
+  const restarted = stagingFixtureWriteGuard({ output: f.output, release });
+  for (const [name, args] of [
+    ['set-next-step', nextStep(f, 2)],
+    ['add-deal-note', { deal: f.setup.records.deal.id, text: 'Other mutation', idempotency_key: browserKey(3) }],
+  ]) await assert.rejects(restarted.handle(browserRequest(name, args), () => { dispatches++; }), /duplicate-attempt|ambiguous-record/);
+  assert.equal(dispatches, 1);
+  assert.doesNotMatch(JSON.stringify((await f.read()).browser_write_refusals), /private-response-canary|private-error-code-canary/);
+});
+
+test('ambiguous responses and post-dispatch storage failure cannot release a record for retry', async t => {
+  for (const kind of ['unreadable', 'error', 'multiple-content', 'storage']) await t.test(kind, async t => {
+    const f = await browserFixtures(t);
+    const response = kind === 'unreadable' ? { status: () => 200, json: async () => { throw new Error('Unparsed'); } }
+      : kind === 'error' ? envelope({ ok: false, error: 'refused' })
+      : kind === 'multiple-content' ? reply({ result: { content: [{ type: 'text', text: '{"ok":true}' }, { type: 'text', text: '{"ok":false}' }] } })
+      : envelope({ ok: true });
+    let stored = 0;
+    const guard = kind !== 'storage' ? f.guard : stagingFixtureWriteGuard({ output: f.output, release,
+      persist: async (path, plan) => { if (++stored === 1) await f.write(plan); else throw new Error('Storage stopped'); },
+    });
+    if (kind === 'storage') await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), async () => response));
+    else await assert.rejects(guard.handle(browserRequest('set-next-step', nextStep(f)), async () => response), /dispatch-outcome-unresolved/);
+    assert.equal((await f.read()).browser_write_attempts[0].state, kind === 'storage' ? 'inflight' : 'unresolved');
+    await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).handle(
+      browserRequest('set-next-step', nextStep(f, 2)), () => assert.fail('ambiguous write cannot replay')), /duplicate-attempt/);
+  });
+});
+
+test('concurrent same-record attempts dispatch only once while intent is unresolved', async t => {
+  const f = await browserFixtures(t);
+  let dispatched;
+  const atDispatch = new Promise(resolve => { dispatched = resolve; });
+  let complete;
+  const completion = new Promise(resolve => { complete = resolve; });
+  const first = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => { dispatched(); await completion; return envelope(operationReceipt('set-next-step', nextStep(f))); });
+  await atDispatch;
+  await assert.rejects(f.guard.handle(browserRequest('add-deal-note', { deal: f.setup.records.deal.id, text: 'Another write', idempotency_key: browserKey(2) }),
+    () => assert.fail('concurrent write must not dispatch')), /ambiguous-record/);
+  complete();
+  await first;
+});
+
+test('benign reads, including failed reads followed by retries, need no fixture writes or provenance', async () => {
+  const guard = stagingFixtureWriteGuard();
+  let reads = 0;
+  for (const request of [browserRequest('get-deal-room', { deal: 'read-only-external-record' }), browserRequest('lead-board'),
+    browserRequest('unused', {}, { method: 'GET', path: '/auth/session' }), browserRequest('unused', {}, { method: 'HEAD', path: '/' })]) {
+    await assert.rejects(guard.handle(request, async () => { reads++; throw new Error('Read failed'); }), /Read failed/);
+    const readResponse = reply({ read: 'succeeded' });
+    assert.equal(await guard.handle(request, async () => { reads++; return readResponse; }), readResponse);
+  }
+  assert.equal(reads, 8);
+  assert.deepEqual(guard.refusals, []);
+  await guard.assertCoverage();
+  await assert.rejects(guard.handle(browserRequest('claim-lead', { lead: browserKey(1), expected_actor: 'joe', base_version: 1, idempotency_key: browserKey(2) }),
+    () => assert.fail('write without fixture plan cannot dispatch')), /fixture-provenance-missing/);
+});
+
+test('each admitted operation binds only creation-proved fixture records', async t => {
+  const f = await browserFixtures(t), r = f.setup.records;
+  const lead = { lead: r.lead.ref, base_version: 1, expected_actor: 'joe' };
+  const operations = [
+    ['add-deal-note', { deal: r.deal.id, text: 'Fictional note' }],
+    ['set-next-step', { deal: r.invoice.deal_id, text: 'Fictional step', next_date: '2026-10-08' }],
+    ['rename-doc-conversation', { conversation_id: r.conversation.id, base_version: 1, title: 'Fictional rename', pinned: true, archived: false }],
+    ['claim-lead', lead],
+    ['link-lead-client', { ...lead, client_id: r.client.id, confirmed: true }],
+    ['update-lead', { ...lead, fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [], human_quote: 'Reviewed' } }],
+  ];
+  for (const [index, [name, args]] of operations.entries()) {
+    const requestArgs = { ...args, idempotency_key: browserKey(20 + index) };
+    const result = f.guard.handle(browserRequest(name, requestArgs), async () =>
+      envelope(operationReceipt(name, requestArgs, name.includes('lead') ? r.lead.id : args.deal || args.conversation_id)));
+    if (name === 'update-lead') await assert.rejects(result, /dispatch-outcome-unresolved/);
+    else await result;
+  }
+  const intents = (await f.read()).browser_write_attempts;
+  assert.equal(intents.length, operations.length);
+  assert.deepEqual(intents.at(-2).record_ids, [r.lead.id, r.client.id]);
+  assert.ok(intents.slice(0, -1).every(row => row.state === 'acknowledged' && row.response.binding.operation === row.operation));
+  assert.equal(intents.at(-1).state, 'unresolved', 'pinned stage receipt cannot prove record or changed value');
+});
+
+test('known GET/HEAD reads and exact static assets pass; unknown paths and auth mutations retain refusals before dispatch', async t => {
+  const f = await browserFixtures(t);
+  const known = ['/', '/calendar', '/auth/session', '/app-release', '/pipeline/changes',
+    '/api/v1/business/clients/' + f.setup.records.client.id, '/api/tours/library', '/api/system-work/current', '/js/live-client.js', '/css/shell.css'];
+  // Use a known stylesheet from the existing build manifest, not a made-up prefix grant.
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  known[known.length - 1] = '/' + manifest.files.find(row => row.path.startsWith('css/')).path;
+  let forwarded = 0;
+  for (const method of ['GET', 'HEAD']) {
+    for (const path of known) assert.equal((await f.guard.handle(browserRequest('unused', {}, { method, path }), async () => { forwarded++; return reply({ read: true }); })).status(), 200);
+    for (const path of ['/auth/login', '/auth/callback', '/auth/reauth', '/auth/logout', '/api/system-work/challenge',
+      '/api/system-work/WR-1/plan/accept', '/api/tours/create', '/api/v1/unknown-write', '/unknown-path', '/js/not-a-built-asset.js']) {
+      await assert.rejects(f.guard.handle(browserRequest('unused', {}, { method, path }), () => assert.fail('unknown or auth GET must not dispatch')), /authentication-mutation-unproved|read-path-unproved/);
+    }
+  }
+  assert.equal(forwarded, known.length * 2);
+  const plan = await f.read();
+  assert.equal(plan.browser_write_attempts, undefined);
+  assert.equal(plan.browser_write_refusals.length, 20);
+  assert.ok(plan.browser_write_refusals.every(row => row.forwarded === false));
+});
+
+test('wrong-record, incomplete and wrong-effect success responses remain unresolved and block later fingerprints', async t => {
+  const names = ['set-next-step', 'add-deal-note', 'rename-doc-conversation', 'claim-lead', 'link-lead-client', 'update-lead'];
+  for (const name of names) for (const failure of ['wrong-record', 'incomplete', 'wrong-effect']) await t.test(name + '/' + failure, async t => {
+    const f = await browserFixtures(t), r = f.setup.records;
+    const args = name === 'set-next-step' ? nextStep(f) :
+      name === 'add-deal-note' ? { deal: r.deal.id, text: 'Fictional note', idempotency_key: browserKey(1) } :
+      name === 'rename-doc-conversation' ? { conversation_id: r.conversation.id, base_version: 1, title: 'Fictional rename', pinned: true, idempotency_key: browserKey(1) } :
+      { lead: r.lead.id, base_version: 1, expected_actor: 'joe', idempotency_key: browserKey(1),
+        ...(name === 'link-lead-client' ? { client_id: r.client.id, confirmed: true } : {}),
+        ...(name === 'update-lead' ? { fields: { stage: 'new' }, stage_review: { reason: 'Fictional review', evidence_ids: [] } } : {}) };
+    const good = operationReceipt(name, args);
+    const payload = failure === 'incomplete' ? { ok: true } : { ...good };
+    if (failure === 'wrong-record') {
+      if (name.includes('doc-conversation')) payload.conversation_id = browserKey(99);
+      else if (name.includes('lead')) payload.lead_id = browserKey(99);
+      else payload.deal_id = browserKey(99);
+    }
+    if (failure === 'wrong-effect') {
+      if (name === 'set-next-step') payload.next_action_id = undefined;
+      if (name === 'add-deal-note') payload.created_at = '2000-01-01T00:00:00Z';
+      if (name === 'rename-doc-conversation') payload.pinned = false;
+      if (name === 'claim-lead') payload.owner = 'another-actor';
+      if (name === 'link-lead-client') payload.client_id = browserKey(99);
+      if (name === 'update-lead') payload.updated = ['notes'];
+    }
+    let dispatches = 0;
+    await assert.rejects(f.guard.handle(browserRequest(name, args), async () => { dispatches++; return envelope(payload); }), /dispatch-outcome-unresolved/);
+    const stored = (await f.read()).browser_write_attempts[0];
+    assert.equal(stored.state, 'unresolved');
+    assert.equal(stored.response.acknowledged, false);
+    assert.equal(stored.response.binding, undefined);
+    // Change the fingerprint, not just the key; the unresolved record still blocks it.
+    const laterName = name.includes('lead') ? 'link-lead-client' : name === 'rename-doc-conversation' ? name : 'add-deal-note';
+    const later = laterName === 'link-lead-client' ? { lead: r.lead.id, base_version: 2, expected_actor: 'joe',
+      client_id: r.client.id, confirmed: true, idempotency_key: browserKey(2) } :
+      laterName === 'rename-doc-conversation' ? { conversation_id: r.conversation.id, base_version: 2, archived: true, idempotency_key: browserKey(2) } :
+      { deal: r.deal.id, text: 'Distinct later action', idempotency_key: browserKey(2) };
+    await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).handle(browserRequest(laterName, later),
+      () => { dispatches++; }), /ambiguous-record|duplicate-attempt/);
+    assert.equal(dispatches, 1);
+  });
+});
+
+test('receipt correlation, replay and future timestamps cannot release an ambiguous fixture', async t => {
+  for (const kind of ['wrong-rpc-id', 'replayed', 'future']) await t.test(kind, async t => {
+    const f = await browserFixtures(t), args = nextStep(f), payload = operationReceipt('set-next-step', args);
+    if (kind === 'replayed') payload.replayed = true;
+    if (kind === 'future') payload.created_at = '2999-01-01T00:00:00Z';
+    const response = kind === 'wrong-rpc-id' ? reply({ jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }) : envelope(payload);
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', args), async () => response), /dispatch-outcome-unresolved/);
+    assert.equal((await f.read()).browser_write_attempts[0].state, 'unresolved');
+  });
+});
+
+test('admitted read redirects retain a refusal while HTTP and transport failures preserve normal read handling', async t => {
+  const f = await browserFixtures(t);
+  for (const request of [
+    browserRequest('unused', {}, { method: 'GET', path: '/app-release' }),
+    browserRequest('unused', {}, { method: 'HEAD', path: '/app-release' }),
+    browserRequest('get-deal-room', { deal: 'read-only-external-record' }),
+  ]) {
+    await assert.rejects(f.guard.handle(request, async () => ({ status: () => 302 })), /read-redirect-unproved/);
+    await assert.rejects(f.guard.handle(request, async () => { throw new Error('Read connection interrupted'); }), /Read connection interrupted/);
+    assert.equal((await f.guard.handle(request, async () => ({ status: () => 503 }))).status(), 503);
+    assert.equal((await f.guard.handle(request, async () => ({ status: () => 200 }))).status(), 200);
+  }
+  const plan = await f.read();
+  assert.equal(plan.browser_write_attempts, undefined);
+  assert.equal(plan.browser_write_refusals.length, 3);
+  assert.ok(plan.browser_write_refusals.every(row => row.reason === 'read-redirect-unproved' && row.forwarded));
+});
+
+test('producer-trimmed note and next-step text share a fingerprint while actual request evidence is retained', async t => {
+  for (const name of ['add-deal-note', 'set-next-step']) await t.test(name, async t => {
+    const f = await browserFixtures(t);
+    const args = { deal: f.setup.records.deal.id, text: '  Same note  ', idempotency_key: browserKey(1),
+      ...(name === 'set-next-step' ? { next_date: null } : {}) };
+    await f.guard.handle(browserRequest(name, args), async () => envelope(operationReceipt(name, args)));
+    assert.equal((await f.read()).browser_write_attempts[0].arguments.text, '  Same note  ');
+    await assert.rejects(f.guard.handle(browserRequest(name, { ...args, text: 'Same note', idempotency_key: browserKey(2) }),
+      () => assert.fail('whitespace-equivalent producer write cannot dispatch twice')), /duplicate-attempt/);
+  });
+});
+
+test('conversation title remains exact in fingerprint, request evidence and receipt binding', async t => {
+  const f = await browserFixtures(t);
+  const args = { conversation_id: f.setup.records.conversation.id, base_version: 1,
+    title: '  Exact title  ', idempotency_key: browserKey(1) };
+  await f.guard.handle(browserRequest('rename-doc-conversation', args), async () => envelope(operationReceipt('rename-doc-conversation', args)));
+  const second = { ...args, base_version: 2, title: 'Exact title', idempotency_key: browserKey(2) };
+  await f.guard.handle(browserRequest('rename-doc-conversation', second), async () => envelope(operationReceipt('rename-doc-conversation', second)));
+  const intents = (await f.read()).browser_write_attempts;
+  assert.equal(intents[0].response.binding.effect.title, args.title);
+  assert.notEqual(intents[0].fingerprint, intents[1].fingerprint, 'producer stores title verbatim');
+  await f.guard.assertCoverage();
+});
+
+test('array-shaped receipt IDs, supersedes and timestamps stay unresolved and block different later writes', async t => {
+  for (const [name, field] of [['set-next-step', 'next_step_id'], ['set-next-step', 'next_action_id'],
+    ['set-next-step', 'supersedes'], ['set-next-step', 'created_at'], ['add-deal-note', 'note_id'], ['add-deal-note', 'created_at']])
+    await t.test(name + '/' + field, async t => {
+      const f = await browserFixtures(t), args = { ...nextStep(f), ...(name === 'add-deal-note' ? {} : {}) };
+      if (name === 'add-deal-note') delete args.next_date;
+      const payload = operationReceipt(name, args);
+      payload[field] = [field === 'supersedes' ? browserKey(99) : payload[field]];
+      await assert.rejects(f.guard.handle(browserRequest(name, args), async () => envelope(payload)), /dispatch-outcome-unresolved/);
+      assert.equal((await f.read()).browser_write_attempts[0].state, 'unresolved');
+      await assert.rejects(f.guard.handle(browserRequest('add-deal-note', {
+        deal: args.deal, text: 'Different later note', idempotency_key: browserKey(2),
+      }), () => assert.fail('malformed receipt must not release the record')), /ambiguous-record|duplicate-attempt/);
+      await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
+    });
+});
+
+test('request keys and dates require their scalar contract types before intent or dispatch', async t => {
+  const f = await browserFixtures(t);
+  for (const key of [[browserKey(1)], { value: browserKey(1) }, null, 1])
+    await assert.rejects(f.guard.handle(browserRequest('set-next-step', { ...nextStep(f), idempotency_key: key }),
+      () => assert.fail('nonstring key cannot dispatch')), /operation-scope-unproved/);
+  await assert.rejects(f.guard.handle(browserRequest('set-next-step', { ...nextStep(f), next_date: ['2026-10-08'] }),
+    () => assert.fail('nonstring date cannot dispatch')), /operation-shape-unproved/);
+  assert.equal((await f.read()).browser_write_attempts, undefined);
+});
+
+test('coverage waits for a pending write and restarted guards reject its durable inflight intent', async t => {
+  const f = await browserFixtures(t);
+  let began, finish;
+  const atDispatch = new Promise(resolve => { began = resolve; });
+  const responseReady = new Promise(resolve => { finish = resolve; });
+  const writing = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => {
+    began(); await responseReady; return envelope(operationReceipt('set-next-step', nextStep(f)));
+  });
+  await atDispatch;
+  await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
+  await assert.rejects(assertStagingWriteCoverage(f.output), /write-coverage-incomplete/);
+  let coverageFinished = false;
+  const checking = f.guard.assertCoverage({ timeoutMs: 5000 }).then(() => { coverageFinished = true; });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(coverageFinished, false);
+  finish(); await writing; await checking;
+  assert.equal(coverageFinished, true);
+  await stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage();
+  await assertStagingWriteCoverage(f.output);
+});
+
+test('bounded settlement timeout never becomes coverage success after a late complete receipt', async t => {
+  const f = await browserFixtures(t);
+  let began, finish;
+  const atDispatch = new Promise(resolve => { began = resolve; });
+  const responseReady = new Promise(resolve => { finish = resolve; });
+  const writing = f.guard.handle(browserRequest('set-next-step', nextStep(f)), async () => {
+    began(); await responseReady; return envelope(operationReceipt('set-next-step', nextStep(f)));
+  });
+  await atDispatch;
+  await assert.rejects(f.guard.assertCoverage({ timeoutMs: 20 }), /dispatch-settlement-timeout/);
+  finish();
+  await assert.rejects(writing, /dispatch-outcome-unresolved/);
+  const intent = (await f.read()).browser_write_attempts[0];
+  assert.equal(intent.state, 'unresolved'); assert.equal(intent.coverage_timeout, true);
+  await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
+  await assert.rejects(assertStagingWriteCoverage(f.output), /write-coverage-incomplete/);
 });

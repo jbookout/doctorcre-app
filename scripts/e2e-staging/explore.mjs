@@ -1,11 +1,12 @@
-import { readFile, mkdir, cp, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, cp } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { explorer40 } from './explorer.mjs';
 import { screens, targets } from './screens.mjs';
 import { writeReport, explorationEvidence } from './report.mjs';
 import { outputPath, scrubEvidence } from './sweep.mjs';
-import { prepareStagingRecords } from './records.mjs';
+import { prepareStagingRecords, assertStagingWriteCoverage } from './records.mjs';
+import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -21,7 +22,7 @@ const recordScopes = {
 
 export function explorationGoal(screen, setup) {
   const path = screen.path.split('?')[0];
-  const charter = `Navigate first to ${screen.path}. Explore the ${screen.name} workspace on staging as E2E Joe. Open drawers, menus, tabs and detail screens; exercise every control and form, including delete, archive and send-draft on disposable invented records. Test empty/error recovery, keyboard and mobile layout. Record defects with steps, expected/actual behavior and screenshots. Use parked/archived filters and normal restore controls for recovery; reopen closed deals if available or create invented replacements through the UI. No browser login. Staging only. Never navigate to production or external destinations.`;
+  const charter = `Navigate first to ${screen.path}. Explore the ${screen.name} workspace on staging as E2E Joe. Open drawers, menus, tabs and detail screens; exercise every control and form, including delete, archive and send-draft on disposable invented records. Test empty/error recovery, keyboard and mobile layout. Record defects with steps, expected/actual behavior and screenshots. Use only prepared fixture records for writes. Unproved, global, account, runtime, creator and reference mutations are blocked. Record refusals as incomplete coverage. Never bypass the guard, repeat uncertain writes or create replacement records. No browser login. Staging only. Never navigate to production or external destinations.`;
   const context = (recordScopes[path] || []).flatMap(record => {
     const row = setup.records?.[record];
     if (!row) return [];
@@ -51,11 +52,11 @@ export async function exploreAll() {
   const { release } = setup;
   const explore = await explorer40();
   const explorations = [], findings = [...setup.findings];
-  const sweep = await readFile(join(output, 'controls.json'), 'utf8').then(JSON.parse).catch(() => ({ screens: [], release: null }));
-  if (sweep.release && (sweep.release.source_commit !== release.source_commit || sweep.release.carr_source_commit !== release.carr_source_commit)) throw new Error('Sweep evidence belongs to a different staging source; rerun the sweep');
   let sequence = 0;
   const routedScreens = await screens();
-  const expectedScreens = targets.reduce((count, target) => count + routedScreens.filter(screen => screen.surface === target.surface).length, 0);
+  const checkpoint = await readSweepCheckpoint(output);
+  const sweep = createSweepRun({ targets, routedScreens, prior: checkpoint || undefined });
+  sweep.assertRelease(release);
   const expectedExplorations = targets.reduce((count, target) => count + routedScreens.filter(screen => screen.surface === target.surface).length * (target.name.endsWith('phone') ? 1 : 2), 0);
   for (const target of targets) for (const screen of routedScreens.filter(screen => screen.surface === target.surface)) {
     const agents = target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux'];
@@ -74,6 +75,7 @@ export async function exploreAll() {
         const result = await explore({ cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: 40, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true });
         steps = result.explore.steps.length;
         status = result.explore.ended;
+        await assertStagingWriteCoverage(output);
         const report = JSON.parse(await readFile(join(local, 'report.json'), 'utf8'));
         for (const item of result.explore.findings) {
           findings.push({
@@ -89,9 +91,7 @@ export async function exploreAll() {
       await mkdir(destination, { recursive: true, mode: 0o700 });
       await cp(local, destination, { recursive: true });
       explorations.push({ target: target.name, screen: screen.name, path: screen.path, agent, steps, status, evidence: destination });
-      await writeFile(join(output, 'explorations.json'), JSON.stringify(explorations, null, 2) + '\n');
-      await writeReport(output, { screens: sweep.screens, explorations, release, findings, setup, expectedScreens, expectedExplorations });
-      scrubEvidence(output);
+      await writeReport(output, { ...sweep.snapshot(), explorations, release, findings, setup, expectedExplorations });
       if (status === 'ERROR') throw new Error(`Exploration infrastructure failed at ${runId}. Evidence retained; no login was attempted.`);
     }
   }

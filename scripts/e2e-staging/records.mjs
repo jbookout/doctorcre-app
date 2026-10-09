@@ -1,17 +1,20 @@
 import { constants } from 'node:fs';
-import { mkdir, open, rename } from 'node:fs/promises';
+import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { randomUUID, createHash } from 'node:crypto';
 import { request as playwrightRequest } from 'playwright';
 import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUUID = value => typeof value === 'string' && UUID.test(value);
 const fail = () => { throw new Error('Staging record contract refused'); };
 const requireValue = condition => { if (!condition) fail(); };
-const recordId = value => { requireValue(UUID.test(value || '')); return value; };
+const recordId = value => { requireValue(isUUID(value || '')); return value; };
 
 async function privateJSON(path, value, exclusive = false) {
   const destination = exclusive ? path : `${path}.${randomUUID()}.tmp`;
@@ -36,13 +39,18 @@ async function readPrivateJSON(path) {
 }
 
 export async function prepareStagingRecords(output, {
-  origin = STAGING_ORIGIN, session = stagingSession,
+  origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
   requestFactory = options => playwrightRequest.newContext(options),
 } = {}) {
   origin = assertStagingURL(origin);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (reuseOnly && (!existing || existing.schema !== 'doctorcre-staging-records-plan.v1' || existing.origin !== STAGING_ORIGIN ||
+      !/^[0-9a-f]{40}$/.test(existing.release?.source_commit || '') || existing.release?.carr_source_commit !== contract.producer.source_commit ||
+      ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !isUUID(existing.records?.[name]?.id || '')) || !isUUID(existing.records?.invoice?.deal_id || ''))) {
+    throw new Error('Resume requires an existing complete private staging records plan; no record write was attempted');
+  }
   const { state, release } = await session(origin);
   if (release?.environment !== 'staging' || release?.service !== 'doctorcre-app' ||
       !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || release?.carr_source_commit !== contract.producer.source_commit) {
@@ -95,7 +103,7 @@ export async function prepareStagingRecords(output, {
       plan.inflight = { name, arguments: { ...args, idempotency_key: plan.keys[step] } };
       await privateJSON(planPath, plan);
       const result = await rpc(name, plan.inflight.arguments);
-      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => UUID.test(result[field] || '')).map(field => [field, result[field]]));
+      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
       plan.inflight = null;
       await privateJSON(planPath, plan);
       return result;
@@ -190,7 +198,7 @@ export async function prepareStagingRecords(output, {
     requireValue(conversationRead.identity?.id === plan.records.conversation.id && boundedText(conversationRead.identity.visibility));
     requireValue(existing || conversationRead.identity.visibility === 'private');
     const tourRead = (await json(`/api/tours/detail?tour_id=${plan.records.tour.id}`)).data;
-    requireValue(tourRead?.id === plan.records.tour.id && UUID.test(tourRead.subject_id || '') && boundedText(tourRead.subject_type));
+    requireValue(tourRead?.id === plan.records.tour.id && isUUID(tourRead.subject_id || '') && boundedText(tourRead.subject_type));
     requireValue(existing || (tourRead.subject_id === plan.records.client.id && tourRead.subject_type === 'client'));
     const limited = (record, reason, guidance, current = {}) => ({
       record, id: plan.records[record].id || plan.records[record].deal_id, name: plan.records[record].name,
@@ -220,4 +228,321 @@ export async function prepareStagingRecords(output, {
   } catch {
     throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
   } finally { if (api) await api.dispose().catch(() => {}); }
+}
+
+const browserReads = new Set(["capture-queue", "correspondence-readiness", "current-work-item", "deal-room-board", "engineering-passport", "find", "find-and-catch-up", "get-call-context", "get-deal-room", "get-incident", "governance-queue", "incident-board", "lead-board", "list-doc-conversations", "list-doc-suggestions", "list-industry-events", "list-my-codex-sessions", "list-progress-boards", "loop-board", "loop-headers", "morning-brief", "notification-feed", "read-assurance-health", "read-correspondence-thread", "read-dispatch-history", "read-doc-activity", "read-doc-conversation", "read-doc-outcome-cards", "read-invoice-tracker", "read-loop", "read-notification-preferences", "read-portfolio", "read-progress-board", "read-resource-dashboard", "read-room", "read-room-queue", "read-session-identity", "schedule-board", "today-triage", "unfinished-work", "work-request-card"]);
+
+// Known app documents, audited HTTP reads and exact built static assets only.
+// API and auth prefixes are deliberately not read grants.
+const browserPages = new Set([...Object.keys(appRoutes.routes), ...Object.keys(appRoutes.redirects || {})]);
+const httpReads = new Set([
+  '/auth/session', '/app-release', '/pipeline/changes', '/api/call-context',
+  '/api/v1/command-center', '/api/v1/work-inventory', '/api/v1/atlas-graph', '/api/v1/jev-deal-reading',
+  '/api/v1/business/clients', '/api/v1/business/vendors', '/api/v1/business/leases', '/api/v1/business/relationships',
+  '/api/room/turns', '/api/room/queue', '/api/system-work/session', '/api/system-work/current',
+  '/api/tours/library', '/api/tours/detail', '/api/tours/selection-cart', '/api/tours/property-evidence/v1',
+  '/api/tours/feedback', '/api/tours/projection/candidates',
+]);
+let builtStaticPaths;
+async function knownBrowserRead(url) {
+  if (browserPages.has(url.pathname) || httpReads.has(url.pathname) ||
+      /^\/control-room\/progress\/board\/[^/%]+$/.test(url.pathname) ||
+      /^\/api\/v1\/business\/(clients|vendors)\/[0-9a-f-]{36}$/i.test(url.pathname) ||
+      /^\/api\/system-work\/WR-\d+$/.test(url.pathname)) return true;
+  builtStaticPaths ||= readFile(fileURLToPath(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url)), 'utf8')
+    .then(text => {
+      const manifest = JSON.parse(text);
+      if (manifest.schema !== 'doctorcre-static-artifact.v1' || !Array.isArray(manifest.files)) throw new Error('Static manifest unavailable');
+      const files = new Set(manifest.files.map(row => row.path));
+      const paths = new Set([...files].filter(path => /^(css|data|js|public-shell|tours)\//.test(path)).map(path => '/' + path));
+      for (const [route, asset] of [
+        ['/manifest.webmanifest', 'manifest.webmanifest'], ['/sw.js', 'public-shell/sw.js'],
+        ['/offline.html', 'public-shell/offline.html'], ['/favicon.ico', 'public-shell/icons/dealroom.svg'],
+        ['/share.css', 'reports/share.css'], ['/share.js', 'reports/share.js'], ['/share-bootstrap.js', 'reports/share-bootstrap.js'],
+      ]) if (files.has(asset)) paths.add(route);
+      for (const asset of files) {
+        if (asset.startsWith('public-shell/icons/')) paths.add('/icons/' + asset.slice('public-shell/icons/'.length));
+        if (asset.startsWith('reports/vendor/')) paths.add('/vendor/' + asset.slice('reports/vendor/'.length));
+      }
+      return paths;
+    }).catch(() => new Set()); // Missing inventory never widens the read grant.
+  return (await builtStaticPaths).has(url.pathname);
+}
+
+const fixtureWrites = {
+  'set-next-step': { record: 'deal', field: 'deal', keys: ['deal', 'text', 'next_date', 'idempotency_key'], values: ['text', 'next_date'] },
+  'add-deal-note': { record: 'deal', field: 'deal', keys: ['deal', 'text', 'idempotency_key'], values: ['text'] },
+  'rename-doc-conversation': { record: 'conversation', field: 'conversation_id',
+    keys: ['conversation_id', 'base_version', 'title', 'pinned', 'archived', 'idempotency_key'], values: ['title', 'pinned', 'archived'] },
+  'claim-lead': { record: 'lead', field: 'lead', keys: ['lead', 'base_version', 'expected_actor', 'idempotency_key'], values: [] },
+  'update-lead': { record: 'lead', field: 'lead',
+    keys: ['lead', 'base_version', 'expected_actor', 'fields', 'stage_review', 'idempotency_key'], values: ['fields'] },
+  'link-lead-client': { record: 'lead', field: 'lead',
+    keys: ['lead', 'base_version', 'expected_actor', 'client_id', 'confirmed', 'idempotency_key'], values: ['client_id'] },
+};
+const stable = value => Array.isArray(value) ? value.map(stable)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+const digest = value => createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+const policyFailure = code => { throw Object.assign(new Error('Staging fixture write refused: ' + code), { code, fixturePolicy: true }); };
+
+// Match the pinned producer's actual response shapes. A transport success is
+// not a receipt. update-lead returns only updated column names: it cannot bind
+// the target/value and therefore remains unresolved until separate reconciliation.
+function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || receipt.ok !== true || receipt.error)
+    return null;
+  const primary = recordIDs[0];
+  const timestamp = value => typeof value === 'string' && typeof attemptedAt === 'string' && Number.isFinite(Date.parse(value)) && Date.parse(value) >= Date.parse(attemptedAt) - 5000 && Date.parse(value) <= Date.now() + 5000;
+  const keys = allowed => Object.keys(receipt).every(key => ['ok', 'replayed', ...allowed].includes(key)) &&
+    (receipt.replayed === undefined || receipt.replayed === false);
+  let effect;
+  if (name === 'set-next-step' && keys(['deal_id', 'next_step_id', 'next_action_id', 'supersedes', 'created_at']) &&
+      receipt.deal_id === primary && isUUID(receipt.next_step_id || '') && isUUID(receipt.next_action_id || '') &&
+      new Set([primary, receipt.next_step_id, receipt.next_action_id]).size === 3 && (receipt.supersedes === null || isUUID(receipt.supersedes || '')) &&
+      timestamp(receipt.created_at)) effect = { next_step_id: receipt.next_step_id, next_action_id: receipt.next_action_id, created_at: receipt.created_at };
+  if (name === 'add-deal-note' && keys(['deal_id', 'note_id', 'created_at']) &&
+      receipt.deal_id === primary && isUUID(receipt.note_id || '') && receipt.note_id !== primary && timestamp(receipt.created_at))
+    effect = { note_id: receipt.note_id, created_at: receipt.created_at };
+  if (name === 'rename-doc-conversation' && keys(['conversation_id', 'version', 'title', 'pinned', 'archived']) &&
+      receipt.conversation_id === primary && receipt.version === args.base_version + 1 &&
+      typeof receipt.title === 'string' && receipt.title.trim() && typeof receipt.pinned === 'boolean' && typeof receipt.archived === 'boolean' &&
+      ['title', 'pinned', 'archived'].every(key => args[key] === undefined || receipt[key] === args[key]))
+    effect = { version: receipt.version, title: receipt.title, pinned: receipt.pinned, archived: receipt.archived };
+  if (name === 'claim-lead' && keys(['lead_id', 'owner']) && receipt.lead_id === primary && receipt.owner === args.expected_actor)
+    effect = { owner: receipt.owner };
+  if (name === 'link-lead-client' && keys(['lead_id', 'client_id']) &&
+      receipt.lead_id === primary && receipt.client_id === args.client_id && recordIDs.includes(receipt.client_id))
+    effect = { client_id: receipt.client_id };
+  return effect ? { operation: name, record_ids: recordIDs, arguments_sha256: digest(args), effect } : null;
+}
+
+function requirePlanCoverage(plan) {
+  if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
+      plan.state !== 'complete' || plan.inflight) policyFailure('fixture-provenance-missing');
+  const attempts = plan.browser_write_attempts ?? [], refusals = plan.browser_write_refusals ?? [];
+  if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
+      attempts.some(row => {
+        if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
+            !Array.isArray(row.record_ids) || !row.record_ids.length || !row.record_ids.every(isUUID)) return true;
+        const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at);
+        return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding);
+      })) policyFailure('write-coverage-incomplete');
+}
+
+// One test-harness seam, using the existing private setup/receipt store.
+// Unsupported global/account/runtime operations remain explicit coverage gaps.
+export function stagingFixtureWriteGuard({ output, release, persist = privateJSON } = {}) {
+  const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
+  const refusals = [], pending = new Set();
+  let serial = Promise.resolve();
+  const locked = work => {
+    const next = serial.then(work);
+    serial = next.catch(() => {});
+    return next;
+  };
+  const currentPlan = async () => {
+    if (!planPath) policyFailure('fixture-provenance-missing');
+    const plan = await readPrivateJSON(planPath);
+    if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' ||
+        plan.state !== 'complete' || plan.inflight || plan.origin !== STAGING_ORIGIN ||
+        !isUUID(plan.run || '') || plan.release?.source_commit !== release?.source_commit ||
+        plan.release?.carr_source_commit !== release?.carr_source_commit ||
+        release?.carr_source_commit !== contract.producer.source_commit ||
+        !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || !plan.records || !plan.receipts)
+      policyFailure('fixture-provenance-missing');
+    return plan;
+  };
+  const owned = (plan, record, reference) => {
+    const row = plan.records[record], step = record === 'invoice' ? 'invoice_deal' : record;
+    const field = { deal: 'deal_id', invoice: 'deal_id', client: 'client_id', lead: 'lead_id', conversation: 'conversation_id' }[record];
+    const id = row?.id || row?.deal_id;
+    return field && isUUID(id || '') && plan.receipts[step]?.[field] === id &&
+      (reference === id || record === 'lead' && row.ref && reference === row.ref) ? id : null;
+  };
+  return {
+    refusals,
+    async assertCoverage({ timeoutMs = 30_000 } = {}) {
+      const budget = Math.min(30_000, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : 30_000));
+      const deadline = Date.now() + budget;
+      while (pending.size) {
+        let timer;
+        const expired = new Promise(resolve => { timer = setTimeout(() => resolve(true), Math.max(0, deadline - Date.now())); });
+        let timedOut;
+        try { timedOut = await Promise.race([Promise.all([...pending].map(flight => flight.done)).then(() => false), expired]); }
+        finally { clearTimeout(timer); }
+        if (timedOut) {
+          for (const flight of pending) flight.timedOut = true;
+          refusals.push({ operation: 'unknown-operation', reason: 'dispatch-settlement-timeout', forwarded: true, at: new Date().toISOString() });
+          policyFailure('dispatch-settlement-timeout');
+        }
+      }
+      if (refusals.length) policyFailure('write-coverage-incomplete');
+      if (planPath) requirePlanCoverage(await currentPlan());
+      if (pending.size) policyFailure('dispatch-settlement-pending');
+    },
+    async handle(request, forward) {
+      const flight = { timedOut: false };
+      flight.done = new Promise(resolve => { flight.finish = resolve; });
+      pending.add(flight);
+      let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
+      const forwardRead = async () => {
+        admittedRead = true;
+        const response = await forward();
+        if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
+        // Never give the browser a redirect to follow outside interception.
+        // Known aliases also remain coverage gaps until directly addressed.
+        if (response.status() >= 300 && response.status() < 400 && response.status() !== 304)
+          policyFailure('read-redirect-unproved');
+        return response;
+      };
+      try {
+        const url = new URL(request.url());
+        if (url.username || url.password) policyFailure('origin-unproved');
+        const read = ['GET', 'HEAD'].includes(request.method());
+        if (url.origin !== STAGING_ORIGIN) {
+          const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
+            url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
+          if (font) return await forwardRead();
+          policyFailure('origin-unproved');
+        }
+        if (['GET', 'HEAD'].includes(request.method())) {
+          // Login/callback/reauth establish or change session state even on GET.
+          // The preflight session read is the only admitted authentication route.
+          if (url.pathname.startsWith('/auth/') && url.pathname !== '/auth/session')
+            policyFailure('authentication-mutation-unproved');
+          if (!await knownBrowserRead(url)) policyFailure('read-path-unproved');
+          return await forwardRead();
+        }
+        let body;
+        try { body = request.postDataJSON(); } catch {}
+        if (request.method() !== 'POST' || url.pathname !== '/mcp' || url.search || url.hash ||
+            body?.jsonrpc !== '2.0' || body.method !== 'tools/call')
+          policyFailure('operation-scope-unproved');
+        name = body.params?.name;
+        const args = body.params?.arguments;
+        if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
+        if (browserReads.has(name)) return await forwardRead();
+        const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
+        if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
+            !isUUID(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
+        const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
+        const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
+        if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
+            name === 'set-next-step' && args.next_date != null && (typeof args.next_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date)) ||
+            name === 'rename-doc-conversation' && (!version ||
+              !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
+              args.title !== undefined && !text(args.title) ||
+              ['pinned', 'archived'].some(key => args[key] !== undefined && typeof args[key] !== 'boolean')) ||
+            spec.record === 'lead' && (!version || args.expected_actor !== 'joe') ||
+            name === 'link-lead-client' && args.confirmed !== true)
+          policyFailure('operation-shape-unproved');
+        if (name === 'update-lead') {
+          const review = args.stage_review;
+          if (!args.fields || Array.isArray(args.fields) || Object.keys(args.fields).length !== 1 ||
+              !text(args.fields.stage) || !review || Array.isArray(review) ||
+              Object.keys(review).some(key => !['reason', 'evidence_ids', 'human_quote'].includes(key)) ||
+              !text(review.reason) || !Array.isArray(review.evidence_ids) || review.evidence_ids.length ||
+              review.human_quote !== undefined && !text(review.human_quote))
+            policyFailure('operation-shape-unproved');
+        }
+        if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
+          policyFailure('operation-shape-unproved');
+        token = await locked(async () => {
+          const plan = await currentPlan();
+          const id = owned(plan, spec.record, args[spec.field]) ||
+            spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
+          if (!id) policyFailure('record-outside-fixtures');
+          const ids = new Set([id]);
+          if (name === 'link-lead-client') {
+            const client = owned(plan, 'client', args.client_id);
+            if (!client) policyFailure('reference-outside-fixtures');
+            ids.add(client);
+          }
+          // No nested additional record references may ride through review
+          // metadata. Text values are ordinary content, not inferred identity.
+          const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
+            val && typeof val === 'object' ? referencesOwned(val) :
+              key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
+          if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
+          const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
+            ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
+              ? args[key].trim() : args[key] ?? null]));
+          const fingerprint = digest([name, id, fingerprintValues]);
+          plan.browser_write_attempts ||= [];
+          if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
+              plan.browser_write_attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
+            policyFailure('duplicate-attempt-requires-reconciliation');
+          if (plan.browser_write_attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
+              row.record_ids.some(record => ids.has(record))))
+            policyFailure('ambiguous-record-requires-reconciliation');
+          const intent = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
+            operation: name, record_ids: [...ids], arguments: structuredClone(args),
+            state: 'inflight', dispatched_outcome: 'unknown', attempted_at: new Date().toISOString() };
+          plan.browser_write_attempts.push(intent);
+          await persist(planPath, plan); // MUST succeed before forward().
+          return { run: plan.run, fingerprint };
+        });
+        if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
+        dispatched = true;
+        const response = await forward();
+        await locked(async () => {
+          const plan = await currentPlan();
+          if (plan.run !== token.run) policyFailure('fixture-provenance-changed');
+          const intent = plan.browser_write_attempts.find(row => row.fingerprint === token.fingerprint);
+          if (!intent || intent.state !== 'inflight') policyFailure('intent-binding-changed');
+          let rpc;
+          try { rpc = await response.json(); } catch {}
+          let receipt;
+          try { receipt = JSON.parse(rpc.result.content[0].text); } catch {}
+          const bound = response.status() === 200 && rpc?.jsonrpc === '2.0' && rpc.id === body.id &&
+            !rpc.error && !rpc.result?.isError && Array.isArray(rpc.result?.content) && rpc.result.content.length === 1 &&
+            rpc.result.content[0].type === 'text'
+            ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at) : null;
+          const acknowledged = Boolean(bound) && !flight.timedOut;
+          intent.state = acknowledged ? 'acknowledged' : 'unresolved';
+          intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified' : 'unknown';
+          intent.response = { http_status: response.status(), sha256: digest(rpc ?? null), acknowledged };
+          if (bound) {
+            intent.response.binding = bound;
+            intent.response.receipt = structuredClone(receipt);
+          }
+          if (flight.timedOut) intent.coverage_timeout = true;
+          await persist(planPath, plan);
+          if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
+        });
+        return response;
+      } catch (error) {
+        if (admittedRead && !error.fixturePolicy) throw error;
+        const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
+          reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
+          forwarded: dispatched || admittedRead, at: new Date().toISOString() };
+        refusals.push(gap);
+        // Refusal metadata contains no URL, arguments, record IDs or payload.
+        // Failure to retain it never permits dispatch or clears an intent.
+        try {
+          await locked(async () => {
+            const plan = planPath ? await readPrivateJSON(planPath) : null;
+            if (plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete') {
+              plan.browser_write_refusals ||= []; plan.browser_write_refusals.push(gap);
+              await persist(planPath, plan);
+            }
+          });
+        } catch {}
+        policyFailure(gap.reason);
+      } finally { pending.delete(flight); flight.finish(); }
+    },
+  };
+}
+
+export async function assertStagingWriteCoverage(output) {
+  requirePlanCoverage(await readPrivateJSON(join(output, 'staging-records-plan.json')));
+}
+
+export async function readStagingFixtureRelease(output) {
+  const setup = await readPrivateJSON(join(output, 'staging-records.json'));
+  if (setup?.schema !== 'doctorcre-staging-records.v1' || setup.origin !== STAGING_ORIGIN ||
+      setup.complete !== true || !/^[0-9a-f]{40}$/.test(setup.release?.source_commit || '') ||
+      setup.release?.carr_source_commit !== contract.producer.source_commit)
+    policyFailure('fixture-provenance-missing');
+  return setup.release;
 }
