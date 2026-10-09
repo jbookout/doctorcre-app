@@ -11,7 +11,7 @@ import sys
 def verify_snapshot(root):
     manifest = root / 'scripts/doc-drift/source.json'
     if not manifest.exists():
-        return
+        raise ValueError('missing instruction checker source pin: scripts/doc-drift/source.json')
     pin = json.loads(manifest.read_text())
     if pin['repository'] != 'jbookout/software-factory' or len(pin['revision']) != 40 or not pin['files']:
         raise ValueError('invalid instruction checker source pin')

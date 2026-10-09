@@ -13,6 +13,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class CiTest(unittest.TestCase):
+    def test_pinned_product_copy_requires_source_manifest(self):
+        spec = importlib.util.spec_from_file_location('doc_drift_ci', ROOT / 'scripts/doc-drift/ci.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory(prefix='doc-drift-missing-pin-fixture-') as scratch:
+            with self.assertRaisesRegex(ValueError, 'missing instruction checker source pin: scripts/doc-drift/source.json'):
+                module.verify_snapshot(Path(scratch))
+
     def test_pinned_product_copy_refuses_modified_bytes(self):
         spec = importlib.util.spec_from_file_location('doc_drift_ci', ROOT / 'scripts/doc-drift/ci.py')
         module = importlib.util.module_from_spec(spec)
