@@ -39,6 +39,26 @@ export class RunLimitError extends Error {
   constructor(reason) { super(`Staging run stopped: ${reason}`); this.code = reason; }
 }
 
+const validRunLimits = limits => limits && typeof limits === 'object' && !Array.isArray(limits) &&
+  Object.keys(limits).every(key => Object.hasOwn(RUN_LIMITS, key)) &&
+  Object.entries(RUN_LIMITS).every(([key, maximum]) => Number.isSafeInteger(limits[key]) &&
+    limits[key] >= (['retries', 'modelCalls'].includes(key) ? 0 : 1) && limits[key] <= maximum);
+
+export function runLimitsFromEnvironment(environment = process.env, ceiling = RUN_LIMITS) {
+  if (!validRunLimits(ceiling)) throw new RunLimitError('invalid-run-limits');
+  let override = {};
+  if (environment.E2E_RUN_LIMITS !== undefined) {
+    try { override = JSON.parse(environment.E2E_RUN_LIMITS); }
+    catch { throw new RunLimitError('invalid-run-limits'); }
+  }
+  if (!override || typeof override !== 'object' || Array.isArray(override) ||
+      Object.entries(override).some(([key, value]) => !Object.hasOwn(ceiling, key) || value > ceiling[key]))
+    throw new RunLimitError('invalid-run-limits');
+  const limits = { ...ceiling, ...override };
+  if (!validRunLimits(limits)) throw new RunLimitError('invalid-run-limits');
+  return Object.freeze(limits);
+}
+
 export function modelCallsAllowed(environment = process.env) {
   return /^[a-zA-Z0-9_-]{8,80}$/.test(environment.E2E_RUN_ID || '') &&
     environment.E2E_ALLOW_MODEL_CALLS === environment.E2E_RUN_ID;
@@ -63,10 +83,7 @@ export function artifactCopyBytes(source) {
 }
 
 export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now, newInvocation = false } = {}) {
-  for (const [key, maximum] of Object.entries(RUN_LIMITS)) {
-    if (!Number.isSafeInteger(limits[key]) || limits[key] < (key === 'retries' ? 0 : 1) || limits[key] > maximum)
-      throw new RunLimitError('invalid-run-limits');
-  }
+  if (!validRunLimits(limits)) throw new RunLimitError('invalid-run-limits');
   const root = resolve(output), path = join(root, 'run-budget.json'), lock = join(root, '.run-budget.lock');
   mkdirSync(root, { recursive: true, mode: 0o700 });
   let initializing = true;
@@ -88,7 +105,7 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
         limits, httpRequests: 0, modelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
       if (!state || typeof state !== 'object' || Array.isArray(state) || state.schema !== 'doctorcre-run-budget.v1' || runId && state.id !== runId ||
           (!(initializing && newInvocation) && JSON.stringify(state.limits) !== JSON.stringify(limits)) ||
-          !state.limits || Object.entries(RUN_LIMITS).some(([key, maximum]) => !Number.isSafeInteger(state.limits[key]) || state.limits[key] < (key === 'retries' ? 0 : 1) || state.limits[key] > maximum) ||
+          !validRunLimits(state.limits) ||
           (state.invocations !== undefined && !Array.isArray(state.invocations)) ||
           !Number.isSafeInteger(state.deadline) || !Number.isSafeInteger(state.startedAt) || state.deadline !== state.startedAt + state.limits.runTimeoutMs ||
           typeof state.id !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(state.id) ||
@@ -232,9 +249,7 @@ let activeRun;
 export function currentRun(output = process.env.E2E_V2_OUTPUT) {
   if (!activeRun && process.env.E2E_RUN_SUPERVISED === '1') {
     if (!output || !process.env.E2E_RUN_ID) throw new RunLimitError('run-directory-required');
-    let limits = RUN_LIMITS;
-    try { if (process.env.E2E_RUN_LIMITS) limits = JSON.parse(process.env.E2E_RUN_LIMITS); }
-    catch { throw new RunLimitError('invalid-run-limits'); }
+    const limits = runLimitsFromEnvironment();
     activeRun = openRun(output, { limits });
   }
   return activeRun;

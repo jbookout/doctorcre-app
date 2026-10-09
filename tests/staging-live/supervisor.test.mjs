@@ -190,3 +190,36 @@ test('unavailable process inspection refuses before launching a worker', async t
   assert.equal(stdout.trim(), 'process-inspection-unavailable');
   await assert.rejects(readFile(marker), { code: 'ENOENT' });
 });
+
+
+test('supervisor passes environment caps to its worker and persisted ledger', processTests, async t => {
+  const { supervise } = await import('../../scripts/e2e-staging/supervise.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-supervisor-env-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const policy = { ...RUN_LIMITS, httpRequests: 2, modelCalls: 0, stopGraceMs: 50 };
+  const worker = `
+    import { currentRun } from ${JSON.stringify(new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href)};
+    const run = currentRun();
+    if (run.limits.httpRequests !== 2 || run.limits.modelCalls !== 0) process.exit(3);
+    await run.http(() => {}); await run.http(() => {});
+    try { await run.http(() => process.exit(4)); process.exit(5); }
+    catch (error) { if (error.code !== 'http-request-limit') process.exit(6); }
+  `;
+  await assert.rejects(supervise({ command: process.execPath, args: ['--input-type=module', '-e', worker], output: root,
+    environment: { ...process.env, E2E_RUN_LIMITS: JSON.stringify(policy) } }), error => error.code === 'http-request-limit');
+  const state = JSON.parse(await readFile(join(root, 'run-budget.json'), 'utf8'));
+  assert.deepEqual(state.limits, policy);
+  assert.equal(state.httpRequests, 2);
+  assert.equal(state.modelCalls, 0);
+});
+
+test('invalid environment caps refuse before the output directory or worker exists', async t => {
+  const { supervise } = await import('../../scripts/e2e-staging/supervise.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-supervisor-invalid-env-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const output = join(root, 'unused');
+  await assert.rejects(supervise({ command: process.execPath, args: ['-e', 'process.exit(99)'], output,
+    environment: { ...process.env, E2E_RUN_LIMITS: JSON.stringify({ httpRequests: RUN_LIMITS.httpRequests + 1 }) } }),
+    error => error.code === 'invalid-run-limits');
+  await assert.rejects(readFile(join(output, 'run-budget.json')), { code: 'ENOENT' });
+});

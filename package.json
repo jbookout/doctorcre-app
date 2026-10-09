@@ -33,6 +33,9 @@
     "e2e:staging:explore": "node scripts/e2e-staging/supervise.mjs explore",
     "e2e:staging:sweep": "node scripts/e2e-staging/supervise.mjs sweep",
     "e2e:staging:sweep:resume": "E2E_STAGING_RESUME=1 node scripts/e2e-staging/supervise.mjs sweep",
+    "pree2e:staging:sweep": "npm run build",
+    "pree2e:staging:sweep:resume": "npm run build",
+    "pree2e:staging:explore": "npm run build",
     "pree2e:staging:selftest": "npm run build",
     "e2e:staging:selftest": "node --test tests/staging-live/*.test.mjs && python3 tests/staging-live/scrub.test.py",
     "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs"

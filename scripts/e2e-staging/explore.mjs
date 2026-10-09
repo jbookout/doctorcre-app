@@ -7,7 +7,7 @@ import { explorer40 } from './explorer.mjs';
 import { screens, targets } from './screens.mjs';
 import { writeReport, explorationEvidence } from './report.mjs';
 import { outputPath, scrubEvidence } from './sweep.mjs';
-import { prepareStagingRecords, assertStagingWriteCoverage } from './records.mjs';
+import { assertStagingBrowserInventory, prepareStagingRecords, assertStagingWriteCoverage } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 import { configureExplorationModelCallBudget, createExplorationBatchPlan, formatExplorationBatchPlan, formatExplorationCallPlan } from './model-room.mjs';
 
@@ -78,6 +78,7 @@ async function exploreWithRun(run) {
   process.env.E2E_TELEMETRY_DISABLED = '1';
   process.env.DO_NOT_TRACK = '1';
   const output = outputPath();
+  await assertStagingBrowserInventory();
   const routedScreens = await screens();
   const checkpoint = await readSweepCheckpoint(output);
   const schedule = createExplorationSchedule({ targets, routedScreens, prior: checkpoint?.explorations });

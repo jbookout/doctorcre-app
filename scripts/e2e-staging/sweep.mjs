@@ -8,7 +8,7 @@ import { sweepScreen, SweepFailure } from './controls.mjs';
 import { writeReport } from './report.mjs';
 import { scrubEvidence } from './evidence.mjs';
 export { scrubEvidence } from './evidence.mjs';
-import { prepareStagingRecords, stagingFixtureWriteGuard } from './records.mjs';
+import { assertStagingBrowserInventory, prepareStagingRecords, stagingFixtureWriteGuard } from './records.mjs';
 import { sweepOwnerStates } from './owner-states.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
@@ -26,6 +26,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
   const output = outputPath();
   const budget = requireSupervisedRun(output);
   budget.check();
+  await assertStagingBrowserInventory();
   const routedScreens = await screens();
   const checkpoint = await readSweepCheckpoint(output);
   let prior = resume || targetIndex > 0 ? checkpoint : undefined;
