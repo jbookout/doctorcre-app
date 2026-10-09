@@ -693,7 +693,7 @@ test('an unproved morning dismiss retains an ERROR but does not stop later contr
   t.after(() => browser.close());
   for (const path of ['/', '/control-room', '/deals']) {
     const captured = [];
-    const result = await sweepScreen({ screen: { path, name: 'Synthetic morning brief' }, target: 'desktop', waitMs: 20,
+    const result = await sweepScreen({ screen: { path, name: 'Synthetic morning brief', surface: 'app' }, target: 'desktop', waitMs: 20,
       freshPage: async () => {
         const page = await browser.newPage();
         await page.setContent('<main><button id="morningClose" onclick="this.hidden=true">Dismiss morning brief</button><button id="later" onclick="document.querySelector(\'output\').textContent=\'Pressed\'">Later control</button><output></output></main>');
