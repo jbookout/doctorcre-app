@@ -135,6 +135,7 @@
     "test/shell.test.mjs",
     "test/slice-registration.test.mjs",
     "test/slice-review-regressions.test.mjs",
+    "test/staging-control-visibility.test.mjs",
     "test/synthetic-fixtures.test.mjs",
     "test/test-harness.test.mjs",
     "test/visual-system.test.mjs",

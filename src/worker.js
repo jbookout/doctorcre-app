@@ -1,6 +1,8 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
+import e2eStagingContract from "../contracts/e2e-staging.v1.json" with { type: "json" };
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
+import { readStagingAuthContract } from '../scripts/e2e-staging/auth-contract.mjs';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -13,7 +15,6 @@ const STATIC_EXACT = new Map([
   ["/favicon.ico", "/public-shell/icons/dealroom.svg"],
 ]);
 const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"];
-const STAGING_HOST = 'doctorcre-app-staging.joe-bookout-carr-us.workers.dev';
 const STAGING_REPORT_ASSETS = new Set(['/share.css', '/share.js', '/share-bootstrap.js',
   ...['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css'].map(file => `/vendor/maplibre-gl-6.4.1/${file}`)]);
 // V5-UX-C15: the one page route served AHEAD of the CARR gate. Every other app
@@ -136,11 +137,12 @@ function release(env) {
   });
 }
 
-export async function handleDoctorcreRequest(request, env) {
+async function handleRequest(request, env, e2eExchangePath, stagingOrigin) {
   const url = new URL(request.url);
   const pathname = url.pathname;
-  const staging = env?.APP_ENV === 'staging' && url.hostname === STAGING_HOST;
-  if (pathname === '/auth/e2e-session' && !staging) return json({ error: 'not_found' }, 404);
+  const staging = env?.APP_ENV === 'staging' && url.origin === stagingOrigin;
+  if (pathname === e2eExchangePath && !staging) return json({ error: 'not_found' }, 404);
+  if (pathname === e2eExchangePath) return carrResponse(request, env);
   const boardDestination = legacyBoardDestination(url);
   if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
     ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
@@ -193,5 +195,13 @@ export async function handleDoctorcreRequest(request, env) {
   }
   return json({ error: "not_found" }, 404);
 }
+
+export function createDoctorcreRequestHandler(contract = e2eStagingContract) {
+  const e2eExchangePath = readStagingAuthContract(contract).exchange.path;
+  const stagingOrigin = new URL(contract.origin).origin;
+  return (request, env) => handleRequest(request, env, e2eExchangePath, stagingOrigin);
+}
+
+export const handleDoctorcreRequest = createDoctorcreRequestHandler();
 
 export default { fetch: handleDoctorcreRequest };

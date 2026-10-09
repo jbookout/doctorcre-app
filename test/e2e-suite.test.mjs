@@ -19,11 +19,21 @@ test("the declared Node minimum supports the runner and is exercised in CI", asy
   const runner = JSON.parse(await read("node_modules/e2e/package.json"));
   assert.equal(pkg.engines.node, runner.engines.node, "the app must declare the runner's Node floor");
   assert.equal(lock.packages[""].engines.node, pkg.engines.node, "the lockfile must declare the same floor");
-  const minimum = pkg.engines.node.match(/^>=(\d+\.\d+\.\d+)$/)?.[1];
-  assert.ok(minimum, "declare an exact minimum Node version");
-  const workflow = await read(".github/workflows/e2e.yml");
-  assert.equal(workflow.match(/^\s+node-version: (\S+)$/m)?.[1], minimum, "journeys must run on the declared minimum");
-  assert.match(await read("README.md"), new RegExp(`Node\\.js ${minimum.replaceAll(".", "\\.")} or newer`));
+  const supported = pkg.engines.node.match(/^\^(\d+\.\d+\.\d+) \|\| >=(\d+\.\d+\.\d+)$/);
+  assert.ok(supported, "declare the runner's supported LTS and current Node ranges");
+  const [, ltsMinimum, currentMinimum] = supported;
+  const tuple = version => version.split(".").map(Number);
+  const atLeast = (version, minimum) => {
+    const actual = tuple(version), floor = tuple(minimum);
+    return actual[0] > floor[0] || (actual[0] === floor[0] && (actual[1] > floor[1] || (actual[1] === floor[1] && actual[2] >= floor[2])));
+  };
+  for (const file of ["ci.yml", "e2e.yml", "release.yml", "staging-live.yml"]) {
+    const workflow = await read(".github/workflows/" + file);
+    const version = workflow.match(/^\s+node-version: (\S+)$/m)?.[1];
+    assert.ok(version && tuple(version)[0] === tuple(ltsMinimum)[0] && atLeast(version, ltsMinimum), file + " must run a supported LTS patch");
+  }
+  const documentation = await read("README.md");
+  assert.ok(documentation.includes(ltsMinimum) && documentation.includes(currentMinimum), "document both supported Node ranges");
   const output = execFileSync(process.execPath, [fileURLToPath(new URL("node_modules/e2e/dist/cli/bin.js", root)), "run", "--help"], {
     cwd: fileURLToPath(root), env: { ...process.env, E2E_TELEMETRY_DISABLED: "1" }, encoding: "utf8", timeout: WAIT_MS,
   });

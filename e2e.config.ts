@@ -1,7 +1,8 @@
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
-import { chatgpt } from 'e2e/oauth/chatgpt';
 import { stagingTargets } from './scripts/e2e-staging/screens.mjs';
+import { EXPLORATION_MODEL_CALL_POLICY, modelRoomExplorationModel } from './scripts/e2e-staging/model-room.mjs';
+import { modelCallsAllowed, RUN_LIMITS } from './scripts/e2e-staging/run-limits.mjs';
 
 // No usage telemetry from any run, local or CI. The CLI reads this when it
 // flushes, after the config has loaded.
@@ -11,10 +12,11 @@ const staging = process.env.E2E_TARGET === 'staging-live';
 const ci = !['', '0', 'false'].includes(process.env.CI ?? '');
 
 export default {
-  workers: 1,
-  retries: 0,
-  trace: 'retain-on-failure',
-  video: 'retain-on-failure',
+  workers: RUN_LIMITS.workers,
+  retries: RUN_LIMITS.retries,
+  trace: staging ? 'off' : 'retain-on-failure',
+  video: staging ? 'off' : 'retain-on-failure',
+  ...(staging && process.env.E2E_V2_OUTPUT ? { output: process.env.E2E_V2_OUTPUT + '/sdk' } : {}),
   ...(staging ? { tests: ['tests/staging-live/**/*.e2e.ts'], cache: 'off' as const } : {}),
   targets: staging ? stagingTargets() : [{
     name: 'chromium',
@@ -25,9 +27,9 @@ export default {
       command: { executable: 'npm', args: ['run', 'serve'], env: { PORT: '{port}', DOCTORCRE_FIXTURE_ROOT: process.env.BROWSER_PROOF_ROOT ?? '' }, log: '.e2e/logs/app.log' },
     },
   }],
-  ...(ci && !staging ? {} : { agents: { default: { model: chatgpt(process.env.E2E_AGENT_MODEL ?? 'gpt-6-luna') },
-    'bug-hunter': { model: chatgpt(process.env.E2E_AGENT_MODEL ?? 'gpt-6-luna'), maxSteps: 40, system: 'Inspect the entire assigned staging workspace. Exercise forms, menus, drawers, tabs, recovery and destructive controls. Report only observed defects with reproduction steps.' },
-    'first-time-ux': { model: chatgpt(process.env.E2E_AGENT_MODEL ?? 'gpt-6-luna'), maxSteps: 40, system: 'Explore the assigned staging workspace as a first-time partner. Check discovery, copy, keyboard navigation and recovery. Record evidence for every finding.' },
-    'phone-reviewer': { model: chatgpt(process.env.E2E_AGENT_MODEL ?? 'gpt-6-luna'), maxSteps: 40, system: 'Inspect the complete assigned workspace at phone width. Open collapsed drawers and menus. Check tap targets, clipping, scrolling, forms and every tab.' },
+  ...(!modelCallsAllowed() || ci && !staging ? {} : { agents: { default: { model: modelRoomExplorationModel },
+    'bug-hunter': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the entire assigned staging workspace. Exercise forms, menus, drawers, tabs, recovery and destructive controls. Report only observed defects with reproduction steps.' },
+    'first-time-ux': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Explore the assigned staging workspace as a first-time partner. Check discovery, copy, keyboard navigation and recovery. Record evidence for every finding.' },
+    'phone-reviewer': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the complete assigned workspace at phone width. Open collapsed drawers and menus. Check tap targets, clipping, scrolling, forms and every tab.' },
   } }),
 } satisfies E2EConfig;

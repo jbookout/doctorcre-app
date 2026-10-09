@@ -376,8 +376,12 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }
   const dispatch = contract.mcp_operations.indexOf("read-dispatch-history");
-  assert.equal(contract.mcp_operations[dispatch - 1], "read-correspondence-thread");
-  assert.equal(contract.mcp_operations[dispatch + 1], "read-doc-activity");
+  assert.deepEqual(contract.mcp_operations.slice(dispatch - 2, dispatch + 2), [
+    "read-correspondence-thread",
+    "read-deal-reconciliation",
+    "read-dispatch-history",
+    "read-doc-activity",
+  ]);
   const identity = contract.mcp_operations.indexOf("read-session-identity");
   // V5-UX-C12 inserted read-room and read-room-queue between read-portfolio and
   // this verb. The neighbour moved; the sorted invariant above did not.

@@ -1,7 +1,7 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-// Local only: needs `npx e2e login openai`. CI runs tests/journeys instead.
+// Local only: needs the configured named Model Room desk. CI runs tests/journeys instead.
 test('W15 agent records a payment on an unpaid invoice', async ({ app, agent, browser }) => {
   await app.open('/invoices');
 
