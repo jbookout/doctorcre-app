@@ -82,3 +82,54 @@ test('preload refuses stream.end content exceeding the artifact quota', async t 
     assert.equal(fs.statSync(join(run.root, 'oversize.bin')).size, 0);
   `);
 });
+
+test('Playwright attachment copy reserves quota before writing the destination', async t => {
+  const helper = new URL('../../node_modules/playwright/lib/util.js', import.meta.url).href;
+  await withPreload(t, `
+    const source = join(run.root, 'controls.json');
+    await promises.writeFile(source, Buffer.alloc(2000));
+    const { normalizeAndSaveAttachment } = await import(${JSON.stringify(helper)});
+    await assert.rejects(normalizeAndSaveAttachment(join(run.root, 'playwright'), 'staging-controls', { path: source }),
+      error => error.code === 'artifact-byte-limit');
+    const attachments = fs.existsSync(join(run.root, 'playwright', 'attachments'))
+      ? fs.readdirSync(join(run.root, 'playwright', 'attachments')) : [];
+    assert.deepEqual(attachments, []);
+    assert.equal(run.snapshot().stopReason, 'artifact-byte-limit');
+    const { directoryBytes } = await import(${JSON.stringify(limitsModule)});
+    assert.ok(directoryBytes(run.root) <= run.limits.artifactBytes);
+  `);
+});
+
+for (const method of ['copyFile', 'cp', 'copyFileSync', 'cpSync']) test(`preload ${method} refuses a copy before quota is exceeded`, async t => {
+  await withPreload(t, `
+    const source = join(run.root, 'source.bin'), destination = join(run.root, 'destination.bin');
+    await promises.writeFile(source, Buffer.alloc(2000));
+    const copy = () => ${method.endsWith('Sync') ? 'fs' : 'promises'}.${method}(source, destination);
+    ${method.endsWith('Sync') ? 'assert.throws(copy,' : 'await assert.rejects(copy(),'} error => error.code === 'artifact-byte-limit');
+    assert.equal(fs.existsSync(destination), false);
+    assert.equal(run.snapshot().stopReason, 'artifact-byte-limit');
+  `);
+});
+
+for (const method of ['copyFile', 'cp']) test(`preload callback ${method} refuses a copy before quota is exceeded`, async t => {
+  await withPreload(t, `
+    const source = join(run.root, 'source.bin'), destination = join(run.root, 'destination.bin');
+    await promises.writeFile(source, Buffer.alloc(2000));
+    await assert.rejects(new Promise((resolve, reject) => fs.${method}(source, destination, error => error ? reject(error) : resolve())),
+      error => error.code === 'artifact-byte-limit');
+    assert.equal(fs.existsSync(destination), false);
+    assert.equal(run.snapshot().stopReason, 'artifact-byte-limit');
+  `);
+});
+
+test('an explicitly reserved recursive evidence copy charges bytes once', async t => {
+  await withPreload(t, `
+    const source = join(run.root, 'private'), destination = join(run.root, 'public');
+    await promises.mkdir(source);
+    await promises.writeFile(join(source, 'image.png'), Buffer.alloc(256));
+    const prior = run.snapshot().artifactBytes;
+    await run.copyArtifacts(source, destination, (a, b) => promises.cp(a, b, { recursive: true }));
+    assert.equal(run.snapshot().artifactBytes - prior, 256);
+    assert.equal(fs.statSync(join(destination, 'image.png')).size, 256);
+  `);
+});

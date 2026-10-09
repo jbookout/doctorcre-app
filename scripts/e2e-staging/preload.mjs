@@ -4,21 +4,53 @@ import promises from 'node:fs/promises';
 import { relative, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { syncBuiltinESMExports } from 'node:module';
-import { currentRun, artifactWriteIsAccounted, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { currentRun, artifactWriteIsAccounted, withAccountedArtifactWrite, artifactCopyBytes, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 
 // SDK writers and detached browsers must obey the same run boundary as fixtures.
 if (process.env.E2E_RUN_SUPERVISED === '1') {
   const root = resolve(process.env.E2E_V2_OUTPUT);
   const rawAppend = fs.appendFileSync;
-  const account = (path, data) => {
-    if (artifactWriteIsAccounted()) return;
-    if (typeof path !== 'string' && !(path instanceof URL)) return;
+  const needsAccounting = path => {
+    if (artifactWriteIsAccounted()) return false;
+    if (typeof path !== 'string' && !(path instanceof URL)) return false;
     const name = relative(root, resolve(path instanceof URL ? fileURLToPath(path) : path));
-    if (name.startsWith('..') || isAbsolute(name)) return;
-    if (name === 'run-budget.json' || /^run-budget\.json\.\d+\.tmp$/.test(name)) return;
+    if (name.startsWith('..') || isAbsolute(name)) return false;
+    return name !== 'run-budget.json' && !/^run-budget\.json\.\d+\.tmp$/.test(name);
+  };
+  const account = (path, data) => {
+    if (!needsAccounting(path)) return;
     if (typeof data !== 'string' && !ArrayBuffer.isView(data)) throw new RunLimitError('artifact-size-unavailable');
     currentRun().reserveBytes(Buffer.byteLength(data));
   };
+  const accountCopy = (source, destination) => {
+    if (!needsAccounting(destination)) return false;
+    currentRun().reserveBytes(artifactCopyBytes(source));
+    return true;
+  };
+  for (const method of ['copyFileSync', 'cpSync']) {
+    const original = fs[method];
+    fs[method] = function (source, destination, ...args) {
+      const accounted = accountCopy(source, destination);
+      const copy = () => original.call(this, source, destination, ...args);
+      return accounted ? withAccountedArtifactWrite(copy) : copy();
+    };
+  }
+  for (const method of ['copyFile', 'cp']) {
+    const original = promises[method];
+    promises[method] = async function (source, destination, ...args) {
+      const accounted = accountCopy(source, destination);
+      const copy = () => original.call(this, source, destination, ...args);
+      return accounted ? withAccountedArtifactWrite(copy) : copy();
+    };
+    const callbackCopy = fs[method];
+    fs[method] = function (source, destination, ...args) {
+      let accounted;
+      try { accounted = accountCopy(source, destination); }
+      catch (error) { const callback = args.at(-1); if (typeof callback === 'function') { queueMicrotask(() => callback(error)); return; } throw error; }
+      const copy = () => callbackCopy.call(this, source, destination, ...args);
+      return accounted ? withAccountedArtifactWrite(copy) : copy();
+    };
+  }
   for (const method of ['writeFileSync', 'appendFileSync']) {
     const original = fs[method];
     fs[method] = function (path, data, ...args) { account(path, data); return original.call(this, path, data, ...args); };

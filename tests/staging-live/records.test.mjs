@@ -1,13 +1,28 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareStagingRecords, stagingFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
+import { prepareStagingRecords, stagingFixtureWriteGuard as createFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import { stagingAuth } from '../../scripts/e2e-staging/auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
+
+import { mkdtempSync } from 'node:fs';
+import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+const fixtureRuns = new Map(), temporaryRuns = [];
+afterEach(async () => {
+  for (const run of fixtureRuns.values()) run.dispose();
+  fixtureRuns.clear();
+  await Promise.all(temporaryRuns.splice(0).map(root => rm(root, { recursive: true, force: true })));
+});
+function stagingFixtureWriteGuard(options = {}) {
+  const root = options.output || mkdtempSync(join(tmpdir(), 'staging-read-budget-'));
+  if (!options.output) temporaryRuns.push(root);
+  if (!fixtureRuns.has(root)) fixtureRuns.set(root, openRun(root, { runId: 'synthetic-fixture-run', events: null }));
+  return createFixtureWriteGuard({ ...options, run: fixtureRuns.get(root) });
+}
 
 const fixture = 'fc08d2f4-a951-5679-9f34-40d0f4278842';
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };

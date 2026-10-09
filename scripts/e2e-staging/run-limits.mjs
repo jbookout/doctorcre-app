@@ -5,6 +5,7 @@ import { join, resolve, relative, isAbsolute } from 'node:path';
 
 const artifactWrites = new AsyncLocalStorage();
 export const artifactWriteIsAccounted = () => artifactWrites.getStore() === true;
+export const withAccountedArtifactWrite = operation => artifactWrites.run(true, operation);
 
 export const RUN_LIMITS = Object.freeze({
   workers: 1,
@@ -52,6 +53,12 @@ export function directoryBytes(root) {
     }
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   return total;
+}
+
+export function artifactCopyBytes(source) {
+  const stat = lstatSync(source);
+  if (stat.isSymbolicLink()) throw new RunLimitError('artifact-symlink-refused');
+  return stat.isDirectory() ? directoryBytes(source) : stat.size;
 }
 
 export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now } = {}) {
@@ -190,6 +197,14 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
         update(state => { delete state.activeHttp[token]; delete state.queuedHttp[token]; });
       }
     },
+    async copyArtifacts(source, target, copier) {
+      check();
+      const name = relative(root, resolve(target));
+      if (name.startsWith('..') || isAbsolute(name)) throw new RunLimitError('artifact-path-refused');
+      run.reserveBytes(artifactCopyBytes(source));
+      await withAccountedArtifactWrite(() => copier(source, target));
+      run.checkArtifacts();
+    },
     async writeFile(path, data, writer) { check(); const name = relative(root, resolve(path)); if (name.startsWith('..') || isAbsolute(name)) throw new RunLimitError('artifact-path-refused'); run.reserveBytes(Buffer.byteLength(data)); await artifactWrites.run(true, () => writer(path, data)); run.checkArtifacts(); },
     dispose() { clearTimeout(timer); events?.off('SIGINT', interrupt); events?.off('SIGTERM', interrupt); cleanups.clear(); },
   };
@@ -206,6 +221,15 @@ export function currentRun(output = process.env.E2E_V2_OUTPUT) {
     activeRun = openRun(output, { limits });
   }
   return activeRun;
+}
+
+export function requireSupervisedRun(output) {
+  if (process.env.E2E_TARGET !== 'staging-live') throw new RunLimitError('staging-target-required');
+  if (process.env.E2E_RUN_SUPERVISED !== '1') throw new RunLimitError('supervised-run-required');
+  const run = currentRun(output);
+  if (!run) throw new RunLimitError('supervised-run-required');
+  run.check();
+  return run;
 }
 
 const boundedContexts = new WeakMap();

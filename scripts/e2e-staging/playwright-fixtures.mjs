@@ -1,4 +1,4 @@
-import { currentRun, RUN_LIMITS } from './run-limits.mjs';
+import { currentRun, requireSupervisedRun, RUN_LIMITS } from './run-limits.mjs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test as base } from 'playwright/test';
@@ -80,6 +80,9 @@ export const test = base.extend({
     finally { await fixture.dispose(); }
   },
   stagingSession: async ({ request }, use) => {
-    await use(origin => stagingSession(origin, { requestContext: request, exchange: false }));
+    await use(origin => {
+      const run = requireSupervisedRun();
+      return stagingSession(origin, { requestContext: request, exchange: false, run });
+    });
   },
 });

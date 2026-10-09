@@ -1,4 +1,4 @@
-import { boundedRequestContext, currentRun, RUN_LIMITS } from './run-limits.mjs';
+import { boundedRequestContext, currentRun, requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 import { constants } from 'node:fs';
 import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -347,7 +347,7 @@ function requirePlanCoverage(plan) {
 
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
-export function stagingFixtureWriteGuard({ output, release, persist = privateJSON, run = currentRun(output) } = {}) {
+export function stagingFixtureWriteGuard({ output, release, persist = privateJSON, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined } = {}) {
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
   let serial = Promise.resolve();
@@ -401,7 +401,11 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
       flight.done = new Promise(resolve => { flight.finish = resolve; });
       run?.check();
       pending.add(flight);
-      const dispatch = () => run ? run.http(forward) : forward();
+      const dispatch = () => {
+        if (!run) throw new RunLimitError('supervised-run-required');
+        run.check();
+        return run.http(forward);
+      };
       let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
       const forwardRead = async () => {
         admittedRead = true;

@@ -15,6 +15,17 @@ import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { assertStagingDeployment, waitForStagingRelease } from '../../scripts/e2e-staging/deployment.mjs';
 
+import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+async function fixtureBudget(t, output) {
+  if (!output) {
+    output = await mkdtemp(join(tmpdir(), 'staging-browser-budget-'));
+    t.after(() => rm(output, { recursive: true, force: true }));
+  }
+  const run = openRun(output, { runId: 'synthetic-browser-run', events: null });
+  t.after(() => run.dispose());
+  return run;
+}
+
 const html = `<main><button id="dead" onclick="this.blur()">Dead</button><button id="live" onclick="document.querySelector('#result').textContent='Changed'">Live</button><button id="disabled" disabled title="Requires a selected record">Disabled</button><button id="drawer" aria-expanded="false" onclick="this.setAttribute('aria-expanded','true'); document.querySelector('#sheet').hidden=false">Open drawer</button><section id="sheet" hidden><button id="nested" onclick="document.querySelector('#result').textContent='Nested'">Nested</button></section><output id="result"></output></main>`;
 
 test('deployment waits for its staging source through edge propagation and refuses persistent mismatches', async () => {
@@ -1459,7 +1470,7 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
         const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
       },
     })));
-    const guard = stagingFixtureWriteGuard({ output, release });
+    const guard = stagingFixtureWriteGuard({ output, release, run: await fixtureBudget(t, output) });
     await installStagingGuard(context, guard);
     await page.route(STAGING_ORIGIN + '/', real => real.fulfill({ contentType: 'text/html', body: '<main><button id="send">Save</button><output id="status"></output></main>' }));
     await page.goto(STAGING_ORIGIN + '/');
@@ -1541,7 +1552,7 @@ test('admitted GET/HEAD redirects cannot reach auth or external targets, includi
         const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
       },
     })));
-    const guard = stagingFixtureWriteGuard();
+    const guard = stagingFixtureWriteGuard({ run: await fixtureBudget(t) });
     await installStagingGuard(context, guard);
     await page.route(STAGING_ORIGIN + '/', real => real.fulfill({ contentType: 'text/html', body: '<main>Isolated redirect probe</main>' }));
     await page.goto(STAGING_ORIGIN + '/');
@@ -1650,7 +1661,7 @@ test('a write failing after the two-second observation window cannot receive evi
       const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
     },
   })));
-  const guard = stagingFixtureWriteGuard({ output, release }); await installStagingGuard(context, guard);
+  const guard = stagingFixtureWriteGuard({ output, release, run: await fixtureBudget(t, output) }); await installStagingGuard(context, guard);
   await page.route(STAGING_ORIGIN + '/', real => real.fulfill({ contentType: 'text/html', body: '<main><button id="save">Save</button><output id="status"></output></main>' }));
   await page.goto(STAGING_ORIGIN + '/');
   await page.evaluate(({ deal, key }) => {

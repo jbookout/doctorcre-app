@@ -202,13 +202,19 @@ async function modelRoomTask(options, run) {
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }
 
-function signalProcessGroup(child, name) {
-  try {
-    if (process.platform === 'win32') child.kill(name);
-    else process.kill(-child.pid, name);
-  } catch (error) {
-    if (error.code !== 'ESRCH') throw error;
+function dispatcherPids(child) {
+  return [...(child.exitCode == null && child.signalCode == null ? [child.pid] : []), -child.pid];
+}
+
+function signalDispatcher(child, name) {
+  if (process.platform === 'win32') { child.kill(name); return; }
+  let failure;
+  // The launch gate can still be waiting in its parent's group.
+  for (const pid of dispatcherPids(child)) {
+    try { process.kill(pid, name); }
+    catch (error) { if (error.code !== 'ESRCH') failure ||= error; }
   }
+  if (failure) throw failure;
 }
 
 async function assertDispatcherContract(dispatcher, contract) {
@@ -218,22 +224,25 @@ async function assertDispatcherContract(dispatcher, contract) {
   if (digest !== contract.sha256) throw new Error(`CARR_MODEL_ROOM_DISPATCH does not match the pinned Model Room dispatcher ${contract.revision}`);
 }
 
-function processGroupExists(child) {
+function dispatcherExists(child) {
   if (!child.pid) return false;
   if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
-  try { process.kill(-child.pid, 0); return true; }
-  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+  for (const pid of dispatcherPids(child)) {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { if (error.code !== 'ESRCH') throw error; }
+  }
+  return false;
 }
 
-async function clearProcessGroup(child) {
+async function clearDispatcher(child) {
   if (!child.pid) return;
-  signalProcessGroup(child, 'SIGTERM');
+  signalDispatcher(child, 'SIGTERM');
   const deadline = Date.now() + DISPATCH_TERMINATION_GRACE_MS;
-  while (processGroupExists(child) && Date.now() < deadline) await delay(10);
-  if (processGroupExists(child)) signalProcessGroup(child, 'SIGKILL');
+  while (dispatcherExists(child) && Date.now() < deadline) await delay(10);
+  if (dispatcherExists(child)) signalDispatcher(child, 'SIGKILL');
   const forcedDeadline = Date.now() + DISPATCH_TERMINATION_GRACE_MS;
-  while (processGroupExists(child) && Date.now() < forcedDeadline) await delay(10);
-  if (processGroupExists(child)) throw new RunLimitError('dispatcher-cleanup-unverified');
+  while (dispatcherExists(child) && Date.now() < forcedDeadline) await delay(10);
+  if (dispatcherExists(child)) throw new RunLimitError('dispatcher-cleanup-unverified');
 }
 
 function dispatcherOwnership(type, pid) {
@@ -261,7 +270,7 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
     });
     dispatcherOwnership('staging-dispatcher', child.pid);
     let stdout = '', stderr = '', outputBytes = 0, cleanup, groupCleanup;
-    const reap = () => groupCleanup ||= clearProcessGroup(child);
+    const reap = () => groupCleanup ||= clearDispatcher(child);
     const finish = (error, value) => {
       if (cleanup) return cleanup;
       signal?.removeEventListener('abort', abort);

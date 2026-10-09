@@ -1,4 +1,4 @@
-import { currentRun, directoryBytes, RUN_LIMITS, RunLimitError, modelCallsAllowed } from './run-limits.mjs';
+import { currentRun, RUN_LIMITS, RunLimitError, modelCallsAllowed } from './run-limits.mjs';
 import { readFile, mkdir, cp } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
@@ -154,8 +154,7 @@ async function exploreAllWithSignals(run) {
     scrubEvidence(local);
     run.check();
     await mkdir(destination, { recursive: true, mode: 0o700 });
-    run.reserveBytes(directoryBytes(local));
-    await cp(local, destination, { recursive: true });
+    await run.copyArtifacts(local, destination, (source, target) => cp(source, target, { recursive: true }));
     run.checkArtifacts();
     explorations.push({ target: target.name, screen: screen.name, path: screen.path, agent, steps, status, evidence: destination });
     await writeReport(output, { ...sweep.snapshot(), explorations, release, findings, setup, expectedExplorations });
