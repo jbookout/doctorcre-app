@@ -1,3 +1,4 @@
+import { currentRun, directoryBytes, RUN_LIMITS, RunLimitError, modelCallsAllowed } from './run-limits.mjs';
 import { readFile, mkdir, cp } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
@@ -90,7 +91,8 @@ export function createExplorationSchedule({ targets: targetSet, routedScreens, p
   return Object.freeze({ planned, completed, pending: planned.filter(row => !completeKeys.has(explorationKey(row))) });
 }
 
-async function exploreAllWithSignals(runSignals) {
+async function exploreAllWithSignals(run) {
+  run.check();
   process.env.E2E_TARGET = 'staging-live';
   process.env.E2E_TELEMETRY_DISABLED = '1';
   process.env.DO_NOT_TRACK = '1';
@@ -103,7 +105,7 @@ async function exploreAllWithSignals(runSignals) {
   const pending = schedule.pending.slice(0, batchPlan.batches[0]?.goalCount || 0);
   const callPlan = configureExplorationModelCallBudget(pending.length);
   console.log(formatExplorationCallPlan(callPlan));
-  let setup = await prepareStagingRecords(output);
+  let setup = await prepareStagingRecords(output, { run, signal: run.signal });
   const { release } = setup;
   const explore = pending.length > 0 ? await explorer40() : null;
   const explorations = [...schedule.completed];
@@ -115,21 +117,21 @@ async function exploreAllWithSignals(runSignals) {
   const expectedExplorations = schedule.planned.length;
   const attemptID = randomUUID();
   for (const planned of pending) {
-    if (runSignals.interruptSignal.aborted) throw new Error('Exploration interrupted; resume from the saved checkpoint');
+    if (run.signal.aborted) throw new Error('Exploration interrupted; resume from the saved checkpoint');
     const target = targets.find(row => row.name === planned.target);
     const screen = routedScreens.find(row => row.surface === planned.surface && row.path === planned.path);
     const { agent } = planned;
-    setup = await prepareStagingRecords(output);
+    setup = await prepareStagingRecords(output, { run, signal: run.signal });
     const current = setup.release;
     if (current.source_commit !== release.source_commit || current.carr_source_commit !== release.carr_source_commit) throw new Error('Staging source changed during workspace exploration');
     const runId = `${String(planned.sequence).padStart(3, '0')}-${target.name}-${agent}-${attemptID}`;
-    const local = join(project, '.e2e', 'staging-live', runId);
+    const local = join(output, 'private', 'explore', runId);
     const destination = join(output, 'evidence', 'explore', runId);
     await mkdir(local, { recursive: true, mode: 0o700 });
     console.log(`Exploring ${target.name} ${screen.path} as ${agent}; max-steps ${callPlan.perGoal}`);
     const goal = explorationGoal(screen, setup);
     let status = 'ERROR', steps = 0, failure = null;
-    const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: callPlan.perGoal, timeoutMs: 900_000, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'on', video: 'off', aiTrace: true, interruptSignal: runSignals.interruptSignal, forceSignal: runSignals.forceSignal });
+    const attempt = await runExplorationAttempt(explore, { cwd: project, configPath: join(project, 'e2e.config.ts'), target: target.name, agent, session: 'staging-partner', goal, maxSteps: callPlan.perGoal, timeoutMs: RUN_LIMITS.goalTimeoutMs, output: relative(project, local), reporters: ['list', 'markdown'], trace: 'off', video: 'off', aiTrace: false, interruptSignal: run.signal, forceSignal: run.signal });
     try {
       if (attempt.result) {
         const result = attempt.result;
@@ -148,13 +150,17 @@ async function exploreAllWithSignals(runSignals) {
         }
       } else { failure = attempt.error; }
     } catch (error) { status = 'ERROR'; failure = error; }
+    run.checkArtifacts();
     scrubEvidence(local);
+    run.check();
     await mkdir(destination, { recursive: true, mode: 0o700 });
+    run.reserveBytes(directoryBytes(local));
     await cp(local, destination, { recursive: true });
+    run.checkArtifacts();
     explorations.push({ target: target.name, screen: screen.name, path: screen.path, agent, steps, status, evidence: destination });
     await writeReport(output, { ...sweep.snapshot(), explorations, release, findings, setup, expectedExplorations });
     if (failure) throw failure;
-    if (runSignals.interruptSignal.aborted) throw new Error('Exploration interrupted; evidence and checkpoint retained');
+    if (run.signal.aborted) throw new Error('Exploration interrupted; evidence and checkpoint retained');
     if (status === 'ERROR') throw new Error(`Exploration infrastructure failed at ${runId}. Evidence retained; no login was attempted.`);
   }
   if (schedule.pending.length > pending.length) console.log(`Exploration batch complete; ${schedule.pending.length - pending.length} goals remain at the saved sweep checkpoint`);
@@ -163,8 +169,11 @@ async function exploreAllWithSignals(runSignals) {
 }
 
 export async function exploreAll() {
+  const run = currentRun();
+  if (!run) throw new RunLimitError('supervisor-required');
+  if (!modelCallsAllowed() || process.env.E2E_RUN_ID !== run.id) throw new RunLimitError('model-opt-in-required');
   const runSignals = createExplorationRunSignals();
-  try { return await exploreAllWithSignals(runSignals); }
+  try { return await exploreAllWithSignals(run); }
   finally { runSignals.dispose(); }
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) exploreAll().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -1,3 +1,4 @@
+import { currentRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 import { createHash } from 'node:crypto';
 import { canonicalIdentity, identityKey, canContinueTraversal, traversalSnapshot } from './traversal.mjs';
 
@@ -305,7 +306,10 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = 5000, routedPaths = [], recordedActionRuntime }) {
+export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = RUN_LIMITS.controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
+  const run = currentRun();
+  limit = Math.min(Number.isSafeInteger(limit) && limit > 0 ? limit : RUN_LIMITS.controlsPerScreen, RUN_LIMITS.controlsPerScreen);
+  const stopAtLimit = () => { if (run) { run.stop('control-count-limit'); throw new RunLimitError('control-count-limit'); } };
   if (prior?.recorded_action_ledger && (!isRecordedActionRuntime(recordedActionRuntime) ||
       recordedActionRuntime.screen_sha256 !== createHash('sha256').update(JSON.stringify(prior)).digest('hex')))
     throw new SweepFailure('recorded-action', 'unvalidated-runtime');
@@ -409,7 +413,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
     if (failure && failure.phase !== 'checkpoint') await publishProgress();
   }
   while ((queue.length || destructive.length) && !failure) {
-    if (controls.length >= limit) { exhausted = true; break; }
+    if (controls.length >= limit) { stopAtLimit(); exhausted = true; break; }
     const state = queue.shift() || destructive.shift();
     if (state.controls) {
       state.controls = state.controls.filter(control => !resolved.has(canonicalIdentity(control.identity)) && !seen.has(canonicalIdentity(control.identity)));
@@ -432,7 +436,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
       if (!failure) page = null;
       for (const control of listed) {
         if (failure) break;
-        if (controls.length >= limit) { exhausted = true; break; }
+        if (controls.length >= limit) { stopAtLimit(); exhausted = true; break; }
         active.controls.shift();
         if (seen.has(canonicalIdentity(control.identity)) || resolved.has(canonicalIdentity(control.identity))) continue;
         if (!state.destructive && /(?:delete|archive|send draft|send-draft|sign out)/i.test(control.name)) {

@@ -1,3 +1,4 @@
+import { currentRun, RUN_LIMITS } from './run-limits.mjs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test as base } from 'playwright/test';
@@ -11,15 +12,19 @@ import { stagingRelease, stagingSession, SessionPreflightFailure, STAGING_ORIGIN
 const sameRelease = (left, right) => left?.source_commit === right?.source_commit && left?.carr_source_commit === right?.carr_source_commit;
 
 export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, installGuard = installStagingGuard, releaseProbe }) {
+  const run = currentRun();
   const contexts = new Set();
   const guards = new Set();
   const freshPage = async ({ screen, release, fixtureGuard, path = screen.path, spec }) => {
+    run?.check();
     let context, phase = 'session-preflight', code = 'session-preflight-failed';
     try {
       if (!sameRelease(await releaseProbe(), release)) throw new SweepFailure('session-preflight', 'source-pair-changed');
       phase = 'context'; code = 'context-creation-failed';
       context = await browser.newContext();
       contexts.add(context);
+      const removeStop = run?.onStop(() => context.close());
+      context.on?.('close', () => removeStop?.());
       context.on?.('close', () => contexts.delete(context));
       code = 'guard-install-failed';
       await installGuard(context, fixtureGuard);
@@ -27,10 +32,10 @@ export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, insta
       code = 'page-creation-failed';
       const page = await context.newPage();
       phase = 'navigation'; code = 'navigation-failed';
-      const response = await page.goto(new URL(path, origin).href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      const response = await page.goto(new URL(path, origin).href, { waitUntil: 'domcontentloaded', timeout: RUN_LIMITS.httpTimeoutMs });
       if (!response?.ok() || page.url().includes('/auth/') || new URL(page.url()).origin !== origin) throw new SweepFailure('navigation', 'screen-response-refused');
       phase = 'load'; code = 'network-idle-failed';
-      await page.waitForLoadState('networkidle', { timeout: 30_000 });
+      await page.waitForLoadState('networkidle', { timeout: RUN_LIMITS.httpTimeoutMs });
       if (spec?.kind === 'calendar-record') await prepareCalendarRecord(page, spec);
       return page;
     } catch (error) {

@@ -68,7 +68,11 @@ test('production config routes agents through the Model Room adapter', async () 
   const { loadConfigModule } = await import('../../node_modules/e2e/dist/config/load.js');
   const configPath = new URL('../../e2e.config.ts', import.meta.url).pathname;
   const previousTarget = process.env.E2E_TARGET;
+  const previousRun = process.env.E2E_RUN_ID;
+  const previousAuthorization = process.env.E2E_ALLOW_MODEL_CALLS;
   process.env.E2E_TARGET = 'staging-live';
+  process.env.E2E_RUN_ID = 'synthetic-config-run';
+  process.env.E2E_ALLOW_MODEL_CALLS = process.env.E2E_RUN_ID;
   try {
     const first = await loadConfigModule(configPath);
     const second = await loadConfigModule(configPath);
@@ -77,6 +81,10 @@ test('production config routes agents through the Model Room adapter', async () 
   } finally {
     if (previousTarget === undefined) delete process.env.E2E_TARGET;
     else process.env.E2E_TARGET = previousTarget;
+    if (previousRun === undefined) delete process.env.E2E_RUN_ID;
+    else process.env.E2E_RUN_ID = previousRun;
+    if (previousAuthorization === undefined) delete process.env.E2E_ALLOW_MODEL_CALLS;
+    else process.env.E2E_ALLOW_MODEL_CALLS = previousAuthorization;
   }
 });
 
@@ -90,6 +98,10 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
     createModelRoomModel,
     formatExplorationCallPlan,
   } = await import('../../scripts/e2e-staging/model-room.mjs');
+  const authorization = {
+    environment: { E2E_RUN_ID: 'synthetic-model-run', E2E_ALLOW_MODEL_CALLS: 'synthetic-model-run' },
+    run: { id: 'synthetic-model-run', signal: new AbortController().signal, check() {}, reserveModel() {}, reserveBytes() {} },
+  };
   const calls = [];
   const dispatch = async request => {
     calls.push(request);
@@ -105,7 +117,7 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
       result: JSON.stringify({ content: [{ type: 'text', text: '{}' }] }),
     };
   };
-  const model = createModelRoomModel({ desk: 'doctorcre-e2e', budget: createModelCallBudget(2), dispatch });
+  const model = createModelRoomModel({ ...authorization, desk: 'doctorcre-e2e', budget: createModelCallBudget(2), dispatch });
   const options = { prompt: [{ role: 'user', content: [{ type: 'text', text: 'inspect the synthetic screen' }] }] };
   await model.doGenerate(options);
   await model.doGenerate(options);
@@ -116,6 +128,7 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
   assert.ok(calls.every(call => call.desk === 'doctorcre-e2e' && call.fresh === true));
 
   const toolModel = createModelRoomModel({
+    ...authorization,
     desk: 'doctorcre-e2e',
     budget: createModelCallBudget(1),
     dispatch: async request => ({ ...await dispatch(request), result: JSON.stringify({ content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'click', input: { target: 7 } }] }) }),
@@ -147,12 +160,14 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
   });
 
   const unknownEnvelope = createModelRoomModel({
+    ...authorization,
     desk: 'doctorcre-e2e',
     budget: createModelCallBudget(1),
     dispatch: async request => ({ ...await dispatch(request), envelope_revision: 'unknown-v2' }),
   });
   await assert.rejects(() => unknownEnvelope.doGenerate(options), /unknown Model Room dispatcher envelope/);
   const changedEnvelope = createModelRoomModel({
+    ...authorization,
     desk: 'doctorcre-e2e',
     budget: createModelCallBudget(1),
     dispatch: async request => ({ ...await dispatch(request), resumed: 'not-a-boolean' }),

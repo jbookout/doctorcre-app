@@ -1,13 +1,14 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { RUN_LIMITS, currentRun, modelCallsAllowed, RunLimitError } from './run-limits.mjs';
 
-export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({ perGoal: 40, hardGlobalCeiling: 5_000 });
+export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({ perGoal: RUN_LIMITS.explorationSteps, hardGlobalCeiling: RUN_LIMITS.modelCalls });
 const EXPLORATION_CALLS_PER_GOAL = EXPLORATION_MODEL_CALL_POLICY.perGoal * 2 + 1;
-const EXPLORATION_BATCH_GOAL_LIMIT = 50;
+const EXPLORATION_BATCH_GOAL_LIMIT = RUN_LIMITS.batchGoals;
 export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
   revision: 'carr-model-room-dispatch@0b2c8ec8be07df142519e6638da9ec3329edcef2',
   repository: 'jbookout/carr-system',
@@ -15,7 +16,7 @@ export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
   sha256: '64e801f718242cf4bbd9a056a3b11e9d4faeea907c74ca0e18ca438fb2b2c61c',
   argv: Object.freeze(['send', '{desk}', '-', '--fresh']),
 });
-const DISPATCH_TERMINATION_GRACE_MS = 250;
+const DISPATCH_TERMINATION_GRACE_MS = RUN_LIMITS.dispatcherGraceMs;
 const dispatcherEnvelopeKeys = new Set([
   'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'status', 'result', 'thread_id', 'resumed',
   'actual_model', 'finish', 'provider', 'retrieval', 'code', 'detail', 'error', 'retry_after',
@@ -147,39 +148,58 @@ function extension(mediaType) {
   return 'bin';
 }
 
-async function portable(value, directory, counter) {
+async function portable(value, directory, counter, run) {
+  run?.check();
   if (value instanceof Uint8Array) {
     const path = join(directory, `input-${String(++counter.value).padStart(3, '0')}.bin`);
-    await writeFile(path, value, { mode: 0o600 });
+    const writer = (target, data) => writeFile(target, data, { mode: 0o600 });
+    if (run?.writeFile) await run.writeFile(path, value, writer); else { run?.reserveBytes(value.byteLength); await writer(path, value); }
     return { localPath: path };
   }
-  if (Array.isArray(value)) return Promise.all(value.map(item => portable(item, directory, counter)));
-  if (value === null || typeof value !== 'object') return value;
-  if (value instanceof URL) return value.href;
+  if (Array.isArray(value)) {
+    const result = [];
+    for (const item of value) result.push(await portable(item, directory, counter, run));
+    return result;
+  }
+  if (value === null || typeof value !== 'object') {
+    if (typeof value === 'string') run?.reserveBytes(Buffer.byteLength(value));
+    return value;
+  }
+  if (value instanceof URL) { run?.reserveBytes(Buffer.byteLength(value.href)); return value.href; }
   if (value.type === 'file' && (typeof value.data === 'string' || value.data instanceof Uint8Array)) {
     const path = join(directory, `input-${String(++counter.value).padStart(3, '0')}.${extension(value.mediaType)}`);
     const data = typeof value.data === 'string' ? Buffer.from(value.data, 'base64') : value.data;
-    await writeFile(path, data, { mode: 0o600 });
+    const writer = (target, value) => writeFile(target, value, { mode: 0o600 });
+    if (run?.writeFile) await run.writeFile(path, data, writer); else { run?.reserveBytes(data.byteLength); await writer(path, data); }
     return { ...value, data: { localPath: path } };
   }
   const result = {};
-  for (const [key, child] of Object.entries(value)) result[key] = await portable(child, directory, counter);
+  for (const [key, child] of Object.entries(value)) {
+    run?.reserveBytes(Buffer.byteLength(key));
+    result[key] = await portable(child, directory, counter, run);
+  }
   return result;
 }
 
-async function modelRoomTask(options) {
-  const directory = await mkdtemp(join(tmpdir(), 'doctorcre-e2e-model-room-'));
-  const request = await portable({
-    prompt: options.prompt,
-    maxOutputTokens: options.maxOutputTokens,
-    temperature: options.temperature,
-    stopSequences: options.stopSequences,
-    responseFormat: options.responseFormat,
-    tools: options.tools,
-    toolChoice: options.toolChoice,
-  }, directory, { value: 0 });
-  const task = `Act as the language-model transport for one DoctorCRE E2E step. Inspect any localPath evidence before answering. Return exactly one JSON object, without Markdown fences, with a nonempty content array. Each content item must be either {"type":"text","text":"..."} or {"type":"tool-call","toolCallId":"unique-id","toolName":"one supplied tool","input":{...}}. Use tool calls when the request supplies tools and an action is needed. The complete AI SDK request follows:\n${JSON.stringify(request)}`;
-  return { task, cleanup: () => rm(directory, { recursive: true, force: true }) };
+async function modelRoomTask(options, run) {
+  run?.check();
+  const scratch = run?.root ? join(run.root, 'private') : tmpdir();
+  await mkdir(scratch, { recursive: true, mode: 0o700 });
+  const directory = await mkdtemp(join(scratch, 'doctorcre-e2e-model-room-'));
+  try {
+    const request = await portable({
+      prompt: options.prompt,
+      maxOutputTokens: options.maxOutputTokens,
+      temperature: options.temperature,
+      stopSequences: options.stopSequences,
+      responseFormat: options.responseFormat,
+      tools: options.tools,
+      toolChoice: options.toolChoice,
+    }, directory, { value: 0 }, run);
+    const task = `Act as the language-model transport for one DoctorCRE E2E step. Inspect any localPath evidence before answering. Return exactly one JSON object, without Markdown fences, with a nonempty content array. Each content item must be either {"type":"text","text":"..."} or {"type":"tool-call","toolCallId":"unique-id","toolName":"one supplied tool","input":{...}}. Use tool calls when the request supplies tools and an action is needed. The complete AI SDK request follows:\n${JSON.stringify(request)}`;
+    run?.reserveBytes(Buffer.byteLength(task));
+    return { task, cleanup: () => rm(directory, { recursive: true, force: true }) };
+  } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }
 
 function signalProcessGroup(child, name) {
@@ -198,11 +218,40 @@ async function assertDispatcherContract(dispatcher, contract) {
   if (digest !== contract.sha256) throw new Error(`CARR_MODEL_ROOM_DISPATCH does not match the pinned Model Room dispatcher ${contract.revision}`);
 }
 
-export async function dispatchThroughModelRoom({ desk, task, fresh, signal, dispatcherPath, environment, dispatcherContract = MODEL_ROOM_DISPATCH_CONTRACT }) {
-  const dispatcher = (dispatcherPath || process.env.CARR_MODEL_ROOM_DISPATCH)?.trim();
+function processGroupExists(child) {
+  if (!child.pid) return false;
+  if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
+  try { process.kill(-child.pid, 0); return true; }
+  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+}
+
+async function clearProcessGroup(child) {
+  if (!child.pid) return;
+  signalProcessGroup(child, 'SIGTERM');
+  const deadline = Date.now() + DISPATCH_TERMINATION_GRACE_MS;
+  while (processGroupExists(child) && Date.now() < deadline) await delay(10);
+  if (processGroupExists(child)) signalProcessGroup(child, 'SIGKILL');
+  const forcedDeadline = Date.now() + DISPATCH_TERMINATION_GRACE_MS;
+  while (processGroupExists(child) && Date.now() < forcedDeadline) await delay(10);
+  if (processGroupExists(child)) throw new RunLimitError('dispatcher-cleanup-unverified');
+}
+
+function dispatcherOwnership(type, pid) {
+  if (pid && process.connected && typeof process.send === 'function') process.send({ type, pid });
+}
+
+export async function dispatchThroughModelRoom({ desk, task, fresh, signal, dispatcherPath, environment = process.env, run = currentRun(), dispatcherContract = MODEL_ROOM_DISPATCH_CONTRACT }) {
+  if (!modelCallsAllowed(environment) || !run || run.id !== environment.E2E_RUN_ID)
+    throw new RunLimitError('model-calls-not-authorized-for-run');
+  run.check();
+  signal?.throwIfAborted();
+  const dispatcher = (dispatcherPath || environment.CARR_MODEL_ROOM_DISPATCH)?.trim();
   if (!dispatcher || !isAbsolute(dispatcher)) throw new Error('CARR_MODEL_ROOM_DISPATCH must name the absolute Model Room dispatcher path');
   if (fresh !== true) throw new Error('DoctorCRE E2E Model Room dispatches must use a fresh desk turn');
   await assertDispatcherContract(dispatcher, dispatcherContract);
+  run.check();
+  signal?.throwIfAborted();
+  run.reserveModel();
   return new Promise((resolve, reject) => {
     const args = dispatcherContract.argv.map(value => value === '{desk}' ? desk : value);
     const child = spawn(process.env.PYTHON || 'python3', [dispatcher, ...args], {
@@ -210,46 +259,49 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
       env: environment || process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    let stdout = '', stderr = '', settled = false, terminating = false;
+    dispatcherOwnership('staging-dispatcher', child.pid);
+    let stdout = '', stderr = '', outputBytes = 0, cleanup, groupCleanup;
+    const reap = () => groupCleanup ||= clearProcessGroup(child);
     const finish = (error, value) => {
-      if (settled) return;
-      settled = true;
+      if (cleanup) return cleanup;
       signal?.removeEventListener('abort', abort);
-      error ? reject(error) : resolve(value);
-    };
-    let closeResolve;
-    const closed = new Promise(resolveClose => { closeResolve = resolveClose; });
-    const terminate = async error => {
-      if (terminating || settled) return;
-      terminating = true;
-      signalProcessGroup(child, 'SIGTERM');
-      const exited = await Promise.race([closed.then(() => true), delay(DISPATCH_TERMINATION_GRACE_MS, false)]);
-      if (!exited) signalProcessGroup(child, 'SIGKILL');
-      await closed;
-      finish(error);
+      run?.signal.removeEventListener('abort', abort);
+      clearTimeout(timer);
+      cleanup = reap().then(() => {
+        dispatcherOwnership('staging-dispatcher-exit', child.pid);
+        error ? reject(error) : resolve(value);
+      }, cleanupError => reject(cleanupError));
+      return cleanup;
     };
     const append = (current, chunk) => {
-      const next = current + chunk.toString('utf8');
-      if (next.length > 2_000_000) {
-        void terminate(new Error('Model Room dispatcher output exceeded 2000000 characters'));
+      if (cleanup) return current;
+      try {
+        outputBytes += chunk.byteLength;
+        if (outputBytes > RUN_LIMITS.dispatcherOutputBytes) throw new RunLimitError('dispatcher-output-byte-limit');
+        run?.reserveBytes(chunk.byteLength);
+        return current + chunk.toString('utf8');
+      } catch (error) {
+        void finish(error);
+        return current;
       }
-      return next;
     };
-    const abort = () => { void terminate(new Error('Model Room dispatch aborted')); };
+    const abort = () => { void finish(new Error('Model Room dispatch aborted')); };
+    const timer = setTimeout(() => { void finish(new RunLimitError('dispatcher-deadline')); }, RUN_LIMITS.goalTimeoutMs);
     signal?.addEventListener('abort', abort, { once: true });
-    child.once('error', error => finish(error));
-    child.stdin.once('error', error => { if (!terminating) finish(error); });
+    run?.signal.addEventListener('abort', abort, { once: true });
+    child.once('error', error => { void finish(error); });
+    child.stdin.once('error', error => { void finish(error); });
     child.stdout.on('data', chunk => { stdout = append(stdout, chunk); });
     child.stderr.on('data', chunk => { stderr = append(stderr, chunk); });
+    child.once('exit', () => { void reap().catch(error => { void finish(error); }); });
     child.once('close', code => {
-      closeResolve();
-      if (settled || terminating) return;
-      if (code !== 0) return finish(new Error(`Model Room dispatcher failed (${code}): ${stderr.trim().slice(-500)}`));
-      try { finish(null, JSON.parse(stdout)); }
-      catch (cause) { finish(new Error('Model Room dispatcher returned invalid JSON', { cause })); }
+      if (cleanup) return;
+      if (code !== 0) { void finish(new Error(`Model Room dispatcher failed (${code}): ${stderr.trim().slice(-500)}`)); return; }
+      try { void finish(null, JSON.parse(stdout)); }
+      catch (cause) { void finish(new Error('Model Room dispatcher returned invalid JSON', { cause })); }
     });
     child.stdin.end(task);
-    if (signal?.aborted) abort();
+    if (signal?.aborted || run?.signal.aborted) abort();
   });
 }
 
@@ -257,6 +309,8 @@ export function createModelRoomModel({
   desk = process.env.E2E_MODEL_ROOM_DESK?.trim() || 'doctorcre-e2e',
   budget = createModelCallBudget(),
   dispatch = dispatchThroughModelRoom,
+  run,
+  environment = process.env,
 } = {}) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(desk)) throw new Error('E2E_MODEL_ROOM_DESK must be a named Model Room desk');
   return Object.freeze({
@@ -265,10 +319,22 @@ export function createModelRoomModel({
     modelId: desk,
     supportedUrls: {},
     async doGenerate(options) {
-      const prepared = await modelRoomTask(options);
+      const active = run || currentRun();
+      if (!modelCallsAllowed(environment) || !active || active.id !== environment.E2E_RUN_ID)
+        throw new RunLimitError('model-calls-not-authorized-for-run');
+      active.check();
+      options.abortSignal?.throwIfAborted();
+      const prepared = await modelRoomTask(options, active);
       try {
-        budget.reserve();
-        const row = await dispatch({ desk, task: prepared.task, fresh: true, signal: options.abortSignal });
+        active.check();
+        options.abortSignal?.throwIfAborted();
+        try { budget.reserve(); }
+        catch (error) { error.code = 'planned-model-call-limit'; active.stop?.(error.code); throw error; }
+        if (dispatch !== dispatchThroughModelRoom) active.reserveModel();
+        const signal = options.abortSignal ? AbortSignal.any([active.signal, options.abortSignal]) : active.signal;
+        const row = await dispatch({ desk, task: prepared.task, fresh: true, signal, run: active, environment });
+        active.check();
+        signal.throwIfAborted();
         return parseDeskResult(row, { desk, task: prepared.task });
       } finally { await prepared.cleanup(); }
     },

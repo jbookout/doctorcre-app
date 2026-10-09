@@ -1,3 +1,4 @@
+import { boundedRequestContext, currentRun, RUN_LIMITS } from './run-limits.mjs';
 import { constants } from 'node:fs';
 import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,9 +19,12 @@ const requireValue = condition => { if (!condition) fail(); };
 const recordId = value => { requireValue(isUUID(value || '')); return value; };
 
 async function privateJSON(path, value, exclusive = false) {
+  const data = JSON.stringify(value, null, 2) + '\n';
+  const run = currentRun();
+  run?.check(); run?.reserveBytes(Buffer.byteLength(data));
   const destination = exclusive ? path : `${path}.${randomUUID()}.tmp`;
   const handle = await open(destination, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try { await handle.writeFile(JSON.stringify(value, null, 2) + '\n'); await handle.sync(); }
+  try { await handle.writeFile(data); await handle.sync(); }
   finally { await handle.close(); }
   if (!exclusive) await rename(destination, path);
   const directory = await open(join(path, '..'), constants.O_RDONLY);
@@ -41,8 +45,9 @@ async function readPrivateJSON(path) {
 
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  requestFactory = options => playwrightRequest.newContext(options),
+  requestFactory = options => playwrightRequest.newContext(options), run = currentRun(output), signal = run?.signal,
 } = {}) {
+  signal?.throwIfAborted();
   origin = assertStagingURL(origin);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
@@ -52,7 +57,7 @@ export async function prepareStagingRecords(output, {
       ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !isUUID(existing.records?.[name]?.id || '')) || !isUUID(existing.records?.invoice?.deal_id || ''))) {
     throw new Error('Resume requires an existing complete private staging records plan; no record write was attempted');
   }
-  const { state, release } = await session(origin);
+  const { state, release } = await session(origin, { run, signal });
   if (release?.environment !== 'staging' || release?.service !== 'doctorcre-app' ||
       !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || release?.carr_source_commit !== contract.producer.source_commit) {
     throw new Error('Staging records require the exact pinned staging source pair');
@@ -62,20 +67,25 @@ export async function prepareStagingRecords(output, {
       existing.release?.source_commit !== source.source_commit || existing.release?.carr_source_commit !== source.carr_source_commit)) {
     throw new Error('Staging records completed plan differs from the exact source pair');
   }
-  const run = existing?.run || randomUUID();
-  const label = `Synthetic staging QA ${run}`;
+  const fixtureRun = existing?.run || randomUUID();
+  const label = `Synthetic staging QA ${fixtureRun}`;
   const plan = existing || {
-    schema: 'doctorcre-staging-records-plan.v1', origin, release: source, state: 'pending', run,
+    schema: 'doctorcre-staging-records-plan.v1', origin, release: source, state: 'pending', run: fixtureRun,
     keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour'].map(name => [name, randomUUID()])),
-    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Unlinked Prospect ${run}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
+    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Unlinked Prospect ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
   plan.current_step = 'authentication';
-  let api;
+  let api, removeAbort = () => {};
   const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
   try {
-    api = await requestFactory({ baseURL: STAGING_ORIGIN, storageState: state, timeout: 30_000 });
+    api = boundedRequestContext(await requestFactory({ baseURL: STAGING_ORIGIN, storageState: state, timeout: RUN_LIMITS.httpTimeoutMs }), run);
+    const abort = () => { void api.dispose().catch(() => {}); };
+    signal?.addEventListener('abort', abort, { once: true });
+    removeAbort = () => signal?.removeEventListener('abort', abort);
+    signal?.throwIfAborted();
     async function json(path, data) {
+      signal?.throwIfAborted();
       assertStagingURL(new URL(path, STAGING_ORIGIN).href);
       const options = { headers, maxRedirects: 0, ...(data === undefined ? {} : { data }) };
       const response = data === undefined ? await api.get(path, options) : await api.post(path, options);
@@ -100,9 +110,11 @@ export async function prepareStagingRecords(output, {
       await privateJSON(planPath, plan, true);
     }
     async function write(step, name, args) {
+      signal?.throwIfAborted();
       plan.current_step = step;
       plan.inflight = { name, arguments: { ...args, idempotency_key: plan.keys[step] } };
       await privateJSON(planPath, plan);
+      signal?.throwIfAborted();
       const result = await rpc(name, plan.inflight.arguments);
       plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
       plan.inflight = null;
@@ -162,6 +174,7 @@ export async function prepareStagingRecords(output, {
         canonical_dataset_version: 'synthetic-staging-qa-v1', start_point: point('start'), end_point: point('end'),
       } };
       await privateJSON(planPath, plan);
+      signal?.throwIfAborted();
       const tour = await api.post('/api/tours/create', {
         maxRedirects: 0, headers: { ...headers, 'x-carr-csrf': actor.csrf_token },
         data: plan.inflight.arguments,
@@ -227,8 +240,10 @@ export async function prepareStagingRecords(output, {
     await privateJSON(planPath, plan);
     return result;
   } catch {
+    signal?.throwIfAborted();
+    run?.check();
     throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
-  } finally { if (api) await api.dispose().catch(() => {}); }
+  } finally { removeAbort(); if (api) await api.dispose().catch(() => {}); }
 }
 
 const browserReads = new Set(["capture-queue", "correspondence-readiness", "current-work-item", "deal-room-board", "engineering-passport", "find", "find-and-catch-up", "get-call-context", "get-deal-room", "get-incident", "governance-queue", "incident-board", "lead-board", "list-doc-conversations", "list-doc-suggestions", "list-industry-events", "list-my-codex-sessions", "list-progress-boards", "loop-board", "loop-headers", "morning-brief", "notification-feed", "read-assurance-health", "read-correspondence-thread", "read-dispatch-history", "read-doc-activity", "read-doc-conversation", "read-doc-outcome-cards", "read-invoice-tracker", "read-loop", "read-notification-preferences", "read-portfolio", "read-progress-board", "read-resource-dashboard", "read-room", "read-room-queue", "read-session-identity", "schedule-board", "today-triage", "unfinished-work", "work-request-card"]);
@@ -332,7 +347,7 @@ function requirePlanCoverage(plan) {
 
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
-export function stagingFixtureWriteGuard({ output, release, persist = privateJSON } = {}) {
+export function stagingFixtureWriteGuard({ output, release, persist = privateJSON, run = currentRun(output) } = {}) {
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
   let serial = Promise.resolve();
@@ -362,8 +377,8 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
   };
   return {
     refusals,
-    async assertCoverage({ timeoutMs = 30_000 } = {}) {
-      const budget = Math.min(30_000, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : 30_000));
+    async assertCoverage({ timeoutMs = RUN_LIMITS.settlementMs } = {}) {
+      const budget = Math.min(RUN_LIMITS.settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : RUN_LIMITS.settlementMs));
       const deadline = Date.now() + budget;
       while (pending.size) {
         let timer;
@@ -384,11 +399,13 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
     async handle(request, forward) {
       const flight = { timedOut: false };
       flight.done = new Promise(resolve => { flight.finish = resolve; });
+      run?.check();
       pending.add(flight);
+      const dispatch = () => run ? run.http(forward) : forward();
       let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
       const forwardRead = async () => {
         admittedRead = true;
-        const response = await forward();
+        const response = await dispatch();
         if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
         // Never give the browser a redirect to follow outside interception.
         // Known aliases also remain coverage gaps until directly addressed.
@@ -485,7 +502,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
         });
         if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
         dispatched = true;
-        const response = await forward();
+        const response = await dispatch();
         await locked(async () => {
           const plan = await currentPlan();
           if (plan.run !== token.run) policyFailure('fixture-provenance-changed');

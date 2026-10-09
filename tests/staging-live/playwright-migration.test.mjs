@@ -12,7 +12,7 @@ test('Playwright Test owns the staging project matrix, deadlines, artifacts and 
   assert.equal(config.retries, 0);
   assert.ok(config.timeout > 0);
   assert.ok(config.globalTimeout > config.timeout);
-  assert.deepEqual(config.reporter.map(([name]) => name), ['list', 'json', 'html']);
+  assert.deepEqual(config.reporter.map(([name]) => name), ['list', 'json']);
 
   const [setup, ...projects] = config.projects;
   assert.equal(setup.name, 'staging-auth');
@@ -26,8 +26,8 @@ test('Playwright Test owns the staging project matrix, deadlines, artifacts and 
     assert.deepEqual(project.use.viewport, targets[index].viewport);
     assert.equal(project.use.serviceWorkers, 'block');
     assert.deepEqual(project.use.extraHTTPHeaders, { 'x-e2e-staging-run': '1' });
-    assert.equal(project.use.trace, 'retain-on-failure');
-    assert.equal(project.use.screenshot, 'only-on-failure');
+    assert.equal(project.use.trace, 'off');
+    assert.equal(project.use.screenshot, 'off');
   }
 });
 
@@ -125,8 +125,8 @@ test('operator documentation names Playwright Test ownership and the resume comm
 
 test('staging sweep entrypoints use Playwright Test without a second browser or trace runner', async () => {
   const packageJSON = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
-  assert.equal(packageJSON.scripts['e2e:staging:sweep'], 'playwright test --config playwright.staging.config.mjs');
-  assert.equal(packageJSON.scripts['e2e:staging:sweep:resume'], 'E2E_STAGING_RESUME=1 playwright test --config playwright.staging.config.mjs');
+  assert.equal(packageJSON.scripts['e2e:staging:sweep'], 'node scripts/e2e-staging/supervise.mjs sweep');
+  assert.equal(packageJSON.scripts['e2e:staging:sweep:resume'], 'E2E_STAGING_RESUME=1 node scripts/e2e-staging/supervise.mjs sweep');
   const sweep = await readFile(new URL('../../scripts/e2e-staging/sweep.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(sweep, /chromium|tracing\.(?:start|stop)/);
 });
@@ -139,8 +139,8 @@ test('the setup project writes storageState as a private runtime credential', as
   const state = { cookies: [{ name: 'synthetic' }], origins: [] };
   const { writeStagingStorageState } = await import('../../scripts/e2e-staging/session.mjs');
   assert.equal(await writeStagingStorageState({
-    async storageState({ path: destination }) {
-      await writeFile(destination, JSON.stringify(state), { mode: 0o666 });
+    async storageState(options) {
+      assert.equal(options, undefined, 'credential stays in memory until bounded private publication');
       return state;
     },
   }, path), state);

@@ -1,5 +1,6 @@
+import { currentRun } from './run-limits.mjs';
 import { mkdir, writeFile, readFile, mkdtemp, open, rename, rm } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute, dirname, basename } from 'node:path';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 import { scrubEvidence } from './evidence.mjs';
 
 async function readJSON(path) {
@@ -63,7 +64,9 @@ export function sweepFindings(screens) {
   }))].map(finding => ({ ...finding, id: screen.attempt_id ? `attempt/${screen.attempt_id}/${finding.id}` : finding.id })));
 }
 
-export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates, publishFile = rename }) {
+export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates, publishFile = rename, run = currentRun(output) }) {
+  run?.check();
+  const write = (path, data) => run ? run.writeFile(path, data, writeFile) : writeFile(path, data);
   const previous = await retainedReport(output, release);
   explorations = mergeRows(previous.explorations, explorations ?? [], row => JSON.stringify([row.target, row.screen, row.agent]));
   findings = mergeRows(previous.findings, findings ?? [], row => row.id);
@@ -73,7 +76,7 @@ export async function writeReport(output, { screens = [], history = [], explorat
   stateObligations ??= previous.stateObligations ?? [];
   expectedStates ??= stateObligations.length;
   await mkdir(output, { recursive: true, mode: 0o700 });
-  const stage = await mkdtemp(join(dirname(output), '.' + basename(output) + '-report-'));
+  const stage = await mkdtemp(join(output, '.report-'));
   try {
     const owned = stateObligations.filter(entry => entry.spec.kind !== 'calendar-operation').flatMap(entry => [
       ...(entry.result ? [{ ...entry.result, attempt_id: entry.attempt_id }] : []),
@@ -92,15 +95,15 @@ export async function writeReport(output, { screens = [], history = [], explorat
           ...(resolved ? { resolved: true } : {}),
         })));
     const all = [...history.flatMap(entry => entry.findings), ...sweepFindings(screens), ...sweepFindings(owned), ...calendarFindings, ...findings];
-    await writeFile(join(stage, 'findings.json'), JSON.stringify(all, null, 2) + '\n');
-    await writeFile(join(stage, 'explorations.json'), JSON.stringify(explorations, null, 2) + '\n');
+    await write(join(stage, 'findings.json'), JSON.stringify(all, null, 2) + '\n');
+    await write(join(stage, 'explorations.json'), JSON.stringify(explorations, null, 2) + '\n');
     const controls = screens.flatMap(screen => screen.controls);
-    await writeFile(join(stage, 'controls.json'), JSON.stringify({ release, screens, history, explorations, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates }, null, 2) + '\n');
+    await write(join(stage, 'controls.json'), JSON.stringify({ release, screens, history, explorations, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates }, null, 2) + '\n');
     const rows = screens.map(screen => `| ${screen.target} | ${screen.name} (${screen.path}) | ${screen.reached ? 'reached' : 'FAILED'} | ${screen.controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} | ${screen.controls.filter(c => c.status === 'DEAD').length} | ${screen.controls.filter(c => c.status === 'DISABLED').length} | ${screen.controls.filter(c => ['ERROR','UNREACHABLE'].includes(c.status)).length} | ${screen.failure ? `${screen.failure.phase}: ${screen.failure.code}` : screen.in_progress ? 'In progress; incomplete' : ''} |`);
     const disabled = controls.filter(c => c.status === 'DISABLED').map(c => `- ${c.target} ${c.path}: ${c.name || c.selector}: ${c.reason}`);
     const explorationRows = explorations.map(run => `| ${run.target} | ${run.screen} | ${run.agent} | ${run.steps} / 40 | ${run.status} |`);
     const historyRows = history.map(({ screen }) => `| ${screen.attempt_id || 'legacy'} | ${screen.target} | ${screen.name} (${screen.path}) | ${screen.controls.length} | ${screen.controls.filter(row => row.status === 'DEAD').length} | ${screen.failure ? `${screen.failure.phase}: ${screen.failure.code}` : 'Incomplete control coverage'} |`);
-    await writeFile(join(stage, 'coverage.md'), [
+    await write(join(stage, 'coverage.md'), [
       '# DoctorCRE staging-live e2e coverage', '', `Measured at ${new Date().toISOString()}. Source ${release?.source_commit || 'unverified'}.`, '',
       `${screens.filter(s => s.reached).length}/${expectedScreens} screens reached; ${controls.length} controls enumerated; ${controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} pressed; ${controls.filter(c => c.status === 'DEAD').length} DEAD.`, '',
       '| Target | Screen | Access | Pressed | DEAD | Disabled | Failed to press | Failure phase |', '|---|---|---|---:|---:|---:|---:|---|', ...rows, '',
@@ -112,12 +115,15 @@ export async function writeReport(output, { screens = [], history = [], explorat
       'Call Mode opens a local service outside the staging stack; the runner presses its link and blocks the nonstaging destination. A resulting network signal does not verify the local service.', '',
       ...(setup ? ['## Staging record setup', '', `Normal authenticated API setup: ${setup.complete ? 'complete' : 'FAILED'}. Synthetic record receipts: staging-records.json.`, '', `Recovery needed: ${JSON.stringify(setup.needs_restore)}.`, '', 'The draft tour has no canonical property stop, so acceptance and share require an authorized property fixture. Mark-paid requires an existing invoiced commission. Outlook draft creation uses a local processor outside this staging stack. These prerequisites are not fabricated or bypassed by the runner.', ''] : []),
     ].join('\n'));
+    run?.checkArtifacts();
     scrubEvidence(stage);
+    run?.check();
     // Publish derived files first; controls.json is the authoritative commit.
     // A killed write leaves the old checkpoint readable and its metadata intact.
     for (const file of ['findings.json', 'coverage.md', 'explorations.json', 'controls.json']) {
       const handle = await open(join(stage, file), 'r+');
       try { await handle.sync(); } finally { await handle.close(); }
+      run?.check();
       await publishFile(join(stage, file), join(output, file));
     }
     return all;

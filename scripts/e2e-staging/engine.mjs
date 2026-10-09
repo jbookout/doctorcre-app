@@ -1,3 +1,4 @@
+import { currentRun, RUN_LIMITS } from './run-limits.mjs';
 import { web, surfaceOf } from '@e2e-dev/web';
 import { defineEngine } from 'e2e/engine';
 import { stagingFixtureWriteGuard, readStagingFixtureRelease } from './records.mjs';
@@ -14,7 +15,7 @@ export async function installStagingGuard(context, fixtureGuard = stagingFixture
       // Every method crosses the same policy before any request is forwarded.
       // Do not use fallback: interception is not re-run for redirect targets.
       const response = await fixtureGuard.handle(request, () =>
-        route.fetch({ maxRetries: 0, maxRedirects: 0, timeout: 30_000 }));
+        route.fetch({ maxRetries: RUN_LIMITS.retries, maxRedirects: 0, timeout: RUN_LIMITS.httpTimeoutMs }));
       await route.fulfill({ response });
     } catch (error) {
       // A read transport failure still reaches the client's normal retry path.
@@ -41,7 +42,10 @@ export function stagingWeb(options) {
     // Read setup release before installing the same write policy as the sweep.
     const output = resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
     fixtureGuard ||= stagingFixtureWriteGuard({ output, release: await readStagingFixtureRelease(output) });
-    await installStagingGuard(live.context(), fixtureGuard);
+    const context = live.context();
+    const remove = currentRun()?.onStop(() => context.close());
+    if (remove) context.once('close', remove);
+    await installStagingGuard(context, fixtureGuard);
   };
   const { capabilities, ...spec } = engine;
   return defineEngine({

@@ -792,3 +792,24 @@ test('bounded settlement timeout never becomes coverage success after a late com
   await assert.rejects(stagingFixtureWriteGuard({ output: f.output, release }).assertCoverage(), /write-coverage-incomplete/);
   await assert.rejects(assertStagingWriteCoverage(f.output), /write-coverage-incomplete/);
 });
+
+
+test('fixture preparation checks cancellation before authentication and every mutation', async t => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-records-stop-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  const stopped = new AbortController(); stopped.abort(new Error('synthetic-stop'));
+  await assert.rejects(prepareStagingRecords(output, { signal: stopped.signal,
+    session: async () => assert.fail('stopped setup authenticated'),
+    requestFactory: async () => assert.fail('stopped setup requested'),
+  }), /synthetic-stop/);
+  const controller = new AbortController(), fake = fakeAPI(output);
+  const factory = fake.requestFactory;
+  const requestFactory = async options => {
+    const api = await factory(options), post = api.post;
+    api.post = async (...args) => { const response = await post.apply(api, args); controller.abort(new Error('synthetic-stop')); return response; };
+    return api;
+  };
+  await assert.rejects(prepareStagingRecords(output, { ...fake, requestFactory, signal: controller.signal }), /synthetic-stop/);
+  assert.equal(fake.calls.filter(row => row.path === '/mcp').length, 1, 'no mutation follows cancellation');
+  assert.ok(fake.disposed() >= 1, 'active fixture request context is disposed');
+});
