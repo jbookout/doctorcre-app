@@ -280,7 +280,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
       await locator.click({ timeout: 5000 });
       const values = { email: 'e2e@example.test', url: 'https://example.test', tel: '2025550100', number: '1', date: '2030-01-15', time: '12:00', 'datetime-local': '2030-01-15T12:00', month: '2030-01', week: '2030-W03' };
       await locator.fill(values[control.inputType] || 'E2E synthetic input');
-    } else await locator.click({ timeout: 5000, noWaitAfter: true });
+    } else await locator.click({ timeout: 5000 });
     deadline = Date.now() + waitMs;
     await page.evaluate(deadline => {
       const state = window.__controlObservation;

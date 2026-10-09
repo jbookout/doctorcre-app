@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { chromium } from '../../test/browser-harness.mjs';
 import { sweepScreen } from '../../scripts/e2e-staging/controls.mjs';
 import { createSweepRun, readSweepCheckpoint } from '../../scripts/e2e-staging/resume.mjs';
@@ -52,6 +52,48 @@ async function sourceSweep(run, factory, target, screen, checkpoint) {
   run.record(result);
   return result;
 }
+
+for (const destination of ['/ideas-events?tab=events', '/calendar?unknown=synthetic']) test('native navigation slower than the observation window retains source ownership: ' + destination, async t => {
+  let now = 0;
+  t.mock.method(Date, 'now', () => now);
+  const freshPage = async () => {
+    const page = new EventEmitter();
+    let url = origin + '/', navigationAt = Infinity;
+    const frame = { url: () => url };
+    const commit = () => {
+      url = origin + destination; navigationAt = Infinity;
+      page.emit('framenavigated', frame);
+    };
+    const source = { selector: '#source-nav', role: 'link', name: 'Source navigation', href: destination, identity: 'synthetic source navigation' };
+    page.url = () => url;
+    page.mainFrame = () => frame;
+    page.context = () => ({ close: async () => {} });
+    page.evaluate = async () => null; // Native navigation retires the source document's observer.
+    page.locator = () => ({
+      count: async () => 1, isVisible: async () => true, focus: async () => {},
+      evaluateAll: async () => ({ rows: [source], busy: false }),
+      click: async ({ noWaitAfter }) => {
+        navigationAt = now + 50;
+        if (!noWaitAfter) { now = navigationAt; commit(); }
+      },
+    });
+    page.waitForTimeout = async ms => { now += ms; if (now >= navigationAt) commit(); };
+    return page;
+  };
+  const result = await fastSweep({ freshPage, screen: routes[0], target: 'desktop', evidence, routedPaths: ['/ideas-events', '/calendar'] });
+  assert.equal(result.controls.length, 1);
+  assert.equal(result.controls[0].status, 'OBSERVED');
+  assert.deepEqual(result.controls[0].signals, ['URL change']);
+  assert.ok(result.controls[0].evidence_path);
+  if (destination.startsWith('/ideas-events')) {
+    assert.equal(result.failure, null);
+    assert.equal(result.delegations[0].states.length, 2);
+  } else {
+    assert.equal(result.failure.phase, 'ownership');
+    assert.equal(result.failure.code, 'calendar-query-unclassified');
+    assert.ok(result.traversal.pending_discovery);
+  }
+});
 
 for (const deferred of [false, true]) test('multiple source roots retain nav presses and both tab obligations; owners cover local drawers separately on both viewports' + (deferred ? ' with deferred navigation' : ''), async t => {
   const factory = await browserFixture(t, deferred), run = makeRun();
