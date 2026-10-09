@@ -70,15 +70,25 @@ Provider error payloads and credentials are never forwarded to report errors.
 
 The staging control sweep uses a separate Playwright Test configuration.
 Playwright Test owns browser and context lifecycle, the four target projects,
-native retries and deadlines, failure traces and screenshots, and list, JSON,
-and HTML reports. A storageState setup project authenticates once before the
-ordered targets run. DoctorCRE keeps the exhaustive control frontier, source
+native retries and deadlines, and list and JSON reports. Native traces and
+screenshots are disabled; DoctorCRE captures and scrubs its own evidence.
+A storageState setup project authenticates once before the ordered targets run. DoctorCRE keeps the exhaustive control frontier, source
 binding, fixture receipts, resume checkpoint, and exact evidence policy.
 
 ```bash
 npm run e2e:staging:sweep
 npm run e2e:staging:sweep:resume
 ```
+
+Each supervisor invocation admits at most 20,000 HTTP requests, including
+assets, with two requests in flight. Explicit resume opens a fresh bounded
+invocation after prior process cleanup, retaining the run identity, checkpoint,
+write receipts, artifact ceiling, and prior invocation counters. HTTP and model
+budgets and the deadline renew; worker ledger reopens within that invocation do
+not renew them. If a control frontier reaches the HTTP ceiling, use the resume
+command to continue from its checkpoint. Unsettled writes still require receipt
+reconciliation before replay. `run.log` retains output channel and byte counts
+only; provider failures expose fixed error codes.
 
 The local agent suite routes model work through a named CARR Model Room desk.
 `CARR_MODEL_ROOM_DISPATCH` must name the absolute sanctioned dispatcher path;

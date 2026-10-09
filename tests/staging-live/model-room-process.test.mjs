@@ -83,17 +83,17 @@ test('normal exploration SIGTERM aborts the active dispatcher process group', as
   const pidsPath = join(root, 'pids.json');
   const dispatcher = fileURLToPath(new URL('./sigterm-resistant-dispatcher.py', import.meta.url));
   const events = new EventEmitter();
-  const { createExplorationRunSignals } = await import('../../scripts/e2e-staging/explore.mjs');
+  const { openRun } = await import('../../scripts/e2e-staging/run-limits.mjs');
   const { dispatchThroughModelRoom } = await import('../../scripts/e2e-staging/model-room.mjs');
-  const signals = createExplorationRunSignals(events);
-  t.after(() => signals.dispose());
+  const run = openRun(join(root, 'budget'), { runId: 'synthetic-dispatch-run', events });
+  t.after(() => run.dispose());
   let pids;
   let result;
   try {
     result = dispatchThroughModelRoom({
       ...syntheticAuthorization({ SYNTHETIC_PROCESS_STATE: pidsPath }),
       desk: 'doctorcre-e2e', task: 'synthetic task', fresh: true,
-      signal: signals.interruptSignal, dispatcherPath: dispatcher,
+      run, signal: run.signal, dispatcherPath: dispatcher,
       dispatcherContract: await syntheticContract(dispatcher),
     });
     await waitFor(async () => {

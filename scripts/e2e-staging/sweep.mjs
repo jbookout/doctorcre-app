@@ -43,7 +43,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
   const fixtureGuard = stagingFixtureWriteGuard({ output, release });
   const privateEvidence = join(output, 'private', 'screenshots');
   const freshPageFor = (target, screen, spec) => async (request = {}) =>
-    freshPage({ screen, release, fixtureGuard, path: request.path || spec?.url || screen.path, spec });
+    freshPage({ target, screen, release, fixtureGuard, path: request.path || spec?.url || screen.path, spec });
   const evidence = async (page, row) => {
     try {
       await fixtureGuard.assertCoverage();
@@ -81,7 +81,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
     console.log(`${result.controls.length} enumerated; ${result.controls.filter(row => row.status === 'DEAD').length} DEAD`);
     if (result.failure) console.log(`Sweep stopped: ${result.failure.phase}/${result.failure.code}`);
   }
-  await sweepOwnerStates({ run, targets, targetName, routedScreens, freshPageFor, evidence,
+  await sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence,
     persist: () => persistSweepReport(output, run, setup) });
   await persistSweepReport(output, run, setup);
   if (targetIndex !== targets.length - 1) {

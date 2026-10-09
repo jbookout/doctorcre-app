@@ -38,18 +38,18 @@ test('browser forwarding refuses an absent run budget', async () => {
   assert.equal(forwarded, 0);
 });
 
-test('browser forwarding enforces the unchanged 400 request ceiling', async t => {
+test('browser forwarding enforces a finite request ceiling', async t => {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-requests-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const run = openRun(root, { runId: 'synthetic-request-run', events: null });
+  const run = openRun(root, { runId: 'synthetic-request-run', events: null, limits: { ...RUN_LIMITS, httpRequests: 3 } });
   t.after(() => run.dispose());
   admitFixtureRun(t);
   const guard = stagingFixtureWriteGuard({ run });
   let forwarded = 0;
   const forward = async () => { forwarded++; return { status: () => 200 }; };
-  for (let i = 0; i < RUN_LIMITS.httpRequests; i++) await guard.handle(request, forward);
+  for (let i = 0; i < run.limits.httpRequests; i++) await guard.handle(request, forward);
   await assert.rejects(guard.handle(request, forward), /http-request-limit/);
-  assert.equal(forwarded, 400);
-  assert.equal(run.snapshot().httpRequests, 400);
+  assert.equal(forwarded, run.limits.httpRequests);
+  assert.equal(run.snapshot().httpRequests, run.limits.httpRequests);
   assert.equal(run.snapshot().stopReason, 'http-request-limit');
 });

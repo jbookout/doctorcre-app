@@ -9,7 +9,8 @@ export const withAccountedArtifactWrite = operation => artifactWrites.run(true, 
 
 export const RUN_LIMITS = Object.freeze({
   workers: 1,
-  httpRequests: 400,
+  // Fits routed screen loads and Calendar cases; larger dynamic frontiers resume explicitly.
+  httpRequests: 20_000,
   httpConcurrency: 2,
   httpQueue: 32,
   processGroups: 8,
@@ -61,13 +62,14 @@ export function artifactCopyBytes(source) {
   return stat.isDirectory() ? directoryBytes(source) : stat.size;
 }
 
-export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now } = {}) {
+export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now, newInvocation = false } = {}) {
   for (const [key, maximum] of Object.entries(RUN_LIMITS)) {
     if (!Number.isSafeInteger(limits[key]) || limits[key] < (key === 'retries' ? 0 : 1) || limits[key] > maximum)
       throw new RunLimitError('invalid-run-limits');
   }
   const root = resolve(output), path = join(root, 'run-budget.json'), lock = join(root, '.run-budget.lock');
   mkdirSync(root, { recursive: true, mode: 0o700 });
+  let initializing = true;
   const update = change => {
     const lockDeadline = Date.now() + limits.stopGraceMs;
     for (;;) {
@@ -85,8 +87,10 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       if (missing) { const startedAt = now(); state = { schema: 'doctorcre-run-budget.v1', id: runId || randomUUID(), startedAt, deadline: startedAt + limits.runTimeoutMs,
         limits, httpRequests: 0, modelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
       if (!state || typeof state !== 'object' || Array.isArray(state) || state.schema !== 'doctorcre-run-budget.v1' || runId && state.id !== runId ||
-          JSON.stringify(state.limits) !== JSON.stringify(limits) ||
-          !Number.isSafeInteger(state.deadline) || !Number.isSafeInteger(state.startedAt) || state.deadline !== state.startedAt + limits.runTimeoutMs ||
+          (!(initializing && newInvocation) && JSON.stringify(state.limits) !== JSON.stringify(limits)) ||
+          !state.limits || Object.entries(RUN_LIMITS).some(([key, maximum]) => !Number.isSafeInteger(state.limits[key]) || state.limits[key] < (key === 'retries' ? 0 : 1) || state.limits[key] > maximum) ||
+          (state.invocations !== undefined && !Array.isArray(state.invocations)) ||
+          !Number.isSafeInteger(state.deadline) || !Number.isSafeInteger(state.startedAt) || state.deadline !== state.startedAt + state.limits.runTimeoutMs ||
           typeof state.id !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(state.id) ||
           (state.stopReason !== null && typeof state.stopReason !== 'string') ||
           !state.queuedHttp || typeof state.queuedHttp !== 'object' || Array.isArray(state.queuedHttp) ||
@@ -94,14 +98,26 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
           (!state.processGroups || typeof state.processGroups !== 'object' || Array.isArray(state.processGroups)) ||
           !state.activeHttp || typeof state.activeHttp !== 'object' || Array.isArray(state.activeHttp))
         throw new RunLimitError('run-ledger-invalid');
-      const value = change(state);
+      const value = change(state, missing);
       const temporary = path + '.' + process.pid + '.tmp';
       writeFileSync(temporary, JSON.stringify(state) + '\n', { mode: 0o600, flag: 'w' });
       renameSync(temporary, path);
       return value;
     } finally { rmSync(lock, { recursive: true }); }
   };
-  const initial = update(state => structuredClone(state));
+  const initial = update((state, missing) => {
+    if (newInvocation && !missing) {
+      if ([state.activeHttp, state.queuedHttp, state.processGroups].some(rows => Object.keys(rows).length))
+        throw new RunLimitError('prior-invocation-unsettled');
+      state.invocations ||= [];
+      state.invocations.push({ startedAt: state.startedAt, deadline: state.deadline, httpRequests: state.httpRequests,
+        modelCalls: state.modelCalls, stopReason: state.stopReason, limits: state.limits });
+      state.startedAt = now(); state.deadline = state.startedAt + limits.runTimeoutMs;
+      state.httpRequests = 0; state.modelCalls = 0; state.stopReason = null; state.limits = limits;
+    }
+    return structuredClone(state);
+  });
+  initializing = false;
   const controller = new AbortController();
   const cleanups = new Set();
   const stop = reason => {
@@ -150,7 +166,8 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       if (!accepted) { const reason = update(state => state.stopReason); stop(reason); throw new RunLimitError(reason); }
       return () => update(state => { delete state.processGroups[token]; });
     },
-    releaseProcessGroups() { update(state => { state.processGroups = {}; }); },
+    // Only the supervisor calls this after verifying every owned process disappeared.
+    releaseInvocationResources() { update(state => { state.processGroups = {}; state.activeHttp = {}; state.queuedHttp = {}; }); },
     reserveModel() { reserve('modelCalls', 1, 'model-call-limit'); },
     reserveBytes(bytes) {
       if (!Number.isSafeInteger(bytes) || bytes < 0) throw new RunLimitError('invalid-artifact-size');

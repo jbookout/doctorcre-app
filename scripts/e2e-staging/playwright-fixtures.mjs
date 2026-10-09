@@ -15,13 +15,13 @@ export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, insta
   const run = currentRun();
   const contexts = new Set();
   const guards = new Set();
-  const freshPage = async ({ screen, release, fixtureGuard, path = screen.path, spec }) => {
+  const freshPage = async ({ target, screen, release, fixtureGuard, path = screen.path, spec }) => {
     run?.check();
     let context, phase = 'session-preflight', code = 'session-preflight-failed';
     try {
       if (!sameRelease(await releaseProbe(), release)) throw new SweepFailure('session-preflight', 'source-pair-changed');
       phase = 'context'; code = 'context-creation-failed';
-      context = await browser.newContext();
+      context = await browser.newContext(target ? { viewport: target.viewport } : undefined);
       contexts.add(context);
       const removeStop = run?.onStop(() => context.close());
       context.on?.('close', () => removeStop?.());

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { targetExists, signalTarget } from './process-liveness.mjs';
 import { RUN_LIMITS, currentRun, modelCallsAllowed, RunLimitError } from './run-limits.mjs';
 
 export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({ perGoal: RUN_LIMITS.explorationSteps, hardGlobalCeiling: RUN_LIMITS.modelCalls });
@@ -112,13 +113,13 @@ function requireDispatcherEnvelope(row, expected) {
 function parseDeskResult(row, expected) {
   requireDispatcherEnvelope(row, expected);
   if (row?.status !== 'completed' || typeof row.result !== 'string') {
-    throw new Error(`Model Room desk did not complete: ${row?.detail || row?.status || 'invalid response'}`);
+    throw new RunLimitError('model-room-desk-incomplete');
   }
   const trimmed = row.result.trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)```$/.exec(trimmed);
   let result;
   try { result = JSON.parse((fenced?.[1] ?? trimmed).trim()); }
-  catch (cause) { throw new Error('Model Room desk returned invalid JSON', { cause }); }
+  catch { throw new RunLimitError('model-room-desk-invalid-json'); }
   if (!Array.isArray(result.content) || result.content.length === 0) throw new Error('Model Room desk returned no content');
   const content = result.content.map((part, index) => {
     if (part?.type === 'text' && typeof part.text === 'string') return { type: 'text', text: part.text };
@@ -211,7 +212,7 @@ function signalDispatcher(child, name) {
   let failure;
   // The launch gate can still be waiting in its parent's group.
   for (const pid of dispatcherPids(child)) {
-    try { process.kill(pid, name); }
+    try { signalTarget(pid, name); }
     catch (error) { if (error.code !== 'ESRCH') failure ||= error; }
   }
   if (failure) throw failure;
@@ -228,8 +229,7 @@ function dispatcherExists(child) {
   if (!child.pid) return false;
   if (process.platform === 'win32') return child.exitCode === null && child.signalCode === null;
   for (const pid of dispatcherPids(child)) {
-    try { process.kill(pid, 0); return true; }
-    catch (error) { if (error.code !== 'ESRCH') throw error; }
+    if (targetExists(pid)) return true;
   }
   return false;
 }
@@ -269,7 +269,7 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     dispatcherOwnership('staging-dispatcher', child.pid);
-    let stdout = '', stderr = '', outputBytes = 0, cleanup, groupCleanup;
+    let stdout = '', outputBytes = 0, cleanup, groupCleanup;
     const reap = () => groupCleanup ||= clearDispatcher(child);
     const finish = (error, value) => {
       if (cleanup) return cleanup;
@@ -301,13 +301,13 @@ export async function dispatchThroughModelRoom({ desk, task, fresh, signal, disp
     child.once('error', error => { void finish(error); });
     child.stdin.once('error', error => { void finish(error); });
     child.stdout.on('data', chunk => { stdout = append(stdout, chunk); });
-    child.stderr.on('data', chunk => { stderr = append(stderr, chunk); });
+    child.stderr.on('data', chunk => { append('', chunk); });
     child.once('exit', () => { void reap().catch(error => { void finish(error); }); });
     child.once('close', code => {
       if (cleanup) return;
-      if (code !== 0) { void finish(new Error(`Model Room dispatcher failed (${code}): ${stderr.trim().slice(-500)}`)); return; }
+      if (code !== 0) { void finish(new RunLimitError('model-room-dispatcher-failed')); return; }
       try { void finish(null, JSON.parse(stdout)); }
-      catch (cause) { void finish(new Error('Model Room dispatcher returned invalid JSON', { cause })); }
+      catch { void finish(new RunLimitError('model-room-dispatcher-invalid-json')); }
     });
     child.stdin.end(task);
     if (signal?.aborted || run?.signal.aborted) abort();

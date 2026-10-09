@@ -51,25 +51,6 @@ export async function runExplorationAttempt(explore, options) {
   catch (error) { return { result: null, error }; }
 }
 
-export function createExplorationRunSignals(events = process) {
-  const interrupt = new AbortController();
-  const force = new AbortController();
-  const stop = () => {
-    if (!interrupt.signal.aborted) interrupt.abort();
-    else if (!force.signal.aborted) force.abort();
-  };
-  events.on('SIGINT', stop);
-  events.on('SIGTERM', stop);
-  return Object.freeze({
-    interruptSignal: interrupt.signal,
-    forceSignal: force.signal,
-    dispose() {
-      events.off('SIGINT', stop);
-      events.off('SIGTERM', stop);
-    },
-  });
-}
-
 const explorationKey = row => JSON.stringify([row.target, row.path, row.agent]);
 
 export function createExplorationSchedule({ targets: targetSet, routedScreens, prior = [] }) {
@@ -91,7 +72,7 @@ export function createExplorationSchedule({ targets: targetSet, routedScreens, p
   return Object.freeze({ planned, completed, pending: planned.filter(row => !completeKeys.has(explorationKey(row))) });
 }
 
-async function exploreAllWithSignals(run) {
+async function exploreWithRun(run) {
   run.check();
   process.env.E2E_TARGET = 'staging-live';
   process.env.E2E_TELEMETRY_DISABLED = '1';
@@ -171,8 +152,6 @@ export async function exploreAll() {
   const run = currentRun();
   if (!run) throw new RunLimitError('supervisor-required');
   if (!modelCallsAllowed() || process.env.E2E_RUN_ID !== run.id) throw new RunLimitError('model-opt-in-required');
-  const runSignals = createExplorationRunSignals();
-  try { return await exploreAllWithSignals(run); }
-  finally { runSignals.dispose(); }
+  return exploreWithRun(run);
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) exploreAll().catch(error => { console.error(error.message); process.exitCode = 1; });

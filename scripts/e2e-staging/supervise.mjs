@@ -1,33 +1,16 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { openSync, closeSync, writeSync, readSync, fstatSync, unlinkSync } from 'node:fs';
+import { openSync, closeSync, writeSync, readSync, fstatSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { targetExists as probe, signalTarget } from './process-liveness.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const pause = milliseconds => new Promise(resolvePause => setTimeout(resolvePause, milliseconds));
 
-// macOS answers EPERM, not ESRCH, for a signal sent to a zombie that its parent has not yet
-// reaped (and to a group whose leader is such a zombie). The entry still exists, so it counts
-// as alive until the kernel drops it; the cleanup loop then verifies it actually disappears.
-function probe(target) {
-  try { process.kill(target, 0); return true; }
-  catch (error) {
-    if (error.code === 'ESRCH') return false;
-    if (error.code === 'EPERM') return true;
-    throw error;
-  }
-}
-
 const groupAlive = pid => probe(-pid);
 const pidAlive = pid => probe(pid);
-
-// A refused signal leaves the target's liveness to the verification loop, which fails closed.
-function signalTarget(target, signal) {
-  try { process.kill(target, signal); }
-  catch (error) { if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error; }
-}
 
 const ownedAlive = pid => pidAlive(pid) || groupAlive(pid);
 
@@ -46,9 +29,11 @@ function processBirths(pids, timeout) {
 }
 
 export async function supervise({ command, args = [], output, environment = process.env, limits = RUN_LIMITS, events = process }) {
-  const run = openRun(output, { limits, runId: environment.E2E_RUN_ID, events: null });
-  const leasePath = join(run.root, '.run-owner');
-  const registry = join(run.root, 'owned-process-groups-' + randomUUID() + '.jsonl');
+  const root = resolve(output);
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  let run;
+  const leasePath = join(root, '.run-owner');
+  const registry = join(root, 'owned-process-groups-' + randomUUID() + '.jsonl');
   const groups = new Map();
   let lease, log, child, monitor, deadline, hardTimer, killDeadline, cleanupPromise, resolveExit, rejectStopped;
   let journalOffset = 0, journalTail = '', closed = false, workerCode, workerError;
@@ -146,7 +131,7 @@ export async function supervise({ command, args = [], output, environment = proc
         await pause(10);
       }
       if (journalTail || ownershipUnverified) throw new RunLimitError('process-cleanup-unverified');
-      run.releaseProcessGroups();
+      run.releaseInvocationResources();
     })();
     return cleanupPromise;
   };
@@ -161,6 +146,7 @@ export async function supervise({ command, args = [], output, environment = proc
   try {
     lease = openSync(leasePath, 'wx', 0o600);
     writeSync(lease, String(process.pid));
+    run = openRun(output, { limits, runId: environment.E2E_RUN_ID, events: null, newInvocation: true });
     log = openSync(join(run.root, 'run.log'), 'a', 0o600);
     events.on('SIGINT', interrupt); events.on('SIGTERM', interrupt);
     deadline = setTimeout(() => stop('whole-run-deadline'), Math.max(1, run.deadline - Date.now()));
@@ -171,7 +157,7 @@ export async function supervise({ command, args = [], output, environment = proc
     child = spawn(command, args, {
       cwd: project, detached: true,
       env: { ...environment, E2E_RUN_ID: run.id, E2E_RUN_LIMITS: JSON.stringify(limits), E2E_V2_OUTPUT: run.root,
-        E2E_RUN_SUPERVISED: '1', E2E_PROCESS_REGISTRY: registry,
+        E2E_TARGET: 'staging-live', E2E_RUN_SUPERVISED: '1', E2E_PROCESS_REGISTRY: registry,
         NODE_OPTIONS: `${environment.NODE_OPTIONS || ''} --import=${fileURLToPath(new URL('./preload.mjs', import.meta.url))}`.trim() },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -190,12 +176,12 @@ export async function supervise({ command, args = [], output, environment = proc
         if (row?.type === 'staging-dispatcher-exit' && Number.isSafeInteger(row.pid) && row.pid > 1) retire(row.pid);
       } catch { stop('process-cleanup-unverified'); }
     });
-    const record = chunk => {
+    const record = channel => chunk => {
       if (reason) return;
-      try { run.reserveBytes(chunk.length); writeSync(log, chunk); }
+      try { run.reserveBytes(chunk.length); writeSync(log, `worker-output ${channel} bytes=${chunk.length}\n`); }
       catch (error) { stop(error.code || 'log-write-failed'); }
     };
-    child.stdout.on('data', record); child.stderr.on('data', record);
+    child.stdout.on('data', record('stdout')); child.stderr.on('data', record('stderr'));
     monitor = setInterval(() => {
       try { refreshGroups(); run.checkArtifacts(); }
       catch (error) { stop(error.code || 'run-monitor-failed'); }
@@ -216,7 +202,7 @@ export async function supervise({ command, args = [], output, environment = proc
       events.off('SIGINT', interrupt); events.off('SIGTERM', interrupt);
       if (log !== undefined) closeSync(log);
       if (lease !== undefined) { closeSync(lease); unlinkSync(leasePath); }
-      run.dispose();
+      run?.dispose();
     }
   }
 }

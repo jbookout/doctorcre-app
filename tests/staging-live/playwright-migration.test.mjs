@@ -80,7 +80,7 @@ test('the Playwright fixture gives every measurement a fresh context and retires
   assert.equal(settlements, 1, 'teardown verifies the shared guard after all contexts close');
 });
 
-test('ordered projects execute only their own pending owner states', async () => {
+test("ordered projects drain owners using each owner's target", async () => {
   const { sweepOwnerStates } = await import('../../scripts/e2e-staging/owner-states.mjs');
   const pending = ['desktop', 'phone'].map(target => ({ key: target, target, spec: { owner: '/deals', kind: 'workspace' } }));
   const measured = [];
@@ -94,11 +94,11 @@ test('ordered projects execute only their own pending owner states', async () =>
       run, targetName,
       targets: ['desktop', 'phone'].map(name => ({ name, surface: 'app' })),
       routedScreens: [{ name: 'Deals', path: '/deals', surface: 'app' }],
-      freshPageFor: target => { assert.equal(target.name, targetName); return async () => ({}); },
+      freshPageFor: target => { assert.ok(['desktop', 'phone'].includes(target.name)); return async () => ({}); },
       persist: async () => {},
-      sweep: async ({ target }) => { assert.equal(target, targetName); return {}; },
+      sweep: async ({ target }) => { assert.ok(['desktop', 'phone'].includes(target)); return {}; },
     });
-    assert.deepEqual(measured, targetName === 'desktop' ? ['desktop'] : ['desktop', 'phone']);
+    assert.deepEqual(measured, ['desktop', 'phone']);
   }
 });
 
@@ -152,4 +152,18 @@ test('the setup project writes storageState as a private runtime credential', as
   }, path, run), state);
   assert.equal((await stat(join(root, 'private'))).mode & 0o777, 0o700);
   assert.equal((await stat(path)).mode & 0o777, 0o600);
+});
+
+test('late owner context overrides the current project viewport', async () => {
+  const { createFreshPageFactory } = await import('../../scripts/e2e-staging/playwright-fixtures.mjs');
+  const release = { source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) };
+  let options;
+  const fixture = createFreshPageFactory({ browser: { async newContext(value) {
+    options = value;
+    return { async close() {}, async newPage() { return { async goto() { return { ok: () => true }; },
+      url: () => 'https://staging.example.test/deals', async waitForLoadState() {} }; } };
+  } }, origin: 'https://staging.example.test', installGuard: async () => {}, releaseProbe: async () => release });
+  await fixture.freshPage({ target: targets[1], screen: { path: '/deals' }, release });
+  assert.deepEqual(options, { viewport: targets[1].viewport });
+  await fixture.dispose();
 });

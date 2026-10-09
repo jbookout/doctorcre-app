@@ -20,7 +20,7 @@ function controls(t, target, supervised) {
 }
 async function budget(t) {
   const root = await mkdtemp(join(tmpdir(), 'staging-context-admission-'));
-  const run = openRun(root, { runId: 'synthetic-context-admission', events: null });
+  const run = openRun(root, { runId: 'synthetic-context-admission', events: null, limits: { ...RUN_LIMITS, httpRequests: 3 } });
   t.after(async () => { run.dispose(); await rm(root, { recursive: true, force: true }); });
   return { root, run };
 }
@@ -98,10 +98,10 @@ test('release preflight preserves the named request limit and never retries past
   const { run } = await budget(t);
   let requests = 0;
   const api = { get: async () => { requests++; return { status: () => 401, ok: () => false }; }, dispose: async () => {} };
-  for (let i = 0; i < RUN_LIMITS.httpRequests; i++) await assert.rejects(session.stagingRelease(api, session.STAGING_ORIGIN, { run }), /app-release-invalid/);
+  for (let i = 0; i < run.limits.httpRequests; i++) await assert.rejects(session.stagingRelease(api, session.STAGING_ORIGIN, { run }), /app-release-invalid/);
   await assert.rejects(session.stagingRelease(api, session.STAGING_ORIGIN, { run }), refused('http-request-limit'));
-  assert.equal(requests, 400);
-  assert.equal(run.snapshot().httpRequests, 400);
+  assert.equal(requests, run.limits.httpRequests);
+  assert.equal(run.snapshot().httpRequests, run.limits.httpRequests);
   assert.equal(run.snapshot().stopReason, 'http-request-limit');
 });
 
