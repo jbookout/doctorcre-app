@@ -142,7 +142,7 @@ test('a corrupt registry never prevents known groups from being reaped', process
   const run = await fixture(t, { behavior: 'corrupt-registry' });
   const result = await within(run.ended);
   assert.equal(result.code, 1);
-  assert.equal(JSON.parse(result.stdout.trim()).reason, 'process-ownership-invalid');
+  assert.equal(JSON.parse(result.stdout.trim()).reason, 'process-cleanup-unverified');
   await run.assertReaped();
 });
 
