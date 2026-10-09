@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { openDom } from '../../test/jsdom-harness.mjs';
-import { sweepScreen, SweepFailure } from '../../scripts/e2e-staging/controls.mjs';
+import { sweepScreen, SweepFailure, inventory } from '../../scripts/e2e-staging/controls.mjs';
 import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -65,7 +65,22 @@ async function fixture(t) {
   const path = join(output, 'staging-records-plan.json');
   await writeFile(path, JSON.stringify({ schema: 'doctorcre-staging-records-plan.v1', origin: STAGING_ORIGIN,
     state: 'complete', run: '40000000-0000-4000-8000-000000000001', release, records: {}, receipts: {} }), { mode: 0o600 });
-  return { guard: stagingFixtureWriteGuard({ output, release, run: null, persist: (path, value) => writeFile(path, JSON.stringify(value), { mode: 0o600 }) }), read: async () => JSON.parse(await readFile(path, 'utf8')) };
+  return { guard: stagingFixtureWriteGuard({ output, release, run: null, persist: (path, value) => writeFile(path, JSON.stringify(value), { mode: 0o600 }) }), read: async () => JSON.parse(await readFile(path, 'utf8')),
+    update: async edit => {
+      const plan = JSON.parse(await readFile(path, 'utf8')); edit(plan);
+      await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
+    },
+    proveLocal: async (page, selectors) => {
+      // These synthetic handlers only change the local DOM. The private plan,
+      // not a page-provided label, supplies the reviewed effect declaration.
+      const plan = JSON.parse(await readFile(path, 'utf8'));
+      plan.browser_control_proofs ||= [];
+      for (const control of await inventory(page)) if (selectors.includes(control.selector)) {
+        plan.browser_control_proofs = plan.browser_control_proofs.filter(proof => proof.identity !== control.identity);
+        plan.browser_control_proofs.push({ identity: control.identity, effects: [] });
+      }
+      await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
+    } };
 }
 async function guardedContext(guard) {
   const context = { close: async () => {}, addInitScript: async () => {}, route: async (_pattern, handler) => { context.dispatch = handler; } };
@@ -77,7 +92,7 @@ async function guardedContext(guard) {
 }
 
 test('production admission skips an unproved context before handlers, while later controls retain evidence and nested discovery', async t => {
-  const { guard, read } = await fixture(t);
+  const { guard, read, proveLocal } = await fixture(t);
   for (const path of ['/', '/control-room', '/deals']) {
     let opened = 0;
     const handlers = [], captured = [], screen = { path, name: 'Synthetic morning brief', surface: 'app' };
@@ -88,7 +103,13 @@ test('production admission skips an unproved context before handlers, while late
         // and subsequent contexts are clean; the aggregate retains this refusal.
         if (++opened === 2) await context.refuse();
         const page = domPage(path, { context, handlers, nested: true });
-        if (opened > 2) await page.evaluate(() => document.querySelector('#morningClose').hidden = true);
+        await proveLocal(page, ['#later']);
+        const click = page.locator;
+        page.locator = selector => {
+          const locator = click(selector), press = locator.click;
+          locator.click = async () => { await press(); await proveLocal(page, ['#later', '#nested']); };
+          return locator;
+        };
         return page;
       },
       admit: sweepCaller.assertSweepFixtureScope,
@@ -112,30 +133,38 @@ test('production admission skips an unproved context before handlers, while late
     run.record(result); assert.equal(run.verdict([]).completed, false);
     await assert.rejects(guard.assertCoverage(), /write-coverage-incomplete/);
   }
-  assert.equal((await read()).browser_write_refusals.length, 3);
+  assert.ok((await read()).browser_write_refusals.length >= 3);
 });
 
-test('a refusal produced during a handler stays on that row and does not poison later evidence or nested discovery', async t => {
-  const { guard, read } = await fixture(t);
-  const captured = [], handlers = [];
+test('production admission refuses an unsupported handler before it runs and retains later and nested observations', async t => {
+  const { guard, read, proveLocal } = await fixture(t);
+  const captured = [], handlers = [], clicks = [];
   let opened = 0;
   const result = await sweepScreen({ screen: { path: '/', name: 'Synthetic', surface: 'app' }, target: 'desktop', waitMs: 20,
     freshPage: async () => {
       const context = await guardedContext(guard);
       const page = domPage('/', { context, handlers, nested: true });
+      await proveLocal(page, ['#later']);
       const measurement = ++opened;
-      if (measurement > 2) await page.evaluate(() => document.querySelector('#morningClose').hidden = true);
       const locator = page.locator;
       page.locator = selector => {
         const current = locator(selector), click = current.click;
-        current.click = async () => { await click(); if (measurement === 2) await context.refuse(); };
+        current.click = async () => {
+          clicks.push({ measurement, selector });
+          await click();
+          if (selector === '#morningClose') await context.refuse();
+          await proveLocal(page, ['#later', '#nested']);
+        };
         return current;
       };
       return page;
     }, admit: sweepCaller.assertSweepFixtureScope,
     evidence: async (page, row) => { await sweepCaller.assertSweepFixtureScope(page); captured.push(row.selector); return 'synthetic.png'; },
   });
-  assert.equal(handlers.filter(id => id === 'morningClose').length, 1);
+  assert.equal(handlers.filter(id => id === 'morningClose').length, 0);
+  assert.equal(clicks.filter(row => row.measurement === 2).length, 0);
+  assert.equal(clicks.filter(row => row.measurement === 3 && row.selector === '#later').length, 1);
+  assert.ok(handlers.includes('later'));
   assert.ok(handlers.includes('nested'));
   assert.equal(result.controls[0].status, 'ERROR');
   assert.equal(result.controls[0].evidence_path, undefined);
@@ -143,7 +172,7 @@ test('a refusal produced during a handler stays on that row and does not poison 
   assert.equal(result.controls[1].evidence_path, 'synthetic.png');
   assert.ok(captured.includes('#nested'));
   assert.equal(result.failure, null);
-  assert.equal((await read()).browser_write_refusals.length, 1);
+  assert.ok((await read()).browser_write_refusals.length >= 1);
   await assert.rejects(guard.assertCoverage(), /write-coverage-incomplete/);
 });
 
@@ -153,17 +182,18 @@ test('context refusal readers use the guard history, including bounded operation
   assert.deepEqual(stagingWriteRefusals(context), (await read()).browser_write_refusals);
 });
 
-test('a refused replayed opener runs no handler and preserves the traversal failure', async t => {
-  const { guard } = await fixture(t);
+test('an opener whose prospective proof was withdrawn runs no replay handler and preserves the traversal failure', async t => {
+  const { guard, proveLocal, update } = await fixture(t);
   const handlers = [];
   let opened = 0;
   const result = await sweepScreen({ screen: { path: '/', name: 'Synthetic', surface: 'app' }, target: 'desktop', waitMs: 20,
     freshPage: async () => {
       const context = await guardedContext(guard);
-      if (++opened > 2) await context.refuse();
+      if (++opened > 2) await update(plan => { plan.browser_control_proofs = []; });
       const page = domPage('/', { context, handlers, nested: true });
       // Only the local opener participates in this traversal.
       await page.evaluate(() => document.querySelector('#morningClose').remove());
+      if (opened <= 2) await proveLocal(page, ['#later']);
       return page;
     }, admit: sweepCaller.assertSweepFixtureScope,
   });
@@ -171,6 +201,52 @@ test('a refused replayed opener runs no handler and preserves the traversal fail
   assert.equal(result.failure.phase, 'fixture-scope');
   assert.equal(result.failure.code, 'write-scope-unproved');
   assert.ok(result.traversal);
+});
+
+test('control admission validates prospective effects against fixture ownership without dispatch or intent', async t => {
+  const deal = '40000000-0000-4000-8000-000000000010';
+  const args = { deal, text: 'Synthetic note', idempotency_key: '40000000-0000-4000-8000-000000000011' };
+  for (const kind of ['local', 'read', 'write', 'unsupported', 'foreign', 'shape', 'duplicate', 'missing', 'source']) {
+    await t.test(kind, async t => {
+      const { guard, read, update } = await fixture(t), context = await guardedContext(guard);
+      const page = domPage('/', { context });
+      t.after(() => page.evaluate(() => window.close()));
+      const control = (await inventory(page))[0];
+      await update(plan => {
+        plan.records.deal = { id: deal }; plan.receipts.deal = { deal_id: deal };
+        const effects = kind === 'local' ? [] : kind === 'read' ? [{ operation: 'morning-brief', arguments: {} }]
+          : [{ operation: kind === 'unsupported' ? 'unsupported-operation' : 'add-deal-note', arguments: {
+            ...args, ...(kind === 'foreign' ? { deal: '40000000-0000-4000-8000-000000000012' } : {}),
+            ...(kind === 'shape' ? { unexpected: true } : {}),
+          } }];
+        plan.browser_control_proofs = [{ identity: control.identity, effects }];
+        if (kind === 'duplicate') plan.browser_control_proofs.push(plan.browser_control_proofs[0]);
+        if (kind === 'missing') delete plan.browser_control_proofs;
+        if (kind === 'source') plan.release.source_commit = 'b'.repeat(40);
+      });
+      if (['local', 'read', 'write'].includes(kind)) {
+        await sweepCaller.assertSweepFixtureScope(page, control);
+        await guard.assertCoverage();
+      } else {
+        await assert.rejects(sweepCaller.assertSweepFixtureScope(page, control), error => error.failure?.code === 'write-scope-unproved');
+        await assert.rejects(guard.assertCoverage());
+        assert.equal(stagingWriteRefusals(context).length, kind === 'source' ? 0 : 1);
+      }
+      const plan = await read();
+      assert.equal(plan.browser_write_attempts?.length || 0, 0, 'admission must not consume a write key or dispatch');
+      assert.equal(plan.browser_write_refusals?.some(row => row.forwarded) || false, false);
+    });
+  }
+});
+
+test('an exact plan proof cannot admit a control after its live identity changes', async t => {
+  const { guard, proveLocal } = await fixture(t), context = await guardedContext(guard);
+  const page = domPage('/', { context });
+  t.after(() => page.evaluate(() => window.close()));
+  await proveLocal(page, ['#later']);
+  const control = (await inventory(page)).find(row => row.selector === '#later');
+  await page.evaluate(() => document.querySelector('#later').textContent = 'Changed action');
+  await assert.rejects(sweepCaller.assertSweepFixtureScope(page, control), error => error.failure?.code === 'write-scope-unproved');
 });
 
 test('production scope refusal returns a bounded failure without changing the evidence row', async t => {

@@ -396,6 +396,73 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
     return field && isUUID(id || '') && plan.receipts[step]?.[field] === id &&
       (reference === id || record === 'lead' && row.ref && reference === row.ref) ? id : null;
   };
+  const proveOperation = (plan, name, args) => {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
+    if (browserReads.has(name)) return null;
+    const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
+    if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
+        !isUUID(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
+    const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
+    const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
+    if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
+        name === 'set-next-step' && args.next_date != null && (typeof args.next_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date)) ||
+        name === 'rename-doc-conversation' && (!version ||
+          !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
+          args.title !== undefined && !text(args.title) ||
+          ['pinned', 'archived'].some(key => args[key] !== undefined && typeof args[key] !== 'boolean')) ||
+        spec.record === 'lead' && (!version || args.expected_actor !== 'joe') ||
+        name === 'link-lead-client' && args.confirmed !== true)
+      policyFailure('operation-shape-unproved');
+    if (name === 'update-lead') {
+      const review = args.stage_review;
+      if (!args.fields || Array.isArray(args.fields) || Object.keys(args.fields).length !== 1 ||
+          !text(args.fields.stage) || !review || Array.isArray(review) ||
+          Object.keys(review).some(key => !['reason', 'evidence_ids', 'human_quote'].includes(key)) ||
+          !text(review.reason) || !Array.isArray(review.evidence_ids) || review.evidence_ids.length ||
+          review.human_quote !== undefined && !text(review.human_quote))
+        policyFailure('operation-shape-unproved');
+    }
+    const id = owned(plan, spec.record, args[spec.field]) ||
+      spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
+    if (!id) policyFailure('record-outside-fixtures');
+    const ids = new Set([id]);
+    if (name === 'link-lead-client') {
+      const client = owned(plan, 'client', args.client_id);
+      if (!client) policyFailure('reference-outside-fixtures');
+      ids.add(client);
+    }
+    // No nested additional record references may ride through review
+    // metadata. Text values are ordinary content, not inferred identity.
+    const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
+      val && typeof val === 'object' ? referencesOwned(val) :
+        key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
+    if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
+    const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
+      ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
+        ? args[key].trim() : args[key] ?? null]));
+    const fingerprint = digest([name, id, fingerprintValues]);
+    const attempts = plan.browser_write_attempts || [];
+    if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
+        attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
+      policyFailure('duplicate-attempt-requires-reconciliation');
+    if (attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
+        row.record_ids.some(record => ids.has(record))))
+      policyFailure('ambiguous-record-requires-reconciliation');
+    return { ids, fingerprint };
+  };
+  const retainRefusal = async (gap, scope) => {
+    refusals.push(gap);
+    scope?.refusals.push(gap);
+    try {
+      await locked(async () => {
+        const plan = planPath ? await readPrivateJSON(planPath) : null;
+        if (plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete') {
+          plan.browser_write_refusals ||= []; plan.browser_write_refusals.push(gap);
+          await persist(planPath, plan);
+        }
+      });
+    } catch {}
+  };
   const guard = {
     refusals,
     forContext() {
@@ -404,7 +471,32 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         refusals: scope.refusals,
         handle: (request, forward) => guard.handle(request, forward, scope),
         assertCoverage: options => guard.assertCoverage(options, scope),
+        admitControl: control => guard.admitControl(control, scope),
       };
+    },
+    async admitControl(control, scope) {
+      await guard.assertCoverage({}, scope);
+      // No effects are inferred from a selector, name, or app-provided attribute.
+      // Only an exact reviewed action in this source-pair-bound private plan is
+      // eligible. An empty effects list declares a reviewed local-only action.
+      try {
+        const plan = await currentPlan();
+        if (!control || typeof control.identity !== 'string' || !control.identity) policyFailure('control-scope-unproved');
+        if (control.disabled === true) return;
+        const proofs = plan.browser_control_proofs;
+        const matches = Array.isArray(proofs) ? proofs.filter(proof => proof?.identity === control.identity) : [];
+        if (matches.length !== 1 || !Array.isArray(matches[0].effects)) policyFailure('control-scope-unproved');
+        for (const effect of matches[0].effects) {
+          if (!effect || typeof effect !== 'object' || Array.isArray(effect) ||
+              Object.keys(effect).some(key => !['operation', 'arguments'].includes(key)))
+            policyFailure('control-scope-unproved');
+          proveOperation(plan, effect.operation, effect.arguments);
+        }
+      } catch (error) {
+        await retainRefusal({ operation: 'unknown-operation', reason: error.fixturePolicy ? error.code : 'control-scope-unproved',
+          forwarded: false, at: new Date().toISOString() }, scope);
+        policyFailure('control-scope-unproved');
+      }
     },
     async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}, scope) {
       const outstanding = scope?.pending || pending, gaps = scope?.refusals || refusals;
@@ -508,59 +600,12 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         const args = body.params?.arguments;
         if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
         if (browserReads.has(name)) return await forwardRead();
-        const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
-        if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
-            !isUUID(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
-        const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
-        const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
-        if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
-            name === 'set-next-step' && args.next_date != null && (typeof args.next_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date)) ||
-            name === 'rename-doc-conversation' && (!version ||
-              !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
-              args.title !== undefined && !text(args.title) ||
-              ['pinned', 'archived'].some(key => args[key] !== undefined && typeof args[key] !== 'boolean')) ||
-            spec.record === 'lead' && (!version || args.expected_actor !== 'joe') ||
-            name === 'link-lead-client' && args.confirmed !== true)
-          policyFailure('operation-shape-unproved');
-        if (name === 'update-lead') {
-          const review = args.stage_review;
-          if (!args.fields || Array.isArray(args.fields) || Object.keys(args.fields).length !== 1 ||
-              !text(args.fields.stage) || !review || Array.isArray(review) ||
-              Object.keys(review).some(key => !['reason', 'evidence_ids', 'human_quote'].includes(key)) ||
-              !text(review.reason) || !Array.isArray(review.evidence_ids) || review.evidence_ids.length ||
-              review.human_quote !== undefined && !text(review.human_quote))
-            policyFailure('operation-shape-unproved');
-        }
         if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
           policyFailure('operation-shape-unproved');
         token = await locked(async () => {
           const plan = await currentPlan();
-          const id = owned(plan, spec.record, args[spec.field]) ||
-            spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
-          if (!id) policyFailure('record-outside-fixtures');
-          const ids = new Set([id]);
-          if (name === 'link-lead-client') {
-            const client = owned(plan, 'client', args.client_id);
-            if (!client) policyFailure('reference-outside-fixtures');
-            ids.add(client);
-          }
-          // No nested additional record references may ride through review
-          // metadata. Text values are ordinary content, not inferred identity.
-          const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
-            val && typeof val === 'object' ? referencesOwned(val) :
-              key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
-          if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
-          const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
-            ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
-              ? args[key].trim() : args[key] ?? null]));
-          const fingerprint = digest([name, id, fingerprintValues]);
+          const { ids, fingerprint } = proveOperation(plan, name, args);
           plan.browser_write_attempts ||= [];
-          if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
-              plan.browser_write_attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
-            policyFailure('duplicate-attempt-requires-reconciliation');
-          if (plan.browser_write_attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
-              row.record_ids.some(record => ids.has(record))))
-            policyFailure('ambiguous-record-requires-reconciliation');
           const intent = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
             operation: name, record_ids: [...ids], arguments: structuredClone(args),
             state: 'inflight', dispatched_outcome: 'unknown', attempted_at: new Date().toISOString() };
@@ -604,19 +649,8 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
           forwarded: dispatched || admittedRead, at: new Date().toISOString() };
-        refusals.push(gap);
-        scope?.refusals.push(gap);
-        // Refusal metadata contains no URL, arguments, record IDs or payload.
-        // Failure to retain it never permits dispatch or clears an intent.
-        try {
-          await locked(async () => {
-            const plan = planPath ? await readPrivateJSON(planPath) : null;
-            if (plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete') {
-              plan.browser_write_refusals ||= []; plan.browser_write_refusals.push(gap);
-              await persist(planPath, plan);
-            }
-          });
-        } catch {}
+        // Failure to retain a refusal never permits dispatch or clears an intent.
+        await retainRefusal(gap, scope);
         policyFailure(gap.reason);
       } finally { pending.delete(flight); scope?.pending.delete(flight); flight.finish(); }
     },

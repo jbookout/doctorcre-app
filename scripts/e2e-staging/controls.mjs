@@ -342,7 +342,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, admit, 
         if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
         action = matching[0];
       }
-      if (admit) await admit(page, action);
+      if (admit) await admit(page, action, identityScope);
       let result;
       lastAction = action; lastBeforeURL = page.url();
       try { result = await pressControl(page, action, { waitMs: Math.min(waitMs, 500) }); }
@@ -477,7 +477,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, admit, 
             action = matching[0];
           }
           phase = 'admission';
-          if (admit) await admit(fresh, action);
+          if (admit) await admit(fresh, action, identityScope);
           phase = 'press';
           const beforeURL = fresh.url();
           const result = await pressControl(fresh, action, { waitMs });

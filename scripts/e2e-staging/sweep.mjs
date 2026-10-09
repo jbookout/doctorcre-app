@@ -2,7 +2,7 @@ import { requireSupervisedRun } from './run-limits.mjs';
 import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertStagingContextCoverage } from './engine.mjs';
+import { assertStagingContextCoverage, admitStagingControl } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen, SweepFailure } from './controls.mjs';
 import { writeReport } from './report.mjs';
@@ -13,8 +13,11 @@ import { sweepOwnerStates } from './owner-states.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 
-export async function assertSweepFixtureScope(page) {
-  try { await assertStagingContextCoverage(page.context()); }
+export async function assertSweepFixtureScope(page, control, scope) {
+  try {
+    if (control) await admitStagingControl(page, control, scope);
+    else await assertStagingContextCoverage(page.context());
+  }
   catch { throw new SweepFailure('fixture-scope', 'write-scope-unproved'); }
 }
 

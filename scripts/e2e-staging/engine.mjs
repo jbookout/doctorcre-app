@@ -3,11 +3,18 @@ import { web, surfaceOf } from '@e2e-dev/web';
 import { defineEngine } from 'e2e/engine';
 import { stagingFixtureWriteGuard, readStagingFixtureRelease } from './records.mjs';
 import { resolve } from 'node:path';
+import { inventory } from './controls.mjs';
 const contextGuards = new WeakMap();
 export async function assertStagingContextCoverage(context) {
   const guard = contextGuards.get(context);
   if (!guard) throw new Error('Staging context has no fixture guard');
   await guard.assertCoverage();
+}
+export async function admitStagingControl(page, control, scope) {
+  const guard = contextGuards.get(page.context());
+  if (!guard) throw new Error('Staging context has no fixture guard');
+  const matches = (await inventory(page, { scope })).filter(row => row.identity === control.identity);
+  await guard.admitControl(matches.length === 1 && await page.locator(control.selector).count() === 1 ? matches[0] : null);
 }
 export const stagingWriteRefusals = context => contextGuards.get(context)?.refusals || [];
 
