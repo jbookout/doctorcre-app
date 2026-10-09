@@ -60,7 +60,7 @@ jobs:
     steps:
       # Download only the immutable artifact ID from the successful build in
       # this run. No checkout, cache, install hooks or executable artifact data.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           merge-multiple: true
