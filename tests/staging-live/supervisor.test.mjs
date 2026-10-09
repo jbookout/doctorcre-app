@@ -40,7 +40,13 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
     writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
     const behavior = ${JSON.stringify(behavior)};
     if (behavior === 'corrupt-registry') appendFileSync(process.env.E2E_PROCESS_REGISTRY, ${JSON.stringify('{broken}' + String.fromCharCode(10))});
-    if (behavior === 'locked-ledger') mkdirSync(join(process.env.E2E_V2_OUTPUT, '.run-budget.lock'));
+    if (behavior === 'locked-ledger') {
+      // The supervisor holds this same lock for its own ledger writes; wait for a free moment to take it.
+      for (;;) {
+        try { mkdirSync(join(process.env.E2E_V2_OUTPUT, '.run-budget.lock')); break; }
+        catch (error) { if (error.code !== 'EEXIST') throw error; }
+      }
+    }
     if (behavior === 'normal-exit') process.exit(0);
     if (behavior === 'log-quota') setInterval(() => process.stdout.write('x'.repeat(16384)), 5);
     setInterval(()=>{},1000);

@@ -817,8 +817,9 @@ test('killing frontier publication before canonical commit retains pending disco
   });
   const ended = once(child, 'exit'); child.kill('SIGKILL'); assert.deepEqual(await ended, [null, 'SIGKILL']);
   assert.equal(await readFile(join(output, 'controls.json'), 'utf8'), original);
-  const staged = (await readdir(root)).find(name => name.startsWith('.report-report-'));
-  const unpublished = JSON.parse(await readFile(join(root, staged, 'controls.json'), 'utf8'));
+  // writeReport stages inside the output directory so run-limit accounting covers staged bytes.
+  const staged = (await readdir(output)).find(name => name.startsWith('.report-'));
+  const unpublished = JSON.parse(await readFile(join(output, staged, 'controls.json'), 'utf8'));
   assert.equal(unpublished.screens[0].traversal.pending_discovery, null);
   assert.equal(unpublished.screens[0].traversal.known_remaining, 2);
   const checkpoint = JSON.parse(original), run = createSweepRun({ ...plan, prior: checkpoint }); run.assertRelease(release);

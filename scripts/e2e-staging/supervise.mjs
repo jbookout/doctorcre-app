@@ -8,14 +8,25 @@ import { openRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const pause = milliseconds => new Promise(resolvePause => setTimeout(resolvePause, milliseconds));
 
-function groupAlive(pid) {
-  try { process.kill(-pid, 0); return true; }
-  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+// macOS answers EPERM, not ESRCH, for a signal sent to a zombie that its parent has not yet
+// reaped (and to a group whose leader is such a zombie). The entry still exists, so it counts
+// as alive until the kernel drops it; the cleanup loop then verifies it actually disappears.
+function probe(target) {
+  try { process.kill(target, 0); return true; }
+  catch (error) {
+    if (error.code === 'ESRCH') return false;
+    if (error.code === 'EPERM') return true;
+    throw error;
+  }
 }
 
-function pidAlive(pid) {
-  try { process.kill(pid, 0); return true; }
-  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+const groupAlive = pid => probe(-pid);
+const pidAlive = pid => probe(pid);
+
+// A refused signal leaves the target's liveness to the verification loop, which fails closed.
+function signalTarget(target, signal) {
+  try { process.kill(target, signal); }
+  catch (error) { if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error; }
 }
 
 const ownedAlive = pid => pidAlive(pid) || groupAlive(pid);
@@ -76,7 +87,8 @@ export async function supervise({ command, args = [], output, environment = proc
         else groups.set(row.pid, row.birth.trim());
       }
     } finally { closeSync(handle); }
-    if (invalid) throw new RunLimitError('process-ownership-invalid');
+    // Corrupt ownership evidence is consumed once read, so remember it for the cleanup verdict.
+    if (invalid) { ownershipUnverified = true; throw new RunLimitError('process-ownership-invalid'); }
     if (groups.size > limits.processGroups) throw new RunLimitError('process-group-limit');
   };
   const refreshForCleanup = () => {
@@ -103,10 +115,10 @@ export async function supervise({ command, args = [], output, environment = proc
         // A launch-gated wrapper can be registered before setsid creates its group.
         if (pidAlive(pid)) {
           if (!current && !ownedWorker) { ownershipUnverified = true; continue; }
-          try { process.kill(pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+          signalTarget(pid, signal);
         }
         if (groupAlive(pid)) {
-          try { process.kill(-pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+          signalTarget(-pid, signal);
         }
         retire(pid);
       } catch { ownershipUnverified = true; }

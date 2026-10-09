@@ -135,7 +135,7 @@ for (const outcome of ['completed', 'completed-inherited-stdio', 'epipe', 'outpu
     const dispatcher = join(root, 'dispatcher.py');
     const childCode = 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(300)';
     const stdio = outcome === 'completed-inherited-stdio' ? '' : ',stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL';
-    await writeFile(dispatcher, `import json,os,signal,subprocess,sys,time\nchild=subprocess.Popen([sys.executable,'-c',${JSON.stringify(childCode)}],stdin=subprocess.DEVNULL${stdio})\ntime.sleep(.05)\nwith open(os.environ['SYNTHETIC_PROCESS_STATE'],'w') as f: json.dump({'dispatcher':os.getpid(),'grandchild':child.pid},f)\n` +
+    await writeFile(dispatcher, `import json,os,signal,subprocess,sys,time\nchild=subprocess.Popen([sys.executable,'-c',${JSON.stringify(childCode)}],stdin=subprocess.DEVNULL${stdio})\ntime.sleep(.05)\nstate=os.environ['SYNTHETIC_PROCESS_STATE']\nwith open(state+'.tmp','w') as f: json.dump({'dispatcher':os.getpid(),'grandchild':child.pid},f)\nos.replace(state+'.tmp',state)\n` +
       (outcome.startsWith('completed') ? `sys.stdin.read()\nprint(json.dumps({'ok':True}),flush=True)\n` :
         outcome === 'epipe' ? `signal.signal(signal.SIGTERM,signal.SIG_IGN)\nos.close(0)\nwhile True: time.sleep(1)\n` :
           `sys.stdin.read()\nsignal.signal(signal.SIGTERM,signal.SIG_IGN)\nsys.stdout.write('é'*1000001)\nsys.stdout.flush()\nwhile True: time.sleep(1)\n`));

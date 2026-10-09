@@ -83,8 +83,9 @@ if (process.env.E2E_RUN_SUPERVISED === '1') {
           const retire = () => {
             try { process.kill(-child.pid, 0); }
             catch (error) {
-              if (error.code === 'ESRCH') { try { record({ pid: child.pid, retired: true }); release?.(); } catch {} }
-              return;
+              if (error.code === 'ESRCH') { try { record({ pid: child.pid, retired: true }); release?.(); } catch {} return; }
+              // macOS reports EPERM for a group whose leader is an unreaped zombie: still present, so keep polling.
+              if (error.code !== 'EPERM') return;
             }
             if (Date.now() < deadline) setTimeout(retire, RUN_LIMITS.monitorIntervalMs).unref();
           };
