@@ -1,0 +1,23 @@
+{
+  "schema": "doctorcre-e2e-staging.v1",
+  "version": "1.0.0",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "c06bdf2788fb69daefb59364ea4fd798fa94f9a4"
+  },
+  "origin": "https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev",
+  "carr_origin": "https://carr-mcp-staging.joe-bookout-carr-us.workers.dev",
+  "exchange": {
+    "method": "POST",
+    "path": "/auth/e2e-session",
+    "authorization": "Bearer E2E_SESSION_SECRET",
+    "body": "empty"
+  },
+  "session": {
+    "path": "/auth/session",
+    "cookie": "__Host-dealroom_session",
+    "actor_slug": "joe",
+    "e2e_principal": "e2e-joe"
+  },
+  "reports": "Existing token exchange and tour_share_session; staging host adaptation only."
+}

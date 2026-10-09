@@ -425,3 +425,26 @@ test("explicitly entered suggestion text becomes an override even when its value
   draft.set("area", "Demo area"); draft.refreshSuggestions({ area: "New source area" });
   assert.equal(draft.values.area, "Demo area");
 });
+
+test('QA-019 packet review retains the client access failure explanation', async () => {
+  const app = sessionHarness();
+  try {
+    await app.view.ready;
+    app.refuse(); await app.view.refresh();
+    assert.equal(app.doc.querySelector('#plan-message').textContent,'Sign in to continue.');
+    app.doc.querySelector('#review-packet').click();
+    assert.equal(app.doc.querySelector('#plan-message').textContent,'Sign in to continue.');
+  } finally {app.close();}
+});
+
+test('QA-019 review guidance while clients load clears when the picker becomes ready', async () => {
+  const clients = deferred(); const app = harness({clients:()=>clients.promise});
+  try {
+    await settle();
+    app.doc.querySelector('#review-packet').click();
+    assert.match(app.doc.querySelector('#plan-message').textContent,/loading/);
+    clients.resolve([record(clientA)]); await app.view.ready;
+    assert.equal(app.doc.querySelector('#plan-client').options.length,2);
+    assert.equal(app.doc.querySelector('#plan-message').textContent,'');
+  } finally {app.close();}
+});

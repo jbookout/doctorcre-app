@@ -31,7 +31,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
-  const title = pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   host.after(layout, status);
   mountSliceSections(root, pathname, slices);
@@ -46,7 +46,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
     target.append(node);
   }
   for (const node of [...root.body.children]) {
-    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
+    if (node === host || node === layout || node === status || ['SCRIPT','DIALOG'].includes(node.tagName) || node.matches('.app-shell-account-menu, .skip, .toast, .receipt-dock, .record-backdrop, aside.record-panel, .room-toast')) continue;
     if (node.matches('footer')) status.querySelector('#appStatusSlot').append(node);
     else main.append(node);
   }

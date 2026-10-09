@@ -1,4 +1,4 @@
-// The moon orbit's geometry, proved against the numbers actually in room.js.
+// The moon orbit's geometry, proved against the numbers actually in progress-wire.js.
 //
 // WHY A TEST AND NOT A LOOK. The stage is drawn by browser-only code inside
 // boot(), and this repo's unattended guard refuses a local fixture server, so
@@ -13,16 +13,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const SOURCE = fs.readFileSync(new URL("../js/room.js", import.meta.url), "utf8");
+const SOURCE = fs.readFileSync(new URL("../js/progress-wire.js", import.meta.url), "utf8");
 
 function pair(prefix, label = prefix) {
   const m = SOURCE.match(new RegExp(`${prefix}\\s*\\{\\s*rx:\\s*(-?[\\d.]+),\\s*ry:\\s*(-?[\\d.]+)`));
-  assert.ok(m, `${label} must still be declared as { rx, ry } in room.js`);
+  assert.ok(m, `${label} must still be declared as { rx, ry } in progress-wire.js`);
   return { rx: Number(m[1]), ry: Number(m[2]) };
 }
 function field(name, key) {
   const block = SOURCE.match(new RegExp(`${name}\\s*=\\s*\\{([^}]*)\\}`));
-  assert.ok(block, `${name} must still be declared in room.js`);
+  assert.ok(block, `${name} must still be declared in progress-wire.js`);
   const m = block[1].match(new RegExp(`${key}:\\s*(-?[\\d.]+)`));
   assert.ok(m, `${name}.${key} must still be declared`);
   return Number(m[1]);

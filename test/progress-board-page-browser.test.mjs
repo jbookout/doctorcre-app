@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
+import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390 } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const context = page.context();
@@ -25,7 +26,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
         const board = boards.find(b => b.board_id === rpc.arguments.board_id);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
-          updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: board.title, tasks: {
+          updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: board.title, costs: costData, tasks: {
             build: { title: `${board.title} task`, status: 'running' },
           } } }, questions: [] };
       }
@@ -72,7 +73,8 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
 
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
   const { page, context, errors } = await open(t, { unfinished });
-  await page.locator('[data-board-id="carr-v5"]').waitFor();
+  await page.locator('[data-board-id="carr-v5"]').waitFor({ state: 'attached' });
+  await page.getByText('Published boards', { exact: true }).click();
   const link = page.locator('[data-board-id="carr-v5"]');
   const target = await link.getAttribute('target');
   const opened = target === '_blank' ? context.waitForEvent('page') : null;
@@ -116,6 +118,102 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+async function mountTestCosts(t, width = 390) {
+  const { page, errors } = await open(t, { path: systemPath, width });
+  await page.locator('#board-stages').waitFor();
+  await page.evaluate(async fixture => {
+    const { mountCostView } = await import('/js/progress-board-costs.js');
+    const panel = document.querySelector('#board-costs'); panel.replaceChildren();
+    window.testCostView = mountCostView(panel); window.testCostView.update(fixture);
+  }, costs);
+  return { page, panel: page.locator('#board-costs'), errors };
+}
+
+test('open cost details reconcile refreshed amounts, missing observations and removed providers', async t => {
+  const { page, panel } = await mountTestCosts(t);
+  await panel.getByLabel('Cost provider').selectOption('jev');
+  await panel.locator('[data-day="2026-10-04"]').click();
+  const updated = structuredClone(costs);
+  Object.assign(updated.providers[0].daily.at(-1), { usd: 20, drivers: { review: 19, routing: 1 } });
+  Object.assign(updated.providers[0], { mtd_usd: 22, projection_usd: 170.5 });
+  updated.observed_at = '2026-10-05T09:00:00Z';
+  await page.evaluate(next => window.testCostView.update(next), updated);
+  assert.match(await panel.getByRole('dialog').textContent(), /\$20\.00.*review \$19\.00/);
+  updated.providers[0].daily = [];
+  updated.providers[0].state = 'unavailable';
+  await page.evaluate(next => window.testCostView.update(next), updated);
+  assert.match(await panel.getByRole('dialog').textContent(), /Unavailable.*incomplete coverage/);
+  updated.providers.shift();
+  await page.evaluate(next => window.testCostView.update(next), updated);
+  assert.equal(await panel.getByRole('dialog').count(), 0);
+  assert.equal(await panel.getByLabel('Cost provider').evaluate(node => node === document.activeElement), true);
+});
+
+test('cost refresh preserves focused day and dialog return focus with a fallback for a removed day', async t => {
+  const { page, panel } = await mountTestCosts(t);
+  const day = panel.locator('[data-day="2026-10-04"]');
+  await day.focus();
+  const updated = { ...costs, observed_at: '2026-10-05T09:00:00Z' };
+  await page.evaluate(next => window.testCostView.update(next), updated);
+  assert.equal(await day.evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('Enter');
+  await page.evaluate(next => window.testCostView.update(next), { ...updated, observed_at: '2026-10-05T10:00:00Z' });
+  await page.keyboard.press('Escape');
+  assert.equal(await day.evaluate(node => node === document.activeElement), true);
+  await page.evaluate(next => window.testCostView.update(next), { ...updated, through: '2026-10-03' });
+  assert.equal(await panel.getByLabel('Cost month').evaluate(node => node === document.activeElement), true);
+});
+
+for (const width of [320, 390]) test(`all cost days have an equivalent phone touch control at ${width}px`, async t => {
+  const { page, panel } = await mountTestCosts(t, width);
+  await panel.getByLabel('Cost month').selectOption('2026-09');
+  const selector = panel.getByLabel('Cost day');
+  assert.equal(await selector.count(), 1);
+  assert.equal(await selector.locator('option').count(), 30);
+  const button = panel.getByRole('button', { name: 'Open day details' });
+  const boxes = await Promise.all([selector.boundingBox(), button.boundingBox()]);
+  for (const box of boxes) assert.ok(box.width >= 44 && box.height >= 44, JSON.stringify(box));
+  assert.ok(boxes[0].x + boxes[0].width <= boxes[1].x || boxes[0].y + boxes[0].height <= boxes[1].y);
+  await selector.selectOption('2026-09-01'); await button.click();
+  assert.match(await panel.getByRole('dialog').textContent(), /2026-09-01.*Unavailable/s);
+  await page.keyboard.press('Escape');
+  assert.equal(await button.evaluate(node => node === document.activeElement), true);
+  await selector.selectOption('2026-09-20'); await button.click();
+  assert.match(await panel.getByRole('dialog').textContent(), /review \$50\.00/);
+  assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+});
+
+test('cost panel has day popup, month history, provider selection and measured reduced motion on mobile', async t => {
+  const { page, errors } = await open(t, { path: systemPath, costData: costs });
+  const panel = page.locator('#board-costs');
+  await panel.waitFor();
+  assert.match(await panel.textContent(), /Coverage incomplete/);
+  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationDuration), '2s');
+  await panel.getByLabel('Cost provider').selectOption('jev');
+  assert.match(await panel.textContent(), /Projected month\$93\.00/);
+  if (process.env.COST_EVIDENCE_DIR) {
+    await mkdir(process.env.COST_EVIDENCE_DIR, { recursive: true });
+    await page.clock.runFor(450);
+    await panel.screenshot({ path: `${process.env.COST_EVIDENCE_DIR}/cost-panel-mobile.png` });
+    const before = await open(t, { path: systemPath });
+    await before.page.locator('#board-stages').waitFor();
+    await before.page.screenshot({ path: `${process.env.COST_EVIDENCE_DIR}/board-without-costs.png` });
+  }
+  await panel.locator('[data-day="2026-10-04"]').click();
+  await panel.getByRole('dialog').waitFor();
+  assert.match(await panel.getByRole('dialog').textContent(), /review \$9\.00/);
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await panel.getByLabel('Cost month').selectOption('2026-09');
+  assert.equal(await panel.locator('[data-day]').count(), 30);
+  assert.match(await panel.textContent(), /Monthly spend\$50\.00/);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
+  assert.equal(await panel.locator('.cost-bar').first().evaluate(node => getComputedStyle(node).transitionDuration), '0s');
+  assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+  if (process.env.COST_EVIDENCE_DIR) await panel.screenshot({ path: `${process.env.COST_EVIDENCE_DIR}/cost-panel-history-reduced-motion.png` });
+  assert.deepEqual(errors, []);
+});
+
 test('independent census diagram uses the same stage colors as the published board legend', async t => {
   const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
   await page.locator('#system-work-flow .flow-stage').first().waitFor();

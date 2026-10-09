@@ -4,8 +4,9 @@ import { createLiveClient } from "./live-client.js";
 import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
+import { mountCostView } from './progress-board-costs.js';
 import {
-  jobLinks, STAGES, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
+  jobLinks, STAGE_DEFINITIONS, PULSES, EXECUTORS, ALL_REPOS_BOARD, LIVE_PREVIEW, legendEntries, boardView, headline,
   answerRequest, taskSummary, modelLine, stageEnteredAt, ageText,
   executorGlyph, executorPool, taskRepo, liveView, readLivePreference,
   writeLivePreference, filterCards, groupByRepo, boardFromSearch, safeHref, sortLive,
@@ -35,6 +36,7 @@ export function mountBoard(deps = {}) {
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
   const byId = id => doc.getElementById(id);
+  const costs = mountCostView(byId('board-costs'));
   const location = deps.location || win.location;
   if (pathBoardId) doc.querySelector(".directory-panel").hidden = true;
   byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
@@ -188,7 +190,7 @@ export function mountBoard(deps = {}) {
   }
 
   function stageColor(id) {
-    return STAGES.find(stage => stage.id === id)?.color || "#f2f6fc";
+    return STAGE_DEFINITIONS.find(stage => stage.id === id)?.color || "#f2f6fc";
   }
 
   function clickable(node, open) {
@@ -259,7 +261,7 @@ export function mountBoard(deps = {}) {
       "data-card-id": card.id, "data-task-id": card.id, "data-stage": card.stage, "data-pulse": card.pulse,
       "data-indicators": card.indicators.join(" "),
       style: `--stage-accent:${stageColor(card.stage)};--pulse-speed:${pulseSpeed(card.pulse)};--i:${Math.min(index, 12)}`,
-      "aria-label": `${card.title || card.id}, ${STAGES.find(stage => stage.id === card.stage).label}. Open work detail.`,
+      "aria-label": `${card.title || card.id}, ${STAGE_DEFINITIONS.find(stage => stage.id === card.stage).label}. Open work detail.`,
     });
     if (card.indicators.includes("outline-dashed")) node.classList.add("outline-dashed");
     const previous = fingerprints.get(card.id);
@@ -336,12 +338,15 @@ export function mountBoard(deps = {}) {
     return pipelineCards.find(card => card.id === cardId) || currentView?.cards.find(card => card.id === cardId) || null;
   }
 
-  function renderRail(visible) {
+  function renderRail(visible, stages) {
     const rail = byId("board-rail");
     rail.replaceChildren();
-    const step = 600 / STAGES.length;
-    rail.append(svg("path", "rail-line", { d: `M ${step / 2} 20 H ${600 - step / 2}` }));
-    STAGES.forEach((stage, index) => {
+    const step = 600 / stages.length;
+    stages.forEach((stage, index) => {
+      if (index < stages.length - 1 && stage.sequence !== false && stages[index + 1].sequence !== false)
+        rail.append(svg("path", "rail-line", { d: `M ${step / 2 + index * step} 20 H ${step / 2 + (index + 1) * step}` }));
+    });
+    stages.forEach((stage, index) => {
       const x = step / 2 + index * step;
       const count = visible.filter(card => card.stage === stage.id).length;
       rail.append(svg("circle", "rail-node", { cx: x, cy: 20, r: 7, style: `--stage-accent:${stage.color}`,
@@ -356,7 +361,7 @@ export function mountBoard(deps = {}) {
     repo.replaceChildren(el("option", "", "All", { value: "" }),
       ...repos.map(name => el("option", "", name.split("/")[1], { value: name })));
     stage.replaceChildren(el("option", "", "All", { value: "" }),
-      ...STAGES.map(item => el("option", "", item.label, { value: item.id })));
+      ...view.stages.map(item => el("option", "", item.label, { value: item.id })));
     if (!repos.includes(filters.repo)) filters.repo = "";
     repo.value = filters.repo;
     stage.value = filters.stage;
@@ -397,12 +402,14 @@ export function mountBoard(deps = {}) {
     const approvals = governanceTasks(governanceRead);
     const approvalCards = approvals && boardView({snapshot:{board_id:boardId, version:1,
       snapshot_json:{tasks:Object.fromEntries(approvals.map(task=>[task.id, {...task, source_state:governanceState}]))}}},currentNow()).cards;
-    const merged = withGovernance({stages:STAGES.map(stage=>({...stage,
+    const stages = census ? censusPipeline.stages : view.stages;
+    const merged = withGovernance({stages:stages.map(stage=>({...stage,
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
+    renderFilters({repos:view?.repos || [],cards:all,stages});
     deps.onTasks?.(all,{state:boardState});
-    renderCompleted({...view, cards:all});
+    renderCompleted({...view, cards:all,stages});
     const kind = census ? "project" : view.kind;
     pipelineCards = all;
     const container = byId("board-stages");
@@ -412,14 +419,14 @@ export function mountBoard(deps = {}) {
     const visible = filterCards(all, filters);
     const grouped = kind === ALL_REPOS_BOARD;
     byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
-    renderRail(visible);
-    STAGES.forEach((stage, index) => {
+    renderRail(visible, stages);
+    stages.forEach((stage, index) => {
       const cards = visible.filter(card => card.stage === stage.id);
       const column = el("section", "column", undefined,
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
-      head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")),
-        el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
+      if (stage.sequence !== false) head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")));
+      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
       column.append(head);
       const body = el("div", "column-body");
       if (stage.id === "live") {
@@ -573,11 +580,15 @@ export function mountBoard(deps = {}) {
     const box = (byId("completed-list") || byId("board-completed"));
     const focusedId = [...completedNodes].find(([,node])=>node===doc.activeElement)?.[0];
     box.replaceChildren();
-    const live = sortLive(view.cards.filter(card => card.stage === "live"), view.kind);
-    byId("completed-count").textContent = `${live.length} LIVE`;
-    if (!live.length) { box.append(el("p", "empty", "No live tasks yet.")); if (focusedId) (deps.openTask ? byId("board-title") : byId("completed-title")).focus(); return; }
-    for (const card of live) {
-      const item = el("article", "completed-card", undefined, { "data-card-id": card.id, "data-task-id": card.id });
+    const completed = sortLive(view.cards.filter(card => ["live","recorded"].includes(card.stage)), view.kind);
+    const liveCount = completed.filter(card => card.stage === "live").length;
+    const recordedCount = completed.length - liveCount;
+    const hasRecorded = view.stages.some(stage => stage.id === "recorded");
+    byId("completed-count").textContent = hasRecorded ? `${liveCount} LIVE · ${recordedCount} RECORDED` : `${liveCount} LIVE`;
+    if (!completed.length) { box.append(el("p", "empty", hasRecorded ? "No completed records yet." : "No live tasks yet.")); if (focusedId) (deps.openTask ? byId("board-title") : byId("completed-title")).focus(); return; }
+    for (const card of completed) {
+      const item = el("article", "completed-card", undefined, { "data-card-id": card.id, "data-task-id": card.id,
+        "data-stage": card.stage, "aria-label": `${card.title || card.id}, ${STAGE_DEFINITIONS.find(stage => stage.id === card.stage).label}. Open work detail.` });
       const top = el("div", "completed-top");
       top.append(el("strong", "card-title", card.title || card.id, { title: card.title || card.id }),
         el("time", "", formatTime(card.completed_at || card.updated_at)));
@@ -589,10 +600,13 @@ export function mountBoard(deps = {}) {
         el("p", "card-wr", jobLinks(card).workRequest || "Work Request unavailable"), el("p", "card-pr", jobLinks(card).prLabel || "No PR"));
       clickable(item, () => openWork(card.id));
       const kept = completedNodes.get(card.id);
-      if (kept) { kept.replaceChildren(...item.childNodes); box.append(kept); }
+      if (kept) {
+        kept.setAttribute("data-stage",card.stage);kept.setAttribute("aria-label",item.getAttribute("aria-label"));
+        kept.replaceChildren(...item.childNodes); box.append(kept);
+      }
       else { completedNodes.set(card.id,item); box.append(item); }
     }
-    for (const id of completedNodes.keys()) if (!live.some(card=>card.id===id)) completedNodes.delete(id);
+    for (const id of completedNodes.keys()) if (!completed.some(card=>card.id===id)) completedNodes.delete(id);
     if (focusedId) (completedNodes.get(focusedId) || (deps.openTask ? byId("board-title") : byId("completed-title"))).focus();
   }
 
@@ -833,6 +847,7 @@ export function mountBoard(deps = {}) {
 
   function render(view) {
     currentView = view;
+    costs.update(view.costs);
     byId("board-title").textContent = deps.openTask ? "System Job Board" : view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "DELIVERY / ALL REPOSITORIES" : "DELIVERY / PROGRESS BOARD";
     doc.title = "Control Room · DoctorCRE";
@@ -840,7 +855,6 @@ export function mountBoard(deps = {}) {
     renderSync(view);
     renderHeadline(view);
     renderRepos(view);
-    renderFilters(view);
     renderStages(view);
     renderBlocked(view);
     renderQuestions(view);
@@ -864,6 +878,7 @@ export function mountBoard(deps = {}) {
 
   // A confirmed unpublished or denied read removes the protected board.
   function clearBoard(state) {
+    costs.update(null);
     boardState = state;
     governanceRead = null;
     deps.onTasks?.([], {state});
