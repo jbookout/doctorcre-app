@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareStagingRecords, stagingFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
+import { stagingAuth } from '../../scripts/e2e-staging/auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 
@@ -20,7 +21,7 @@ function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = fal
   const api = {
     async get(path, options) {
       calls.push({ path, options });
-      if (path === '/auth/session') return reply({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe', csrf_token: 'private-csrf-canary' });
+      if (path === stagingAuth.session.path) return reply({ actor: { slug: contract.session.actor_slug }, e2e_principal: contract.session.e2e_principal, csrf_token: 'private-csrf-canary' });
       if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
       if (path.startsWith('/api/tours/detail?')) return reply({ data: rows.tour });
       assert.fail(`Unexpected read ${path}`);
@@ -66,7 +67,7 @@ function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = fal
     },
     async dispose() { disposed++; },
   };
-  const session = async () => ({ release, state: { cookies: [{ name: '__Host-dealroom_session', value: 'private-cookie-canary', secure: true, httpOnly: true }] } });
+  const session = async () => ({ release, state: { cookies: [{ name: contract.session.cookie, value: 'private-cookie-canary', secure: true, httpOnly: true }] } });
   const requestFactory = async options => { assert.equal(options.baseURL, STAGING_ORIGIN); return api; };
   return { session, requestFactory, calls, rows, disposed: () => disposed };
 }

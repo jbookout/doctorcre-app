@@ -68,10 +68,27 @@ Transient session transport and HTTP 429/502/503/504 failures receive at most
 three requests; authentication refusals and release identity failures do not.
 Provider error payloads and credentials are never forwarded to report errors.
 
-The agent suite uses Joe's ChatGPT subscription, never an API key. Sign in once
-per machine with `npx e2e login openai` (add `--device` to use a code instead of
-a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
-lists the ids the login serves. CI configures no model and never runs it.
+The staging control sweep uses a separate Playwright Test configuration.
+Playwright Test owns browser and context lifecycle, the four target projects,
+native retries and deadlines, failure traces and screenshots, and list, JSON,
+and HTML reports. A storageState setup project authenticates once before the
+ordered targets run. DoctorCRE keeps the exhaustive control frontier, source
+binding, fixture receipts, resume checkpoint, and exact evidence policy.
+
+```bash
+npm run e2e:staging:sweep
+npm run e2e:staging:sweep:resume
+```
+
+The local agent suite routes model work through a named CARR Model Room desk.
+`CARR_MODEL_ROOM_DISPATCH` must name the absolute sanctioned dispatcher path;
+`E2E_MODEL_ROOM_DESK` selects the registered desk and defaults to
+`doctorcre-e2e`. The desk owns model selection and authentication. Exploration
+runs split unfinished goals into 50-goal batches. Each goal keeps the 40-step
+limit with 81 planned model calls per goal and 4,050 calls per full batch,
+below the 5,000-call hard ceiling. The runner prints every batch and the finite total
+before starting, checkpoints each finished goal, and resumes with the next
+unfinished goal. CI configures no model and never runs the agent suite.
 
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either

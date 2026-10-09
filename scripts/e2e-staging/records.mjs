@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { request as playwrightRequest } from 'playwright';
 import { assertStagingURL, stagingSession, STAGING_ORIGIN } from './session.mjs';
+import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
@@ -92,8 +93,8 @@ export async function prepareStagingRecords(output, {
       requireValue(!answer.result?.isError && !value.error && value.ok !== false);
       return value;
     }
-    const actor = await json('/auth/session');
-    requireValue(actor.actor?.slug === 'joe' && actor.e2e_principal === 'e2e-joe' && typeof actor.csrf_token === 'string' && actor.csrf_token);
+    const actor = await json(stagingAuth.session.path);
+    requireValue(stagingAuth.session.matches(actor) && typeof actor.csrf_token === 'string' && actor.csrf_token);
     if (!existing) {
       await mkdir(output, { recursive: true, mode: 0o700 });
       await privateJSON(planPath, plan, true);
@@ -236,7 +237,7 @@ const browserReads = new Set(["capture-queue", "correspondence-readiness", "curr
 // API and auth prefixes are deliberately not read grants.
 const browserPages = new Set([...Object.keys(appRoutes.routes), ...Object.keys(appRoutes.redirects || {})]);
 const httpReads = new Set([
-  '/auth/session', '/app-release', '/pipeline/changes', '/api/call-context',
+  stagingAuth.session.path, '/app-release', '/pipeline/changes', '/api/call-context',
   '/api/v1/command-center', '/api/v1/work-inventory', '/api/v1/atlas-graph', '/api/v1/jev-deal-reading',
   '/api/v1/business/clients', '/api/v1/business/vendors', '/api/v1/business/leases', '/api/v1/business/relationships',
   '/api/room/turns', '/api/room/queue', '/api/system-work/session', '/api/system-work/current',
@@ -408,7 +409,7 @@ export function stagingFixtureWriteGuard({ output, release, persist = privateJSO
         if (['GET', 'HEAD'].includes(request.method())) {
           // Login/callback/reauth establish or change session state even on GET.
           // The preflight session read is the only admitted authentication route.
-          if (url.pathname.startsWith('/auth/') && url.pathname !== '/auth/session')
+          if (url.pathname.startsWith('/auth/') && url.pathname !== stagingAuth.session.path)
             policyFailure('authentication-mutation-unproved');
           if (!await knownBrowserRead(url)) policyFailure('read-path-unproved');
           return await forwardRead();

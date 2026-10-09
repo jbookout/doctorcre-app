@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, writeFile, readFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSweepRun, sweepOptions } from '../../scripts/e2e-staging/resume.mjs';
+import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import { writeReport, sweepFindings } from '../../scripts/e2e-staging/report.mjs';
 import { persistSweepReport } from '../../scripts/e2e-staging/sweep.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
@@ -87,7 +87,7 @@ test('historical DEAD keeps its stable allowlist key after a later successful re
   assert.ok(!run({ release, screens: [deadOnly] }).pending.some(({ target, screen }) => target.name === 'desktop' && screen.path === '/'));
 });
 
-test('invocations publish disjoint PNG and trace namespaces while old flat evidence survives', async t => {
+test('invocations publish disjoint control evidence while native Playwright owns traces', async t => {
   const output = await mkdtemp(join(tmpdir(), 'staging-resume-evidence-'));
   t.after(() => rm(output, { recursive: true, force: true }));
   const privateRoot = join(output, 'synthetic-private');
@@ -97,11 +97,12 @@ test('invocations publish disjoint PNG and trace namespaces while old flat evide
   const first = run().evidencePaths(output, privateRoot, 'OBSERVED');
   const second = run().evidencePaths(output, privateRoot, 'OBSERVED');
   assert.notEqual(first.png, second.png);
-  assert.notEqual(first.trace, second.trace);
+  assert.equal(first.trace, undefined);
+  assert.equal(second.trace, undefined);
   assert.notEqual(first.publishedPNG, second.publishedPNG);
   for (const [index, paths] of [first, second].entries()) {
     await mkdir(paths.privateDir, { recursive: true }); await mkdir(paths.publicDir, { recursive: true });
-    await writeFile(paths.png, `Private synthetic PNG ${index}`); await writeFile(paths.trace, `Synthetic trace ${index}`);
+    await writeFile(paths.png, `Private synthetic PNG ${index}`);
     await writeFile(paths.publishedPNG, `Scrubbed synthetic PNG ${index}`);
   }
   assert.equal(await readFile(old, 'utf8'), 'Original synthetic PNG');
@@ -121,12 +122,6 @@ test('exploration report input carries immutable resume history and the full den
   assert.deepEqual(JSON.parse(await readFile(join(output, 'findings.json'), 'utf8')), snapshot.history[0].findings);
   assert.match(await readFile(join(output, 'coverage.md'), 'utf8'), /1\/4 screens reached/);
   assert.match(await readFile(join(output, 'coverage.md'), 'utf8'), /1\/6 goals attempted/);
-});
-
-test('CLI accepts exactly the ordinary sweep or one --resume argument', () => {
-  assert.deepEqual(sweepOptions([]), { resume: false });
-  assert.deepEqual(sweepOptions(['--resume']), { resume: true });
-  for (const args of [['--only'], ['--resume=true'], ['--resume', '--resume'], ['--resume', '--only']]) assert.throws(() => sweepOptions(args), /--resume/);
 });
 
 test('sweep resumes retain completed model goals and findings for both pending and complete plans', async t => {

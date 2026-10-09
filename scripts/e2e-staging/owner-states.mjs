@@ -4,10 +4,10 @@ import { recordCalendarState } from './state-plan.mjs';
 
 // Owners execute each pending obligation once per invocation. Failed owners
 // remain pending for explicit resume; newly registered destinations are included.
-export async function sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence, persist, sweep = sweepScreen }) {
+export async function sweepOwnerStates({ run, targets, targetName, routedScreens, freshPageFor, evidence, persist, sweep = sweepScreen }) {
   const visited = new Set(), inspected = new Set();
   while (true) {
-    const entry = run.pendingStates().find(row => !visited.has(row.key));
+    const entry = run.pendingStates().find(row => (!targetName || row.target === targetName) && !visited.has(row.key));
     if (!entry) break;
     visited.add(entry.key);
     const target = targets.find(row => row.name === entry.target);

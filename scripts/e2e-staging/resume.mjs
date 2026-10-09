@@ -102,13 +102,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       requireCheckpoint(statuses.has(status));
       const filename = `${String(++number).padStart(5, '0')}-${status}`;
       const privateDir = join(privateRoot, attemptID, filename), publicDir = join(output, 'evidence', 'sweep', attemptID);
-      return { privateDir, publicDir, png: join(privateDir, `${filename}.png`), trace: join(privateDir, `${filename}.zip`), publishedPNG: join(publicDir, `${filename}.png`) };
+      return { privateDir, publicDir, png: join(privateDir, `${filename}.png`), publishedPNG: join(publicDir, `${filename}.png`) };
     },
   };
-}
-
-export function sweepOptions(args) {
-  if (args.length === 0) return { resume: false };
-  if (args.length === 1 && args[0] === '--resume') return { resume: true };
-  throw new Error('Staging sweep accepts only --resume or no arguments');
 }
