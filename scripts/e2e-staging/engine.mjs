@@ -3,26 +3,30 @@ import { web, surfaceOf } from '@e2e-dev/web';
 import { defineEngine } from 'e2e/engine';
 import { stagingFixtureWriteGuard, readStagingFixtureRelease } from './records.mjs';
 import { resolve } from 'node:path';
-const contextRefusals = new WeakMap();
-export const stagingWriteRefusals = context => contextRefusals.get(context) || [];
+const contextGuards = new WeakMap();
+export async function assertStagingContextCoverage(context) {
+  const guard = contextGuards.get(context);
+  if (!guard) throw new Error('Staging context has no fixture guard');
+  await guard.assertCoverage();
+}
+export const stagingWriteRefusals = context => contextGuards.get(context)?.refusals || [];
 
 export async function installStagingGuard(context, fixtureGuard = stagingFixtureWriteGuard()) {
-  const refusals = [];
-  contextRefusals.set(context, refusals);
+  const scopedGuard = fixtureGuard.forContext();
+  contextGuards.set(context, scopedGuard);
   await context.route('**/*', async route => {
     const request = route.request();
     try {
       // Every method crosses the same policy before any request is forwarded.
       // Do not use fallback: interception is not re-run for redirect targets.
-      const response = await fixtureGuard.handle(request, () =>
+      const response = await scopedGuard.handle(request, () =>
         route.fetch({ maxRetries: effectiveRunLimits().retries, maxRedirects: 0, timeout: effectiveRunLimits().httpTimeoutMs }));
       await route.fulfill(response.cachedRead === true
         ? { status: response.status(), headers: response.headers(), body: await response.body() }
         : { response });
     } catch (error) {
       // A read transport failure still reaches the client's normal retry path.
-      // The policy marks its own refusals, including uncertain write outcomes.
-      if (error.fixturePolicy) refusals.push({ reason: error.code });
+      // The scoped policy retains refusals, including uncertain write outcomes.
       await route.abort();
     }
   });

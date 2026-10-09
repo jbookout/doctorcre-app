@@ -692,20 +692,25 @@ test('an unproved morning dismiss retains an ERROR but does not stop later contr
   const browser = await chromium.launch();
   t.after(() => browser.close());
   for (const path of ['/', '/control-room', '/deals']) {
-    const captured = [];
+    const captured = [], handlers = [];
     const result = await sweepScreen({ screen: { path, name: 'Synthetic morning brief', surface: 'app' }, target: 'desktop', waitMs: 20,
       freshPage: async () => {
         const page = await browser.newPage();
         await page.setContent('<main><button id="morningClose" onclick="this.hidden=true">Dismiss morning brief</button><button id="later" onclick="document.querySelector(\'output\').textContent=\'Pressed\'">Later control</button><output></output></main>');
+        await page.exposeFunction('recordHandler', id => handlers.push(id));
+        await page.evaluate(() => document.querySelectorAll('button').forEach(button => button.addEventListener('click', () => window.recordHandler(button.id))));
         return page;
+      },
+      admit: async (_page, control) => {
+        if (control.selector === '#morningClose') throw new SweepFailure('fixture-scope', 'write-scope-unproved');
       },
       evidence: async (_page, row) => {
         captured.push(row.selector);
-        if (row.selector === '#morningClose') throw new SweepFailure('fixture-scope', 'write-scope-unproved');
         return 'synthetic.png';
       },
     });
-    assert.deepEqual(captured, ['#morningClose', '#later']);
+    assert.deepEqual(captured, ['#later']);
+    assert.deepEqual(handlers, ['later']);
     assert.equal(result.failure, null);
     assert.equal(result.controls[0].status, 'ERROR');
     assert.deepEqual(result.controls[0].failure, { phase: 'fixture-scope', code: 'write-scope-unproved' });

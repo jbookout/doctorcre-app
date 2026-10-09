@@ -306,7 +306,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = effectiveRunLimits().controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
+export async function sweepScreen({ freshPage, screen, target, evidence, admit, checkpoint, prior, identityScope, waitMs = 2000, limit = effectiveRunLimits().controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
   const run = currentRun();
   limit = Math.min(Number.isSafeInteger(limit) && limit > 0 ? limit : effectiveRunLimits().controlsPerScreen, effectiveRunLimits().controlsPerScreen);
   const stopAtLimit = () => { if (run) { run.stop('control-count-limit'); throw new RunLimitError('control-count-limit'); } };
@@ -342,6 +342,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
         if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
         action = matching[0];
       }
+      if (admit) await admit(page, action);
       let result;
       lastAction = action; lastBeforeURL = page.url();
       try { result = await pressControl(page, action, { waitMs: Math.min(waitMs, 500) }); }
@@ -475,6 +476,8 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
             if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'control-state-changed', control.selector);
             action = matching[0];
           }
+          phase = 'admission';
+          if (admit) await admit(fresh, action);
           phase = 'press';
           const beforeURL = fresh.url();
           const result = await pressControl(fresh, action, { waitMs });
@@ -494,8 +497,9 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
             await resolveDiscovery(fresh, state.openers, action, beforeURL);
           }
         } catch (error) {
-          if (row && phase === 'evidence' && error instanceof SweepFailure &&
+          if (error instanceof SweepFailure &&
               error.failure.phase === 'fixture-scope' && error.failure.code === 'write-scope-unproved') {
+            if (!row) { row = { ...base, signals: [] }; controls.push(row); }
             row.status = 'ERROR';
             row.reason = 'Test fixture write policy refused or unsettled; coverage remains incomplete';
             row.failure = { ...error.failure };

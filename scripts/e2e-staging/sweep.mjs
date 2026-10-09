@@ -2,7 +2,7 @@ import { requireSupervisedRun } from './run-limits.mjs';
 import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stagingWriteRefusals } from './engine.mjs';
+import { assertStagingContextCoverage } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen, SweepFailure } from './controls.mjs';
 import { writeReport } from './report.mjs';
@@ -12,6 +12,11 @@ import { assertStagingBrowserInventory, prepareStagingRecords, stagingFixtureWri
 import { sweepOwnerStates } from './owner-states.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
+
+export async function assertSweepFixtureScope(page) {
+  try { await assertStagingContextCoverage(page.context()); }
+  catch { throw new SweepFailure('fixture-scope', 'write-scope-unproved'); }
+}
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
 export async function persistSweepReport(output, run, setup, { publishFile } = {}) {
@@ -46,13 +51,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
   const freshPageFor = (target, screen, spec) => async (request = {}) =>
     freshPage({ target, screen, release, fixtureGuard, path: request.path || spec?.url || screen.path, spec });
   const evidence = async (page, row) => {
-    try {
-      await fixtureGuard.assertCoverage();
-      if (stagingWriteRefusals(page.context()).length) throw new Error('Fixture scope incomplete');
-    } catch {
-      row.status = 'ERROR'; row.reason = 'Test fixture write policy refused or unsettled; coverage remains incomplete';
-      throw new SweepFailure('fixture-scope', 'write-scope-unproved');
-    }
+    await assertSweepFixtureScope(page);
     const paths = run.evidencePaths(output, privateEvidence, row.status === 'passed' ? 'OBSERVED' : row.status === 'failed' ? 'ERROR' : row.status);
     await mkdir(paths.privateDir, { recursive: true, mode: 0o700 });
     budget.check();
@@ -74,7 +73,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
       result = await sweepScreen({ freshPage: measuredPage, screen, target: target.name, prior: run.priorScreen(target.name, screen.path), routedPaths: routedScreens.map(screen => screen.path), recordedActionRuntime: target.name === 'staging-live' && screen.path === '/' ? continuation?.runtime : undefined, checkpoint: async partial => {
         run.record(partial);
         await persistSweepReport(output, run, setup);
-      }, evidence });
+      }, evidence, admit: assertSweepFixtureScope });
     } catch (error) { budget.check(); result = { ...(run.snapshot().screens.find(row => row.target === target.name && row.path === screen.path) || { ...screen, target: target.name, reached: false, controls: [] }), failure: { phase: 'sweep', code: 'unexpected-sweep-failure', openers: [] } }; }
     run.record(result);
 
@@ -82,7 +81,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
     console.log(`${result.controls.length} enumerated; ${result.controls.filter(row => row.status === 'DEAD').length} DEAD`);
     if (result.failure) console.log(`Sweep stopped: ${result.failure.phase}/${result.failure.code}`);
   }
-  await sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence,
+  await sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence, admit: assertSweepFixtureScope,
     persist: () => persistSweepReport(output, run, setup) });
   await persistSweepReport(output, run, setup);
   if (targetIndex !== targets.length - 1) {

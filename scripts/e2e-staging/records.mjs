@@ -348,10 +348,11 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
   return effect ? { operation: name, record_ids: recordIDs, arguments_sha256: digest(args), effect } : null;
 }
 
-function requirePlanCoverage(plan) {
+function requirePlanCoverage(plan, scope) {
   if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
       plan.state !== 'complete' || plan.inflight) policyFailure('fixture-provenance-missing');
-  const attempts = plan.browser_write_attempts ?? [], refusals = plan.browser_write_refusals ?? [];
+  const attempts = scope ? (plan.browser_write_attempts ?? []).filter(row => scope.fingerprints.has(row.fingerprint)) : plan.browser_write_attempts ?? [];
+  const refusals = scope ? scope.refusals : plan.browser_write_refusals ?? [];
   if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
       attempts.some(row => {
         if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
@@ -395,32 +396,44 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
     return field && isUUID(id || '') && plan.receipts[step]?.[field] === id &&
       (reference === id || record === 'lead' && row.ref && reference === row.ref) ? id : null;
   };
-  return {
+  const guard = {
     refusals,
-    async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}) {
+    forContext() {
+      const scope = { refusals: [], pending: new Set(), fingerprints: new Set() };
+      return {
+        refusals: scope.refusals,
+        handle: (request, forward) => guard.handle(request, forward, scope),
+        assertCoverage: options => guard.assertCoverage(options, scope),
+      };
+    },
+    async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}, scope) {
+      const outstanding = scope?.pending || pending, gaps = scope?.refusals || refusals;
       const budget = Math.min(effectiveRunLimits(run).settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : effectiveRunLimits(run).settlementMs));
       const deadline = Date.now() + budget;
-      while (pending.size) {
+      while (outstanding.size) {
         let timer;
         const expired = new Promise(resolve => { timer = setTimeout(() => resolve(true), Math.max(0, deadline - Date.now())); });
         let timedOut;
-        try { timedOut = await Promise.race([Promise.all([...pending].map(flight => flight.done)).then(() => false), expired]); }
+        try { timedOut = await Promise.race([Promise.all([...outstanding].map(flight => flight.done)).then(() => false), expired]); }
         finally { clearTimeout(timer); }
         if (timedOut) {
-          for (const flight of pending) flight.timedOut = true;
-          refusals.push({ operation: 'unknown-operation', reason: 'dispatch-settlement-timeout', forwarded: true, at: new Date().toISOString() });
+          for (const flight of outstanding) flight.timedOut = true;
+          const gap = { operation: 'unknown-operation', reason: 'dispatch-settlement-timeout', forwarded: true, at: new Date().toISOString() };
+          refusals.push(gap);
+          if (scope) scope.refusals.push(gap);
           policyFailure('dispatch-settlement-timeout');
         }
       }
-      if (refusals.length) policyFailure('write-coverage-incomplete');
-      if (planPath) requirePlanCoverage(await currentPlan());
-      if (pending.size) policyFailure('dispatch-settlement-pending');
+      if (gaps.length) policyFailure('write-coverage-incomplete');
+      if (planPath) requirePlanCoverage(await currentPlan(), scope);
+      if (outstanding.size) policyFailure('dispatch-settlement-pending');
     },
-    async handle(request, forward) {
+    async handle(request, forward, scope) {
       const flight = { timedOut: false };
       flight.done = new Promise(resolve => { flight.finish = resolve; });
       run?.check();
       pending.add(flight);
+      scope?.pending.add(flight);
       const dispatch = () => {
         if (!run) throw new RunLimitError('supervised-run-required');
         requireSupervisedRun(output, run);
@@ -552,6 +565,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
             operation: name, record_ids: [...ids], arguments: structuredClone(args),
             state: 'inflight', dispatched_outcome: 'unknown', attempted_at: new Date().toISOString() };
           plan.browser_write_attempts.push(intent);
+          scope?.fingerprints.add(fingerprint);
           await persist(planPath, plan); // MUST succeed before forward().
           return { run: plan.run, fingerprint };
         });
@@ -591,6 +605,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
           forwarded: dispatched || admittedRead, at: new Date().toISOString() };
         refusals.push(gap);
+        scope?.refusals.push(gap);
         // Refusal metadata contains no URL, arguments, record IDs or payload.
         // Failure to retain it never permits dispatch or clears an intent.
         try {
@@ -603,9 +618,10 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           });
         } catch {}
         policyFailure(gap.reason);
-      } finally { pending.delete(flight); flight.finish(); }
+      } finally { pending.delete(flight); scope?.pending.delete(flight); flight.finish(); }
     },
   };
+  return guard;
 }
 
 export async function assertStagingWriteCoverage(output) {
