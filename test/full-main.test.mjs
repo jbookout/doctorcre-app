@@ -191,6 +191,8 @@ async function browserFixture(t, change = () => {}) {
 test('browser fixtures honor hosted invocation bindings on reruns',()=>{
   const env={...process.env,GITHUB_RUN_ID:'37381471882',GITHUB_RUN_ATTEMPT:'2'};
   delete env.NODE_TEST_CONTEXT;
+  // This synthetic child owns its CLI reporter; the scheduled parent's TAP must not accumulate.
+  delete env.NODE_OPTIONS;
   const result=spawnSync(process.execPath,['--test','--test-reporter=tap','--test-name-pattern=e2e acknowledgement|e2e does not reuse',fileURLToPath(import.meta.url)],{
     env,
     encoding:'utf8',timeout:30000,
