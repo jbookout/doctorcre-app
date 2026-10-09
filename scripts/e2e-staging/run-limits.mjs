@@ -197,11 +197,23 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
     async http(operation) {
       check();
       const token = randomUUID();
-      const queued = update(state => {
-        if (state.stopReason || now() >= state.deadline) return state.stopReason ||= 'whole-run-deadline';
-        if (Object.keys(state.queuedHttp).length >= limits.httpQueue) return state.stopReason = 'http-queue-limit';
-        state.queuedHttp[token] = process.pid; return null;
-      });
+      // A full queue is backpressure, not a run stop: one staging page load
+      // requests more assets at once than httpQueue holds. An overflowing caller
+      // waits, unregistered, for a queue slot; only a queue that stays full for
+      // httpTimeoutMs stops the run. Totals, deadline and timeouts still bound it.
+      const overflowDeadline = now() + limits.httpTimeoutMs;
+      let queued;
+      for (;;) {
+        check();
+        queued = update(state => {
+          if (state.stopReason || now() >= state.deadline) return state.stopReason ||= 'whole-run-deadline';
+          if (Object.keys(state.queuedHttp).length >= limits.httpQueue) return false;
+          state.queuedHttp[token] = process.pid; return null;
+        });
+        if (queued !== false) break;
+        if (now() >= overflowDeadline) { queued = update(state => state.stopReason ||= 'http-queue-limit'); break; }
+        await new Promise(resolveWait => setTimeout(resolveWait, Math.min(10, limits.monitorIntervalMs)));
+      }
       if (queued) { stop(queued); throw new RunLimitError(queued); }
       let timeout, abort;
       try {
