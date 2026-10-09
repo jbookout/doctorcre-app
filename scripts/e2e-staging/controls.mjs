@@ -161,10 +161,12 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
       const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
       return element?.checkVisibility({ visibilityProperty: true }) && !element.closest('[hidden],[inert],dialog:not([open])');
     };
+    const visibleBefore = new WeakSet([...document.querySelectorAll('*')].filter(visible));
     const observe = records => {
       if (!active()) return;
       for (const record of records) {
-        if (!visible(record.target)) continue;
+        // A causal dismissal hides its own mutation target before delivery.
+        if (!visible(record.target) && !visibleBefore.has(record.target)) continue;
         if (record.type === 'attributes' && record.oldValue === record.target.getAttribute(record.attributeName)) continue;
         if (record.type === 'characterData' && record.oldValue === record.target.textContent) continue;
         if (root.contains(record.target) || record.target === root || record.target.closest?.('[role="dialog"],[role="status"],[role="alert"],dialog,.toast,.sheet')) state.mutations++;

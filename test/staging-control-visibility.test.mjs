@@ -8,6 +8,7 @@ function syntheticPage(t, html) {
   const dom = new JSDOM(html, { url: 'https://synthetic.invalid/', runScripts: 'dangerously', pretendToBeVisual: true });
   t.after(() => dom.window.close());
   const { window } = dom;
+  window.Request = Request;
   window.Element.prototype.checkVisibility = function () {
     for (let element = this; element; element = element.parentElement) {
       const style = window.getComputedStyle(element);
@@ -29,7 +30,7 @@ function syntheticPage(t, html) {
       click: async () => window.document.querySelector(selector).click(),
     }),
   };
-  return { page, window };
+  return { page, window, listeners };
 }
 
 for (const action of [
@@ -56,4 +57,26 @@ test('hidden rendering and unrelated visible timers cannot credit a dead control
   const result = await pressControl(page, { selector: '#dead', role: 'button' }, { waitMs: 30 });
   assert.equal(result.status, 'DEAD');
   assert.deepEqual(result.signals, []);
+});
+
+test('an asynchronous test counter does not gate the Save request', async t => {
+  for (const awaitCounter of [true, false]) {
+    const { page, window, listeners } = syntheticPage(t, '<main><form onsubmit="event.preventDefault();saveStep()"><button id="save" type="submit">Save</button><output id="status"></output></form></main>');
+    let attempts = 0, writes = 0;
+    window.fixtureSaveAttempt = () => new window.Promise(resolve => {
+      setTimeout(() => { attempts++; resolve(); }, 10);
+    });
+    window.fetch = url => {
+      writes++;
+      listeners.get('request')?.({ url: () => new URL(url, page.url()).href, method: () => 'POST' });
+      return window.Promise.resolve({});
+    };
+    window.eval('async function saveStep(){' + (awaitCounter ? 'await ' : '') + 'fixtureSaveAttempt();await fetch("/mcp",{method:"POST"});document.querySelector("#status").textContent="Saved"}');
+    const result = await pressControl(page, { selector: '#save', role: 'button' }, { waitMs: 30 });
+    assert.equal(attempts, 1);
+    assert.equal(writes, 1);
+    assert.equal(window.document.querySelector('#status').textContent, 'Saved');
+    assert.equal(result.status, awaitCounter ? 'DEAD' : 'OBSERVED');
+    assert.equal(result.signals.includes('network request'), !awaitCounter);
+  }
 });
