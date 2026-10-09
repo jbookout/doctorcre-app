@@ -97,7 +97,9 @@ and `retries` accept zero; a zero model budget refuses the first model call.
 The supervisor and workers share the validated limits in the durable ledger.
 
 Each supervisor invocation admits at most 20,000 HTTP requests, including
-assets, with two requests in flight. Explicit resume opens a fresh bounded
+assets, with two requests in flight. A burst larger than the 32-request queue,
+such as one page loading its assets, waits for a queue slot; only a queue that
+stays full for the per-request timeout stops the run. Explicit resume opens a fresh bounded
 invocation after prior process cleanup, retaining the run identity, checkpoint,
 write receipts, artifact ceiling, and prior invocation counters. HTTP and model
 budgets and the deadline renew; worker ledger reopens within that invocation do

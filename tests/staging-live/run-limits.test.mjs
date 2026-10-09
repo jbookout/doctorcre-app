@@ -66,19 +66,39 @@ test('HTTP concurrency queues a third request until a slot is released', async t
   assert.deepEqual(run.snapshot().queuedHttp, {});
 });
 
-test('HTTP queue overflow stops queued and active requests without starting replacements', async t => {
-  const { run } = await fixture(t, { httpConcurrency: 1, httpQueue: 1, httpTimeoutMs: 1_000 });
+test('HTTP queue overflow waits for room, so a page-load burst completes under the caps', async t => {
+  // A real staging page requests more assets at once than httpQueue holds
+  // (run 2026-10-09: 221 requests, stopped at http-queue-limit before any control).
+  const { run } = await fixture(t, { httpConcurrency: 2, httpQueue: 4, httpTimeoutMs: 1_000 });
+  let active = 0, peak = 0, peakQueued = 0;
+  const burst = Array.from({ length: 12 }, (_, index) => run.http(async () => {
+    peak = Math.max(peak, ++active);
+    peakQueued = Math.max(peakQueued, Object.keys(run.snapshot().queuedHttp).length);
+    await new Promise(resolve => setTimeout(resolve, 2));
+    active--;
+    return index;
+  }));
+  assert.deepEqual(await Promise.all(burst), [...Array(12).keys()]);
+  assert.equal(peak, 2);
+  assert.ok(peakQueued <= 4, `queue held ${peakQueued} > 4`);
+  assert.equal(run.snapshot().httpRequests, 12);
+  assert.equal(run.snapshot().stopReason, null);
+  assert.deepEqual(run.snapshot().queuedHttp, {});
+});
+
+test('HTTP queue overflow that never drains stops the run without starting replacements', async t => {
+  const { run } = await fixture(t, { httpConcurrency: 1, httpQueue: 1, httpTimeoutMs: 50 });
   let calls = 0;
   const blocked = () => { calls++; return new Promise(() => {}); };
-  const first = assert.rejects(run.http(blocked), code('http-queue-limit'));
+  const first = assert.rejects(run.http(blocked), RunLimitError);
   await until(() => calls === 1);
-  const queued = assert.rejects(run.http(blocked), code('http-queue-limit'));
+  const queued = assert.rejects(run.http(blocked), RunLimitError);
   await until(() => Object.keys(run.snapshot().queuedHttp).length === 1);
-  await assert.rejects(run.http(blocked), code('http-queue-limit'));
+  await assert.rejects(run.http(blocked), RunLimitError);
   await Promise.all([first, queued]);
   assert.equal(calls, 1);
   assert.equal(run.snapshot().httpRequests, 1);
-  assert.equal(run.snapshot().stopReason, 'http-queue-limit');
+  assert.ok(['http-request-timeout', 'http-queue-limit'].includes(run.snapshot().stopReason));
   assert.deepEqual(run.snapshot().activeHttp, {});
   assert.deepEqual(run.snapshot().queuedHttp, {});
 });
