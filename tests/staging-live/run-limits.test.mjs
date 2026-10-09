@@ -219,3 +219,30 @@ test('unreadable and structurally invalid ledgers fail with named errors', async
   await writeFile(path, original);
   assert.equal(run.snapshot().modelCalls, 0);
 });
+
+
+test('environment limits are partial, lower-only, typed and canonical', async () => {
+  const { runLimitsFromEnvironment } = await import('../../scripts/e2e-staging/run-limits.mjs');
+  assert.deepEqual(runLimitsFromEnvironment({}), RUN_LIMITS);
+  assert.deepEqual(runLimitsFromEnvironment({ E2E_RUN_LIMITS: '{"httpRequests":120,"modelCalls":0}' }),
+    { ...RUN_LIMITS, httpRequests: 120, modelCalls: 0 });
+  for (const value of ['', 'null', '[]', 'false', '{broken}', '{"unknown":1}', '{"__proto__":{}}',
+    '{"httpRequests":"120"}', '{"httpRequests":0}', '{"httpRequests":1.5}', '{"modelCalls":-1}'])
+    assert.throws(() => runLimitsFromEnvironment({ E2E_RUN_LIMITS: value }), code('invalid-run-limits'));
+  for (const [key, maximum] of Object.entries(RUN_LIMITS))
+    assert.throws(() => runLimitsFromEnvironment({ E2E_RUN_LIMITS: JSON.stringify({ [key]: maximum + 1 }) }), code('invalid-run-limits'));
+  assert.throws(() => runLimitsFromEnvironment({ E2E_RUN_LIMITS: '{"httpRequests":3}' }, { ...RUN_LIMITS, httpRequests: 2 }), code('invalid-run-limits'));
+});
+
+test('zero model calls prevents the first reservation and survives reopen and resume', async t => {
+  const { root, limits, run } = await fixture(t, { modelCalls: 0 });
+  assert.throws(() => run.reserveModel(), code('model-call-limit'));
+  assert.equal(run.snapshot().modelCalls, 0);
+  const reopened = openRun(root, { limits, runId: run.id, events: null });
+  t.after(() => reopened.dispose());
+  assert.throws(() => reopened.reserveModel(), code('model-call-limit'));
+  const resumed = openRun(root, { limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => resumed.dispose());
+  assert.throws(() => resumed.reserveModel(), code('model-call-limit'));
+  assert.equal(resumed.snapshot().modelCalls, 0);
+});

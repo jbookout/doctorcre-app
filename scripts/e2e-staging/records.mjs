@@ -1,4 +1,4 @@
-import { requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { constants } from 'node:fs';
 import { mkdir, open, rename, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -263,15 +263,15 @@ const httpReads = new Set([
   '/api/tours/feedback', '/api/tours/projection/candidates',
 ]);
 let builtStaticPaths;
-async function knownBrowserRead(url) {
-  if (browserPages.has(url.pathname) || httpReads.has(url.pathname) ||
-      /^\/control-room\/progress\/board\/[^/%]+$/.test(url.pathname) ||
-      /^\/api\/v1\/business\/(clients|vendors)\/[0-9a-f-]{36}$/i.test(url.pathname) ||
-      /^\/api\/system-work\/WR-\d+$/.test(url.pathname)) return true;
+export async function assertStagingBrowserInventory() {
   builtStaticPaths ||= readFile(fileURLToPath(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url)), 'utf8')
     .then(text => {
       const manifest = JSON.parse(text);
-      if (manifest.schema !== 'doctorcre-static-artifact.v1' || !Array.isArray(manifest.files)) throw new Error('Static manifest unavailable');
+      if (manifest?.schema !== 'doctorcre-static-artifact.v1' || !Array.isArray(manifest.files) ||
+          !manifest.files.length || manifest.files.some(row => typeof row?.path !== 'string' ||
+            row.path.startsWith('/') || row.path.split('/').some(part => !part || part === '.' || part === '..')) ||
+          !['css/', 'js/'].every(prefix => manifest.files.some(row => row.path.startsWith(prefix))))
+        throw new Error('Static manifest unavailable');
       const files = new Set(manifest.files.map(row => row.path));
       const paths = new Set([...files].filter(path => /^(css|data|js|public-shell|tours)\//.test(path)).map(path => '/' + path));
       for (const [route, asset] of [
@@ -284,8 +284,17 @@ async function knownBrowserRead(url) {
         if (asset.startsWith('reports/vendor/')) paths.add('/vendor/' + asset.slice('reports/vendor/'.length));
       }
       return paths;
-    }).catch(() => new Set()); // Missing inventory never widens the read grant.
-  return (await builtStaticPaths).has(url.pathname);
+    }).catch(() => policyFailure('browser-inventory-unavailable'));
+  return builtStaticPaths;
+}
+
+async function knownBrowserRead(url) {
+  const paths = await assertStagingBrowserInventory();
+  if (browserPages.has(url.pathname) || httpReads.has(url.pathname) ||
+      /^\/control-room\/progress\/board\/[^/%]+$/.test(url.pathname) ||
+      /^\/api\/v1\/business\/(clients|vendors)\/[0-9a-f-]{36}$/i.test(url.pathname) ||
+      /^\/api\/system-work\/WR-\d+$/.test(url.pathname)) return true;
+  return paths.has(url.pathname);
 }
 
 const fixtureWrites = {
@@ -380,8 +389,8 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
   };
   return {
     refusals,
-    async assertCoverage({ timeoutMs = RUN_LIMITS.settlementMs } = {}) {
-      const budget = Math.min(RUN_LIMITS.settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : RUN_LIMITS.settlementMs));
+    async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}) {
+      const budget = Math.min(effectiveRunLimits(run).settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : effectiveRunLimits(run).settlementMs));
       const deadline = Date.now() + budget;
       while (pending.size) {
         let timer;

@@ -1,4 +1,4 @@
-import { currentRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { currentRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { createHash } from 'node:crypto';
 import { canonicalIdentity, identityKey, canContinueTraversal, traversalSnapshot } from './traversal.mjs';
 
@@ -306,9 +306,9 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = RUN_LIMITS.controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
+export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = effectiveRunLimits().controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
   const run = currentRun();
-  limit = Math.min(Number.isSafeInteger(limit) && limit > 0 ? limit : RUN_LIMITS.controlsPerScreen, RUN_LIMITS.controlsPerScreen);
+  limit = Math.min(Number.isSafeInteger(limit) && limit > 0 ? limit : effectiveRunLimits().controlsPerScreen, effectiveRunLimits().controlsPerScreen);
   const stopAtLimit = () => { if (run) { run.stop('control-count-limit'); throw new RunLimitError('control-count-limit'); } };
   if (prior?.recorded_action_ledger && (!isRecordedActionRuntime(recordedActionRuntime) ||
       recordedActionRuntime.screen_sha256 !== createHash('sha256').update(JSON.stringify(prior)).digest('hex')))
@@ -326,7 +326,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   const stateEvidence = () => ({ ...(identityScope ? { state_scope: identityScope } : {}), ...(delegations.length ? { delegations } : {}), ...(ledger ? { recorded_action_ledger: ledger } : {}) });
   const stableMs = waitMs < 2000 ? waitMs : 1500;
   const settle = async (page, phase, selector) => {
-    try { await page.waitForLoadState('networkidle', { timeout: 30_000 }); }
+    try { await page.waitForLoadState('networkidle', { timeout: effectiveRunLimits(run).httpTimeoutMs }); }
     catch { throw new SweepFailure(phase, 'network-idle-failed', selector); }
     try { return await settledInventory(page, { stableMs, scope: identityScope }); }
     catch { throw new SweepFailure(phase, 'inventory-failed', selector); }

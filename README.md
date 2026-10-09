@@ -80,6 +80,22 @@ npm run e2e:staging:sweep
 npm run e2e:staging:sweep:resume
 ```
 
+The sweep, resume and explore npm entrypoints run `npm run build` first. This
+regenerates `contracts/app-routes.v1.json` and the static artifact manifest used
+by the browser read guard, including after a fresh `npm ci`. A missing or
+malformed static inventory stops before fixture setup; it cannot grant reads.
+
+`E2E_RUN_LIMITS` accepts a JSON object of lower limits, for example:
+
+```bash
+E2E_RUN_LIMITS='{"httpRequests":120,"modelCalls":0}' npm run e2e:staging:sweep
+```
+
+Omitted limits keep their defaults. Unknown keys, malformed JSON, non-integer
+values and any increase are refused before launching a worker. Only `modelCalls`
+and `retries` accept zero; a zero model budget refuses the first model call.
+The supervisor and workers share the validated limits in the durable ledger.
+
 Each supervisor invocation admits at most 20,000 HTTP requests, including
 assets, with two requests in flight. Explicit resume opens a fresh bounded
 invocation after prior process cleanup, retaining the run identity, checkpoint,

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { openSync, closeSync, writeSync, readSync, fstatSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { openRun, RUN_LIMITS, RunLimitError, runLimitsFromEnvironment } from './run-limits.mjs';
 import { targetExists as probe, signalTarget } from './process-liveness.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -29,6 +29,7 @@ function processBirths(pids, timeout) {
 }
 
 export async function supervise({ command, args = [], output, environment = process.env, limits = RUN_LIMITS, events = process }) {
+  limits = runLimitsFromEnvironment(environment, limits);
   const root = resolve(output);
   mkdirSync(root, { recursive: true, mode: 0o700 });
   let run;

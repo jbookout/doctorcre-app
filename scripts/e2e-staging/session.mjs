@@ -1,4 +1,4 @@
-import { boundedRequestContext, requireSupervisedRun, RUN_LIMITS, RunLimitError } from './run-limits.mjs';
+import { boundedRequestContext, requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { constants } from 'node:fs';
 import { chmod, mkdir, open, writeFile } from 'node:fs/promises';
@@ -61,17 +61,18 @@ export class SessionPreflightFailure extends Error {
   constructor(code) { super('staging session preflight failed: ' + code); this.code = code; }
 }
 
-export async function preflightRequest(phase, operation, { pause = delay, signal } = {}) {
-  for (let attempt = 0; attempt < RUN_LIMITS.preflightAttempts; attempt++) {
+export async function preflightRequest(phase, operation, { pause = delay, signal, run } = {}) {
+  const limits = effectiveRunLimits(run);
+  for (let attempt = 0; attempt < limits.preflightAttempts; attempt++) {
     signal?.throwIfAborted();
     try {
       const response = await operation();
       if (![429, 502, 503, 504].includes(response.status())) return response;
-      if (attempt === RUN_LIMITS.preflightAttempts - 1) throw new SessionPreflightFailure(phase + '-http-' + response.status());
+      if (attempt === limits.preflightAttempts - 1) throw new SessionPreflightFailure(phase + '-http-' + response.status());
     } catch (error) {
       signal?.throwIfAborted();
       if (error instanceof SessionPreflightFailure || error instanceof RunLimitError) throw error;
-      if (attempt === RUN_LIMITS.preflightAttempts - 1) throw new SessionPreflightFailure(phase + '-transport-failed');
+      if (attempt === limits.preflightAttempts - 1) throw new SessionPreflightFailure(phase + '-transport-failed');
     }
     await pause(250 * (attempt + 1), undefined, { signal });
   }
@@ -86,12 +87,12 @@ export async function stagingRelease(api, baseURL = STAGING_ORIGIN, { run, signa
   let phase = 'app-release';
   try {
     phase = 'app-release';
-    const release = await preflightRequest(phase, () => api.get('/app-release', { maxRedirects: 0 }), { signal });
+    const release = await preflightRequest(phase, () => api.get('/app-release', { maxRedirects: 0 }), { signal, run });
     const identity = release.ok() ? await release.json() : {};
     if (identity.environment !== 'staging' || identity.service !== 'doctorcre-app' || !/^[a-f0-9]{40}$/.test(identity.source_commit || ''))
       throw new SessionPreflightFailure('app-release-invalid');
     phase = 'carr-release';
-    const carrRelease = await preflightRequest(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }), { signal });
+    const carrRelease = await preflightRequest(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }), { signal, run });
     const carr = carrRelease.ok() ? await carrRelease.json() : {};
     if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit)
       throw new SessionPreflightFailure('carr-source-pair-refused');
@@ -129,11 +130,11 @@ export async function stagingSession(baseURL = STAGING_ORIGIN, { requestContext,
       signal?.throwIfAborted();
       const secret = await readSessionSecret();
       phase = 'session-exchange';
-      const response = await preflightRequest(phase, () => api.fetch(stagingAuth.exchange.path, stagingAuth.exchange.request(secret)), { signal });
+      const response = await preflightRequest(phase, () => api.fetch(stagingAuth.exchange.path, stagingAuth.exchange.request(secret)), { signal, run });
       if (!response.ok()) throw new SessionPreflightFailure('session-exchange-refused-' + response.status());
     }
     phase = 'session-confirm';
-    const session = await preflightRequest(phase, () => api.get(stagingAuth.session.path, { maxRedirects: 0 }), { signal });
+    const session = await preflightRequest(phase, () => api.get(stagingAuth.session.path, { maxRedirects: 0 }), { signal, run });
     const actor = session.ok() ? await session.json() : {};
     if (!stagingAuth.session.matches(actor)) throw new SessionPreflightFailure('dedicated-principal-refused');
     signal?.throwIfAborted();

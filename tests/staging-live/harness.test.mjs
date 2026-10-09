@@ -1430,6 +1430,7 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
   const release = { source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
   let providerWrites = 0, providerReads = 0, transportFailNext = false;
   const server = createServer(async (request, response) => {
+    if (request.method !== 'POST') { response.writeHead(404); response.end(); return; }
     let raw = '';
     for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw);
@@ -1453,6 +1454,8 @@ test('the browser guard stops unproved mutations before dispatch at desktop and 
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => server.close(resolve)));
   const local = 'http://127.0.0.1:' + server.address().port + '/mcp';
+  const incidentalRead = await fetch(local, { signal: AbortSignal.timeout(1000) });
+  assert.equal(incidentalRead.status, 404);
   const browser = await chromium.launch();
   t.after(() => browser.close());
   for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) {
@@ -1643,6 +1646,7 @@ test('a write failing after the two-second observation window cannot receive evi
   }), { mode: 0o600 });
   let dispatched = 0;
   const provider = createServer(async (request, response) => {
+    if (request.method !== 'POST') { response.writeHead(404); response.end(); return; }
     let raw = ''; for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw); assert.equal(body.params.name, 'set-next-step'); dispatched++;
     const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
@@ -1654,6 +1658,8 @@ test('a write failing after the two-second observation window cannot receive evi
   });
   provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
   t.after(() => new Promise(resolve => provider.close(resolve)));
+  const incidentalRead = await fetch('http://127.0.0.1:' + provider.address().port + '/mcp', { signal: AbortSignal.timeout(1000) });
+  assert.equal(incidentalRead.status, 404);
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage(), context = page.context();
   const route = context.route.bind(context);
