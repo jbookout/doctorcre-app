@@ -26,7 +26,7 @@ export async function persistSweepReport(output, run, setup, { publishFile } = {
   await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
 }
 
-export async function sweep({ resume = false, targetName, freshPage, session, recordedActionProof } = {}) {
+export async function sweep({ resume = false, targetName, freshPage, session, requestFactory, recordedActionProof } = {}) {
   if (typeof resume !== 'boolean') throw new Error('Staging sweep resume must be a boolean');
   const targetIndex = targets.findIndex(target => target.name === targetName);
   if (targetIndex < 0 || typeof freshPage !== 'function' || typeof session !== 'function') throw new Error('Staging sweep requires a Playwright target, fresh-page fixture and session fixture');
@@ -43,7 +43,7 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
   const continuation = recordedActionProof ? await createRecordedActionContinuation({ prior, proof: recordedActionProof }) : null;
   if (continuation) prior = continuation.prior;
   const run = createSweepRun({ targets, routedScreens, prior });
-  const setup = await prepareStagingRecords(output, { reuseOnly: resume || targetIndex > 0, run: budget, signal: budget.signal, session: async origin => {
+  const setup = await prepareStagingRecords(output, { reuseOnly: resume || targetIndex > 0, run: budget, signal: budget.signal, requestFactory, session: async origin => {
     const current = await session(origin);
     run.assertRelease(current.release);
     return current;

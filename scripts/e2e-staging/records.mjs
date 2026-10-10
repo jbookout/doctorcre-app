@@ -9,6 +9,7 @@ import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
+import { prepareBrowserControlProofs } from './control-proofs.mjs';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -77,6 +78,9 @@ export async function prepareStagingRecords(output, {
     names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Unlinked Prospect ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
+  const controlProofs = await prepareBrowserControlProofs(source, { signal });
+  plan.browser_control_proofs = controlProofs.proofs;
+  plan.browser_control_proof_preparation = controlProofs.preparation;
   plan.current_step = 'authentication';
   let api, removeAbort = () => {};
   const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
@@ -485,7 +489,9 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         if (control.disabled === true) return;
         const proofs = plan.browser_control_proofs;
         const matches = Array.isArray(proofs) ? proofs.filter(proof => proof?.identity === control.identity) : [];
-        if (matches.length !== 1 || !Array.isArray(matches[0].effects)) policyFailure('control-scope-unproved');
+        if (matches.length !== 1 || !Array.isArray(matches[0].effects) ||
+            matches[0].release?.source_commit !== plan.release.source_commit ||
+            matches[0].release?.carr_source_commit !== plan.release.carr_source_commit) policyFailure('control-scope-unproved');
         for (const effect of matches[0].effects) {
           if (!effect || typeof effect !== 'object' || Array.isArray(effect) ||
               Object.keys(effect).some(key => !['operation', 'arguments'].includes(key)))

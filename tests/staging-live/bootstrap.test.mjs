@@ -12,7 +12,7 @@ async function cleanCheckout(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   execFileSync('git', ['clone', '--quiet', '--no-hardlinks', project, root]);
   // Include the change under test; generated inputs and credentials are never copied.
-  for (const path of ['package.json', 'scripts/e2e-staging'])
+  for (const path of ['package.json', 'scripts/e2e-staging', 'contracts/e2e-staging-control-proofs.v1.json'])
     await cp(join(project, path), join(root, path), { recursive: true });
   await symlink(join(project, 'node_modules'), join(root, 'node_modules'));
   return root;

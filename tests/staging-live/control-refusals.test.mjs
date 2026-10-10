@@ -77,7 +77,7 @@ async function fixture(t) {
       plan.browser_control_proofs ||= [];
       for (const control of await inventory(page)) if (selectors.includes(control.selector)) {
         plan.browser_control_proofs = plan.browser_control_proofs.filter(proof => proof.identity !== control.identity);
-        plan.browser_control_proofs.push({ identity: control.identity, effects: [] });
+        plan.browser_control_proofs.push({ identity: control.identity, effects: [], release });
       }
       await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
     } };
@@ -219,7 +219,7 @@ test('control admission validates prospective effects against fixture ownership 
             ...args, ...(kind === 'foreign' ? { deal: '40000000-0000-4000-8000-000000000012' } : {}),
             ...(kind === 'shape' ? { unexpected: true } : {}),
           } }];
-        plan.browser_control_proofs = [{ identity: control.identity, effects }];
+        plan.browser_control_proofs = [{ identity: control.identity, effects, release: plan.release }];
         if (kind === 'duplicate') plan.browser_control_proofs.push(plan.browser_control_proofs[0]);
         if (kind === 'missing') delete plan.browser_control_proofs;
         if (kind === 'source') plan.release.source_commit = 'b'.repeat(40);
