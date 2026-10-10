@@ -15,3 +15,6 @@
 #homeInvoices .home-panel-head h2{min-width:0;overflow-wrap:anywhere}
 
 #homeInvoices .home-flag-light{animation-duration:1s}
+
+/* Light theme only: darker text tokens for Home so deal and invoice titles reach 4.5:1. */
+:root[data-theme="light"] .home-shell{--text:#172d44;--muted:#425e7b;--quiet:#425e7b}
