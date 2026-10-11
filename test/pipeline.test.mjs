@@ -16,6 +16,9 @@
 //      gate wording, calendar-only dates, one Doc) are promises about markup.
 
 import test from "node:test";
+import { JSDOM } from "jsdom";
+import { runInNewContext } from "node:vm";
+import { SYNC_STATES } from "../js/board-sync.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
@@ -951,4 +954,32 @@ test('deal insight lines distinguish insufficient evidence from unavailable and 
   assert.deepEqual(dealInsightLines(null), ['Insights unavailable']);
   assert.deepEqual(dealInsightLines({judged:true,movement_rung:2,movement_rungs:4,movement_label:'Reviewed',waiting_on:'client_reply',silence_is_bad:0.2}),
     ['Movement 2 of 4', 'Reviewed', 'Waiting on: client reply', 'Estimated silence concern: 20%']);
+});
+
+
+test('QA-008: Deals freshness settles failed initial reads and retains the last successful timestamp', async () => {
+  const source = await read('js/pipeline.js');
+  const renderSource = source.slice(source.indexOf('function renderStatus(status)'), source.indexOf('function renderPendingWrites()'));
+  const dom = new JSDOM(await read('pipeline.html'));
+  try {
+    const document = dom.window.document;
+    const renderStatus = runInNewContext(`${renderSource}; renderStatus`, {state:{}, SYNC_STATES, $:id=>document.getElementById(id)});
+    const label = document.getElementById('boardAsOf');
+    for (const state of [SYNC_STATES.STARTING,SYNC_STATES.SYNCING]) {
+      renderStatus({state,last_read_at:null});
+      assert.equal(label.textContent,'Updating…');
+    }
+    for (const state of [SYNC_STATES.ERROR,SYNC_STATES.OFFLINE,SYNC_STATES.RECONNECTING]) {
+      renderStatus({state,last_read_at:null});
+      assert.equal(label.textContent,'Board unavailable',state);
+    }
+    const last_read_at = '2026-10-01T12:30:00Z';
+    renderStatus({state:SYNC_STATES.READY,last_read_at});
+    const updated = label.textContent;
+    assert.match(updated,/^Updated /);
+    for (const state of [SYNC_STATES.ERROR,SYNC_STATES.OFFLINE,SYNC_STATES.RECONNECTING]) {
+      renderStatus({state,last_read_at});
+      assert.equal(label.textContent,updated,'the last successful read stays visible during reconnection');
+    }
+  } finally {dom.window.close()}
 });

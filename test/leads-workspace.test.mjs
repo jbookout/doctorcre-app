@@ -475,3 +475,23 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
   assert.equal(s.writes.length, 0);
  } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });
+
+for (const failure of ['unavailable', 'sign-in']) test(`QA-008: Leads freshness settles after ${failure} and recovers on a successful read`, async () => {
+ const refused = Object.assign(new Error('Synthetic refusal'), failure === 'sign-in' ? {code:'unauthorized',status:401} : {status:503});
+ const s=await setup(failure === 'sign-in' ? {getActor:async()=>{throw refused}} : {getWorkspace:async()=>{throw refused}});
+ try {
+  const label=s.d.getElementById('boardUpdated');
+  const expected=failure === 'sign-in' ? 'Sign-in required' : 'Leads unavailable';
+  assert.equal(label.textContent,expected);
+  await s.app.refresh();
+  assert.equal(label.textContent,expected,'retrying a refused read cannot leave Updating');
+  s.client.getActor=async()=> 'example-partner';
+  s.client.getWorkspace=async()=>structuredClone(s.board);
+  await s.app.refresh();
+  assert.match(label.textContent,/^Updated /);
+  assert.equal(label.dateTime,s.board.generated_at);
+  s.client.getWorkspace=async()=>{throw refused};
+  await s.app.refresh();
+  assert.equal(label.textContent,expected,'a later failure must also settle the freshness label');
+ } finally {s.close()}
+});

@@ -211,7 +211,7 @@ function renderStatus(status) {
   if (asOf) {
     asOf.textContent = status.last_read_at
       ? `Updated ${new Date(status.last_read_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true})}`
-      : 'Updating…';
+      : [SYNC_STATES.ERROR,SYNC_STATES.OFFLINE,SYNC_STATES.RECONNECTING].includes(status.state) ? 'Board unavailable' : 'Updating…';
   }
 }
 

@@ -12,6 +12,8 @@
 //   * `rename-doc-conversation` is a compare-and-swap that appends the PRIOR
 //     title and touches no turn. Clauses 6 and 8 assert both halves.
 import test from "node:test";
+import { JSDOM } from "jsdom";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
@@ -762,4 +764,32 @@ test("clause 3b: a shared create writes one header row and NO grant, so the part
   // The fixture must CARRY the column, never derive it from the grant list.
   assert.equal(/visibility: docLiveGrants\(row\)|const docVisibility =/.test(fixtureJs), false,
     "visibility is derived from the grants again; the shared-with-zero-grants state becomes unrepresentable");
+});
+
+
+test('QA-009: thread controls disable without a readable conversation and re-enable when a thread opens', async () => {
+  const dom = new JSDOM(html);
+  try {
+    let payload = null;
+    const document = dom.window.document;
+    const renderSource = pageJs.slice(pageJs.indexOf('function renderAccess()'), pageJs.indexOf('function renderList()'));
+    const renderAccess = runInNewContext(`${renderSource}; renderAccess`, {
+      $:id=>document.getElementById(id), payloadOf:()=>payload, accessRows, shareCandidates,
+      PARTNER_SLUGS, identityHeader, escapeHtml:value=>String(value ?? ''),
+    });
+    const controls = ['renameInput','renameSave','pinToggle','archiveToggle'].map(id=>document.getElementById(id));
+    renderAccess();
+    assert.ok(controls.every(control=>control.disabled),'the list has no editable thread');
+    payload = await (await fixture()).readDocConversation({conversation_id:PRIVATE});
+    renderAccess();
+    assert.ok(controls.every(control=>!control.disabled),'opening a readable thread enables its controls');
+    payload = null;
+    renderAccess();
+    assert.ok(controls.every(control=>control.disabled),'Back to the list disables controls again');
+    assert.equal(document.getElementById('pinToggle').getAttribute('aria-pressed'),'false');
+    assert.equal(document.getElementById('archiveToggle').getAttribute('aria-pressed'),'false');
+    payload = {identity:{id:PRIVATE},turns:[],effective_grants:[]};
+    renderAccess();
+    assert.ok(controls.every(control=>control.disabled),'an unreadable thread must not enable controls');
+  } finally {dom.window.close()}
 });
