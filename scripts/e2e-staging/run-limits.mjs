@@ -266,7 +266,9 @@ export function currentRun(output = process.env.E2E_V2_OUTPUT) {
   if (!activeRun && process.env.E2E_RUN_SUPERVISED === '1') {
     if (!output || !process.env.E2E_RUN_ID) throw new RunLimitError('run-directory-required');
     const limits = runLimitsFromEnvironment();
-    activeRun = openRun(output, { limits });
+    // The supervisor owns signal stop receipts. A worker's redundant signal
+    // write can be interrupted by SIGKILL while holding the shared ledger lock.
+    activeRun = openRun(output, { limits, events: null });
   }
   return activeRun;
 }
