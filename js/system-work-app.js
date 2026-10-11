@@ -1,10 +1,11 @@
 import { selectDocRecord } from './doc-context.js';
-import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createSystemWorkClient } from "./system-work-client.js";
-import { actionForCard, renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
+import { renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
 
 const client = createSystemWorkClient();
-const state = { card: null, proposed: null, current: [], selectedRef: null, readEpoch: 0, readReady: false, readAt: null };
+const state = { card: null, proposed: null, current: [], selectedRef: null, readEpoch: 0, readReady: false, readFailed: false, readAt: null, sessionReady: false };
+let sessionRead = null;
 const $ = (selector) => document.querySelector(selector);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -18,7 +19,9 @@ function alert(message, kind = "error") {
 }
 
 function render() {
-  $("#systemWorkStage").innerHTML = state.card ? renderSystemWorkCard(state.readReady ? state.card : { ...state.card, source: { ...state.card.source, freshness: "unavailable" } }, { readAt: state.readReady ? state.readAt : null }) : renderCurrentWorkRequests(state.current);
+  const unavailable = `<section class="system-work-empty"><h2>Work Requests unavailable</h2><button type="button" class="system-work-secondary" data-system-retry>Retry</button></section>`;
+  const content = state.card ? renderSystemWorkCard(state.readReady ? state.card : { ...state.card, source: { ...state.card.source, freshness: "unavailable" } }, { readAt: state.readReady ? state.readAt : null }) : state.readFailed ? "" : renderCurrentWorkRequests(state.current);
+  $("#systemWorkStage").innerHTML = content + (state.readFailed ? unavailable : "");
   const ref = state.card?.human_ref;
   if (ref) {
     history.replaceState(null, "", `/work-requests?work_request=${encodeURIComponent(ref)}`);
@@ -49,6 +52,7 @@ async function refresh(ref = state.selectedRef) {
     state.card = selected ? result : null;
     if (!selected) state.current = result.items || [];
     state.readReady = true;
+    state.readFailed = false;
     state.readAt = new Date().toISOString();
     alert("");
     state.proposed = state.card?.pending_outcome_feedback || null;
@@ -56,6 +60,7 @@ async function refresh(ref = state.selectedRef) {
   } catch (error) {
     if (epoch !== state.readEpoch || selected !== state.selectedRef) return;
     state.readReady = false;
+    state.readFailed = true;
     if (!selected) state.current = [];
     alert(error.status === 401 || error.status === 403 ? "Sign in again to read current Work Requests." : "Work Request updates unavailable. Current evidence is required before confirming.");
     render();
@@ -185,24 +190,50 @@ function acceptOutcomeForm() {
 const actionForms = { triage: triageForm, "prepare-plan": planForm, "accept-plan": acceptPlanForm,
   "record-outcome": outcomeForm, "accept-outcome": acceptOutcomeForm };
 
-async function boot() {
-  const session = await client.bootstrap();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => refresh() });
-  $("#systemWorkActor").textContent = `Signed in as ${session.actor?.display || session.actor?.slug || "partner"}`;
-  $("#reportProblemButton").onclick = reportForm;
-  $("#openWorkRequest").onsubmit = async (event) => { event.preventDefault();
-    try { await refresh(new FormData(event.currentTarget).get("human_ref")); alert(""); }
-    catch (error) { alert(refusal(error)); } };
+async function boot(ref = state.selectedRef) {
+  const selected = ref ? validateHumanRef(ref) : null;
+  state.selectedRef = selected;
+  if (!state.sessionReady) {
+    sessionRead ||= client.bootstrap().then((session) => {
+      state.sessionReady = true;
+      $("#systemWorkActor").textContent = `Signed in as ${session.actor?.display || "partner"}`;
+      $("#reportProblemButton").disabled = false;
+    }).catch((error) => {
+      $("#systemWorkActor").textContent = "Session unavailable";
+      state.readReady = false;
+      state.readFailed = true;
+      alert(error.status === 401 || error.status === 403 ? "Sign in again, then retry to read Work Requests." : "Session unavailable. Retry to read Work Requests.");
+      render();
+      throw error;
+    }).finally(() => { sessionRead = null; });
+    await sessionRead;
+  }
+  if (selected === state.selectedRef) await refresh(selected);
+}
+
+function bindControls() {
+  $("#reportProblemButton").onclick = () => {
+    if (state.sessionReady) reportForm();
+  };
+  $("#openWorkRequest").onsubmit = async (event) => {
+    event.preventDefault();
+    let ref;
+    try { ref = validateHumanRef(new FormData(event.currentTarget).get("human_ref")); }
+    catch (error) { alert(refusal(error)); return; }
+    await boot(ref).catch(() => {});
+  };
   $("#systemWorkStage").onclick = (event) => {
+    if (event.target.closest("[data-system-retry]")) { boot().catch(() => {}); return; }
     const open = event.target.closest("[data-open-work-request]");
     if (open) { refresh(open.dataset.openWorkRequest).catch((error) => alert(refusal(error))); return; }
     const button = event.target.closest("[data-system-action]");
     if (button && state.readReady) actionForms[button.dataset.systemAction]?.();
   };
   document.querySelectorAll("[data-system-cancel]").forEach((button) => { button.onclick = () => $("#systemWorkDialog").close(); });
-  const requested = new URLSearchParams(location.search).get("work_request");
-  if (requested) await refresh(requested);
-  else await refresh();
 }
 
-boot().catch((error) => alert(refusal(error)));
+bindControls();
+mountAutoRefresh({ document, window: globalThis.window, refresh: () => boot() });
+boot(new URLSearchParams(location.search).get("work_request")).catch((error) => {
+  if (!state.readFailed) alert(refusal(error));
+});
