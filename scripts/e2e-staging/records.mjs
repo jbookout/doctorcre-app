@@ -9,6 +9,7 @@ import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
+import { prepareBrowserControlProofs } from './control-proofs.mjs';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -77,6 +78,9 @@ export async function prepareStagingRecords(output, {
     names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Unlinked Prospect ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
+  const controlProofs = await prepareBrowserControlProofs(source, { signal });
+  plan.browser_control_proofs = controlProofs.proofs;
+  plan.browser_control_proof_preparation = controlProofs.preparation;
   plan.current_step = 'authentication';
   let api, removeAbort = () => {};
   const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
@@ -263,6 +267,7 @@ const httpReads = new Set([
   '/api/tours/feedback', '/api/tours/projection/candidates',
 ]);
 let builtStaticPaths;
+const builtStaticFiles = new Map();
 export async function assertStagingBrowserInventory() {
   builtStaticPaths ||= readFile(fileURLToPath(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url)), 'utf8')
     .then(text => {
@@ -273,6 +278,9 @@ export async function assertStagingBrowserInventory() {
           !['css/', 'js/'].every(prefix => manifest.files.some(row => row.path.startsWith(prefix))))
         throw new Error('Static manifest unavailable');
       const files = new Set(manifest.files.map(row => row.path));
+      for (const row of manifest.files) if (/^(js|css)\/.*\.(?:m?js|css)$/.test(row.path) &&
+          /^[a-f0-9]{64}$/.test(row.sha256 || '') && Number.isSafeInteger(row.bytes) && row.bytes >= 0)
+        builtStaticFiles.set('/' + row.path, { bytes: row.bytes, sha256: row.sha256 });
       const paths = new Set([...files].filter(path => /^(css|data|js|public-shell|tours)\//.test(path)).map(path => '/' + path));
       for (const [route, asset] of [
         ['/manifest.webmanifest', 'manifest.webmanifest'], ['/sw.js', 'public-shell/sw.js'],
@@ -344,10 +352,11 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
   return effect ? { operation: name, record_ids: recordIDs, arguments_sha256: digest(args), effect } : null;
 }
 
-function requirePlanCoverage(plan) {
+function requirePlanCoverage(plan, scope) {
   if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
       plan.state !== 'complete' || plan.inflight) policyFailure('fixture-provenance-missing');
-  const attempts = plan.browser_write_attempts ?? [], refusals = plan.browser_write_refusals ?? [];
+  const attempts = scope ? (plan.browser_write_attempts ?? []).filter(row => scope.fingerprints.has(row.fingerprint)) : plan.browser_write_attempts ?? [];
+  const refusals = scope ? scope.refusals : plan.browser_write_refusals ?? [];
   if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
       attempts.some(row => {
         if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
@@ -362,6 +371,10 @@ function requirePlanCoverage(plan) {
 export function stagingFixtureWriteGuard({ output, release, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined, persist = (path, value) => privateJSON(path, value, false, run) } = {}) {
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
+  const staticCache = new Map();
+  const cacheCeiling = Math.min(effectiveRunLimits(run).artifactBytes, 8 * 1024 * 1024);
+  let cachedBytes = 0;
+  run?.onStop(() => { staticCache.clear(); cachedBytes = 0; });
   let serial = Promise.resolve();
   const locked = work => {
     const next = serial.then(work);
@@ -387,46 +400,185 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
     return field && isUUID(id || '') && plan.receipts[step]?.[field] === id &&
       (reference === id || record === 'lead' && row.ref && reference === row.ref) ? id : null;
   };
-  return {
+  const proveOperation = (plan, name, args) => {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
+    if (browserReads.has(name)) return null;
+    const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
+    if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
+        !isUUID(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
+    const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
+    const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
+    if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
+        name === 'set-next-step' && args.next_date != null && (typeof args.next_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date)) ||
+        name === 'rename-doc-conversation' && (!version ||
+          !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
+          args.title !== undefined && !text(args.title) ||
+          ['pinned', 'archived'].some(key => args[key] !== undefined && typeof args[key] !== 'boolean')) ||
+        spec.record === 'lead' && (!version || args.expected_actor !== 'joe') ||
+        name === 'link-lead-client' && args.confirmed !== true)
+      policyFailure('operation-shape-unproved');
+    if (name === 'update-lead') {
+      const review = args.stage_review;
+      if (!args.fields || Array.isArray(args.fields) || Object.keys(args.fields).length !== 1 ||
+          !text(args.fields.stage) || !review || Array.isArray(review) ||
+          Object.keys(review).some(key => !['reason', 'evidence_ids', 'human_quote'].includes(key)) ||
+          !text(review.reason) || !Array.isArray(review.evidence_ids) || review.evidence_ids.length ||
+          review.human_quote !== undefined && !text(review.human_quote))
+        policyFailure('operation-shape-unproved');
+    }
+    const id = owned(plan, spec.record, args[spec.field]) ||
+      spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
+    if (!id) policyFailure('record-outside-fixtures');
+    const ids = new Set([id]);
+    if (name === 'link-lead-client') {
+      const client = owned(plan, 'client', args.client_id);
+      if (!client) policyFailure('reference-outside-fixtures');
+      ids.add(client);
+    }
+    // No nested additional record references may ride through review
+    // metadata. Text values are ordinary content, not inferred identity.
+    const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
+      val && typeof val === 'object' ? referencesOwned(val) :
+        key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
+    if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
+    const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
+      ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
+        ? args[key].trim() : args[key] ?? null]));
+    const fingerprint = digest([name, id, fingerprintValues]);
+    const attempts = plan.browser_write_attempts || [];
+    if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
+        attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
+      policyFailure('duplicate-attempt-requires-reconciliation');
+    if (attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
+        row.record_ids.some(record => ids.has(record))))
+      policyFailure('ambiguous-record-requires-reconciliation');
+    return { ids, fingerprint };
+  };
+  const retainRefusal = async (gap, scope) => {
+    refusals.push(gap);
+    scope?.refusals.push(gap);
+    try {
+      await locked(async () => {
+        const plan = planPath ? await readPrivateJSON(planPath) : null;
+        if (plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete') {
+          plan.browser_write_refusals ||= []; plan.browser_write_refusals.push(gap);
+          await persist(planPath, plan);
+        }
+      });
+    } catch {}
+  };
+  const guard = {
     refusals,
-    async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}) {
+    forContext() {
+      const scope = { refusals: [], pending: new Set(), fingerprints: new Set() };
+      return {
+        refusals: scope.refusals,
+        handle: (request, forward) => guard.handle(request, forward, scope),
+        assertCoverage: options => guard.assertCoverage(options, scope),
+        admitControl: control => guard.admitControl(control, scope),
+      };
+    },
+    async admitControl(control, scope) {
+      await guard.assertCoverage({}, scope);
+      // No effects are inferred from a selector, name, or app-provided attribute.
+      // Only an exact reviewed action in this source-pair-bound private plan is
+      // eligible. An empty effects list declares a reviewed local-only action.
+      const plan = await currentPlan();
+      try {
+        if (!control || typeof control.identity !== 'string' || !control.identity) policyFailure('control-scope-unproved');
+        if (control.disabled === true) return;
+        const proofs = plan.browser_control_proofs;
+        const matches = Array.isArray(proofs) ? proofs.filter(proof => proof?.identity === control.identity) : [];
+        if (matches.length !== 1 || !Array.isArray(matches[0].effects) ||
+            matches[0].release?.source_commit !== plan.release.source_commit ||
+            matches[0].release?.carr_source_commit !== plan.release.carr_source_commit) policyFailure('control-scope-unproved');
+        for (const effect of matches[0].effects) {
+          if (!effect || typeof effect !== 'object' || Array.isArray(effect) ||
+              Object.keys(effect).some(key => !['operation', 'arguments'].includes(key)))
+            policyFailure('control-scope-unproved');
+          proveOperation(plan, effect.operation, effect.arguments);
+        }
+      } catch (error) {
+        if (!error.fixturePolicy) throw error;
+        const skipped = { identity: control?.identity || null, reason: error.code,
+          press_attempted: false, handler_executions: 0, at: new Date().toISOString() };
+        await locked(async () => {
+          const latest = await currentPlan();
+          latest.browser_control_skips ||= [];
+          latest.browser_control_skips.push(skipped);
+          await persist(planPath, latest);
+        });
+        throw Object.assign(new Error('Reviewed control proof unavailable: ' + error.code),
+          { controlProofUnavailable: true, code: error.code });
+      }
+    },
+    async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}, scope) {
+      const outstanding = scope?.pending || pending, gaps = scope?.refusals || refusals;
       const budget = Math.min(effectiveRunLimits(run).settlementMs, Math.max(1, Number.isFinite(timeoutMs) ? timeoutMs : effectiveRunLimits(run).settlementMs));
       const deadline = Date.now() + budget;
-      while (pending.size) {
+      while (outstanding.size) {
         let timer;
         const expired = new Promise(resolve => { timer = setTimeout(() => resolve(true), Math.max(0, deadline - Date.now())); });
         let timedOut;
-        try { timedOut = await Promise.race([Promise.all([...pending].map(flight => flight.done)).then(() => false), expired]); }
+        try { timedOut = await Promise.race([Promise.all([...outstanding].map(flight => flight.done)).then(() => false), expired]); }
         finally { clearTimeout(timer); }
         if (timedOut) {
-          for (const flight of pending) flight.timedOut = true;
-          refusals.push({ operation: 'unknown-operation', reason: 'dispatch-settlement-timeout', forwarded: true, at: new Date().toISOString() });
+          for (const flight of outstanding) flight.timedOut = true;
+          const gap = { operation: 'unknown-operation', reason: 'dispatch-settlement-timeout', forwarded: true, at: new Date().toISOString() };
+          refusals.push(gap);
+          if (scope) scope.refusals.push(gap);
           policyFailure('dispatch-settlement-timeout');
         }
       }
-      if (refusals.length) policyFailure('write-coverage-incomplete');
-      if (planPath) requirePlanCoverage(await currentPlan());
-      if (pending.size) policyFailure('dispatch-settlement-pending');
+      if (gaps.length) policyFailure('write-coverage-incomplete');
+      if (planPath) requirePlanCoverage(await currentPlan(), scope);
+      if (outstanding.size) policyFailure('dispatch-settlement-pending');
     },
-    async handle(request, forward) {
+    async handle(request, forward, scope) {
       const flight = { timedOut: false };
       flight.done = new Promise(resolve => { flight.finish = resolve; });
       run?.check();
       pending.add(flight);
+      scope?.pending.add(flight);
       const dispatch = () => {
         if (!run) throw new RunLimitError('supervised-run-required');
         requireSupervisedRun(output, run);
         return run.http(forward);
       };
-      let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
-      const forwardRead = async () => {
+      let name = 'unknown-operation', token, dispatched = false, admittedRead = false, localCompanionRead = false;
+      const forwardRead = async (staticURL) => {
         admittedRead = true;
+        const asset = staticURL && request.method() === 'GET' && !staticURL.search && !staticURL.hash
+          ? builtStaticFiles.get(staticURL.pathname) : null;
+        const cacheKey = asset && JSON.stringify([release?.source_commit, release?.carr_source_commit, staticURL.pathname]);
+        const cached = cacheKey && staticCache.get(cacheKey);
+        if (cached) {
+          requireSupervisedRun(output, run);
+          return { cachedRead: true, status: () => 200, headers: () => ({ ...cached.headers }), body: async () => Buffer.from(cached.body) };
+        }
         const response = await dispatch();
         if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
         // Never give the browser a redirect to follow outside interception.
         // Known aliases also remain coverage gaps until directly addressed.
         if (response.status() >= 300 && response.status() < 400 && response.status() !== 304)
           policyFailure('read-redirect-unproved');
+        if (asset && response.status() === 200 && typeof response.headers === 'function' && typeof response.body === 'function' &&
+            asset.bytes <= cacheCeiling - cachedBytes) {
+          const headers = response.headers();
+          if (!Object.keys(headers).some(key => key.toLowerCase() === 'set-cookie')) {
+            const body = await response.body();
+            run.check();
+            // Replay only exact built bytes fetched under this source pair.
+            // Documents, APIs, fonts, query variants and mismatches stay live.
+            if (body.length === asset.bytes && createHash('sha256').update(body).digest('hex') === asset.sha256 &&
+                !staticCache.has(cacheKey) && body.length <= cacheCeiling - cachedBytes) {
+              const decodedHeaders = Object.fromEntries(Object.entries(headers).filter(([key]) =>
+                !['content-encoding', 'content-length'].includes(key.toLowerCase())));
+              staticCache.set(cacheKey, { headers: decodedHeaders, body: Buffer.from(body) });
+              cachedBytes += body.length;
+            }
+          }
+        }
         return response;
       };
       try {
@@ -434,6 +586,12 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         if (url.username || url.password) policyFailure('origin-unproved');
         const read = ['GET', 'HEAD'].includes(request.method());
         if (url.origin !== STAGING_ORIGIN) {
+          // The app probes its optional local companion on every boot. Refuse
+          // this exact read without treating companion absence as a staging write.
+          if (request.method() === 'GET' && url.href === 'http://127.0.0.1:4682/api/state') {
+            localCompanionRead = true;
+            throw Object.assign(new Error('Local companion read blocked'), { code: 'local-companion-read-blocked' });
+          }
           const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
             url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
           if (font) return await forwardRead();
@@ -445,7 +603,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           if (url.pathname.startsWith('/auth/') && url.pathname !== stagingAuth.session.path)
             policyFailure('authentication-mutation-unproved');
           if (!await knownBrowserRead(url)) policyFailure('read-path-unproved');
-          return await forwardRead();
+          return await forwardRead(url);
         }
         let body;
         try { body = request.postDataJSON(); } catch {}
@@ -456,63 +614,17 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         const args = body.params?.arguments;
         if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
         if (browserReads.has(name)) return await forwardRead();
-        const spec = Object.hasOwn(fixtureWrites, name) ? fixtureWrites[name] : null;
-        if (!spec || Object.keys(args).some(key => !spec.keys.includes(key)) ||
-            !isUUID(args.idempotency_key || '')) policyFailure('operation-scope-unproved');
-        const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4000;
-        const version = Number.isSafeInteger(args.base_version) && args.base_version > 0;
-        if (['set-next-step', 'add-deal-note'].includes(name) && !text(args.text) ||
-            name === 'set-next-step' && args.next_date != null && (typeof args.next_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(args.next_date)) ||
-            name === 'rename-doc-conversation' && (!version ||
-              !['title', 'pinned', 'archived'].some(key => Object.hasOwn(args, key)) ||
-              args.title !== undefined && !text(args.title) ||
-              ['pinned', 'archived'].some(key => args[key] !== undefined && typeof args[key] !== 'boolean')) ||
-            spec.record === 'lead' && (!version || args.expected_actor !== 'joe') ||
-            name === 'link-lead-client' && args.confirmed !== true)
-          policyFailure('operation-shape-unproved');
-        if (name === 'update-lead') {
-          const review = args.stage_review;
-          if (!args.fields || Array.isArray(args.fields) || Object.keys(args.fields).length !== 1 ||
-              !text(args.fields.stage) || !review || Array.isArray(review) ||
-              Object.keys(review).some(key => !['reason', 'evidence_ids', 'human_quote'].includes(key)) ||
-              !text(review.reason) || !Array.isArray(review.evidence_ids) || review.evidence_ids.length ||
-              review.human_quote !== undefined && !text(review.human_quote))
-            policyFailure('operation-shape-unproved');
-        }
         if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
           policyFailure('operation-shape-unproved');
         token = await locked(async () => {
           const plan = await currentPlan();
-          const id = owned(plan, spec.record, args[spec.field]) ||
-            spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
-          if (!id) policyFailure('record-outside-fixtures');
-          const ids = new Set([id]);
-          if (name === 'link-lead-client') {
-            const client = owned(plan, 'client', args.client_id);
-            if (!client) policyFailure('reference-outside-fixtures');
-            ids.add(client);
-          }
-          // No nested additional record references may ride through review
-          // metadata. Text values are ordinary content, not inferred identity.
-          const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
-            val && typeof val === 'object' ? referencesOwned(val) :
-              key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
-          if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
-          const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
-            ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
-              ? args[key].trim() : args[key] ?? null]));
-          const fingerprint = digest([name, id, fingerprintValues]);
+          const { ids, fingerprint } = proveOperation(plan, name, args);
           plan.browser_write_attempts ||= [];
-          if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
-              plan.browser_write_attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
-            policyFailure('duplicate-attempt-requires-reconciliation');
-          if (plan.browser_write_attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
-              row.record_ids.some(record => ids.has(record))))
-            policyFailure('ambiguous-record-requires-reconciliation');
           const intent = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
             operation: name, record_ids: [...ids], arguments: structuredClone(args),
             state: 'inflight', dispatched_outcome: 'unknown', attempted_at: new Date().toISOString() };
           plan.browser_write_attempts.push(intent);
+          scope?.fingerprints.add(fingerprint);
           await persist(planPath, plan); // MUST succeed before forward().
           return { run: plan.run, fingerprint };
         });
@@ -546,26 +658,18 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         });
         return response;
       } catch (error) {
+        if (localCompanionRead) throw error;
         if (admittedRead && !error.fixturePolicy) throw error;
         const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
           forwarded: dispatched || admittedRead, at: new Date().toISOString() };
-        refusals.push(gap);
-        // Refusal metadata contains no URL, arguments, record IDs or payload.
-        // Failure to retain it never permits dispatch or clears an intent.
-        try {
-          await locked(async () => {
-            const plan = planPath ? await readPrivateJSON(planPath) : null;
-            if (plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete') {
-              plan.browser_write_refusals ||= []; plan.browser_write_refusals.push(gap);
-              await persist(planPath, plan);
-            }
-          });
-        } catch {}
+        // Failure to retain a refusal never permits dispatch or clears an intent.
+        await retainRefusal(gap, scope);
         policyFailure(gap.reason);
-      } finally { pending.delete(flight); flight.finish(); }
+      } finally { pending.delete(flight); scope?.pending.delete(flight); flight.finish(); }
     },
   };
+  return guard;
 }
 
 export async function assertStagingWriteCoverage(output) {

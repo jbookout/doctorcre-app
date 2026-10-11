@@ -1,0 +1,140 @@
+{
+  "schema": "doctorcre-staging-control-proofs.v1",
+  "reviewed_source_commit": "a9f1191d4afc7bf0cf3a3941d58b166b241edc8a",
+  "application_source_sha256": "08d5d2b9b00a3a8dac7a270ba2f9aeff2f3fd9f7286cbaf12b254ee11f7230d9",
+  "carr_source_commit": "c06bdf2788fb69daefb59364ea4fd798fa94f9a4",
+  "controls": [
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief\"]]]|/|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/",
+        "dialog_title": "Morning brief",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Joe\"]]]|/|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/",
+        "dialog_title": "Morning brief · Joe",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Dell\"]]]|/|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/",
+        "dialog_title": "Morning brief · Dell",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief\"]]]|/control-room|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/control-room",
+        "dialog_title": "Morning brief",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Joe\"]]]|/control-room|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/control-room",
+        "dialog_title": "Morning brief · Joe",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Dell\"]]]|/control-room|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/control-room",
+        "dialog_title": "Morning brief · Dell",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief\"]]]|/deals|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/deals",
+        "dialog_title": "Morning brief",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Joe\"]]]|/deals|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/deals",
+        "dialog_title": "Morning brief · Joe",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Dell\"]]]|/deals|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/deals",
+        "dialog_title": "Morning brief · Dell",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief\"]]]|/leads|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/leads",
+        "dialog_title": "Morning brief",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Joe\"]]]|/leads|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/leads",
+        "dialog_title": "Morning brief · Joe",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    },
+    {
+      "identity": "[\"#docMorningBrief > header:nth-of-type(1)\",[\"#morningClose\"],[],[[\"#docMorningBrief\",\"Morning brief · Dell\"]]]|/leads|#morningClose|button|||false|[\"Dismiss morning brief\",\"|||\",null]",
+      "effects": [],
+      "review": {
+        "policy": "dismiss-morning-brief.v1",
+        "path": "/leads",
+        "dialog_title": "Morning brief · Dell",
+        "source": "js/morning-brief.js",
+        "handler": "close; stop speech, close dialog and restore focus; no network or business mutation"
+      }
+    }
+  ]
+}

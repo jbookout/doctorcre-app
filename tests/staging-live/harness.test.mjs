@@ -688,6 +688,39 @@ test('checkpoint failure stops new presses and reports a bounded infrastructure 
   assert.ok(!JSON.stringify(result).includes('private credential canary'));
 });
 
+test('an unproved morning dismiss retains an ERROR but does not stop later controls on the screen', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  for (const path of ['/', '/control-room', '/deals']) {
+    const captured = [], handlers = [];
+    const result = await sweepScreen({ screen: { path, name: 'Synthetic morning brief', surface: 'app' }, target: 'desktop', waitMs: 20,
+      freshPage: async () => {
+        const page = await browser.newPage();
+        await page.setContent('<main><button id="morningClose" onclick="this.hidden=true">Dismiss morning brief</button><button id="later" onclick="document.querySelector(\'output\').textContent=\'Pressed\'">Later control</button><output></output></main>');
+        await page.exposeFunction('recordHandler', id => handlers.push(id));
+        await page.evaluate(() => document.querySelectorAll('button').forEach(button => button.addEventListener('click', () => window.recordHandler(button.id))));
+        return page;
+      },
+      admit: async (_page, control) => {
+        if (control.selector === '#morningClose') throw new SweepFailure('fixture-scope', 'write-scope-unproved');
+      },
+      evidence: async (_page, row) => {
+        captured.push(row.selector);
+        return 'synthetic.png';
+      },
+    });
+    assert.deepEqual(captured, ['#later']);
+    assert.deepEqual(handlers, ['later']);
+    assert.equal(result.failure, null);
+    assert.equal(result.controls[0].status, 'ERROR');
+    assert.deepEqual(result.controls[0].failure, { phase: 'fixture-scope', code: 'write-scope-unproved' });
+    assert.equal(result.controls[1].status, 'OBSERVED');
+    const run = createSweepRun({ targets: [{ name: 'desktop', surface: 'app' }], routedScreens: [{ path, name: 'Synthetic morning brief', surface: 'app' }] });
+    run.record(result);
+    assert.equal(run.verdict([]).completed, false, 'continuing traversal cannot erase the unproved control');
+  }
+});
+
 test('exhausted duplicate discovery states do not reopen and replay tested controls', async t => {
   const browser = await chromium.launch();
   t.after(() => browser.close());

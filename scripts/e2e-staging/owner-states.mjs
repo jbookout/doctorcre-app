@@ -1,10 +1,10 @@
-import { sweepScreen } from './controls.mjs';
+import { sweepScreen, ControlSkip } from './controls.mjs';
 import { readCalendarContext, runCalendarCase } from './calendar-coverage.mjs';
 import { recordCalendarState } from './state-plan.mjs';
 
 // Owners execute each pending obligation once per invocation. Failed owners
 // remain pending for explicit resume; newly registered destinations are included.
-export async function sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence, persist, sweep = sweepScreen }) {
+export async function sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence, admit, persist, sweep = sweepScreen }) {
   const visited = new Set(), inspected = new Set();
   while (true) {
     const entry = run.pendingStates().find(row => !visited.has(row.key));
@@ -35,18 +35,21 @@ export async function sweepOwnerStates({ run, targets, routedScreens, freshPageF
       inspected.add(target.name);
     }
     if (entry.spec.kind === 'calendar-operation') {
-      run.recordState(entry.key, await runCalendarCase({ spec: entry.spec, freshPage, evidence }));
+      run.recordState(entry.key, await runCalendarCase({ spec: entry.spec, freshPage, evidence, admit }));
       await persist();
     } else {
       let result;
       try {
         result = await sweep({ freshPage, screen, target: target.name, identityScope: entry.key, prior: entry.result,
-          routedPaths: routedScreens.map(row => row.path), evidence, checkpoint: async partial => {
+          routedPaths: routedScreens.map(row => row.path), evidence, admit, checkpoint: async partial => {
             run.recordState(entry.key, partial);
             await persist();
           } });
-      } catch {
-        result = { ...(run.pendingStates().find(row => row.key === entry.key)?.result || { ...screen, target: target.name, reached: false, controls: [], state_scope: entry.key }),
+      } catch (error) {
+        if (error instanceof ControlSkip) {
+          result = { ...screen, target: target.name, state_scope: entry.key, reached: false, controls: [], status: 'SKIPPED',
+            reason: error.reason, execution: { press_attempted: false, handler_executions: 0 } };
+        } else result = { ...(run.pendingStates().find(row => row.key === entry.key)?.result || { ...screen, target: target.name, reached: false, controls: [], state_scope: entry.key }),
           failure: { phase: 'owner-state', code: 'unexpected-owner-sweep-failure', openers: [] } };
       }
       run.recordState(entry.key, result);

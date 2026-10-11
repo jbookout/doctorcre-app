@@ -107,8 +107,8 @@ test('navigation and intercepted fetches use the selected HTTP timeout and retry
     const factory = createFreshPageFactory({ browser: { newContext: async () => context }, installGuard: async () => {}, releaseProbe: async () => release });
     await factory.freshPage({ screen: { path: '/' }, release }); await factory.dispose();
     let handler;
-    await installStagingGuard({ route: async (_, value) => { handler = value; }, addInitScript: async () => {} }, { handle: (_, forward) => forward() });
-    await handler({ request: () => ({}), fetch: async options => { observed.push(options.timeout); assert.equal(options.maxRetries, 0); }, fulfill: async () => {}, abort: async () => assert.fail('unexpected route refusal') });
+    await installStagingGuard({ route: async (_, value) => { handler = value; }, addInitScript: async () => {} }, { forContext: () => ({ handle: (_, forward) => forward() }) });
+    await handler({ request: () => ({}), fetch: async options => { observed.push(options.timeout); assert.equal(options.maxRetries, 0); return { status: () => 200 }; }, fulfill: async () => {}, abort: async () => assert.fail('unexpected route refusal') });
     await boundedRequestContext({ get: async (_, options) => { observed.push(options.timeout); assert.equal(options.maxRetries, 0); }, dispose() {} }, run).get('/');
     assert.deepEqual(observed, [123, 123, 123, 123]);
   `);

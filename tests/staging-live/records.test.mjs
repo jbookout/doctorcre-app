@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareStagingRecords as createStagingRecords, stagingFixtureWriteGuard as createFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
-import { stagingAuth } from '../../scripts/e2e-staging/auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 
@@ -32,68 +31,7 @@ function stagingFixtureWriteGuard(options = {}) {
   return createFixtureWriteGuard({ ...options, run: fixtureBudget(root) });
 }
 
-const fixture = 'fc08d2f4-a951-5679-9f34-40d0f4278842';
-const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
-const reply = body => ({ ok: () => true, status: () => 200, json: async () => body });
-const envelope = body => reply({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
-
-function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = false, beforeReadback } = {}) {
-  const calls = [], rows = { deals: new Map() };
-  let disposed = 0;
-  const id = number => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
-  const api = {
-    async get(path, options) {
-      calls.push({ path, options });
-      if (path === stagingAuth.session.path) return reply({ actor: { slug: contract.session.actor_slug }, e2e_principal: contract.session.e2e_principal, csrf_token: 'private-csrf-canary' });
-      if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
-      if (path.startsWith('/api/tours/detail?')) return reply({ data: rows.tour });
-      assert.fail(`Unexpected read ${path}`);
-    },
-    async post(path, options) {
-      const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
-      assert.equal((await stat(join(output, 'staging-records-plan.json'))).mode & 0o777, 0o600);
-      calls.push({ path, options });
-      const { name, arguments: args } = path === '/mcp' ? options.data.params : { name: 'tour', arguments: options.data };
-      if (name !== 'get-deal-room' && name !== 'read-deal-reconciliation' && name !== 'lead-board' && name !== 'read-doc-conversation' && name !== 'read-invoice-tracker') {
-        assert.ok(Object.values(plan.keys).includes(args.idempotency_key), 'write key is durable before request');
-        assert.deepEqual(plan.inflight.arguments, args, 'exact mutation intent is durable before request');
-      }
-      if (name === unknown) throw new Error('private-provider-canary request secret');
-      if (name === refuse) return reply({ result: { isError: true, content: [{ type: 'text', text: '{"error":"database_refused_the_statement","fault":"private-provider-canary"}' }] } });
-      if (name === 'add-party') {
-        if (args.name === 'Synthetic Staging Fixture') return envelope({ needs_confirm: true, candidates: [{ id: wrongParty ? id(99) : fixture, name: 'Synthetic Staging Fixture' }] });
-        rows.leadParty = { id: id(6), name: args.name };
-        return envelope({ ok: true, party_id: rows.leadParty.id });
-      }
-      if (name === 'new-client') { rows.client = id(1); return envelope({ ok: true, client_id: rows.client, ref: 'C-001' }); }
-      if (name === 'new-deal') { const deal_id = id(rows.deals.size + 2); rows.deals.set(deal_id, { deal_id, id: deal_id, name: args.name, phase: 'pending', owner: null, lane: 'territory', base_version: 1, operating_state: 'active' }); return envelope({ ok: true, deal_id }); }
-      if (name === 'get-deal-room') {
-        const row = rows.deals.get(args.deal);
-        const error = rows.roomError || (row?.phase === 'closed' ? { error: 'not_found', table: 'deal', id: args.deal } : null);
-        if (error) return reply({ result: { isError: true, content: [{ type: 'text', text: JSON.stringify(error) }] } });
-        return envelope(row);
-      }
-      if (name === 'read-deal-reconciliation') {
-        if (rows.reconciliationError) return reply({ result: { isError: true, content: [{ type: 'text', text: JSON.stringify(rows.reconciliationError) }] } });
-        const row = rows.deals.get(args.deal);
-        return envelope(row && { id: row.id, name: row.name, phase: row.phase, base_version: row.base_version, lane: row.lane });
-      }
-      if (name === 'set-lead') { const row = rows.deals.get(args.deal); assert.equal(args.base_version, row.base_version); row.owner = 'joe'; row.base_version++; return envelope({ ok: true }); }
-      if (name === 'update-deal') { const row = rows.deals.get(args.deal); assert.equal(args.base_version, row.base_version); row.phase = args.fields.phase; row.base_version++; return envelope({ ok: true }); }
-      if (name === 'new-lead') { rows.lead = { id: id(4), stage: 'new', name: rows.leadParty?.name || 'Synthetic Staging Fixture', owner: 'joe', party_id: args.party_id, is_client: args.party_id === fixture, linked_client: linkedLead, is_deal: false, suppressed: false }; return envelope({ ok: true, lead_id: rows.lead.id, ref: 'L-001' }); }
-      if (name === 'lead-board') return envelope({ detail: rows.lead });
-      if (name === 'create-doc-conversation') { rows.conversation = { id: args.idempotency_key, title: args.title, visibility: 'private', archived_at: null }; return envelope({ ok: true, conversation_id: rows.conversation.id }); }
-      if (name === 'read-doc-conversation') return envelope({ identity: rows.conversation });
-      if (name === 'read-invoice-tracker') return envelope({ entries: [...rows.deals.values()].filter(row => row.phase === 'closed') });
-      if (name === 'tour') { rows.tour = { id: id(5), name: args.tour_name, status: 'draft', subject_type: args.subject_type, subject_id: args.subject_id }; return reply({ data: { tour_id: rows.tour.id } }); }
-      assert.fail(`Unexpected command ${name}`);
-    },
-    async dispose() { disposed++; },
-  };
-  const session = async () => ({ release, state: { cookies: [{ name: contract.session.cookie, value: 'private-cookie-canary', secure: true, httpOnly: true }] } });
-  const requestFactory = async options => { assert.equal(options.baseURL, STAGING_ORIGIN); return api; };
-  return { session, requestFactory, calls, rows, disposed: () => disposed };
-}
+import { fixture, release, fakeAPI, reply, envelope } from './record-fixture.mjs';
 
 test('record setup rejects production origins before authentication, files or requests', async () => {
   for (const origin of ['https://app.doctorcre.com', 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev.evil.test', 'http://doctorcre-app-staging.joe-bookout-carr-us.workers.dev', 'https://user:canary@doctorcre-app-staging.joe-bookout-carr-us.workers.dev']) {
@@ -462,6 +400,98 @@ function operationReceipt(name, args, primary = args.deal || args.conversation_i
 }
 const nextStep = (f, key = 1, text = 'Fictional next step') => ({
   deal: f.setup.records.deal.id, text, next_date: null, idempotency_key: browserKey(key),
+});
+
+test('the boot-time local companion GET is blocked without poisoning staging write coverage', async t => {
+  const f = await browserFixtures(t);
+  const request = { url: () => 'http://127.0.0.1:4682/api/state', method: () => 'GET' };
+  await assert.rejects(f.guard.handle(request, () => assert.fail('local companion must never be contacted')),
+    error => error.code === 'local-companion-read-blocked' && !error.fixturePolicy);
+  assert.deepEqual(f.guard.refusals, []);
+  await f.guard.assertCoverage();
+  assert.equal((await f.read()).browser_write_refusals, undefined);
+  for (const change of [
+    { method: () => 'POST' }, { url: () => 'http://127.0.0.1:4682/api/state?token=private-canary' },
+    { url: () => 'http://127.0.0.1:4682/api/start' }, { url: () => 'http://localhost:4682/api/state' },
+  ]) await assert.rejects(f.guard.handle({ ...request, ...change }, () => assert.fail('unproved request must stay blocked')),
+    error => error.code === 'origin-unproved' && error.fixturePolicy);
+  assert.equal(f.guard.refusals.length, 4);
+  await assert.rejects(f.guard.assertCoverage(), /write-coverage-incomplete/);
+});
+
+test('two measurement contexts per screen reuse verified static bytes while every staging fetch stays counted', async t => {
+  const f = await browserFixtures(t);
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  const assets = manifest.files.filter(row => /^(js|css)\//.test(row.path)).slice(0, 124);
+  assert.equal(assets.length, 124);
+  const data = new Map(await Promise.all(assets.map(async row => [row.path,
+    await readFile(new URL('../../dist/site/' + row.path, import.meta.url))])));
+  const load = async guard => {
+    let forwarded = 0;
+    for (let context = 0; context < 2; context++) {
+      const scopedGuard = typeof guard === 'function' ? guard() : guard;
+      for (const path of ['/', ...assets.map(row => '/' + row.path)]) {
+        const bytes = data.get(path.slice(1)) || Buffer.from('<main>Fresh authenticated document</main>');
+        const response = await scopedGuard.handle(browserRequest('unused', {}, { method: 'GET', path }), async () => {
+          forwarded++;
+          return { status: () => 200, headers: () => ({ 'content-type': 'text/plain', 'cache-control': 'no-cache' }), body: async () => bytes };
+        });
+        assert.deepEqual(await response.body(), bytes);
+      }
+    }
+    return forwarded;
+  };
+  const before = await load(() => stagingFixtureWriteGuard({ output: f.output, release }));
+  assert.equal(before, 250, 'cold per-screen inventory plus measurement contexts');
+  const baseline = fixtureBudget(f.output).snapshot().httpRequests;
+  const first = await load(f.guard), after = await load(f.guard);
+  assert.equal(first, 126, '124 verified assets fetched once, plus two live documents');
+  assert.equal(after, 2, 'warm screens still fetch both authenticated documents');
+  assert.equal(fixtureBudget(f.output).snapshot().httpRequests - baseline, 128);
+  t.diagnostic(`Requests per synthetic screen: uncached ${before}, initial verified-cache screen ${first}, warm ${after}`);
+});
+
+test('static replay refuses mismatched bytes, cookie responses, errors, HEAD and query variants', async t => {
+  const f = await browserFixtures(t);
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  const asset = manifest.files.find(row => row.path.startsWith('js/') && row.path.endsWith('.js'));
+  const bytes = await readFile(new URL('../../dist/site/' + asset.path, import.meta.url));
+  for (const scenario of ['mismatch', 'cookie', 'error', 'head', 'query']) {
+    const guard = stagingFixtureWriteGuard({ output: f.output, release });
+    let forwarded = 0;
+    for (let i = 0; i < 2; i++) await guard.handle(browserRequest('unused', {}, {
+      method: scenario === 'head' ? 'HEAD' : 'GET', path: '/' + asset.path + (scenario === 'query' ? '?v=other' : ''),
+    }), async () => {
+      forwarded++;
+      return { status: () => scenario === 'error' ? 503 : 200,
+        headers: () => scenario === 'cookie' ? { 'Set-Cookie': 'private-cookie-canary' } : {},
+        body: async () => scenario === 'mismatch' ? Buffer.from('different staging source bytes') : bytes };
+    });
+    assert.equal(forwarded, 2, scenario);
+  }
+});
+
+test('browser interception fulfills verified replay bytes and a stopped run cannot replay an asset', async t => {
+  const { installStagingGuard } = await import('../../scripts/e2e-staging/engine.mjs');
+  const f = await browserFixtures(t);
+  const manifest = JSON.parse(await readFile(new URL('../../dist/doctorcre-app.manifest.json', import.meta.url), 'utf8'));
+  const asset = manifest.files.find(row => row.path.startsWith('css/'));
+  const bytes = await readFile(new URL('../../dist/site/' + asset.path, import.meta.url));
+  const request = browserRequest('unused', {}, { method: 'GET', path: '/' + asset.path });
+  let intercept, forwarded = 0;
+  const fulfilled = [];
+  await installStagingGuard({ route: async (_pattern, handle) => { intercept = handle; }, addInitScript: async () => {} }, f.guard);
+  const route = { request: () => request, abort: async () => assert.fail('verified assets should be delivered'),
+    fetch: async () => { forwarded++; return { status: () => 200,
+      headers: () => ({ 'content-type': 'text/css', 'content-encoding': 'br', 'content-length': '1' }), body: async () => bytes }; },
+    fulfill: async response => fulfilled.push(response),
+  };
+  await intercept(route); await intercept(route);
+  assert.equal(forwarded, 1);
+  assert.ok(fulfilled[0].response);
+  assert.deepEqual(fulfilled[1], { status: 200, headers: { 'content-type': 'text/css' }, body: bytes });
+  fixtureBudget(f.output).stop('stop-signal');
+  await assert.rejects(f.guard.handle(request, () => assert.fail('stopped asset must not fetch')), /stop-signal/);
 });
 
 test('browser writes prove creation ownership and retain exact intent before a single dispatch', async t => {
