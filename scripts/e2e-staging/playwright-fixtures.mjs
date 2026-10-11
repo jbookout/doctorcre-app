@@ -1,18 +1,17 @@
-import { currentRun, requireSupervisedRun, effectiveRunLimits } from './run-limits.mjs';
+import { currentRun, requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test as base } from 'playwright/test';
 
-import { SweepFailure } from './controls.mjs';
-import { installStagingGuard } from './engine.mjs';
+import { SweepFailure, ControlSkip } from './controls.mjs';
+import { admitStagingControl, installStagingGuard } from './engine.mjs';
 import { prepareCalendarRecord } from './calendar-coverage.mjs';
 import { targets } from './screens.mjs';
 import { stagingRelease, stagingSession, SessionPreflightFailure, STAGING_ORIGIN } from './session.mjs';
 
 const sameRelease = (left, right) => left?.source_commit === right?.source_commit && left?.carr_source_commit === right?.carr_source_commit;
 
-export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, installGuard = installStagingGuard, releaseProbe }) {
-  const run = currentRun();
+export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, installGuard = installStagingGuard, releaseProbe, run = currentRun() }) {
   const contexts = new Set();
   const guards = new Set();
   const freshPage = async ({ target, screen, release, fixtureGuard, path = screen.path, spec }) => {
@@ -36,10 +35,15 @@ export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, insta
       if (!response?.ok() || page.url().includes('/auth/') || new URL(page.url()).origin !== origin) throw new SweepFailure('navigation', 'screen-response-refused');
       phase = 'load'; code = 'network-idle-failed';
       await page.waitForLoadState('networkidle', { timeout: effectiveRunLimits().httpTimeoutMs });
-      if (spec?.kind === 'calendar-record') await prepareCalendarRecord(page, spec);
+      if (spec?.kind === 'calendar-record') await prepareCalendarRecord(page, spec, async (page, control) => {
+        try { await admitStagingControl(page, control); }
+        catch (error) { if (error.controlProofUnavailable) throw new ControlSkip(error.code); throw error; }
+      });
       return page;
     } catch (error) {
       if (context) await context.close().catch(() => {});
+      run?.check();
+      if (error instanceof RunLimitError || error instanceof ControlSkip) throw error;
       throw error instanceof SweepFailure ? error : new SweepFailure(phase, error instanceof SessionPreflightFailure ? error.code : code);
     }
   };

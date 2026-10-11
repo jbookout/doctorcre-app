@@ -1,3 +1,4 @@
+import { inventory, ControlSkip } from './controls.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { canonicalIdentity } from './traversal.mjs';
 import { calendarURL, calendarState, calendarCases, recordCalendarState } from './state-plan.mjs';
@@ -87,23 +88,34 @@ export async function assertCalendarAction(page, action, beforeURL) {
   return { action: type, before, after: rendered.state, assertions_passed: true, ...(record ? { record } : {}) };
 }
 
-async function chooseEntry(page, key, selector = '.cal-chip') {
-  const matches = await page.locator(selector).evaluateAll((nodes, wanted) => nodes.flatMap((node, index) => node.dataset.entry === wanted ? [index] : []), key);
-  requireCalendar(matches.length === 1, 'entry-control-not-unique');
-  await page.locator(selector).nth(matches[0]).click();
+async function admitLocator(page, locator, admit) {
+  if (!admit) return;
+  const rows = await inventory(page);
+  const matches = await locator.evaluateAll((nodes, controls) => controls.filter(row =>
+    nodes.includes(document.querySelector(row.selector))), rows);
+  if (matches.length !== 1) throw new ControlSkip('control-not-unique');
+  await admit(page, matches[0]);
 }
 
-export async function prepareCalendarRecord(page, spec) {
+async function chooseEntry(page, key, selector = '.cal-chip', admit) {
+  const matches = await page.locator(selector).evaluateAll((nodes, wanted) => nodes.flatMap((node, index) => node.dataset.entry === wanted ? [index] : []), key);
+  requireCalendar(matches.length === 1, 'entry-control-not-unique');
+  const locator = page.locator(selector).nth(matches[0]);
+  await admitLocator(page, locator, admit);
+  await locator.click();
+}
+
+export async function prepareCalendarRecord(page, spec, admit) {
   const data = await readCalendarContext(page);
   const entries = data.entries.filter(entry => recordCalendarState(entry).entry_binding === spec.entry_binding);
   requireCalendar(entries.length === 1, 'record-state-changed');
-  await chooseEntry(page, entries[0].key);
+  await chooseEntry(page, entries[0].key, '.cal-chip', admit);
   const selected = await readCalendarContext(page);
   requireCalendar(selected.selected?.kind === 'deal' && selected.selected.id === entries[0].deal_id && selected.focusEntry === entries[0].key, 'record-selection-incorrect');
   return { binding: spec.entry_binding, kind: 'deal', record_binding: canonicalIdentity(entries[0].deal_id) };
 }
 
-export async function runCalendarCase({ spec, freshPage, evidence }) {
+export async function runCalendarCase({ spec, freshPage, evidence, admit }) {
   const item = calendarCases.find(row => row.id === spec.case);
   requireCalendar(item, 'case-unknown');
   let page, steps = [], input = item.input;
@@ -131,12 +143,12 @@ export async function runCalendarCase({ spec, freshPage, evidence }) {
     }
     const start = context.sequence;
     for (const step of item.steps) {
-      if (step.click) await page.locator(step.click).click();
-      else if (step.key) { await page.locator('.cal-day-open[data-select-day="' + step.day + '"]').focus(); await page.keyboard.press(step.key); }
+      if (step.click) { const locator = page.locator(step.click); await admitLocator(page, locator, admit); await locator.click(); }
+      else if (step.key) { const locator = page.locator('.cal-day-open[data-select-day="' + step.day + '"]'); await admitLocator(page, locator, admit); await locator.focus(); await page.keyboard.press(step.key); }
       else if (step.history === 'back') await page.goBack();
       else if (step.history === 'forward') await page.goForward();
-      else if (step.select === 'event' || step.select === 'agenda') await chooseEntry(page, chosen.key, step.select === 'agenda' ? '.cal-agenda-item' : '.cal-chip');
-      else if (step.select) await page.locator('.cal-day-open[data-select-day="' + chosen.day + '"]').click();
+      else if (step.select === 'event' || step.select === 'agenda') await chooseEntry(page, chosen.key, step.select === 'agenda' ? '.cal-agenda-item' : '.cal-chip', admit);
+      else if (step.select) { const locator = page.locator('.cal-day-open[data-select-day="' + chosen.day + '"]'); await admitLocator(page, locator, admit); await locator.click(); }
       steps.push({ ...step });
     }
     if (select) {
@@ -154,6 +166,7 @@ export async function runCalendarCase({ spec, freshPage, evidence }) {
     if (evidence) row.evidence_path = await evidence(page, row);
     return row;
   } catch (error) {
+    if (error instanceof ControlSkip) return { spec, status: 'SKIPPED', steps, reason: error.reason, execution: { press_attempted: false, handler_executions: 0 } };
     const result = { spec, status: 'failed', steps, failure: { phase: 'calendar-coverage', code: error instanceof CalendarCoverageFailure ? error.code : 'calendar-case-failed' } };
     if (page && evidence) {
       try { result.evidence_path = await evidence(page, result); }

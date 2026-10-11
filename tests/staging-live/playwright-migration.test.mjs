@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { openRun, RunLimitError } from '../../scripts/e2e-staging/run-limits.mjs';
 import { admitFixtureRun } from './fixture-admission.mjs';
 
 import { targets } from '../../scripts/e2e-staging/screens.mjs';
@@ -166,4 +166,28 @@ test('late owner context overrides the current project viewport', async () => {
   await fixture.freshPage({ target: targets[1], screen: { path: '/deals' }, release });
   assert.deepEqual(options, { viewport: targets[1].viewport });
   await fixture.dispose();
+});
+
+test('a request ceiling during navigation remains a run limit, including an aborted browser response', async t => {
+  const { createFreshPageFactory } = await import('../../scripts/e2e-staging/playwright-fixtures.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'staging-navigation-limit-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const direct of [true, false]) {
+    const run = openRun(join(root, String(direct)), { events: null, runId: 'synthetic-navigation-limit' });
+    let closed = 0;
+    const release = { source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) };
+    const factory = createFreshPageFactory({ run, releaseProbe: async () => release, installGuard: async () => {},
+      browser: { newContext: async () => ({ close: async () => { closed++; }, newPage: async () => ({
+        goto: async () => {
+          run.stop('http-request-limit');
+          throw direct ? new RunLimitError('http-request-limit') : new Error('net::ERR_ABORTED private-provider-canary');
+        },
+      }) }) },
+    });
+    try {
+      await assert.rejects(factory.freshPage({ screen: { path: '/leads' }, release }),
+        error => error instanceof RunLimitError && error.code === 'http-request-limit');
+      assert.ok(closed >= 1, 'the aborted measurement context is closed');
+    } finally { await factory.dispose(); run.dispose(); }
+  }
 });

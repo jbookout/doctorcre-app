@@ -10,6 +10,10 @@ import { assertCalendarAction } from './calendar-coverage.mjs';
 export const CONTROL_SELECTOR = 'button,input:not([type="hidden"]):not([readonly]),textarea:not([readonly]),a[href],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="switch"],[role="checkbox"],input[type="checkbox"],input[type="radio"],[aria-pressed],[aria-expanded],summary,select';
 export const WORKSPACE_VIEW_SELECTOR = '[role="tab"],[data-view],#appTabsSlot [aria-pressed],[data-layout-slot="tabs"] [aria-pressed],[data-atlas-view],#viewConversation,#viewEverything';
 
+export class ControlSkip extends Error {
+  constructor(reason) { super('Control skipped before press: ' + reason); this.reason = reason; }
+}
+
 export class SweepFailure extends Error {
   constructor(phase, code, selector) {
     super(`Staging sweep failed: ${phase}/${code}`);
@@ -306,7 +310,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
 }
 
-export async function sweepScreen({ freshPage, screen, target, evidence, checkpoint, prior, identityScope, waitMs = 2000, limit = effectiveRunLimits().controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
+export async function sweepScreen({ freshPage, screen, target, evidence, admit, checkpoint, prior, identityScope, waitMs = 2000, limit = effectiveRunLimits().controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
   const run = currentRun();
   limit = Math.min(Number.isSafeInteger(limit) && limit > 0 ? limit : effectiveRunLimits().controlsPerScreen, effectiveRunLimits().controlsPerScreen);
   const stopAtLimit = () => { if (run) { run.stop('control-count-limit'); throw new RunLimitError('control-count-limit'); } };
@@ -342,6 +346,7 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
         if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
         action = matching[0];
       }
+      if (admit) await admit(page, action, identityScope);
       let result;
       lastAction = action; lastBeforeURL = page.url();
       try { result = await pressControl(page, action, { waitMs: Math.min(waitMs, 500) }); }
@@ -353,7 +358,8 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
   };
   let reached = continuing ? prior.reached : false, exhausted = false, failure = null;
   const fail = (error, phase, openers, control, code = `${phase}-failed`) => {
-    const bounded = error instanceof SweepFailure ? error.failure : { phase, code };
+    const bounded = error instanceof RunLimitError ? { phase: 'run-limit', code: error.code }
+      : error instanceof SweepFailure ? error.failure : { phase, code };
     failure ||= { ...bounded, ...(control && !bounded.selector ? { selector: control.selector } : {}), openers: openers.map(opener => opener.name) };
   };
   const close = async (page, openers, control) => {
@@ -474,6 +480,8 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
             if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'control-state-changed', control.selector);
             action = matching[0];
           }
+          phase = 'admission';
+          if (admit) await admit(fresh, action, identityScope);
           phase = 'press';
           const beforeURL = fresh.url();
           const result = await pressControl(fresh, action, { waitMs });
@@ -493,6 +501,24 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
             await resolveDiscovery(fresh, state.openers, action, beforeURL);
           }
         } catch (error) {
+          if (error instanceof ControlSkip && !row) {
+            row = { ...base, status: 'SKIPPED', signals: [], reason: error.reason,
+              execution: { press_attempted: false, handler_executions: 0 } };
+            controls.push(row);
+            pending = null;
+            await publishProgress();
+            continue;
+          }
+          if (error instanceof SweepFailure &&
+              error.failure.phase === 'fixture-scope' && error.failure.code === 'write-scope-unproved') {
+            if (!row) { row = { ...base, signals: [] }; controls.push(row); }
+            row.status = 'ERROR';
+            row.reason = 'Test fixture write policy refused or unsettled; coverage remains incomplete';
+            row.failure = { ...error.failure };
+            pending = null;
+            await publishProgress();
+            continue;
+          }
           fail(error, phase, state.openers, control);
           if (!row && ['replay','press'].includes(phase)) {
             row = { ...base, status: phase === 'replay' ? 'UNREACHABLE' : 'ERROR', reason: failure.phase + ': ' + failure.code, signals: [] };
@@ -502,7 +528,18 @@ export async function sweepScreen({ freshPage, screen, target, evidence, checkpo
         } finally { await close(fresh, state.openers, control); }
         if (failure && failure.phase !== 'checkpoint') await publishProgress();
       }
-    } catch (error) { fail(error, phase, state.openers); }
+    } catch (error) {
+      if (error instanceof ControlSkip && state.controls) {
+        for (const control of state.controls) {
+          if (seen.has(control.identity)) continue;
+          seen.add(control.identity);
+          controls.push({ ...control, key: `${target}/${screen.path}/${identityKey(control.identity)}`,
+            target, path: screen.path, screen: screen.name, openers: state.openers.map(row => row.name),
+            status: 'SKIPPED', reason: error.reason, signals: [], execution: { press_attempted: false, handler_executions: 0 } });
+        }
+      } else if (error instanceof ControlSkip) throw error;
+      else fail(error, phase, state.openers);
+    }
     finally { await close(page, state.openers); }
     if (!failure && !exhausted) active = null;
     if (failure && failure.phase !== 'checkpoint') await publishProgress();

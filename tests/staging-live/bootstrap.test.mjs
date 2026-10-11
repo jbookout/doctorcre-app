@@ -12,7 +12,7 @@ async function cleanCheckout(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   execFileSync('git', ['clone', '--quiet', '--no-hardlinks', project, root]);
   // Include the change under test; generated inputs and credentials are never copied.
-  for (const path of ['package.json', 'scripts/e2e-staging'])
+  for (const path of ['package.json', 'scripts/e2e-staging', 'contracts/e2e-staging-control-proofs.v1.json'])
     await cp(join(project, path), join(root, path), { recursive: true });
   await symlink(join(project, 'node_modules'), join(root, 'node_modules'));
   return root;
@@ -56,7 +56,7 @@ test('missing static inventory reproduces read refusal and poisoned coverage; bu
     const missing = process.argv[2] === 'missing';
     if (missing) {
       await assert.rejects(assertStagingBrowserInventory(), e => e.code === 'browser-inventory-unavailable');
-      const guard = stagingFixtureWriteGuard({ run: { check() {} } });
+      const guard = stagingFixtureWriteGuard({ run: { check() {}, onStop() {} } });
       await assert.rejects(guard.handle({ method: () => 'GET', url: () => STAGING_ORIGIN + '/js/client.js' },
         () => assert.fail('unproved static read forwarded')), e => e.code === 'browser-inventory-unavailable');
       await assert.rejects(guard.assertCoverage(), e => e.code === 'write-coverage-incomplete');

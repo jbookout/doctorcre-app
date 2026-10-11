@@ -1,10 +1,11 @@
 import { declaredStates, validateStateSpec, calendarCases } from './state-plan.mjs';
 import { canContinueTraversal, canonicalIdentity, identityKey } from './traversal.mjs';
+import { hasFailure, validSkip, normalizeSkip } from './result-status.mjs';
 
 const requireState = value => { if (!value) throw new Error('Staging state obligation is invalid; no destination coverage was credited'); };
 const copy = value => structuredClone(value);
 const statuses = new Set(['pending', 'passed', 'failed']);
-export function createStateLedger({ targets, routedScreens, prior = [], validateScreen, complete, attemptID }) {
+export function createStateLedger({ targets, routedScreens, prior = [], validateScreen, complete, finished, attemptID }) {
   requireState(Array.isArray(prior));
   const plan = new Map(targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface).map(screen => [target.name + '|' + screen.path, { target, screen }])));
   const entries = new Map();
@@ -28,7 +29,7 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     requireState(entry.history === undefined || Array.isArray(entry.history));
     for (const old of entry.history || []) {
       requireState(old && typeof old.attempt_id === 'string' && old.result && old.attempt_id !== entry.attempt_id);
-      if (entry.spec.kind === 'calendar-operation') requireState(old.result.status === 'failed' && JSON.stringify(old.result.spec) === JSON.stringify(entry.spec));
+      if (entry.spec.kind === 'calendar-operation') requireState(['failed', 'SKIPPED'].includes(old.result.status) && JSON.stringify(old.result.spec) === JSON.stringify(entry.spec));
       else { validateScreen(old.result); requireState(old.result.state_scope === entry.key && old.result.target === entry.target && old.result.path === entry.spec.owner && !complete(old.result)); }
     }
     for (const source of entry.sources) {
@@ -42,8 +43,9 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     if (entry.result) {
       requireState(typeof entry.attempt_id === 'string');
       if (entry.spec.kind === 'calendar-operation') {
-        requireState(entry.result.spec && JSON.stringify(entry.result.spec) === JSON.stringify(entry.spec) && ['passed', 'failed'].includes(entry.result.status));
-        if (entry.result.status === 'failed') requireState(entry.result.failure && /^[a-z][a-z0-9-]*$/.test(entry.result.failure.code || ''));
+        requireState(entry.result.spec && JSON.stringify(entry.result.spec) === JSON.stringify(entry.spec) && ['passed', 'failed', 'SKIPPED'].includes(entry.result.status));
+        if (entry.result.status === 'SKIPPED') requireState(validSkip(entry.result));
+        if (entry.result.status === 'failed') requireState(hasFailure(entry.result) && (entry.result.failure == null || /^[a-z][a-z0-9-]*$/.test(entry.result.failure.code || '')));
         if (entry.result.status === 'passed') {
           const declared = calendarCases.find(row => row.id === entry.spec.case);
           requireState(entry.result.assertions && JSON.stringify(entry.result.steps) === JSON.stringify(declared.steps) && typeof entry.result.evidence_path === 'string' && entry.result.evidence_path);
@@ -55,7 +57,18 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     }
     requireState(entry.status !== 'passed' || entry.result && (entry.spec.kind === 'calendar-operation' ? entry.result.status === 'passed' : complete(entry.result)));
   };
-  for (const entry of prior) { validate(entry); requireState(!entries.has(entry.key)); entries.set(entry.key, copy(entry)); }
+  const normalizeEntry = original => {
+    const entry = copy(original);
+    if (entry && typeof entry === 'object') {
+      const failedStatus = entry.spec?.kind === 'calendar-operation' ? 'failed' : 'ERROR';
+      if (Array.isArray(entry.history)) for (const old of entry.history) if (old) old.result = normalizeSkip(old.result, failedStatus);
+      const failedAttempt = Array.isArray(entry.history) ? entry.history.findLast(old => hasFailure(old?.result))?.result : undefined;
+      entry.result = normalizeSkip(entry.result, failedStatus, failedAttempt);
+      if (entry.status === 'pending' && entry.result?.status === 'failed') entry.status = 'failed';
+    }
+    return entry;
+  };
+  for (const original of prior) { const entry = normalizeEntry(original); validate(entry); requireState(!entries.has(entry.key)); entries.set(entry.key, entry); }
   const register = (sourceTarget, spec, source) => {
     const target = ownerFor(sourceTarget, spec);
     const key = keyFor(target, spec), owner = plan.get(target + '|' + spec.owner);
@@ -85,12 +98,13 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     snapshot() { return [...entries.values()].map(copy); },
     record(key, result) {
       const entry = entries.get(key); requireState(entry && entry.status !== 'passed');
+      result = normalizeSkip(result, entry.spec.kind === 'calendar-operation' ? 'failed' : 'ERROR', entry.result);
       if (entry.result && entry.spec.kind !== 'calendar-operation' && canContinueTraversal(entry.result)) {
         requireState(result.controls.length >= entry.result.controls.length && JSON.stringify(result.controls.slice(0, entry.result.controls.length)) === JSON.stringify(entry.result.controls));
       } else if (entry.result && entry.attempt_id !== attemptID) entry.history = [...(entry.history || []), { attempt_id: entry.attempt_id, result: copy(entry.result) }];
       if (!entry.result || entry.spec.kind === 'calendar-operation' || !canContinueTraversal(entry.result)) entry.attempt_id = attemptID;
       entry.result = copy(result);
-      entry.status = entry.spec.kind === 'calendar-operation' ? result.status : complete(result) ? 'passed' : 'pending';
+      entry.status = entry.spec.kind === 'calendar-operation' ? (result.status === 'SKIPPED' ? 'pending' : result.status) : complete(result) ? 'passed' : 'pending';
       validate(entry);
       if (entry.spec.kind !== 'calendar-operation') this.collect(result, key);
     },
@@ -102,6 +116,7 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
           screen.delegations?.some(item => item.source_key === source.key && item.after === source.observed_destination && item.states.some(spec => JSON.stringify(spec) === JSON.stringify(entry.spec)))));
       }
     },
-    completed() { return [...entries.values()].every(entry => entry.status === 'passed'); },
+    finished() { return [...entries.values()].every(entry => entry.result && (entry.spec.kind === 'calendar-operation' ? !hasFailure(entry.result) && (entry.result.status === 'passed' || validSkip(entry.result)) : finished(entry.result))); },
+    completed() { return this.finished() && [...entries.values()].every(entry => entry.status === 'passed'); },
   };
 }
