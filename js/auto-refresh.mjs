@@ -6,7 +6,7 @@ import { watchPresence } from "./visibility-poll.mjs";
 // A failed read retries on a short backoff (1s, 2s, 4s... capped at the
 // interval), so "reconnecting" holds within seconds rather than a full poll.
 export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
-  if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
+  if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, poll: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
   let queuedResume = null;
@@ -32,6 +32,10 @@ export function mountAutoRefresh({ document, window, refresh, onResume, interval
     return running;
   };
   const read = () => run(refresh);
+  // A person pressing refresh is present by definition: refresh() reads even
+  // after the idle cutoff, exactly as before the idle pause. poll() is for a
+  // page's own clock and waits while hidden or idle, like the interval itself.
+  const manualRead = () => { presence.touch(); return read(); };
   const resumeRead = () => {
     onResume?.();
     if (!onResume || !running) return read();
@@ -46,7 +50,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, interval
   const online = () => { if (presence.active()) resumeRead(); };
   window.addEventListener("online", online);
   schedule();
-  return { refresh: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
+  return { refresh: manualRead, poll: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 // Bound the whole read, including decoding. A late result from a transport

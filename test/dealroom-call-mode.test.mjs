@@ -314,6 +314,27 @@ test("an active call keeps following its report while the tab is hidden, and sto
   assert.equal(live().length, 0, "once the call's report is done, nothing polls");
 });
 
+test("Close Call Mode only closes the dialog, as on main; the follow-through stops with stopPolling and never reads after", async () => {
+  const { controller, doc, timers, calls } = harness({ agenda: agendaOf(1) });
+  doc.getElementById("callModeConsent").checked = true;
+  await controller.start("weekly_deal_call");
+  await controller.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+  const dialog = doc.getElementById("callModeDialog"); dialog.open = true;
+  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
+  assert.equal(await controller.handleClick(doc.getElementById("callModeClose")), true);
+  assert.equal(dialog.open, false, "the declared observation: the dialog closes");
+  assert.equal(live().length, 1, "closing leaves the post-call follow-through running, exactly as main's setInterval did");
+  const armed = timers.filter((t) => t.ms === 1600);
+  controller.stopPolling();
+  assert.equal(live().length, 0, "stopping the follow-through clears its timer");
+  const before = calls.getStatus.length;
+  armed.forEach((t) => t.fn());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.getStatus.length, before, "a stale tick after stop reads nothing");
+  assert.equal(live().length, 0, "and arms nothing");
+});
+
 // ----------------------------------------------- 3. approval, item by item
 
 const REPORT = {

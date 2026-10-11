@@ -87,6 +87,18 @@ test('idle for the cutoff pauses polling until the next input, which refreshes a
   fixed.handle.dispose(); auto.dispose();
 });
 
+test('a manual refresh after the idle cutoff reads once, as before the pause; the clock still does not', async () => {
+  const p = page(); let reads = 0;
+  const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, refresh: () => { reads++; } });
+  p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
+  assert.equal(reads, 0, 'the timer issues no read once idle'); assert.equal(p.count, 0);
+  await auto.poll(); assert.equal(reads, 0, 'nor does a page clock calling poll()');
+  await auto.refresh(); await settle();
+  assert.equal(reads, 1, 'the refresh button reads exactly once');
+  assert.equal(p.count, 1, 'and the person counts as present, so the cadence re-arms');
+  auto.dispose();
+});
+
 test('input keeps a visible tab active past the cutoff', async () => {
   const p = page(); const fixed = poller(p);
   for (let i = 0; i < 4; ++i) { p.advance(20 * 60_000); p.input('touchstart'); p.tick(); await settle(); }

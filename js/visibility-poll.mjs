@@ -12,6 +12,7 @@ const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wh
 // active() says whether a network read may run now. onResume runs once per
 // return to view (visibilitychange or a back-forward cache restore) and once
 // per first input after the idle cutoff; returning to the tab counts as input.
+// touch() records input from a caller that reads for itself, without onResume.
 export function watchPresence({ document, window, onResume, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
   let lastInput = now();
   const hidden = () => document.visibilityState === "hidden";
@@ -26,6 +27,7 @@ export function watchPresence({ document, window, onResume, idleMs = IDLE_CUTOFF
   INPUT_EVENTS.forEach(type => document.addEventListener(type, input, options));
   return {
     active: () => !hidden() && !idle(),
+    touch() { lastInput = now(); },
     dispose() { resume.dispose(); INPUT_EVENTS.forEach(type => document.removeEventListener?.(type, input, options)); },
   };
 }
