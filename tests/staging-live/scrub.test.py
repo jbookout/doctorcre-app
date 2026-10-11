@@ -2,12 +2,14 @@ import importlib.util
 import io
 import json
 import pathlib
+import sys
 import unittest
 import zipfile
 
 path = pathlib.Path(__file__).parents[2] / 'scripts/e2e-staging/scrub-evidence.py'
 spec = importlib.util.spec_from_file_location('scrub', path)
 scrub = importlib.util.module_from_spec(spec)
+sys.dont_write_bytecode = True
 spec.loader.exec_module(scrub)
 
 class ScrubTest(unittest.TestCase):
