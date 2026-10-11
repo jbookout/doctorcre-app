@@ -25,9 +25,11 @@ function domPage(path, { context, handlers = [], nested = false } = {}) {
   if (nested) {
     window.document.querySelector('#later').onclick = () => {
       window.document.querySelector('output').textContent = 'Pressed';
+      const later = window.document.querySelector('#later');
+      later.setAttribute('data-pressed', later.getAttribute('data-pressed') === 'yes' ? 'no' : 'yes');
       if (!window.document.querySelector('#nested')) {
         const child = window.document.createElement('button'); child.id = 'nested'; child.textContent = 'Nested';
-        child.onclick = () => { handlers.push('nested'); child.textContent = 'Done'; };
+        child.onclick = () => { handlers.push('nested'); child.remove(); };
         window.document.querySelector('main').append(child);
       }
     };
@@ -77,8 +79,11 @@ async function fixture(t) {
       const plan = JSON.parse(await readFile(path, 'utf8'));
       plan.browser_control_proofs ||= [];
       for (const control of await inventory(page)) if (selectors.includes(control.selector)) {
+        const from = await page.evaluate(selector => document.querySelector(selector).getAttribute(selector === '#morningClose' ? 'hidden' : 'data-pressed'), control.selector);
         plan.browser_control_proofs = plan.browser_control_proofs.filter(proof => proof.identity !== control.identity);
-        plan.browser_control_proofs.push({ identity: control.identity, effects: [], release });
+        plan.browser_control_proofs.push({ identity: control.identity, effects: [], release,
+          observations: [{ selector: control.selector, attribute: control.selector === '#nested' ? '$presence' : control.selector === '#morningClose' ? 'hidden' : 'data-pressed',
+            transitions: [{ from: control.selector === '#nested' ? true : from, to: control.selector === '#nested' ? false : control.selector === '#morningClose' ? '' : from === 'yes' ? 'no' : 'yes' }] }] });
       }
       await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
     } };
@@ -122,7 +127,7 @@ test('production admission skips an unproved context before handlers, while late
     });
     assert.equal(handlers.filter(id => id === 'morningClose').length, 0);
     assert.ok(handlers.includes('later'));
-    assert.ok(handlers.includes('nested'));
+    assert.ok(handlers.includes('nested'), JSON.stringify({ path, handlers, result }));
     assert.ok(captured.includes('#later'));
     assert.ok(captured.includes('#nested'));
     assert.ok(!captured.includes('#morningClose'));
@@ -208,7 +213,7 @@ test('an opener whose prospective proof was withdrawn runs no replay handler and
 test('control admission validates prospective effects against fixture ownership without dispatch or intent', async t => {
   const deal = '40000000-0000-4000-8000-000000000010';
   const args = { deal, text: 'Synthetic note', idempotency_key: '40000000-0000-4000-8000-000000000011' };
-  for (const kind of ['local', 'read', 'write', 'unsupported', 'foreign', 'shape', 'duplicate', 'missing', 'source']) {
+  for (const kind of ['local', 'read', 'write', 'unsupported', 'foreign', 'shape', 'duplicate', 'missing', 'source', 'unobserved', 'unchanged']) {
     await t.test(kind, async t => {
       const { guard, read, update } = await fixture(t), context = await guardedContext(guard);
       const page = domPage('/', { context });
@@ -221,7 +226,10 @@ test('control admission validates prospective effects against fixture ownership 
             ...args, ...(kind === 'foreign' ? { deal: '40000000-0000-4000-8000-000000000012' } : {}),
             ...(kind === 'shape' ? { unexpected: true } : {}),
           } }];
-        plan.browser_control_proofs = [{ identity: control.identity, effects, release: plan.release }];
+        plan.browser_control_proofs = [{ identity: control.identity, effects, release: plan.release,
+          observations: [{ selector: control.selector, attribute: 'hidden', transitions: [{ from: null, to: '' }] }] }];
+        if (kind === 'unobserved') delete plan.browser_control_proofs[0].observations;
+        if (kind === 'unchanged') plan.browser_control_proofs[0].observations[0].transitions[0].to = null;
         if (kind === 'duplicate') plan.browser_control_proofs.push(plan.browser_control_proofs[0]);
         if (kind === 'missing') delete plan.browser_control_proofs;
         if (kind === 'source') plan.release.source_commit = 'b'.repeat(40);
