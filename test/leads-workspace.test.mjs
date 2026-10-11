@@ -475,3 +475,23 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
   assert.equal(s.writes.length, 0);
  } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });
+
+
+test('PR184 Leads freshness stays unavailable across failed retries and local rerenders', async () => {
+ const s=await setup();try{
+  const read=s.client.getWorkspace;
+  assert.match(s.d.getElementById('boardUpdated').textContent,/Updated/);
+  s.client.getWorkspace=async()=>{throw Object.assign(new Error('Synthetic failure'),{status:503})};
+  await s.app.refresh();
+  assert.equal(s.d.getElementById('boardUpdated').textContent,'Leads unavailable');
+  assert.equal(s.d.getElementById('boardUpdated').dateTime,'');
+  const search=s.d.getElementById('leadSearch');
+  search.value='Demo';search.dispatchEvent(new s.w.Event('input',{bubbles:true}));
+  assert.equal(s.d.getElementById('boardUpdated').textContent,'Leads unavailable');
+  await s.app.refresh();
+  assert.equal(s.d.getElementById('boardUpdated').textContent,'Leads unavailable');
+  s.client.getWorkspace=read;await s.app.refresh();
+  assert.match(s.d.getElementById('boardUpdated').textContent,/Updated/);
+  assert.equal(s.d.getElementById('boardUpdated').dateTime,s.board.generated_at);
+ }finally{s.close()}
+});

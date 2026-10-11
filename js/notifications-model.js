@@ -1,43 +1,8 @@
 import { BOARD_ROUTE, boardIdFromPath } from './progress-board-route.js';
 import { routeContract } from "./slices.generated.js";
-// V5-UX-B12a — what the Notifications page shows, decided without a DOM.
-//
-// The producer is `mcp-server/src/notifications.js` over migrations 0521 and
-// 0527, and
-// every rule below is a reading of what that producer can actually do. Five
-// shapes govern the file, and each one exists because the alternative would
-// let the page say something the record layer cannot back.
-//
-//   1. `unread_count` is PRINTED, never recomputed. The count is over all of
-//      the recipient's rows while the list is capped at `limit`, so a count
-//      derived from the visible cards would quietly shrink as the page filled.
-//   2. The severity vocabulary is exactly two words. The notification severity
-//      enum has no informational member, and `record-signal` mints nothing for
-//      a signal of severity `info`. "No routine progress spam" is therefore a
-//      fact about the producer, not a filter this page applies.
-//   3. Quiet hours are now BOTH an observed effect and a setting. WR-000116
-//      shipped `read-notification-preferences` and `set-notification-preference`,
-//      so the honesty paragraph B12a wrote ("no verb exposes the notification
-//      preference") is false as of producer 3c8f619d and is gone. What replaces
-//      it is a real form under a compare-and-swap on `version`: every save
-//      carries the version the page last read, and a `version_conflict` is
-//      re-read and re-rendered rather than retried over somebody's change.
-//      `quiet_suppressed` and `quiet_now` are OUTPUT-ONLY fields of the feed —
-//      a suppressed row is MARKED and never hidden, because hiding it would be
-//      this page inventing a filter the record layer did not apply.
-//   4. A deep link is rendered as an anchor only when this application has a
-//      page for it. Of the two shapes a production mint can produce, B12b
-//      makes `/doc-conversations/<ref>` an anchor into `conversations.html`'s
-//      existing `?id=` route whenever the ref is the conversation uuid the
-//      viewer can open — `deepLinkView` in this file does the translation, so
-//      the card still shows the record's own path as its text. `/signals/<id>`
-//      stays the path plus a sentence: no CARR verb reads a signal by its own
-//      id (`next-signals` lists queued ones; `get-investigation` takes an
-//      investigation `run_id`, which a signal id is not), so there is nothing
-//      for a route to fetch.
-//   5. Acknowledging clears THE NOTIFICATION and nothing else. That is all
-//      `ops.acknowledge_notification` is granted to touch, so it is all the
-//      page's copy is allowed to claim.
+// Notifications present only facts returned by the existing read operations.
+// Names are absent from the feed contract: use human record labels rather than
+// guessing a name or fetching a second record. Identifiers stay in Details.
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
 import { CONVERSATION_ID } from "./conversations-model.js";
@@ -71,19 +36,6 @@ export const DELIVERY_PHRASES = Object.freeze({
  */
 export const DEVICE_OFF = "device push is off for you";
 
-/** What quiet hours DO. Unchanged from B12a: the producer did not change. */
-export const QUIET_HOURS_EFFECT =
-  "";
-
-/**
- * The scope sentence that replaces B12a's honesty paragraph. The window is
- * readable and settable now; what is still true is the boundary — these are
- * YOUR preferences, the verbs take no actor, and nothing here changes anybody
- * else's.
- */
-export const QUIET_HOURS_SCOPE =
-  "";
-
 /** The banner shown when the record layer says quiet hours cover this moment. */
 export const QUIET_NOW_BANNER =
   "Quiet hours cover this moment. Device push is being held; the items below still arrived in-app.";
@@ -91,20 +43,12 @@ export const QUIET_NOW_BANNER =
 /** The marker a suppressed row carries. It is marked, never hidden. */
 export const QUIET_SUPPRESSED_MARK = "held by your quiet hours";
 
-/** The candid mobile-exposure statement rule f0f9156e asks a page to make. */
-export const EXPOSURE_STATEMENT =
-  "";
-
-/** What acknowledging does, and the boundary it does not cross. */
-export const ACKNOWLEDGE_SCOPE =
-  "";
-
 // Browser and Worker routing come from the same assembled slice fragments.
 export const APP_ROUTE_PATHS = Object.freeze(Object.keys(routeContract.routes));
 const LEGACY_ROUTE_HOMES = Object.freeze(routeContract.redirects);
 
 /** The sentence an unroutable deep link carries. */
-export const NO_PAGE_SENTENCE = "This link points at a record the app has no page for yet.";
+export const NO_PAGE_SENTENCE = "Record unavailable in this app";
 
 const isText = (value) => typeof value === "string" && value.length > 0;
 
@@ -145,7 +89,7 @@ export function deliveryPhrases(delivery) {
   const phrases = rows.map((row) => ({
     channel: row.channel,
     state: row.state,
-    phrase: DELIVERY_PHRASES[row.state] || `recorded as ${row.state}`,
+    phrase: DELIVERY_PHRASES[row.state] || "Delivery status unavailable",
   }));
   if (!rows.some((row) => row.channel === "device")) {
     phrases.push({ channel: "device", state: "absent", phrase: DEVICE_OFF });
@@ -153,42 +97,34 @@ export function deliveryPhrases(delivery) {
   return phrases;
 }
 
-/**
- * The one deep-link shape this page can translate rather than merely match:
- * `record-signal` mints `/doc-conversations/<ref>` (investigation.js:24), and
- * `conversations.html` already opens one conversation from `?id=<uuid>`
- * (conversations-model.js's own `idFromSearch`). The ref is only ever the doc
- * conversation's own uuid when it can be opened at all — `CONVERSATION_ID` is
- * copied from the same verb boundary conversations.html reads against, so a
- * ref this page cannot route is a ref the conversation viewer could not open
- * either, and the honest unrouted rendering below still applies to it.
- */
+// Keep routing separate from display labels. A signal id is not an
+// investigation run id, so signal links cannot open a record with these reads.
 const DOC_CONVERSATION_LINK = /^\/doc-conversations\/([^/]+)$/;
+const RECORD_LABELS = Object.freeze({
+  deal: "Deal", client: "Client", lead: "Lead", vendor: "Vendor", party: "Contact",
+  doc_conversation: "Doc conversation", signal: "Signal", work_request: "Work request",
+});
+const recordLabel = kind => Object.hasOwn(RECORD_LABELS, kind) ? RECORD_LABELS[kind] : "Record";
+const linkLabel = path => ({
+  "/deals": "Open deal", "/clients": "Open client", "/leads": "Open lead",
+  "/vendors": "Open vendor", "/doc-chats": "Open conversation",
+  "/incidents": "Open incident", [BOARD_ROUTE]: "Open progress board",
+})[path] || "Open record";
 
-/**
- * How a deep link is rendered. An anchor only where this application has the
- * page; otherwise the path itself, in monospace, with the sentence saying why.
- *
- * `/signals/<id>` is deliberately left unrouted: no CARR verb reads a signal
- * by its own id (`next-signals` lists queued ones, `get-investigation` takes
- * an investigation `run_id` a signal id is not), so there is no page this
- * application could show without inventing a route to a record it cannot
- * fetch.
- */
 export function deepLinkView(deepLink, routes = APP_ROUTE_PATHS) {
   const path = isText(deepLink) ? deepLink : null;
-  if (!path) return { path: null, href: null, routed: false, sentence: null };
+  if (!path) return { path: null, href: null, routed: false, sentence: null, label: null };
   const routeList = Array.isArray(routes) ? routes : [];
   const docMatch = DOC_CONVERSATION_LINK.exec(path);
   if (docMatch && CONVERSATION_ID.test(docMatch[1]) && routeList.includes("/doc-chats")) {
-    return { path, href: `/doc-chats?id=${docMatch[1]}`, routed: true, sentence: null };
+    return { path, href: `/doc-chats?id=${docMatch[1]}`, routed: true, sentence: null, label: "Open conversation" };
   }
   const [pathname, query] = path.split("?");
   const home = LEGACY_ROUTE_HOMES[pathname] || pathname;
   const homePath = home.split("?")[0];
   const routed = routeList.includes(homePath) || (boardIdFromPath(homePath) !== null && routeList.includes(BOARD_ROUTE));
   const href = routed ? `${home}${query ? `${home.includes("?") ? "&" : "?"}${query}` : ""}` : null;
-  return { path, href, routed, sentence: routed ? null : NO_PAGE_SENTENCE };
+  return { path, href, routed, sentence: routed ? null : NO_PAGE_SENTENCE, label: routed ? linkLabel(homePath) : null };
 }
 
 /**
@@ -205,9 +141,8 @@ export function notificationCards(payload, routes = APP_ROUTE_PATHS) {
       severity: SEVERITIES.includes(row.severity) ? row.severity : null,
       severityLabel: SEVERITY_LABELS[row.severity] || "unknown severity",
       reason: isText(row.reason) ? row.reason : "no reason recorded",
-      subject: isText(row.subject_type)
-        ? `${row.subject_type}${isText(row.subject_ref) ? ` · ${row.subject_ref}` : ""}`
-        : "no subject recorded",
+      subject: recordLabel(row.subject_type),
+      details: { subjectType: row.subject_type || null, subjectRef: row.subject_ref || null },
       clock: formatClock(row.created_at) || "unknown",
       read: isText(row.read_at),
       readClock: formatClock(row.read_at) || null,
@@ -293,17 +228,19 @@ export function feedState(read = {}, { after = null, limit = null } = {}) {
  * NOT merged into the feed: a notification is addressed to you, and an event is
  * something that happened.
  */
+const ACTIVITY_LABELS = Object.freeze({
+  "set-next-step": "Updated next step", "add-deal-note": "Added deal note",
+});
 export function activityRows(events) {
   return (Array.isArray(events) ? events : [])
     .filter((row) => row && typeof row === "object" && isText(row.verb))
     .slice(-12)
     .reverse()
     .map((row) => ({
-      actor: isText(row.actor) ? row.actor : "unattributed",
-      verb: row.verb,
-      subject: isText(row.subject_id)
-        ? `${isText(row.subject_type) ? row.subject_type : "record"} ${row.subject_id}`
-        : "no subject recorded",
+      actor: row.actor === "joe" ? "Joe" : row.actor === "dell" ? "Dell" : isText(row.actor) ? "Recorded actor" : "Unattributed",
+      verb: Object.hasOwn(ACTIVITY_LABELS, row.verb) ? ACTIVITY_LABELS[row.verb] : "Activity recorded",
+      subject: recordLabel(row.subject_type),
+      details: { actor: row.actor || null, verb: row.verb, subjectType: row.subject_type || null, subjectRef: row.subject_id || null },
       clock: formatClock(row.recorded_at) || "unknown",
     }));
 }
@@ -359,8 +296,20 @@ export function validPreferencePayload(payload) {
  */
 const CLOCK = /^([01][0-9]|2[0-3]):([0-5][0-9])(?::[0-5][0-9](?:\.\d+)?)?$/;
 export function toInputTime(value) {
-  const match = CLOCK.exec(typeof value === "string" ? value.trim() : "");
-  return match ? `${match[1]}:${match[2]}` : null;
+  const text = typeof value === "string" ? value.trim() : "";
+  const match = CLOCK.exec(text);
+  if (match) return `${match[1]}:${match[2]}`;
+  const twelveHour = /^(0?[1-9]|1[0-2]):([0-5][0-9])\s*(AM|PM)$/i.exec(text);
+  if (!twelveHour) return null;
+  const hour = Number(twelveHour[1]) % 12 + (twelveHour[3].toUpperCase() === "PM" ? 12 : 0);
+  return `${String(hour).padStart(2, "0")}:${twelveHour[2]}`;
+}
+
+export function preferenceTimeLabel(value) {
+  const time = toInputTime(value);
+  if (!time) return "";
+  const [hour, minute] = time.split(":");
+  return `${Number(hour) % 12 || 12}:${minute} ${Number(hour) < 12 ? "AM" : "PM"}`;
 }
 
 /** Everything the panel draws, decided once, from the payload alone. */
@@ -381,16 +330,14 @@ export function preferenceView(payload) {
 }
 
 /**
- * What the record layer holds, in one line, ending in the version — because the
- * version is what the next save is compared against and a person about to save
- * should be able to see it.
+ * A human-readable summary. The compare-and-swap version belongs in Details.
  */
 export function preferenceSummary(view) {
   if (!view) return "unknown";
   const window = view.quietHoursSet
-    ? `Quiet hours ${view.start} to ${view.end} ${view.timezone}`
+    ? `Quiet hours ${preferenceTimeLabel(view.start)} to ${preferenceTimeLabel(view.end)} ${view.timezone}`
     : `No quiet hours set · ${view.timezone}`;
-  return `${window} · device push ${view.deviceOptIn ? "on" : "off"} · version ${view.version}`;
+  return `${window} · device push ${view.deviceOptIn ? "on" : "off"}`;
 }
 
 /** The documented answer when no row exists, said as an absence, not a value. */
@@ -437,7 +384,7 @@ export const PREFERENCE_OPERATION_KEY = "notifications:preference";
 export const BASE_VERSION_REFUSAL =
   "This form has not read your preferences yet, so it holds no version to save against. Nothing was sent.";
 export const TIME_REFUSAL =
-  "A quiet-hours time is a 24-hour clock time written HH:MM. Nothing was sent.";
+  "Enter a time with AM or PM, such as 10:00 PM. Nothing was sent.";
 
 /**
  * The arguments for `set-notification-preference`, or the refusal.

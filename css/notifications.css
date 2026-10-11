@@ -97,3 +97,8 @@
   .hero-meta { justify-content: flex-start; }
   .note-top { flex-direction: column; align-items: flex-start; }
 }
+
+.record-details, .context-help { margin-top: 8px; color: var(--quiet); font-size: 12px; }
+.record-details summary, .context-help summary { min-height: var(--touch); display: list-item; align-content: center; cursor: pointer; }
+.record-details summary:hover, .context-help summary:hover { color: var(--text); }
+.record-details dd { margin: 0 0 8px; }

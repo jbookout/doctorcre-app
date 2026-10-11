@@ -8,11 +8,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import { JSDOM } from "jsdom";
+import * as notificationModel from "../js/notifications-model.js";
+import { formatClock } from "../js/visual-system.js";
 
 import {
-  ACKNOWLEDGE_SCOPE, APP_ROUTE_PATHS, BASE_VERSION_REFUSAL, DEVICE_OFF, EXPOSURE_STATEMENT,
+  APP_ROUTE_PATHS, BASE_VERSION_REFUSAL, DEVICE_OFF,
   FEED_STATES, NO_PAGE_SENTENCE, PREFERENCE_DEFAULTS_SENTENCE, PREFERENCE_OPERATION_KEY,
-  PREFERENCE_REFUSALS, QUIET_HOURS_EFFECT, QUIET_HOURS_SCOPE, QUIET_NOW_BANNER, versionConflictLine,
+  PREFERENCE_REFUSALS, QUIET_NOW_BANNER, versionConflictLine,
   QUIET_SUPPRESSED_MARK, SEVERITIES, SEVERITY_LABELS, TIME_REFUSAL,
   acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
   classifyPreferenceReadFailure, classifyReadFailure, deepLinkView, deliveryPhrases, feedState,
@@ -96,7 +100,7 @@ test("clause 2: two severity chips exist, and the page's vocabulary has no third
   assert.match(css, /\.severity-chip\[data-severity="action_required"\]/);
   assert.match(css, /\.severity-chip\[data-severity="failure"\]/);
   assert.equal(/\[data-severity="(?!action_required|failure|\$)/.test(css), false, "a third severity is styled");
-  assert.match(html, /Routine progress mints nothing/);
+  assert.match(html, /Routine progress appears in activity/);
 });
 
 /* ------------------------------------------------------------------ clause 3 */
@@ -123,7 +127,7 @@ test("clause 3: quiet-hours suppression, device opt-out and an ordinary delivery
     ["in-app, waiting", "device push failed"],
   );
   // A state this page has not been taught is still a state the ledger recorded.
-  assert.equal(deliveryPhrases([{ channel: "device", state: "queued" }])[0].phrase, "recorded as queued");
+  assert.equal(deliveryPhrases([{ channel: "device", state: "queued" }])[0].phrase, "Delivery status unavailable");
 });
 
 /* ------------------------------------------------------------------ clause 4 */
@@ -142,8 +146,8 @@ test("clause 4 (INVERTED by V5-UX-B12): the quiet-hours region carries the real 
     assert.equal(new RegExp(`<${tag}[\\s>]`).test(block), true, `the quiet-hours region draws no <${tag}>`);
   }
   assert.match(block, /<input id="deviceOptIn" type="checkbox">/);
-  assert.match(block, /<input id="quietStart" type="time"/);
-  assert.match(block, /<input id="quietEnd" type="time"/);
+  assert.match(block, /<input id="quietStart" type="text"/);
+  assert.match(block, /<input id="quietEnd" type="text"/);
   assert.match(block, /<input id="quietTimezone" type="text" list="timezoneNames"/);
   assert.match(block, /<button class="btn btn-primary" type="submit" id="prefSave">/);
   assert.match(block, /<button class="btn" type="button" id="prefClear">/);
@@ -154,10 +158,7 @@ test("clause 4 (INVERTED by V5-UX-B12): the quiet-hours region carries the real 
     assert.equal(file.includes("QUIET_HOURS_UNAVAILABLE"), false,
       "the retired constant is still referenced");
   }
-  assert.equal(QUIET_HOURS_EFFECT, "");
-  assert.equal(QUIET_HOURS_SCOPE, "");
-  assert.match(pageJs, /\$\("quietHoursScope"\)\.textContent = QUIET_HOURS_SCOPE/);
-  assert.match(pageJs, /\$\("quietHoursEffect"\)\.textContent = QUIET_HOURS_EFFECT/);
+  assert.doesNotMatch(html + pageJs + modelJs, /QUIET_HOURS_EFFECT|QUIET_HOURS_SCOPE|quietHoursEffect|quietHoursScope/);
 });
 
 /* ------------------------------------------------------------------ clause 5 */
@@ -192,8 +193,8 @@ test("B12b-1: a /doc-conversations/<ref> deep link is an anchor into conversatio
   const uuid = "22222222-2222-4222-8222-222222222222";
   const view = deepLinkView(`/doc-conversations/${uuid}`);
   assert.equal(view.routed, true);
-  // The card still shows the record's own path as its text (notifications.js
-  // renders `card.link.path`); only the href is translated to a real route.
+  // Keep the original path for Details; the visible anchor has a human label.
+  assert.equal(view.label, "Open conversation");
   assert.equal(view.path, `/doc-conversations/${uuid}`);
   assert.equal(view.href, `/doc-chats?id=${uuid}`);
   assert.equal(view.sentence, null);
@@ -309,7 +310,6 @@ test("clause 8: acknowledging changes only read_at and unread_count — nothing 
   }
   // The source work is untouched: the acknowledgement is not granted to move it.
   assert.deepEqual(await client.getChanges(null), dealsBefore, "the change stream moved");
-  assert.equal(ACKNOWLEDGE_SCOPE, "");
 });
 
 /* ------------------------------------------------------------------ clause 9 */
@@ -407,7 +407,7 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(html, /data-section="activity"/);
   assert.match(html, /data-section="feed"/);
   assert.ok(/data-section="feed"/.exec(html).index < /data-section="activity"/.exec(html).index, "the activity panel is above the feed");
-  assert.match(html, /This is the activity stream, not your feed\./);
+  assert.match(html, /Activity records who did what/);
   assert.match(css, /\[data-section="activity"\] \{ border-style: dashed; \}/);
   const rows = activityRows([
     { actor: "joe", verb: "set-next-step", subject_type: "deal", subject_id: "d14", recorded_at: "2026-01-14T14:20:00.000Z" },
@@ -415,9 +415,9 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
     { verb: "" },
   ]);
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].actor, "unattributed", "the newest event is not first");
+  assert.equal(rows[0].actor, "Unattributed", "the newest event is not first");
   assert.equal(rows[1].clock, "2:20 PM");
-  assert.equal(rows[1].subject, "deal d14");
+  assert.equal(rows[1].subject, "Deal");
 
   // Mobile first: one column, a full-width target, and the 44px floor.
   assert.match(css, /\.btn \{ min-height: var\(--touch\); \}/);
@@ -427,8 +427,7 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(css, /#feedList \.work-item \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(css, /overflow-wrap: anywhere/);
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width can force a horizontal scroll");
-  assert.equal(EXPOSURE_STATEMENT, "");
-  assert.match(html, /<p class="caption" id="exposureStatement">/);
+  assert.doesNotMatch(html, /exposureStatement/);
 });
 
 /* ======================================================================== */
@@ -471,7 +470,7 @@ test("B12-1 defaults panel: with no row the page prints the record layer's docum
   assert.equal(model.version, 1);
   assert.equal(preferenceOriginSentence(model), PREFERENCE_DEFAULTS_SENTENCE);
   assert.equal(PREFERENCE_DEFAULTS_SENTENCE, "Quiet hours off · Push off · UTC");
-  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off · version 1");
+  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off");
   assert.equal(preferenceSummary(null), "unknown");
   assert.equal(preferenceState({ state: "read", payload: prefs }).state, "ready");
   assert.equal(preferenceState({ state: "pending" }).state, "loading");
@@ -712,7 +711,7 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
   assert.equal(model.timezone, "UTC");
   assert.equal(model.quietHoursSet, false, "the captured row has both times null");
   assert.equal(model.quietNow, false);
-  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off · version 3");
+  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off");
 
   const feed = captured("notification-feed");
   assert.equal(validFeedPayload(feed), true, "the feed validator refuses production");
@@ -865,4 +864,153 @@ test("B12-11 a version conflict reports unsaved changes while retaining version 
     /Your changes were not saved/);
   assert.match(pageJs, /const line = versionConflictLine\(current, built\.args\.base_version\);/);
   assert.match(pageJs, /const current = refusal\.currentVersion \?\? fresh\?\.version \?\? null;/);
+});
+
+
+// Run the shipped page against synthetic read adapters in JSDOM. No page
+// scripts, network resources, browser process or environment endpoints load.
+async function auditPage({ notifications = [], feedError = null, preferenceError = null, hash = "" } = {}) {
+  const dom = new JSDOM(html, { url: `https://example.test/updates${hash}` });
+  const doc = dom.window.document;
+  let reads = 0, scrolls = 0;
+  doc.getElementById("prefForm").scrollIntoView = () => { scrolls++; };
+  const client = {
+    async notificationFeed() {
+      reads++;
+      if (feedError) throw feedError;
+      return { ok: true, unread_count: notifications.length, notifications };
+    },
+    async notificationPreferences() {
+      if (preferenceError) throw preferenceError;
+      return { ok: true, exists: false, version: 1, device_opt_in: false,
+        quiet_hours_start: null, quiet_hours_end: null, timezone: "UTC" };
+    },
+    async getChanges() { return { ok: true, cursor: "synthetic-cursor", events: [] }; },
+  };
+  const context = vm.createContext({
+    ...notificationModel, formatClock, document: doc, window: dom.window,
+    location: dom.window.location, Element: dom.window.Element, URLSearchParams,
+    requestAnimationFrame: fn => fn(),
+    mountPrefs() {}, mountNotificationBadge() {}, mountAutoRefresh() {},
+    createCommandDock: () => ({ mount() {}, record() {} }),
+    resolveDealroomBoot: () => ({ mode: "fixture", options: {} }),
+    createFixtureClient: async () => client,
+  });
+  const executable = pageJs.replace(/^import[\s\S]*?;\n/gm, "")
+    .replace(/\nboot\(\);/, "\nglobalThis.ready = boot();")
+    .replace(/export \{ view \};/, "globalThis.view = view;");
+  vm.runInContext(executable, context);
+  await context.ready;
+  return { dom, doc, context, client, reads: () => reads, scrolls: () => scrolls };
+}
+
+const auditNotification = (fields = {}) => ({
+  id: QUIET, severity: "action_required", reason: "Synthetic action needed",
+  subject_type: "deal", subject_ref: "D-DEMO-123", deep_link: "/deals?id=synthetic-deal",
+  created_at: "2026-01-14T14:20:00Z", read_at: null, delivery: [], ...fields,
+});
+
+test("V1 audit 15: notification labels are human-readable; identifiers and routes live in Details", async () => {
+  const page = await auditPage({ notifications: [auditNotification(), auditNotification({
+    id: DEVICE_OPT_OUT, subject_type: "internal_kind", subject_ref: "raw-reference",
+    deep_link: "/signals/synthetic-signal",
+  })] });
+  try {
+    const cards = page.doc.querySelectorAll("#feedList > li");
+    assert.equal(cards[0].querySelector(".note-subject").textContent, "Deal");
+    const link = cards[0].querySelector(".note-link a");
+    assert.equal(link.textContent, "Open deal");
+    assert.equal(link.getAttribute("href"), "/deals?id=synthetic-deal");
+    assert.equal(link.target, "_blank");
+    const details = cards[0].querySelector("details");
+    assert.equal(details.open, false);
+    assert.equal(details.querySelector("summary").textContent, "Details");
+    assert.match(details.textContent, /D-DEMO-123/);
+    assert.match(details.textContent, /\/deals\?id=synthetic-deal/);
+    assert.equal(cards[1].querySelector(".note-subject").textContent, "Record");
+    assert.equal(cards[1].querySelector(".note-link a"), null);
+    assert.match(cards[1].querySelector(".note-link").textContent, /Record unavailable/);
+    for (const card of cards) {
+      const visible = card.cloneNode(true);
+      visible.querySelectorAll("details").forEach(node => node.remove());
+      assert.doesNotMatch(visible.textContent, /D-DEMO-123|raw-reference|internal_kind|synthetic-signal|\/deals/);
+      assert.match(visible.textContent, /AM|PM/);
+    }
+    page.context.activity = { state: "read", payload: { events: [{ actor: "synthetic-actor-id",
+      verb: "internal_operation", subject_type: "deal", subject_id: "synthetic-record-id",
+      recorded_at: "2026-01-14T14:20:00Z" }] } };
+    vm.runInContext("view.activity = activity; renderActivity()", page.context);
+    const activity = page.doc.querySelector("#activityList > li");
+    assert.match(activity.querySelector("details").textContent, /synthetic-actor-id/);
+    const activityVisible = activity.cloneNode(true);
+    activityVisible.querySelector("details").remove();
+    assert.doesNotMatch(activityVisible.textContent, /synthetic-actor-id|internal_operation|synthetic-record-id/);
+    const chat = notificationCards({ unread_count: 1, notifications: [auditNotification({
+      subject_type: "doc_conversation", deep_link: `/doc-conversations/${QUIET}`,
+    })] })[0];
+    assert.equal(chat.subject, "Doc conversation");
+    assert.equal(chat.link.label, "Open conversation");
+  } finally { page.dom.window.close(); }
+});
+
+test("V1 audit 21: the unused exposure card and its dead model/wiring are gone", async () => {
+  const page = await auditPage();
+  try {
+    assert.equal(page.doc.querySelector('[data-section="exposure"]'), null);
+    assert.equal(page.doc.getElementById("exposureStatement"), null);
+    assert.doesNotMatch(pageJs + modelJs, /EXPOSURE_STATEMENT|exposureStatement/);
+    assert.equal(page.doc.getElementById("feedStateTitle").textContent, "No notifications");
+  } finally { page.dom.window.close(); }
+});
+
+test("V1 audit 25b: notification/activity guidance is in contextual help, away from headings", async () => {
+  const page = await auditPage({ feedError: Object.assign(new Error("synthetic"), { status: 503 }) });
+  try {
+    assert.equal(page.doc.getElementById("vocabularyLine"), null);
+    assert.equal(page.doc.querySelector("#activityBlock > p.caption"), null);
+    const help = page.doc.querySelector("details.context-help");
+    assert.ok(help);
+    assert.equal(help.open, false);
+    assert.equal(help.querySelector("summary").textContent, "About updates");
+    assert.match(help.textContent, /addressed to you/);
+    assert.match(help.textContent, /Acknowledging clears the notification/);
+    assert.equal(page.doc.getElementById("feedStateTitle").textContent, "Notifications temporarily unavailable");
+    page.client.notificationFeed = async () => ({ ok: true, unread_count: 0, notifications: [] });
+    page.doc.getElementById("retryRead").click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(page.doc.getElementById("feedStateTitle").textContent, "No notifications");
+  } finally { page.dom.window.close(); }
+});
+
+
+test("PR184 preference anchoring: failed reads do not scroll; first success scrolls once", async () => {
+  const page = await auditPage({ hash: "#prefForm", preferenceError: new Error("synthetic failure") });
+  try {
+    assert.equal(page.scrolls(), 0);
+    assert.equal(page.doc.getElementById("prefForm").hidden, true);
+    page.client.notificationPreferences = async () => ({ ok: true, exists: false, version: 1,
+      device_opt_in: false, quiet_hours_start: null, quiet_hours_end: null, timezone: "UTC" });
+    await vm.runInContext("load()", page.context);
+    assert.equal(page.scrolls(), 1);
+    await vm.runInContext("load()", page.context);
+    assert.equal(page.scrolls(), 1);
+  } finally { page.dom.window.close(); }
+});
+
+test("Updates house grammar: preference summaries use AM/PM and keep versions in Details", () => {
+  const model = preferenceView({ ok: true, exists: true, version: 7, device_opt_in: true,
+    quiet_hours_start: "22:00:00", quiet_hours_end: "07:30:00", timezone: "UTC" });
+  assert.equal(preferenceSummary(model), "Quiet hours 10:00 PM to 7:30 AM UTC · device push on");
+  const dom = new JSDOM(html), doc = dom.window.document;
+  try {
+    assert.ok(doc.getElementById("prefVersion").closest("details"));
+    assert.equal(doc.getElementById("quietStart").type, "text");
+    assert.match(doc.getElementById("quietStart").placeholder, /PM/);
+    const args = setPreferenceArgs({ quiet_hours_start: "10:00 PM", quiet_hours_end: "7:30 AM" }, model);
+    assert.equal(args.args.quiet_hours_start, "22:00");
+    assert.equal(args.args.quiet_hours_end, "07:30");
+    assert.equal(toInputTime("12:00 AM"), "00:00");
+    assert.equal(toInputTime("12:00 PM"), "12:00");
+    assert.equal(toInputTime("13:00 PM"), null);
+  } finally { dom.window.close(); }
 });

@@ -18,6 +18,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import { JSDOM } from "jsdom";
+import { SYNC_STATES } from "../js/board-sync.mjs";
 
 import { createFixtureClient } from "../js/fixture-client.js";
 import { PHASES, PHICON, phaseLabel } from "../js/client.js";
@@ -951,4 +954,23 @@ test('deal insight lines distinguish insufficient evidence from unavailable and 
   assert.deepEqual(dealInsightLines(null), ['Insights unavailable']);
   assert.deepEqual(dealInsightLines({judged:true,movement_rung:2,movement_rungs:4,movement_label:'Reviewed',waiting_on:'client_reply',silence_is_bad:0.2}),
     ['Movement 2 of 4', 'Reviewed', 'Waiting on: client reply', 'Estimated silence concern: 20%']);
+});
+
+
+test("PR184 Deals freshness distinguishes failed reads from pending and recovered reads", async () => {
+ const source=await read('js/pipeline.js');
+ const dom=new JSDOM('<span id="boardOrb"></span><span id="boardStatus"></span><span id="boardStatusLabel"></span><span id="boardAsOf"></span>');
+ const doc=dom.window.document;
+ const context=vm.createContext({$:id=>doc.getElementById(id),state:{},SYNC_STATES});
+ vm.runInContext(source.slice(source.indexOf('function renderStatus('),source.indexOf('function renderPendingWrites(')),context);
+ try{
+  for(const state of [SYNC_STATES.ERROR,SYNC_STATES.OFFLINE,SYNC_STATES.RECONNECTING]){
+   context.status={state,last_read_at:null};vm.runInContext('renderStatus(status)',context);
+   assert.equal(doc.getElementById('boardAsOf').textContent,'Board unavailable');
+  }
+  context.status={state:SYNC_STATES.STARTING,last_read_at:null};vm.runInContext('renderStatus(status)',context);
+  assert.equal(doc.getElementById('boardAsOf').textContent,'Updating…');
+  context.status={state:SYNC_STATES.READY,last_read_at:'2026-01-14T14:20:00Z'};vm.runInContext('renderStatus(status)',context);
+  assert.match(doc.getElementById('boardAsOf').textContent,/Updated.*(?:AM|PM)/);
+ }finally{dom.window.close()}
 });
