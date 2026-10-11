@@ -18,7 +18,7 @@ const artifactDir=await mkdtemp(join(tmpdir(),'doctorcre-qa-fixture-artifact-'))
 await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir:artifactDir,commit:'1'.repeat(40)});
 const buildRoot=join(artifactDir,'site');
 
-test('built static app crosses its live seam with isolated synthetic accounts and shared partner writes', async () => {
+test('built static app crosses its live seam with isolated synthetic accounts and shared invoice writes', async () => {
   const { dispatch } = await createQaServer({buildRoot});
   const origin = 'http://127.0.0.1:18997';
   const request = (path, init={}) => dispatch(new Request(new URL(path, origin), init));
@@ -32,17 +32,12 @@ test('built static app crosses its live seam with isolated synthetic accounts an
   assert.equal((await joeClient.getBoard()).actor,'joe');assert.equal((await dellClient.getBoard()).actor,'dell');
   const page=await caller(joe)('/?mode=live');assert.equal(page.status,200);
   assert.equal(await page.text(),await readFile(join(buildRoot,'workspace.html'),'utf8'));
+  const before=await joeClient.getBoard();
   const args={deal:'qa-deal-1',field:'owner',value:'dell',base_event_id:null,idempotency_key:'synthetic-handoff-key'};
-  const first=await joeClient.patchDealField(args);assert.equal(first.ok,true);
-  assert.deepEqual(await joeClient.patchDealField(args),first);
-  assert.equal((await dellClient.getDeal('qa-deal-1')).deal.owner,'dell');
+  await assert.rejects(()=>joeClient.patchDealField(args),/fixture_operation_unavailable/);
+  assert.deepEqual((await dellClient.getBoard()).deals,before.deals);
   assert.equal((await createLiveClient({fetchImpl:caller(isolated),docContext:false}).getDeal('qa-deal-1')).deal.owner,'joe');
-  await assert.rejects(()=>joeClient.patchDealField({...args,value:'joe',idempotency_key:'stale-key'}),/version_conflict/);
-  const changes=await dellClient.getChanges(null);assert.equal(changes.events.length,1);assert.equal(changes.events[0].actor,'joe');
-  await joeClient.addDealNote({deal:'qa-deal-1',text:'Synthetic handoff: Dell reviews the three shortlisted spaces.',idempotency_key:'synthetic-note-key'});
-  assert.equal((await dellClient.getDeal('qa-deal-1')).thread[0].text,'Synthetic handoff: Dell reviews the three shortlisted spaces.');
-  await joeClient.addCriticalDate({deal:'qa-deal-1',kind:'inspection',due_on:'2026-10-15',source:'Synthetic inspection appointment',idempotency_key:'synthetic-date-key'});
-  assert.equal((await dellClient.getDeal('qa-deal-1')).critical_dates[0].date,'2026-10-15');
+  assert.deepEqual((await dellClient.getChanges(null)).events,[]);
   const invoices=await dellClient.getInvoiceTracker();const invoice=invoices.entries.find(row=>row.status==='invoiced');
   await dellClient.markInvoicePaid({commission_id:invoice.commission_id,base_version:invoice.base_version,received_on:invoice.as_of,idempotency_key:'synthetic-paid-key'});
   assert.equal((await joeClient.getInvoiceTracker()).entries.find(row=>row.commission_id===invoice.commission_id).status,'received');

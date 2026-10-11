@@ -38,7 +38,11 @@
     "pree2e:staging:explore": "npm run build",
     "pree2e:staging:selftest": "npm run build",
     "e2e:staging:selftest": "node --test tests/staging-live/*.test.mjs && python3 tests/staging-live/scrub.test.py",
-    "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs"
+    "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs",
+    "qa:serve": "node scripts/qa-fixture-server.mjs",
+    "qa:round2": "e2e run tests/qa --config e2e.round2.config.ts --exclude-tag registry",
+    "qa:board-auth": "node scripts/qa-board-auth.mjs --capture",
+    "qa:registry": "e2e run --config e2e.registry.config.ts"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
@@ -47,6 +51,7 @@
     "e2e": "0.18.0",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
-    "wrangler": "4.131.2"
+    "wrangler": "4.131.2",
+    "zod": "4.6.1"
   }
 }

@@ -1,5 +1,5 @@
 import { expect } from 'e2e';
-import { reproTest, paintedText } from '../support.mjs';
+import { reproTest, paintedText } from '../../regressions/support.mjs';
 
 const test = reproTest();
 test('Phone Chats exposure heading text remains inside viewport clipping boundaries', { tags: ['verification'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {

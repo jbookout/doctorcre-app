@@ -32,7 +32,7 @@ const scripted: StepExecutor = {
 };
 
 export default {
-  projectId: 'doctorcre-round2', tests: ['tests/**/*.e2e.ts'],
+  projectId: 'doctorcre-round2', tests: ['tests/qa/**/*.e2e.ts', 'tests/repros/**/*.e2e.ts'],
   workers: 1, retries: 0, timeout: 240_000, assertionTimeout: 5_000,
   output: process.env.QA_OUTPUT ?? '.e2e/round2',
   trace: 'on', video: 'retain-on-failure',

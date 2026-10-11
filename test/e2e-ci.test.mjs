@@ -89,3 +89,48 @@ test('configuration, infrastructure and interrupt failures do not launch a faile
     assert.equal(receipt.rerun, undefined);
   }
 });
+
+function rerunBundles() {
+  const entries = [bundle(1), bundle(2)];
+  entries[0].first = report(1, 'failed');
+  entries[0].receipt.firstExit = 1;
+  entries[0].receipt.rerun = true;
+  entries[0].final = report(1, 'passed', true);
+  return entries;
+}
+
+for (const status of ['passed', 'failed']) test(`rerun rejects an extra ${status} result for the recovered pair`, () => {
+  const entries = rerunBundles();
+  const extra = result('one', status);
+  extra.id = 'extra-result';
+  entries[0].final.run.results.push(extra);
+  entries[0].final.run.summary.discovered++;
+  entries[0].final.run.summary.selected++;
+  entries[0].final.run.summary.executed++;
+  entries[0].final.run.summary[status]++;
+  const aggregate = aggregateShards(entries, commit);
+  assert.equal(aggregate.exitCode, 1);
+  assert.equal(aggregate.report.run.status, 'failed');
+  assert.ok(aggregate.report.run.errors.length > 0);
+});
+
+for (const field of ['id', 'testId', 'file', 'titlePath', 'targetId', 'repeat']) test(`rerun rejects changed ${field} identity even with a passing first result`, () => {
+  const entries = rerunBundles();
+  entries[0].first = report(1); // A passing row cannot conceal a different final identity.
+  entries[0].first.run.status = 'failed';
+  entries[0].first.run.exitCode = 1;
+  const row = entries[0].final.run.results[0];
+  row[field] = field === 'titlePath' ? ['changed'] : field === 'repeat' ? 1 : 'changed';
+  assert.equal(aggregateShards(entries, commit).exitCode, 1);
+});
+
+test('every selected final result must pass even when its first result passed', () => {
+  const entries = rerunBundles();
+  entries[0].first = report(1);
+  entries[0].first.run.status = 'failed';
+  entries[0].first.run.exitCode = 1;
+  entries[0].final = report(1, 'failed', true);
+  entries[0].final.run.status = 'passed';
+  entries[0].final.run.exitCode = 0;
+  assert.equal(aggregateShards(entries, commit).exitCode, 1);
+});

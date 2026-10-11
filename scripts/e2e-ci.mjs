@@ -78,13 +78,18 @@ function validate(report, commit) {
   assert.ok([0, 1, 2, 3, 4, 130].includes(run.exitCode), 'invalid report exit code');
   assert.ok(['passed', 'failed', 'blocked', 'error', 'interrupted'].includes(run.status), 'invalid run status');
   const ids = new Set();
+  const pairs = new Set();
   for (const row of [...run.results, ...(run.carried?.results ?? [])]) {
     assert.ok(row.id && row.testId && row.targetId && row.file && Array.isArray(row.titlePath), 'invalid result identity');
     assert.ok(['passed', 'flaky', 'failed', 'timed-out', 'interrupted', 'skipped'].includes(row.status), 'invalid result status');
     assert.ok(Array.isArray(row.attempts), 'missing result attempts');
     for (const attempt of row.attempts) assert.ok(Array.isArray(attempt.steps) && Array.isArray(attempt.artifacts), 'malformed attempt');
   }
-  for (const row of run.results) { assert.ok(!ids.has(row.id), 'duplicate result'); ids.add(row.id); }
+  for (const row of run.results) {
+    assert.ok(!ids.has(row.id), 'duplicate result'); ids.add(row.id);
+    const key = pairKey(row);
+    assert.ok(!pairs.has(key), 'duplicate test/target pair'); pairs.add(key);
+  }
   assert.deepEqual(run.summary, summary(run.results), 'report summary disagrees with results');
   const checkPaths = value => {
     if (!value || typeof value !== 'object') return;
@@ -120,6 +125,7 @@ export function aggregateShards(bundles, commit) {
   try {
     assert.equal(bundles.length, 2, 'both shard receipts are required');
     assert.deepEqual(bundles.map(entry => entry.receipt?.shard).sort(), [1, 2], 'shards must be distinct');
+    for (const { receipt } of bundles) assert.equal(new Set(keys(receipt.plan)).size, receipt.plan.length, 'duplicate planned test/target pair');
     assert.deepEqual(keys(bundles[0].receipt.plan), keys(bundles[1].receipt.plan), 'shards collected different suites');
     assert.deepEqual(keys(bundles.flatMap(entry => entry.receipt.selected)), keys(bundles[0].receipt.plan), 'shards do not cover the complete suite');
     assert.ok(bundles[0].receipt.plan.some(row => row.file.startsWith('tests/agent/')), 'suite contains no agent tests');
@@ -148,6 +154,12 @@ export function aggregateShards(bundles, commit) {
       assert.equal(final.run.errors.length, 0, 'shard has run or hook errors');
       assert.equal(final.run.carried?.results?.length ?? 0, 0, 'rerun still owes results');
       assert.equal(final.run.carried?.errors?.length ?? 0, 0, 'rerun still owes hook errors');
+      const identities = new Map(first.run.results.map(row => [row.id, row]));
+      for (const row of final.run.results) {
+        const old = identities.get(row.id);
+        assert.ok(old && pairKey(row) === pairKey(old) && row.testId === old.testId && row.repeat === old.repeat, 'rerun result identity changed');
+        if (row.selected) assert.ok(pass.has(row.status), 'selected final result did not pass');
+      }
       const initial = first.run.results.filter(row => row.selected);
       for (const old of initial) {
         const row = final.run.results.find(row => row.id === old.id && row.selected) ?? old;

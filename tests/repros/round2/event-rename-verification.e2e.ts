@@ -1,5 +1,5 @@
 import { expect } from 'e2e';
-import { reproTest } from '../support.mjs';
+import { reproTest } from '../../regressions/support.mjs';
 
 const test = reproTest();
 test('Event rename refreshes timeline and card names', { tags: ['bugbash'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
