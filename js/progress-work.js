@@ -1,6 +1,7 @@
 import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAuth } from './progress-auth.js';
 import { boardPageUrl } from './progress-board-route.js';
 import { createLiveClient } from './live-client.js';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { boardView, boardFreshness, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
 import { mountProgressWire } from './progress-wire.js';
 import { validEngineeringPassport } from './job-passport.js';
@@ -322,7 +323,4 @@ wire = mountProgressWire({scope,onRead:read=>{
   turns = read.turns;
   deriveLinks(); renderReviews(); renderDot();
 }});
-refresh();
-let refreshTimer;
-function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(async()=>{await refresh();scheduleRefresh();},document.hidden?30000:5000); }
-document.addEventListener('visibilitychange',scheduleRefresh); scheduleRefresh();
+mountVisibilityPoll({ poll: refresh, intervalMs: 5000 }).refresh();
