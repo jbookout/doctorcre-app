@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { openDom } from '../../test/jsdom-harness.mjs';
-import { sweepScreen, SweepFailure, inventory } from '../../scripts/e2e-staging/controls.mjs';
+import { sweepScreen, SweepFailure, ControlSkip, inventory } from '../../scripts/e2e-staging/controls.mjs';
 import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +12,7 @@ import { installStagingGuard, stagingWriteRefusals } from '../../scripts/e2e-sta
 import * as sweepCaller from '../../scripts/e2e-staging/sweep.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { screens, targets } from '../../scripts/e2e-staging/screens.mjs';
 import { RunLimitError } from '../../scripts/e2e-staging/run-limits.mjs';
 
 // A DOM adapter for the browser boundary. No network or layout assertion runs.
@@ -166,14 +167,15 @@ test('production admission refuses an unsupported handler before it runs and ret
   assert.equal(clicks.filter(row => row.measurement === 3 && row.selector === '#later').length, 1);
   assert.ok(handlers.includes('later'));
   assert.ok(handlers.includes('nested'));
-  assert.equal(result.controls[0].status, 'ERROR');
+  assert.equal(result.controls[0].status, 'SKIPPED');
   assert.equal(result.controls[0].evidence_path, undefined);
   assert.equal(result.controls[1].status, 'OBSERVED');
   assert.equal(result.controls[1].evidence_path, 'synthetic.png');
   assert.ok(captured.includes('#nested'));
   assert.equal(result.failure, null);
-  assert.ok((await read()).browser_write_refusals.length >= 1);
-  await assert.rejects(guard.assertCoverage(), /write-coverage-incomplete/);
+  assert.ok((await read()).browser_control_skips.length >= 1);
+  assert.deepEqual(result.controls[0].execution, { press_attempted: false, handler_executions: 0 });
+  await guard.assertCoverage();
 });
 
 test('context refusal readers use the guard history, including bounded operation metadata', async t => {
@@ -182,7 +184,7 @@ test('context refusal readers use the guard history, including bounded operation
   assert.deepEqual(stagingWriteRefusals(context), (await read()).browser_write_refusals);
 });
 
-test('an opener whose prospective proof was withdrawn runs no replay handler and preserves the traversal failure', async t => {
+test('an opener whose prospective proof was withdrawn runs no replay handler and skips dependent controls', async t => {
   const { guard, proveLocal, update } = await fixture(t);
   const handlers = [];
   let opened = 0;
@@ -198,9 +200,9 @@ test('an opener whose prospective proof was withdrawn runs no replay handler and
     }, admit: sweepCaller.assertSweepFixtureScope,
   });
   assert.deepEqual(handlers, ['later']);
-  assert.equal(result.failure.phase, 'fixture-scope');
-  assert.equal(result.failure.code, 'write-scope-unproved');
-  assert.ok(result.traversal);
+  assert.equal(result.failure, null);
+  assert.ok(result.controls.some(row => row.status === 'SKIPPED'));
+  assert.ok(result.controls.filter(row => row.status === 'SKIPPED').every(row => row.execution.handler_executions === 0));
 });
 
 test('control admission validates prospective effects against fixture ownership without dispatch or intent', async t => {
@@ -228,9 +230,10 @@ test('control admission validates prospective effects against fixture ownership 
         await sweepCaller.assertSweepFixtureScope(page, control);
         await guard.assertCoverage();
       } else {
-        await assert.rejects(sweepCaller.assertSweepFixtureScope(page, control), error => error.failure?.code === 'write-scope-unproved');
-        await assert.rejects(guard.assertCoverage());
-        assert.equal(stagingWriteRefusals(context).length, kind === 'source' ? 0 : 1);
+        await assert.rejects(sweepCaller.assertSweepFixtureScope(page, control), error => kind === 'source' ? error.failure?.code === 'write-scope-unproved' : error instanceof ControlSkip);
+        if (kind === 'source') await assert.rejects(guard.assertCoverage());
+        else await guard.assertCoverage();
+        assert.equal(stagingWriteRefusals(context).length, 0);
       }
       const plan = await read();
       assert.equal(plan.browser_write_attempts?.length || 0, 0, 'admission must not consume a write key or dispatch');
@@ -246,7 +249,7 @@ test('an exact plan proof cannot admit a control after its live identity changes
   await proveLocal(page, ['#later']);
   const control = (await inventory(page)).find(row => row.selector === '#later');
   await page.evaluate(() => document.querySelector('#later').textContent = 'Changed action');
-  await assert.rejects(sweepCaller.assertSweepFixtureScope(page, control), error => error.failure?.code === 'write-scope-unproved');
+  await assert.rejects(sweepCaller.assertSweepFixtureScope(page, control), error => error instanceof ControlSkip);
 });
 
 test('production scope refusal returns a bounded failure without changing the evidence row', async t => {
@@ -272,4 +275,43 @@ test('a leads measurement navigation stopped by the request ceiling retains the 
   assert.equal(result.controls.length, 0);
   assert.equal(result.failure.phase, 'run-limit');
   assert.equal(result.failure.code, 'http-request-limit');
+});
+
+
+test('missing proofs skip handlers across all 31 screen paths and all four serial targets', async t => {
+  const { guard } = await fixture(t), routes = await screens();
+  const state = createSweepRun({ targets, routedScreens: routes });
+  let measured = 0;
+  for (const target of targets) for (const screen of routes.filter(row => row.surface === target.surface)) {
+    const handlers = [];
+    const result = await sweepScreen({ screen, target: target.name, waitMs: 20,
+      freshPage: async () => domPage(screen.path, { context: await guardedContext(guard), handlers }),
+      admit: sweepCaller.assertSweepFixtureScope,
+      evidence: async () => assert.fail('unproved controls are never pressed or given press evidence'),
+    });
+    assert.equal(result.failure, null);
+    assert.deepEqual(handlers, []);
+    assert.equal(result.controls.length, 2);
+    for (const row of result.controls) {
+      assert.equal(row.status, 'SKIPPED');
+      assert.deepEqual(row.execution, { press_attempted: false, handler_executions: 0 });
+    }
+    state.record(result);
+    await guard.assertCoverage();
+    measured++;
+  }
+  assert.equal(routes.length, 31);
+  assert.equal(measured, 62);
+  assert.equal(state.snapshot().screens.length, 62);
+  assert.equal(state.verdict([]).skippedControls, 124);
+  assert.equal(state.verdict([]).completed, false);
+  for (const entry of state.pendingStates()) {
+    const skipped = { status: 'SKIPPED', reason: 'control-scope-unproved', execution: { press_attempted: false, handler_executions: 0 } };
+    state.recordState(entry.key, entry.spec.kind === 'calendar-operation'
+      ? { ...skipped, spec: entry.spec, steps: [] }
+      : { ...routes.find(screen => screen.path === entry.spec.owner), ...skipped, target: entry.target, state_scope: entry.key, reached: false, controls: [] });
+  }
+  assert.equal(state.verdict([]).failed, false, 'proof skips alone do not fail the final target verdict');
+  assert.equal(state.verdict([]).completed, false);
+  assert.equal(state.verdict([]).skippedStateObligations, 62);
 });

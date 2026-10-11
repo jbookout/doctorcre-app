@@ -10,6 +10,10 @@ import { assertCalendarAction } from './calendar-coverage.mjs';
 export const CONTROL_SELECTOR = 'button,input:not([type="hidden"]):not([readonly]),textarea:not([readonly]),a[href],[role="button"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="tab"],[role="switch"],[role="checkbox"],input[type="checkbox"],input[type="radio"],[aria-pressed],[aria-expanded],summary,select';
 export const WORKSPACE_VIEW_SELECTOR = '[role="tab"],[data-view],#appTabsSlot [aria-pressed],[data-layout-slot="tabs"] [aria-pressed],[data-atlas-view],#viewConversation,#viewEverything';
 
+export class ControlSkip extends Error {
+  constructor(reason) { super('Control skipped before press: ' + reason); this.reason = reason; }
+}
+
 export class SweepFailure extends Error {
   constructor(phase, code, selector) {
     super(`Staging sweep failed: ${phase}/${code}`);
@@ -497,6 +501,14 @@ export async function sweepScreen({ freshPage, screen, target, evidence, admit, 
             await resolveDiscovery(fresh, state.openers, action, beforeURL);
           }
         } catch (error) {
+          if (error instanceof ControlSkip && !row) {
+            row = { ...base, status: 'SKIPPED', signals: [], reason: error.reason,
+              execution: { press_attempted: false, handler_executions: 0 } };
+            controls.push(row);
+            pending = null;
+            await publishProgress();
+            continue;
+          }
           if (error instanceof SweepFailure &&
               error.failure.phase === 'fixture-scope' && error.failure.code === 'write-scope-unproved') {
             if (!row) { row = { ...base, signals: [] }; controls.push(row); }
@@ -516,7 +528,18 @@ export async function sweepScreen({ freshPage, screen, target, evidence, admit, 
         } finally { await close(fresh, state.openers, control); }
         if (failure && failure.phase !== 'checkpoint') await publishProgress();
       }
-    } catch (error) { fail(error, phase, state.openers); }
+    } catch (error) {
+      if (error instanceof ControlSkip && state.controls) {
+        for (const control of state.controls) {
+          if (seen.has(control.identity)) continue;
+          seen.add(control.identity);
+          controls.push({ ...control, key: `${target}/${screen.path}/${identityKey(control.identity)}`,
+            target, path: screen.path, screen: screen.name, openers: state.openers.map(row => row.name),
+            status: 'SKIPPED', reason: error.reason, signals: [], execution: { press_attempted: false, handler_executions: 0 } });
+        }
+      } else if (error instanceof ControlSkip) throw error;
+      else fail(error, phase, state.openers);
+    }
     finally { await close(page, state.openers); }
     if (!failure && !exhausted) active = null;
     if (failure && failure.phase !== 'checkpoint') await publishProgress();

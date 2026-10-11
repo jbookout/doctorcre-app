@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { openDom } from '../../test/jsdom-harness.mjs';
 import { mountMorningBrief } from '../../js/morning-brief.js';
@@ -17,7 +19,8 @@ import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 import { fakeAPI } from './record-fixture.mjs';
-const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a9f1191d4afc7bf0cf3a3941d58b166b241edc8a', carr_source_commit: contract.producer.source_commit };
+const checkout = fileURLToPath(new URL('../../', import.meta.url));
+const release = { service: 'doctorcre-app', environment: 'staging', source_commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: checkout, encoding: 'utf8' }).trim(), carr_source_commit: contract.producer.source_commit };
 
 // Browser seam adapter only. The safe handler comes from the actual app module.
 async function morningPage(guard, counters) {
@@ -51,6 +54,7 @@ async function morningPage(guard, counters) {
 
 test('production record preparation admits the reviewed app handler into the screen sweep and refuses unsupported handlers', async t => {
   admitFixtureRun(t);
+  assert.equal(release.source_commit, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: checkout, encoding: 'utf8' }).trim(), 'synthetic release uses the checkout HEAD, including depth-1 clones');
   const output = await mkdtemp(join(tmpdir(), 'staging-prepared-control-proofs-'));
   const previous = { E2E_V2_OUTPUT: process.env.E2E_V2_OUTPUT, E2E_RUN_ID: process.env.E2E_RUN_ID };
   process.env.E2E_V2_OUTPUT = output; process.env.E2E_RUN_ID = 'synthetic-proof-preparation';
@@ -70,9 +74,11 @@ test('production record preparation admits the reviewed app handler into the scr
   console.log(JSON.stringify({ safe: safe?.status, safeEvidence: safe?.evidence_path ?? null, counters }));
   assert.equal(safe?.status, 'OBSERVED');
   assert.equal(safe.evidence_path, 'screenshots/reviewed-control.png');
-  assert.ok(counters.safe > 0, 'the app-owned close handler was executed');
+  assert.equal(counters.safe, 1, 'the app-owned close handler executes exactly once');
   assert.ok(captured.includes('#morningClose'));
-  assert.equal(unsupported?.status, 'ERROR');
+  assert.equal(unsupported?.status, 'SKIPPED');
+  assert.deepEqual(unsupported.execution, { press_attempted: false, handler_executions: 0 });
+  await guard.assertCoverage();
   assert.equal(unsupported?.evidence_path, undefined);
   assert.equal(counters.unsupported, 0, 'unsupported handler was never executed');
   const path = join(output, 'staging-records-plan.json');
@@ -97,7 +103,7 @@ test('production record preparation admits the reviewed app handler into the scr
       }, admit: assertSweepFixtureScope,
       evidence: async () => assert.fail('refused handlers must not receive evidence'),
     });
-    assert.equal(result.controls.find(row => row.selector === '#morningClose')?.status, 'ERROR');
+    assert.equal(result.controls.find(row => row.selector === '#morningClose')?.status, 'SKIPPED');
     assert.deepEqual(denied, { safe: 0, unsupported: 0 });
     console.log(JSON.stringify({ kind, counters: denied }));
   });
@@ -118,7 +124,7 @@ test('production record preparation admits the reviewed app handler into the scr
     assert.equal(observed.status, 'OBSERVED');
     assert.ok(observed.evidence_path.endsWith('.png'));
     assert.ok((await readFile(observed.evidence_path)).length > 0);
-    assert.equal(home.controls.find(row => row.selector === '#unsupported').status, 'ERROR');
+    assert.equal(home.controls.find(row => row.selector === '#unsupported').status, 'SKIPPED');
     assert.deepEqual(counts, { safe: 1, unsupported: 0 });
     console.log(JSON.stringify({ entrypoint: 'sweep', counters: counts, evidence: observed.evidence_path }));
   });

@@ -483,8 +483,8 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
       // No effects are inferred from a selector, name, or app-provided attribute.
       // Only an exact reviewed action in this source-pair-bound private plan is
       // eligible. An empty effects list declares a reviewed local-only action.
+      const plan = await currentPlan();
       try {
-        const plan = await currentPlan();
         if (!control || typeof control.identity !== 'string' || !control.identity) policyFailure('control-scope-unproved');
         if (control.disabled === true) return;
         const proofs = plan.browser_control_proofs;
@@ -499,9 +499,17 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           proveOperation(plan, effect.operation, effect.arguments);
         }
       } catch (error) {
-        await retainRefusal({ operation: 'unknown-operation', reason: error.fixturePolicy ? error.code : 'control-scope-unproved',
-          forwarded: false, at: new Date().toISOString() }, scope);
-        policyFailure('control-scope-unproved');
+        if (!error.fixturePolicy) throw error;
+        const skipped = { identity: control?.identity || null, reason: error.code,
+          press_attempted: false, handler_executions: 0, at: new Date().toISOString() };
+        await locked(async () => {
+          const latest = await currentPlan();
+          latest.browser_control_skips ||= [];
+          latest.browser_control_skips.push(skipped);
+          await persist(planPath, latest);
+        });
+        throw Object.assign(new Error('Reviewed control proof unavailable: ' + error.code),
+          { controlProofUnavailable: true, code: error.code });
       }
     },
     async assertCoverage({ timeoutMs = effectiveRunLimits(run).settlementMs } = {}, scope) {

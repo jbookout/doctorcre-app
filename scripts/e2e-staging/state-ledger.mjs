@@ -4,7 +4,7 @@ import { canContinueTraversal, canonicalIdentity, identityKey } from './traversa
 const requireState = value => { if (!value) throw new Error('Staging state obligation is invalid; no destination coverage was credited'); };
 const copy = value => structuredClone(value);
 const statuses = new Set(['pending', 'passed', 'failed']);
-export function createStateLedger({ targets, routedScreens, prior = [], validateScreen, complete, attemptID }) {
+export function createStateLedger({ targets, routedScreens, prior = [], validateScreen, complete, finished = complete, attemptID }) {
   requireState(Array.isArray(prior));
   const plan = new Map(targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface).map(screen => [target.name + '|' + screen.path, { target, screen }])));
   const entries = new Map();
@@ -28,7 +28,7 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     requireState(entry.history === undefined || Array.isArray(entry.history));
     for (const old of entry.history || []) {
       requireState(old && typeof old.attempt_id === 'string' && old.result && old.attempt_id !== entry.attempt_id);
-      if (entry.spec.kind === 'calendar-operation') requireState(old.result.status === 'failed' && JSON.stringify(old.result.spec) === JSON.stringify(entry.spec));
+      if (entry.spec.kind === 'calendar-operation') requireState(['failed', 'SKIPPED'].includes(old.result.status) && JSON.stringify(old.result.spec) === JSON.stringify(entry.spec));
       else { validateScreen(old.result); requireState(old.result.state_scope === entry.key && old.result.target === entry.target && old.result.path === entry.spec.owner && !complete(old.result)); }
     }
     for (const source of entry.sources) {
@@ -42,7 +42,8 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
     if (entry.result) {
       requireState(typeof entry.attempt_id === 'string');
       if (entry.spec.kind === 'calendar-operation') {
-        requireState(entry.result.spec && JSON.stringify(entry.result.spec) === JSON.stringify(entry.spec) && ['passed', 'failed'].includes(entry.result.status));
+        requireState(entry.result.spec && JSON.stringify(entry.result.spec) === JSON.stringify(entry.spec) && ['passed', 'failed', 'SKIPPED'].includes(entry.result.status));
+        if (entry.result.status === 'SKIPPED') requireState(entry.result.reason && entry.result.execution?.press_attempted === false && entry.result.execution.handler_executions === 0);
         if (entry.result.status === 'failed') requireState(entry.result.failure && /^[a-z][a-z0-9-]*$/.test(entry.result.failure.code || ''));
         if (entry.result.status === 'passed') {
           const declared = calendarCases.find(row => row.id === entry.spec.case);
@@ -90,7 +91,7 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
       } else if (entry.result && entry.attempt_id !== attemptID) entry.history = [...(entry.history || []), { attempt_id: entry.attempt_id, result: copy(entry.result) }];
       if (!entry.result || entry.spec.kind === 'calendar-operation' || !canContinueTraversal(entry.result)) entry.attempt_id = attemptID;
       entry.result = copy(result);
-      entry.status = entry.spec.kind === 'calendar-operation' ? result.status : complete(result) ? 'passed' : 'pending';
+      entry.status = entry.spec.kind === 'calendar-operation' ? (result.status === 'SKIPPED' ? 'pending' : result.status) : complete(result) ? 'passed' : 'pending';
       validate(entry);
       if (entry.spec.kind !== 'calendar-operation') this.collect(result, key);
     },
@@ -102,6 +103,7 @@ export function createStateLedger({ targets, routedScreens, prior = [], validate
           screen.delegations?.some(item => item.source_key === source.key && item.after === source.observed_destination && item.states.some(spec => JSON.stringify(spec) === JSON.stringify(entry.spec)))));
       }
     },
+    finished() { return [...entries.values()].every(entry => entry.result && (entry.spec.kind === 'calendar-operation' ? ['passed', 'SKIPPED'].includes(entry.result.status) : finished(entry.result))); },
     completed() { return [...entries.values()].every(entry => entry.status === 'passed'); },
   };
 }

@@ -6,13 +6,16 @@ import { canContinueTraversal, validateTraversal } from './traversal.mjs';
 import { createStateLedger } from './state-ledger.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
-const statuses = new Set(['OBSERVED', 'DEAD', 'DISABLED', 'ERROR', 'UNREACHABLE']);
+const statuses = new Set(['OBSERVED', 'DEAD', 'DISABLED', 'ERROR', 'UNREACHABLE', 'SKIPPED']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string');
 const pair = (target, path) => JSON.stringify([target, path]);
 const requireCheckpoint = value => { if (!value) throw new Error('Staging sweep checkpoint is invalid; no screen was retried'); };
 const sourceRelease = release => release?.service === 'doctorcre-app' && release.environment === 'staging' && /^[0-9a-f]{40}$/.test(release.source_commit || '') && release.carr_source_commit === contract.producer.source_commit;
-const complete = screen => screen?.reached === true && screen.in_progress !== true && !screen.failure && !screen.exhausted && screen.controls.length > 0 && screen.controls.every(row => typeof row.evidence_path === 'string' && row.evidence_path.trim() && !['ERROR', 'UNREACHABLE'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided'));
+const validSkip = row => row.status === 'SKIPPED' && typeof row.reason === 'string' && row.reason.trim() &&
+  row.execution?.press_attempted === false && row.execution.handler_executions === 0;
+const finished = screen => screen && screen.in_progress !== true && !screen.failure && !screen.exhausted && (validSkip(screen) || screen.reached === true && screen.controls.length > 0 && screen.controls.every(row => validSkip(row) || typeof row.evidence_path === 'string' && row.evidence_path.trim() && !['ERROR', 'UNREACHABLE', 'SKIPPED'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided')));
+const complete = screen => screen?.status !== 'SKIPPED' && finished(screen) && !screen.controls.some(row => row.status === 'SKIPPED');
 
 export async function readSweepCheckpoint(output) {
   try { return JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')); }
@@ -41,8 +44,10 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     for (const row of screen.controls) {
       requireCheckpoint(row && typeof row === 'object' && row.target === screen.target && row.path === screen.path && row.screen === screen.name && typeof row.key === 'string' && row.key.startsWith(`${screen.target}/${screen.path}/`) && /^[0-9a-f]{16}$/.test(row.key.slice(`${screen.target}/${screen.path}/`.length)) && !keys.has(row.key));
       requireCheckpoint(statuses.has(row.status) && typeof row.selector === 'string' && row.selector.length > 0 && strings(row.openers) && strings(row.signals) && (row.evidence_path === undefined || typeof row.evidence_path === 'string') && (row.reason === undefined || typeof row.reason === 'string'));
+      if (row.status === 'SKIPPED') requireCheckpoint(validSkip(row));
       keys.add(row.key);
     }
+    if (screen.status === 'SKIPPED') requireCheckpoint(validSkip(screen));
     if (screen.traversal) validateTraversal(screen);
   };
   const measured = new Map(), history = [];
@@ -70,7 +75,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
   const continuationIDs = new Map([...measured].filter(([, screen]) => canContinueTraversal(screen)).map(([key, screen]) => [key, screen.attempt_id]));
   const attemptID = randomUUID();
   let number = 0;
-  const states = createStateLedger({ targets, routedScreens, prior: prior?.stateObligations || [], validateScreen, complete, attemptID });
+  const states = createStateLedger({ targets, routedScreens, prior: prior?.stateObligations || [], validateScreen, complete, finished, attemptID });
   states.validateSources([...measured.values(), ...history.map(entry => entry.screen)]);
   return {
     pending,
@@ -96,7 +101,11 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       const owned = states.snapshot().filter(entry => entry.spec.kind !== 'calendar-operation').flatMap(entry => [entry.result, ...(entry.history || []).map(old => old.result)]).filter(Boolean);
       const controls = [...measured.values(), ...history.map(entry => entry.screen), ...owned].flatMap(screen => screen.controls);
       const dead = newDeadControls(controls, allowlist);
-      return { completed: measured.size === planned.length && planned.every(({ target, screen }) => complete(measured.get(pair(target.name, screen.path)))) && states.completed(), pendingStateObligations: states.pending().map(entry => entry.key), newDeadControls: [...new Set(dead.map(row => row.key))] };
+      const current = [...measured.values(), ...states.snapshot().filter(entry => entry.spec.kind !== 'calendar-operation').map(entry => entry.result).filter(Boolean)];
+      return { skippedControls: current.flatMap(screen => screen.controls).filter(row => row.status === 'SKIPPED').length,
+        skippedStateObligations: states.snapshot().filter(entry => entry.result?.status === 'SKIPPED').length,
+        failed: measured.size !== planned.length || !planned.every(({ target, screen }) => finished(measured.get(pair(target.name, screen.path)))) || !states.finished() || dead.length > 0,
+        completed: measured.size === planned.length && planned.every(({ target, screen }) => complete(measured.get(pair(target.name, screen.path)))) && states.completed(), pendingStateObligations: states.pending().map(entry => entry.key), newDeadControls: [...new Set(dead.map(row => row.key))] };
     },
     evidencePaths(output, privateRoot, status) {
       requireCheckpoint(statuses.has(status));

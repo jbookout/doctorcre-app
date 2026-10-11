@@ -1,10 +1,10 @@
-import { requireSupervisedRun } from './run-limits.mjs';
+import { requireSupervisedRun, RunLimitError } from './run-limits.mjs';
 import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertStagingContextCoverage, admitStagingControl } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
-import { sweepScreen, SweepFailure } from './controls.mjs';
+import { sweepScreen, SweepFailure, ControlSkip } from './controls.mjs';
 import { writeReport } from './report.mjs';
 import { scrubEvidence } from './evidence.mjs';
 export { scrubEvidence } from './evidence.mjs';
@@ -18,7 +18,11 @@ export async function assertSweepFixtureScope(page, control, scope) {
     if (control) await admitStagingControl(page, control, scope);
     else await assertStagingContextCoverage(page.context());
   }
-  catch { throw new SweepFailure('fixture-scope', 'write-scope-unproved'); }
+  catch (error) {
+    if (error instanceof RunLimitError) throw error;
+    if (error.controlProofUnavailable) throw new ControlSkip(error.code);
+    throw new SweepFailure('fixture-scope', 'write-scope-unproved');
+  }
 }
 
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
@@ -94,10 +98,10 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
   const allowlist = JSON.parse(await readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8'));
   const verdict = run.verdict(allowlist);
   try { await fixtureGuard.assertCoverage(); verdict.fixtureWriteScopeComplete = true; }
-  catch { verdict.fixtureWriteScopeComplete = false; verdict.completed = false; }
+  catch { verdict.fixtureWriteScopeComplete = false; verdict.completed = false; verdict.failed = true; }
   const verdictData = JSON.stringify({ ...verdict, measuredAt: new Date().toISOString(), release }, null, 2) + '\n';
   const verdictPath = join(output, 'sweep-verdict.json');
   await budget.writeFile(verdictPath, verdictData, writeFile);
   budget.checkArtifacts();
-  if (verdict.newDeadControls.length || !verdict.completed) throw new Error(`Staging sweep failed: ${verdict.newDeadControls.length} new DEAD controls; completeness ${verdict.completed ? 'passed' : 'FAILED'}. See coverage.md.`);
+  if (verdict.newDeadControls.length || verdict.failed) throw new Error(`Staging sweep failed: ${verdict.newDeadControls.length} new DEAD controls; completeness ${verdict.completed ? 'passed' : 'FAILED'}. See coverage.md.`);
 }

@@ -200,3 +200,48 @@ test('completion requires captured evidence for every retained control without d
     assert.ok(!run({ release, screens: [measured] }).pending.some(({ target, screen }) => target.name === 'desktop' && screen.path === '/'));
   }
 });
+
+test('proof skips finish every target without claiming complete coverage; real failures still fail', async t => {
+  const state = run();
+  for (const target of targets) for (const route of routedScreens) {
+    const row = screen(target.name, route.path);
+    row.controls[0] = { ...row.controls[0], status: 'SKIPPED', reason: 'control-scope-unproved',
+      execution: { press_attempted: false, handler_executions: 0 } };
+    delete row.controls[0].evidence_path;
+    state.record(row);
+  }
+  const output = await mkdtemp(join(tmpdir(), 'staging-skips-report-'));
+  t.after(() => rm(output, { recursive: true, force: true }));
+  await writeReport(output, { ...state.snapshot(), release, run: null });
+  const report = await readFile(join(output, 'coverage.md'), 'utf8');
+  assert.match(report, /4 SKIPPED before press/);
+  assert.match(report, /Skips leave coverage incomplete/);
+  assert.match(report, /handler executions: 0/);
+  assert.equal(state.snapshot().screens.length, 4);
+  assert.equal(state.verdict([]).skippedControls, 4);
+  assert.equal(state.verdict([]).completed, false);
+  assert.equal(state.verdict([]).failed, false, 'skips alone do not stop serial targets');
+  const resumed = run({ ...state.snapshot(), release });
+  assert.equal(resumed.verdict([]).skippedControls, 4, 'skip evidence survives resume');
+  const failed = run();
+  for (const target of targets) for (const route of routedScreens) {
+    const row = screen(target.name, route.path);
+    if (target === targets[0] && route === routedScreens[0]) row.failure = { phase: 'fresh-page', code: 'navigation-failed', openers: [] };
+    failed.record(row);
+  }
+  assert.equal(failed.verdict([]).failed, true);
+});
+
+
+test('a proof-skipped owner result cannot hide navigation or run-limit failures', () => {
+  const state = run();
+  for (const target of targets) for (const route of routedScreens) {
+    const row = screen(target.name, route.path);
+    row.status = 'SKIPPED'; row.reason = 'control-scope-unproved';
+    row.execution = { press_attempted: false, handler_executions: 0 };
+    row.controls = [];
+    if (target === targets[0] && route === routedScreens[0]) row.failure = { phase: 'run-limit', code: 'stop-signal', openers: [] };
+    state.record(row);
+  }
+  assert.equal(state.verdict([]).failed, true);
+});

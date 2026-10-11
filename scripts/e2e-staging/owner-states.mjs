@@ -1,4 +1,4 @@
-import { sweepScreen } from './controls.mjs';
+import { sweepScreen, ControlSkip } from './controls.mjs';
 import { readCalendarContext, runCalendarCase } from './calendar-coverage.mjs';
 import { recordCalendarState } from './state-plan.mjs';
 
@@ -35,7 +35,7 @@ export async function sweepOwnerStates({ run, targets, routedScreens, freshPageF
       inspected.add(target.name);
     }
     if (entry.spec.kind === 'calendar-operation') {
-      run.recordState(entry.key, await runCalendarCase({ spec: entry.spec, freshPage, evidence }));
+      run.recordState(entry.key, await runCalendarCase({ spec: entry.spec, freshPage, evidence, admit }));
       await persist();
     } else {
       let result;
@@ -45,8 +45,11 @@ export async function sweepOwnerStates({ run, targets, routedScreens, freshPageF
             run.recordState(entry.key, partial);
             await persist();
           } });
-      } catch {
-        result = { ...(run.pendingStates().find(row => row.key === entry.key)?.result || { ...screen, target: target.name, reached: false, controls: [], state_scope: entry.key }),
+      } catch (error) {
+        if (error instanceof ControlSkip) {
+          result = { ...screen, target: target.name, state_scope: entry.key, reached: false, controls: [], status: 'SKIPPED',
+            reason: error.reason, execution: { press_attempted: false, handler_executions: 0 } };
+        } else result = { ...(run.pendingStates().find(row => row.key === entry.key)?.result || { ...screen, target: target.name, reached: false, controls: [], state_scope: entry.key }),
           failure: { phase: 'owner-state', code: 'unexpected-owner-sweep-failure', openers: [] } };
       }
       run.recordState(entry.key, result);
