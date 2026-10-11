@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { newDeadControls, sweepFindings } from './report.mjs';
 import { canContinueTraversal, validateTraversal } from './traversal.mjs';
 import { createStateLedger } from './state-ledger.mjs';
+import { hasFailure, validSkip, normalizeSkip } from './result-status.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const statuses = new Set(['OBSERVED', 'DEAD', 'DISABLED', 'ERROR', 'UNREACHABLE', 'SKIPPED']);
@@ -12,9 +13,7 @@ const strings = value => Array.isArray(value) && value.every(item => typeof item
 const pair = (target, path) => JSON.stringify([target, path]);
 const requireCheckpoint = value => { if (!value) throw new Error('Staging sweep checkpoint is invalid; no screen was retried'); };
 const sourceRelease = release => release?.service === 'doctorcre-app' && release.environment === 'staging' && /^[0-9a-f]{40}$/.test(release.source_commit || '') && release.carr_source_commit === contract.producer.source_commit;
-const validSkip = row => row.status === 'SKIPPED' && typeof row.reason === 'string' && row.reason.trim() &&
-  row.execution?.press_attempted === false && row.execution.handler_executions === 0;
-const finished = screen => screen && screen.in_progress !== true && !screen.failure && !screen.exhausted && (validSkip(screen) || screen.reached === true && screen.controls.length > 0 && screen.controls.every(row => validSkip(row) || typeof row.evidence_path === 'string' && row.evidence_path.trim() && !['ERROR', 'UNREACHABLE', 'SKIPPED'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided')));
+const finished = screen => screen && screen.status !== 'ERROR' && screen.in_progress !== true && !screen.failure && !screen.exhausted && (validSkip(screen) || screen.reached === true && screen.controls.length > 0 && screen.controls.every(row => !hasFailure(row) && (validSkip(row) || typeof row.evidence_path === 'string' && row.evidence_path.trim() && !['ERROR', 'UNREACHABLE', 'SKIPPED'].includes(row.status) && (row.status !== 'DISABLED' || typeof row.reason === 'string' && row.reason.trim() && row.reason !== 'No reason provided'))));
 const complete = screen => screen?.status !== 'SKIPPED' && finished(screen) && !screen.controls.some(row => row.status === 'SKIPPED');
 
 export async function readSweepCheckpoint(output) {
@@ -53,7 +52,8 @@ export function createSweepRun({ targets, routedScreens, prior }) {
   const measured = new Map(), history = [];
   if (prior !== undefined) {
     requireCheckpoint(prior && typeof prior === 'object' && sourceRelease(prior.release) && Array.isArray(prior.screens) && (prior.history === undefined || Array.isArray(prior.history)));
-    for (const screen of prior.screens) {
+    for (const original of prior.screens) {
+      const screen = normalizeSkip(original, 'ERROR');
       validateScreen(screen);
       const key = pair(screen.target, screen.path);
       requireCheckpoint(!measured.has(key));
@@ -62,13 +62,14 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     const attempts = new Set();
     for (const entry of prior.history || []) {
       requireCheckpoint(entry && typeof entry === 'object' && Array.isArray(entry.findings));
-      validateScreen(entry.screen);
+      const screen = normalizeSkip(entry.screen, 'ERROR');
+      validateScreen(screen);
       const key = `${entry.screen.attempt_id || 'legacy'}|${pair(entry.screen.target, entry.screen.path)}`;
       requireCheckpoint(!complete(entry.screen) && !attempts.has(key) && JSON.stringify(entry.findings) === JSON.stringify(sweepFindings([entry.screen])));
       const current = measured.get(pair(entry.screen.target, entry.screen.path));
       requireCheckpoint(!current || (current.attempt_id || 'legacy') !== (entry.screen.attempt_id || 'legacy'));
       attempts.add(key);
-      history.push(structuredClone(entry));
+      history.push(structuredClone({ ...entry, screen, findings: sweepFindings([screen]) }));
     }
   }
   const pending = planned.filter(({ target, screen }) => !complete(measured.get(pair(target.name, screen.path))));
@@ -87,6 +88,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       if (!sourceRelease(release) || prior && (prior.release.source_commit !== release.source_commit || prior.release.carr_source_commit !== release.carr_source_commit)) throw new Error('Staging sweep requires the same pinned source pair; no screen was retried');
     },
     record(screen) {
+      screen = normalizeSkip(screen, 'ERROR', measured.get(pair(screen?.target, screen?.path)));
       validateScreen(screen);
       const key = pair(screen.target, screen.path), old = measured.get(key);
       if (complete(old)) throw new Error('A complete screen cannot be replaced by resume');

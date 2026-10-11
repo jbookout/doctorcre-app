@@ -244,4 +244,60 @@ test('a proof-skipped owner result cannot hide navigation or run-limit failures'
     state.record(row);
   }
   assert.equal(state.verdict([]).failed, true);
+  assert.equal(state.snapshot().screens[0].status, 'ERROR');
+});
+
+test('failure-bearing skipped controls stay failed after recording and resume', () => {
+  const state = run();
+  for (const target of targets) for (const route of routedScreens) {
+    const row = screen(target.name, route.path);
+    row.controls[0] = { ...row.controls[0], status: 'SKIPPED', reason: 'control-scope-unproved',
+      execution: { press_attempted: false, handler_executions: 0 } };
+    if (target === targets[0] && route === routedScreens[0]) row.controls[0].failure = { phase: 'run-limit', code: 'stop-signal' };
+    state.record(row);
+  }
+  assert.equal(state.verdict([]).failed, true);
+  assert.equal(state.snapshot().screens[0].controls[0].status, 'ERROR');
+  const resumed = run({ release, ...state.snapshot() });
+  assert.equal(resumed.verdict([]).failed, true);
+  resumed.record({ ...routedScreens[0], target: targets[0].name, reached: false, controls: [],
+    status: 'SKIPPED', reason: 'control-scope-unproved', execution: { press_attempted: false, handler_executions: 0 } });
+  assert.equal(resumed.verdict([]).failed, true, 'an unproved screen retry cannot resolve its failed control');
+  assert.equal(resumed.snapshot().screens[0].status, 'ERROR');
+});
+
+test('resumed and merged Calendar proof skips retain failures and fail the run', async t => {
+  const calendarTargets = [targets[0]], calendarRoutes = [{ name: 'Calendar', path: '/calendar', surface: 'app' }];
+  const calendarRun = prior => createSweepRun({ targets: calendarTargets, routedScreens: calendarRoutes, prior });
+  const skip = { status: 'SKIPPED', reason: 'control-scope-unproved', execution: { press_attempted: false, handler_executions: 0 } };
+  const baseline = calendarRun();
+  baseline.record({ ...calendarRoutes[0], ...skip, target: 'desktop', reached: false, controls: [] });
+  for (const entry of baseline.pendingStates()) baseline.recordState(entry.key, entry.spec.kind === 'calendar-operation'
+    ? { ...skip, spec: entry.spec, steps: [] }
+    : { ...calendarRoutes[0], ...skip, target: entry.target, state_scope: entry.key, reached: false, controls: [] });
+  const clean = { release, ...baseline.snapshot() };
+  assert.equal(calendarRun(clean).verdict([]).failed, false, 'clean skips still let the sweep continue');
+  const markers = [
+    { failure: { phase: 'run-limit', code: 'stop-signal' } },
+    { failure: { phase: 'fresh-page', code: 'navigation-failed' } },
+    { exhausted: true },
+    { prior_failures: [{ phase: 'run-limit', code: 'http-request-limit' }] },
+  ];
+  for (const mode of ['resumed', 'merged']) for (const marker of markers) await t.test(mode + ' ' + Object.keys(marker)[0] + ' ' + (marker.failure?.code || ''), () => {
+    const prior = structuredClone(clean);
+    const entry = prior.stateObligations.find(row => row.spec.case === 'month-next-nonleap');
+    Object.assign(entry.result, marker);
+    const unchanged = structuredClone(prior);
+    const state = mode === 'resumed' ? calendarRun(prior) : calendarRun(clean);
+    if (mode === 'merged') state.recordState(entry.key, entry.result);
+    assert.equal(state.verdict([]).failed, true, 'failure markers take precedence over proof skips');
+    assert.equal(state.verdict([]).completed, false);
+    const retained = state.snapshot().stateObligations.find(row => row.key === entry.key);
+    assert.equal(retained.result.status, 'failed', 'a failed result is never reported as SKIPPED');
+    for (const key of Object.keys(marker)) assert.deepEqual(retained.result[key], marker[key]);
+    assert.deepEqual(prior, unchanged, 'normalization never mutates supplied checkpoint evidence');
+    state.recordState(entry.key, clean.stateObligations.find(row => row.key === entry.key).result);
+    assert.equal(state.verdict([]).failed, true, 'a later unproved retry cannot resolve the retained failure');
+    assert.equal(calendarRun({ release, ...state.snapshot() }).verdict([]).failed, true);
+  });
 });
