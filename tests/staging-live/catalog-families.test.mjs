@@ -33,17 +33,42 @@ for (const family of families) test(family.id + ': app handler effect passes; a 
 });
 
 for (const { path } of (await screens()).filter(row => row.path !== '/share')) test('catalog proofs execute the app handlers on ' + path, { timeout: 30_000 }, async () => {
-  for (const family of families) for (const phone of family.phoneOnly ? [true] : [false, true]) {
+  for (const phone of [false, true]) {
     const f = await catalogFixture({ path, phone });
     try {
-      await family.setup?.(f, 0);
-      const node = f.window.document.querySelector(family.selector);
-      const control = (await inventory(f.page)).find(row => f.window.document.querySelector(row.selector) === node);
-      assert.ok(control, family.id + ' on ' + path);
-      const proof = catalog.controls.find(row => canonicalIdentity(row.identity) === control.identity);
-      assert.ok(proof, family.id + ' exact identity on ' + path + (phone ? ' phone' : ' desktop'));
-      const result = await pressControl(f.page, control, { waitMs: 20, observations: proof.observations });
-      assert.equal(result.status, 'OBSERVED', JSON.stringify({ path, phone, family: family.id, result }));
+      const baseline = await inventory(f.page);
+      const root = f.window.document;
+      const toggles = ['#appSidebarToggle', '#appTodayToggle', '.app-shell-more-toggle', '#selfAvatar'];
+      const expanded = toggles.map(selector => root.querySelector(selector).getAttribute('aria-expanded'));
+      const theme = root.documentElement.dataset.theme;
+      const assist = root.documentElement.dataset.colorAssist;
+      const presence = root.querySelector('#docPresence');
+      const presenceParent = presence.parentElement, presenceNext = presence.nextSibling;
+      for (const family of families.filter(row => !row.phoneOnly || phone)) {
+        await family.setup?.(f, 0);
+        const node = root.querySelector(family.selector);
+        const control = (await inventory(f.page)).find(row => root.querySelector(row.selector) === node);
+        assert.ok(control, family.id + ' on ' + path);
+        const proof = catalog.controls.find(row => canonicalIdentity(row.identity) === control.identity);
+        assert.ok(proof, family.id + ' exact identity on ' + path + (phone ? ' phone' : ' desktop'));
+        const result = await pressControl(f.page, control, { waitMs: 20, observations: proof.observations });
+        assert.equal(result.status, 'OBSERVED', JSON.stringify({ path, phone, family: family.id, result }));
+
+        // Share only the mounted route, never a previous control's state. Undo
+        // through the app handlers and prove the full inventory is pristine.
+        const input = root.querySelector('#docCommandInput');
+        if (input.value) { input.value = ''; input.dispatchEvent(new f.window.Event('input', { bubbles: true })); }
+        for (const dialog of root.querySelectorAll('dialog[open]')) dialog.close();
+        if (root.documentElement.dataset.theme !== theme) root.querySelector('[data-pref="theme"]').click();
+        if (root.documentElement.dataset.colorAssist !== assist) root.querySelector('#colorAssistButton').click();
+        for (const [index, selector] of toggles.entries()) {
+          const toggle = root.querySelector(selector);
+          if (toggle.getAttribute('aria-expanded') !== expanded[index]) toggle.click();
+        }
+        await new Promise(resolve => f.window.queueMicrotask(resolve));
+        presenceParent.insertBefore(presence, presenceNext);
+        assert.deepEqual(await inventory(f.page), baseline, family.id + ' must restore ' + path + (phone ? ' phone' : ' desktop'));
+      }
     } finally { f.close(); }
   }
 });

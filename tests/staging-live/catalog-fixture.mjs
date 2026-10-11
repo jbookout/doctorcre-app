@@ -52,7 +52,7 @@ export async function catalogFixture({ path = '/', phone = false, actor = 'joe',
   win.document.querySelector('#callModeButton').hidden = !callAvailable;
   const presence = mountDocPresence({ document: win.document, window: win, context: createDocContext({ page: 'home' }),
     client: createLiveClient({ fetchImpl: (...args) => win.fetch(...args) }) });
-  await new Promise(resolve => setTimeout(resolve, 5));
+  await presence.refresh();
   const evaluate = async (fn, arg) => win.eval('(' + fn.toString() + ')')(arg);
   const context = { close: async () => close() };
   Object.assign(page, { url: () => win.location.href, isClosed: () => false, context: () => context, evaluate,
