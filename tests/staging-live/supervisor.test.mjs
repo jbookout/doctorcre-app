@@ -41,13 +41,19 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
     child.unref();
     const behavior = ${JSON.stringify(behavior)};
     if (behavior === 'signal-ledger-write') {
-      let interrupted = false;
-      process.prependListener('SIGTERM', () => { interrupted = true; });
+      let deliveringSignal = false;
+      for (const listener of process.listeners('SIGTERM')) {
+        process.removeListener('SIGTERM', listener);
+        process.on('SIGTERM', (...args) => {
+          deliveringSignal = true;
+          try { listener.apply(process, args); } finally { deliveringSignal = false; }
+        });
+      }
       const rename = fs.renameSync;
       fs.renameSync = (...args) => {
-        // Pin the race: a worker stop receipt holds the ledger lock past the
-        // supervisor's unchanged grace period, then SIGKILL interrupts it.
-        if (interrupted && args[1].endsWith('run-budget.json')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+        // Pin only a synchronous signal receipt, not later child-close resource
+        // releases. SIGSTOP holds its lock until the supervisor sends SIGKILL.
+        if (deliveringSignal && args[1].endsWith('run-budget.json')) process.kill(process.pid, 'SIGSTOP');
         return rename(...args);
       };
       syncBuiltinESMExports();
@@ -121,8 +127,12 @@ test('supervised worker leaves signal stop receipts to the supervisor', async t 
   const program = `
     import { currentRun } from ${JSON.stringify(new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href)};
     const run = currentRun();
+    const release = run.reserveProcessGroup();
     process.emit('SIGTERM');
-    console.log(JSON.stringify({ aborted: run.signal.aborted, stopReason: run.snapshot().stopReason }));
+    release();
+    const state = run.snapshot();
+    console.log(JSON.stringify({ aborted: run.signal.aborted, stopReason: state.stopReason,
+      processGroups: state.processGroups }));
     run.dispose();
   `;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
@@ -130,7 +140,7 @@ test('supervised worker leaves signal stop receipts to the supervisor', async t 
     encoding: 'utf8', timeout: 4_000,
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout.trim()), { aborted: false, stopReason: null });
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { aborted: false, stopReason: null, processGroups: {} });
 });
 
 test('SIGTERM cannot strand a worker signal receipt in the ledger lock', processTests, async t => {
