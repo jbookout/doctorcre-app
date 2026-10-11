@@ -26,7 +26,7 @@ async function board(answers = []) {
     },
   };
   mountBoard({ window, document: window.document, client, storage: null, search: "?board=project-one",
-    setInterval: () => 0 }).start();
+    setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} }).start();
   await tick();
   const doc = window.document;
   const form = doc.querySelector("#board-questions form.answer-form");
