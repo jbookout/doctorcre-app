@@ -1,3 +1,4 @@
+import { createTourRouteDraft } from "./route-draft.mjs";
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
@@ -9,6 +10,13 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   const $ = (selector) => document.querySelector(selector);
   const state = { csrf: "", tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
+  let composer = null, itineraryView = null;
+  const routeDraft = createTourRouteDraft({
+    routes: { detail: tourId => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`), write: post },
+    storage: sessionStorage, crypto,
+    onChange: () => { composer = routeDraft.view; renderComposerSummary(); },
+    onStorageUnavailable: () => status("Pending request stays in this tab's memory. Tab storage is unavailable; keep this tab open until reconciliation finishes."),
+  });
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
   const text = (value, fallback = "") => typeof value === "string" && value ? value : fallback;
@@ -32,13 +40,13 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     const { response, payload } = result;
     if (!response.ok) { const error = new Error(payload?.error || "request_failed"); error.status = response.status; error.payload = payload; throw error; }
     if (typeof payload?.csrf_token === "string") {
-      const binding = await sha256(payload.csrf_token), changed = sessionBinding && sessionBinding !== binding;
-      state.csrf = payload.csrf_token; sessionBinding = binding;
+      state.csrf = payload.csrf_token;
+      const changed = await routeDraft.bindSession(payload.csrf_token);
+      sessionBinding = routeDraft.binding;
       if (changed) {
-        createPending = null; restoredTourId = ""; createPhase = "ready"; routeEndpoints.clear();
+        createPending = null; restoredTourId = ""; createPhase = "ready";
         itineraryView?.destroy(); itineraryView = null; $("#accepted-itinerary").hidden = true;
-        if (composer) { composer.plan = null; composer.phase = "session-changed"; composer.saved = false; composer.dirty = false; composer.undo = null; composer.message = "Session changed. Previous requests cannot be retried here. Reload the route for this session."; }
-        persistPending(); renderCreate(); renderComposerSummary();
+        renderCreate(); renderComposerSummary();
         throw new Error("session_changed");
       }
     }
@@ -48,35 +56,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     if (!binding || binding !== sessionBinding) return Promise.reject(new Error("session_changed"));
     return request(path, { method: "POST", headers: { "content-type": "application/json", "x-carr-csrf": state.csrf }, body: JSON.stringify(body) }).then(data => { if (binding !== sessionBinding) throw new Error("session_changed"); return data; }).catch(error => { error.writeRefusal = error.status >= 400 && error.status < 500; throw error; });
   }
-  function validateDetail(detail, tourId) {
-    const stopArtifact = stops => stops.map(stop => Object.fromEntries(["id", "property_id", "route_sequence", "route_label", "stop_state", "locked_appointment", "appointment_start", "appointment_end", "dwell_minutes", "buffer_minutes"].map(field => [field, stop[field]])));
-    const validStop = stop => id(stop?.id) && id(stop.property_id) && ["active", "held", "excluded"].includes(stop.stop_state) &&
-      typeof stop.locked_appointment === "boolean" && Number.isInteger(stop.dwell_minutes) && Number.isInteger(stop.buffer_minutes) &&
-      (stop.stop_state === "active" ? Number.isInteger(stop.route_sequence) && stop.route_sequence > 0 && typeof stop.route_label === "string" : stop.route_sequence === null && stop.route_label === null);
-    if (detail?.id !== tourId || !id(detail.route_version_id) || !["draft", "accepted"].includes(detail.route_version_state) ||
-      !Number.isInteger(detail.accepted_route_version) || !Array.isArray(detail.stops) || !detail.stops.every(validStop) ||
-      !Array.isArray(detail.routes) || !detail.routes.length || !detail.routes.every(route => id(route?.id) && Number.isInteger(route.route_version) && route.route_version > 0 &&
-        typeof route.accepted === "boolean" && Array.isArray(route.stops) && route.stops.every(validStop)) ||
-      new Set(detail.routes.map(route => route.id)).size !== detail.routes.length ||
-      detail.routes[0].id !== detail.route_version_id || detail.routes[0].accepted !== (detail.route_version_state === "accepted") ||
-      JSON.stringify(stopArtifact(detail.stops)) !== JSON.stringify(stopArtifact(detail.routes[0].stops))) throw new Error("read_invalid");
-    return detail;
-  }
-  async function composerDetail(tourId) { return validateDetail(await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`), tourId); }
   let createPending = null, createBusy = false, createPhase = "ready", sessionBinding = "", navigationBusy = false, restoredTourId = "", libraryReady = false;
-  const routeEndpoints = new Map();
-  const pendingKey = "doctorcre-tour-pending-v1";
-  function readPending() {
-    try { const saved = JSON.parse(sessionStorage.getItem(pendingKey) || "null"); return saved?.sessionBinding === sessionBinding ? saved : null; } catch { return null; }
-  }
-  function persistPending() {
-    if (restoredTourId && !composer) return;
-    const pending = createPending ? { create: createPending } : composer?.plan ? { composer: { ...composer, busy: false, undo: null } } : null;
-    try {
-      if (pending) sessionStorage.setItem(pendingKey, JSON.stringify({ sessionBinding, ...pending }));
-      else sessionStorage.removeItem(pendingKey);
-    } catch { status("Pending request stays in this tab's memory. Tab storage is unavailable; keep this tab open until reconciliation finishes."); }
-  }
+  function persistPending() { routeDraft.retainCreation(createPending); }
   function renderCreate() {
     $("#create-tour").disabled = !libraryReady || Boolean(restoredTourId) || navigationBusy || createBusy || createPhase === "unknown";
     $("#create-tour").textContent = createPending ? "Retry same creation request" : "Create Tour";
@@ -91,7 +72,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   }
   async function createTour() {
     if (!libraryReady || restoredTourId || createBusy || navigationBusy || createPhase === "unknown") return;
-    if (composer?.dirty || composer?.plan || composer?.busy) { $("#create-tour-state").textContent = "Save or reconcile the current route before starting another Tour."; return; }
+    if (composer?.dirty || composer?.pending || composer?.busy) { $("#create-tour-state").textContent = "Save or reconcile the current route before starting another Tour."; return; }
     createBusy = true; renderCreate();
     try {
       if (!createPending) createPending = { idempotency_key: uuid(), tour_name: $("#create-tour-name").value.trim(),
@@ -101,7 +82,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       $("#create-tour-state").textContent = "Creating Tour…";
       const data = await post("/api/tours/create", createPending);
       if (!id(data.tour_id)) throw new Error("outcome_unknown");
-      routeEndpoints.set(data.tour_id, { start: createPending.start_point, end: createPending.end_point });
+      routeDraft.rememberCreatedTour(data.tour_id, { start: createPending.start_point, end: createPending.end_point });
       await loadLibrary(); await loadTour(data.tour_id);
       createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour created. Add properties from the selection cart.";
       $("#create-tour-panel").open = false;
@@ -313,7 +294,6 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     }
   }
   function stops() { return Array.isArray(state.tour?.stops) ? state.tour.stops : []; }
-  let composer = null, itineraryView = null;
   function renderAcceptedItinerary() {
     const root = $("#accepted-itinerary");
     const route = acceptedRouteFromDetail(state.tour);
@@ -327,30 +307,37 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     } catch { itineraryView?.destroy(); itineraryView = null; root.hidden = false; root.textContent = "Accepted itinerary could not be read. Reload the saved Tour to retry."; }
   }
   const node = (tag, content, className) => { const el = document.createElement(tag); if (content) el.textContent = content; if (className) el.className = className; return el; };
-  function routeRows(tour) {
-    return (Array.isArray(tour?.stops) ? tour.stops : []).filter(stop => id(stop.property_id)).map(stop => ({ ...stop,
-      route_label: text(stop.route_label, String(stop.route_sequence || 1)), stop_state: stop.stop_state || "active",
-      dwell_minutes: Number(stop.dwell_minutes || 0), buffer_minutes: Number(stop.buffer_minutes || 0),
-      locked_appointment: stop.locked_appointment === true, appointment_start: stop.appointment_start || null, appointment_end: stop.appointment_end || null }));
-  }
   function initComposer(tour) {
-    const rows = routeRows(tour), accepted = (tour.routes || []).find(route => route.accepted);
-    const base = accepted ? { ...accepted, stops: routeRows({ stops: accepted.stops }) } : null;
-    composer = { sessionBinding, tourId: tour.id, routeId: tour.route_version_id, prior: Number(tour.accepted_route_version || 0), snapshot: routeSnapshot(tour), reviewDigest: tour.routes?.[0]?.acceptance_digest || "", rows, base, dirty: false, saved: tour.route_version_state === "draft" && rows.length > 0,
-      phase: "ready", message: "", busy: false, plan: null, undo: null };
-    const retained = readPending()?.composer;
-    if (retained?.tourId === tour.id && retained.plan) composer = { ...retained, busy: false, phase: "unknown", message: "Outcome unknown after reload. Reconcile the saved route before retrying the retained request." };
-    for (const role of ["start", "end"]) {
-      const point = routeEndpoints.get(tour.id)?.[role];
-      const retainedPoint = composer.endpointDraft?.[role];
-      $(`#edit-${role}-latitude`).value = retainedPoint?.latitude ?? point?.latitude ?? "";
-      $(`#edit-${role}-longitude`).value = retainedPoint?.longitude ?? point?.longitude ?? "";
-      $(`#edit-${role}-source`).value = retainedPoint?.source ?? point?.source_ref ?? "";
-    }
-    composer.endpointBaseline ??= endpointValues();
+    routeDraft.open(tour); composer = routeDraft.view;
+    for (const role of ["start", "end"]) for (const field of ["latitude", "longitude", "source"]) $(`#edit-${role}-${field}`).value = composer.endpoints[role][field];
     $("#route-reviewed").checked = false;
   }
-  function routeSnapshot(tour) { return JSON.stringify({ routeId: tour.route_version_id, prior: tour.accepted_route_version, routes: tour.routes, stops: tour.stops }); }
+  const routeNotices = {
+    "edited": "Unsaved route changes.",
+    "restored": "Outcome unknown after reload. Reconcile the saved route before retrying the retained request.",
+    "point-invalid": "Enter route endpoints with valid coordinates and location sources for this new version.",
+    "accepted": "Route accepted. Later edits create a new version.",
+    "saved": "Draft saved. Review every changed order and exclusion, then accept the route.",
+    "stale": "Saved route changed. This write was refused; your draft remains. Reload the saved route before editing again.",
+    "refused": "Write refused. Your draft remains. Reload the saved route to review the current version.",
+    "unknown": "Outcome unknown. Some writes may have landed. Reconcile before retrying; the same request keys are retained.",
+    "labels-invalid": "Use a unique route label of 1–3 letters or numbers for each active stop.",
+    "minutes-invalid": "Dwell and buffer must be whole minutes from 0 to 1440.",
+    "appointment-invalid": "Each appointment needs a start and end; a fixed appointment needs a time window.",
+    "fixed-inactive": "A fixed appointment must stay active. Reactivate the stop or clear its fixed appointment before saving.",
+    "active-required": "Keep at least one active stop before saving.",
+    "fixed-order": "Stop order must preserve the order of fixed appointments.",
+    "session-changed": "Session changed. Previous requests cannot be retried here. Reload the route for this session.",
+    "all-added": "All cart properties are already in this route.",
+    "route-full": "A route supports up to 100 properties.",
+    "undone": "Last route edit undone. Save to keep this draft.",
+    "partial": "Partial route assembly checked. Resume the retained request to finish stops and transitions before review.",
+    "reloaded": "Saved route reloaded. Local edits were discarded.",
+    "reconciled-accepted": "Reconciled: this route was accepted. No duplicate acceptance was sent.",
+    "reconciled": "Saved route checked. The write outcome still needs confirmation. Retry the retained request with the same keys.",
+    "reconcile-failed": "Reconciliation read failed. Retry reconciliation; no write has been resent."
+  };
+  function composerMessage() { return composer.notice === "saving" ? `Saving draft · ${composer.progress.index} of ${composer.progress.total}` : routeNotices[composer.notice] || composer.notice; }
   function routeChanges() {
     if (!composer) return [];
     const prior = composer.base?.stops || [], changes = []; let order = 0;
@@ -370,9 +357,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     for (const role of ["start", "end"]) if (JSON.stringify(composer.endpointBaseline?.[role]) !== JSON.stringify(endpointValues()[role])) changes.push(`${role === "start" ? "Start" : "End"} endpoint changed`);
     return changes;
   }
-  function editableComposer() { return composer && !navigationBusy && !createPending && !createBusy && !composer.busy && !composer.saved && composer.phase === "ready" && !composer.plan; }
+  function editableComposer() { return composer && !navigationBusy && !createPending && !createBusy && composer.editable; }
   function endpointValues() { return Object.fromEntries(["start", "end"].map(role => [role, Object.fromEntries(["latitude", "longitude", "source"].map(field => [field, $(`#edit-${role}-${field}`).value]))])); }
-  function rememberEdit() { composer.undo = { rows: composer.rows.map(row => ({ ...row })), endpoints: composer.endpointDraft || endpointValues() }; composer.dirty = true; composer.message = "Unsaved route changes."; $("#route-reviewed").checked = false; }
+  function editRoute(change) { routeDraft.edit(change); $("#route-reviewed").checked = false; }
   function localTime(value) {
     const date = new Date(value); if (!value || !Number.isFinite(date.getTime())) return "";
     return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -400,8 +387,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
         const locked = composer.base?.stops.find(old => old.property_id === row.property_id)?.locked_appointment;
         control.disabled = !editable || (locked && field !== "route_label") || (row.stop_state !== "active" && field === "route_label");
         control.addEventListener(type === "checkbox" || type === "select" ? "change" : "input", () => {
-          if (!editableComposer()) return; rememberEdit();
-          row[field] = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
+          if (!editableComposer()) return;
+          const value = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
+          editRoute({ type: "field", propertyId: row.property_id, field, value });
           if (type === "select") renderComposer(); else renderComposerSummary();
         });
         label.append(control); fields.append(label);
@@ -413,8 +401,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
         button.addEventListener("click", () => {
           if (!editableComposer()) return;
           const focused = document.activeElement === button;
-          rememberEdit(); const rows = composer.rows;
-          [rows[index], rows[index + delta]] = [rows[index + delta], rows[index]];
+          editRoute({ type: "move", propertyId: row.property_id, delta });
           renderComposer();
           if (focused) {
             const moved = [...list.children].find(item => item.dataset.propertyId === row.property_id);
@@ -430,17 +417,17 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     mountPropertyPanel({ tour: { ...state.tour, stops: composer.rows }, request });
   }
   function renderComposerSummary() {
-    if (!composer) return;
+    if (!composer || !state.tour) return;
     const changes = $("#route-changes"); changes.replaceChildren();
     for (const change of routeChanges()) changes.append(node("li", change));
     if (!changes.children.length) changes.append(node("li", "No changes from the accepted route."));
     $("#composer-badge").textContent = composer.phase === "ready" ? composer.dirty ? "Unsaved" : composer.saved ? "Review draft" : state.tour.route_version_state === "accepted" ? "Accepted" : "Draft" : composer.phase;
     $("#composer-badge").dataset.phase = composer.phase;
-    $("#composer-state").textContent = (composer.saved && composer.phase === "ready" && !digest(composer.reviewDigest) ? "Route review digest unavailable. Reload after the Tour service is updated before accepting." : composer.message || (composer.saved ? "Draft saved. Review all changes before accepting this route." : "Add cart properties, then set stop order and timing."));
+    $("#composer-state").textContent = (composer.saved && composer.phase === "ready" && !digest(composer.reviewDigest) ? "Route review digest unavailable. Reload after the Tour service is updated before accepting." : composerMessage() || (composer.saved ? "Draft saved. Review all changes before accepting this route." : "Add cart properties, then set stop order and timing."));
     $("#add-cart-stops").disabled = !editableComposer() || !state.selectedIds.length;
     $("#route-endpoint-editor").hidden = !composer.base;
     for (const control of document.querySelectorAll("#route-endpoint-editor input")) control.disabled = !editableComposer();
-    $("#undo-route").hidden = !composer.undo || !editableComposer();
+    $("#undo-route").hidden = !composer.canUndo || !editableComposer();
     $("#save-composer").disabled = !editableComposer() || !composer.dirty || !composer.rows.some(row => row.stop_state === "active");
     $("#reconcile-composer").hidden = composer.phase !== "unknown";
     $("#retry-composer").hidden = composer.phase !== "reconciled";
@@ -451,102 +438,26 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   }
   function addCartStops() {
     if (!editableComposer()) return;
-    const added = state.selectedIds.filter(propertyId => !composer.rows.some(row => row.property_id === propertyId));
-    if (!added.length) { composer.message = "All cart properties are already in this route."; renderComposerSummary(); return; }
-    if (composer.rows.length + added.length > 100) { composer.message = "A route supports up to 100 properties."; renderComposerSummary(); return; }
-    rememberEdit();
-    for (const property_id of added) {
-      const property = knownProperty(property_id);
-      composer.rows.push({ property_id, name: property?.name || null, address: property?.address || null,
-        route_label: String(composer.rows.length + 1), stop_state: "active", dwell_minutes: 30, buffer_minutes: 10,
-        locked_appointment: false, appointment_start: null, appointment_end: null, access_coordinate_status: "unknown" });
+    editRoute({ type: "add", properties: state.selectedIds.map(property_id => ({ ...knownProperty(property_id), property_id })) }); renderComposer();
+  }
+  function applyComposerReadback(detail) {
+    if (detail) {
+      state.tour = detail;
+      if (["accepted", "reconciled-accepted", "reloaded"].includes(composer.notice)) {
+        for (const role of ["start", "end"]) for (const field of ["latitude", "longitude", "source"]) $(`#edit-${role}-${field}`).value = composer.endpoints[role][field];
+      }
+      $("#route-reviewed").checked = false; renderTour();
     }
-    renderComposer();
   }
   async function saveComposer() {
     if (!editableComposer() || !composer.dirty) return;
-    const current = composer; current.busy = true; renderComposerSummary();
-    try {
-      let sequence = 0; const labels = new Set();
-      const rows = current.rows.map(row => {
-        const active = row.stop_state === "active", label = active ? row.route_label.trim() : null;
-        if (active && (!/^[A-Za-z0-9]{1,3}$/.test(label) || labels.has(label))) throw new Error("Use a unique route label of 1–3 letters or numbers for each active stop.");
-        labels.add(label);
-        if (![row.dwell_minutes, row.buffer_minutes].every(value => Number.isInteger(value) && value >= 0 && value <= 1440)) throw new Error("Dwell and buffer must be whole minutes from 0 to 1440.");
-        if (Boolean(row.appointment_start) !== Boolean(row.appointment_end) || (row.appointment_start && Date.parse(row.appointment_end) < Date.parse(row.appointment_start)) || (row.locked_appointment && !row.appointment_start)) throw new Error("Each appointment needs a start and end; a fixed appointment needs a time window.");
-        if (row.locked_appointment && !active) throw new Error("A fixed appointment must stay active. Reactivate the stop or clear its fixed appointment before saving.");
-        return { ...row, route_sequence: active ? ++sequence : null, route_label: label };
-      });
-      if (!sequence) throw new Error("Keep at least one active stop before saving.");
-      const locked = rows.filter(row => row.locked_appointment && row.stop_state === "active");
-      if (locked.some((row, index) => index > 0 && Date.parse(row.appointment_start) < Date.parse(locked[index - 1].appointment_start))) throw new Error("Stop order must preserve the order of fixed appointments.");
-      const base = current.base, latest = state.tour.routes?.[0];
-      const plan = { kind: "save", tourId: current.tourId, routeId: base ? null : state.tour.route_version_id, steps: [], index: 0 };
-      if (base) plan.steps.push({ path: "/api/tours/route-draft", body: { idempotency_key: uuid(), tour_id: current.tourId,
-        route_version: Number(latest?.route_version || state.tour.route_version || 1) + 1, base_route_version_id: base.id,
-        expected_route_version: base.route_version, start_point: endpoint("start", "edit-"), end_point: endpoint("end", "edit-") }, resultField: "route_version_id" });
-      for (const row of rows) {
-        // Bind the candidate facts visible to the operator; unknown access remains unknown.
-        const assertion = row.assertion_set_digest || await sha256(JSON.stringify({ property_id: row.property_id, candidate: knownProperty(row.property_id) || { name: row.name, address: row.address } }));
-        const stopIndex = plan.steps.length;
-        plan.steps.push({ path: "/api/tours/route-stop", body: { idempotency_key: uuid(), route_version_id: plan.routeId,
-          property_id: row.property_id, route_sequence: row.route_sequence, route_label: row.route_label, stop_state: row.stop_state,
-          appointment_start: row.appointment_start, appointment_end: row.appointment_end, locked_appointment: row.locked_appointment,
-          dwell_minutes: row.dwell_minutes, buffer_minutes: row.buffer_minutes, access_coordinate_status: row.access_coordinate_status || "unknown", assertion_set_digest: assertion }, resultField: "route_stop_id" });
-        const old = base?.stops.find(stop => stop.property_id === row.property_id);
-        const disposition = !old ? "added" : row.stop_state !== "active" ? row.stop_state : old.route_sequence !== row.route_sequence ? "reordered" : "unchanged";
-        plan.steps.push({ path: "/api/tours/route-stop-transition", stopIndex, body: { idempotency_key: uuid(),
-          old_route_version_id: old ? base.id : null, new_route_version_id: plan.routeId, old_route_stop_id: old?.id || null,
-          new_route_stop_id: null, disposition }, resultField: "route_stop_transition_id" });
-      }
-      current.rows = rows; current.plan = plan;
-      persistPending();
-      await runComposerPlan(current);
-    } catch (error) { if (error.message === "point_invalid") $("#route-endpoint-editor").open = true; current.message = error.message === "point_invalid" ? "Enter route endpoints with valid coordinates and location sources for this new version." : error.message; }
-    finally { current.busy = false; if (composer === current) renderComposer(); }
-  }
-  async function runComposerPlan(current) {
-    const plan = current.plan;
-    try {
-      for (; plan.index < plan.steps.length; plan.index++) {
-        const step = plan.steps[plan.index];
-        if (step.path === "/api/tours/route-stop") step.body.route_version_id = plan.routeId;
-        if (step.path === "/api/tours/route-stop-transition") { step.body.new_route_version_id = plan.routeId; step.body.new_route_stop_id = plan.steps[step.stopIndex].result; }
-        current.message = `Saving draft · ${plan.index + 1} of ${plan.steps.length}`; if (composer === current) renderComposerSummary();
-        persistPending();
-        const data = await post(step.path, step.body, current.sessionBinding);
-        if (!id(data[step.resultField])) throw new Error("outcome_unknown");
-        step.result = data[step.resultField]; if (step.path === "/api/tours/route-draft") { plan.routeId = step.result; routeEndpoints.set(plan.tourId, { start: step.body.start_point, end: step.body.end_point }); }
-      }
-      const detail = await composerDetail(plan.tourId);
-      if (plan.kind !== "accept" && detail.route_version_id !== plan.routeId) throw new Error("outcome_unknown");
-      if (plan.kind === "accept" ? !detail.routes.some(route => route.id === plan.routeId && route.accepted) :
-        !plan.steps.filter(step => step.path === "/api/tours/route-stop").every(step => detail.stops?.some(stop => stop.id === step.result))) throw new Error("outcome_unknown");
-      current.plan = null; current.phase = "ready"; current.dirty = false; current.saved = plan.kind !== "accept"; current.undo = null;
-      persistPending();
-      current.message = plan.kind === "accept" ? "Route accepted. Later edits create a new version." : "Draft saved. Review every changed order and exclusion, then accept the route.";
-      if (composer === current) {
-        state.tour = detail;
-        if (plan.kind === "accept") { initComposer(detail); composer.message = "Route accepted. Later edits create a new version."; }
-        else { current.routeId = detail.route_version_id; current.prior = Number(detail.accepted_route_version || 0); current.snapshot = routeSnapshot(detail); current.reviewDigest = detail.routes[0].acceptance_digest || ""; current.rows = routeRows(detail); }
-        $("#route-reviewed").checked = false; renderTour();
-      }
-    } catch (error) {
-      if (current.sessionBinding !== sessionBinding) { current.plan = null; current.phase = "session-changed"; return; }
-      current.phase = error.writeRefusal ? error.status === 409 ? "stale" : "refused" : "unknown";
-      current.message = current.phase === "stale" ? "Saved route changed. This write was refused; your draft remains. Reload the saved route before editing again." : current.phase === "refused" ? "Write refused. Your draft remains. Reload the saved route to review the current version." : "Outcome unknown. Some writes may have landed. Reconcile before retrying; the same request keys are retained.";
-      persistPending();
-    }
+    const detail = await routeDraft.save({ endpoints: endpointValues(), candidates: [...state.knownProperties.values()].filter(property => knownProperty(property.property_id)) });
+    if (composer.notice === "point-invalid") $("#route-endpoint-editor").open = true;
+    applyComposerReadback(detail); renderComposer();
   }
   async function acceptComposer() {
-    if (!composer || navigationBusy || createPending || !composer.saved || composer.dirty || composer.busy || composer.phase !== "ready" || !$("#route-reviewed").checked || !digest(composer.reviewDigest)) return;
-    const current = composer; current.busy = true; renderComposerSummary();
-    const prior = current.prior, routeId = current.routeId;
-    // Bind the displayed stop set; a fresh read at Accept could include unreviewed changes.
-    current.plan = { kind: "accept", tourId: current.tourId, routeId, index: 0, steps: [{ path: "/api/tours/route-accept", resultField: "route_version_acceptance_id",
-      body: { route_version_id: routeId, expected_prior_route_version: prior, acceptance_digest: current.reviewDigest, idempotency_key: uuid() } }] };
-    persistPending();
-    await runComposerPlan(current); current.busy = false; if (composer === current) renderComposer();
+    if (navigationBusy || createPending || !$("#route-reviewed").checked) return;
+    applyComposerReadback(await routeDraft.accept()); renderComposer();
   }
   function renderShareGrants() { const list = $("#share-grants"); list.replaceChildren(); for (const grant of state.shareGrants) { if (!id(grant?.share_grant_id)) continue; const row = document.createElement("li"); const summary = document.createElement("span"); summary.textContent = `${text(grant.status, "unknown")} · projection ${text(grant.projection_id, "unknown")} · expires ${formatTourDate(grant.expires_at) || "unknown"}`; row.append(summary); if (grant.status === "active") { const button = document.createElement("button"); button.type = "button"; button.textContent = "Revoke"; button.dataset.shareGrantId = grant.share_grant_id; row.append(button); } list.append(row); } if (!list.children.length) list.textContent = "No active or rotatable confidential links."; }
   function renderFeedback() {
@@ -643,14 +554,14 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     status("Loading tours…"); const data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
     if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
     libraryReady = true;
-    if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
+    if (!createPending && routeDraft.pendingCreation) { createPending = routeDraft.pendingCreation; routeDraft.retainCreation(createPending); createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
     state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready.");
-    const retained = readPending()?.composer;
-    if (!composer && retained?.plan && id(retained.tourId)) {
-      restoredTourId = retained.tourId; renderCreate(); status("An unresolved route request must be reconciled before another Tour can be edited.");
+    const pendingTourId = routeDraft.pendingTourId;
+    if (!composer && id(pendingTourId)) {
+      restoredTourId = pendingTourId; renderCreate(); status("An unresolved route request must be reconciled before another Tour can be edited.");
       await loadTour(restoredTourId);
     }
-    if (!state.tour && !retained?.plan && !createPending) {
+    if (!state.tour && !pendingTourId && !createPending) {
       const requestedTour = new URLSearchParams(window.location.search).get("tour");
       if (id(requestedTour) && state.tours.some(tour => tour.id === requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
       let saved = null;
@@ -671,19 +582,19 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     if (state.shareBusy) return;
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
     if (navigationBusy || composer?.busy) return;
-    if (composer?.tourId !== tourId && (composer?.dirty || composer?.plan || composer?.busy)) { status("Save or reconcile the current route before switching Tours."); return; }
+    if (composer?.tourId !== tourId && (composer?.dirty || composer?.pending || composer?.busy)) { status("Save or reconcile the current route before switching Tours."); return; }
     navigationBusy = true; if (composer) renderComposer(); renderCreate();
     try {
       const seq = ++tourLoadSeq; ++state.feedbackSeq; status("Loading tour…");
-      const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
-      if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
+      const tour = await observeDocRead("tourDetail", [tourId], () => routeDraft.read(tourId, { requireRoute: requireComposerDetail }));
       if (seq !== tourLoadSeq) return;
-      const changed = composer && composer.snapshot !== routeSnapshot(tour);
-      if (changed && (composer.dirty || composer.plan || composer.busy)) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
+      const previousComposerTourId = composer?.tourId;
+      const { changed, blocked } = routeDraft.open(tour);
+      if (blocked) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
       if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
       state.tour = tour;
       selectDocRecord("tour", tour.id);
-      if (!composer || composer.tourId !== tourId || changed) initComposer(tour);
+      if (previousComposerTourId !== tourId || changed) initComposer(tour);
       restoredTourId = "";
       renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]);
       if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready.");
@@ -773,44 +684,24 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   $("#save-composer").addEventListener("click", () => void saveComposer());
   for (const control of document.querySelectorAll("#route-endpoint-editor input")) control.addEventListener("input", () => {
     if (!editableComposer()) return;
-    composer.endpointDraft ??= composer.endpointBaseline; rememberEdit(); composer.endpointDraft = endpointValues(); renderComposerSummary();
+    editRoute({ type: "endpoints", values: endpointValues() }); renderComposerSummary();
   });
   $("#undo-route").addEventListener("click", () => {
-    if (!editableComposer() || !composer.undo) return;
-    composer.rows = composer.undo.rows;
-    for (const role of ["start", "end"]) for (const field of ["latitude", "longitude", "source"]) $(`#edit-${role}-${field}`).value = composer.undo.endpoints[role][field];
-    composer.endpointDraft = endpointValues(); composer.undo = null; composer.dirty = true; composer.message = "Last route edit undone. Save to keep this draft."; renderComposer();
+    if (!editableComposer() || !composer.canUndo) return;
+    editRoute({ type: "undo" });
+    for (const role of ["start", "end"]) for (const field of ["latitude", "longitude", "source"]) $(`#edit-${role}-${field}`).value = composer.endpoints[role][field];
+    renderComposer();
   });
   $("#route-reviewed").addEventListener("change", renderComposerSummary);
-  $("#reload-composer").addEventListener("click", () => void action(async () => {
-    if (!composer || navigationBusy || composer.busy || ["unknown", "reconciled"].includes(composer.phase)) return;
-    const current = composer, plan = current.plan; current.busy = true; renderComposer();
-    try {
-      const detail = await composerDetail(current.tourId);
-      if (composer !== current || current.plan !== plan) return;
-      if (plan?.kind === "save" && plan.routeId && plan.index < plan.steps.length && detail.routes?.some(route => route.id === plan.routeId)) {
-        current.phase = "reconciled"; current.saved = false;
-        current.message = "Partial route assembly checked. Resume the retained request to finish stops and transitions before review.";
-        return;
-      }
-      current.plan = null; persistPending(); state.tour = detail; initComposer(detail); composer.message = "Saved route reloaded. Local edits were discarded."; renderTour();
-    } finally { current.busy = false; renderComposer(); }
-  }));
-  $("#reconcile-composer").addEventListener("click", () => void action(async () => {
-    if (!composer || composer.busy || composer.phase !== "unknown") return;
-    const current = composer; current.busy = true; renderComposerSummary();
-    try {
-      const detail = await composerDetail(current.tourId);
-      if (current.plan?.kind === "accept" && detail.routes.some(route => route.id === current.plan.routeId && route.accepted)) {
-        current.plan = null; persistPending(); state.tour = detail; initComposer(detail); composer.message = "Reconciled: this route was accepted. No duplicate acceptance was sent."; renderTour();
-      } else { current.phase = "reconciled"; current.message = "Saved route checked. The write outcome still needs confirmation. Retry the retained request with the same keys."; }
-    } catch { current.message = "Reconciliation read failed. Retry reconciliation; no write has been resent."; }
-    finally { current.busy = false; renderComposerSummary(); }
-  }));
-  $("#retry-composer").addEventListener("click", () => void action(async () => {
-    if (!composer || composer.busy || composer.phase !== "reconciled" || !composer.plan) return;
-    const current = composer; current.busy = true; renderComposerSummary(); await runComposerPlan(current); current.busy = false; renderComposer();
-  }));
+  async function recoverComposer(action) {
+    if (action === "reload" && navigationBusy) return;
+    const pending = routeDraft.recover(action); renderComposer();
+    try { applyComposerReadback(await pending); }
+    finally { renderComposer(); }
+  }
+  $("#reload-composer").addEventListener("click", () => void action(() => recoverComposer("reload")));
+  $("#reconcile-composer").addEventListener("click", () => void action(() => recoverComposer("reconcile")));
+  $("#retry-composer").addEventListener("click", () => void action(() => recoverComposer("retry")));
   $("#property-search-form").addEventListener("submit", event => { event.preventDefault(); void searchProperties(); });
   const invalidateSearch = () => { ++state.searchSeq; state.searchItems = []; state.searchCursor = null; state.searchKey = null; state.searchCompleted = false; renderSearchResults(); $("#search-state").textContent = "Filters changed. Find properties to see matching candidates."; };
   $("#property-search-form").addEventListener("input", invalidateSearch);
@@ -843,7 +734,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
   mountAutoRefresh({ document, window, refresh: async () => {
     await loadLibrary();
-    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
+    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || composer?.dirty || composer?.pending || composer?.busy || state.shareBusy || navigationBusy;
     if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id);
     else if (id(state.projectionId)) await loadFeedback();
   } });

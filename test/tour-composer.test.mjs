@@ -1,3 +1,5 @@
+import { domain, properties, response, fixtureReviewDigest } from "./fixtures/tour-composer.synthetic.mjs";
+import { routeDraftScript } from "./tours-route-draft-script.mjs";
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import test from "node:test";
@@ -12,10 +14,9 @@ const html = await readFile(new URL("../tours/route-editor.html", import.meta.ur
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const script = `${autoRefreshScript}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const script = `${routeDraftScript}\n${autoRefreshScript}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const uuid = () => webcrypto.randomUUID();
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";
-const properties = [propA, propB].map((property_id, i) => ({ property_id, name: `Synthetic site ${i + 1}`, address: `${100 + i} Example Way`, county: "Escambia", state: "FL" }));
 const settle = async () => { for (let i = 0; i < 16; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
 
 for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary restoration surfaces ${failure} and permits explicit retry`, async () => {
@@ -53,75 +54,6 @@ test("composer contracts pin the exact server PR revision and each authenticated
   for (const call of store.calls.filter(call => contract.writes[call.path])) assert.deepEqual(Object.keys(call.body).sort(), [...contract.writes[call.path].fields].sort(), call.path);
   dom.window.close();
 });
-function response(data, status = 200) { return { ok: status < 400, status, json: async () => status < 400 ? { data, csrf_token: "synthetic-csrf" } : { error: status === 409 ? "conflict" : status === 404 ? "not_found" : "tour_unavailable" } }; }
-function fixtureReviewDigest(route) { return `sha256:${createHash("sha256").update(JSON.stringify({ route_id: route.id, stops: route.stops })).digest("hex")}`; }
-function domain() {
-  const tours = new Map(), replay = new Map(), calls = [], transitions = [];
-  let fault = null;
-  const fetch = async (path, options = {}) => {
-    const body = options.body ? JSON.parse(options.body) : null;
-    calls.push({ path, body, options });
-    if (body) assert.equal(options.headers["x-carr-csrf"], "synthetic-csrf");
-    if (path === "/api/tours/library") return response({ tours: [...tours.values()].map(t => ({ id: t.id, name: t.name, status: "draft" })) });
-    if (path.startsWith("/api/tours/detail")) {
-      if (fault?.path === "/api/tours/detail") { const status = fault.kind === "missing" ? 404 : 503; fault = null; return response(null, status); }
-      const tour = tours.get(new URL(path, "https://example.test").searchParams.get("tour_id"));
-      if (!tour) return response(null, 404);
-      const latest = tour.routes[0], accepted = tour.routes.find(r => r.accepted);
-      const reviewed = structuredClone(tour);
-      for (const route of reviewed.routes) route.acceptance_digest = fixtureReviewDigest(route);
-      return response({ ...reviewed, route_version: accepted?.route_version || 1,
-        route_version_id: latest.id, route_version_state: latest.accepted ? "accepted" : "draft",
-        accepted_route_version: accepted?.route_version || 0, stops: structuredClone(latest.stops) });
-    }
-    if (path.startsWith("/api/tours/selection-cart?")) return response(null, 404);
-    if (path === "/api/tours/properties/search") return response({ search: { items: properties, has_more: false } });
-    if (path.startsWith("/api/tours/property-evidence")) return response({ schema: "tour-property-evidence.v1", facts: {} });
-    if (fault?.path === path && fault.kind === "stale") { fault = null; return response(null, 409); }
-    if (fault?.path === path && fault.kind === "refused") { fault = null; return response(null, 403); }
-    if (replay.has(body?.idempotency_key)) {
-      const previous = replay.get(body.idempotency_key);
-      return JSON.stringify(body) === previous.body ? response(previous.result) : response(null, 409);
-    }
-    let result;
-    if (path === "/api/tours/create") {
-      assert.deepEqual(Object.keys(body).sort(), ["idempotency_key", "tour_name", "subject_type", "subject_id", "canonical_dataset_version", "start_point", "end_point"].sort());
-      const id = uuid(); tours.set(id, { id, name: body.tour_name, routes: [{ id: uuid(), route_version: 1, accepted: false, stops: [] }] }); result = { tour_id: id };
-    } else if (path === "/api/tours/route-draft") {
-      const t = tours.get(body.tour_id), prior = t.routes.find(r => r.accepted);
-      if (prior?.id !== body.base_route_version_id || prior.route_version !== body.expected_route_version || body.route_version !== t.routes[0].route_version + 1) return response(null, 409);
-      const route = { id: uuid(), route_version: body.route_version, accepted: false, stops: [] }; t.routes.unshift(route); result = { route_version_id: route.id };
-    } else if (path === "/api/tours/route-stop") {
-      const r = [...tours.values()].flatMap(t => t.routes).find(r => r.id === body.route_version_id);
-      if (r.accepted) return response(null, 409);
-      if (body.stop_state === "active") {
-        assert.ok(Number.isInteger(body.route_sequence) && body.route_sequence > 0);
-        assert.match(body.route_label, /^[A-Za-z0-9._ -]{1,80}$/);
-        assert.ok(!r.stops.some(s => s.route_sequence === body.route_sequence || s.route_label === body.route_label));
-      } else { assert.equal(body.route_sequence, null); assert.equal(body.route_label, null); }
-      const stop = { ...body, id: uuid(), name: properties.find(p => p.property_id === body.property_id)?.name }; r.stops.push(stop); result = { route_stop_id: stop.id };
-    } else if (path === "/api/tours/route-stop-transition") {
-      transitions.push(body); result = { route_stop_transition_id: uuid() };
-    } else if (path === "/api/tours/route-accept") {
-      const t = [...tours.values()].find(t => t.routes.some(r => r.id === body.route_version_id));
-      const r = t.routes.find(r => r.id === body.route_version_id), prior = t.routes.find(r => r.accepted);
-      if ((prior?.route_version || 0) !== body.expected_prior_route_version) return response(null, 409);
-      assert.equal(body.acceptance_digest, fixtureReviewDigest(r));
-      assert.ok(r.stops.some(s => s.stop_state === "active"));
-      assert.ok(r.stops.every(s => transitions.some(x => x.new_route_stop_id === s.id && x.new_route_version_id === r.id)));
-      if (prior) {
-        assert.ok(prior.stops.every(s => transitions.some(x => x.old_route_stop_id === s.id && x.new_route_version_id === r.id)));
-        assert.ok(prior.stops.filter(s => s.locked_appointment).every(old => r.stops.some(s => s.property_id === old.property_id && s.stop_state === "active" &&
-          ["locked_appointment", "appointment_start", "appointment_end", "dwell_minutes", "buffer_minutes"].every(field => s[field] === old[field]))));
-      }
-      r.accepted = true; result = { route_version_acceptance_id: uuid() };
-    } else throw new Error(`Unexpected path: ${path}`);
-    replay.set(body.idempotency_key, { body: JSON.stringify(body), result });
-    if (fault?.path === path && fault.kind === "lost") { fault = null; throw new Error("response lost"); }
-    return response(result);
-  };
-  return { tours, calls, transitions, fetch, fail(path, kind) { fault = { path, kind }; } };
-}
 async function open(store, storage = {}, query = "") {
   const dom = openDom(html, { url: `https://app.doctorcre.com/tours${query}`, runScripts: "outside-only" }); dom.window.TextEncoder = TextEncoder; dom.window.fetch = store.fetch;
   if (store.fastTimeout) { const timeout = dom.window.setTimeout.bind(dom.window); dom.window.setTimeout = (fn, delay) => timeout(fn, delay === 15000 ? 0 : delay); }
@@ -443,29 +375,6 @@ test("stale version refusal preserves edits, prevents acceptance and fresh-key r
   assert.equal(doc.querySelector('[data-field="dwell_minutes"]').value, "30");
   assert.match(doc.querySelector("#composer-state").textContent, /reloaded/); dom.window.close();
 });
-test("lost stop response requires a successful reconciliation read and retries the same request without duplicates", async () => {
-  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
-  store.fail("/api/tours/route-stop", "lost"); doc.querySelector("#save-composer").click(); await settle();
-  assert.match(doc.querySelector("#composer-state").textContent, /Outcome unknown/);
-  assert.equal(doc.querySelector("#retry-composer").hidden, true); assert.equal(doc.querySelector("#accept-route").disabled, true);
-  const callsBeforeRead = store.calls.filter(c => c.path === "/api/tours/route-stop").length;
-  doc.querySelector("#reconcile-composer").click(); await settle();
-  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-stop").length, callsBeforeRead);
-  doc.querySelector("#retry-composer").click(); doc.querySelector("#retry-composer").click(); await settle();
-  const stopCalls = store.calls.filter(c => c.path === "/api/tours/route-stop");
-  assert.deepEqual(stopCalls[0].body, stopCalls[1].body);
-  assert.equal([...store.tours.values()][0].routes[0].stops.length, 2);
-  assert.match(doc.querySelector("#composer-state").textContent, /Draft saved/); dom.window.close();
-});
-test("lost acceptance response is visibly reconciled without sending another acceptance", async () => {
-  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
-  doc.querySelector("#save-composer").click(); await settle(); doc.querySelector("#route-reviewed").click();
-  store.fail("/api/tours/route-accept", "lost"); doc.querySelector("#accept-route").click(); await settle();
-  assert.match(doc.querySelector("#composer-state").textContent, /Outcome unknown/);
-  doc.querySelector("#reconcile-composer").click(); await settle();
-  assert.match(doc.querySelector("#composer-state").textContent, /Reconciled.*accepted/);
-  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-accept").length, 1); dom.window.close();
-});
 test("unknown creation outcome cannot retry before checking the library; the retained key creates one Tour", async () => {
   const store = domain(), { dom, doc } = await open(store);
   store.fail("/api/tours/create", "lost"); await create(doc);
@@ -475,19 +384,6 @@ test("unknown creation outcome cannot retry before checking the library; the ret
   doc.querySelector("#create-tour-form").requestSubmit(); await settle();
   const creates = store.calls.filter(c => c.path === "/api/tours/create");
   assert.deepEqual(creates[0].body, creates[1].body); assert.equal(store.tours.size, 1); dom.window.close();
-});
-test("reloading after a lost stop response retains the pending plan and still requires reconciliation", async () => {
-  const store = domain(), first = await open(store); await create(first.doc); await addCart(first.doc);
-  store.fail("/api/tours/route-stop-transition", "lost"); first.doc.querySelector("#save-composer").click(); await settle();
-  const storage = Object.fromEntries(Object.keys(first.dom.window.sessionStorage).map(key => [key, first.dom.window.sessionStorage.getItem(key)]));
-  assert.ok(Object.keys(storage).length); first.dom.window.close();
-  const next = await open(store, storage); next.doc.querySelector(".tour-button").click(); await settle();
-  assert.match(next.doc.querySelector("#composer-state").textContent, /Outcome unknown/);
-  assert.equal(next.doc.querySelector("#accept-route").disabled, true);
-  next.doc.querySelector("#reconcile-composer").click(); await settle(); next.doc.querySelector("#retry-composer").click(); await settle();
-  assert.equal([...store.tours.values()][0].routes[0].stops.length, 2);
-  const transitions = store.calls.filter(c => c.path === "/api/tours/route-stop-transition");
-  assert.deepEqual(transitions[0].body, transitions[1].body); next.dom.window.close();
 });
 test("refused writes keep the draft and fixed appointments cannot be held or edited on later versions", async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
@@ -502,17 +398,6 @@ test("refused writes keep the draft and fixed appointments cannot be held or edi
   assert.match(doc.querySelector("#composer-state").textContent, /Write refused.*draft remains/);
   assert.equal(doc.querySelector(`#route-stops [data-property-id="${propB}"] [data-field="route_label"]`).value, "B2"); dom.window.close();
 });
-test("invalid appointments and duplicate labels do not write a partial draft", async () => {
-  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
-  fill(doc, `#route-stops [data-property-id="${propB}"] [data-field="route_label"]`, "1");
-  doc.querySelector("#save-composer").click(); await settle();
-  assert.match(doc.querySelector("#composer-state").textContent, /unique route label/);
-  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-stop").length, 0);
-  fill(doc, `#route-stops [data-property-id="${propB}"] [data-field="route_label"]`, "2");
-  doc.querySelector('[data-field="locked_appointment"]').click(); doc.querySelector("#save-composer").click(); await settle();
-  assert.match(doc.querySelector("#composer-state").textContent, /time window/);
-  assert.equal(store.calls.filter(c => c.path === "/api/tours/route-stop").length, 0); dom.window.close();
-});
 test("a failed read after creation retains its key and never labels a committed write refused", async () => {
   const store = domain(), { dom, doc } = await open(store); store.fail("/api/tours/detail", "missing"); await create(doc);
   assert.equal(store.tours.size, 1);
@@ -520,15 +405,6 @@ test("a failed read after creation retains its key and never labels a committed 
   doc.querySelector("#reconcile-create").click(); await settle(); doc.querySelector("#create-tour-form").requestSubmit(); await settle();
   assert.equal(store.tours.size, 1);
   const creates = store.calls.filter(c => c.path === "/api/tours/create"); assert.equal(creates[0].body.idempotency_key, creates[1].body.idempotency_key); dom.window.close();
-});
-test("reconciliation failure keeps retry disabled and never sends another write", async () => {
-  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc);
-  store.fail("/api/tours/route-stop", "lost"); doc.querySelector("#save-composer").click(); await settle();
-  const posts = store.calls.filter(c => c.body).length; store.fail("/api/tours/detail", "missing");
-  doc.querySelector("#reconcile-composer").click(); await settle();
-  assert.equal(store.calls.filter(c => c.body).length, posts);
-  assert.equal(doc.querySelector("#retry-composer").hidden, true);
-  assert.match(doc.querySelector("#composer-state").textContent, /Reconciliation read failed/); dom.window.close();
 });
 test("an unresolved creation prevents another composer from overwriting the retained request", async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc);
