@@ -178,3 +178,13 @@ test('every native entry refuses the working-tree server when a build is bound',
     assert.match(JSON.stringify(entry.attempts), /served build manifest unavailable/);
   }
 });
+
+test('base journey collection excludes QA agents belonging to their separate configuration', () => {
+  const output = execFileSync(process.execPath, [fileURLToPath(new URL('node_modules/e2e/dist/cli/bin.js', root)),
+    'list', 'tests/journeys', '--config', 'e2e.config.ts', '--reporter', 'json'], {
+    cwd: fileURLToPath(root), env: { ...process.env, CI: '1', E2E_TELEMETRY_DISABLED: '1' },
+    encoding: 'utf8', timeout: WAIT_MS,
+  });
+  const plan = JSON.parse(output);
+  assert.deepEqual([...new Set(plan.pairs.map(row => row.file))].sort(), [...journeyFiles].sort());
+});
