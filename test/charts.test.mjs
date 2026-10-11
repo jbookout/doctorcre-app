@@ -11,6 +11,7 @@
 // vocabulary has exactly one owner and the fixture cannot drift from the wire.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -196,7 +197,7 @@ test("B06-5 a missing date is counted as missing and never rendered as a zero or
 
   // Nothing in the slice ever falls a date back to zero or to now.
   for (const [name, source] of [["js/charts-model.js", modelJs], ["js/charts.js", pageJs]]) {
-    assert.ok(!/new Date\(/.test(source.replace("function clockNow(now = new Date())", "")), `${name} parses no date into an age`);
+    assert.ok(!/new Date\(/.test(source.replace("view.readAt = new Date().toISOString();", "")), `${name} parses no date into an age`);
     assert.ok(!source.includes("Date.now()"), `${name} measures no record against the clock`);
   }
   // The attention flag is false on all 74, and is stated as 0 OF 74.
@@ -240,7 +241,7 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
   const down = await captureClient(capture, { throwStatus: 503 }).client.getBoard().catch((error) => error);
   assert.equal(classifyBoardFailure(down), "unavailable");
   assert.equal(classifyBoardFailure(new Error("network")), "unavailable");
-  assert.equal(CHARTS_STATE_COPY.unavailable.retry, false);
+  assert.equal(CHARTS_STATE_COPY.unavailable.retry, true);
   assert.equal(CHARTS_STATE_COPY.unavailable.title, "Charts temporarily unavailable");
 
   // A payload whose shape this page cannot read paints nothing from it, and it
@@ -527,7 +528,7 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
   assert.equal(quickAdd.deals.length, 74);
   const painted = nodes.get("chartsCanvas").innerHTML;
   assert.match(painted, /73 of 74 have no next date on file/, "the tab painted from the page's answer");
-  assert.match(nodes.get("chartsReadAt").textContent, /^Updated \d\d:\d\d$/);
+  assert.match(nodes.get("chartsReadAt").textContent, /^Updated \d{1,2}:\d{2} (AM|PM)$/);
   assert.equal(nodes.get("chartsState").hidden, true, "a ready paint shows no state block");
 
   // Only a person pressing Retry takes a new one, and that is a new as-of they
@@ -546,4 +547,81 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
   // popstate restores the TAB as well as the selection (advisory A6).
   assert.match(pageJs, /if \(address\.present\) selectTab\?\.\(\);/);
   assert.match(workspaceJs, /onRestore: \(\) => tabs\?\.select\("tabCharts"\)/);
+});
+
+// Exercise the rendered controls without starting a browser or using fetch.
+async function chartDom(t, payload = board) {
+  const dom = new JSDOM(await read("charts.html"), { url: "https://example.test/?view=charts" });
+  const saved = new Map(["document", "location", "history"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const key of saved.keys()) Object.defineProperty(globalThis, key, { configurable: true, value: dom.window[key] });
+  t.after(() => {
+    for (const [key, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+    dom.window.close();
+  });
+  const charts = await import(`../js/charts.js?dom=${encodeURIComponent(t.name)}`);
+  let reads = 0;
+  const client = { getBoard: async () => { reads++; return payload; } };
+  charts.mountCharts({ client, storage: null });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(charts.view.status, "ready");
+  return { dom, document: dom.window.document, charts, client, reads: () => reads };
+}
+
+for (const national of [false, true]) test(`audit 06 chart slices explicitly open all local deals (national: ${national})`, async t => {
+  const payload = { deals: [{ id: "demo-chart-deal", name: "Demo chart deal", phase: "Research", type: "Lease", segment: "Dental", market: "Demo market", owner: "joe", operating_state: "active", ...(national ? { workspace_kind: "national_account", account_client_id: "demo-account" } : {}) }], accounts: [] };
+  const s = await chartDom(t, payload);
+  for (const group of DIMENSION_IDS) {
+    s.document.querySelector(`[data-group="${group}"]`).click();
+    const link = s.document.querySelector("#chartsSelection a");
+    assert.equal(link?.textContent, "Open all local deals");
+    assert.equal(link?.getAttribute("href"), "/deals?view=board");
+    assert.equal(s.reads(), 1, "choosing a slice never reads again");
+    s.document.getElementById("chartsClear").click();
+  }
+});
+
+test("audit 14 chart update time uses AM/PM", async t => {
+  const s = await chartDom(t);
+  assert.match(s.document.getElementById("chartsReadAt").textContent, /^Updated \d{1,2}:\d{2} (AM|PM)$/);
+});
+
+test("audit 14 account references are available only inside collapsed Details", async t => {
+  const s = await chartDom(t);
+  for (const account of capture.accounts) {
+    const row = [...s.document.querySelectorAll("#chartAccounts tbody tr")].find(row => row.querySelector("th").textContent === account.account_name);
+    assert.ok(row, "the account heading contains only its name");
+    const details = row.querySelector("details");
+    assert.equal(details?.open, false);
+    assert.equal(details?.querySelector("summary").textContent, "Details");
+    assert.ok(details.textContent.includes(account.account_client_ref));
+    assert.ok(!row.querySelector("th").textContent.includes(account.account_client_ref));
+    details.open = true;
+    assert.equal(details.open, true, "Details is a functioning native disclosure");
+  }
+});
+
+test("audit 14 recorded account review time uses AM/PM", async t => {
+  const payload = structuredClone(board);
+  payload.accounts[0].last_review_at = "2026-10-01T18:05:00Z";
+  const s = await chartDom(t, payload);
+  const row = s.document.querySelector("#chartAccounts tbody tr");
+  assert.match(row.textContent, /6:05 PM/);
+  assert.ok(!row.textContent.includes("2026-10-01T18:05:00Z"));
+});
+
+test("Charts failed reads replace the update time with Unavailable and Retry can recover", async t => {
+  const s = await chartDom(t);
+  s.client.getBoard = async () => { throw Object.assign(new Error("Synthetic unavailable"), { status: 503 }); };
+  await s.charts.read();
+  assert.equal(s.document.getElementById("chartsReadAt").textContent, "Unavailable");
+  assert.equal(s.document.getElementById("chartsState").dataset.state, "unavailable");
+  assert.equal(s.document.querySelectorAll(".chart-table").length, 0);
+  s.client.getBoard = async () => board;
+  s.document.getElementById("chartsRetry").click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.charts.view.status, "ready");
+  assert.match(s.document.getElementById("chartsReadAt").textContent, / (AM|PM)$/);
 });

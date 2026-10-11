@@ -475,3 +475,26 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
   assert.equal(s.writes.length, 0);
  } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });
+
+for (const status of [503, 401, 403]) test(`QA008 Leads freshness settles after failed read and retry: ${status}`, async () => {
+ let failing = true;
+ const s = await setup({ getWorkspace: async () => {
+  if (failing) throw Object.assign(new Error('Synthetic board refusal'), { status });
+  return structuredClone(workspace());
+ } });
+ try {
+  const freshness = () => s.d.getElementById('boardUpdated');
+  assert.equal(freshness().textContent, 'Unavailable');
+  assert.equal(freshness().dateTime, '');
+  await s.app.refresh();
+  assert.equal(freshness().textContent, 'Unavailable');
+  failing = false;
+  await s.app.refresh();
+  assert.match(freshness().textContent, /^Updated .* (AM|PM)$/);
+  assert.equal(freshness().dateTime, workspace().generated_at);
+  failing = true;
+  await s.app.refresh();
+  assert.equal(freshness().textContent, 'Unavailable');
+  assert.equal(freshness().dateTime, '');
+ } finally { s.close(); }
+});

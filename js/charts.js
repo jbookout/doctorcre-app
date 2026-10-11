@@ -1,4 +1,5 @@
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { formatDueStamp, formatClock } from "./visual-system.js";
 // V5-UX-B06 — Commercial charts and linked drilldown: DOM wiring only.
 //
 // Every decision this file paints is made in ./charts-model.js. Nothing here
@@ -47,14 +48,6 @@ let storage = null;
 let sharedBoard = null;
 let selectTab = null;
 
-/** The clock of the moment the response resolved. The verb returns no time of
- * its own, so this page says "Read at" and never "as of". */
-function clockNow(now = new Date()) {
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
 /* -------------------------------------------------------------------- painting */
 
 /**
@@ -95,14 +88,15 @@ function accountsHtml(accounts) {
     </section>`;
   }
   const rows = accounts.map((account) => `<tr>
-    <th scope="row">${escapeHtml(account.name)}${account.ref ? ` <span class="quiet">${escapeHtml(account.ref)}</span>` : ""}</th>
+    <th scope="row">${escapeHtml(account.name)}</th>
     ${account.counts.map((count) => `<td class="chart-count"${count.known ? "" : ' data-unknown="true"'}>${escapeHtml(count.text)}</td>`).join("")}
-    <td>${escapeHtml(account.review)}</td>
+    <td>${escapeHtml(formatDueStamp(account.review, formatClock(account.review)) || account.review)}</td>
+    <td>${account.ref ? `<details><summary>Details</summary><dl><dt>Account reference</dt><dd>${escapeHtml(account.ref)}</dd></dl></details>` : "—"}</td>
   </tr>`).join("");
   return `<section class="card glass chart-card" id="chartAccounts" aria-labelledby="chartAccountsTitle">
     <div class="card-heading"><div><p class="eyebrow">National accounts</p><h2 id="chartAccountsTitle">Accounts</h2></div></div>
     <div class="chart-scroll"><table class="chart-table">
-      <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th></tr></thead>
+      <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th><th scope="col">Details</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
 
@@ -133,7 +127,7 @@ function selectionHtml(deals, all) {
     <span class="chip-label">${escapeHtml(label)}</span>
     <span class="chip-list"><span class="chip">${escapeHtml(String(deals.length))} of ${escapeHtml(String(all.length))} records</span>
     <button class="chip" type="button" id="chartsClear">Clear this slice</button>
-    <a class="chip" href="/deals?view=board">Open in Deals board</a></span>
+    <a class="chip" href="/deals?view=board">Open all local deals</a></span>
   </div>`;
 }
 
@@ -162,7 +156,7 @@ function render() {
   const canvas = $("chartsCanvas");
 
   const readAt = $("chartsReadAt");
-  if (readAt) readAt.textContent = view.readAt ? `Updated ${view.readAt}` : "Updating…";
+  if (readAt) readAt.textContent = view.status === "loading" ? "Updating…" : view.readAt ? updatedLabel(view.readAt) : "Unavailable";
 
   if (canvas) {
     canvas.setAttribute("aria-busy", String(phase === "loading"));
@@ -253,7 +247,8 @@ export async function read({ push = false } = {}) {
   }
   view.status = "ready";
   view.payload = payload;
-  view.readAt = clockNow();
+  // The producer returns no timestamp; record when this read resolved.
+  view.readAt = new Date().toISOString();
   render();
 }
 

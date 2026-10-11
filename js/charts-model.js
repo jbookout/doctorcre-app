@@ -337,7 +337,7 @@ export const CHARTS_STATE_COPY = Object.freeze({
   no_match: Object.freeze({ title: "No matches", copy: "", retry: false }),
   unreadable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
   refused: Object.freeze({ title: "Sign-in required", copy: "", retry: false }),
-  unavailable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
+  unavailable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: true }),
   stale: Object.freeze({ title: "Updating…", copy: "", retry: false }),
 });
 
