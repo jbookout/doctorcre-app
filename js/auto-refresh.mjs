@@ -46,7 +46,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, interval
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
   document.addEventListener("visibilitychange", visibility);
-  const presence = watchPresence({ document, window, onResume: resumeRead, idleMs, now });
+  const presence = watchPresence({ document, window, onResume: resumeRead, onWake: read, idleMs, now });
   const online = () => { if (presence.active()) resumeRead(); };
   window.addEventListener("online", online);
   schedule();

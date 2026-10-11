@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { IDLE_CUTOFF_MS, mountVisibilityPoll } from '../js/visibility-poll.mjs';
+import { IDLE_CUTOFF_MS, mountLocalClock, mountVisibilityPoll } from '../js/visibility-poll.mjs';
 import { mountAutoRefresh } from '../js/auto-refresh.mjs';
 
 // A page with a hand-cranked clock: tick() fires every pending timer once.
@@ -99,6 +99,38 @@ test('a manual refresh after the idle cutoff reads once, as before the pause; th
   auto.dispose();
 });
 
+test('the first input after idle in a visible tab only reads: the hidden-return hook never runs', async () => {
+  const p = page(); let reads = 0, suspends = 0;
+  const auto = mountAutoRefresh({ document: p.document, window: p.window, now: p.now, refresh: () => { reads++; }, onResume: () => { suspends++; } });
+  p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
+  assert.equal(reads, 0);
+  p.input('pointermove'); await settle();
+  assert.equal(reads, 1, 'the wake reads exactly once');
+  assert.equal(suspends, 0, 'and never closes the private view (leads suspendPrivateView)');
+  p.hide(); p.show(); await settle();
+  assert.equal(suspends, 1, 'a real return from hidden still runs the hook');
+  auto.dispose();
+});
+
+test('a local clock keeps repainting while idle; only its read sleeps', async () => {
+  const p = page(); let ticks = 0, reads = 0; const intervals = [];
+  const clock = mountLocalClock({ document: p.document, window: p.window, now: p.now, intervalMs: 5000,
+    setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; }, clearInterval: () => {},
+    tick: () => { ticks++; }, read: () => { reads++; } });
+  assert.deepEqual(intervals.map(job => job.ms), [5000], 'the repaint keeps the 5s cadence');
+  p.advance(IDLE_CUTOFF_MS); p.tick(); await settle();
+  assert.equal(reads, 0, 'idle: the read does not run');
+  assert.equal(p.count, 0, 'and its timer is not re-armed');
+  intervals[0].fn(); intervals[0].fn();
+  assert.equal(ticks, 2, 'idle: the local repaint still runs');
+  p.input(); await settle();
+  assert.equal(reads, 1, 'the first input reads once');
+  clock.dispose();
+  const business = await readFile(new URL('../js/business-workspace.js', import.meta.url), 'utf8');
+  assert.match(business, /mountLocalClock\(\{ intervalMs: EXPIRY_TICK_MS, tick: \(\) => \{\s*if \(!view\.payload[^]*freshnessSignature[^]*\}, read: \(\) => \{/,
+    'the business expiry repaint is the local tick; only the day read is the network read');
+});
+
 test('input keeps a visible tab active past the cutoff', async () => {
   const p = page(); const fixed = poller(p);
   for (let i = 0; i < 4; ++i) { p.advance(20 * 60_000); p.input('touchstart'); p.tick(); await settle(); }
@@ -144,7 +176,7 @@ test('every network poller in the app goes through the shared helper', async () 
   for (const file of ['app.js', 'pipeline.js', 'business-workspace.js', 'observatory.js', 'progress-board.js',
     'progress-wire.js', 'progress-work.js', 'queue.js', 'call-mode.js']) {
     const source = await read(file);
-    assert.match(source, /mountVisibilityPoll\(/, `${file} polls through the helper`);
+    assert.match(source, /mountVisibilityPoll\(|mountLocalClock\(/, `${file} polls through the helper`);
     assert.doesNotMatch(source, /document\.hidden \?|POLL_HIDDEN_MS/, `${file} has no hidden-tab cadence of its own`);
   }
   assert.doesNotMatch(await read('app.js'), /setInterval\(/, 'app.js keeps no raw interval');

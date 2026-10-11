@@ -10,17 +10,19 @@ export const IDLE_CUTOFF_MS = 30 * 60_000;
 const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wheel", "scroll"];
 
 // active() says whether a network read may run now. onResume runs once per
-// return to view (visibilitychange or a back-forward cache restore) and once
-// per first input after the idle cutoff; returning to the tab counts as input.
-// touch() records input from a caller that reads for itself, without onResume.
-export function watchPresence({ document, window, onResume, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
+// return to view (visibilitychange or a back-forward cache restore); returning
+// to the tab counts as input. onWake runs once per first input after the idle
+// cutoff in a tab that never left view, so it must only read: a page's
+// return-from-hidden hook (closing private views) never runs on a wake.
+// touch() records input from a caller that reads for itself, without either.
+export function watchPresence({ document, window, onResume, onWake, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
   let lastInput = now();
   const hidden = () => document.visibilityState === "hidden";
   const idle = () => now() - lastInput >= idleMs;
   const input = () => {
-    const returning = idle() && !hidden();
+    const waking = idle() && !hidden();
     lastInput = now();
-    if (returning) onResume();
+    if (waking) onWake();
   };
   const resume = mountReadOnResume({ document, window, refresh: () => { lastInput = now(); return onResume(); } });
   const options = { capture: true, passive: true };
@@ -58,7 +60,7 @@ export function mountVisibilityPoll({
     }).finally(() => { if (mine === generation && !disposed) arm(); });
   };
   const tick = () => { timer = null; if (presence.active() || keepAlive()) refresh(); };
-  const presence = watchPresence({ document, window, idleMs, now, onResume: refresh });
+  const presence = watchPresence({ document, window, idleMs, now, onResume: refresh, onWake: refresh });
   const visibility = () => { if (document.visibilityState === "hidden" && !keepAlive()) stop(); };
   document.addEventListener("visibilitychange", visibility);
   if (presence.active() || keepAlive()) arm();
@@ -66,4 +68,17 @@ export function mountVisibilityPoll({
     refresh,
     dispose() { disposed = true; stop(); presence.dispose(); document.removeEventListener?.("visibilitychange", visibility); },
   };
+}
+
+// A local clock with one network read in it. tick() is local work, such as a
+// repaint against the wall clock, and keeps its fixed cadence hidden or idle,
+// because it costs CARR nothing. read() goes to CARR, so it runs through
+// mountVisibilityPoll and sleeps while the person is away.
+export function mountLocalClock({
+  tick, read, intervalMs, window = globalThis,
+  setInterval = (fn, ms) => window.setInterval(fn, ms), clearInterval = id => window.clearInterval(id), ...pollOptions
+}) {
+  const timer = setInterval(tick, intervalMs);
+  const network = mountVisibilityPoll({ poll: read, intervalMs, window, ...pollOptions });
+  return { dispose() { clearInterval(timer); network.dispose(); } };
 }
