@@ -33,12 +33,26 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
   const output = join(root, 'output');
   const worker = `
     import { spawn } from 'node:child_process';
+    import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
     import { writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
     import { join } from 'node:path';
     const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM",()=>{});process.on("SIGINT",()=>{});setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore' });
     child.unref();
-    writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
     const behavior = ${JSON.stringify(behavior)};
+    if (behavior === 'signal-ledger-write') {
+      let interrupted = false;
+      process.prependListener('SIGTERM', () => { interrupted = true; });
+      const rename = fs.renameSync;
+      fs.renameSync = (...args) => {
+        // Pin the race: a worker stop receipt holds the ledger lock past the
+        // supervisor's unchanged grace period, then SIGKILL interrupts it.
+        if (interrupted && args[1].endsWith('run-budget.json')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+        return rename(...args);
+      };
+      syncBuiltinESMExports();
+    }
+    writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
     if (behavior === 'corrupt-registry') appendFileSync(process.env.E2E_PROCESS_REGISTRY, ${JSON.stringify('{broken}' + String.fromCharCode(10))});
     if (behavior === 'locked-ledger') {
       // The supervisor holds this same lock for its own ledger writes; wait for a free moment to take it.
@@ -100,6 +114,35 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
     },
   };
 }
+
+test('supervised worker leaves signal stop receipts to the supervisor', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-supervisor-stop-owner-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const program = `
+    import { currentRun } from ${JSON.stringify(new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href)};
+    const run = currentRun();
+    process.emit('SIGTERM');
+    console.log(JSON.stringify({ aborted: run.signal.aborted, stopReason: run.snapshot().stopReason }));
+    run.dispose();
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
+    env: { ...process.env, E2E_RUN_SUPERVISED: '1', E2E_V2_OUTPUT: root, E2E_RUN_ID: 'synthetic-stop-owner', E2E_RUN_LIMITS: JSON.stringify(RUN_LIMITS) },
+    encoding: 'utf8', timeout: 4_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { aborted: false, stopReason: null });
+});
+
+test('SIGTERM cannot strand a worker signal receipt in the ledger lock', processTests, async t => {
+  const run = await fixture(t, { phase: 'report', behavior: 'signal-ledger-write' });
+  run.supervisor.kill('SIGTERM');
+  const result = await within(run.ended);
+  assert.equal(result.code, 1, result.stderr);
+  assert.equal(JSON.parse(result.stdout.trim()).reason, 'stop-signal');
+  await run.assertReaped();
+  const state = JSON.parse(await readFile(join(run.output, 'run-budget.json'), 'utf8'));
+  assert.equal(state.stopReason, 'stop-signal');
+});
 
 for (const phase of ['setup', 'exploration', 'sweep', 'report']) {
   for (const signal of ['SIGINT', 'SIGTERM']) {
