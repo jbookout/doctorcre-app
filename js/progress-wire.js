@@ -1,4 +1,5 @@
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { authGeneration, authReadable, invalidateAuth } from './progress-auth.js';
 import { deriveJobPassports, jobPassportStatusLabel } from "./job-passport.js?v=job-passport-spatial-v1";
 import { scopedTurn } from './progress-work-model.js';
@@ -60,7 +61,6 @@ export const COUNTER_FROM = 18000;
 export const DOM_TURN_CAP = 300;
 export const PAGE_SIZE = 60;
 export const POLL_VISIBLE_MS = 5000;
-export const POLL_HIDDEN_MS = 30000;
 export const POLL_BACKOFF_CEILING_MS = 60000;
 
 // Thresholds, all from the specification, all in one place so the panel and its
@@ -713,7 +713,6 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     backoffMs: null,
     filters: { seats: new Set(), turns: true, system: true, receipts: true, heartbeats: false, text: "", conversation: true },
     focusSeat: null,
-    timer: null,
     counted: new Map(),
   };
 
@@ -1887,7 +1886,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       // network hiccup can never double-post the same turn.
       await postTurn({ body });
       state.pending.delete(localId);
-      await poll();
+      await wirePoll.refresh();
     } catch (error) {
       state.pending.delete(localId);
       render();
@@ -1904,7 +1903,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     try {
       await postTurn({ control: { action: "login", desk: deskName } });
       banner(`Sign-in requested for ${deskName} — approve it in the browser window the desk opens.`, false);
-      await poll();
+      await wirePoll.refresh();
     } catch {
       toast(`Could not request a sign-in for ${deskName}.`);
     }
@@ -2000,7 +1999,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   async function poll() {
     const docTicket = pageDocContext?.begin('roomTurns');
     const epoch = authGeneration();
-    if (!authReadable(epoch)) { schedule(); return; }
+    if (!authReadable(epoch)) return;
     try {
       // latest_seq is the last returned row, not the room's overall tail.
       // Drain the server's oldest-first pages before showing a current window.
@@ -2050,16 +2049,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       setState($("healthCycleDot"), "urgent");
       banner("Wire offline — last-known activity; retrying.");
       $('roomHealth').dataset.stale = 'true';
-    } finally {
-      schedule();
     }
   }
-
-  function schedule() {
-    clearTimeout(state.timer);
-    const base = document.hidden ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
-    state.timer = setTimeout(poll, state.backoffMs || base);
-}
 
   async function loadEarlier() {
     const visible = (state.historyTurns || state.turns).filter(turn => scopedTurn(turn, scope) && turnPasses(turn, state.filters));
@@ -2185,7 +2176,6 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     // and the rings are both redrawn rather than left at the old scale.
     resizeTimer = setTimeout(() => { stageLayout = ""; drawCore(); render(); }, 180);
   }, { passive: true });
-  document.addEventListener("visibilitychange", () => schedule());
   reduced.addEventListener("change", () => render());
   if (window.innerWidth <= 720) {
     $("roomDesks").dataset.collapsed = "true";
@@ -2197,7 +2187,9 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   }
   updateCounter();
   render();
-  poll();
+  // Hidden or idle, the wire makes no reads; a return reads at once.
+  const wirePoll = mountVisibilityPoll({ poll, intervalMs: () => state.backoffMs || POLL_VISIBLE_MS });
+  wirePoll.refresh();
   let scopeSignature = JSON.stringify(scope);
   return { refreshScope: () => {
     const next = JSON.stringify(scope);

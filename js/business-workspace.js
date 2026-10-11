@@ -1,4 +1,5 @@
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { mountVisibilityPoll } from "./visibility-poll.mjs";
 // V5-UX-B01 — the business workspace: DOM wiring only.
 //
 // Two models decide everything this file paints. The canonical command-center
@@ -556,10 +557,11 @@ function settle({ status, payload = null, message = null }, sequence) {
  * A local clock that has passed valid_until must stop presenting the counts as
  * current. The signature covers the read and each work card, so a card that
  * expires on its own deadline repaints while the overall read is still inside
- * its window.
+ * its window. The day check can READ, so the tick sleeps hidden or idle like
+ * every other poll; a return ticks at once.
  */
 function watchExpiry() {
-  setInterval(() => {
+  mountVisibilityPoll({ intervalMs: EXPIRY_TICK_MS, poll: () => {
     // Crossing midnight moves "today", and work that became due overnight is
     // not in the old answer at all, so both sections are READ again. The old
     // answer stays up, re-derived against the new day and marked refreshing,
@@ -571,7 +573,7 @@ function watchExpiry() {
     if (signature === view.freshnessKey) return;
     view.freshnessKey = signature;
     render();
-  }, EXPIRY_TICK_MS);
+  } });
 }
 
 /* ---------------------------------------------------------------- Quick add */

@@ -1,10 +1,11 @@
-// Read-only background updates. One refresh runs at a time; hidden pages sleep.
-// Page callbacks own request epochs and preserve their local drafts.
-import { mountReadOnResume } from "./read-on-resume.mjs";
+// Read-only background updates. One refresh runs at a time; hidden and idle
+// pages sleep (see visibility-poll.mjs). Page callbacks own request epochs and
+// preserve their local drafts.
+import { watchPresence } from "./visibility-poll.mjs";
 
 // A failed read retries on a short backoff (1s, 2s, 4s... capped at the
 // interval), so "reconnecting" holds within seconds rather than a full poll.
-export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
+export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
@@ -18,7 +19,9 @@ export function mountAutoRefresh({ document, window, refresh, onResume, interval
     if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
   };
   const run = operation => {
-    if (disposed || document.visibilityState === "hidden" || !shouldRefresh()) { schedule(); return Promise.resolve(); }
+    // Idle stops the clock here; the first input re-reads through the resume.
+    if (disposed || !presence.active()) return Promise.resolve();
+    if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
     controller = new AbortController();
@@ -39,10 +42,11 @@ export function mountAutoRefresh({ document, window, refresh, onResume, interval
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
   document.addEventListener("visibilitychange", visibility);
-  const resume = mountReadOnResume({ document, window, refresh: resumeRead });
-  window.addEventListener("online", resumeRead);
+  const presence = watchPresence({ document, window, onResume: resumeRead, idleMs, now });
+  const online = () => { if (presence.active()) resumeRead(); };
+  window.addEventListener("online", online);
   schedule();
-  return { refresh: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", resumeRead); resume?.dispose?.(); } };
+  return { refresh: read, dispose() { disposed = true; controller?.abort(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 // Bound the whole read, including decoding. A late result from a transport
