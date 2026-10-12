@@ -1113,7 +1113,7 @@ test("app.js reaches the freshness detail without a mouse, and outside the live 
 test("app.js asks again on a bounded interval, because the feed cannot promise completeness", async () => {
   const app = await file("js/app.js");
   assert.match(app, /const BOARD_REFRESH_MS = 15000;/);
-  assert.match(app, /state\.boardRefreshTimer = setInterval\(\(\) => \{\s*state\.boardSync\.requestRefresh\('periodic'\);\s*\}, BOARD_REFRESH_MS\);/,
+  assert.match(app, /mountVisibilityPoll\(\{ intervalMs: BOARD_REFRESH_MS, poll: \(\) => \{\s*state\.boardSync\.requestRefresh\('periodic'\);\s*\} \}\);/,
     "a periodic authoritative read, coalesced through the same single-read queue");
   const constant = app.slice(app.indexOf("/**\n * How long the board will go without ASKING"), app.indexOf("const BOARD_REFRESH_MS"));
   assert.match(constant, /Not a freshness guarantee/);
