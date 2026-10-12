@@ -36,7 +36,7 @@ export const RUN_LIMITS = Object.freeze({
 });
 
 export class RunLimitError extends Error {
-  constructor(reason) { super(`Staging run stopped: ${reason}`); this.code = reason; }
+  constructor(reason, detail) { super(`Staging run stopped: ${reason}${detail ? ` (${detail})` : ''}`); this.code = reason; }
 }
 
 const validRunLimits = limits => limits && typeof limits === 'object' && !Array.isArray(limits) &&
@@ -44,19 +44,23 @@ const validRunLimits = limits => limits && typeof limits === 'object' && !Array.
   Object.entries(RUN_LIMITS).every(([key, maximum]) => Number.isSafeInteger(limits[key]) &&
     limits[key] >= (['retries', 'modelCalls'].includes(key) ? 0 : 1) && limits[key] <= maximum);
 
+// A provided E2E_RUN_LIMITS is the whole policy: every limit is named, so an
+// omitted key can never silently keep its default.
 export function runLimitsFromEnvironment(environment = process.env, ceiling = RUN_LIMITS) {
   if (!validRunLimits(ceiling)) throw new RunLimitError('invalid-run-limits');
-  let override = {};
-  if (environment.E2E_RUN_LIMITS !== undefined) {
-    try { override = JSON.parse(environment.E2E_RUN_LIMITS); }
-    catch { throw new RunLimitError('invalid-run-limits'); }
-  }
-  if (!override || typeof override !== 'object' || Array.isArray(override) ||
-      Object.entries(override).some(([key, value]) => !Object.hasOwn(ceiling, key) || value > ceiling[key]))
-    throw new RunLimitError('invalid-run-limits');
-  const limits = { ...ceiling, ...override };
-  if (!validRunLimits(limits)) throw new RunLimitError('invalid-run-limits');
-  return Object.freeze(limits);
+  if (environment.E2E_RUN_LIMITS === undefined) return Object.freeze({ ...ceiling });
+  let limits;
+  try { limits = JSON.parse(environment.E2E_RUN_LIMITS); }
+  catch { throw new RunLimitError('invalid-run-limits', 'malformed JSON'); }
+  if (!limits || typeof limits !== 'object' || Array.isArray(limits))
+    throw new RunLimitError('invalid-run-limits', 'expected a JSON object');
+  const missing = Object.keys(ceiling).filter(key => !Object.hasOwn(limits, key));
+  const unknown = Object.keys(limits).filter(key => !Object.hasOwn(ceiling, key));
+  if (missing.length || unknown.length) throw new RunLimitError('invalid-run-limits',
+    [missing.length && `missing ${missing.join(', ')}`, unknown.length && `unknown ${unknown.join(', ')}`].filter(Boolean).join('; '));
+  if (Object.entries(limits).some(([key, value]) => value > ceiling[key]) || !validRunLimits(limits))
+    throw new RunLimitError('invalid-run-limits', 'every limit must be an integer no higher than its default');
+  return Object.freeze(Object.fromEntries(Object.keys(ceiling).map(key => [key, limits[key]])));
 }
 
 export function modelCallsAllowed(environment = process.env) {
