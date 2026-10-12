@@ -10,7 +10,9 @@ tests; it cannot become production state.
 
 The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
-routes through a private Cloudflare service binding.
+routes through a private Cloudflare service binding. Browser and edge failures
+are scrubbed, deduplicated and rate-limited in the app before they reach CARR's
+runtime-error ingress (`contracts/runtime-errors.v1.json`, `CARR_ERRORS`).
 
 Local development and the e2e runner require Node.js 22.22.3 or newer on Node 22, or 24.8.0 or newer.
 
