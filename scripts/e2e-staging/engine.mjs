@@ -14,7 +14,7 @@ export async function admitStagingControl(page, control, scope) {
   const guard = contextGuards.get(page.context());
   if (!guard) throw new Error('Staging context has no fixture guard');
   const matches = (await inventory(page, { scope })).filter(row => row.identity === control.identity);
-  await guard.admitControl(matches.length === 1 && await page.locator(control.selector).count() === 1 ? matches[0] : null);
+  return guard.admitControl(matches.length === 1 && await page.locator(control.selector).count() === 1 ? matches[0] : null);
 }
 export const stagingWriteRefusals = context => contextGuards.get(context)?.refusals || [];
 

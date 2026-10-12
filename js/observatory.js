@@ -1,4 +1,5 @@
 import { groupConversations, labelFor, modelFor, summarizeNow } from './observatory-model.js';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const $ = (id) => document.getElementById(id);
 const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false, searched: false };
@@ -246,4 +247,4 @@ document.querySelectorAll('[data-focus]').forEach((item) => item.addEventListene
 $('refreshButton').addEventListener('click', refresh);
 $('loadOlder').addEventListener('click', loadOlder);
 refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, 10_000);
+mountVisibilityPoll({ poll: refresh, intervalMs: 10_000 });

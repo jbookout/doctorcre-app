@@ -7,11 +7,18 @@ import { JSDOM } from 'jsdom';
 import { screens } from './screens.mjs';
 import { inventory } from './controls.mjs';
 import { canonicalIdentity } from './traversal.mjs';
+import { validControlProof } from './control-proofs.mjs';
 import { mountMorningBrief } from '../../js/morning-brief.js';
-import catalog from '../../contracts/e2e-staging-control-proofs.v1.json' with { type: 'json' };
+import currentCatalog from '../../contracts/e2e-staging-control-proofs.v1.json' with { type: 'json' };
 import routes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const covered = new Set(catalog.controls.map(row => canonicalIdentity(row.identity)));
+const catalog = process.argv[3] ? JSON.parse(await readFile(process.argv[3], 'utf8')) : currentCatalog;
+// An explicit historical catalog reproduces its former admission coverage.
+// Current coverage requires a complete observable-effect proof.
+const covered = new Set(catalog.controls.filter(row => process.argv[3] || validControlProof(row)).map(row => canonicalIdentity(row.identity)));
+const reviewedCandidates = new Set(catalog.controls.filter(row => row.review?.candidate && validControlProof(row))
+  .map(row => JSON.stringify([row.review.path, row.review.source, row.review.candidate])));
+const familyKey = row => JSON.stringify([row.source.split(':')[0], row.selector.startsWith('#') ? row.selector : row.role + '@' + (row.source.split(':')[1] || row.selector), row.inputType, row.optionValue ?? null]);
 const escape = text => String(text).replaceAll('|', '&#124;').replaceAll('\n', ' ').replaceAll('`', '');
 function pageFor(html, path) {
   const dom = new JSDOM(html, { url: 'https://staging.invalid' + path, runScripts: 'outside-only' });
@@ -54,7 +61,8 @@ for (const screen of await screens()) {
     const old = rows.get(key);
     const entry = { selector: control.selector, name: control.name, role: control.role, inputType: control.inputType,
       optionValue: control.optionValue, source, conditional,
-      covered: covered.has(control.identity) };
+      identity: control.identity,
+      covered: covered.has(control.identity) || reviewedCandidates.has(JSON.stringify([screen.path, source, control.selector])) };
     if (!old || entry.covered) rows.set(key, entry);
   };
   const graph = await sourceGraph(asset);
@@ -107,13 +115,22 @@ const controls = result.flatMap(screen => screen.controls);
 const totals = { paths: result.length, enabledCandidateFamilies: controls.length,
   covered: controls.filter(row => row.covered).length, uncovered: controls.filter(row => !row.covered).length,
   conditional: controls.filter(row => row.conditional).length };
+const rankedFamilies = [...Map.groupBy(controls, familyKey)].map(([key, rows]) => ({
+  key, source: rows[0].source, selector: rows[0].selector, name: rows[0].name, role: rows[0].role,
+  controls: rows.length, covered: rows.filter(row => row.covered).length, uncovered: rows.filter(row => !row.covered).length,
+  paths: result.filter(screen => screen.controls.some(row => familyKey(row) === key)).map(screen => screen.path),
+})).sort((a, b) => b.controls - a.controls || a.key.localeCompare(b.key));
+Object.assign(totals, { distinctFamilies: rankedFamilies.length,
+  coveredFamilies: rankedFamilies.filter(row => row.covered > 0).length,
+  fullyCoveredFamilies: rankedFamilies.filter(row => row.uncovered === 0).length,
+  uncoveredFamilies: rankedFamilies.filter(row => row.uncovered > 0).length });
 // Repeated shared controls are listed once, then referenced by each path. This
 // keeps the exhaustive source-family table within GitHub's PR body limit.
 const groups = new Map();
 for (const screen of result) {
   const bySource = Map.groupBy(screen.controls, row => row.source.split(':')[0]);
   screen.groups = [...bySource].map(([source, rows]) => {
-    const signature = JSON.stringify(rows.map(({ covered, ...row }) => row));
+    const signature = JSON.stringify(rows.map(({ covered, identity, ...row }) => row));
     const key = source + '|' + signature;
     if (!groups.has(key)) {
       const siblings = [...groups.values()].filter(group => group.source === source);
@@ -129,17 +146,17 @@ const describe = row => {
 };
 const table = ['## Control coverage', '',
   'Offline static-source census using the sweep inventory (no browser/staging requests). Every one of the 31 paths appears below. Disabled literals are excluded; hidden/disclosed markup states are included. The source groups enumerate every detected enabled candidate; each path references its complete groups. “?” means conditional JS markup or element factory; interpolated attributes stay DYNAMIC. Lists/options can expand to more instances. CSS visibility, factory attributes, runtime-composed markup and live data are not measured: these are source-family counts, not an exact live enabled-control denominator.', '',
-  `Path/control candidate pairs: ${totals.enabledCandidateFamilies}; catalog-covered: ${totals.covered}; uncovered: ${totals.uncovered}; conditional: ${totals.conditional}. Across both viewports: ${2 * totals.covered} covered and ${2 * totals.uncovered} uncovered candidate pairs, subject to visibility and run caps.`, '',
-  'The catalog has 12 identities: one #morningClose action on four paths × three dialog titles (Morning brief, Morning brief · Joe, Morning brief · Dell). Only /, /control-room, /deals and /leads are covered; all other actions and paths skip. A checked selector alone never grants execution: the full identity and exact source pair must match. There are 62 path/viewport pairs and 62 declared owner-state obligations. The next capped V1 run can traverse all targets and validate inventory/readiness/zero-execution skips, but its functional press coverage remains narrow; it is not a complete interaction sweep.', '',
+  `Path/control candidate pairs: ${totals.enabledCandidateFamilies}; catalog-covered: ${totals.covered}; uncovered: ${totals.uncovered}; conditional: ${totals.conditional}. These source counts are per path. Viewport visibility is unmeasured, so they are not doubled for the two sweep viewports.`, '',
+  `The catalog has ${catalog.controls.length} prepared identities across ${totals.coveredFamilies} covered source families. Candidate coverage means a checked-in proof exists for reviewed finite DOM states of the family; it does not mean every runtime variant matches. Live admission still requires the exact full identity and source pair. Every proof requires its named, causally attributed DOM transition or same-origin API operation. Visibility, conditional expansion and data-dependent ownership remain unmeasured; unsupported variants skip. There are ${result.length * 2} path/viewport pairs.`, '',
   '| Screen path | Covered | Uncovered | Complete source groups |', '|---|---:|---:|---|',
   ...result.map(screen => `| ${escape(screen.path)} | ${screen.controls.filter(row => row.covered).length} | ${screen.controls.filter(row => !row.covered).length} | ${screen.groups.map(escape).join('; ')} |`), '',
   '### Enabled candidate families by source group', '',
-  'Every family below is uncovered except #morningClose on the four paths named above. Static selects list each enabled literal option; symbolic options remain conditional. Factory controls have unknown attributes (including enabled state); anonymous controls are named by role and source line (or their static CSS selector).', '',
+  'Static selects list each enabled literal option; symbolic options remain conditional. Factory controls have unknown attributes (including enabled state); anonymous controls are named by role and source line (or their static CSS selector).', '',
   '| Source group | Enabled candidates (? conditional) |', '|---|---|',
   ...[...groups.values()].map(group => `| ${escape(group.label)} | ${group.rows.map(describe).join('<br>')} |`), '',
   'Reproduce after npm run build: node scripts/e2e-staging/control-inventory.mjs <output-prefix>. The JSON companion preserves selectors, names, input types/options and source lines. Runtime expansion remains uncovered and must not be presented as measured live coverage.', ''].join('\n');
 const prefix = process.argv[2];
 if (!prefix) throw new Error('Provide an output prefix outside the source tree');
-await writeFile(prefix + '.json', JSON.stringify({ totals, screens: result }, null, 2));
+await writeFile(prefix + '.json', JSON.stringify({ totals, families: rankedFamilies, screens: result }, null, 2));
 await writeFile(prefix + '.txt', table);
 console.log(JSON.stringify({ ...totals, tableBytes: Buffer.byteLength(table), output: prefix }));
