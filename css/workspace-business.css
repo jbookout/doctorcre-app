@@ -74,8 +74,7 @@
 .record-row.selected{border-color:rgba(242,138,57,.75);background:linear-gradient(140deg,rgba(52,38,26,.7),rgba(20,29,42,.7))}
 .row-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
 .row-name{font:600 21px/1.1 var(--display);letter-spacing:.01em}
-.row-ref{color:var(--cyan);font-size:11px;font-weight:700;letter-spacing:.06em}
-.row-ref.unknown,.row-fact.unknown .fact-value,.row-owner.unknown,.record-field.unknown dd{color:var(--quiet);font-style:italic}
+.row-fact.unknown .fact-value,.row-owner.unknown,.record-field.unknown dd{color:var(--quiet);font-style:italic}
 .tone{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);font-size:10px;font-weight:800;letter-spacing:.04em}
 .tone:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .tone-active{border-color:rgba(121,221,160,.45);background:rgba(121,221,160,.1);color:#b9f2cd}
@@ -187,7 +186,7 @@
 .record-list{grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));gap:14px}
 .record-row{height:100%;padding:20px;background:radial-gradient(ellipse at 100% 0,rgba(42,80,121,.23),transparent 70%),rgba(10,20,33,.86);box-shadow:0 14px 40px rgba(0,0,0,.15);animation:receipt-in .3s ease backwards;transition:border-color .16s,transform .16s,box-shadow .16s}
 .record-row:hover{transform:translateY(-3px);box-shadow:0 14px 40px rgba(242,138,57,.09)}
-.row-name{font-size:29px}.row-ref{display:none}.row-facts{gap:12px 22px}.fact-value{font-size:13px}
+.row-name{font-size:29px}.row-facts{gap:12px 22px}.fact-value{font-size:13px}
 .row-foot{border:0;padding-top:10px}.row-updated{display:none}
 .contact-note{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:18px}
 .trust-line{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:11px;color:var(--muted)}

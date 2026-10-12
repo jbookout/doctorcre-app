@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
-import { appShellMarkup, navigationItems } from "../js/app-shell.js";
+import { appShellMarkup, navigationItems } from "../js/navigation.js";
 import { handleDoctorcreRequest } from "../src/worker.js";
 
 const origin = "https://app.doctorcre.com";

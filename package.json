@@ -39,7 +39,9 @@
     "pree2e:staging:selftest": "npm run build",
     "e2e:staging:selftest": "node --test tests/staging-live/*.test.mjs && python3 tests/staging-live/scrub.test.py",
     "e2e:staging:deploy": "node scripts/e2e-staging/deploy-app.mjs",
-    "e2e:staging:repin-control-proofs": "node scripts/e2e-staging/repin-control-proofs.mjs"
+    "e2e:staging:repin-control-proofs": "node scripts/e2e-staging/repin-control-proofs.mjs",
+    "performance:measure": "node scripts/measure-performance.mjs",
+    "performance:check": "npm run performance:measure && node scripts/performance-budget.mjs contracts/performance-budget.v1.json test-artifacts/performance/report.json test-artifacts/performance/summary.md"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",
@@ -47,6 +49,7 @@
     "ai": "7.0.127",
     "e2e": "0.18.0",
     "es-module-lexer": "1.7.0",
+    "esbuild": "0.28.1",
     "jsdom": "^26.1.0",
     "playwright": "1.63.0",
     "wrangler": "4.131.2"
