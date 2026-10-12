@@ -157,7 +157,10 @@ test('PR119 finding 8: aggregate deadline cancels loaded Atlas pages and rejects
  assert.deepEqual(recovered,{count:8,selected,present:true});assert.deepEqual(errors,[]);
 });
 test('PR119 finding 8: a hung Home read expires and a late response cannot overwrite recovery',async t=>{
- const hooks=`const read=c.getBoard;window.homeReads=0;c.getBoard=async args=>{const p=await read(args);if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
+ // Every fixture client on Home (the shell, the morning brief, the dashboard) is
+ // hooked and shares this counter, so only the dashboard's reads, the ones that
+ // carry a cancellation signal, may count; otherwise scheduling picks which read hangs.
+ const hooks=`const read=c.getBoard;window.homeReads??=0;c.getBoard=async args=>{const p=await read(args);if(!args?.signal)return p;if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
  const {page,errors}=await open(t,{clientHooks:hooks});
  await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
  const expected=await page.locator('#dealCounts').textContent();

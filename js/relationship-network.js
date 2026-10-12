@@ -372,7 +372,7 @@ export function mountRelationshipNetwork({
   const expiry = window.setInterval(() => {
     if (!snapshot || Date.parse(snapshot.valid_until) > Date.now()) return;
     invalidate();
-    auto.refresh();
+    auto.poll();
   }, 1000);
   selectTab(params.get("view"));
   render();
