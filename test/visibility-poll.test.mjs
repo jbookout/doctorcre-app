@@ -126,9 +126,9 @@ test('a local clock keeps repainting while idle; only its read sleeps', async ()
   p.input(); await settle();
   assert.equal(reads, 1, 'the first input reads once');
   clock.dispose();
-  const business = await readFile(new URL('../js/business-workspace.js', import.meta.url), 'utf8');
-  assert.match(business, /mountLocalClock\(\{ intervalMs: EXPIRY_TICK_MS, tick: \(\) => \{\s*if \(!view\.payload[^]*freshnessSignature[^]*\}, read: \(\) => \{/,
-    'the business expiry repaint is the local tick; only the day read is the network read');
+  const home = await readFile(new URL('../js/workspace-command-center.js', import.meta.url), 'utf8');
+  assert.match(home, /const expiry = window\.setInterval\(\(\) => \{[^]*?render\(\);\s*auto\.poll\(\);/,
+    'Home repaints an expired snapshot locally; its re-read is the gated poll, never an ungated refresh');
 });
 
 test('input keeps a visible tab active past the cutoff', async () => {
@@ -173,7 +173,7 @@ test('repeated hide and show leaves exactly one timer per poller', async () => {
 
 test('every network poller in the app goes through the shared helper', async () => {
   const read = file => readFile(new URL(`../js/${file}`, import.meta.url), 'utf8');
-  for (const file of ['app.js', 'pipeline.js', 'business-workspace.js', 'observatory.js', 'progress-board.js',
+  for (const file of ['app.js', 'pipeline.js', 'observatory.js', 'progress-board.js',
     'progress-wire.js', 'progress-work.js', 'queue.js', 'call-mode.js']) {
     const source = await read(file);
     assert.match(source, /mountVisibilityPoll\(|mountLocalClock\(/, `${file} polls through the helper`);

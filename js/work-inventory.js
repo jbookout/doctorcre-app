@@ -74,11 +74,24 @@ function announce(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
+// Wire values belong in Details. Unrecognized values never become broker copy.
+const STATUS_LABEL = {
+  captured: "Captured", triaged: "Triaged", ready: "Ready", declined: "Declined",
+  superseded: "Superseded", queued: "Queued", dormant: "Dormant", active: "Active",
+  open: "Open", closed: "Closed", done: "Done", dropped: "Dropped", proposed: "Proposed",
+  approved: "Approved", accepted: "Accepted", retired: "Retired", blocked: "Blocked",
+  pending: "Pending", required: "Required", not_required: "Not required", needs_joe: "Needs Joe",
+  needs_dell: "Needs Dell", eligible: "Eligible", claimed: "Claimed", reopened: "Reopened",
+  verified_complete: "Verified", in_progress: "In progress", complete: "Complete",
+};
+const statusLabel = value => STATUS_LABEL[String(value ?? "").toLowerCase()] || "Status unavailable";
+const recordTitle = item => item?.title || "Untitled record";
+const stageLabel = state => ({ complete: "Verified", "not reached": "Not reached", unknown: "Not checked" }[state] || "Unavailable");
 
 function formatUpdated(value) {
   const date = new Date(value);
   if (Number.isNaN(date.valueOf())) return "updated time unavailable";
-  return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  return date.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 function setCensusStatus(state, label) {
@@ -96,22 +109,21 @@ function setCensusStatus(state, label) {
 function renderFilters() {
   kindChips.forEach((chip) => chip.setAttribute("aria-pressed", view.kinds.includes(chip.dataset.kind) ? "true" : "false"));
   if (kindReset) kindReset.disabled = view.kinds.length === WORK_INVENTORY_KINDS.length;
-  if (requestPath) requestPath.textContent = `Request: ${inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT })}`;
+  if (requestPath) requestPath.textContent = `Request: ${inventoryRequestPath({ kinds: view.kinds, limit: WORK_INVENTORY_LIMIT_DEFAULT })}${view.message ? ` · ${view.message}` : ""}`;
 }
 
 function coverageRow(entry) {
   const orb = coverageOrbState(entry.state);
   const total = Number.isInteger(entry.count_total) ? `${entry.count_total} items` : "total not claimed";
-  const reason = entry.reason ? `` : "";
   const capped = entry.page_capped === true ? " · more rows remain behind the page limit" : "";
   const excluded = Number.isInteger(entry.excluded_other_tenant) && entry.excluded_other_tenant > 0
     ? ` · ${entry.excluded_other_tenant} row(s) outside this tenant were dropped` : "";
   return `<li class="work-item" data-kind="${escapeHtml(entry.kind)}" data-coverage="${escapeHtml(entry.state)}">
     <div><h3>${escapeHtml(KIND_LABEL[entry.kind] || entry.kind)}</h3>
       <div class="work-meta"><span><b>${escapeHtml(entry.count_returned)}</b> shown</span><span>${escapeHtml(total)}</span></div>
-      <p class="small">${escapeHtml(COVERAGE_COPY[entry.state] || "Coverage unknown.")}${reason}${capped}${excluded}</p>
+      <div class="work-meta">${escapeHtml(capped + excluded)}</div>
     </div>
-    <span class="status" data-state="${escapeHtml(orb)}"><span class="orb" data-state="${escapeHtml(orb)}" aria-hidden="true"></span> ${escapeHtml(entry.state)}</span>
+    <span class="status" data-state="${escapeHtml(orb)}"><span class="orb" data-state="${escapeHtml(orb)}" aria-hidden="true"></span> ${escapeHtml(entry.state === "complete" ? "Available" : COVERAGE_COPY[entry.state] || "Unavailable")}</span>
   </li>`;
 }
 
@@ -126,27 +138,28 @@ function renderCoverage(payload) {
 }
 
 function relatedHtml(item) {
-  if (item.unlinked) return '<span class="chip" aria-label="No related record is recorded for this item">unlinked</span>';
-  return item.related.map((link) => `<span class="chip"><span class="chip-label">${escapeHtml(link.kind)}</span>${escapeHtml(link.id)}</span>`).join("");
+  if (item.unlinked) return '<span class="chip">No related record</span>';
+  return item.related.map((link) => {
+    const related = view.items.find(entry => entry.kind === link.kind && entry.id === link.id);
+    return `<span class="chip">${escapeHtml(related?.title || KIND_LABEL[link.kind] || "Related record")}</span>`;
+  }).join("");
 }
 
 function itemRow(item) {
   const open = item.open
-    ? `<a class="btn" href="${escapeHtml(item.open)}">Open</a>`
+    ? `<a class="btn" href="${escapeHtml(item.open)}" target="_blank" rel="noopener">Open</a>`
     : '<span class="small">No surface owns this record yet</span>';
   return `<li class="work-item" data-kind="${escapeHtml(item.kind)}">
     <div>
-      <h3>${escapeHtml(item.title || item.id)}</h3>
+      <h3>${escapeHtml(recordTitle(item))}</h3>
       <div class="work-meta">
         <span>${escapeHtml(KIND_LABEL[item.kind] || item.kind)}</span>
-        <span class="mono">${escapeHtml(item.id)}</span>
-        <span>version <b>${escapeHtml(item.version ?? "unversioned")}</b></span>
-        <span>status <b>${escapeHtml(item.status ?? "unstated")}</b></span>
+        <span><b>${escapeHtml(statusLabel(item.status))}</b></span>
         <span>updated ${escapeHtml(formatUpdated(item.updated_at))}</span>
       </div>
       <div class="chip-bar">${relatedHtml(item)}</div>
     </div>
-    ${open}
+    <div class="stack-end"><button class="btn btn-quiet" type="button" data-details-kind="${escapeHtml(item.kind)}" data-details="${escapeHtml(item.id)}">Details</button>${open}</div>
   </li>`;
 }
 
@@ -154,7 +167,7 @@ function renderGroups(visible) {
   if (!kindGroups) return;
   const groups = groupItemsByKind(visible, view.kinds);
   kindGroups.innerHTML = groups.map((group) => `<section aria-labelledby="group-${escapeHtml(group.kind)}">
-      <div class="card-heading"><div><p class="eyebrow">${escapeHtml(group.kind)}</p><h3 id="group-${escapeHtml(group.kind)}">${escapeHtml(group.label)}</h3></div><span class="as-of">${group.items.length} shown</span></div>
+      <div class="card-heading"><div><h3 id="group-${escapeHtml(group.kind)}">${escapeHtml(group.label)}</h3></div><span class="as-of">${group.items.length} shown</span></div>
       ${group.items.length === 0
         ? '<p class="small">No items shown</p>'
         : `<ul class="work-list">${group.items.map(itemRow).join("")}</ul>`}
@@ -162,11 +175,11 @@ function renderGroups(visible) {
 }
 
 const STATE_COPY = {
-  loading: { title: "Loading…", copy: "" },
-  no_access: { title: "Sign-in required", copy: "" },
-  offline: { title: "Work temporarily unavailable", copy: "" },
-  empty: { title: "No work", copy: "" },
-  no_match: { title: "No matches", copy: "" },
+  loading: { title: "Loading…" },
+  no_access: { title: "Sign-in required" },
+  offline: { title: "Work temporarily unavailable" },
+  empty: { title: "No work" },
+  no_match: { title: "No matches" },
 };
 
 function renderState(phase, payload) {
@@ -181,17 +194,16 @@ function renderState(phase, payload) {
     const summary = coverageSummary(payload?.coverage || []);
     inventoryState.setAttribute("data-state", "partial");
     inventoryState.innerHTML = `<h3>Partly available</h3>
-      <p>${escapeHtml("Some areas are unavailable")}</p>
-      <p class="small">${summary.unavailable.length} areas unavailable · ${summary.partial.length} partial. </p>`;
+      <div class="work-meta">${summary.unavailable.length} areas unavailable · ${summary.partial.length} partly available</div>`;
     return;
   }
   const copy = STATE_COPY[phase] || STATE_COPY.offline;
-  inventoryState.innerHTML = `<h3>${escapeHtml(copy.title)}</h3><p>${escapeHtml(view.message || copy.copy)}</p>`;
+  inventoryState.innerHTML = `<h3>${escapeHtml(copy.title)}</h3>`;
 }
 
 function render() {
   renderFilters();
-  const visible = filterItemsByStatusText(view.items, view.statusText);
+  const visible = view.items.filter(item => filterItemsByStatusText([{ status: statusLabel(item.status) }], view.statusText).length > 0);
   setDocFilters({ kinds:view.kinds, status:view.statusText });
   if (view.status === 'ready') publishDocRead('workInventory', { items:visible }, []);
   const phase = listPhase({ status: view.status, payload: view.payload, visible: visible.length });
@@ -202,7 +214,7 @@ function render() {
   else if (view.payload) setCensusStatus(coverageOrbState(coverageSummary(view.payload.coverage).worst), view.payload.census_complete ? "Census complete" : "Census incomplete");
 
   if (!view.payload) {
-    if (coverageStrip) coverageStrip.innerHTML = `<li class="work-item"><div><h3>Coverage unavailable</h3><p class="small">Updates unavailable.</p></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> unknown</span></li>`;
+    if (coverageStrip) coverageStrip.innerHTML = `<li class="work-item"><div><h3>Coverage unavailable</h3></div><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Unavailable</span></li>`;
     if (coverageSummaryLine) coverageSummaryLine.textContent = "Coverage unknown until the census answers.";
     if (kindGroups) kindGroups.innerHTML = "";
     if (itemsCount) itemsCount.textContent = view.status === "loading" ? "Reading…" : "Unavailable";
@@ -264,6 +276,8 @@ const dispositionCount = document.querySelector("#dispositionCount");
 /** What has actually been READ, per record ref. Absent means unknown, not absent. */
 const evidence = new Map();
 const cards = new Map();
+const cardReadSequence = new Map();
+const details = { ref: null, kind: null, mode: null, status: null, sequence: 0 };
 
 let client = null;
 let commandState = {};
@@ -293,14 +307,13 @@ function stagesFor(ref) {
 }
 
 function stageCellHtml(row) {
-  const title = row.state === "complete" ? row.evidence_ref || "" : row.reason || "";
-  return `<td class="stage-cell" data-stage="${escapeHtml(row.stage)}" data-stage-label="${escapeHtml(STAGE_LABEL[row.stage] || row.stage)}" data-state="${escapeHtml(row.state)}" title="${escapeHtml(title)}">${escapeHtml(row.state)}</td>`;
+  return `<td class="stage-cell" data-stage="${escapeHtml(row.stage)}" data-stage-label="${escapeHtml(STAGE_LABEL[row.stage] || row.stage)}" data-state="${escapeHtml(row.state)}">${escapeHtml(stageLabel(row.state))}</td>`;
 }
 
 function stageRowHtml(item) {
   const cells = stagesFor(item.id).map(stageCellHtml).join("");
   return `<tr data-record="${escapeHtml(item.id)}">
-    <td data-stage-label="Record">${escapeHtml(item.title || item.id)} <span class="mono">${escapeHtml(item.id)}</span></td>
+    <td data-stage-label="Record">${escapeHtml(recordTitle(item))}</td>
     ${cells}
     <td data-stage-label="Evidence"><button class="btn btn-quiet" type="button" data-evidence="${escapeHtml(item.id)}">Evidence</button></td>
   </tr>`;
@@ -332,23 +345,13 @@ function renderStages(visible, payload) {
 
 function dispositionRowHtml(item) {
   const card = cards.get(item.id) || null;
-  const { state, source: stateSource } = dispositionState(item, card);
-  const stateMarker = stateSource === "census" ? ` <span class="small"></span>` : "";
-  const actions = card
-    ? availableActions(card).map((action) => (action.available
-      ? `<button class="btn btn-secondary" type="button" data-action="${escapeHtml(action.choice)}" data-record="${escapeHtml(item.id)}">${escapeHtml(action.label)}</button>`
-      : `<span class="small">${escapeHtml(action.label)}: ${escapeHtml(action.reason)}</span>`)).join("")
-    : `<button class="btn" type="button" data-open-card="${escapeHtml(item.id)}">Open details</button>`;
-  const options = card
-    ? `<div class="chip-bar">${dispositionOptions(card).map((option) => `<span class="chip"><span class="chip-label">${escapeHtml(option.label)}</span>${escapeHtml(option.available ? "available" : "not available here")}</span>`).join("")}</div>`
-    : "";
+  const { state } = dispositionState(item, card);
   return `<li class="work-item" data-record="${escapeHtml(item.id)}">
     <div>
-      <h3>${escapeHtml(item.title || item.id)}</h3>
-      <div class="work-meta"><span class="mono">${escapeHtml(item.id)}</span><span>state <b>${escapeHtml(state)}</b>${stateMarker}</span></div>
-      ${options}
+      <h3>${escapeHtml(recordTitle(item))}</h3>
+      <div class="work-meta"><span><b>${escapeHtml(statusLabel(state))}</b></span></div>
     </div>
-    <div class="stack-end">${actions}</div>
+    <div class="stack-end"><button class="btn" type="button" data-open-card="${escapeHtml(item.id)}">Open details</button></div>
   </li>`;
 }
 
@@ -361,9 +364,74 @@ function renderDisposition(visible) {
 
 /* ------------------------------------------------------------- lazy reads */
 
+const detailRowsHtml = rows => rows.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
+
+function closeDetails() {
+  details.sequence++;
+  details.ref = null;
+  details.kind = null;
+  details.mode = null;
+  const dialog = document.querySelector("#evidenceDialog");
+  if (dialog?.open) dialog.close();
+}
+
+function renderRecordDetails() {
+  const item = view.items.find(entry => entry.kind === details.kind && entry.id === details.ref);
+  const rows = document.querySelector("#evidenceRows");
+  const actions = document.querySelector("#evidenceActions");
+  const card = details.status === "ready" && details.kind === "work_request" ? cards.get(details.ref) : null;
+  document.querySelector("#evidenceTitle").textContent = recordTitle(item);
+  document.querySelector("#evidenceEyebrow").textContent = "Details";
+  document.querySelector("#evidenceRetry").hidden = details.status !== "unavailable";
+  actions.innerHTML = "";
+  if (details.status === "loading") {
+    rows.innerHTML = "<dt>Details</dt><dd>Loading…</dd>";
+    return;
+  }
+  if (details.status === "unavailable" || !item) {
+    rows.innerHTML = "<dt>Details unavailable</dt><dd>Unavailable</dd>";
+    return;
+  }
+  rows.innerHTML = detailRowsHtml([
+    ["Area", KIND_LABEL[item.kind]], ["Status", statusLabel(card?.state || item.status)],
+    ["Updated", formatUpdated(item.updated_at)], ["Record reference", item.id],
+    ["Version", card?.version ?? item.version ?? "Unversioned"],
+    ["Recorded status", card?.state || item.status || "Unstated"], ["Source", item.source_ref],
+    ["Related records", item.related.map(link => `${link.kind}: ${link.id}`).join(" · ") || "None"],
+  ]);
+  if (!card) {
+    rows.innerHTML += "<dt>Additional details</dt><dd>Unavailable here</dd>";
+    return;
+  }
+  // The existing card operation returns the record, including fields beyond
+  // the disposition contract. Keep that full read in Details, never in a row.
+  rows.innerHTML += `<dt>Record data</dt><dd><pre class="record-data">${escapeHtml(JSON.stringify(card, null, 2))}</pre></dd>`;
+  actions.innerHTML = availableActions(card).map(action => action.available
+    ? `<button class="btn btn-secondary" type="button" data-action="${escapeHtml(action.choice)}" data-record="${escapeHtml(item.id)}">${escapeHtml(action.label)}</button>`
+    : `<span class="small">${escapeHtml(action.label)}: ${escapeHtml(action.reason)}</span>`).join("");
+  rows.innerHTML += detailRowsHtml(dispositionOptions(card).map(option => [option.label, option.available ? "Available" : "Unavailable here"]));
+}
+
+async function openRecordDetails(kind, ref) {
+  if (!view.items.some(item => item.kind === kind && item.id === ref)) return;
+  const sequence = ++details.sequence;
+  Object.assign(details, { kind, ref, mode: "record", status: kind === "work_request" ? "loading" : "ready" });
+  renderRecordDetails();
+  const dialog = document.querySelector("#evidenceDialog");
+  if (dialog && typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+  if (kind !== "work_request") return;
+  const card = await readCard(ref);
+  // Closing the popup or selecting another record cancels its presentation.
+  if (sequence !== details.sequence) return;
+  details.status = card ? "ready" : "unavailable";
+  renderRecordDetails();
+}
+
 async function readEvidence(ref) {
   const item = view.items.find((entry) => entry.id === ref) || null;
   if (!item || !client) return;
+  // Opening or closing another popup while this read waits supersedes it.
+  const sequence = ++details.sequence;
   let passport = null;
   let portfolio = null;
   let refusal = null;
@@ -385,7 +453,7 @@ async function readEvidence(ref) {
   }
   evidence.set(ref, { passport, portfolio, refusal, stages: passport ? deliveryStages(passport, portfolio) : deliveryStages(null) });
   render();
-  openEvidence(ref);
+  if (sequence === details.sequence) openEvidence(ref);
 }
 
 function openEvidence(ref) {
@@ -393,10 +461,16 @@ function openEvidence(ref) {
   const title = document.querySelector("#evidenceTitle");
   const rows = document.querySelector("#evidenceRows");
   const read = evidence.get(ref) || {};
-  if (title) title.textContent = ref;
+  details.sequence++;
+  Object.assign(details, { ref, kind: "work_request", mode: "evidence" });
+  if (title) title.textContent = recordTitle(view.items.find(item => item.kind === "work_request" && item.id === ref));
+  document.querySelector("#evidenceEyebrow").textContent = "Delivery evidence";
+  document.querySelector("#evidenceActions").innerHTML = "";
+  document.querySelector("#evidenceRetry").hidden = Boolean(read.passport) && !read.refusal;
   if (rows) {
     const detail = [
-      ["Stages", stagesFor(ref).map((cell) => `${STAGE_LABEL[cell.stage]}: ${cell.state}`).join(" · ")],
+      ["Stages", stagesFor(ref).map((cell) => `${STAGE_LABEL[cell.stage]}: ${stageLabel(cell.state)}`).join(" · ")],
+      ["Stage details", stagesFor(ref).map(cell => `${STAGE_LABEL[cell.stage]}: ${cell.evidence_ref || cell.reason || "Unavailable"}`).join(" · ")],
       ["Closure", read.passport ? `${read.passport.closure_state} · ${Object.entries(read.passport.closure).map(([name, facet]) => `${name} ${facet.state}`).join(", ")}` : "unknown"],
       ["Reviewer facts", read.passport ? String(read.passport.current_reviewer_facts.length) : "unknown"],
       ["Plan", read.passport ? `${read.passport.stale_conflict.state === "stale" ? "stale" : "current"}` : "unknown"],
@@ -410,22 +484,22 @@ function openEvidence(ref) {
 /** The fresh read every write is built from, and the one the row's state shows. */
 async function readCard(ref, { signal } = {}) {
   if (!client) return null;
+  const sequence = (cardReadSequence.get(ref) || 0) + 1;
+  cardReadSequence.set(ref, sequence);
+  const current = () => !signal?.aborted && cardReadSequence.get(ref) === sequence;
   try {
     const args = { work_request: ref };
-    const answer = signal
-      ? await readWithDeadline(current => client.workRequestCard(args, { signal: current }), { signal })
-      : await client.workRequestCard(args);
-    if (signal?.aborted) return null;
-    if (!validWorkRequestCard(answer)) {
-      announce(`${ref}: the card answered in a shape this page does not read.`);
-      return null;
-    }
+    const answer = await readWithDeadline(current => client.workRequestCard(args, { signal: current }), { signal });
+    if (!current()) return null;
+    if (!validWorkRequestCard(answer) || answer.human_ref !== ref) throw new Error("Card unavailable");
     cards.set(ref, answer);
     render();
     return answer;
-  } catch (error) {
-    if (signal?.aborted) return null;
-    announce(`${ref}: ${refusalMessage(error?.payload?.error || "unreadable", { ref })}`);
+  } catch {
+    if (!current()) return null;
+    cards.delete(ref);
+    render();
+    announce("Record details unavailable. Retry the read.");
     return null;
   }
 }
@@ -438,7 +512,7 @@ function renderDispositionForm() {
   const card = cards.get(decision.ref) || null;
   const choice = decision.choice;
   const shape = choice === "shape";
-  field("#dispositionDialogTitle").textContent = decision.ref || "Record";
+  field("#dispositionDialogTitle").textContent = recordTitle(view.items.find(item => item.kind === "work_request" && item.id === decision.ref));
   field("#dispositionDialogEyebrow").textContent = shape ? "Shape disposition" : choice === "decline" ? "Decline" : "Supersede";
   field("#dispositionSuccessorField").hidden = choice !== "supersede";
   field("#dispositionShapeField").hidden = !shape;
@@ -456,6 +530,7 @@ function renderDispositionForm() {
 }
 
 function openDisposition(ref, choice) {
+  closeDetails();
   decision.ref = ref;
   decision.choice = choice;
   decision.refusal = null;
@@ -466,6 +541,13 @@ function openDisposition(ref, choice) {
   if (dialog && typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
   field("#dispositionReason").focus();
 }
+
+// One label per classified outcome, so the visible line and the live
+// announcement keep the same certainty.
+const outcomeLabel = status => ({
+  ok: "Changes saved", unknown: "Outcome unavailable", in_flight: "Still sending",
+  blocked: "An earlier change is unresolved",
+}[status] || "Changes were not saved");
 
 async function submitDisposition() {
   const ref = decision.ref;
@@ -493,7 +575,8 @@ async function submitDisposition() {
     return;
   }
   const operationKey = operationKeys[choice](ref);
-  const summary = dispositionEffect(choice, ref, { successor: args.superseded_by || "", disposition: args.disposition || "" });
+  const summary = `${{ decline: "Decline", supersede: "Supersede", shape: "Shape disposition" }[choice]}: ${recordTitle(view.items.find(item => item.kind === "work_request" && item.id === ref))}`;
+  field("#commandStatus").textContent = `${summary} · Saving…`;
   dock.record(operationKey, { summary, status: "sending", undo: false });
   const send = (request) => (choice === "decline" ? client.declineWorkRequest(request)
     : choice === "supersede" ? client.supersedeWorkRequest(request)
@@ -505,6 +588,7 @@ async function submitDisposition() {
     newKey: uuidv4,
     call: send,
   });
+  field("#commandStatus").textContent = `${summary} · ${outcomeLabel(result.status)}`;
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
     retry: result.retry, undo: false, request: result.request,
@@ -524,7 +608,7 @@ async function submitDisposition() {
     ? `Changed elsewhere. ${result.message || ""}`.trim()
     : result.message || refusalMessage(result.code, { ref });
   renderDispositionForm();
-  announce(decision.refusal);
+  announce(`${outcomeLabel(result.status)}. Review the open record details.`);
 }
 
 function closeDisposition() {
@@ -650,11 +734,22 @@ stageRowsBody?.addEventListener("click", (event) => {
 });
 dispositionRows?.addEventListener("click", (event) => {
   const open = event.target.closest("button[data-open-card]");
-  if (open) { readCard(open.dataset.openCard); return; }
+  if (open) openRecordDetails("work_request", open.dataset.openCard);
+});
+kindGroups?.addEventListener("click", event => {
+  const button = event.target.closest("button[data-details]");
+  if (button) openRecordDetails(button.dataset.detailsKind, button.dataset.details);
+});
+document.querySelector("#evidenceActions")?.addEventListener("click", event => {
   const action = event.target.closest("button[data-action]");
   if (action) openDisposition(action.dataset.record, action.dataset.action);
 });
-document.querySelector("#evidenceClose")?.addEventListener("click", () => document.querySelector("#evidenceDialog")?.close());
+document.querySelector("#evidenceRetry")?.addEventListener("click", () => {
+  if (details.mode === "evidence") readEvidence(details.ref);
+  else if (details.mode === "record") openRecordDetails(details.kind, details.ref);
+});
+document.querySelector("#evidenceClose")?.addEventListener("click", closeDetails);
+document.querySelector("#evidenceDialog")?.addEventListener("cancel", closeDetails);
 document.querySelector("#dispositionClose")?.addEventListener("click", closeDisposition);
 document.querySelector("#dispositionCancel")?.addEventListener("click", closeDisposition);
 document.querySelector("#dispositionShape")?.addEventListener("change", renderDispositionForm);

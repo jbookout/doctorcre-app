@@ -1,4 +1,4 @@
-import { navigationItems } from "../js/app-shell.js";
+import { navigationItems } from "../js/navigation.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';

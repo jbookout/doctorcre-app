@@ -1,3 +1,7 @@
+import { mountNavigation } from "../js/navigation.js";
+
+mountNavigation(document, location.pathname, { report: true });
+
 (() => {
   "use strict";
 
