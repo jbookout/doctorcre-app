@@ -203,10 +203,10 @@ test('QA-008 Deals freshness says unavailable after failed reads and recovers to
   const { page, errors } = await open(t, { init: () => { window.refuseBoard = true; },
     hooks: `const read=c.getBoard;c.getBoard=async(...args)=>{if(window.refuseBoard)throw Object.assign(new Error('synthetic outage'),{status:503});return read.apply(c,args);};` });
   await page.goto(origin + '/deals', { waitUntil: 'domcontentloaded' });
-  await settles(async () => assert.equal(await page.locator('#boardAsOf').textContent(), 'Board unavailable'));
+  await settles(async () => assert.equal(await page.locator('#boardAsOf').textContent(), 'Unavailable'));
   assert.doesNotMatch(await page.locator('#boardAsOf').textContent(), /Updating/);
   await page.locator('#listView').click();
-  assert.equal(await page.locator('#boardAsOf').textContent(), 'Board unavailable');
+  assert.equal(await page.locator('#boardAsOf').textContent(), 'Unavailable');
   await page.evaluate(() => { window.refuseBoard = false; });
   await page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
   await settles(async () => assert.match(await page.locator('#boardAsOf').textContent(), /^Updated \d{1,2}:\d\d (AM|PM)$/));

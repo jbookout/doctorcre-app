@@ -476,22 +476,48 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
  } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });
 
+for (const status of [503, 401, 403]) test(`QA008 Leads freshness settles after failed read and retry: ${status}`, async () => {
+ let failing = true;
+ const s = await setup({ getWorkspace: async () => {
+  if (failing) throw Object.assign(new Error('Synthetic board refusal'), { status });
+  return structuredClone(workspace());
+ } });
+ try {
+  const freshness = () => s.d.getElementById('boardUpdated');
+  assert.equal(freshness().textContent, 'Unavailable');
+  assert.equal(freshness().dateTime, '');
+  await s.app.refresh();
+  assert.equal(freshness().textContent, 'Unavailable');
+  failing = false;
+  await s.app.refresh();
+  assert.match(freshness().textContent, /^Updated .* (AM|PM)$/);
+  assert.equal(freshness().dateTime, workspace().generated_at);
+  // A later failure that keeps the board keeps that board's time beside the
+  // reconnecting line, as Deals does; a sign-in refusal clears both.
+  failing = true;
+  await s.app.refresh();
+  const kept = status === 503;
+  assert.equal(s.d.querySelectorAll('.lead-card').length > 0, kept);
+  if (kept) assert.match(freshness().textContent, /^Updated .* (AM|PM)$/);
+  else assert.equal(freshness().textContent, 'Unavailable');
+  assert.equal(freshness().dateTime, kept ? workspace().generated_at : '');
+  assert.match(s.d.getElementById('leadBoardError').textContent, kept ? /reconnecting/ : /Sign-in required/);
+ } finally { s.close(); }
+});
 
-test('PR184 Leads freshness stays unavailable across failed retries and local rerenders', async () => {
- const s=await setup();try{
-  const read=s.client.getWorkspace;
-  assert.match(s.d.getElementById('boardUpdated').textContent,/Updated/);
-  s.client.getWorkspace=async()=>{throw Object.assign(new Error('Synthetic failure'),{status:503})};
+test('QA008 Leads freshness is Unavailable when a failed identity read clears the board', async () => {
+ let failing = false;
+ const s = await setup({ getActor: async () => {
+  if (failing) throw Object.assign(new Error('Synthetic identity outage'), { status: 503 });
+  return 'example-partner';
+ } });
+ try {
+  const freshness = () => s.d.getElementById('boardUpdated');
+  assert.match(freshness().textContent, /^Updated /);
+  failing = true;
   await s.app.refresh();
-  assert.equal(s.d.getElementById('boardUpdated').textContent,'Leads unavailable');
-  assert.equal(s.d.getElementById('boardUpdated').dateTime,'');
-  const search=s.d.getElementById('leadSearch');
-  search.value='Demo';search.dispatchEvent(new s.w.Event('input',{bubbles:true}));
-  assert.equal(s.d.getElementById('boardUpdated').textContent,'Leads unavailable');
-  await s.app.refresh();
-  assert.equal(s.d.getElementById('boardUpdated').textContent,'Leads unavailable');
-  s.client.getWorkspace=read;await s.app.refresh();
-  assert.match(s.d.getElementById('boardUpdated').textContent,/Updated/);
-  assert.equal(s.d.getElementById('boardUpdated').dateTime,s.board.generated_at);
- }finally{s.close()}
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0, 'an unverified viewer keeps no private snapshot');
+  assert.equal(freshness().textContent, 'Unavailable');
+  assert.equal(freshness().dateTime, '');
+ } finally { s.close(); }
 });

@@ -5,6 +5,7 @@ export default {
     "css/home-dashboard.css",
     "js/charts-page.js",
     "js/workspace-command-center.js",
+    "test/charts-browser.test.mjs",
     "test/charts.test.mjs",
     "test/home-dashboard-browser.test.mjs",
     "test/home-dashboard.test.mjs",
