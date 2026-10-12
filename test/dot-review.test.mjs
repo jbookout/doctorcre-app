@@ -271,7 +271,7 @@ test("Dot 10: an answered app release with pending CARR reads cannot claim succe
 
 test("Dot 11: a blocked second rename cannot replace the retained recovery intent", async () => {
   const calls=[];const operations=new Map();
-  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:{},uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop},["dispatch"]);
+  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:{},uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop,sendAllowed:()=>true,FEATURE_DISABLED:"feature_disabled",suggestionGate:null},["dispatch"]);
   const send=async args=>{calls.push(args);if(calls.length===1)throw new Error("lost response");return {ok:true};};
   await h.dispatch("rename:A",{name:"First"},"Rename",send);await h.dispatch("rename:A",{name:"Second"},"Rename",send);
   const saved=operations.get("rename:A");await h.dispatch("rename:A",saved.args,saved.summary,saved.send);
