@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
-import { devices } from 'playwright';
 import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
+// A touch tablet: the iPad Mini portrait profile.
+const ipad={viewport:{width:768,height:1024},deviceScaleFactor:2,isMobile:true,hasTouch:true};
 async function open(t,{width=1440,device,link=false,reducedMotion='no-preference',fixtureDelayMs=0}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({...(device?devices[device]:{viewport:{width,height:960}}),reducedMotion});
+ const page=await browser.newPage({...(device?ipad:{viewport:{width,height:960}}),reducedMotion});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-04T17:00:00Z')});
  await page.route('**/*',async route=>{
@@ -53,7 +54,7 @@ test('timeline fixture waits for delayed client initialization before instrument
 });
 // Measures what a reader sees: each chart label's rendered size, overlap and
 // containment, and whether the timeline needs horizontal scrolling.
-for (const view of [{width:320},{width:390},{device:'iPad Mini'},{width:1440}])
+for (const view of [{width:320},{width:390},{device:'iPad'},{width:1440}])
  test(`W9 timeline chart and phases stay readable without scrolling at ${view.device||view.width+'px'}`,async t=>{
   const {page,errors}=await open(t,view);
   for (const range of ['full','recent']) {
