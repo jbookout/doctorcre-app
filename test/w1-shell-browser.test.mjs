@@ -1,7 +1,9 @@
-import { navigationItems } from "../js/app-shell.js";
+import { navigationItems } from "../js/navigation.js";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
+import { createQaServer } from '../scripts/qa-fixture-server.mjs';
+import { fileURLToPath } from 'node:url';
 import { chromium, settles, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
@@ -50,9 +52,9 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   await page.locator('#selfAvatar').click(); await page.getByText('Profile', {exact:true}).click();
   assert.ok((await page.locator('.app-shell-profile').boundingBox()).width > 900);
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
-  assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
+  assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
   await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click(); await page.waitForURL('**/auth/login');
-  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
+  assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
 });
 
 test('desktop and phone navigation, account and Call mode work with reduced motion', async t => {
@@ -69,7 +71,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     await page.keyboard.press('Escape');
     await page.getByLabel('Call mode', {exact:true}).click(); await page.waitForFunction(() => document.querySelector('#callModeDialog')?.open);
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
-    assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
+    assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');
     const box = await page.locator('#callModeDialog').boundingBox(); assert.ok(box.width >= Math.min(900, width - 40));
     await page.locator('#callModeDialog #docPresence').waitFor();
     await page.locator('#callModeClose').scrollIntoViewIfNeeded();
@@ -154,4 +156,55 @@ test('PR182 account portal preserves immediate forward and return keyboard paths
   await page.keyboard.press('Tab');
   assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
+});
+
+
+for (const { name, path, updated, retry, error } of [
+  { name:'Leads', path:'/leads?mode=live', updated:'#boardUpdated', retry:'#refreshBoard', error:'#leadBoardError' },
+  { name:'Deals', path:'/deals?mode=live', updated:'#boardAsOf', retry:'#retryRead', error:'#boardStatusLabel' },
+]) for (const status of [503,401,403]) test(`QA-008 ${name} failure and recovery after ${status}`, async t => {
+  const {server}=await createQaServer({buildRoot:fileURLToPath(root)});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const origin=`http://127.0.0.1:${server.address().port}`;
+  const response=await fetch(origin+'/api/test/seed',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:`freshness-${name.toLowerCase()}-${status}`,viewer:'joe',variant:'realistic'})});
+  assert.equal(response.status,200);
+  const {cookie}=await response.json();
+  const browser=await chromium.launch();t.after(()=>browser.close());
+  const page=await browser.newPage();
+  await page.context().addCookies([cookie]);
+  let refused=true;
+  const intercept=route=>refused?route.fulfill({status,json:{ok:false,error:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable',code:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable'}}):route.continue();
+  await page.route('**/api/**',intercept);
+  await page.route('**/mcp',intercept);
+  const retryAndSettle = async outcome => {
+    const before = name === 'Deals'
+      ? await page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.stats()) : null;
+    await page.locator(retry).click();
+    if (name === 'Leads') await page.waitForFunction(()=>document.querySelector('#leadBoard')?.getAttribute('aria-busy')==='false');
+    else await waitForAsync(page, async ({before,outcome}) => {
+      const sync = (await import('/js/pipeline.js')).state.boardSync;
+      const stats = sync.stats(), status = sync.status();
+      return stats.board_reads > before.board_reads && stats[outcome] > before[outcome]
+        && !status.board_read_in_flight && !status.refresh_pending;
+    }, {before,outcome});
+  };
+  await page.goto(origin+path);
+  await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
+  assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
+  if (name === 'Deals') await waitForAsync(page, async () => {
+    const sync = (await import('/js/pipeline.js')).state.boardSync;
+    return sync.stats().board_failed > 0 && !sync.status().board_read_in_flight && !sync.status().refresh_pending;
+  });
+  await retryAndSettle('board_failed');
+  await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
+  assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
+  refused=false;
+  await retryAndSettle('board_applied');
+  await page.waitForFunction(({updated})=>document.querySelector(updated)?.textContent.startsWith('Updated '),{updated});
+  assert.match(await page.locator(updated).textContent(),/^Updated /);
+  refused=true;
+  await retryAndSettle('board_failed');
+  await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
+  assert.doesNotMatch(await page.locator(updated).textContent(),/Updating/);
 });
