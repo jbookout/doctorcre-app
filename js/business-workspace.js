@@ -1,4 +1,5 @@
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { mountLocalClock } from "./visibility-poll.mjs";
 // V5-UX-B01 — the business workspace: DOM wiring only.
 //
 // Two models decide everything this file paints. The canonical command-center
@@ -556,22 +557,24 @@ function settle({ status, payload = null, message = null }, sequence) {
  * A local clock that has passed valid_until must stop presenting the counts as
  * current. The signature covers the read and each work card, so a card that
  * expires on its own deadline repaints while the overall read is still inside
- * its window.
+ * its window. The repaint is local and keeps its cadence while idle; only the
+ * day check can READ, so only it sleeps hidden or idle, and a return reads.
  */
 function watchExpiry() {
-  setInterval(() => {
+  mountLocalClock({ intervalMs: EXPIRY_TICK_MS, tick: () => {
+    if (!view.payload || view.status === "loading") return;
+    const signature = freshnessSignature(view.payload);
+    if (signature === view.freshnessKey) return;
+    view.freshnessKey = signature;
+    render();
+  }, read: () => {
     // Crossing midnight moves "today", and work that became due overnight is
     // not in the old answer at all, so both sections are READ again. The old
     // answer stays up, re-derived against the new day and marked refreshing,
     // until the new one lands; readSections records the day at once, so the
     // next tick does not read again. An unchanged day repaints nothing.
     if (view.day !== localDay()) readSections();
-    if (!view.payload || view.status === "loading") return;
-    const signature = freshnessSignature(view.payload);
-    if (signature === view.freshnessKey) return;
-    view.freshnessKey = signature;
-    render();
-  }, EXPIRY_TICK_MS);
+  } });
 }
 
 /* ---------------------------------------------------------------- Quick add */

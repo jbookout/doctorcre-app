@@ -144,16 +144,23 @@ export async function settledInventory(page, { timeoutMs = 30_000, stableMs = 15
   throw new Error('Control inventory did not settle; screen completeness is unverified');
 }
 
-export async function pressControl(page, control, { waitMs = 2000 } = {}) {
+export async function pressControl(page, control, { waitMs = 2000, observations } = {}) {
   const locator = page.locator(control.selector);
   if (control.disabled) return { status: 'DISABLED', reason: control.reason || 'No reason provided', signals: [] };
   if (await locator.count() !== 1 || !await locator.isVisible()) return { status: 'UNREACHABLE', reason: 'Control missing after replay', signals: [] };
   await locator.focus().catch(() => {});
   const beforeURL = page.url();
-  await page.evaluate(selector => {
+  await page.evaluate(({ selector, observations }) => {
     const root = document.querySelector('main,[role="main"],#appMain,#mainContent') || document.body;
     const target = document.querySelector(selector);
     const state = window.__controlObservation = { mutations: 0, focus: 0, aria: 0, target, beforeOpen: target?.tagName === 'SUMMARY' ? target.parentElement.open : null, beforeValue: target?.value ?? null, beforeChecked: target?.checked ?? null, valueChanged: false, requests: [], deadline: Infinity };
+    const proofs = (observations || []).filter(effect => !effect.request).map(effect => {
+      const nodes = document.querySelectorAll(effect.selector);
+      const node = nodes.length === 1 ? nodes[0] : null;
+      const before = effect.attribute === '$presence' ? nodes.length <= 1 ? nodes.length === 1 : undefined : node?.getAttribute(effect.attribute);
+      const transition = effect.transitions.find(row => row.from === before);
+      return { ...effect, ...transition, node, before, caused: false };
+    });
     const active = () => !state.snapshot && Date.now() <= state.deadline;
     const events = ['click', 'input', 'change', 'keydown', 'submit'];
     let inCallback = false, pendingFocus = 0, callbackGeneration = 0;
@@ -170,6 +177,18 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
     const observe = records => {
       if (!active()) return;
       for (const record of records) {
+        for (const proof of proofs) {
+          if (proof.attribute === '$presence' && proof.before === proof.from) {
+            const nodes = document.querySelectorAll(proof.selector);
+            const after = nodes.length <= 1 ? nodes.length === 1 : undefined;
+            const affected = value => value.nodeType === Node.ELEMENT_NODE && (value.matches(proof.selector) || value.querySelector(proof.selector));
+            if (after === proof.to && (record.type === 'childList' && [...record.addedNodes, ...record.removedNodes].some(affected) ||
+                record.type === 'attributes' && (record.target === proof.node || record.target === nodes[0]))) proof.caused = true;
+          }
+          if (record.type === 'attributes' && record.target === proof.node && record.attributeName === proof.attribute &&
+              proof.before === proof.from && record.oldValue === proof.from && proof.node.getAttribute(proof.attribute) === proof.to)
+            proof.caused = true;
+        }
         // A causal dismissal hides its own mutation target before delivery.
         if (!visible(record.target) && !visibleBefore.has(record.target)) continue;
         if (record.type === 'attributes' && record.oldValue === record.target.getAttribute(record.attributeName)) continue;
@@ -181,7 +200,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
     // Unattributed asynchronous rendering is discarded at its microtask, not
     // carried forward and credited to the next interaction.
     window.__controlObserver = new MutationObserver(records => { if (caused()) observe(records); });
-    window.__controlObserver.observe(document.body, { subtree: true, childList: true, characterData: true, characterDataOldValue: true, attributes: true, attributeOldValue: true });
+    window.__controlObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, characterDataOldValue: true, attributes: true, attributeOldValue: true });
     const flush = () => {
       observe(window.__controlObserver.takeRecords());
       if (!active()) return;
@@ -217,9 +236,13 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
       if (attributed) promises.add(result);
       return result;
     };
-    const request = (url, method) => { if (caused()) state.requests.push([new URL(url, location.href).href, method.toUpperCase()]); };
+    const request = (url, method, body) => {
+      let operation = null;
+      try { const rpc = JSON.parse(body); if (rpc.method === 'tools/call') operation = rpc.params?.name || null; } catch {}
+      if (caused()) state.requests.push([new URL(url, location.href).href, method.toUpperCase(), operation]);
+    };
     window.fetch = function (input, options) {
-      request(input instanceof Request ? input.url : String(input), options?.method || (input instanceof Request ? input.method : 'GET'));
+      request(input instanceof Request ? input.url : String(input), options?.method || (input instanceof Request ? input.method : 'GET'), options?.body);
       const result = originals.fetch.call(this, input, options);
       if (caused()) promises.add(result);
       return result;
@@ -229,7 +252,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
       return originals.xhrOpen.call(this, method, url, ...args);
     };
     XMLHttpRequest.prototype.send = function (...args) {
-      const metadata = xhrURLs.get(this); if (metadata) request(...metadata);
+      const metadata = xhrURLs.get(this); if (metadata) request(...metadata, args[0]);
       return originals.xhrSend.apply(this, args);
     };
     const interaction = event => {
@@ -254,16 +277,27 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
       for (const key of ['setTimeout', 'setInterval', 'requestAnimationFrame', 'queueMicrotask', 'fetch']) window[key] = originals[key];
       Promise.prototype.then = originals.then;
       XMLHttpRequest.prototype.open = originals.xhrOpen; XMLHttpRequest.prototype.send = originals.xhrSend;
-      state.snapshot = { mutations: state.mutations, focus: state.focus, aria: state.aria, url: location.href, valueChanged: state.valueChanged, requests: state.requests };
+      const effects = proofs.map(({ selector, attribute, from, to, node, before, caused }) => {
+        const matches = document.querySelectorAll(selector);
+        const after = attribute === '$presence' ? matches.length <= 1 ? matches.length === 1 : undefined : node?.getAttribute(attribute);
+        return { selector, attribute, from, to, before, after,
+          passed: (attribute === '$presence' || !!node && matches.length === 1 && matches[0] === node && node.isConnected) && caused && before === from && after === to && before !== after };
+      });
+      state.snapshot = { mutations: state.mutations, focus: state.focus, aria: state.aria, url: location.href, valueChanged: state.valueChanged, requests: state.requests,
+        ...(observations ? { proof_observation: { passed: effects.length > 0 && effects.every(effect => effect.passed), effects } } : {}) };
       state.target = null;
       return state.snapshot;
     };
-  }, control.selector);
+  }, { selector: control.selector, observations });
   const signals = new Set();
   let deadline = Infinity;
   const record = signal => { if (Date.now() <= deadline) signals.add(signal); };
   const requests = [];
-  const request = value => { if (Date.now() <= deadline) requests.push([value.url(), value.method()]); };
+  const request = value => {
+    let operation = null;
+    try { const rpc = value.postDataJSON(); if (rpc.method === 'tools/call') operation = rpc.params?.name || null; } catch {}
+    if (Date.now() <= deadline) requests.push([value.url(), value.method(), operation]);
+  };
   const dialog = async value => { record('dialog'); await value.accept().catch(() => {}); };
   const popup = () => record('new tab');
   const download = () => record('download');
@@ -280,7 +314,7 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
         const state = window.__controlObservation;
         return state.target?.isConnected && state.target.value === state.beforeValue;
       })) await locator.press('ArrowLeft');
-    } else if (['input','textarea'].includes(control.role) && await locator.getAttribute('readonly') === null && !['submit','button','checkbox','radio','file','color'].includes(control.inputType)) {
+    } else if (['input','textarea','combobox'].includes(control.role) && await locator.getAttribute('readonly') === null && !['submit','button','checkbox','radio','file','color'].includes(control.inputType)) {
       await locator.click({ timeout: 5000 });
       const values = { email: 'e2e@example.test', url: 'https://example.test', tel: '2025550100', number: '1', date: '2030-01-15', time: '12:00', 'datetime-local': '2030-01-15T12:00', month: '2030-01', week: '2030-W03' };
       await locator.fill(values[control.inputType] || 'E2E synthetic input');
@@ -307,7 +341,19 @@ export async function pressControl(page, control, { waitMs = 2000 } = {}) {
   if (observed?.mutations) signals.add('main DOM mutation');
   if (observed?.focus) signals.add('focus move');
   if (observed?.aria) signals.add('aria state change');
-  return { status: error ? 'ERROR' : signals.size ? 'OBSERVED' : 'DEAD', reason: error, signals: [...signals] };
+  const proof = observed?.proof_observation;
+  if (proof) {
+    for (const effect of observations.filter(row => row.request)) {
+      const expected = effect.request, origin = new URL(beforeURL).origin;
+      const matches = row => row[0] === origin + expected.path && row[1] === expected.method && row[2] === expected.operation;
+      proof.effects.push({ request: expected, passed: observed.requests.some(matches) && requests.some(matches) });
+    }
+    proof.passed = proof.effects.length > 0 && proof.effects.every(effect => effect.passed);
+  }
+  if (proof?.passed) signals.add('reviewed observable effect');
+  return { status: error ? 'ERROR' : observations ? proof?.passed ? 'OBSERVED' : 'DEAD' : signals.size ? 'OBSERVED' : 'DEAD',
+    reason: error || (observations && !proof?.passed ? 'Reviewed observable effect did not occur' : undefined), signals: [...signals],
+    ...(observations ? { proof_observation: proof || { passed: false, effects: [] } } : {}) };
 }
 
 export async function sweepScreen({ freshPage, screen, target, evidence, admit, checkpoint, prior, identityScope, waitMs = 2000, limit = effectiveRunLimits().controlsPerScreen, routedPaths = [], recordedActionRuntime }) {
@@ -346,12 +392,12 @@ export async function sweepScreen({ freshPage, screen, target, evidence, admit, 
         if (matching.length !== 1) throw new SweepFailure('frontier-validation', 'opener-state-changed', opener.selector);
         action = matching[0];
       }
-      if (admit) await admit(page, action, identityScope);
+      const proof = admit ? await admit(page, action, identityScope) : undefined;
       let result;
       lastAction = action; lastBeforeURL = page.url();
-      try { result = await pressControl(page, action, { waitMs: Math.min(waitMs, 500) }); }
+      try { result = await pressControl(page, action, { waitMs: Math.min(waitMs, 500), observations: proof?.observations }); }
       catch { throw new SweepFailure('replay', 'opener-press-failed', opener.selector); }
-      if (!['OBSERVED','DEAD'].includes(result.status)) throw new SweepFailure('replay', result.status === 'UNREACHABLE' ? 'opener-unreachable' : 'opener-press-failed', opener.selector);
+      if (!['OBSERVED','DEAD'].includes(result.status) || proof?.observations && result.status !== 'OBSERVED') throw new SweepFailure('replay', result.status === 'UNREACHABLE' ? 'opener-unreachable' : 'opener-press-failed', opener.selector);
       listed = await settle(page, 'replay', opener.selector);
     }
     return { listed, lastAction, lastBeforeURL };
@@ -481,10 +527,10 @@ export async function sweepScreen({ freshPage, screen, target, evidence, admit, 
             action = matching[0];
           }
           phase = 'admission';
-          if (admit) await admit(fresh, action, identityScope);
+          const proof = admit ? await admit(fresh, action, identityScope) : undefined;
           phase = 'press';
           const beforeURL = fresh.url();
-          const result = await pressControl(fresh, action, { waitMs });
+          const result = await pressControl(fresh, action, { waitMs, observations: proof?.observations });
           row = { ...base, ...result };
           controls.push(row);
           phase = 'evidence';
