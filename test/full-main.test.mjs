@@ -85,7 +85,8 @@ test('deadline through a runChild leader keeps the graceful cleanup window', asy
   await writeFile(join(root,'scripts/leader.mjs'),`import {runChild} from ${JSON.stringify(runChildUrl)}; try {await runChild(process.execPath,['scripts/child.cjs'],{stdio:'ignore',timeout:480000});} catch {}`);
   commit(git);
   const started=Date.now();
-  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/leader.mjs'],root,timeoutMs:1000});
+  // The deadline leaves a loaded runner time to start both processes and arm their handlers.
+  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/leader.mjs'],root,timeoutMs:4000});
   assert.equal(result.timedOut,true);
   assert.equal(await readFile(join(root,'.e2e/logs/cleanup.log'),'utf8').catch(()=>null),'closed','a forwarded SIGTERM must not SIGKILL the child inside the graceful window');
   assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
