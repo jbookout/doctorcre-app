@@ -156,11 +156,27 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
 
 /* The one table this tab cannot fit in 360 px says so by scrolling itself. */
 .chart-scroll { overflow-x: auto; }
-.chart-card details summary { min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
+.chart-card details summary { min-height: var(--touch); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+/* A flex summary loses the native marker, so the disclosure draws its own and
+ * the opened content arrives on the shared receipt-in; reduced motion shows it
+ * already open and the chevron already turned. */
+.chart-card details summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform var(--motion-enter) var(--ease); }
+.chart-card details[open] > summary::after { transform: translateY(1px) rotate(225deg); }
+.chart-details summary { color: var(--muted); font-size: 12px; font-weight: 600; }
+.chart-details[open] > summary { color: var(--text); }
+.chart-details dl { margin: 0 0 6px; animation: receipt-in var(--motion-enter) var(--ease); }
+.chart-details dt { font: 600 11px/1.4 var(--display); color: var(--quiet); text-transform: uppercase; letter-spacing: 0.06em; }
+.chart-details dd { margin: 2px 0 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .chart-card details summary::after, .chart-details dl { transition: none; animation: none; } }
+:root[data-motion="reduced"] .chart-card details summary::after, :root[data-motion="reduced"] .chart-details dl { transition: none; animation: none; }
 
+/* A card may shrink below its widest table, so the accounts table scrolls
+ * inside its own scroller instead of widening the page. Below 480 px only the
+ * paint column goes, its cells and its own header together; every other
+ * column keeps its header, so the accounts and owner tables still read across. */
+.charts-canvas > * { min-width: 0; }
 @media (max-width: 480px) {
-  .chart-bar-cell { display: none; }
-  .chart-table thead th:last-child { display: none; }
+  .chart-bar-cell, .chart-bar-head { display: none; }
 }
 
 /* V5-UX-B01 Home motion — Joe's standing surface rule 9293d609, built only on

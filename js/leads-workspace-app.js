@@ -78,8 +78,11 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || '<p class="stage-empty">—</p>'}</div></section>`;
       }).join("")}</div>`;
     }
-    $("boardUpdated").textContent = state.readFailed ? "Unavailable" : updatedLabel(state.board?.generated_at);
-    $("boardUpdated").dateTime = state.readFailed ? "" : state.board?.generated_at || "";
+    // The time states the snapshot on screen, as Deals does: a failed refresh
+    // that keeps the board keeps its time beside the reconnecting line, and
+    // only a failed read with nothing to show is "Unavailable".
+    $("boardUpdated").textContent = state.board ? updatedLabel(state.board.generated_at) : state.readFailed ? "Unavailable" : "Updating…";
+    $("boardUpdated").dateTime = state.board?.generated_at || "";
     $("searchUpdated").textContent = `New-lead search ${state.board?.last_search_at ? stamp(state.board.last_search_at) : "—"}`;
     if (focused?.container) restoreFocus(focused);
   }

@@ -21,7 +21,7 @@ import { SAVED_VIEWS_KEY } from "../js/search-model.js";
 import {
   CHARTS_STATES, CHARTS_STATE_COPY, CHARTS_VIEW_KEY, DIMENSION_IDS, NEVER_REVIEWED, NO_VALUE_KEY,
   accountRows, acceptsBoardResponse, barShare, bucketRows, chartsAddress, chartsPhase,
-  classifyBoardFailure, countValue, filterDeals, nextDateCoverage, ownerRows, parseChartsAddress,
+  classifyBoardFailure, countValue, dealsDestination, filterDeals, nextDateCoverage, ownerRows, parseChartsAddress,
   phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage, validBoardPayload,
   waitingSummary, writeChartsView,
 } from "../js/charts-model.js";
@@ -266,7 +266,7 @@ test("B06-7 empty, no-match, refused and unavailable are four renderings, and on
 
   // The empty and unavailable branches draw no chart at all: a chart of zeros
   // would be a claim the read did not make.
-  const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("export async function read("));
+  const renderBody = pageJs.slice(pageJs.indexOf("function render("), pageJs.indexOf("export async function read("));
   assert.match(renderBody, /phase === "empty" \|\| phase === "refused" \|\| phase === "unavailable" \|\| phase === "unreadable"\) \{\s*\n\s*\/\/[^\n]*\n\s*canvas\.innerHTML = "";/);
 });
 
@@ -332,7 +332,7 @@ test("B06-10 one read per paint: getBoard once, and no other verb at all", async
   assert.equal(validBoardPayload(answer), true);
 
   // The render path reads nothing. Every number it paints is in hand already.
-  const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("export async function read("));
+  const renderBody = pageJs.slice(pageJs.indexOf("function render("), pageJs.indexOf("export async function read("));
   assert.doesNotMatch(renderBody, /client\./, "the render path issues no read of its own");
   assert.doesNotMatch(renderBody, /fetch\(/, "the render path issues no fetch of its own");
   // `client.` appears exactly once in the whole page, and it is getBoard.
@@ -429,7 +429,7 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
   assert.match(css, /\.chart-pick \{[^}]*min-height: var\(--touch\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.chart-bar \{ transition: none; \} \}/);
   assert.match(css, /:root\[data-motion="reduced"\] \.chart-bar \{ transition: none; \}/);
-  assert.match(css, /@media \(max-width: 480px\) \{\s*\n\s*\.chart-bar-cell \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 480px\) \{\s*\n\s*\.chart-bar-cell, \.chart-bar-head \{ display: none; \}/);
   assert.ok(!css.includes("--share: ") || css.includes("var(--share, 0%)"));
   // No new colour token and no new type scale: the shared visual system stands.
   const b06Css = css.slice(css.indexOf("/* V5-UX-B06 Charts tab"));
@@ -469,13 +469,13 @@ test("B06-13 a pick no record carries renders the no-match state and draws no ch
 
   // And the page paints no chart from it — only the way back out. A grid of
   // zeros would read as a finding, which is what the empty-state copy forbids.
-  const renderBody = pageJs.slice(pageJs.indexOf("function render()"), pageJs.indexOf("export async function read("));
+  const renderBody = pageJs.slice(pageJs.indexOf("function render("), pageJs.indexOf("export async function read("));
   assert.match(renderBody, /\} else if \(phase === "no_match"\) \{[\s\S]*?canvas\.innerHTML = selectionHtml\(deals, all\);/);
   const noMatchBranch = renderBody.slice(renderBody.indexOf('phase === "no_match"'), renderBody.indexOf("    } else {"));
   assert.ok(noMatchBranch.length > 0 && noMatchBranch.length < renderBody.length);
   assert.doesNotMatch(noMatchBranch, /chartHtml\(|accountsHtml\(|ownerHtml\(/, "the no-match branch draws not one chart");
   // The selection strip it does draw offers the way out and names the miss.
-  assert.match(pageJs, /id="chartsClear">Clear this slice</);
+  assert.match(pageJs, /id="chartsClear" data-focus-key="clear">Clear this slice</);
   assert.equal(selectionLabel("segment", "NoSuchSegment"), "Segment: NoSuchSegment");
 });
 
@@ -500,6 +500,8 @@ function stubDom({ search = "?charts=1" } = {}) {
       // `innerHTML` assignment (the Worker's CSP refuses `style=` written
       // into markup); this stub's canvas has no real children to select.
       querySelectorAll() { return []; },
+      // `render()` asks whether focus sits in the canvas before replacing it.
+      contains() { return false; },
     });
   }
   globalThis.document = { getElementById: (id) => nodes.get(id) || null, addEventListener() {}, querySelectorAll: () => [] };
@@ -550,9 +552,10 @@ test("B06-14 the whole page takes ONE deal-room-board call per load: the tab is 
 });
 
 // Exercise the rendered controls without starting a browser or using fetch.
-async function chartDom(t, payload = board) {
+async function chartDom(t, payload = board, { poll = false, ready = true } = {}) {
   const dom = new JSDOM(await read("charts.html"), { url: "https://example.test/?view=charts" });
-  const saved = new Map(["document", "location", "history"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  // `window` switches on the page's background poller; without it there is none.
+  const saved = new Map(["document", "location", "history", ...(poll ? ["window"] : [])].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const key of saved.keys()) Object.defineProperty(globalThis, key, { configurable: true, value: dom.window[key] });
   t.after(() => {
     for (const [key, descriptor] of saved) {
@@ -563,23 +566,39 @@ async function chartDom(t, payload = board) {
   });
   const charts = await import(`../js/charts.js?dom=${encodeURIComponent(t.name)}`);
   let reads = 0;
-  const client = { getBoard: async () => { reads++; return payload; } };
+  const client = { getBoard: async () => { reads++; return typeof payload === "function" ? payload(reads) : payload; } };
   charts.mountCharts({ client, storage: null });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(charts.view.status, "ready");
+  if (ready) assert.equal(charts.view.status, "ready");
   return { dom, document: dom.window.document, charts, client, reads: () => reads };
 }
 
-for (const national of [false, true]) test(`audit 06 chart slices explicitly open all local deals (national: ${national})`, async t => {
+for (const national of [false, true]) test(`audit 06 chart slices name the Deals scope they open (national: ${national})`, async t => {
   const payload = { deals: [{ id: "demo-chart-deal", name: "Demo chart deal", phase: "Research", type: "Lease", segment: "Dental", market: "Demo market", owner: "joe", operating_state: "active", ...(national ? { workspace_kind: "national_account", account_client_id: "demo-account" } : {}) }], accounts: [] };
   const s = await chartDom(t, payload);
   for (const group of DIMENSION_IDS) {
     s.document.querySelector(`[data-group="${group}"]`).click();
     const link = s.document.querySelector("#chartsSelection a");
-    assert.equal(link?.textContent, "Open all local deals");
-    assert.equal(link?.getAttribute("href"), "/deals?view=board");
+    // Deals can hold an owner filter and nothing else; every other slice says
+    // it opens the whole local board.
+    const [label, href] = group === "owner" ? ["Open Joe's local deals", "/deals?view=board&owner=joe"] : ["Open all local deals", "/deals?view=board"];
+    assert.equal(link?.textContent, label);
+    assert.equal(link?.getAttribute("href"), href);
     assert.equal(s.reads(), 1, "choosing a slice never reads again");
     s.document.getElementById("chartsClear").click();
+  }
+});
+
+test("audit 06 the Deals link carries only a scope Deals can hold", async () => {
+  const pipelineJs = await read("js/pipeline.js");
+  for (const owner of ["joe", "dell"]) {
+    assert.equal(dealsDestination("owner", owner).href, `/deals?view=board&owner=${owner}`);
+    assert.match(pipelineJs, /filter: \['joe','dell'\]\.includes\(incomingScope\.get\('owner'\)\)/, "Deals reads that owner from its address");
+  }
+  assert.equal(dealsDestination("owner", "joe").label, "Open Joe's local deals");
+  assert.equal(dealsDestination("owner", "dell").label, "Open Dell's local deals");
+  for (const [group, pick] of [["owner", NO_VALUE_KEY], ["owner", "example-partner"], ["owner", "constructor"], ["market", "joe"], ["phase", "research"], [null, null]]) {
+    assert.deepEqual({ ...dealsDestination(group, pick) }, { href: "/deals?view=board", label: "Open all local deals" });
   }
 });
 
@@ -595,7 +614,9 @@ test("audit 14 account references are available only inside collapsed Details", 
     assert.ok(row, "the account heading contains only its name");
     const details = row.querySelector("details");
     assert.equal(details?.open, false);
-    assert.equal(details?.querySelector("summary").textContent, "Details");
+    // Each row's summary is named for its account, not eight bare "Details".
+    assert.equal(details?.querySelector("summary").textContent, `Details for ${account.account_name}`);
+    assert.equal(details.querySelector("summary .sr-only").textContent, ` for ${account.account_name}`);
     assert.ok(details.textContent.includes(account.account_client_ref));
     assert.ok(!row.querySelector("th").textContent.includes(account.account_client_ref));
     details.open = true;
@@ -624,4 +645,36 @@ test("Charts failed reads replace the update time with Unavailable and Retry can
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(s.charts.view.status, "ready");
   assert.match(s.document.getElementById("chartsReadAt").textContent, / (AM|PM)$/);
+});
+
+test("Charts background refresh keeps the board, its time and open Details on screen", async t => {
+  const s = await chartDom(t);
+  const details = () => s.document.querySelector("#chartAccounts details");
+  details().open = true;
+  const before = s.document.getElementById("chartsReadAt").textContent;
+  let answer;
+  s.client.getBoard = () => new Promise(resolve => { answer = resolve; });
+  const refresh = s.charts.read();
+  assert.equal(s.document.getElementById("chartsCanvas").getAttribute("aria-busy"), "true");
+  assert.equal(s.document.querySelectorAll(".chart-table").length > 0, true, "the charts stay while the board is re-read");
+  assert.equal(s.document.getElementById("chartsReadAt").textContent, before, "the time still names the board on screen");
+  assert.equal(details().open, true);
+  answer(board);
+  await refresh;
+  assert.equal(s.document.getElementById("chartsCanvas").getAttribute("aria-busy"), "false");
+  assert.equal(details().open, true, "an opened account stays open across the repaint");
+  s.document.querySelector('[data-group="phase"]').click();
+  assert.equal(details().open, true, "and across a slice");
+});
+
+test("Charts recover from an unavailable read on the poller's short backoff", async t => {
+  const s = await chartDom(t, reads => {
+    if (reads === 1) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
+    return board;
+  }, { poll: true, ready: false });
+  assert.equal(s.charts.view.status, "unavailable");
+  const deadline = Date.now() + 5_000;
+  while (s.charts.view.status !== "ready" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(s.charts.view.status, "ready", "no Retry press and no 30 s wait");
+  assert.equal(s.reads(), 2);
 });

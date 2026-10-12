@@ -26,6 +26,7 @@
 //     close value. So this tab charts the open board only, says so, and draws
 //     no forecast at all rather than a fabricated one.
 import { COLUMNS, columnByValue } from "./pipeline-model.js";
+import { ACTOR_LABEL } from "./client.js";
 
 /* --------------------------------------------------------- the frozen sentences */
 
@@ -294,6 +295,19 @@ export function selectionLabel(group, pick) {
     return `${dimension.label}: ${column ? column.label : String(pick)}`;
   }
   return `${dimension.label}: ${String(pick)}`;
+}
+
+/**
+ * Where a slice's Deals link goes, and what it says. Deals is the LOCAL board
+ * and can filter by owner only, so an owner slice for a partner it knows is
+ * carried; every other slice (and national-account rows, which Deals never
+ * shows) opens the whole local board and the label says so.
+ */
+export function dealsDestination(group, pick) {
+  if (group === "owner" && Object.hasOwn(ACTOR_LABEL, pick)) {
+    return Object.freeze({ href: `/deals?view=board&owner=${encodeURIComponent(pick)}`, label: `Open ${ACTOR_LABEL[pick]}'s local deals` });
+  }
+  return Object.freeze({ href: "/deals?view=board", label: "Open all local deals" });
 }
 
 /* -------------------------------------------------------------- the address */
