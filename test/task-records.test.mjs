@@ -490,7 +490,7 @@ test("clearing preserves a flag or decision on the freshly read task", () => {
 
 // Exercise the page's actual listener with the same small DOM stubs used by
 // other browser-free control tests. No browser or dependency install is needed.
-function duePicker(auditRow) {
+function duePicker(auditRow, client = null) {
   let change;
   let closed = false;
   const commands = [];
@@ -502,7 +502,7 @@ function duePicker(auditRow) {
     { addEventListener() {} }, () => auditRow, () => { closed = true; },
     (target, command) => commands.push({ target, ...command }),
     operationKeys, formatDueStamp, dueDateArgs,
-    { updateLoop: async (request) => { sent.push(request); return { ok: true }; } },
+    { updateLoop: async (request) => { sent.push(request); return client ? client.updateLoop(request) : { ok: true }; } },
   );
   wire();
   return { change: (value) => change({ target: { value } }), commands, sent, closed: () => closed };
@@ -521,6 +521,26 @@ test("the empty calendar change dispatches a named removal built from the fresh 
   assert.match(command.summary, /Remove due date.*Demo task: review the proposal/);
   await command.send({ idempotency_key: "synthetic-clear", ...command.build(auditLoop) });
   assert.deepEqual(picker.sent, [{ idempotency_key: "synthetic-clear", loop_id: auditLoop.loop_id, base_version: 7, marker: "none" }]);
+});
+
+test("clearing the picker through the synthetic client removes the saved day from the reloaded board", async () => {
+  const seedText = await readFile(`${ROOT}/data/board-seed.json`, "utf8");
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(seedText).toString("base64")}` });
+  const boardRow202 = async () => (await client.loopBoard({ kind: "open_loop", status: "open", limit: 300, summary: false }))
+    .loops.map(normalizeBoardRow).find((row) => row.number === "202");
+  const before = await boardRow202();
+  assert.equal(before.marker, "dated");
+  assert.ok(before.due_on, "the synthetic task starts dated");
+  const picker = duePicker(before, client);
+  picker.change("");
+  const command = picker.commands[0];
+  const { loop } = await client.readLoop({ number: "202", kind: "open_loop" });
+  const result = await command.send({ idempotency_key: "synthetic-clear-readback", ...command.build(loop) });
+  assert.equal(result.ok, true);
+  const after = await boardRow202();
+  assert.equal(after.marker, "none");
+  assert.equal(after.due_on, null, "the reloaded row no longer carries the removed day");
+  assert.equal((await client.readLoop({ loop_id: loop.loop_id })).loop.due_on, null);
 });
 
 test("a nonempty calendar change still sends the dated marker and selected day", async () => {
