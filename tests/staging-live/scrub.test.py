@@ -1,13 +1,19 @@
 import importlib.util
 import io
 import json
+import os
 import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 import zipfile
 
 path = pathlib.Path(__file__).parents[2] / 'scripts/e2e-staging/scrub-evidence.py'
 spec = importlib.util.spec_from_file_location('scrub', path)
 scrub = importlib.util.module_from_spec(spec)
+sys.dont_write_bytecode = True
 spec.loader.exec_module(scrub)
 
 class ScrubTest(unittest.TestCase):
@@ -30,6 +36,18 @@ class ScrubTest(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(cleaned)) as archive:
             self.assertNotIn(b'hidden', archive.read('trace.network'))
             self.assertEqual(archive.read('screen.png'), b'png-pixels')
+
+    def test_importing_the_scrubber_writes_no_bytecode(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            for relative in ['scripts/e2e-staging/scrub-evidence.py', 'tests/staging-live/scrub.test.py']:
+                (root / relative).parent.mkdir(parents=True)
+                shutil.copy(pathlib.Path(__file__).parents[2] / relative, root / relative)
+            env = {key: value for key, value in os.environ.items() if key not in ('PYTHONDONTWRITEBYTECODE', 'PYTHONPYCACHEPREFIX')}
+            subprocess.run([sys.executable, str(root / 'tests/staging-live/scrub.test.py'),
+                'ScrubTest.test_share_credentials_are_removed_from_urls_and_embedded_bodies'],
+                env=env, check=True, capture_output=True, timeout=60)
+            self.assertEqual(list(root.rglob('__pycache__')), [])
 
 if __name__ == '__main__':
     unittest.main()
