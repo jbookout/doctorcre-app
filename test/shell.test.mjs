@@ -17,7 +17,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 
-import { mountNotificationBadge } from "../js/shell.js";
+import { migratePreferences, mountNotificationBadge } from "../js/shell.js";
 
 const ROOT = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, ROOT), "utf8");
@@ -229,4 +229,24 @@ test("B12b-shell-11: the badge is hidden in every page's own markup, so a page w
     if (!match) continue;
     assert.match(match[1], /\bhidden\b/, `${page}: navUnreadBadge must start hidden`);
   }
+});
+
+test("mountPrefs migrates a legacy key exactly once, and never over a choice made since", () => {
+  const map = new Map([["doctorcre.presentation.v1", JSON.stringify({ theme: "light" })]]);
+  const storage = {
+    getItem: (key) => (map.has(key) ? map.get(key) : null),
+    setItem: (key, value) => map.set(key, value),
+    removeItem: (key) => map.delete(key),
+  };
+  const options = { storageKey: "doctorcre.visual-preferences", legacyKeys: ["doctorcre.presentation.v1"] };
+  assert.deepEqual(migratePreferences(storage, options), { theme: "light" });
+  assert.equal(map.get("doctorcre.visual-preferences"), JSON.stringify({ theme: "light" }));
+  assert.equal(map.has("doctorcre.presentation.v1"), false, "the legacy key is consumed, so the read happens once");
+
+  map.set("doctorcre.visual-preferences", JSON.stringify({ theme: "dark" }));
+  map.set("doctorcre.presentation.v1", JSON.stringify({ theme: "light" }));
+  assert.deepEqual(migratePreferences(storage, options), { theme: "dark" }, "a choice made since is never overwritten by an older one");
+  assert.equal(map.has("doctorcre.presentation.v1"), false);
+  assert.deepEqual(migratePreferences(null, options), {}, "storage is a convenience, never a requirement");
+  assert.deepEqual(migratePreferences(storage), { theme: "dark" }, "the defaults are the live page's keys");
 });

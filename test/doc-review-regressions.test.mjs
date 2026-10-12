@@ -119,7 +119,6 @@ test('R17 deleted mounting interface has no callers or fallback',async()=>{
  for(const file of await readdir(new URL('../js/',import.meta.url)))if(file.endsWith('.js')){
   const source=await readFile(new URL('../js/'+file,import.meta.url),'utf8');assert.doesNotMatch(source,/mountDocDock|docFab/,file);
  }
-
 });
 test('R1/R5/R14 cached projection cannot recover failure or renew its observed time',()=>{
  let now=1000;const c=createDocContext({page:'deals',now:()=>now});

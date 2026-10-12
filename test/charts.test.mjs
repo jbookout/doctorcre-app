@@ -468,3 +468,49 @@ test("B06-13 a pick no record carries renders the no-match state and draws no ch
   assert.match(pageJs, /id="chartsClear">Clear this slice</);
   assert.equal(selectionLabel("segment", "NoSuchSegment"), "Segment: NoSuchSegment");
 });
+
+/* ----------------------------------------------------------------------- B06-14 */
+
+/**
+ * A DOM small enough to drive the real `mountCharts` and nothing more. The
+ * point of this test is the CALL COUNT at the fetch, which no assertion over
+ * the text of `js/charts.js` alone can reach.
+ */
+function stubDom({ search = "?charts=1" } = {}) {
+  const nodes = new Map();
+  for (const id of ["chartsCanvas", "chartsState", "chartsLive", "chartsReadAt", "chartsOneRead", "chartsSnapshot", "chartsForecast"]) {
+    nodes.set(id, {
+      id, innerHTML: "", textContent: "", hidden: false, open: false, attrs: {},
+      setAttribute(key, value) { this.attrs[key] = value; },
+      getAttribute(key) { return this.attrs[key]; },
+      addEventListener() {},
+      // `render()` runs a CSSOM pass over the painted bars after every
+      // `innerHTML` assignment (the Worker's CSP refuses `style=` written
+      // into markup); this stub's canvas has no real children to select.
+      querySelectorAll() { return []; },
+    });
+  }
+  globalThis.document = { getElementById: (id) => nodes.get(id) || null, addEventListener() {}, querySelectorAll: () => [] };
+  globalThis.location = { search };
+  globalThis.history = { pushState() {}, replaceState() {} };
+  return nodes;
+}
+
+test("B06-14 the Charts page paints from its one board read on mount, and Retry takes exactly one more", async () => {
+  const nodes = stubDom();
+  const { client, calls } = captureClient();
+  const { mountCharts, read } = await import("../js/charts.js");
+
+  mountCharts({ client, storage: null });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(calls.map((call) => call.verb), ["deal-room-board"], "mounting takes one board read");
+  assert.deepEqual(calls[0].arguments, { workspace: "all" });
+  assert.match(nodes.get("chartsCanvas").innerHTML, /73 of 74 have no next date on file/, "the page painted from that read");
+  assert.match(nodes.get("chartsReadAt").textContent, /^Updated \d\d:\d\d$/);
+  assert.equal(nodes.get("chartsState").hidden, true, "a ready paint shows no state block");
+
+  // Only a person pressing Retry takes a new one, and that is a new as-of they
+  // asked for: one call, not two.
+  await read({ push: false });
+  assert.equal(calls.length, 2, "a deliberate re-read is exactly one more call");
+});

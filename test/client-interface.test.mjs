@@ -98,3 +98,30 @@ test('confirmed authentication denial survives a stalled error body',async t=>{
   const read=live.engineeringPassport({});const rejected=assert.rejects(read,error=>error.status===401);
   await Promise.resolve();t.mock.timers.tick(10001);await rejected;
 });
+
+test("the live client sends today-triage through the pinned MCP seam, and the fixture derives it from its own records", async () => {
+  const calls = [];
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    calls.push({ path, init, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ items: [] }) }] } }), { status: 200 });
+  } });
+  assert.deepEqual(await live.todayTriage(), { items: [] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/mcp");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(calls[0].body.params.name, "today-triage");
+  assert.deepEqual(calls[0].body.params.arguments, {}, "the verb takes no arguments, so none are sent");
+
+  const fixtureText = await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8");
+  const fixture = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(fixtureText).toString("base64")}` });
+  const deal = (await fixture.getBoard()).deals[0];
+  const inTwoDays = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  await fixture.addCriticalDate({ deal: deal.id, kind: "lease_expiration", due_on: inTwoDays, source: "Demo lease abstract", idempotency_key: "11111111-1111-4111-8111-111111111111" });
+  const { items } = await fixture.todayTriage();
+  const added = items.find((item) => item.item_kind === "critical_date" && item.subject_id === deal.id);
+  assert.ok(added, "a critical date written through the fixture appears in its triage read");
+  assert.equal(added.what, "lease_expiration");
+  assert.equal(added.subject_name, deal.name);
+  assert.ok(items.every((item, i) => i === 0 || items[i - 1].due_on <= item.due_on), "rows arrive earliest first");
+  assert.ok(items.every((item) => item.subject_name === null || String(item.subject_name).startsWith("Demo ")), "synthetic names only");
+});
