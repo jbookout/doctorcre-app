@@ -120,7 +120,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     if (disposed || originScope !== lastScope || originRecord !== chosen) return;
     $('docApprovalStatus').textContent = result.state === 'approved' ? 'Discussion approved' : result.state === 'changed' ? 'Suggestion changed'
       : result.state === 'disabled' ? SUGGESTION_ACTIONS_OFF : 'Confirmation unavailable';
-    if (result.state === 'disabled') actionGate.refresh();
+    if (result.state === 'disabled') actionGate.refused();
     await auto.refresh(); render();
   });
   $('docSuggestions').addEventListener('click', event => { if (event.target.closest('[data-doc-suggestion]')) open(); });

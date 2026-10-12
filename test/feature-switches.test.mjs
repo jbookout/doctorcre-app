@@ -13,33 +13,33 @@ test('UI uses only a fresh server evaluation, and missing flags stay hidden', ()
 
 import { JSDOM } from 'jsdom';
 
-test('mounted UI hides on load and on a failed read, and follows flips without reload', async () => {
+test('mounted UI hides on load and on a failed read, and follows flips without reload', async t => {
   const dom=new JSDOM('<button id="action">Act</button>',{url:'https://app.doctorcre.com'});
   const button=dom.window.document.getElementById('action');
   let available=true, failed=false;
   const gate=mountFeatureGate({document:dom.window.document,window:dom.window,name:'doc-suggestion-actions',
     read:async()=>{if(failed)throw Error('offline');return {schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]};},
     onChange:value=>button.hidden=!value});
+  t.after(()=>{gate.dispose();dom.window.close();});
   assert.equal(button.hidden,true);
   await gate.refresh(); assert.equal(button.hidden,false);
   available=false; await gate.refresh(); assert.equal(button.hidden,true);
   available=true; await gate.refresh(); assert.equal(button.hidden,false);
   failed=true; await gate.refresh(); assert.equal(button.hidden,true);
-  gate.dispose();dom.window.close();
 });
 
-test('an open page observes an off flip at the next 30-second poll',async()=>{
+test('an open page observes an off flip at the next 30-second poll',async t=>{
  const dom=new JSDOM('<button>Act</button>');
  const timers=new Map();let serial=0,available=true,visible=false;
  dom.window.setTimeout=(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;};
  dom.window.clearTimeout=id=>timers.delete(id);
  const gate=mountFeatureGate({document:dom.window.document,window:dom.window,name:'doc-suggestion-actions',
   read:async()=>({schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]}),onChange:value=>visible=value});
+ t.after(()=>{gate.dispose();dom.window.close();});
  await gate.refresh();assert.equal(visible,true);
  available=false;
  const poll=[...timers.values()].find(timer=>timer.ms===30_000);
  assert.ok(poll);await poll.fn();assert.equal(visible,false);
- gate.dispose();dom.window.close();
 });
 
 import { readFileSync } from 'node:fs';
@@ -76,4 +76,40 @@ test('a resumed page hides the feature until its fresh read settles',async t=>{
  assert.equal(reads.length,2);
  release();await new Promise(resolve=>setTimeout(resolve,0));
  assert.equal(visible,true);
+});
+
+const switches=available=>({schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]});
+
+test('consumers on one page share one gate, one poll and one answer',async t=>{
+ const dom=new JSDOM('<button>Act</button>',{url:'https://app.doctorcre.com'});
+ let reads=0,second=0;const seen=[[],[]];
+ const first=mountFeatureGate({document:dom.window.document,window:dom.window,name:'doc-suggestion-actions',
+  read:async()=>{reads++;return switches(true);},onChange:value=>seen[0].push(value)});
+ t.after(()=>{first.dispose();dom.window.close();});
+ await first.refresh();
+ const other=mountFeatureGate({document:dom.window.document,window:dom.window,name:'doc-suggestion-actions',
+  read:async()=>{second++;return switches(false);},onChange:value=>seen[1].push(value)});
+ assert.equal(seen[1].at(-1),true,'a later consumer starts from the page answer');
+ await other.refresh();
+ assert.equal(second,0,'the page keeps one read loop per switch');
+ assert.deepEqual([seen[0].at(-1),seen[1].at(-1)],[true,true]);
+ other.dispose();
+ await first.refresh();assert.equal(seen[0].at(-1),true,'one consumer leaving keeps the gate for the rest');
+ assert.equal(reads,3);
+});
+
+test('a refusal hides at once and a read already in flight cannot reveal the feature again',async t=>{
+ const dom=new JSDOM('<button>Act</button>',{url:'https://app.doctorcre.com'});
+ let release;const answers=[switches(true)];const values=[];
+ const gate=mountFeatureGate({document:dom.window.document,window:dom.window,name:'doc-suggestion-actions',
+  read:()=>answers.length?answers.shift():new Promise(resolve=>release=()=>resolve(switches(true))),onChange:value=>values.push(value)});
+ t.after(()=>{release?.();gate.dispose();dom.window.close();});
+ await gate.refresh();assert.equal(values.at(-1),true);
+ const stale=gate.refresh();                // reads "on", started before CARR refused
+ answers.push(switches(false));             // the confirming read sees CARR's own answer
+ const refused=gate.refused();
+ assert.equal(values.at(-1),false,'hidden as soon as CARR refuses');
+ release();await stale;await refused;
+ assert.equal(values.includes(true,values.lastIndexOf(false)),false,'the stale "on" never repaints');
+ assert.equal(values.at(-1),false);
 });

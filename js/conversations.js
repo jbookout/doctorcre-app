@@ -654,7 +654,7 @@ async function dispatch(operationKey, args, summary, send) {
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
-  if (result.code === FEATURE_DISABLED) suggestionGate?.refresh();
+  if (result.code === FEATURE_DISABLED) suggestionGate?.refused();
   // Only the record layer knows what the store now holds, so a settled write
   // re-reads it rather than painting the answer this page hoped for.
   //
