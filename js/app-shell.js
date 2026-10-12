@@ -55,7 +55,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">
       <button class="app-shell-control" type="button" data-pref="theme" data-on="dark" data-off="light" aria-pressed="true" aria-label="Dark mode" title="Dark mode"><span aria-hidden="true">☾</span></button>
-      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog"><span aria-hidden="true">☎</span></button>
+      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog" hidden><span aria-hidden="true">☎</span></button>
       <button class="app-shell-control" id="colorAssistButton" type="button" aria-pressed="false" aria-label="Color assist" title="Color assist"><span aria-hidden="true">◐</span></button>
       <div class="app-shell-account"><button class="app-shell-avatar" id="selfAvatar" type="button" aria-label="Account and settings" aria-expanded="false" aria-controls="accountMenu">…</button>
         <div class="app-shell-account-menu" id="accountMenu" hidden>
@@ -69,7 +69,10 @@ export function appShellMarkup(pathname, base = "", search = "") {
         </div>
       </div>
     </div>
-  </header>`;
+  </header><div class="app-shell-call-availability"${base ? ' hidden' : ''}>
+    <span id="callModeAvailability" role="status">Checking Quill on this device…</span>
+    <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Recheck Quill</button>
+  </div>`;
 }
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
@@ -77,9 +80,14 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!host) return;
   const base = appOriginForReport(globalThis.location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, globalThis.location?.search || "");
+
   if (base) host.querySelector(".app-shell-controls").remove();
   else mountAccount(root, host, pathname);
-  if (!base && pathname !== "/share") { mountAppLayout(root, host, pathname, slices); mountDocPresence({ document:root, window:root.defaultView }); }
+  if (!base && pathname !== "/share") {
+    mountAppLayout(root, host, pathname, slices);
+    root.querySelector(".app-layout-status").append(host.querySelector(".app-shell-call-availability"));
+    mountDocPresence({ document:root, window:root.defaultView });
+  }
   else root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");
@@ -107,16 +115,17 @@ function mountAccount(root, host, pathname) {
   mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
+  root.body.append(panel);
   let session = null;
   const showPartner = (identity) => {
     if (!identity) return;
     const title = `${identity.name}'s Workspace`;
     avatar.textContent = identity.initial;
     avatar.setAttribute("aria-label", `${identity.name}: account and settings`);
-    host.querySelector("#accountWorkspace").textContent = title;
+    panel.querySelector("#accountWorkspace").textContent = title;
     const workspace = root.getElementById("viewerWorkspace");
     if (workspace) workspace.textContent = title;
-    host.querySelector("#accountProfile").onclick = () => {
+    panel.querySelector("#accountProfile").onclick = () => {
       const dialog = root.createElement("dialog");
       dialog.className = "app-shell-profile";
       dialog.innerHTML = `<header><h2>Profile</h2><button type="button" aria-label="Close profile">×</button></header><div class="app-shell-profile-identity"><span>${identity.initial}</span><h3>${identity.name}</h3></div>`;
@@ -128,9 +137,18 @@ function mountAccount(root, host, pathname) {
   };
   const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
   avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
-  host.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
-  root.addEventListener("click", (event) => { if (!event.target.closest(".app-shell-account")) close(); });
-  host.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
+  root.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab" || panel.hidden) return;
+    const options = [...panel.querySelectorAll("button:not(:disabled), a[href]")];
+    const focused = root.activeElement;
+    if (focused === avatar && !event.shiftKey) { event.preventDefault(); options[0]?.focus(); }
+    else if ((focused === options[0] && event.shiftKey) || (focused === options.at(-1) && !event.shiftKey)) {
+      event.preventDefault(); close(); avatar.focus();
+    }
+  });
+  panel.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
+  root.addEventListener("click", (event) => { if (!panel.contains(event.target) && !avatar.contains(event.target)) close(); });
+  root.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
   const assist = host.querySelector("#colorAssistButton");
   const applyAssist = (enabled) => { root.body.classList.toggle("color-assist", enabled); root.documentElement.dataset.colorAssist = enabled ? "on" : "off"; assist.setAttribute("aria-pressed", String(enabled)); };
   try { applyAssist(localStorage.getItem("dealroom-color-assist") === "on"); } catch { applyAssist(false); }
@@ -149,25 +167,23 @@ function mountAccount(root, host, pathname) {
   };
   readIdentity();
   mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity, intervalMs: 60_000 });
-  host.querySelector("#accountSignOut").onclick = async (event) => {
-    if (boot.mode === "fixture") { host.querySelector("#accountStatus").textContent = "Demo account"; return; }
-    if (!session?.csrf_token) { host.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
+  panel.querySelector("#accountSignOut").onclick = async (event) => {
+    if (boot.mode === "fixture") { panel.querySelector("#accountStatus").textContent = "Demo account"; return; }
+    if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
     event.target.disabled = true;
     try {
       const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
       if (!response.ok) throw new Error();
       offlineTourSession(globalThis.window).revoke();
       globalThis.location.assign("/auth/login");
-    } catch { host.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
+    } catch { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };
   if (!root.getElementById("callModeDialog")) {
-    let opening = false;
-    host.querySelector("#callModeButton").onclick = async () => {
-      if (opening) return;
-      opening = true;
-      try { const { mountGlobalCallMode } = await import("./global-call-mode.js"); const call = await mountGlobalCallMode(root); await call.open(); }
-      finally { opening = false; }
-    };
+    import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
+      const call = await mountGlobalCallMode(root);
+      host.querySelector("#callModeButton").onclick = () => call.open();
+      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
+    });
   }
 }
 

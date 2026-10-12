@@ -8,14 +8,43 @@ export const journeyFiles = [...new Set(requiredNativeEntries.map(row => row.fil
 export const continuityCases = [320, 390, 844].flatMap(width =>
   ['reduce', 'no-preference'].map(motion => ({ width, motion, id: `continuity-${width}-${motion}` })));
 
-export function assertNativeJourneys(results) {
-  // The acceptance contract is independent of the runner's target selection.
-  for (const target of ['chromium', 'iphone', 'small-android']) for (const entry of requiredNativeEntries) {
-    const id = `${entry.file}::${encodeURIComponent(entry.title)}`;
-    const rows = results.filter(row => row.testId === id && row.targetId === target && row.selected);
-    if (rows.length !== 1 || rows[0].status !== 'passed' || rows[0].attempts.length !== 1)
+// The acceptance targets are independent of the runner's target selection, so
+// deleting a device profile from the config cannot shrink the proof.
+export const requiredTargets = ['chromium', 'iphone', 'small-android', 'phone-390', 'ipad'];
+
+export function validateNativeCompletion(native, sourceCommit, entries = requiredNativeEntries) {
+  const run = native?.run;
+  if (run?.vcs?.commit !== sourceCommit || run.vcs.dirty !== false || run.exitCode !== 0 || run.status !== 'passed' || !run.id)
+    throw Error('native runner failed or source identity changed');
+  const selected = run.results.filter(row => row.selected);
+  if (!selected.length || selected.some(row => row.status !== 'passed' || row.attempts?.length !== 1))
+    throw Error('native results incomplete');
+  for (const target of requiredTargets) for (const {file, title} of entries) {
+    const id = `${file}::${encodeURIComponent(title)}`;
+    if (selected.filter(row => row.testId === id && row.file === file && row.targetId === target).length !== 1)
       throw Error(`required native entry point incomplete: ${target}/${id}`);
   }
+  return selected.length;
+}
+
+// Producer and receipt reader share the manifest, qualification and invocation
+// rules. The packet digest is checked by the reader against the actual bytes.
+export function validateBrowserCompletion({native, packet, coverage, sourceCommit, workflowRunId, attempt, entries = requiredNativeEntries}) {
+  const nativeCount = validateNativeCompletion(native, sourceCommit, entries);
+  if (packet?.schema !== 'browser-product-proof.v1') throw Error('browser packet schema mismatch');
+  for (const binding of [packet.binding, coverage?.binding]) {
+    if (binding?.repo !== 'jbookout/doctorcre-app' || binding.sourceCommit !== sourceCommit ||
+        binding.runId !== native.run.id || binding.workflowRunId !== workflowRunId || binding.attempt !== attempt)
+      throw Error('browser invocation binding mismatch');
+  }
+  const required = [...new Set(entries.map(({file}) => file.split('/').at(-1).replace(/\.e2e\.ts$/, ''))), ...continuityCases.map(({id}) => id)];
+  if (!Array.isArray(coverage.rows) || coverage.rows.length !== required.length ||
+      coverage.rows.some(row => !required.includes(row.id) || row.status !== 'passed' || row.attempts !== 1) ||
+      required.some(id => coverage.rows.filter(row => row.id === id).length !== 1))
+    throw Error('required journey or continuity incomplete');
+  if (coverage.qualification?.broken !== 'failed' || coverage.qualification.repaired !== 'passed')
+    throw Error('browser qualification failed');
+  return nativeCount;
 }
 
 // Called against the origin used by the test, never a separate proof server.

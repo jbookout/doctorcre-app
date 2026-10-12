@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { context, policy } from "./workflow-policy.mjs";
+import { context, policy, expression } from "./workflow-policy.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
@@ -51,9 +51,7 @@ function commands(workflow, event, action = "opened") {
     if (!run) return [];
     const condition = step.match(/^\s*if: (.+)$/m)?.[1];
     if (condition) {
-      const match = condition.match(/^github\.event_name == '(pull_request|push)'$/);
-      assert.ok(match, `unhandled workflow condition: ${condition}`);
-      if (match[1] !== event) return [];
+      if (!expression(condition, context(event, action))) return [];
     }
     if (run === ">-") return [step.match(/^        run: >-\n((?:          .+\n?)+)/m)[1].trim().replace(/\n\s*/g, " ")];
     if (run === "|") return [step.match(/^        run: \|\n((?:          .+\n?)+)/m)[1].replace(/^          /gm, "")];

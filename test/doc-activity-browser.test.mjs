@@ -77,8 +77,17 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   await page.locator('#docMorningBrief[open]').waitFor();
   await page.locator('#morningClose').click();
   await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
+  // A day without input is idle: coming back online reads nothing until the
+  // person returns, and that first input reads the new day's brief.
+  const briefReads = calls.filter(call => call.name === 'morning-brief').length;
   await page.evaluate(() => dispatchEvent(new Event('online')));
+  await page.waitForTimeout(200);
+  assert.equal(calls.filter(call => call.name === 'morning-brief').length, briefReads);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal((await preference()).day, '2026-10-01');
+  await page.mouse.move(10, 10); await page.mouse.move(20, 20);
   await page.locator('#docMorningBrief[open]').waitFor();
+  assert.ok(calls.filter(call => call.name === 'morning-brief').length > briefReads);
   assert.equal((await preference()).day, '2026-10-02');
   assert.deepEqual(errors, []);
   const status = await page.evaluate(async () => (await fetch('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'unknown-operation', arguments: {} } }) })).status);
@@ -158,17 +167,20 @@ test('a server refusal performs no second write and rechecks eligibility',async 
   assert.ok(calls.filter(c=>c.name==='read-doc-activity').length>before);
 });
 test('desktop and phone rendered checks, hover motion and reduced motion',async t=>{
-  await mkdir(new URL('test-artifacts/w10/',root),{recursive:true});
+  await mkdir(new URL('out/test-artifacts/w10/',root),{recursive:true});
   for(const width of [1440,390,320])await t.test(String(width),async t=>{
+    const baseline=new URL(`test-artifacts/w10/activity-${width}.png`,root);
+    const before=await readFile(baseline);
+    t.after(async()=>assert.ok((await readFile(baseline)).equals(before),'rendered checks preserve tracked inputs'));
     const {page,errors}=await open(t,{width});
     await page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect.getComputedTiming().iterations)).forEach(a=>a.finish()));
     assert.equal(await page.locator(".activity-row").first().evaluate(el=>getComputedStyle(el).opacity),"1");
-    await page.screenshot({path:new URL(`test-artifacts/w10/activity-${width}.png`,root).pathname,fullPage:true});
+    await page.screenshot({path:new URL(`out/test-artifacts/w10/activity-${width}.png`,root).pathname,fullPage:true});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.locator('.activity-open').first().click();
     assert.equal(await page.locator('#activityDetail').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     await page.locator('#detailOriginal summary').click();
-    await page.screenshot({path:new URL(`test-artifacts/w10/detail-${width}.png`,root).pathname});
+    await page.screenshot({path:new URL(`out/test-artifacts/w10/detail-${width}.png`,root).pathname});
     await page.locator('#detailClose').click(); await page.emulateMedia({reducedMotion:'reduce'});
     await page.locator('.activity-row').first().hover();
     const motion=await page.locator('.activity-row').first().evaluate(el=>({transform:getComputedStyle(el).transform,animation:getComputedStyle(el).animationName,transition:getComputedStyle(el).transitionDuration}));

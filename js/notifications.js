@@ -481,6 +481,7 @@ async function boot() {
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: load });
   await load();
+  if (location.hash === "#prefForm") $("prefForm")?.scrollIntoView({ block: "start", behavior: "instant" });
 }
 
 boot();

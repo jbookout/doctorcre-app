@@ -60,12 +60,12 @@ Both are installed at `~/.agents/skills/` (sources: github.com/mattpocock/skills
 
 ### Issue tracker
 
-CARR Work Requests. See [tracker operations](docs/agents/issue-tracker.md).
+Issues are GitHub Issues in `jbookout/doctorcre-app`, via the `gh` CLI; the repo is public, so keep client and CARR data out of them. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Canonical roles map to Work Request states and classes. See [triage mapping](docs/agents/triage-labels.md).
+The five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context; record-store destinations. See [domain consumers](docs/agents/domain.md).
+Single-context; the glossary and decisions live in the CARR doctrine store and decision log, not repo files. See `docs/agents/domain.md`.
