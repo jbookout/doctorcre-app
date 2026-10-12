@@ -474,3 +474,138 @@ test('Doc suggestion control follows server switch flips and stale clicks cannot
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
  assert.deepEqual(errors,[]);
 });
+
+// The dock can resend a retained suggestion request long after its card was
+// clicked. Both its retry and its reconcile must honour the switch.
+test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off and resume when it returns',async t=>{
+ let available=true,decision='unavailable',correction='refused';
+ const writes=[];
+ const {page,goto,calls,errors}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname!=='/mcp')return false;
+  const {name,arguments:args}=route.request().postDataJSON().params;
+  if(name==='list-feature-switches'){await rpc(route,{ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]});return true;}
+  if(name!=='decide-doc-suggestion'&&name!=='propose-doc-correction')return false;
+  writes.push({name,key:args.idempotency_key});
+  const outcome=name==='decide-doc-suggestion'?decision:correction;
+  if(outcome==='unavailable'){await route.fulfill({status:503,body:'synthetic outage'});return true;}
+  if(outcome==='refused'){await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'synthetic_refusal',hint:'Synthetic refusal.'})}]}})});return true;}
+  await rpc(route,{ok:true,suggestion_id:args.suggestion_id,version:(args.base_version||0)+1,choice:args.choice});return true;
+ }});
+ await goto('/doc-chats?mode=live');
+ const card=page.locator('[data-suggestion]').first();
+ await card.locator('[data-choice="discuss"]').waitFor({state:'visible'});
+ const id=await card.getAttribute('data-suggestion');
+ await card.locator('[data-choice="discuss"]').click();
+ const decisionAction=page.locator(`#receiptDock button[data-op="doc-suggestion:${id}:decision"]`);
+ await decisionAction.waitFor({state:'visible'});
+ assert.equal(await decisionAction.getAttribute('data-event'),'reconcile');
+ await card.locator('[data-correction]').fill('Synthetic narrower wording.');
+ await card.locator('[data-propose]').click();
+ const correctionAction=page.locator(`#receiptDock button[data-op="doc-suggestion:${id}:correction"]`);
+ await correctionAction.waitFor({state:'visible'});
+ assert.equal(await correctionAction.getAttribute('data-event'),'dispatch');
+ assert.equal(writes.length,2);
+
+ available=false;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await card.locator('.suggestion-decisions').waitFor({state:'hidden'});
+ await decisionAction.waitFor({state:'hidden'});
+ await correctionAction.waitFor({state:'hidden'});
+ // A tampered, re-revealed dock control still sends nothing while the switch is off.
+ for(const action of [decisionAction,correctionAction]) await action.evaluate(node=>{node.hidden=false;node.click();});
+ await page.waitForTimeout(300);
+ assert.equal(writes.length,2);
+ assert.equal(await page.locator('#receiptDock .receipt').count(),2,'the held requests stay in the dock');
+
+ available=true;decision='ok';correction='ok';
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await decisionAction.waitFor({state:'visible'});
+ await decisionAction.click();
+ for(let i=0;i<50&&writes.length<3;i++) await page.waitForTimeout(100);
+ await correctionAction.click();
+ for(let i=0;i<50&&writes.length<4;i++) await page.waitForTimeout(100);
+ assert.equal(writes.length,4);
+ const [firstDecision,firstCorrection,reconciled,retried]=writes;
+ assert.equal(reconciled.name,'decide-doc-suggestion');
+ assert.equal(reconciled.key,firstDecision.key,'reconcile resends the retained request under its key');
+ assert.equal(retried.name,'propose-doc-correction');
+ assert.notEqual(retried.key,firstCorrection.key,'a settled refusal retries under a fresh key');
+ assert.deepEqual(calls.filter(call=>!/^(list-|read-|get-|deal-room-|today-triage|loop-board|incident-board|current-work-|notification-feed|morning-brief|find)/.test(call.name)).map(call=>call.name),[]);
+ assert.deepEqual(errors,[]);
+});
+
+test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feature_disabled refusal settles, and a later tap sends again',async t=>{
+ let available=true,holdReads=false,refuse=false;const held=[];
+ const writes=[];
+ const {page,goto,errors}=await setup(t,{onRoute:async(route,{url,fixture})=>{
+  if(url.pathname!=='/mcp')return false;
+  const {name,arguments:args}=route.request().postDataJSON().params;
+  if(name==='list-feature-switches'){await rpc(route,{ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]});return true;}
+  if(name==='list-doc-suggestions'&&holdReads){await new Promise(resolve=>held.push(resolve));await rpc(route,await fixture.listDocSuggestions(args));return true;}
+  if(name!=='decide-doc-suggestion')return false;
+  writes.push(args.idempotency_key);
+  if(refuse){await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'feature_disabled',switch:'doc-suggestion-actions',hint:'doc-suggestion-actions is switched off for you.'})}]}})});return true;}
+  await rpc(route,await fixture.decideDocSuggestion(args));return true;
+ }});
+ await goto('/deals?mode=live');
+ await page.locator('#docOpen').click();
+ const action=page.locator('[data-doc-approve]').first();
+ await action.waitFor({state:'visible'});
+ const status=page.locator('#docApprovalStatus');
+
+ // 1. The switch turns off while the approval's fresh read is in flight.
+ holdReads=true;
+ await action.click();
+ await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Confirming…');
+ available=false;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await action.waitFor({state:'hidden'});
+ holdReads=false;held.splice(0).forEach(resolve=>resolve());
+ await page.waitForFunction(()=>/switched off/.test(document.querySelector('#docApprovalStatus')?.textContent||''));
+ assert.equal(writes.length,0,'nothing is sent once the switch is off');
+
+ // 2. The page still reads on, but CARR switched it off after the last poll.
+ available=true;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await action.waitFor({state:'visible'});
+ available=false;refuse=true;
+ await action.click();
+ for(let i=0;i<50&&writes.length<1;i++) await page.waitForTimeout(100);
+ assert.equal(writes.length,1);
+ // The refusal itself prompts a fresh switch read, which hides the control.
+ await page.waitForFunction(()=>document.querySelector('[data-doc-approve]')?.hidden===true);
+ assert.match(await status.textContent(),/switched off/);
+
+ available=true;
+
+ // 3. Switched back on: the same suggestion version can be approved again.
+ refuse=false;
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await action.waitFor({state:'visible'});
+ await action.click();
+ await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Discussion approved');
+ assert.equal(writes.length,2);
+ assert.notEqual(writes[1],writes[0],'the refused intent is retired; the fresh tap carries a new key');
+ assert.match(await status.textContent(),/approved/);
+ assert.deepEqual(errors,[]);
+});
+
+test('Dr. CRE suggestion page: a feature_disabled refusal re-reads the switch and hides the controls at once',async t=>{
+ let available=true;const writes=[];
+ const {page,goto,errors}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname!=='/mcp')return false;
+  const {name,arguments:args}=route.request().postDataJSON().params;
+  if(name==='list-feature-switches'){await rpc(route,{ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]});return true;}
+  if(name!=='decide-doc-suggestion')return false;
+  writes.push(args.idempotency_key);
+  await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'feature_disabled',switch:'doc-suggestion-actions',hint:'doc-suggestion-actions is switched off for you.'})}]}})});return true;
+ }});
+ await goto('/doc-chats?mode=live');
+ const card=page.locator('[data-suggestion]').first();
+ await card.locator('[data-choice="discuss"]').waitFor({state:'visible'});
+ available=false;
+ await card.locator('[data-choice="discuss"]').click();
+ await card.locator('.suggestion-decisions').waitFor({state:'hidden'});
+ assert.equal(writes.length,1);
+ assert.deepEqual(errors,[]);
+});

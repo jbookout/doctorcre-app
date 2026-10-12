@@ -24,7 +24,10 @@ import { commandDockHtml, commandReceiptView } from './command-feedback.mjs';
  */
 export const DOCK_ENTRY_CAP = 50;
 
-export function createCommandDock({ root, onDispatch = null, onReconcile = null, onUndo = null } = {}) {
+// `actionable(operationKey)` hides an entry's action while the page cannot send
+// it (a switched-off feature); the receipt itself stays visible. Call render()
+// when the answer changes.
+export function createCommandDock({ root, onDispatch = null, onReconcile = null, onUndo = null, actionable = () => true } = {}) {
   // Insertion order IS display order: a Map preserves it, and re-recording an
   // operation updates it in place rather than moving it to the front.
   const entries = new Map();
@@ -36,9 +39,11 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
   function render() {
     if (!root) return '';
     const html = commandDockHtml(views());
-    if (html === signature) return html;
-    signature = html;
-    root.innerHTML = html;
+    if (html !== signature) {
+      signature = html;
+      root.innerHTML = html;
+    }
+    for (const button of root.querySelectorAll('button[data-op][data-event]')) button.hidden = !actionable(button.dataset.op);
     return html;
   }
 
@@ -87,6 +92,7 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
       const button = event.target.closest('button[data-op][data-event]');
       if (!button || !root.contains(button)) return;
       const operationKey = button.dataset.op;
+      if (!actionable(operationKey)) return;
       const entry = entries.get(operationKey) || { operationKey };
       const handler = { dispatch: onDispatch, reconcile: onReconcile, undo: onUndo }[button.dataset.event];
       if (typeof handler === 'function') handler(operationKey, entry);

@@ -1,4 +1,4 @@
-import { mountFeatureGate } from './feature-switches.js';
+import { mountFeatureGate, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
@@ -86,6 +86,11 @@ const view = {
 
 let client = null;
 let suggestionActionsEnabled = false;
+let suggestionGate = null;
+// Every suggestion send — first click, dock retry and dock reconcile — passes
+// through dispatch under one of these keys, so this is the one UI gate.
+const suggestionOperation = operationKey => operationKey.startsWith("doc-suggestion:");
+const sendAllowed = operationKey => suggestionActionsEnabled || !suggestionOperation(operationKey);
 // A cancelled traversal must settle even if its adapter ignores abort. Live
 // reads also forward the signal to the transport, outside the verb arguments.
 const readClient = (method, args, signal) => signal
@@ -628,6 +633,12 @@ function open(id) {
 /* --------------------------------------------------------------------- writing */
 
 async function dispatch(operationKey, args, summary, send) {
+  // A switched-off send is held, not dropped: the retained request, its key and
+  // its dock entry stay as they are, ready for when the switch returns.
+  if (!sendAllowed(operationKey)) {
+    announce(SUGGESTION_ACTIONS_OFF);
+    return { status: "disabled" };
+  }
   const result = await performCommand({
     operationKey,
     args,
@@ -642,6 +653,7 @@ async function dispatch(operationKey, args, summary, send) {
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
+  if (result.code === "feature_disabled") suggestionGate?.refresh();
   // Only the record layer knows what the store now holds, so a settled write
   // re-reads it rather than painting the answer this page hoped for.
   //
@@ -696,7 +708,6 @@ function suggestionRow(id) {
 }
 
 async function decideSuggestion(id, choice, card) {
-  if (!suggestionActionsEnabled) return;
   if (view.suggestions.state !== "read") return;
   const row = suggestionRow(id);
   const workNumber = view.suggestions.workNumbers.get(id) || "";
@@ -734,7 +745,6 @@ async function decideSuggestion(id, choice, card) {
 }
 
 async function proposeSuggestionCorrection(id) {
-  if (!suggestionActionsEnabled) return;
   if (view.suggestions.state !== "read") return;
   const row = suggestionRow(id);
   const draft = view.suggestions.drafts.get(id) || "";
@@ -782,6 +792,7 @@ function mountDock() {
       if (entry?.args) dispatch(operationKey, entry.args, entry.summary, entry.send);
     },
     onUndo: null,
+    actionable: sendAllowed,
   });
   dock.mount();
 }
@@ -906,11 +917,12 @@ async function boot() {
   client = boot_.mode === "live"
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
-  mountFeatureGate({ document, window: globalThis.window, name: "doc-suggestion-actions",
+  suggestionGate = mountFeatureGate({ document, window: globalThis.window, name: "doc-suggestion-actions",
     read: signal => client.listFeatureSwitches({ signal }),
     onChange: enabled => {
       suggestionActionsEnabled = enabled;
       for (const node of document.querySelectorAll(".suggestion-decisions,.suggestion-fields,.suggestion-correction")) node.hidden = !enabled;
+      dock?.render();
     },
   });
   mountNotificationBadge(client);

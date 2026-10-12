@@ -12,7 +12,7 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh
 import { entryDetailsHtml } from './entry-details.mjs';
 import { uuidv4 } from './uuid.js';
 import { mountMorningBrief } from './morning-brief.js';
-import { mountFeatureGate } from './feature-switches.js';
+import { mountFeatureGate, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const display = value => value === null ? 'Unknown' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
 
@@ -84,7 +84,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     suggestionState = 'updating'; suggestions = null; render();
     try {
       await ensureClient();
-      approval ||= createDocApproval({ client, context, evaluatedPages:DOC_EVALUATED_PAGES, uuid:uuidv4 });
+      approval ||= createDocApproval({ client, context, evaluatedPages:DOC_EVALUATED_PAGES, uuid:uuidv4, available:() => actionsEnabled });
       const args = captured.page === 'chats' && captured.selected?.kind === 'conversation' ? { conversation_id:captured.selected.id } : {};
       const payload = await readWithDeadline(() => client.listDocSuggestions(args), { signal });
       const current = context.snapshot();
@@ -118,7 +118,9 @@ export function mountDocPresence({ document: root = document, window: win = wind
     const originScope=lastScope, originRecord=chosen;
     const result = await approval.approve(row, suggestions);
     if (disposed || originScope !== lastScope || originRecord !== chosen) return;
-    $('docApprovalStatus').textContent = result.state === 'approved' ? 'Discussion approved' : result.state === 'changed' ? 'Suggestion changed' : 'Confirmation unavailable';
+    $('docApprovalStatus').textContent = result.state === 'approved' ? 'Discussion approved' : result.state === 'changed' ? 'Suggestion changed'
+      : result.state === 'disabled' ? SUGGESTION_ACTIONS_OFF : 'Confirmation unavailable';
+    if (result.state === 'disabled') actionGate.refresh();
     await auto.refresh(); render();
   });
   $('docSuggestions').addEventListener('click', event => { if (event.target.closest('[data-doc-suggestion]')) open(); });
