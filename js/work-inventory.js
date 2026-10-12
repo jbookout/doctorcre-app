@@ -405,7 +405,7 @@ function renderRecordDetails() {
   }
   // The existing card operation returns the record, including fields beyond
   // the disposition contract. Keep that full read in Details, never in a row.
-  rows.innerHTML += `<dt>Record data</dt><dd><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(JSON.stringify(card, null, 2))}</pre></dd>`;
+  rows.innerHTML += `<dt>Record data</dt><dd><pre class="record-data">${escapeHtml(JSON.stringify(card, null, 2))}</pre></dd>`;
   actions.innerHTML = availableActions(card).map(action => action.available
     ? `<button class="btn btn-secondary" type="button" data-action="${escapeHtml(action.choice)}" data-record="${escapeHtml(item.id)}">${escapeHtml(action.label)}</button>`
     : `<span class="small">${escapeHtml(action.label)}: ${escapeHtml(action.reason)}</span>`).join("");
