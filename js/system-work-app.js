@@ -60,9 +60,9 @@ async function refresh(ref = state.selectedRef) {
   } catch (error) {
     if (epoch !== state.readEpoch || selected !== state.selectedRef) return;
     state.readReady = false;
-    state.readFailed = true;
+    state.readFailed = error.status !== 404;
     if (!selected) state.current = [];
-    alert(error.status === 401 || error.status === 403 ? "Sign in again to read current Work Requests." : "Work Request updates unavailable. Current evidence is required before confirming.");
+    alert(error.status === 404 ? refusal(error) : error.status === 401 || error.status === 403 ? "Sign in again to read current Work Requests." : "Work Request updates unavailable. Current evidence is required before confirming.");
     render();
     throw error;
   }

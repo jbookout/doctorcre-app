@@ -182,3 +182,14 @@ test('finding 02: failed collection read offers Retry and recovers the request l
   assert.equal(h.d.querySelector('#systemWorkAlert').hidden, true);
   assert.equal(h.calls.filter(call => call.path.endsWith('/session')).length, 1);
 });
+
+test('finding 02: Open on a nonexistent reference keeps the not-found refusal without Retry', async t => {
+  const h = await setup(t, { session: readySession,
+    read: () => new Response(JSON.stringify({ error: 'NOT_FOUND' }), { status: 404 }) });
+  await settle();
+  h.d.querySelector('#workRequestRef').value = 'WR-000999';
+  h.d.querySelector('#openWorkRequest').dispatchEvent(new h.w.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  assert.match(h.d.querySelector('#systemWorkAlert').textContent, /That Work Request was not found\./);
+  assert.equal(h.d.querySelector('[data-system-retry]'), null);
+});
