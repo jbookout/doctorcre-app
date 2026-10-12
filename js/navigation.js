@@ -48,7 +48,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">
       <button class="app-shell-control" type="button" data-pref="theme" data-on="dark" data-off="light" aria-pressed="true" aria-label="Dark mode" title="Dark mode"><span aria-hidden="true">☾</span></button>
-      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog"><span aria-hidden="true">☎</span></button>
+      <button class="app-shell-control" id="callModeButton" type="button" aria-label="Call mode" title="Call mode" aria-haspopup="dialog" hidden><span aria-hidden="true">☎</span></button>
       <button class="app-shell-control" id="colorAssistButton" type="button" aria-pressed="false" aria-label="Color assist" title="Color assist"><span aria-hidden="true">◐</span></button>
       <div class="app-shell-account"><button class="app-shell-avatar" id="selfAvatar" type="button" aria-label="Account and settings" aria-expanded="false" aria-controls="accountMenu">…</button>
         <div class="app-shell-account-menu" id="accountMenu" hidden>
@@ -62,7 +62,10 @@ export function appShellMarkup(pathname, base = "", search = "") {
         </div>
       </div>
     </div>
-  </header>`;
+  </header><div class="app-shell-call-availability"${base ? ' hidden' : ''}>
+    <span id="callModeAvailability" role="status">Checking Quill on this device…</span>
+    <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Recheck Quill</button>
+  </div>`;
 }
 
 // Reports mount this interface without app layout, identity reads or partner controls.
@@ -71,7 +74,10 @@ export function mountNavigation(root = document, pathname = root.defaultView?.lo
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, location?.search || "");
-  if (report || base) host.querySelector(".app-shell-controls").remove();
+  if (report || base) {
+    host.querySelector(".app-shell-controls").remove();
+    host.querySelector(".app-shell-call-availability").remove();
+  }
   if (report || base || pathname === "/share") root.body.classList.add("report-shell");
   const moreButton = host.querySelector(".app-shell-more-toggle");
   const moreList = host.querySelector(".app-shell-more-list");

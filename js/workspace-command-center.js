@@ -140,7 +140,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       snapshot.relationships = null;
       relationshipDialog?.clear();
       render();
-      auto.refresh();
+      auto.poll();
     }
   }, 1000);
   $('refreshHome').addEventListener('click', auto.refresh);

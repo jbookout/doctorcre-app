@@ -33,13 +33,16 @@ async function open(t,width,{snapshot=true}={}){
  await page.goto('http://localhost/control-room/progress');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
  return {page,calls,errors};
 }
-test('all source cards and ten recent Live nodes fit phone and desktop; library finds old completion',async t=>{
+test('all source cards and ten recorded completions fit phone and desktop; library finds old completion',async t=>{
  for(const width of [320,390,1440])await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);assert.equal(await page.locator('.work-source').count(),19);
-  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),10);
+  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
+  assert.equal(await page.locator('#system-work-flow [data-stage="recorded"].pipeline-node').count(),10);
+  assert.equal(await page.locator('#system-work-flow .pipeline-connector').count(),5);
+  assert.equal(await page.locator('#system-work-flow .flow-stage[data-stage="recorded"] .stage-index').count(),0);
   assert.equal(await page.locator('#board-stages .board-card').count(),0,'the empty published snapshot stays independent of the census');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  await page.getByRole('button',{name:'Live Library',exact:true}).click();
+  await page.getByRole('button',{name:'Completed records',exact:true}).click();
   await page.locator('[name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
   await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===1);
   assert.match(await page.locator('.work-card').textContent(),/older completed/);
@@ -75,4 +78,22 @@ test('W1: desktop work action uses a wide dialog with human category labels',asy
  await page.locator('.work-card[data-work-id="synthetic-2"]').getByRole('button',{name:'cancel'}).click();
  assert.ok((await page.locator('#work-triage').boundingBox()).width>=900);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
+});
+
+test('recorded completion never claims Live in the real system-work diagram',async t=>{
+ const {page,errors}=await open(t,1440);
+ await mkdir('out/test-artifacts/recorded-completion',{recursive:true});
+ await page.screenshot({path:'out/test-artifacts/recorded-completion/system-work-desktop.png',fullPage:true});
+ assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
+ assert.equal(await page.locator('#system-work-flow [data-stage="recorded"].pipeline-node').count(),10);
+ await page.getByRole('button',{name:'Completed records',exact:true}).click();
+ await page.locator('[name="text"]').fill('older completed');await page.locator('#system-work-filters button').click();
+ await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===1);
+ assert.match(await page.locator('.work-card').textContent(),/loop · done/);
+ const completed=page.locator('#system-work-flow [data-stage="recorded"].pipeline-node');
+ assert.equal(await completed.count(),1);assert.match(await completed.getAttribute('aria-label'),/Recorded/);
+ assert.match(await page.locator('#system-work-flow').getAttribute('aria-label'),/Recorded/);
+ assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
+ await page.screenshot({path:'out/test-artifacts/recorded-completion/completed-records-desktop.png',fullPage:true});
 });
