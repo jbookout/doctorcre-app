@@ -34,6 +34,7 @@
  */
 import { uuidv4 } from './uuid.js';
 import { escapeText as esc } from './change-receipts.mjs';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 export const CALL_MODE_URL = 'http://127.0.0.1:4682';
 export const CALL_MODE_HEADER = Object.freeze({ 'X-CARR-Call-Mode': 'deal-room-v1' });
@@ -136,7 +137,9 @@ export function createCallMode(deps) {
   const dealName = deps.dealName || (() => undefined);
   const dateLabel = deps.dateLabel || ((value) => String(value));
   const timers = { setInterval: deps.setInterval || ((...a) => setInterval(...a)),
-    clearInterval: deps.clearInterval || ((h) => clearInterval(h)) };
+    clearInterval: deps.clearInterval || ((h) => clearInterval(h)),
+    setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
+    clearTimeout: deps.clearTimeout || ((h) => clearTimeout(h)) };
   const state = { callMode: { state: 'idle' }, postCall: idlePostCall(), pollTimer: null,
     tickTimer: null, contextInFlight: null, eligibility: 'unknown', eligibilityInFlight: null };
 
@@ -431,7 +434,7 @@ export function createCallMode(deps) {
   // ----------------------------------------------------------- report poll
 
   function stopPolling() {
-    if (state.pollTimer) timers.clearInterval(state.pollTimer);
+    state.pollTimer?.dispose();
     state.pollTimer = null;
   }
 
@@ -472,8 +475,14 @@ export function createCallMode(deps) {
     stopPolling();
     if (state.postCall.session !== session) state.callGeneration = (state.callGeneration || 0) + 1;
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly };
-    refreshPostCall({ quiet: true });
-    state.pollTimer = timers.setInterval(() => refreshPostCall({ quiet: true }), 1600);
+    // The one poll allowed to run while the tab is hidden or idle: it exists
+    // only from Stop until the call's report settles (stopPolling), and a
+    // partner on that call is talking, not typing. It reads the local
+    // companion; it does not keep CARR awake.
+    state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => true,
+      setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+      intervalMs: 1600, poll: () => refreshPostCall({ quiet: true }) });
+    state.pollTimer.refresh();
   }
 
   // ------------------------------------------------------ per-item approval

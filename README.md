@@ -85,14 +85,18 @@ regenerates `contracts/app-routes.v1.json` and the static artifact manifest used
 by the browser read guard, including after a fresh `npm ci`. A missing or
 malformed static inventory stops before fixture setup; it cannot grant reads.
 
-`E2E_RUN_LIMITS` accepts a JSON object of lower limits, for example:
+`E2E_RUN_LIMITS` replaces the whole limit policy: when set, it must be a JSON
+object naming every key in `RUN_LIMITS` (`scripts/e2e-staging/run-limits.mjs`),
+each at or below its default. Start from the defaults and lower what you need:
 
 ```bash
-E2E_RUN_LIMITS='{"httpRequests":120,"modelCalls":0}' npm run e2e:staging:sweep
+E2E_RUN_LIMITS="$(node --input-type=module -e "import { RUN_LIMITS } from './scripts/e2e-staging/run-limits.mjs'; console.log(JSON.stringify({ ...RUN_LIMITS, httpRequests: 120, modelCalls: 0 }))")" npm run e2e:staging:sweep
 ```
 
-Omitted limits keep their defaults. Unknown keys, malformed JSON, non-integer
-values and any increase are refused before launching a worker. Only `modelCalls`
+Leaving `E2E_RUN_LIMITS` unset keeps every default. An empty or partial object
+is refused with the missing keys named, so an omitted limit never silently keeps
+its default. Unknown keys (also named), malformed JSON, non-integer values and
+any increase are refused before launching a worker. Only `modelCalls`
 and `retries` accept zero; a zero model budget refuses the first model call.
 The supervisor and workers share the validated limits in the durable ledger.
 

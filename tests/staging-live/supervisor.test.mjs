@@ -272,7 +272,7 @@ test('invalid environment caps refuse before the output directory or worker exis
   t.after(() => rm(root, { recursive: true, force: true }));
   const output = join(root, 'unused');
   await assert.rejects(supervise({ command: process.execPath, args: ['-e', 'process.exit(99)'], output,
-    environment: { ...process.env, E2E_RUN_LIMITS: JSON.stringify({ httpRequests: RUN_LIMITS.httpRequests + 1 }) } }),
+    environment: { ...process.env, E2E_RUN_LIMITS: JSON.stringify({ ...RUN_LIMITS, httpRequests: RUN_LIMITS.httpRequests + 1 }) } }),
     error => error.code === 'invalid-run-limits');
   await assert.rejects(readFile(join(output, 'run-budget.json')), { code: 'ENOENT' });
 });
