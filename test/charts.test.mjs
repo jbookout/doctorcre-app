@@ -633,3 +633,24 @@ test("Charts recover from an unavailable read on the poller's short backoff", as
   assert.equal(s.charts.view.status, "ready", "no Retry press and no 30 s wait");
   assert.equal(s.reads(), 2);
 });
+
+test("Charts paint only the current read: a superseded board answer or failure arrives late and is dropped", async t => {
+  const s = await chartDom(t);
+  const newer = structuredClone(board);
+  const held = [];
+  s.client.getBoard = ({ signal }) => new Promise((resolve, reject) => { held.push({ resolve, reject, signal }); });
+  const superseded = [s.charts.read(), s.charts.read()];
+  const current = s.charts.read();
+  assert.equal(held.length, 3);
+  assert.deepEqual(held.map(read => read.signal.aborted), [true, true, false], "each newer read cancels the older transport");
+  held[2].resolve(newer);
+  await current;
+  assert.equal(s.charts.view.payload, newer);
+  // A transport that ignores abort still answers; neither outcome may repaint.
+  held[0].resolve(board);
+  held[1].reject(Object.assign(new Error("Synthetic late outage"), { status: 503 }));
+  await Promise.all(superseded);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.charts.view.status, "ready", "a late failure never reports an outage over the current board");
+  assert.equal(s.charts.view.payload, newer, "a late older board never replaces the current one");
+});
