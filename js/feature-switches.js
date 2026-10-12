@@ -10,7 +10,8 @@ export const SUGGESTION_ACTIONS_OFF = 'Dr. CRE suggestion actions are switched o
 // CARR checks the switch before the verb's handler runs, so this refusal is a
 // settled non-write: nothing was recorded and a fresh attempt may follow once
 // the switch is back on.
-export const featureSwitchRefusal = error => error?.payload?.error === 'feature_disabled';
+export const FEATURE_DISABLED = 'feature_disabled';
+export const featureSwitchRefusal = error => error?.payload?.error === FEATURE_DISABLED;
 
 export function mountFeatureGate({ document, window, name, read, onChange }) {
   let disposed=false;

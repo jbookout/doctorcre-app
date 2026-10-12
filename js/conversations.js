@@ -1,4 +1,4 @@
-import { mountFeatureGate, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
+import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
@@ -653,7 +653,7 @@ async function dispatch(operationKey, args, summary, send) {
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
-  if (result.code === "feature_disabled") suggestionGate?.refresh();
+  if (result.code === FEATURE_DISABLED) suggestionGate?.refresh();
   // Only the record layer knows what the store now holds, so a settled write
   // re-reads it rather than painting the answer this page hoped for.
   //
