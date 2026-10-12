@@ -43,6 +43,8 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
         result={actor:'joe',deals:[]};
       }else if(params.name==='today-triage'){
         result={items:[]};
+      }else if(params.name==='list-feature-switches'){
+        result={ok:true,schema:'feature-switches.v1',switches:[]};
       }else if(params.name==='list-doc-suggestions'){
         result={ok:true,suggestions:[]};
       }else if(params.name==='morning-brief'){

@@ -8,13 +8,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { JSDOM } from "jsdom";
 
 import {
-  ACKNOWLEDGE_SCOPE, APP_ROUTE_PATHS, BASE_VERSION_REFUSAL, DEVICE_OFF, EXPOSURE_STATEMENT,
+  APP_ROUTE_PATHS, BASE_VERSION_REFUSAL, DEVICE_OFF,
   FEED_STATES, NO_PAGE_SENTENCE, PREFERENCE_DEFAULTS_SENTENCE, PREFERENCE_OPERATION_KEY,
-  PREFERENCE_REFUSALS, QUIET_HOURS_EFFECT, QUIET_HOURS_SCOPE, QUIET_NOW_BANNER, versionConflictLine,
+  PREFERENCE_REFUSALS, QUIET_NOW_BANNER, versionConflictLine,
   QUIET_SUPPRESSED_MARK, SEVERITIES, SEVERITY_LABELS, TIME_REFUSAL,
-  acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
+  acknowledgeArgs, acknowledgeOperationKey, activityRows, preferenceTimeLabel, classifyPreferenceFailure,
   classifyPreferenceReadFailure, classifyReadFailure, deepLinkView, deliveryPhrases, feedState,
   notificationCards, preferenceOriginSentence, preferenceState, preferenceSummary,
   preferenceView, quietNowBanner, setPreferenceArgs, toInputTime, unreadLine,
@@ -96,7 +97,7 @@ test("clause 2: two severity chips exist, and the page's vocabulary has no third
   assert.match(css, /\.severity-chip\[data-severity="action_required"\]/);
   assert.match(css, /\.severity-chip\[data-severity="failure"\]/);
   assert.equal(/\[data-severity="(?!action_required|failure|\$)/.test(css), false, "a third severity is styled");
-  assert.match(html, /Routine progress mints nothing/);
+  assert.match(html, /Routine progress appears in activity/);
 });
 
 /* ------------------------------------------------------------------ clause 3 */
@@ -123,7 +124,7 @@ test("clause 3: quiet-hours suppression, device opt-out and an ordinary delivery
     ["in-app, waiting", "device push failed"],
   );
   // A state this page has not been taught is still a state the ledger recorded.
-  assert.equal(deliveryPhrases([{ channel: "device", state: "queued" }])[0].phrase, "recorded as queued");
+  assert.equal(deliveryPhrases([{ channel: "device", state: "queued" }])[0].phrase, "Delivery status unavailable");
 });
 
 /* ------------------------------------------------------------------ clause 4 */
@@ -142,8 +143,8 @@ test("clause 4 (INVERTED by V5-UX-B12): the quiet-hours region carries the real 
     assert.equal(new RegExp(`<${tag}[\\s>]`).test(block), true, `the quiet-hours region draws no <${tag}>`);
   }
   assert.match(block, /<input id="deviceOptIn" type="checkbox">/);
-  assert.match(block, /<input id="quietStart" type="time"/);
-  assert.match(block, /<input id="quietEnd" type="time"/);
+  assert.match(block, /<input id="quietStart" type="text"/);
+  assert.match(block, /<input id="quietEnd" type="text"/);
   assert.match(block, /<input id="quietTimezone" type="text" list="timezoneNames"/);
   assert.match(block, /<button class="btn btn-primary" type="submit" id="prefSave">/);
   assert.match(block, /<button class="btn" type="button" id="prefClear">/);
@@ -154,10 +155,7 @@ test("clause 4 (INVERTED by V5-UX-B12): the quiet-hours region carries the real 
     assert.equal(file.includes("QUIET_HOURS_UNAVAILABLE"), false,
       "the retired constant is still referenced");
   }
-  assert.equal(QUIET_HOURS_EFFECT, "");
-  assert.equal(QUIET_HOURS_SCOPE, "");
-  assert.match(pageJs, /\$\("quietHoursScope"\)\.textContent = QUIET_HOURS_SCOPE/);
-  assert.match(pageJs, /\$\("quietHoursEffect"\)\.textContent = QUIET_HOURS_EFFECT/);
+  assert.doesNotMatch(html + pageJs + modelJs, /QUIET_HOURS_EFFECT|QUIET_HOURS_SCOPE|quietHoursEffect|quietHoursScope/);
 });
 
 /* ------------------------------------------------------------------ clause 5 */
@@ -192,8 +190,8 @@ test("B12b-1: a /doc-conversations/<ref> deep link is an anchor into conversatio
   const uuid = "22222222-2222-4222-8222-222222222222";
   const view = deepLinkView(`/doc-conversations/${uuid}`);
   assert.equal(view.routed, true);
-  // The card still shows the record's own path as its text (notifications.js
-  // renders `card.link.path`); only the href is translated to a real route.
+  // Keep the original path for Details; the visible anchor has a human label.
+  assert.equal(view.label, "Open conversation");
   assert.equal(view.path, `/doc-conversations/${uuid}`);
   assert.equal(view.href, `/doc-chats?id=${uuid}`);
   assert.equal(view.sentence, null);
@@ -309,7 +307,6 @@ test("clause 8: acknowledging changes only read_at and unread_count — nothing 
   }
   // The source work is untouched: the acknowledgement is not granted to move it.
   assert.deepEqual(await client.getChanges(null), dealsBefore, "the change stream moved");
-  assert.equal(ACKNOWLEDGE_SCOPE, "");
 });
 
 /* ------------------------------------------------------------------ clause 9 */
@@ -371,8 +368,8 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, "1.44.0");
-  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81");
+  assert.equal(contract.version, "1.45.0");
+  assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74");
   assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -407,7 +404,7 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(html, /data-section="activity"/);
   assert.match(html, /data-section="feed"/);
   assert.ok(/data-section="feed"/.exec(html).index < /data-section="activity"/.exec(html).index, "the activity panel is above the feed");
-  assert.match(html, /This is the activity stream, not your feed\./);
+  assert.match(html, /Activity records who did what/);
   assert.match(css, /\[data-section="activity"\] \{ border-style: dashed; \}/);
   const rows = activityRows([
     { actor: "joe", verb: "set-next-step", subject_type: "deal", subject_id: "d14", recorded_at: "2026-01-14T14:20:00.000Z" },
@@ -415,9 +412,9 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
     { verb: "" },
   ]);
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].actor, "unattributed", "the newest event is not first");
+  assert.equal(rows[0].actor, "Unattributed", "the newest event is not first");
   assert.equal(rows[1].clock, "2:20 PM");
-  assert.equal(rows[1].subject, "deal d14");
+  assert.equal(rows[1].subject, "Deal");
 
   // Mobile first: one column, a full-width target, and the 44px floor.
   assert.match(css, /\.btn \{ min-height: var\(--touch\); \}/);
@@ -427,8 +424,7 @@ test("the page is the shared shell, the activity panel is its own thing, and 44p
   assert.match(css, /#feedList \.work-item \{ grid-template-columns: minmax\(0, 1fr\); \}/);
   assert.match(css, /overflow-wrap: anywhere/);
   assert.equal(/[^-]width:\s*\d{3,}px/.test(css), false, "a fixed pixel width can force a horizontal scroll");
-  assert.equal(EXPOSURE_STATEMENT, "");
-  assert.match(html, /<p class="caption" id="exposureStatement">/);
+  assert.doesNotMatch(html, /exposureStatement/);
 });
 
 /* ======================================================================== */
@@ -471,7 +467,7 @@ test("B12-1 defaults panel: with no row the page prints the record layer's docum
   assert.equal(model.version, 1);
   assert.equal(preferenceOriginSentence(model), PREFERENCE_DEFAULTS_SENTENCE);
   assert.equal(PREFERENCE_DEFAULTS_SENTENCE, "Quiet hours off · Push off · UTC");
-  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off · version 1");
+  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off");
   assert.equal(preferenceSummary(null), "unknown");
   assert.equal(preferenceState({ state: "read", payload: prefs }).state, "ready");
   assert.equal(preferenceState({ state: "pending" }).state, "loading");
@@ -712,7 +708,7 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
   assert.equal(model.timezone, "UTC");
   assert.equal(model.quietHoursSet, false, "the captured row has both times null");
   assert.equal(model.quietNow, false);
-  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off · version 3");
+  assert.equal(preferenceSummary(model), "No quiet hours set · UTC · device push off");
 
   const feed = captured("notification-feed");
   assert.equal(validFeedPayload(feed), true, "the feed validator refuses production");
@@ -751,8 +747,8 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 /* ------------------------------------------------------------- behaviour 9 */
 
 test("B12-9 the current contract still pins both preference verbs and their order", async () => {
-  assert.equal(contract.version, "1.44.0", "the current interface retains notification preferences");
-  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81",
+  assert.equal(contract.version, "1.45.0", "the current interface retains notification preferences");
+  assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74",
     "the producer pin includes preference verbs and the Codex checkpoint read");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 
@@ -865,4 +861,43 @@ test("B12-11 a version conflict reports unsaved changes while retaining version 
     /Your changes were not saved/);
   assert.match(pageJs, /const line = versionConflictLine\(current, built\.args\.base_version\);/);
   assert.match(pageJs, /const current = refusal\.currentVersion \?\? fresh\?\.version \?\? null;/);
+});
+
+test("Updates house grammar: preference summaries use AM/PM and keep versions in Details", () => {
+  const model = preferenceView({ ok: true, exists: true, version: 7, device_opt_in: true,
+    quiet_hours_start: "22:00:00", quiet_hours_end: "07:30:00", timezone: "UTC" });
+  assert.equal(preferenceSummary(model), "Quiet hours 10:00 PM to 7:30 AM UTC · device push on");
+  const dom = new JSDOM(html), doc = dom.window.document;
+  try {
+    assert.ok(doc.getElementById("prefVersion").closest("details"));
+    assert.equal(doc.getElementById("quietStart").type, "text");
+    assert.match(doc.getElementById("quietStart").placeholder, /PM/);
+    const args = setPreferenceArgs({ quiet_hours_start: "10:00 PM", quiet_hours_end: "7:30 AM" }, model);
+    assert.equal(args.args.quiet_hours_start, "22:00");
+    assert.equal(args.args.quiet_hours_end, "07:30");
+    assert.equal(toInputTime("12:00 AM"), "00:00");
+    assert.equal(toInputTime("12:00 PM"), "12:00");
+    assert.equal(toInputTime("13:00 PM"), null);
+    // Common spellings of one clock time are accepted; a bare hour is not.
+    for (const typed of ["10 PM", "10pm", "10:00pm", "10:00 p.m."]) assert.equal(toInputTime(typed), "22:00", typed);
+    assert.equal(toInputTime("7:30am"), "07:30");
+    assert.equal(toInputTime("10"), null);
+    assert.equal(toInputTime("0 AM"), null);
+    assert.equal(preferenceTimeLabel("00:05"), "12:05 AM");
+    assert.equal(preferenceTimeLabel("12:00:00"), "12:00 PM");
+  } finally { dom.window.close(); }
+});
+
+test("Updates activity labels come from the app's single actor and change-action homes", () => {
+  const rows = activityRows([
+    { actor: "dell", verb: "patch-deal-field", field: "phase", subject_type: "deal", subject_id: "d14", recorded_at: "2026-01-14T14:20:00Z" },
+    { actor: "claude", verb: "add-deal-note", field: "note", subject_type: "deal", subject_id: "d15", recorded_at: "2026-01-14T14:21:00Z" },
+    { actor: "a1b2c3d4-0000-4000-8000-000000000000", verb: "set-next-step", subject_type: "lead", subject_id: "l1", recorded_at: "2026-01-14T14:22:00Z" },
+  ]);
+  assert.deepEqual(rows.map((row) => `${row.actor} · ${row.verb} · ${row.subject}`), [
+    "Recorded actor · Set next step · Lead", "Claude · Note added · Deal", "Dell · Phase · Deal",
+  ]);
+  assert.equal(rows[0].details.actor, "a1b2c3d4-0000-4000-8000-000000000000");
+  assert.equal(rows[0].details.verb, "set-next-step");
+  assert.doesNotMatch(modelJs, /"joe" \? "Joe"|ACTIVITY_LABELS/, "actor and action labels are not redefined here");
 });

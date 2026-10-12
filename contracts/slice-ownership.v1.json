@@ -3,6 +3,7 @@
   "shared": [
     "contracts/routes.v1.json",
     "contracts/slice-ownership.v1.json",
+    "contracts/runtime-errors.v1.json",
     "css/app-shell.css",
     "css/business-workspace.css",
     "css/correspondence.css",
@@ -40,6 +41,9 @@
     "js/doc-context.js",
     "js/doc-presence.js",
     "js/example-sessions.js",
+    "js/error-tracking.js",
+    "js/error-tracking-entry.js",
+    "js/feature-switches.js",
     "js/fixture-client.js",
     "js/global-call-mode.js",
     "js/home-dashboard-model.js",
@@ -116,6 +120,7 @@
     "test/mobile-coverage.test.mjs",
     "test/phone-engine.test.mjs",
     "test/entry-details.test.mjs",
+    "test/feature-switches.test.mjs",
     "test/full-main.test.mjs",
     "test/ia-routes.test.mjs",
     "test/inline-style-csp.test.mjs",
@@ -144,6 +149,7 @@
     "test/staging-control-visibility.test.mjs",
     "test/synthetic-fixtures.test.mjs",
     "test/test-harness.test.mjs",
+    "test/v1-residual-browser.test.mjs",
     "test/visibility-poll.test.mjs",
     "test/visual-system.test.mjs",
     "test/w1-auto-refresh.test.mjs",
@@ -151,6 +157,8 @@
     "test/w1-shell-browser.test.mjs",
     "test/w1b-layout-browser.test.mjs",
     "test/worker.test.mjs",
+    "test/error-tracking.test.mjs",
+    "test/error-tracking-browser.test.mjs",
     "tours/vendor/maplibre-gl-6.4.1/LICENSE.txt",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl-shared.mjs",
     "tours/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs",
@@ -161,6 +169,10 @@
     "js/navigation.js",
     "test/performance-budget.test.mjs",
     "test/performance-comment.test.mjs",
-    "test/fixture-server.test.mjs"
+    "test/fixture-server.test.mjs",
+    "test/mcp-requests.test.mjs",
+    "js/mcp-requests.mjs",
+    "js/current-read.mjs",
+    "test/current-read.test.mjs"
   ]
 }

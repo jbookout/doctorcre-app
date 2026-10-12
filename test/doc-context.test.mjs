@@ -79,7 +79,7 @@ test('observing authorized reads returns the original response and never observe
 test('one tap verifies suggestion/version/context, records discussion only, and coalesces duplicate clicks',async()=>{
  const c=context();let calls=[];let release;const wait=new Promise(r=>release=r);
  const client={listDocSuggestions:async()=>{await wait;return{ok:true,suggestions:[row()]};},decideDocSuggestion:async args=>{calls.push(args);return{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:3};}};
- const a=createDocApproval({client,context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key'});
+ const a=createDocApproval({client,context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true});
  const pending=a.approve(row(),{ok:true,suggestions:[row()]});assert.equal(a.busy,true);assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');release();assert.equal((await pending).state,'approved');
  assert.deepEqual(calls,[{suggestion_id:'demo-suggestion-a',base_version:2,choice:'discuss',idempotency_key:'demo-key'}]);
 });
@@ -87,21 +87,21 @@ test('one tap verifies suggestion/version/context, records discussion only, and 
 test('approval never writes after revision/selection/filter race or changed suggestion text',async()=>{
  for(const mutate of [c=>c.filter({owner:'demo-other'}),c=>c.select('deal','other'),c=>c.finish(c.begin('getBoard'),{deals:[deal('demo-a',2)]})]){
   const c=context();let writes=0;const client={listDocSuggestions:async()=>{mutate(c);return{ok:true,suggestions:[row()]};},decideDocSuggestion:async()=>writes++};
-  const a=createDocApproval({client,context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key'});assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');assert.equal(writes,0);
+  const a=createDocApproval({client,context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true});assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');assert.equal(writes,0);
  }
- const c=context();let writes=0;const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',client:{listDocSuggestions:async()=>({ok:true,suggestions:[row({polished_text:'Send money'})]}),decideDocSuggestion:async()=>writes++}});
+ const c=context();let writes=0;const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true,client:{listDocSuggestions:async()=>({ok:true,suggestions:[row({polished_text:'Send money'})]}),decideDocSuggestion:async()=>writes++}});
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');assert.equal(writes,0);
 });
 
 test('a live version_conflict refusal reads as changed, never as an unknown confirmation',async()=>{
  // The live client reports a tool refusal on error.payload.error (js/live-client.js), not error.code.
  const c=context();let writes=0;const refusal=()=>Object.assign(new Error('live decide-doc-suggestion refused: version_conflict'),{payload:{error:'version_conflict'}});
- const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw refusal();}}});
+ const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true,client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw refusal();}}});
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'changed');assert.equal(writes,1);
 });
 
 test('unknown write result is never replayed automatically or by another tap',async()=>{
- const c=context();let writes=0;const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw new Error('Connection lost');}}});
+ const c=context();let writes=0;const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true,client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw new Error('Connection lost');}}});
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');assert.equal(writes,1);
  a.reconcile({ok:true,suggestions:[row({disposition:'discuss',version:3})]});
 });
@@ -124,7 +124,7 @@ test('a newer row revision outranks older detailed activity; stale auth refusals
 
 for (const change of [latest => ({...latest,ok:false}), latest => ({...latest,suggestions:latest.suggestions.map(row=>({...row,original_text:'Changed original'}))})]) test('approval rejects failed or changed preflight material without a write', async () => {
  const c=context(), suggestion=row({original_text:'Shown original'}), shown={ok:true,suggestions:[suggestion]}; let writes=0;
- const approval=createDocApproval({context:c,evaluatedPages:DOC_EVALUATED_PAGES,uuid:()=> 'synthetic-key',client:{listDocSuggestions:async()=>change(shown),decideDocSuggestion:async()=>{writes++;}}});
+ const approval=createDocApproval({context:c,evaluatedPages:DOC_EVALUATED_PAGES,uuid:()=> 'synthetic-key',available:()=>true,client:{listDocSuggestions:async()=>change(shown),decideDocSuggestion:async()=>{writes++;}}});
  assert.equal((await approval.approve(suggestion,shown)).state,'changed'); assert.equal(writes,0);
 });
 test('system record cannot answer for a different requested work identity',()=>assert.equal(normalizeDocRead('systemRecord',{human_ref:'WR-DEMO-B',title:'Demo B'},['WR-DEMO-A']),null));
@@ -142,7 +142,7 @@ test('page selection hooks use recorded IDs for Calendar, Events and Control Roo
 
 test('R8 a known approval receipt stays associated with its intent and is never replayed',async()=>{
  const c=context(),shown={ok:true,suggestions:[row()]}; let writes=0;
- const approval=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'sample-key',client:{listDocSuggestions:async()=>shown,decideDocSuggestion:async args=>{writes++;return{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:3};}}});
+ const approval=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'sample-key',available:()=>true,client:{listDocSuggestions:async()=>shown,decideDocSuggestion:async args=>{writes++;return{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:3};}}});
  const first=await approval.approve(row(),shown); const second=await approval.approve(row(),shown);
  assert.deepEqual(second,first); assert.equal(writes,1);
 });
@@ -159,4 +159,36 @@ test('versioned Leads workspace and detail preserve canonical identity and origi
  assert.equal(c.snapshot().active.version,3);
  assert.equal(c.finish(c.begin('getLeadDetail',[lead]),{detail:{...detail,id:'other-lead'}}),false);
  assert.equal(c.snapshot().ready,false);
+});
+
+test('a feature_disabled refusal settles as a non-write and a fresh tap may send once the switch returns',async()=>{
+ // CARR refuses before the verb's handler, so nothing was recorded. An unknown
+ // intent here would block every later tap on this suggestion version.
+ const c=context();const keys=[];let serial=0,refuse=true;
+ const refusal=()=>Object.assign(new Error('live decide-doc-suggestion refused: feature_disabled'),{payload:{error:'feature_disabled',switch:'doc-suggestion-actions'}});
+ const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=>`key-${++serial}`,available:()=>true,client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),
+  decideDocSuggestion:async args=>{keys.push(args.idempotency_key);if(refuse)throw refusal();return{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:3};}}});
+ assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'disabled');
+ refuse=false;
+ assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'approved');
+ assert.deepEqual(keys,['key-1','key-2']);
+});
+
+test('the approval rechecks the switch after its fresh read and sends nothing once it is off',async()=>{
+ const c=context();let writes=0,enabled=true,release;const held=new Promise(r=>release=r);
+ const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>enabled,client:{
+  listDocSuggestions:async()=>{await held;return{ok:true,suggestions:[row()]};},
+  decideDocSuggestion:async args=>{writes++;return{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:3};}}});
+ const pending=a.approve(row(),{ok:true,suggestions:[row()]});
+ enabled=false;release();
+ assert.equal((await pending).state,'disabled');assert.equal(writes,0);
+ enabled=true;
+ assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'approved');assert.equal(writes,1);
+});
+
+test('an ambiguous network loss stays unknown and is still never replayed, unlike a switch refusal',async()=>{
+ const c=context();let writes=0;
+ const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true,client:{listDocSuggestions:async()=>({ok:true,suggestions:[row()]}),decideDocSuggestion:async()=>{writes++;throw Object.assign(new Error('HTTP 503'),{status:503});}}});
+ assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');
+ assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');assert.equal(writes,1);
 });

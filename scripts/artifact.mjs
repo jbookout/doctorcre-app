@@ -10,6 +10,7 @@ const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
   route_contract: "contracts/app-routes.v1.json",
+  runtime_errors: 'contracts/runtime-errors.v1.json',
 };
 const SHA = /^[0-9a-f]{64}$/;
 
@@ -108,12 +109,39 @@ async function inputPaths(root, sliceRegistration) {
   return [...new Set(paths)].sort();
 }
 
+const ERROR_CONTRACT_IMPORT = "import contract from '../contracts/runtime-errors.v1.json' with { type: 'json' };";
+const ERROR_BOOTSTRAP = '<script type="module" src="/js/error-tracking-entry.js"></script>';
+
+// Every signed-in application page loads the error bootstrap as its first
+// module, and the shipped bootstrap carries the release SHA and the pinned wire
+// contract inline. Token-authenticated public reports stay outside this ingress.
+async function trackErrors(path, content, readSource, commit) {
+  const replaceOnce = (pattern, replacement) => {
+    const source = content.toString("utf8");
+    if (typeof pattern === "string" ? !source.includes(pattern) : !pattern.test(source)) throw new Error(`error tracking cannot be installed in ${path}`);
+    return Buffer.from(source.replace(pattern, replacement));
+  };
+  if (path === "js/error-tracking.js") {
+    const contract = JSON.parse((await readSource(CONTRACT_INPUTS.runtime_errors)).toString("utf8"));
+    return replaceOnce(ERROR_CONTRACT_IMPORT, () => `const contract = ${JSON.stringify(contract)};`);
+  }
+  if (path === "js/error-tracking-entry.js") return replaceOnce("'__DOCTORCRE_RELEASE_SHA__'", () => `'${commit}'`);
+  if (path.endsWith(".html") && !path.startsWith("reports/")) {
+    // Before any other script: after <head>, or where the parser opens an implied head.
+    const source = content.toString("utf8");
+    const anchor = /<head(\s[^>]*)?>/i.exec(source) || /^(\uFEFF?\s*<!doctype[^>]*>)?/i.exec(source);
+    const at = anchor.index + anchor[0].length;
+    return Buffer.from(source.slice(0, at) + ERROR_BOOTSTRAP + source.slice(at));
+  }
+  return content;
+}
+
 async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
   const payload = [];
   const files = new Map();
   for (const path of paths) {
-    let content = await readSource(path);
+    let content = await trackErrors(path, await readSource(path), readSource, commit);
     if (path === "reports/share.js") {
       // Compile the report's explicit module graph from the same admitted bytes
       // used by assembly and committed-source verification, never the live disk.

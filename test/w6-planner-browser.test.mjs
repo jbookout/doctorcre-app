@@ -19,7 +19,7 @@ async function open(t, width) {
     const request = route.request(), url = new URL(request.url()); calls.push({ path: url.pathname, method: request.method(), body: request.postData() });
     if (url.origin !== "http://localhost") return route.abort();
     if(url.pathname === "/mcp") {
-      const {name}=request.postDataJSON().params; assert.ok(["list-doc-suggestions","morning-brief"].includes(name));
+      const {name}=request.postDataJSON().params; assert.ok(["list-feature-switches","list-doc-suggestions","morning-brief"].includes(name));
       return route.fulfill({json:{result:{content:[{type:"text",text:JSON.stringify({ok:true,suggestions:[]})}]}}});
     }
     if (url.pathname.startsWith("/api/")) {

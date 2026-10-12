@@ -1,3 +1,4 @@
+import { createCurrentRead } from "../js/current-read.mjs";
 import { authGeneration, authReadable } from '../js/progress-auth.js';
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -270,7 +271,7 @@ test("Dot 10: an answered app release with pending CARR reads cannot claim succe
 
 test("Dot 11: a blocked second rename cannot replace the retained recovery intent", async () => {
   const calls=[];const operations=new Map();
-  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:{},uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop},["dispatch"]);
+  const h=handlers("js/conversations.js","async function dispatch(","function rename",{performCommand,commandState:{},uuidv4:()=>"00000000-0000-4000-8000-000000000001",operations,dock:{record:noop},announce:noop,load:async()=>{},createOperationKey:()=>"create",open:noop,sendAllowed:()=>true,FEATURE_DISABLED:"feature_disabled",suggestionGate:null},["dispatch"]);
   const send=async args=>{calls.push(args);if(calls.length===1)throw new Error("lost response");return {ok:true};};
   await h.dispatch("rename:A",{name:"First"},"Rename",send);await h.dispatch("rename:A",{name:"Second"},"Rename",send);
   const saved=operations.get("rename:A");await h.dispatch("rename:A",saved.args,saved.summary,saved.send);
@@ -278,8 +279,8 @@ test("Dot 11: a blocked second rename cannot replace the retained recovery inten
 });
 
 function searchHarness() {
-  const view={query:"Alpha",kinds:[],sequence:0};const replies=new Map();
-  const globals={view,client:{find:args=>replies.get(args.q),findAndCatchUp:async()=>({})},queryIsSendable:q=>q.trim().length>0,render:noop,pushAddress:noop,acceptsSearchResponse:(a,b)=>a===b,validSearchPayload:()=>true,validCatchUpPayload:()=>true,buildFindArguments:q=>({q}),buildFindAndCatchUpArguments:q=>({q}),FIND_CATCH_UP_LIMIT_DEFAULT:10,classifySearchFailure:()=>"unknown",refusalDetail:()=>({}),parseSearchAddress:query=>({query:new URLSearchParams(query).get("q")||"",kinds:[],present:true}),location:{search:"?q=Alpha"},history:{pushState:noop,replaceState:noop},searchAddress:()=>""};
+  const view={query:"Alpha",kinds:[]};const replies=new Map();
+  const globals={view,client:{find:args=>replies.get(args.q),findAndCatchUp:async()=>({})},queryIsSendable:q=>q.trim().length>0,render:noop,pushAddress:noop,searchReads:createCurrentRead(),validSearchPayload:()=>true,validCatchUpPayload:()=>true,buildFindArguments:q=>({q}),buildFindAndCatchUpArguments:q=>({q}),FIND_CATCH_UP_LIMIT_DEFAULT:10,classifySearchFailure:()=>"unknown",refusalDetail:()=>({}),parseSearchAddress:query=>({query:new URLSearchParams(query).get("q")||"",kinds:[],present:true}),location:{search:"?q=Alpha"},history:{pushState:noop,replaceState:noop},searchAddress:()=>""};
   const h=handlers("js/search.js","async function read(","/* ------------------------------------------------------------------ the wiring",globals,["read","restoreFromAddress"]);
   return {h,view,replies};
 }

@@ -1,4 +1,6 @@
+import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
+import { formatDueStamp, formatClock } from "./visual-system.js";
 // V5-UX-B06 — Commercial charts and linked drilldown: DOM wiring only.
 //
 // Every decision this file paints is made in ./charts-model.js. Nothing here
@@ -16,8 +18,8 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import {
   CHARTS_STATE_COPY, NEVER_REVIEWED, NO_FORECAST_SENTENCE, NO_VALUE_KEY,
   ONE_READ_SENTENCE, OWNER_DISCLOSURE_SENTENCE, SNAPSHOT_SENTENCE,
-  accountRows, acceptsBoardResponse, barShare, bucketRows, chartsAddress, chartsPhase,
-  classifyBoardFailure, dimensionById, filterDeals, nextDateCoverage, ownerRows,
+  accountRows, barShare, bucketRows, chartsAddress, chartsPhase,
+  classifyBoardFailure, dealsDestination, dimensionById, filterDeals, nextDateCoverage, ownerRows,
   parseChartsAddress, phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage,
   validBoardPayload, waitingSummary, writeChartsView,
 } from "./charts-model.js";
@@ -30,18 +32,12 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** One place holds what the Charts tab believes; nothing else keeps a copy. */
 const view = {
   status: "loading", payload: null, readAt: null, group: null, pick: null,
-  sequence: 0, ownerOpen: false,
+  ownerOpen: false, openAccounts: new Set(),
 };
 
 let client = null;
 let storage = null;
-/** The clock of the moment the response resolved. The verb returns no time of
- * its own, so this page says "Read at" and never "as of". */
-function clockNow(now = new Date()) {
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
+const boardReads = createCurrentRead();
 
 /* -------------------------------------------------------------------- painting */
 
@@ -56,7 +52,7 @@ function chartHtml({ id, title, eyebrow, rows, note = "", group = null }) {
     const share = barShare(row, rows);
     const selected = group && view.group === group && view.pick === row.key;
     const pick = group
-      ? `<button class="chart-pick" type="button" data-group="${escapeHtml(group)}" data-pick="${escapeHtml(row.key)}" aria-pressed="${selected}">${escapeHtml(row.label)}</button>`
+      ? `<button class="chart-pick" type="button" data-group="${escapeHtml(group)}" data-pick="${escapeHtml(row.key)}" data-focus-key="${escapeHtml(pickFocusKey(group, row.key))}" aria-pressed="${selected}">${escapeHtml(row.label)}</button>`
       : `<span>${escapeHtml(row.label)}</span>`;
     return `<tr${row.missing ? ' data-missing="true"' : ""}${selected ? ' data-selected="true"' : ""}>
       <th scope="row">${pick}</th>
@@ -68,7 +64,7 @@ function chartHtml({ id, title, eyebrow, rows, note = "", group = null }) {
     <div class="card-heading"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2 id="${escapeHtml(id)}Title">${escapeHtml(title)}</h2></div></div>
     <table class="chart-table">
       <caption class="sr-only">${escapeHtml(title)} — ${escapeHtml(String(total))} records</caption>
-      <thead><tr><th scope="col">${escapeHtml(dimensionById(group)?.label || "Row")}</th><th scope="col">Records</th><th scope="col"><span class="sr-only">Share</span></th></tr></thead>
+      <thead><tr><th scope="col">${escapeHtml(dimensionById(group)?.label || "Row")}</th><th scope="col">Records</th><th scope="col" class="chart-bar-head"><span class="sr-only">Share</span></th></tr></thead>
       <tbody>${body}</tbody>
     </table>
     <p class="caption">${escapeHtml(String(total))} records in this chart.${note ? ` ${escapeHtml(note)}` : ""}</p>
@@ -83,14 +79,15 @@ function accountsHtml(accounts) {
     </section>`;
   }
   const rows = accounts.map((account) => `<tr>
-    <th scope="row">${escapeHtml(account.name)}${account.ref ? ` <span class="quiet">${escapeHtml(account.ref)}</span>` : ""}</th>
+    <th scope="row">${escapeHtml(account.name)}</th>
     ${account.counts.map((count) => `<td class="chart-count"${count.known ? "" : ' data-unknown="true"'}>${escapeHtml(count.text)}</td>`).join("")}
-    <td>${escapeHtml(account.review)}</td>
+    <td>${escapeHtml(formatDueStamp(account.review, formatClock(account.review)) || account.review)}</td>
+    <td>${account.ref ? `<details class="chart-details" data-account="${escapeHtml(account.ref)}"${view.openAccounts.has(account.ref) ? " open" : ""}><summary data-focus-key="${escapeHtml(`account:${account.ref}`)}">Details<span class="sr-only"> for ${escapeHtml(account.name)}</span></summary><dl><dt>Account reference</dt><dd>${escapeHtml(account.ref)}</dd></dl></details>` : "—"}</td>
   </tr>`).join("");
   return `<section class="card glass chart-card" id="chartAccounts" aria-labelledby="chartAccountsTitle">
     <div class="card-heading"><div><p class="eyebrow">National accounts</p><h2 id="chartAccountsTitle">Accounts</h2></div></div>
     <div class="chart-scroll"><table class="chart-table">
-      <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th></tr></thead>
+      <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th><th scope="col">Details</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
 
@@ -102,10 +99,10 @@ function ownerHtml(deals) {
   return `<section class="card glass chart-card" id="chartOwners" aria-labelledby="chartOwnersTitle">
     <div class="card-heading"><div><p class="eyebrow">By name, never by count</p><h2 id="chartOwnersTitle">Owner split</h2></div></div>
     <details id="ownerDisclosure"${view.ownerOpen ? " open" : ""}>
-      <summary>Show the owner split</summary>
+      <summary data-focus-key="owner-disclosure">Show the owner split</summary>
       <table class="chart-table">
         <thead><tr><th scope="col">Owner</th><th scope="col">Records</th></tr></thead>
-        <tbody>${rows.map((row) => `<tr${row.missing ? ' data-missing="true"' : ""}><th scope="row"><button class="chart-pick" type="button" data-group="owner" data-pick="${escapeHtml(row.key)}" aria-pressed="${view.group === "owner" && view.pick === row.key}">${escapeHtml(row.label)}</button></th><td class="chart-count">${escapeHtml(String(row.count))}</td></tr>`).join("")}</tbody>
+        <tbody>${rows.map((row) => `<tr${row.missing ? ' data-missing="true"' : ""}><th scope="row"><button class="chart-pick" type="button" data-group="owner" data-pick="${escapeHtml(row.key)}" data-focus-key="${escapeHtml(pickFocusKey("owner", row.key))}" aria-pressed="${view.group === "owner" && view.pick === row.key}">${escapeHtml(row.label)}</button></th><td class="chart-count">${escapeHtml(String(row.count))}</td></tr>`).join("")}</tbody>
       </table>
     </details>
     <p class="caption">${escapeHtml(OWNER_DISCLOSURE_SENTENCE)}</p>
@@ -117,11 +114,12 @@ function selectionHtml(deals, all) {
   if (!label) {
     return `<p class="caption" id="chartsSelection">No slice chosen. All ${escapeHtml(String(all.length))} records on the board are counted below.</p>`;
   }
+  const destination = dealsDestination(view.group, view.pick);
   return `<div class="chip-bar" id="chartsSelection">
     <span class="chip-label">${escapeHtml(label)}</span>
     <span class="chip-list"><span class="chip">${escapeHtml(String(deals.length))} of ${escapeHtml(String(all.length))} records</span>
-    <button class="chip" type="button" id="chartsClear">Clear this slice</button>
-    <a class="chip" href="/deals?view=board">Open in Deals board</a></span>
+    <button class="chip" type="button" id="chartsClear" data-focus-key="clear">Clear this slice</button>
+    <a class="chip" href="${escapeHtml(destination.href)}" data-focus-key="deals">${escapeHtml(destination.label)}</a></span>
   </div>`;
 }
 
@@ -143,14 +141,35 @@ function renderState(phase) {
   if (live && live.textContent !== copy.title) live.textContent = copy.title;
 }
 
-function render() {
+/** The focus key of a slice's row control, shared by every chart and the owner split. */
+const pickFocusKey = (group, pick) => `pick:${group}:${pick}`;
+
+/**
+ * Every paint replaces the canvas, so what a person was doing in it is carried
+ * across: the account Details they opened and the control that held focus. A
+ * control that is gone (the cleared slice's chip) hands focus to `fallback`.
+ */
+function canvasMemory(canvas) {
+  const accounts = canvas?.querySelectorAll("details[data-account]") || [];
+  if (accounts.length) view.openAccounts = new Set([...accounts].filter((node) => node.open).map((node) => node.dataset.account));
+  const active = document.activeElement;
+  return canvas?.contains(active) ? active.closest("[data-focus-key]")?.dataset.focusKey ?? null : null;
+}
+
+function restoreFocus(canvas, keys) {
+  const targets = [...canvas.querySelectorAll("[data-focus-key]")];
+  keys.filter(Boolean).map((key) => targets.find((node) => node.dataset.focusKey === key)).find(Boolean)?.focus({ preventScroll: true });
+}
+
+function render({ focusFallback = null } = {}) {
   const phase = chartsPhase({ status: view.status, payload: view.payload, group: view.group, pick: view.pick });
   const all = view.payload && validBoardPayload(view.payload) ? view.payload.deals : [];
   const deals = filterDeals(all, view.group, view.pick);
   const canvas = $("chartsCanvas");
+  const focused = canvasMemory(canvas);
 
   const readAt = $("chartsReadAt");
-  if (readAt) readAt.textContent = view.readAt ? `Updated ${view.readAt}` : "Updating…";
+  if (readAt) readAt.textContent = view.status === "loading" ? "Updating…" : view.readAt ? updatedLabel(view.readAt) : "Unavailable";
 
   if (canvas) {
     canvas.setAttribute("aria-busy", String(phase === "loading"));
@@ -192,6 +211,7 @@ function render() {
         node.style.setProperty("--share", `${node.dataset.share}%`);
       });
     }
+    if (focused) restoreFocus(canvas, [focused, focusFallback]);
   }
 
   renderState(phase);
@@ -205,41 +225,38 @@ function render() {
 
 /* --------------------------------------------------------------------- reading */
 
-/**
- * ONE `getBoard()`, carrying a sequence token. A late answer is dropped without
- * touching `view`, so the newer answer stands.
- */
-export async function read({ push = false } = {}) {
-  const sequence = ++view.sequence;
-  view.status = "loading";
-  render();
+// The poller's reads and a person's Retry share one lifetime: only the
+// current answer paints.
+export async function read({ push = false, signal } = {}) {
+  // A refresh with a board in hand keeps that board, its time and any open
+  // Details on screen until the answer arrives; only a page with nothing to
+  // show waits on the skeleton.
+  if (view.status === "ready") $("chartsCanvas")?.setAttribute("aria-busy", "true");
+  else {
+    view.status = "loading";
+    render();
+  }
   if (push) pushAddress();
-  let payload = null;
-  const pending = client.getBoard({ workspace: "all" });
-  try {
-    payload = await pending;
-  } catch (error) {
-    if (!acceptsBoardResponse(view.sequence, sequence)) return;
-    view.status = classifyBoardFailure(error);
-    view.payload = null;
-    view.readAt = null;
-    render();
-    return;
-  }
-  if (!acceptsBoardResponse(view.sequence, sequence)) return;
-  if (!validBoardPayload(payload)) {
-    // §4's own wording: a NON-OBJECT payload is the unanswered path. An object
-    // that is merely the wrong shape is the one this page cannot read.
-    view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
-    view.payload = null;
-    view.readAt = null;
-    render();
-    return;
-  }
-  view.status = "ready";
-  view.payload = payload;
-  view.readAt = clockNow();
-  render();
+  return boardReads.run(({ signal }) => client.getBoard({ workspace: "all", signal }), {
+    signal,
+    success(payload) {
+      if (!validBoardPayload(payload)) {
+        // §4's own wording: a NON-OBJECT payload is the unanswered path. An object
+        // that is merely the wrong shape is the one this page cannot read.
+        view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
+        view.payload = null; view.readAt = null;
+      } else {
+        // The producer returns no timestamp; record when this read resolved.
+        view.status = "ready"; view.payload = payload; view.readAt = new Date().toISOString();
+      }
+      render();
+    },
+    failure(error) {
+      view.status = classifyBoardFailure(error);
+      view.payload = null; view.readAt = null;
+      render();
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ the address */
@@ -255,10 +272,11 @@ function pushAddress() {
  */
 function choose(group, pick) {
   const same = view.group === group && view.pick === pick;
+  const cleared = view.group ? pickFocusKey(view.group, view.pick) : null;
   view.group = same ? null : group;
   view.pick = same ? null : pick;
   pushAddress();
-  render();
+  render({ focusFallback: cleared });
 }
 
 /**
@@ -304,8 +322,16 @@ export function mountCharts({ client: boardClient, storage: storageImpl } = {}) 
   }
   wire();
   const address = restoreFromAddress();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => read({ push: false }) });
-  read({ push: false });
+  // An unavailable answer rejects to the poller, so it retries on its short
+  // backoff and the page recovers on its own without waiting a full interval.
+  // The poller takes the first read too; with no window to poll in, the page
+  // still reads once.
+  const poller = mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => {
+    await read({ push: false, signal });
+    if (view.status === "unavailable") throw new Error("Charts board unavailable");
+  } });
+  if (globalThis.window) poller.refresh();
+  else read({ push: false });
   return { view, address };
 }
 

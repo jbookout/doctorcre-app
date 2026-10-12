@@ -42,7 +42,6 @@
       </div>
       <p class="headline" id="unreadLine">unknown</p>
       <p class="quiet-banner" id="quietNowBanner" data-quiet="off" hidden></p>
-      <p class="caption" id="vocabularyLine">A notification is only ever an action-required item or a failure. Routine progress mints nothing, so nothing routine can appear here.</p>
     </section>
 
     <p class="sr-only" id="feedLive" aria-live="polite" role="status">Reading your notifications…</p>
@@ -58,27 +57,26 @@
         <div><p class="eyebrow">Quiet hours</p><h2 id="quietHoursTitle">Your notification preferences</h2></div>
         <span class="as-of" id="prefAsOf">unknown</span>
       </div>
-      <p class="headline" id="quietHoursEffect">unknown</p>
       <p class="caption" id="prefOrigin">unknown</p>
       <div class="state-block" id="prefState" data-state="loading"><h3 id="prefStateTitle">Reading your preferences…</h3></div>
-      <form class="pref-form" id="prefForm" novalidate>
+      <form class="pref-form" id="prefForm" novalidate hidden>
         <div class="switch-field">
           <input id="deviceOptIn" type="checkbox">
           <label for="deviceOptIn">Send a device push when something is addressed to me</label>
         </div>
         <div class="pref-grid">
-          <div class="field"><label for="quietStart">Quiet hours start</label><input id="quietStart" type="time" autocomplete="off"></div>
-          <div class="field"><label for="quietEnd">Quiet hours end</label><input id="quietEnd" type="time" autocomplete="off"></div>
+          <div class="field"><label for="quietStart">Quiet hours start</label><input id="quietStart" type="text" autocomplete="off" placeholder="10:00 PM"></div>
+          <div class="field"><label for="quietEnd">Quiet hours end</label><input id="quietEnd" type="text" autocomplete="off" placeholder="7:00 AM"></div>
           <div class="field"><label for="quietTimezone">Timezone</label><input id="quietTimezone" type="text" list="timezoneNames" autocomplete="off" spellcheck="false" placeholder="UTC"><datalist id="timezoneNames"></datalist></div>
         </div>
         <p class="caption" id="prefSummary">unknown</p>
+        <details class="record-details"><summary>Details</summary><p class="caption" id="prefVersion"></p></details>
         <div class="pref-act">
           <button class="btn btn-primary" type="submit" id="prefSave">Save preferences</button>
           <button class="btn" type="button" id="prefClear">Clear quiet hours</button>
         </div>
         <p class="caption pref-message" id="prefMessage" role="status" aria-live="polite"></p>
       </form>
-      <p class="caption" id="quietHoursScope">unknown</p>
     </section>
 
     <section class="card glass" data-section="activity" id="activityBlock" aria-labelledby="activityTitle">
@@ -86,19 +84,19 @@
         <div><p class="eyebrow">Accountable activity</p><h2 id="activityTitle">Who did what</h2></div>
         <span class="as-of" id="activityAsOf">unknown</span>
       </div>
-      <p class="caption">This is the activity stream, not your feed. A notification is addressed to you; an event is something that happened.</p>
       <ul class="work-list" id="activityList"></ul>
       <div class="state-block" id="activityState" data-state="unknown" hidden><h3>The activity stream could not be verified</h3></div>
     </section>
 
-    <section class="card glass" data-section="exposure" aria-labelledby="exposureTitle">
-      <div class="card-heading"><div><p class="eyebrow">On a phone</p><h2 id="exposureTitle">What this page shows a passer-by</h2></div></div>
-      <p class="caption" id="exposureStatement">unknown</p>
-    </section>
+    <details class="context-help">
+      <summary>About updates</summary>
+      <p class="caption">Notifications are action-required items or failures addressed to you. Routine progress appears in activity.</p>
+      <p class="caption">Activity records who did what. Acknowledging clears the notification, never the work behind it.</p>
+    </details>
   </main>
 
   <div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small">DoctorCRE · Notifications · Acknowledging clears the notification, never the work behind it.</p></footer>
+  <footer class="shell"><p class="small">DoctorCRE · Updates</p></footer>
   <script type="module" src="/js/notifications.js"></script>
 </body>
 </html>

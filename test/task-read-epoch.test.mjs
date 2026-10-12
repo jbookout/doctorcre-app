@@ -1,64 +1,48 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { openTasks, waitForTasks } from './task-page-fixture.mjs';
 
-import { invalidateTaskRead, isCurrentTaskRead, shouldFocusTaskRetry } from "../js/task-records-model.js";
+const boardHooks = `window.taskReplies ??=[]; const loops=c.loopBoard; c.loopBoard=async args=>{
+ const payload=await loops(args); if(window.holdTasks && args.summary===false) await new Promise(resolve=>window.taskReplies.push(resolve)); return payload;
+}; const identity=c.getBoard; c.getBoard=async args=>{
+ if(window.failIdentity) throw Error('synthetic identity failure');
+ if(window.holdIdentity) await new Promise(resolve=>window.identityReplies.push(resolve)); return identity(args);
+}; window.identityReplies ??=[];`;
 
-test("a failed identity read fences out an earlier successful board response", async () => {
-  const view = { sequence: 8, status: "ready", rows: [{ number: "old" }], message: null };
-  const oldBoardRead = ++view.sequence;
-  let answerOldBoard;
-  const pending = new Promise((resolve) => { answerOldBoard = resolve; }).then((rows) => {
-    if (isCurrentTaskRead(view, oldBoardRead)) {
-      view.rows = rows;
-      view.status = "ready";
-    }
-  });
-  invalidateTaskRead(view, "unverified", "Account unverified");
-  answerOldBoard([{ number: "should-never-show" }]);
-  await pending;
-  assert.equal(isCurrentTaskRead(view, oldBoardRead), false);
-  assert.equal(view.status, "unverified");
-  assert.deepEqual(view.rows, []);
-  assert.equal(view.message, "Account unverified");
+test('a failed identity read fences out an earlier successful Tasks board response', async t => {
+  const { page, errors } = await openTasks(t, `window.holdTasks=true; ${boardHooks}`);
+  await page.waitForFunction(() => window.taskReplies?.length === 2);
+  await page.evaluate(() => { window.failIdentity=true; window.dispatchEvent(new Event('online')); });
+  await page.waitForFunction(() => document.querySelector('#taskStatusLabel')?.textContent === 'Account unverified');
+  await page.evaluate(() => window.taskReplies.splice(0).forEach(resolve => resolve()));
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+  assert.equal(await page.locator('#taskList [data-task]').count(), 0);
+  assert.equal(await page.locator('#quickAddForm').isVisible(), false);
+  assert.deepEqual(errors, []);
 });
 
-test("a new identity check clears old actor rows before the new board settles", async () => {
-  const view = { sequence: 2, status: "ready", rows: [{ owner: "joe" }], message: null };
-  const previousBoardRead = ++view.sequence;
-  let answerOldBoard;
-  const pending = new Promise((resolve) => { answerOldBoard = resolve; }).then((rows) => {
-    if (isCurrentTaskRead(view, previousBoardRead)) {
-      view.rows = rows;
-      view.status = "ready";
-    }
-  });
-  invalidateTaskRead(view, "loading");
-  answerOldBoard([{ owner: "joe", number: "old" }]);
-  await pending;
-  assert.equal(view.status, "loading");
-  assert.deepEqual(view.rows, []);
-  assert.equal(isCurrentTaskRead(view, previousBoardRead), false);
+test('identity verification conceals prior rows and task details until the current board returns', async t => {
+  const { page, errors } = await openTasks(t, boardHooks);
+  await waitForTasks(page);
+  await page.locator('#taskList [data-task]').first().click();
+  await page.locator('#taskDialog').waitFor({ state: 'visible' });
+  await page.evaluate(() => { window.holdIdentity=true; window.dispatchEvent(new Event('online')); });
+  await page.waitForFunction(() => window.identityReplies.length > 0);
+  assert.equal(await page.locator('#taskDialog').isVisible(), false);
+  assert.equal(await page.locator('#taskList [data-task]').count(), 0);
+  await page.evaluate(() => { window.holdIdentity=false; window.identityReplies.splice(0).forEach(resolve => resolve()); });
+  await waitForTasks(page);
+  assert.ok(await page.locator('#taskList [data-task]').count());
+  assert.deepEqual(errors, []);
 });
 
-test("Tasks wires the identity fence before getBoard and rejects stale results", async () => {
-  const source = await readFile(new URL("../js/task-records.js", import.meta.url), "utf8");
-  assert.match(source, /function refuseUnverifiedViewer\(\) \{\s*\/\/[^\n]*\n\s*invalidateTaskRead\(view, "unverified"/);
-  assert.match(source, /async function loadViewer\(\) \{[\s\S]*?invalidateTaskRead\(view, "loading"\);[\s\S]*?await client\.getBoard/);
-  assert.match(source, /if \(identityRead !== viewerSequence\) return null/);
-  assert.match(source, /if \(!isCurrentTaskRead\(view, sequence\)\) return/);
-  assert.match(source, /if \(verified === null\) return;\s*if \(!verified\) \{ refuseUnverifiedViewer\(\); return; \}/);
-});
-
-test("a concealed task dialog sends keyboard focus to Retry only after a failed final read", async () => {
-  for (const status of ["unverified", "error", "unauthorized"]) {
-    assert.equal(shouldFocusTaskRetry(true, status), true);
-    assert.equal(shouldFocusTaskRetry(false, status), false);
-  }
-  assert.equal(shouldFocusTaskRetry(true, "loading"), false);
-  assert.equal(shouldFocusTaskRetry(true, "ready"), false);
-  const source = await readFile(new URL("../js/task-records.js", import.meta.url), "utf8");
-  assert.match(source, /if \(reconcileTaskDialog\(\) === "conceal"\) retryFocusPending = true;\s*render\(\);/);
-  assert.match(source, /function settleTaskReadFocus\(dialogAction\) \{[\s\S]*?shouldFocusTaskRetry\(concealed, view\.status\)\) \$\("retryRead"\)\?\.focus\(\)/);
-  assert.match(source, /function refuseUnverifiedViewer\(\) \{[\s\S]*?settleTaskReadFocus\(dialogAction\)/);
+test('a concealed task dialog sends focus to Retry after failed identity verification', async t => {
+  const { page, errors } = await openTasks(t, boardHooks);
+  await waitForTasks(page);
+  await page.locator('#taskList [data-task]').first().click();
+  await page.locator('#taskDialog').waitFor({ state: 'visible' });
+  await page.evaluate(() => { window.failIdentity=true; window.dispatchEvent(new Event('online')); });
+  await page.waitForFunction(() => document.activeElement?.id === 'retryRead');
+  assert.equal(await page.locator('#taskDialog').isVisible(), false);
+  assert.deepEqual(errors, []);
 });
