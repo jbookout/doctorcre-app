@@ -5,10 +5,10 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateBrowserCompletion } from './browser-proof-contract.mjs';
+import { GRACEFUL_SHUTDOWN_MS } from './run-child.mjs';
 
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const commands={app:['npm','test'],'app-e2e':[process.execPath,'scripts/browser-product-proof.mjs']};
-const GRACEFUL_SHUTDOWN_MS=15_000;
 const GROUP_TERMINATION_MS=1_000;
 // Node's TAP totals are accepted only after every numbered result and plan
 // agrees, including nested tests and suite diagnostics. No test text is retained.
