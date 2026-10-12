@@ -356,8 +356,8 @@ test("PR111 #3: successful answer preserves newer edits in the same draft", asyn
 function roomHarness(total=6000) {
   const state={cursor:0,latestSeqHint:0,turns:[],byMsgId:new Map(),oldestSeq:null,following:true,pending:new Map(),filters:{},viewer:"joe",missed:0};const reads=[];let displayed=[];
   const globals={state,scope:{},scopedTurn:()=>true,onRead:noop,PAGE_SIZE:60,DOM_TURN_CAP:300,POLL_BACKOFF_CEILING_MS:60000,POLL_VISIBLE_MS:4000,$:(()=>{const get=elements();get("roomHealth").dataset={};return get;})(),PARTNER_LABEL:{},seqOf:t=>Number(t.seq),fetchTurns:async(from,limit)=>{reads.push([from,limit]);const turns=Array.from({length:Math.min(limit,Math.max(0,total-from))},(_,i)=>({seq:from+i+1,msg_id:`turn-${from+i+1}`}));return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};},deriveModel:()=>({jobPassports:{enabled:true}}),renderStage:noop,renderSeatChips:noop,renderDesks:noop,renderWire:noop,renderAssignments:noop,renderSessions:noop,renderJobPassport:noop,renderHealth:noop,animateArrivals:noop,banner:noop,setState:noop,document:{hidden:false},setTimeout:()=>0,clearTimeout:noop,turnPasses:()=>true,reconcile:(_root,items)=>{displayed=items.filter(i=>i.kind==="turn").map(i=>i.turn.seq);},scrollToBottom:noop};
-  const h=handlers("js/room.js","  function absorb(","  /* ------------------------------------------------------------- wiring up",globals,["poll","loadEarlier","absorb"]);
-  const wire=handlers("js/room.js","  function renderWire(","  function turnNode(",globals,["renderWire"]);
+  const h=handlers("js/progress-wire.js","  function absorb(","  /* ------------------------------------------------------------- wiring up",globals,["poll","loadEarlier","absorb"]);
+  const wire=handlers("js/progress-wire.js","  function renderWire(","  function turnNode(",globals,["renderWire"]);
   return {h,wire,state,reads,displayed:()=>displayed};
 }
 test("Dot 19: first room poll catches up immediately to the current window", async () => {
@@ -384,7 +384,7 @@ for(const start of [1,301]) test(`PR111 #9: history stays contiguous with buffer
 
 for(const fails of [false,true]) test(`PR111 #10: delayed history ${fails ? "failure" : "success"} respects Resume live`,async()=>{
   const {h,state}=roomHarness();const reply=deferred();state.historyTurns=[{seq:241,msg_id:"old"}];state.following=false;state.turns=[{seq:600,msg_id:"live"}];h.fetchTurns=()=>reply.promise;
-  const resume=handlers("js/room.js",'  $("wireResume").addEventListener', '  $("composerInput").addEventListener',{state,$:h.$,render:noop,scrollToBottom:noop},[]);
+  const resume=handlers("js/progress-wire.js",'  $("wireResume").addEventListener', '  $("composerInput").addEventListener',{state,$:h.$,render:noop,scrollToBottom:noop},[]);
   const pending=h.loadEarlier();h.$("wireResume").listeners.click();
   if(fails)reply.reject(new Error("old history failure"));else reply.resolve({turns:[{seq:181,msg_id:"earlier"}],latest_seq:181,more:false});
   await pending;assert.equal(state.historyTurns,null);assert.equal(state.following,true);

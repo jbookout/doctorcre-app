@@ -160,7 +160,8 @@ async function producerRoute(route,{url,fixture}) {
   if(url.pathname==='/api/tours/detail')data=sampleTour;
   if(url.pathname==='/api/v1/business/clients')data={rows:[],page:1,page_count:1};
   if(url.pathname==='/api/system-work/current'){await route.fulfill({json:{ok:true,data:await fixture.currentWorkRequests()}});return true;}
-  if(url.pathname==='/api/room/turns'){await route.fulfill({json:{turns:[{seq:1,msg_id:'sample-turn',body:'Sample turn',at:new Date().toISOString(),origin_actor:'joe',kind:'turn',seat:'human',sponsor:'joe'}],latest_seq:1,more:false,actor:{slug:'joe'},csrf_token:'synthetic'}});return true;}
+  // The room answers after its cursor: a caught-up read returns no turns.
+  if(url.pathname==='/api/room/turns'){const caughtUp=Number(url.searchParams.get('after_seq'))>=1;await route.fulfill({json:{turns:caughtUp?[]:[{seq:1,msg_id:'sample-turn',body:'Sample turn',at:new Date().toISOString(),origin_actor:'joe',kind:'turn',seat:'human',sponsor:'joe'}],latest_seq:caughtUp?Number(url.searchParams.get('after_seq')):1,more:false,actor:{slug:'joe'},csrf_token:'synthetic'}});return true;}
   if(url.pathname==='/api/room/queue'){await route.fulfill({json:{live:true,projected_at:new Date().toISOString(),events:[]}});return true;}
   if(data){await route.fulfill({json:{data,csrf_token:'synthetic'}});return true;}
  }
@@ -279,8 +280,10 @@ for(const staleFailure of [false,true])test(`R4 superseded Queue ${staleFailure?
    if(++reads===1){started();await pending;await route.fulfill(staleFailure?{status:503,json:{}}:{json:queuePayload('running','2026-10-01T10:00:00Z')});}
    else await route.fulfill({json:queuePayload('done','2026-10-01T11:00:00Z')});return true;
   }return producerRoute(route,env);
- }});await page.clock.install();await goto('/control-room/progress/work');await entered;await page.clock.fastForward(5000);
- await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('done'));release();await page.waitForTimeout(100);
+ }});await page.clock.install();await goto('/control-room/progress/work');await entered;
+ // The cadence never overlaps a held read, so the newer read comes from a return to view.
+ await page.evaluate(()=>{for(const state of ['hidden','visible']){Object.defineProperty(document,'visibilityState',{configurable:true,value:state});Object.defineProperty(document,'hidden',{configurable:true,value:state==='hidden'});document.dispatchEvent(new Event('visibilitychange'));}});
+ await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('done'));assert.equal(reads,2);release();await page.waitForTimeout(100);
  const c=await readContext(page);assert.equal(c.ready,true);assert.equal(c.records.find(r=>r.kind==='room-task')?.fields.find(f=>f.label==='Status').value,'done');
  assert.match(await page.locator('.queue-card-meta').textContent(),/done/);
 });

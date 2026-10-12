@@ -11,6 +11,12 @@
       "asset": "automations.html",
       "order": 22,
       "gatePath": "/control-room"
+    },
+    {
+      "path": "/control-room/observatory",
+      "asset": "observatory.html",
+      "order": 50,
+      "gatePath": "/control-room"
     }
   ],
   "redirects": []

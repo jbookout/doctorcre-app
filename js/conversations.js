@@ -728,7 +728,6 @@ async function decideSuggestion(id, choice, card) {
     view.suggestions.workNumbers.delete(id);
     view.suggestions.snoozeDates.delete(id);
   }
-  if (choice === "discuss" && outcome.status === "ok") $("docFab")?.click();
 }
 
 async function proposeSuggestionCorrection(id) {

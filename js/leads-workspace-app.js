@@ -60,7 +60,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
     $("leadCount").textContent = `${active.length}`;
-    $("filterSummary").textContent = `${shown.length} leads`;
+    $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, k.charAt(0).toUpperCase() + k.slice(1)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters);
@@ -88,6 +88,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
     box.hidden = !state.pending && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
+    if (!state.actor && state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ' · <a href="/auth/login?return_to=%2Fleads">Sign in</a>');
     $("checkPending")?.addEventListener("click", executePending);
     if (state.pending && $("stageDialog").open) {
       $("saveStage").textContent = "Check outcome"; $("saveStage").disabled = state.writing;
@@ -112,6 +113,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     paintCommandFeedback();
     return true;
   }
+  // Resolves false when the read failed for a reason other than sign-in, so
+  // background refresh retries soon; a superseded read resolves undefined.
   async function refresh() {
     const epoch = ++state.epoch;
     state.identityReady = false;
@@ -153,6 +156,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         else if (next.leads.some(lead => lead.id === state.detailId)) { state.detail = null; $("leadDetail").close(); }
         else { state.detail = null; ++state.detailEpoch; $("detailTitle").textContent = "Lead unavailable"; $("detailBody").innerHTML = '<p class="empty">Unavailable</p>'; }
       }
+      return true;
     } catch (error) {
       if (epoch !== state.epoch) return;
       if (authorizationFailure(error)) return;
@@ -164,6 +168,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       render();
       state.connectionFeedback = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
       paintCommandFeedback();
+      return false;
     } finally { if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false"); }
   }
   function paintDetail(detail) {
@@ -381,10 +386,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     for (const id of ["detailTitle", "detailBody", "stageTitle", "stageContext", "stageQuestions", "stageError", "moveAnnouncement"]) $(id).replaceChildren();
     render();
   }
-  const auto = mountAutoRefresh({ document: doc, window: win, refresh: () => refresh(), onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
+  const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
   const resume = () => { if (doc.visibilityState === "hidden") { stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
-  refresh();
+  auto.refresh();
   return { state, refresh, openReview, readDetail, dispose() { stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("hotLeads")) mountLeadsWorkspace();

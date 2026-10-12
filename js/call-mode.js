@@ -11,7 +11,7 @@
  * The recorder is Quill on the partner's own Mac. This page reaches it only
  * through the loopback companion at http://127.0.0.1:4682 (carr-system
  * tools/dictation-rig/bin/call-mode.py), and only because a partner pressed a
- * control:
+ * control (apart from the bounded read-only eligibility probe):
  *
  *   - creating the controller sends nothing and starts no timer;
  *   - opening the dialog reads the recorder's state, nothing more;
@@ -34,6 +34,7 @@
  */
 import { uuidv4 } from './uuid.js';
 import { escapeText as esc } from './change-receipts.mjs';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 export const CALL_MODE_URL = 'http://127.0.0.1:4682';
 export const CALL_MODE_HEADER = Object.freeze({ 'X-CARR-Call-Mode': 'deal-room-v1' });
@@ -136,9 +137,55 @@ export function createCallMode(deps) {
   const dealName = deps.dealName || (() => undefined);
   const dateLabel = deps.dateLabel || ((value) => String(value));
   const timers = { setInterval: deps.setInterval || ((...a) => setInterval(...a)),
-    clearInterval: deps.clearInterval || ((h) => clearInterval(h)) };
+    clearInterval: deps.clearInterval || ((h) => clearInterval(h)),
+    setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
+    clearTimeout: deps.clearTimeout || ((h) => clearTimeout(h)) };
   const state = { callMode: { state: 'idle' }, postCall: idlePostCall(), pollTimer: null,
-    tickTimer: null, contextInFlight: null };
+    tickTimer: null, contextInFlight: null, eligibility: 'unknown', eligibilityInFlight: null };
+
+  // Only a read of the companion can establish eligibility. Abort the request
+  // and bound the whole response (including JSON) even if a transport hangs.
+  function checkEligibility() {
+    if (state.eligibilityInFlight) return state.eligibilityInFlight;
+    state.eligibility = 'checking';
+    render();
+    const controller = new AbortController();
+    let timeout;
+    const probe = (async () => {
+      try {
+        const snapshot = await Promise.race([
+          (async () => {
+            const response = await fetchImpl(`${CALL_MODE_URL}/api/state`, {
+              method: 'GET', targetAddressSpace: 'loopback', signal: controller.signal,
+            });
+            if (!response.ok) throw new Error('Companion unavailable');
+            const result = await response.json();
+            if (!['idle', 'recording', 'transcribing', 'ready_to_extract', 'filed', 'state_unknown'].includes(result?.state))
+              throw new Error('Invalid companion state');
+            return result;
+          })(),
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => { controller.abort(); reject(new Error('Companion probe timed out')); }, deps.eligibilityTimeoutMs ?? 1200);
+          }),
+        ]);
+        state.callMode = snapshot;
+        state.eligibility = 'available';
+        return true;
+      } catch {
+        state.eligibility = 'unavailable';
+        stopPolling();
+        if (state.tickTimer) timers.clearInterval(state.tickTimer);
+        state.tickTimer = null;
+        return false;
+      } finally {
+        clearTimeout(timeout);
+        state.eligibilityInFlight = null;
+        render();
+      }
+    })();
+    state.eligibilityInFlight = probe;
+    return probe;
+  }
 
   const callModeActive = (snapshot = state.callMode) => snapshot?.state === 'recording';
   const postCallDealName = (item) => item.deal_name || dealName(item.deal_id) || 'Work record';
@@ -168,6 +215,32 @@ export function createCallMode(deps) {
   }
 
   function render() {
+    const eligible = state.eligibility === 'available';
+    const availability = $('#callModeAvailability');
+    if (availability) {
+      availability.hidden = eligible;
+      availability.textContent = state.eligibility === 'checking' || state.eligibility === 'unknown'
+        ? 'Checking Quill on this device…' : 'Call recording runs on the Mac with Quill';
+    }
+    for (const id of ['callModeButton', 'callModeStandalone']) {
+      const element = $(`#${id}`);
+      if (element) element.hidden = !eligible;
+    }
+    const recheck = $('#callModeRetry');
+    if (recheck) {
+      recheck.hidden = eligible || state.eligibility === 'unknown';
+      recheck.disabled = state.eligibility === 'checking';
+    }
+    if (!eligible) {
+      for (const id of ['callModeStarts', 'callModeConsentRow', 'callModeStop', 'callModeSpeakers', 'postCallPanel', 'callModePermission']) {
+        const element = $(`#${id}`);
+        if (element) element.hidden = true;
+      }
+      if ($('#callModeState')) $('#callModeState').textContent = 'Call recording runs on the Mac with Quill';
+      if ($('#callModeTimer')) $('#callModeTimer').textContent = '';
+      if ($('#callModeDetail')) $('#callModeDetail').textContent = '';
+      return;
+    }
     const snapshot = state.callMode || { state: 'idle' };
     const recording = callModeActive(snapshot);
     const processing = ['transcribing', 'ready_to_extract', 'filed'].includes(snapshot.state);
@@ -275,6 +348,10 @@ export function createCallMode(deps) {
   }
 
   function renderPostCall() {
+    if (state.eligibility !== 'available') {
+      if ($('#postCallPanel')) $('#postCallPanel').hidden = true;
+      return;
+    }
     const panel = $('#postCallPanel');
     if (!panel) return;
     const post = state.postCall;
@@ -357,7 +434,7 @@ export function createCallMode(deps) {
   // ----------------------------------------------------------- report poll
 
   function stopPolling() {
-    if (state.pollTimer) timers.clearInterval(state.pollTimer);
+    state.pollTimer?.dispose();
     state.pollTimer = null;
   }
 
@@ -398,8 +475,14 @@ export function createCallMode(deps) {
     stopPolling();
     if (state.postCall.session !== session) state.callGeneration = (state.callGeneration || 0) + 1;
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly };
-    refreshPostCall({ quiet: true });
-    state.pollTimer = timers.setInterval(() => refreshPostCall({ quiet: true }), 1600);
+    // The one poll allowed to run while the tab is hidden or idle: it exists
+    // only from Stop until the call's report settles (stopPolling), and a
+    // partner on that call is talking, not typing. It reads the local
+    // companion; it does not keep CARR awake.
+    state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => true,
+      setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+      intervalMs: 1600, poll: () => refreshPostCall({ quiet: true }) });
+    state.pollTimer.refresh();
   }
 
   // ------------------------------------------------------ per-item approval
@@ -459,9 +542,9 @@ export function createCallMode(deps) {
 
   // ------------------------------------------------------- recorder control
 
-  async function refresh({ quiet = false } = {}) {
+  async function refresh({ quiet = false, snapshot: suppliedSnapshot = null } = {}) {
     try {
-      state.callMode = await api('state');
+      state.callMode = suppliedSnapshot || await api('state');
       const notice = $('#callModePermission');
       if (notice) notice.hidden = true;
       render();
@@ -488,9 +571,9 @@ export function createCallMode(deps) {
   async function open() {
     const dialog = $('#callModeDialog');
     if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
-    render();
+    if (!await checkEligibility()) return;
     startTicker();
-    await refresh({ quiet: true });
+    await refresh({ quiet: true, snapshot: state.callMode });
   }
 
   function close() {
@@ -506,6 +589,8 @@ export function createCallMode(deps) {
       consent?.focus?.();
       return false;
     }
+    if (state.eligibility === 'unavailable') return false;
+    if (state.eligibility !== 'available' && !await checkEligibility()) return false;
     const button = root.querySelector(`[data-call-mode-start="${mode}"]`);
     if (button) button.disabled = true;
     try {
@@ -541,6 +626,7 @@ export function createCallMode(deps) {
   }
 
   async function stop() {
+    if (state.eligibility !== 'available') return;
     const button = $('#callModeStop');
     if (button) button.disabled = true;
     try {
@@ -569,6 +655,13 @@ export function createCallMode(deps) {
    */
   async function handleClick(target) {
     const hit = (selector) => target?.closest?.(selector) || null;
+    const recheck = hit('#callModeRetry');
+    if (recheck) {
+      const hadFocus = root.activeElement === recheck;
+      if (await checkEligibility() && hadFocus && (root.activeElement === recheck || root.activeElement === root.body))
+        $('#callModeButton')?.focus();
+      return true;
+    }
     const confirm = hit('[data-post-call-confirm]');
     if (confirm) { await resolveCandidate(confirm.dataset.postCallConfirm, true, confirm); return true; }
     const skip = hit('[data-post-call-skip]');
@@ -591,7 +684,7 @@ export function createCallMode(deps) {
   }
 
   return {
-    state, open, close, start, stop, refresh, refreshPostCall, render, handleClick,
+    state, open, close, start, stop, refresh, refreshPostCall, render, handleClick, checkEligibility,
     startPolling, stopPolling, publishWeeklyCallContext,
     dispose() { stopPolling(); if (state.tickTimer) timers.clearInterval(state.tickTimer); state.tickTimer = null; },
   };
