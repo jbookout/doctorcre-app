@@ -85,7 +85,7 @@ test('each family cites the line that renders its control, as do its proofs', as
       ...[...family.selector.matchAll(/\[([\w-]+)="([^"]*)"\]/g)].map(m => `${m[1]}="${m[2]}"`),
       ...[...family.selector.matchAll(/\.([\w-]+)/g)].map(m => m[1])];
     assert.ok(markers.some(marker => text.includes(marker)), `${family.id}: ${family.source} does not render ${family.selector}`);
-    const cited = new Set(catalog.controls.filter(row => row.review.family === family.id).map(row => row.review.source));
+    const cited = new Set(catalog.controls.filter(row => row.review.policy === family.id + '.v1').map(row => row.review.source));
     assert.deepEqual([...cited], [family.source], `${family.id}: proofs cite ${family.source}`);
   }
 });
