@@ -154,6 +154,7 @@
     "tours/vendor/tour-map-route-state.js",
     "js/progress-board-route.js",
     "test/performance-budget.test.mjs",
-    "test/performance-comment.test.mjs"
+    "test/performance-comment.test.mjs",
+    "test/fixture-server.test.mjs"
   ]
 }

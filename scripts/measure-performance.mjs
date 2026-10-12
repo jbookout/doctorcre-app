@@ -1,12 +1,12 @@
 import { chromium } from 'playwright';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { profile, screens } from './performance-scenarios.mjs';
+import { startFixtureServer } from './fixture-server.mjs';
 import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -27,18 +27,10 @@ const bundleFiles = await Promise.all(scriptFiles.map(async file => {
 }));
 const bundle = { jsBytes: bundleFiles.reduce((n, file) => n + file.jsBytes, 0),
   gzipBytes: bundleFiles.reduce((n, file) => n + file.gzipBytes, 0), files: bundleFiles };
-const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: root,
-  env: { ...process.env, PORT: '0', DOCTORCRE_FIXTURE_ROOT: join(root, 'dist/site') }, stdio: ['ignore', 'pipe', 'inherit'] });
-let browser;
+let server, browser;
 try {
-  const url = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(Error('fixture server startup timeout')), 15000);
-    server.once('exit', code => { clearTimeout(timer); reject(Error(`fixture server exited ${code}`)); });
-    server.stdout.on('data', data => {
-      const match = String(data).match(/http:\/\/127\.0\.0\.1:\d+/);
-      if (match) { clearTimeout(timer); resolve(match[0]); }
-    });
-  });
+  server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(root, 'dist/site') } });
+  const { url } = server;
   browser = await chromium.launch();
   const measured = {};
   for (const screen of screens) {
@@ -110,17 +102,21 @@ try {
         await context.close();
       }
     }
-    const median = key => samples.map(sample => sample[key]).sort((a, b) => a - b)[1];
+    const median = key => samples.map(sample => sample[key]).sort((a, b) => a - b)[samples.length >> 1];
     measured[screen.id] = { lcpMs: median('lcpMs'), jsBytes: Math.max(...samples.map(sample => sample.jsBytes)), interactionMs: median('interactionMs'), samples };
     console.log(`${screen.id}: LCP=${measured[screen.id].lcpMs}ms JS=${measured[screen.id].jsBytes}B interaction=${measured[screen.id].interactionMs}ms`);
   }
-  await writeFile(join(output, 'report.json'), JSON.stringify({ schema: 'doctorcre-performance-report.v1',
+  const report = { schema: 'doctorcre-performance-report.v1',
     measuredAt: new Date().toISOString(), sourceCommit, prHeadCommit: process.env.PERFORMANCE_PR_HEAD_SHA || sourceCommit,
     buildDigest: digest, browserVersion: browser.version(),
-    nodeVersion: process.version, platform: process.platform, profile, screens: measured, bundle }, null, 2) + '\n');
+    nodeVersion: process.version, platform: process.platform, profile, screens: measured, bundle };
+  await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+  // One complete line in the job log, so a hosted run can be rebaselined with
+  // `performance-budget.mjs --rebaseline` after its artifact has expired.
+  console.log(`performance-report ${JSON.stringify({ ...report,
+    screens: Object.fromEntries(Object.entries(measured).map(([id, { samples, ...metrics }]) => [id, metrics])),
+    bundle: { jsBytes: bundle.jsBytes, gzipBytes: bundle.gzipBytes } })}`);
 } finally {
   await browser?.close();
-  const exited = once(server, 'exit');
-  server.kill('SIGTERM');
-  await exited;
+  await server?.stop();
 }
