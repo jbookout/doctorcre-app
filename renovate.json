@@ -1,0 +1,77 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": [
+    "npm",
+    "pip_requirements",
+    "github-actions"
+  ],
+  "timezone": "America/Chicago",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "automerge": false,
+  "platformAutomerge": false,
+  "separateMinorPatch": true,
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "groupName": "patch dependencies",
+      "addLabels": [
+        "dependency-patch"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "groupName": "minor dependencies",
+      "addLabels": [
+        "dependency-minor"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "addLabels": [
+        "dependency-major"
+      ]
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "pin",
+        "digest"
+      ],
+      "addLabels": [
+        "dependency-patch"
+      ]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": [],
+    "groupName": null,
+    "addLabels": [
+      "dependency-security"
+    ],
+    "automerge": false,
+    "platformAutomerge": false
+  },
+  "prBodyNotes": [
+    "Dependency updates retain required CI and independent review. The updater never merges or applies dependency-queue. npm updates must include package-lock.json and pass npm ci; GitHub Actions updates must retain immutable SHA pins and refresh .github/action-pins.json with canonical release evidence."
+  ]
+}

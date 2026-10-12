@@ -132,3 +132,26 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
   assert.deepEqual(errors, []);
 });
+
+
+test('PR182 account portal preserves immediate forward and return keyboard paths', async t => {
+  const { page } = await open(t);
+  await page.locator('#selfAvatar').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('#accountProfile').evaluate(n => document.activeElement === n), true);
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
+  assert.equal(await page.locator('#accountMenu').isVisible(), false);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#accountMenu').isVisible(), false);
+  assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.locator('#accountSignOut').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('#accountMenu').isVisible(), false);
+  assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
+});

@@ -101,6 +101,13 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     assert.equal(await page.locator(".day-stop").count(), 2);
     assert.match(await page.locator("#day-current").textContent(), /100 Example Way.*Demo listing contact.*West entrance/s);
     assert.equal(await page.locator(".property-actions a").getAttribute("href"), "tel:+12025550100");
+    const lastStop = page.locator(".day-stop").nth(1);
+    await lastStop.evaluate(button => button.scrollIntoView({ block: 'end' }));
+    assert.equal(await lastStop.evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    }), true, `The last tour stop must scroll clear of fixed controls at ${width}px`);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.locator(".day-stop").nth(1).click();
     assert.equal(await page.locator("#day-dialog").isVisible(), true);
     const dialog = await page.locator("#day-dialog").boundingBox(); assert.ok(dialog.width >= Math.min(1000, width - 24));
