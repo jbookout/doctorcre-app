@@ -26,6 +26,7 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
   await page.goto('https://reports.doctorcre.com/');await page.locator('.app-shell-header').waitFor();
   assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('report-shell')),true);
   assert.equal(await page.locator('.app-shell-controls').count(), 0);
+  assert.equal(await page.locator('#callModeAvailability').count(), 0);
   assert.equal(await page.getByLabel('DoctorCRE Home', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/');
   assert.equal(await page.getByLabel('Leads', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/leads');
   await page.getByLabel('More', {exact:true}).click();

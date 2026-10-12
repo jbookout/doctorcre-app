@@ -93,6 +93,7 @@ test('report navigation mounts through its module without partner controls and k
   try {
     const host = mountNavigation(dom.window.document, '/', { report:true });
     assert.equal(host.querySelector('.app-shell-controls'), null);
+    assert.equal(host.querySelector('#callModeAvailability'), null, 'reports carry no Call mode status');
     assert.equal(dom.window.document.body.classList.contains('report-shell'), true);
     assert.equal(host.querySelector('[aria-label="Leads"]').href, 'https://app.example.test/leads');
     const more = host.querySelector('[aria-label="More"]');
@@ -107,5 +108,18 @@ test('report navigation mounts through its module without partner controls and k
     more.click();
     dom.window.document.querySelector('main').click();
     assert.equal(list.hidden, true);
+  } finally { dom.window.close(); }
+});
+
+test('a report mounted on any origin drops partner controls and the Call mode status', async () => {
+  const { JSDOM } = await import('jsdom');
+  const { mountNavigation } = await import('../js/navigation.js');
+  const dom = new JSDOM('<body><div id="appShell"></div><main>Report</main></body>', { url:'https://preview.example.test/share' });
+  try {
+    const host = mountNavigation(dom.window.document, '/share', { report:true });
+    assert.equal(host.querySelector('.app-shell-controls'), null);
+    assert.equal(dom.window.document.getElementById('callModeAvailability'), null, 'no Quill check runs on a report, so none is announced');
+    assert.equal(dom.window.document.querySelector('.app-shell-call-availability'), null);
+    assert.equal(host.querySelector('[aria-label="Leads"]').getAttribute('href'), '/leads', 'a same-origin report links within its origin');
   } finally { dom.window.close(); }
 });
