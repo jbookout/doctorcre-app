@@ -78,6 +78,19 @@ test('deadline lets the leader finish browser cleanup without killing its proces
   assert.equal(marker,'closed','leader-only SIGTERM must leave its child alive long enough to close');
   assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
 });
+test('deadline through a runChild leader keeps the graceful cleanup window', async t => {
+  const {root,git}=await fixture(t,clean);
+  const runChildUrl=new URL('../scripts/run-child.mjs',import.meta.url).href;
+  await writeFile(join(root,'scripts/child.cjs'),`const fs=require('fs'); fs.mkdirSync('.e2e/logs',{recursive:true}); process.on('SIGTERM',()=>setTimeout(()=>{fs.writeFileSync('.e2e/logs/cleanup.log','closed');process.exit(0);},3000)); setInterval(()=>{},100);`);
+  await writeFile(join(root,'scripts/leader.mjs'),`import {runChild} from ${JSON.stringify(runChildUrl)}; try {await runChild(process.execPath,['scripts/child.cjs'],{stdio:'ignore',timeout:480000});} catch {}`);
+  commit(git);
+  const started=Date.now();
+  // The deadline leaves a loaded runner time to start both processes and arm their handlers.
+  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/leader.mjs'],root,timeoutMs:4000});
+  assert.equal(result.timedOut,true);
+  assert.equal(await readFile(join(root,'.e2e/logs/cleanup.log'),'utf8').catch(()=>null),'closed','a forwarded SIGTERM must not SIGKILL the child inside the graceful window');
+  assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
+});
 test('npm-to-node deadline forwards shutdown then reaps a SIGTERM-resistant descendant', async t => {
   const {root,git}=await fixture(t,clean);
   const descendant=`require('fs').writeFileSync('.e2e/logs/descendant.log',String(process.pid)); process.on('SIGTERM',()=>{}); setInterval(()=>{},100);`;

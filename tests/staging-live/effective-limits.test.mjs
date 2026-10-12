@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { RUN_LIMITS } from '../../scripts/e2e-staging/run-limits.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 async function consumer(t, limits, source) {
@@ -17,7 +18,7 @@ async function consumer(t, limits, source) {
     try { ${source} } finally { run.dispose(); }
   `], { cwd: project, timeout: 15_000, killSignal: 'SIGKILL', stdio: 'pipe', env: {
     ...process.env, E2E_V2_OUTPUT: root, E2E_RUN_ID: 'synthetic-effective-limits',
-    E2E_RUN_SUPERVISED: '1', E2E_TARGET: 'staging-live', E2E_RUN_LIMITS: JSON.stringify(limits),
+    E2E_RUN_SUPERVISED: '1', E2E_TARGET: 'staging-live', E2E_RUN_LIMITS: JSON.stringify({ ...RUN_LIMITS, ...limits }),
   } }); } catch (error) { assert.fail(error.stderr?.toString() || error.message); }
 }
 
