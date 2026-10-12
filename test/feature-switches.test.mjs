@@ -58,3 +58,22 @@ test('the pinned switch read carries no caller-selected identity or audience',as
  assert.equal(featureEnabled(await live.listFeatureSwitches(),'doc-suggestion-actions'),true);
  assert.deepEqual(request,{name:'list-feature-switches',arguments:{}});
 });
+
+test('a resumed page hides the feature until its fresh read settles',async t=>{
+ const dom=new JSDOM('<button>Act</button>',{url:'https://app.doctorcre.com'});
+ let state='visible';Object.defineProperty(dom.window.document,'visibilityState',{get:()=>state});
+ let visible=null,release;const reads=[];
+ const gate=mountFeatureGate({document:dom.window.document,window:dom.window,name:'doc-suggestion-actions',
+  read:()=>{reads.push(1);return reads.length===1?{schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]}
+   :new Promise(resolve=>release=()=>resolve({schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]}));},
+  onChange:value=>visible=value});
+ t.after(()=>{release?.();gate.dispose();dom.window.close();});
+ await gate.refresh();assert.equal(visible,true);
+ state='hidden';dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
+ state='visible';dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange'));
+ await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(visible,false,'hidden while the resume read is in flight');
+ assert.equal(reads.length,2);
+ release();await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(visible,true);
+});
