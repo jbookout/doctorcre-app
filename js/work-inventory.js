@@ -430,6 +430,8 @@ async function openRecordDetails(kind, ref) {
 async function readEvidence(ref) {
   const item = view.items.find((entry) => entry.id === ref) || null;
   if (!item || !client) return;
+  // Opening or closing another popup while this read waits supersedes it.
+  const sequence = ++details.sequence;
   let passport = null;
   let portfolio = null;
   let refusal = null;
@@ -451,7 +453,7 @@ async function readEvidence(ref) {
   }
   evidence.set(ref, { passport, portfolio, refusal, stages: passport ? deliveryStages(passport, portfolio) : deliveryStages(null) });
   render();
-  openEvidence(ref);
+  if (sequence === details.sequence) openEvidence(ref);
 }
 
 function openEvidence(ref) {
@@ -540,6 +542,13 @@ function openDisposition(ref, choice) {
   field("#dispositionReason").focus();
 }
 
+// One label per classified outcome, so the visible line and the live
+// announcement keep the same certainty.
+const outcomeLabel = status => ({
+  ok: "Changes saved", unknown: "Outcome unavailable", in_flight: "Still sending",
+  blocked: "An earlier change is unresolved",
+}[status] || "Changes were not saved");
+
 async function submitDisposition() {
   const ref = decision.ref;
   const choice = decision.choice;
@@ -579,7 +588,7 @@ async function submitDisposition() {
     newKey: uuidv4,
     call: send,
   });
-  field("#commandStatus").textContent = `${summary} · ${result.status === "ok" ? "Changes saved" : result.status === "unknown" ? "Outcome unavailable" : "Changes were not saved"}`;
+  field("#commandStatus").textContent = `${summary} · ${outcomeLabel(result.status)}`;
   dock.record(operationKey, {
     summary, status: result.status, reason: result.message || null,
     retry: result.retry, undo: false, request: result.request,
@@ -599,7 +608,7 @@ async function submitDisposition() {
     ? `Changed elsewhere. ${result.message || ""}`.trim()
     : result.message || refusalMessage(result.code, { ref });
   renderDispositionForm();
-  announce("Changes were not saved. Review the open record details.");
+  announce(`${outcomeLabel(result.status)}. Review the open record details.`);
 }
 
 function closeDisposition() {

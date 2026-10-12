@@ -367,6 +367,8 @@ test('V1 batch D All Work controls and broker copy', async t => {
   let mode = 'ok';
   let cardReads = 0;
   let releaseHeldCard;
+  let releaseEvidence;
+  let declineMode = 'ok';
   const calls = [];
   const fetch = async (path, options = {}) => {
     if (path.startsWith('/api/v1/work-inventory')) return Response.json(batchDCensus);
@@ -386,7 +388,11 @@ test('V1 batch D All Work controls and broker copy', async t => {
         human_ref: mode === 'wrong-record' ? 'WR-000999' : ref,
         title: 'Demo captured request', state: 'captured', version,
         request: { description: 'Demo record detail returned by the existing card read.' } };
+    } else if (name === 'engineering-passport') {
+      await new Promise(resolve => { releaseEvidence = resolve; });
+      throw new TypeError('Synthetic passport unavailable');
     } else if (name === 'decline-work-request') {
+      if (declineMode === 'lost') throw new TypeError('Synthetic response lost');
       assert.equal(args.human_ref, ref);
       assert.equal(args.base_version, 37);
       assert.equal(args.exit_reason, 'Demo duplicate capture');
@@ -506,6 +512,21 @@ test('V1 batch D All Work controls and broker copy', async t => {
     assert.ok(calls.every(call => ['notification-feed', 'work-request-card'].includes(call.name)));
   });
 
+  await t.test('a late evidence read never replaces another record\'s Details', async () => {
+    document.querySelector('#evidenceClose').click();
+    document.querySelector('[data-evidence]').click();
+    await until(() => releaseEvidence, 'evidence read must be held');
+    document.querySelector('#kindGroups [data-details-kind="loop"]').click();
+    assert.match(document.querySelector('#evidenceTitle').textContent, /Untitled/);
+    releaseEvidence();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(document.querySelector('#evidenceDialog').open, true);
+    assert.match(document.querySelector('#evidenceTitle').textContent, /Untitled/);
+    assert.equal(document.querySelector('#evidenceEyebrow').textContent, 'Details');
+    assert.match(document.querySelector('#evidenceRows').textContent, /573/);
+    document.querySelector('#evidenceClose').click();
+  });
+
   await t.test('17: command feedback keeps operation and safety identifiers in Command details', async () => {
     document.querySelector('#evidenceClose').click();
     assert.ok(detailsButton(), 'Open details remains available');
@@ -521,5 +542,19 @@ test('V1 batch D All Work controls and broker copy', async t => {
     assert.match(document.querySelector('#commandStatus').textContent, /Demo captured request.*Changes saved/);
     assert.equal(document.querySelector('#receiptDock').closest('details')?.open, false);
     assert.equal(calls.filter(call => call.name === 'decline-work-request').length, 1);
+  });
+
+  await t.test('a lost command response is announced as uncertain, never as unsaved', async () => {
+    declineMode = 'lost';
+    assert.ok(detailsButton(), 'Open details remains available');
+    detailsButton().click();
+    await until(() => document.querySelector('#evidenceDialog [data-action="decline"]'), 'Details must offer decline');
+    document.querySelector('#evidenceDialog [data-action="decline"]').click();
+    document.querySelector('#dispositionReason').value = 'Demo duplicate capture';
+    document.querySelector('#dispositionForm').requestSubmit();
+    await until(() => /Outcome unavailable/.test(document.querySelector('#commandStatus').textContent), 'lost response must stay unknown');
+    const announced = document.querySelector('#inventoryLive').textContent;
+    assert.match(announced, /Outcome unavailable/);
+    assert.doesNotMatch(announced, /not saved/);
   });
 });
