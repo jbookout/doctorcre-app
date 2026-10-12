@@ -15,7 +15,7 @@ import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 
 export async function assertSweepFixtureScope(page, control, scope) {
   try {
-    if (control) await admitStagingControl(page, control, scope);
+    if (control) return await admitStagingControl(page, control, scope);
     else await assertStagingContextCoverage(page.context());
   }
   catch (error) {

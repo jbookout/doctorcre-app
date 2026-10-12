@@ -9,7 +9,7 @@ import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
-import { prepareBrowserControlProofs } from './control-proofs.mjs';
+import { prepareBrowserControlProofs, validControlProof } from './control-proofs.mjs';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -498,6 +498,8 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
             policyFailure('control-scope-unproved');
           proveOperation(plan, effect.operation, effect.arguments);
         }
+        if (!validControlProof(matches[0])) policyFailure('control-scope-unproved');
+        return { observations: structuredClone(matches[0].observations) };
       } catch (error) {
         if (!error.fixturePolicy) throw error;
         const skipped = { identity: control?.identity || null, reason: error.code,

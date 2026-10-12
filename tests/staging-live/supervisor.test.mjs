@@ -33,12 +33,32 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
   const output = join(root, 'output');
   const worker = `
     import { spawn } from 'node:child_process';
+    import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
     import { writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
     import { join } from 'node:path';
     const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM",()=>{});process.on("SIGINT",()=>{});setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore' });
     child.unref();
-    writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
     const behavior = ${JSON.stringify(behavior)};
+    if (behavior === 'signal-ledger-write') {
+      let deliveringSignal = false;
+      for (const listener of process.listeners('SIGTERM')) {
+        process.removeListener('SIGTERM', listener);
+        process.on('SIGTERM', (...args) => {
+          deliveringSignal = true;
+          try { listener.apply(process, args); } finally { deliveringSignal = false; }
+        });
+      }
+      const rename = fs.renameSync;
+      fs.renameSync = (...args) => {
+        // Pin only a synchronous signal receipt, not later child-close resource
+        // releases. SIGSTOP holds its lock until the supervisor sends SIGKILL.
+        if (deliveringSignal && args[1].endsWith('run-budget.json')) process.kill(process.pid, 'SIGSTOP');
+        return rename(...args);
+      };
+      syncBuiltinESMExports();
+    }
+    writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
     if (behavior === 'corrupt-registry') appendFileSync(process.env.E2E_PROCESS_REGISTRY, ${JSON.stringify('{broken}' + String.fromCharCode(10))});
     if (behavior === 'locked-ledger') {
       // The supervisor holds this same lock for its own ledger writes; wait for a free moment to take it.
@@ -100,6 +120,39 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
     },
   };
 }
+
+test('supervised worker leaves signal stop receipts to the supervisor', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-supervisor-stop-owner-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const program = `
+    import { currentRun } from ${JSON.stringify(new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href)};
+    const run = currentRun();
+    const release = run.reserveProcessGroup();
+    process.emit('SIGTERM');
+    release();
+    const state = run.snapshot();
+    console.log(JSON.stringify({ aborted: run.signal.aborted, stopReason: state.stopReason,
+      processGroups: state.processGroups }));
+    run.dispose();
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
+    env: { ...process.env, E2E_RUN_SUPERVISED: '1', E2E_V2_OUTPUT: root, E2E_RUN_ID: 'synthetic-stop-owner', E2E_RUN_LIMITS: JSON.stringify(RUN_LIMITS) },
+    encoding: 'utf8', timeout: 4_000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { aborted: false, stopReason: null, processGroups: {} });
+});
+
+test('SIGTERM cannot strand a worker signal receipt in the ledger lock', processTests, async t => {
+  const run = await fixture(t, { phase: 'report', behavior: 'signal-ledger-write' });
+  run.supervisor.kill('SIGTERM');
+  const result = await within(run.ended);
+  assert.equal(result.code, 1, result.stderr);
+  assert.equal(JSON.parse(result.stdout.trim()).reason, 'stop-signal');
+  await run.assertReaped();
+  const state = JSON.parse(await readFile(join(run.output, 'run-budget.json'), 'utf8'));
+  assert.equal(state.stopReason, 'stop-signal');
+});
 
 for (const phase of ['setup', 'exploration', 'sweep', 'report']) {
   for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -219,7 +272,7 @@ test('invalid environment caps refuse before the output directory or worker exis
   t.after(() => rm(root, { recursive: true, force: true }));
   const output = join(root, 'unused');
   await assert.rejects(supervise({ command: process.execPath, args: ['-e', 'process.exit(99)'], output,
-    environment: { ...process.env, E2E_RUN_LIMITS: JSON.stringify({ httpRequests: RUN_LIMITS.httpRequests + 1 }) } }),
+    environment: { ...process.env, E2E_RUN_LIMITS: JSON.stringify({ ...RUN_LIMITS, httpRequests: RUN_LIMITS.httpRequests + 1 }) } }),
     error => error.code === 'invalid-run-limits');
   await assert.rejects(readFile(join(output, 'run-budget.json')), { code: 'ENOENT' });
 });
