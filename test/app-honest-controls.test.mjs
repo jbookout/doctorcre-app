@@ -9,7 +9,7 @@ import { createServer } from 'node:http';
 import { extname } from 'node:path';
 import { chromium, animationsSettled, settles } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
-import { appShellMarkup } from '../js/app-shell.js';
+import { appShellMarkup } from '../js/navigation.js';
 import { mountGlobalCallMode } from '../js/global-call-mode.js';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');

@@ -11,6 +11,7 @@ import { buildArtifact, runCli, verifyArtifact } from "../scripts/artifact.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const COMMIT = "1".repeat(40);
+const trackedHtml = source => Buffer.from(source.toString("utf8").replace("<head>", '<head><script type="module" src="/js/error-tracking-entry.js"></script>'));
 
 test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
   const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
@@ -25,6 +26,16 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
   });
   await page.goto('https://reports.doctorcre.com/');await page.locator('.app-shell-header').waitFor();
   assert.equal(await page.locator('body').evaluate(n=>n.classList.contains('report-shell')),true);
+  assert.equal(await page.locator('.app-shell-controls').count(), 0);
+  assert.equal(await page.locator('#callModeAvailability').count(), 0);
+  assert.equal(await page.getByLabel('DoctorCRE Home', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/');
+  assert.equal(await page.getByLabel('Leads', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/leads');
+  await page.getByLabel('More', {exact:true}).click();
+  assert.equal(await page.getByLabel('More', {exact:true}).getAttribute('aria-expanded'), 'true');
+  assert.equal(await page.getByLabel('Local Deals', {exact:true}).getAttribute('href'), 'https://app.doctorcre.com/deals');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.app-shell-more-list').isVisible(), false);
+  assert.equal(await page.getByLabel('More', {exact:true}).evaluate(node=>node===document.activeElement), true);
   const rail=await page.locator('.app-shell-header').boundingBox(), main=await page.locator('main').boundingBox();
   assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
 });
@@ -39,8 +50,8 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.equal(a.manifest.files.some((file) => file.path === "js/board-focus.mjs"), true);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
-  assert.deepEqual(await readFile(join(first, "site", "workspace.html")), await readFile(join(ROOT, "workspace.html")));
-  assert.deepEqual(await readFile(join(first, "site", "control-room.html")), await readFile(join(ROOT, "control-room.html")));
+  assert.deepEqual(await readFile(join(first, "site", "workspace.html")), trackedHtml(await readFile(join(ROOT, "workspace.html"))));
+  assert.deepEqual(await readFile(join(first, "site", "control-room.html")), trackedHtml(await readFile(join(ROOT, "control-room.html"))));
   assert.equal(a.manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.equal(verifyArtifact(a.archive, a.archiveSha256).manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
@@ -81,7 +92,8 @@ test("every contracted page including Doc activity is present in the deployment 
   const verified = verifyArtifact(built.archive, built.archiveSha256);
   for (const path of new Set(Object.values(routes.routes))) {
     assert.ok(verified.manifest.files.some(file => file.path === path), `missing deployed route: ${path}`);
-    assert.deepEqual(await readFile(join(outDir, "site", path)), await readFile(join(ROOT, path)));
+    const source = await readFile(join(ROOT, path));
+    assert.deepEqual(await readFile(join(outDir, "site", path)), path.startsWith('reports/') ? source : trackedHtml(source));
   }
 });
 
@@ -92,8 +104,8 @@ async function committedFixture(t) {
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   // Exercise the code under test, including edits not yet committed by the maker.
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs"]);
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "--allow-empty", "-m", "Synthetic verifier fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
   const outDir = join(root, "dist");
@@ -112,7 +124,7 @@ test("one contract path declaration drives both assembly and committed-source ve
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs"]) await copyFile(join(ROOT, path), join(root, path));
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
   ];
@@ -123,7 +135,7 @@ test("one contract path declaration drives both assembly and committed-source ve
     source = source.replace(oldPath, newPath);
   }
   await writeFile(join(root, "scripts/artifact.mjs"), source);
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "Synthetic relocated contracts"]);
   for (const command of ["build", "verify"]) {
     execFileSync(process.execPath, ["scripts/build-artifact.mjs", command], {
@@ -213,7 +225,7 @@ test('provider preparation replaces poisoned cache output with verified committe
   await writeFile(join(outDir,'site','workspace.html'), 'synthetic cache poison');
   await runCli(root,['prepare-deployment']);
   await assert.rejects(readFile(join(outDir,'site','marker.sh')), /ENOENT/);
-  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), await readFile(join(root,'workspace.html')));
+  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), trackedHtml(await readFile(join(root,'workspace.html'))));
 });
 
 test('provider preparation refuses missing, empty, fork and changed artifacts', async t => {
@@ -227,4 +239,45 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
   await buildArtifact({root,outDir,commit});
   await rm(join(outDir,'doctorcre-app.manifest.json'));
   await assert.rejects(runCli(root,['prepare-deployment']), /ENOENT/);
+});
+
+test("the shipped error bootstrap is self-contained and first on every signed-in page", async (t) => {
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-error-bootstrap-"));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  const tracking = await readFile(join(outDir, "site", "js", "error-tracking.js"), "utf8");
+  assert.doesNotMatch(tracking, /\.json'|with \{ type/, "the browser never imports a contract the edge does not serve");
+  assert.ok(tracking.includes(`const contract = ${JSON.stringify(JSON.parse(await readFile(join(ROOT, "contracts", "runtime-errors.v1.json"), "utf8")))};`));
+  assert.match(await readFile(join(outDir, "site", "js", "error-tracking-entry.js"), "utf8"), new RegExp(`'${COMMIT}'`));
+  assert.deepEqual(built.manifest.runtime_errors.path, "contracts/runtime-errors.v1.json");
+  const bootstrap = '<script type="module" src="/js/error-tracking-entry.js"></script>';
+  for (const file of built.manifest.files.filter(file => file.path.endsWith(".html"))) {
+    const html = await readFile(join(outDir, "site", file.path), "utf8");
+    if (file.path.startsWith("reports/")) assert.equal(html.includes(bootstrap), false, `${file.path} stays outside signed-in ingress`);
+    else assert.equal(html.indexOf("<script"), html.indexOf(bootstrap), `${file.path} must load the bootstrap before any other script`);
+  }
+});
+
+test('report assembly is independent of app-shell implementation spelling', async t => {
+  const { root, outDir } = await committedFixture(t);
+  const before = await readFile(join(outDir, 'site/reports/share.js'));
+  await writeFile(join(root, 'js/app-shell.js'), '// App-only mounting may change independently of reports.\n');
+  await buildArtifact({ root, outDir, commit:COMMIT });
+  assert.deepEqual(await readFile(join(outDir, 'site/reports/share.js')), before);
+});
+
+test('Home and Tasks retain their routes while retired Home implementation leaves the artifact', async () => {
+  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-retirement-'));
+  const built = await buildArtifact({root:ROOT,outDir,commit:COMMIT});
+  const routes = JSON.parse(await readFile(join(ROOT, 'contracts/app-routes.v1.json')));
+  assert.equal(routes.routes['/'], 'workspace.html');
+  assert.equal(routes.routes['/doc-chats/work'], 'tasks.html');
+  assert.equal(routes.redirects['/business'], '/');
+  const paths = built.manifest.files.map(file => file.path);
+  for (const path of ['business-workspace.html', 'js/business-workspace.js', 'js/business-workspace-model.js']) {
+    assert.equal(paths.includes(path), false, `${path} is retired`);
+  }
+  for (const path of ['workspace.html', 'js/workspace-command-center.js', 'tasks.html', 'js/task-records.js', 'js/task-records-model.js', 'js/local-drafts.mjs', 'js/visual-system.js', 'js/command-feedback.mjs', 'css/business-workspace.css']) {
+    assert.equal(paths.includes(path), true, `${path} still serves live callers`);
+  }
 });

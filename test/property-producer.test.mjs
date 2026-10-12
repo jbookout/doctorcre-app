@@ -272,3 +272,28 @@ test("the advertised runtime producer serves the feature-switch read and gates b
     if (!enabled) assert.equal(featureSwitchRefusal(refusal), true, "the app recognises the runtime's refusal as a settled non-write");
   }
 });
+
+test("runtime error capture is pinned to its own exact producer revision", async () => {
+  const runtimeErrors = JSON.parse(await readFile(new URL(`../${contract.runtime_errors.contract}`, import.meta.url), "utf8"));
+  assert.deepEqual(contract.runtime_errors.producer, { repository: "jbookout/carr-system", source_commit: "a3a6913f7af0d721ab538090b1347976befcf421" });
+  assert.ok(contract.http_surfaces.includes(runtimeErrors.browser_endpoint));
+});
+
+test("runtime error wire contract and scrub rules match the exact pinned producer", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime error ingress",
+}, async () => {
+  const pin = contract.runtime_errors.producer.source_commit;
+  const show = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${pin}:${path}`], { encoding: "utf8" });
+  const producerContract = JSON.parse(show("mcp-server/src/runtime-errors.v1.json"));
+  assert.deepEqual(JSON.parse(await readFile(new URL(`../${contract.runtime_errors.contract}`, import.meta.url), "utf8")), producerContract);
+  const source = show("mcp-server/src/runtime-errors.js").replace("import contract from './runtime-errors.v1.json' with { type: 'json' };",
+    `const contract = ${JSON.stringify(producerContract)};`);
+  const producer = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const { scrubError } = await import("../js/error-tracking.js");
+  for (const input of [
+    { type: "TypeError", message: "Cannot read properties of Alice", stack: "TypeError: Alice\n at f (https://app/js/a.js?email=a@example.test:12:3)", route: "/clients/Alice?x=1", release_sha: "a".repeat(40) },
+    { type: "HTTP5xx", message: "Alice", route: "/deals/1/leads", release_sha: "nope" },
+    { type: "Alice", message: "aliceRecord is not defined", stack: "f@https://app/js/a.js:1:2", route: "no-slash" },
+    {},
+  ]) assert.deepEqual(scrubError(input), producer.scrubError(input));
+});

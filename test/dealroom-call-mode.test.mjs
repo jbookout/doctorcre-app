@@ -510,7 +510,7 @@ test("the context index is shaped to the companion's exact contract and never in
 
 test("the shipped Deal Room carries Call Mode: button, consent, both call kinds, Stop and the review panel", async () => {
   const html = await file("index.html");
-  assert.match(await file("js/app-shell.js"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"[^>]*hidden/);
+  assert.match((await import("../js/navigation.js")).appShellMarkup("/"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"[^>]*hidden/);
   assert.match(html, /<dialog id="callModeDialog"[^>]*aria-labelledby="callModeTitle"/);
   assert.match(html, /<input type="checkbox" id="callModeConsent">/, "consent is an unticked checkbox");
   assert.match(html, /I have told everyone on this call that it will be recorded\./);
