@@ -1,4 +1,3 @@
-import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
@@ -21,7 +20,7 @@ const evidence = { schema: "tour-property-evidence.v1", property_id: "10000000-0
 const panelSource = await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8");
 test("property evidence is an explicit additive CARR contract read above main's 1.33 release", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-  assert.equal(contract.version, CARR_INTERFACE_VERSION);
+  assert.equal(contract.version, "1.44.0");
   assert.ok(contract.http_surfaces.includes("/api/tours/property-evidence/v1"));
 });
 const otherProperty = "10000000-0000-4000-8000-000000000002";

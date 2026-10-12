@@ -113,14 +113,14 @@ test('R1: focus-deferred background refresh retains the displayed page continuat
  assert.equal(h.calls.filter(c=>c.cursor).length,1);assert.equal(h.calls.find(c=>c.cursor).cursor,'displayed-page-2');
  assert.deepEqual([...h.d.querySelectorAll('.work-card')].map(c=>c.dataset.workId),['a','older']);
 });
-test('finding 9: Live coverage and freshness remain independently visible',async t=>{
+test('finding 9: completion coverage and freshness remain independently visible',async t=>{
  const h=await setup(t,{read:args=>args.live_library?envelope([],{census_complete:false,as_of:'2026-09-01T12:00:00Z',coverage:[{kind:'pull_request',state:'unavailable',reason:'GitHub unavailable'}]}):envelope()});
- const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/Live.*Incomplete/i);assert.match(text,/Pull request unavailable/);assert.ok([...h.d.querySelectorAll('#system-work-coverage time')].some(time=>time.title.includes('2026-09-01')));
+ const text=h.d.querySelector('#system-work-coverage').textContent;assert.match(text,/Recent completions.*Incomplete/i);assert.match(text,/Pull request unavailable/);assert.ok([...h.d.querySelectorAll('#system-work-coverage time')].some(time=>time.title.includes('2026-09-01')));
 });
 test('finding 10: source stages and terminal pulse preserve pipeline contract',()=>{
  for(const state of ['queued','running','review','blocked','failed']){const item={...row(),kind:'progress_task',state};const expected=taskStage({status:state});assert.equal(systemPipeline([item],[]).stages.find(s=>s.tasks.length).id,expected);}
  assert.equal(systemPipeline([{...row(),state:'ci'}],[]).stages.find(s=>s.tasks.length).id,'ci');assert.equal(systemPipeline([{...row(),state:'merged'}],[]).stages.find(s=>s.tasks.length).id,'merged');
- for(const state of ['approved','merged']){const task=systemPipeline([],[{...row(),state,completed:true}]).stages.find(s=>s.id==='live').tasks[0];assert.equal(taskPulse(task),'still');}
+ for(const state of ['approved','merged']){const task=systemPipeline([],[{...row(),state,completed:true}]).stages.find(s=>s.id==='recorded').tasks[0];assert.equal(taskPulse(task),'still');}
 });
 test('findings 2 and 3: reopening a pending action cannot replace it and receives its receipt',async t=>{
  const result=deferred();const h=await setup(t,{write:()=>result.promise});h.open('a');h.submit('Original');await settle();h.click('#work-triage-close');h.open('a');h.submit('Replacement');await settle();assert.equal(h.writes.length,1);

@@ -3,7 +3,7 @@
   "version": "1.44.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "a3a6913f7af0d721ab538090b1347976befcf421"
+    "source_commit": "b8e044ace2ef2270ab75d63a628448e04e392e81"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -21,6 +21,7 @@
     "add-deal-note",
     "add-industry-event",
     "add-loop",
+    "add-party",
     "add-room-turn",
     "advance-workflow-cutover-stage",
     "answer-board-question",
@@ -63,13 +64,16 @@
     "loop-board",
     "loop-headers",
     "morning-brief",
+    "new-client",
     "new-deal",
+    "new-lead",
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
     "propose-doc-correction",
     "read-assurance-health",
     "read-correspondence-thread",
+    "read-deal-reconciliation",
     "read-dispatch-history",
     "read-doc-activity",
     "read-doc-conversation",
@@ -81,6 +85,7 @@
     "read-progress-board",
     "read-resource-dashboard",
     "read-room",
+    "read-room-latest",
     "read-room-queue",
     "read-session-identity",
     "read-tour-selection-cart",
@@ -131,8 +136,7 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*",
-    "/api/v1/runtime-errors"
+    "/api/tours/*"
   ],
   "invariants": [
     "The browser never receives database credentials.",

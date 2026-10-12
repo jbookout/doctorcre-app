@@ -1,4 +1,3 @@
-import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 // V5-UX-C01 — one test per checkable-done clause, plus the static page rules.
 //
 // The payloads below are the record layer's own shapes, keyed as
@@ -200,7 +199,7 @@ test("live Needs Joe uses the authenticated GET and preserves received item orde
 test("the route and the three verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/control-room"], "control-room.html");
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, CARR_INTERFACE_VERSION);
+  assert.equal(contract.version, "1.44.0");
   for (const verb of ["incident-board", "current-work-item", "current-work-requests", "get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

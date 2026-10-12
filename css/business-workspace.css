@@ -223,3 +223,4 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
   #searchCandidates > .work-list::-webkit-scrollbar { width: 8px; background: transparent; }
   #searchCandidates > .work-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--line-strong); }
 }
+#searchChips .chip:focus { outline: 3px solid var(--focus); outline-offset: 3px; }

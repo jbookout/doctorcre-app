@@ -1,4 +1,3 @@
-import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 // V5-UX-C14 — the incident page, one test per checkable-done clause.
 //
 // The payloads below are the record layer's own shapes: `get-incident` returns
@@ -201,7 +200,7 @@ test("a read that did not answer is unknown in the app's own words", async () =>
 test("the route and the two verbs are pinned in the contracts", () => {
   assert.equal(routes.routes["/incidents"], "incidents.html");
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, CARR_INTERFACE_VERSION);
+  assert.equal(contract.version, "1.44.0");
   for (const verb of ["get-incident", "link-incident-work-request"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
   }

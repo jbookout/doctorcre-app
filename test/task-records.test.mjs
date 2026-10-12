@@ -1,4 +1,3 @@
-import { CARR_INTERFACE_VERSION } from './carr-interface-fixture.mjs';
 import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -305,7 +304,7 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   // Route and contract, both bumped for an additive change.
   assert.equal(routes.redirects["/tasks"], "/");
   assert.equal(routes.version, "1.20.0");
-  assert.equal(carr.version, CARR_INTERFACE_VERSION);
+  assert.equal(carr.version, "1.44.0");
   for (const verb of ["add-loop", "close-loop", "loop-board", "loop-headers", "read-loop", "update-loop"]) {
     assert.ok(carr.mcp_operations.includes(verb), `the interface must pin ${verb}`);
   }

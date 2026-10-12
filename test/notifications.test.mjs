@@ -1,4 +1,3 @@
-import { CARR_INTERFACE_VERSION, CARR_PRODUCER_SHA } from './carr-interface-fixture.mjs';
 // V5-UX-B12a — the notifications page, one test per clause of the frozen spec.
 //
 // The payloads below are the producer's own shapes: `notification-feed` returns
@@ -372,8 +371,8 @@ test("clause 9: each of the eight UX20 states renders its own evidence", async (
 
 test("clause 10: the route, the versions, the producer pin and the two verbs are in the contracts", () => {
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, CARR_INTERFACE_VERSION);
-  assert.equal(contract.producer.source_commit, CARR_PRODUCER_SHA);
+  assert.equal(contract.version, "1.44.0");
+  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81");
   assert.equal(routes.routes["/updates"], "notifications.html");
   for (const verb of ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -752,8 +751,8 @@ test("B12-8 both validators accept the REAL captured production payloads, field 
 /* ------------------------------------------------------------- behaviour 9 */
 
 test("B12-9 the current contract still pins both preference verbs and their order", async () => {
-  assert.equal(contract.version, CARR_INTERFACE_VERSION, "the current interface retains notification preferences");
-  assert.equal(contract.producer.source_commit, CARR_PRODUCER_SHA,
+  assert.equal(contract.version, "1.44.0", "the current interface retains notification preferences");
+  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81",
     "the producer pin includes preference verbs and the Codex checkpoint read");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].sort());
 

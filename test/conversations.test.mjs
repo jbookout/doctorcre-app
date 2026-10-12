@@ -1,4 +1,3 @@
-import { CARR_INTERFACE_VERSION, CARR_PRODUCER_SHA } from './carr-interface-fixture.mjs';
 // V5-UX-B07 — the Doc conversations page, one test per clause of the frozen spec.
 //
 // The payloads below are the producer's own shapes. Three of them are the whole
@@ -405,8 +404,8 @@ test("clause 9: paging is honest, a late read is ignored, and the route round-tr
 
 test("clause 10: the route, the versions, the producer pin and the five verbs are in the contracts", () => {
   assert.equal(routes.version, "1.20.0");
-  assert.equal(contract.version, CARR_INTERFACE_VERSION);
-  assert.equal(contract.producer.source_commit, CARR_PRODUCER_SHA);
+  assert.equal(contract.version, "1.44.0");
+  assert.equal(contract.producer.source_commit, "b8e044ace2ef2270ab75d63a628448e04e392e81");
   assert.equal(routes.routes["/doc-chats"], "conversations.html");
   for (const verb of ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);

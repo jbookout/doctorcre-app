@@ -21,6 +21,7 @@ import { classifyCommandOutcome, commandMessage, pendingCommand } from './comman
 import { renderAccountCards } from './account-cards.js';
 import { mountEvidence } from './correspondence.js';
 import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -63,7 +64,7 @@ const state = {
   fieldWrites: {},
   nextStepRequests: new Map(), nextStepInFlight: new Set(),
   presence: [], captureSessions: [],
-  confirms: [], review: null, pollTimer: null, boardRefreshTimer: null,
+  confirms: [], review: null,
   // Recent changes are session memory only: bounded, never stored, and never
   // a substitute for the deal's own Change history. The feed cursor starts at
   // the beginning of the log, so nothing is shown until it reaches the present.
@@ -582,6 +583,7 @@ function installCallMode() {
     startAgenda,
     onConfirmed: loadHome,
   });
+  state.callModeUi.checkEligibility();
   return state.callModeUi;
 }
 
@@ -1144,7 +1146,7 @@ async function openDeal(dealId, { background = false } = {}) {
     <div class="deal-content">${parked ? `<div class="parking-banner"><b>${esc(parkingReasonLabel(deal.parking_reason))}</b>${deal.parking_note ? `<span>${esc(deal.parking_note)}</span>` : ''}<small>This record is outside active counts and weekly agendas.</small></div>` : ''}<div class="deal-summary">
       <div class="detail-card"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
-      <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.market_agent || actorName(deal.owner))}</p></div>
+      <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.workspace_kind === 'national_account' ? deal.market_agent || 'Unassigned' : actorName(deal.owner))}</p></div>
       <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
       <section class="detail-section"><h3>Insights</h3><button type="button" class="secondary" data-jev-deal="${esc(deal.id)}">Review deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
       <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
@@ -1374,19 +1376,19 @@ async function boot() {
   const linkedDeal = params.get('deal');
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
-  // after a newer one.
-  state.pollTimer = setInterval(() => {
+  // after a newer one. Both clocks sleep while the tab is hidden or idle.
+  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => {
     pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
-  }, POLL_MS);
+  } });
   // The backstop for what the feed cannot promise. A change whose commit landed
   // out of order with its recorded time can slip past the cursor, and a board
   // that only re-reads on news would then hold that wrong value for as long as
   // the page stayed open. This asks anyway. It coalesces with the feed-driven
   // and post-write refreshes through the same single-read queue, so it adds one
   // read per interval at most and none while another is already running.
-  state.boardRefreshTimer = setInterval(() => {
+  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => {
     state.boardSync.requestRefresh('periodic');
-  }, BOARD_REFRESH_MS);
+  } });
   if (linkedDeal && state.deals.has(linkedDeal)) {
     try { await openDeal(linkedDeal); }
     catch (error) {

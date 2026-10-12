@@ -20,7 +20,7 @@ import {
   SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, acceptsSearchResponse, applyScope,
   buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, groupSearchResults,
   parseSearchAddress, queryIsSendable, readSavedViews, refusalDetail, renameView, retiredSummary,
-  saveView, scopeChips, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
+  saveView, scopeChips, toggleSearchScope, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
   validSearchPayload, visibleCount, writeSavedViews,
 } from "./search-model.js";
 
@@ -79,8 +79,10 @@ function rowHtml(row) {
 function renderChips(groups) {
   const bar = $("searchChips");
   if (!bar) return;
+  const focusKey = bar.contains(document.activeElement) ? document.activeElement.dataset.chip : null;
   const chips = scopeChips(groups, view.kinds);
   bar.innerHTML = chips.map((chip) => `<button class="chip" type="button" data-chip="${escapeHtml(chip.id)}" aria-pressed="${chip.selected}">${escapeHtml(chip.label)} · ${escapeHtml(String(chip.count))}</button>`).join("");
+  if (focusKey) [...bar.querySelectorAll("[data-chip]")].find(node => node.dataset.chip === focusKey)?.focus();
 }
 
 function renderSavedViews() {
@@ -113,8 +115,7 @@ function renderDisambiguation() {
   block.innerHTML = [
     `<h3>${escapeHtml(SEARCH_STATE_COPY.disambiguation.title)}</h3>`,
     `<p class="small">${escapeHtml(String(payload.candidate_count))} candidates found.</p>`,
-    // The producer's hint, verbatim. This page opens none of them on its own.
-    `<p class="small">${escapeHtml(payload.hint)}</p>`,
+    '<p class="small">Choose a matching result below and select Open where available. Candidates include all scopes and are not filtered by the scope buttons.</p>',
     `<ul class="work-list">${payload.candidates.map((row) => `<li class="work-item"><div><h3>${escapeHtml(row.name)}</h3><div class="work-meta"><span>${escapeHtml(row.kind)}</span></div></div></li>`).join("")}</ul>`,
   ].join("");
 }
@@ -176,7 +177,7 @@ function render() {
 
   const total = $("searchCount");
   // The only total this page prints is the sum of the rows it is showing.
-  if (total) total.textContent = view.payload ? `${visibleCount(shown)} shown` : "";
+  if (total) total.textContent = view.payload ? `${visibleCount(shown)} grouped results in scope` : "";
 
   renderChips(groups);
   renderSavedViews();
@@ -198,6 +199,7 @@ async function read({ push = true } = {}) {
   const sequence = ++view.sequence;
   setDocFilters({query:view.query,kinds:view.kinds});
   if (!queryIsSendable(view.query)) {
+    if (push) pushAddress();
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
     return;
@@ -291,7 +293,7 @@ function wire() {
     const id = chip.dataset.chip;
     // A chip hides rows from the answer already in hand. Nothing is re-read and
     // the outgoing argument object is untouched.
-    view.kinds = view.kinds.includes(id) ? view.kinds.filter((entry) => entry !== id) : [...view.kinds, id];
+    view.kinds = toggleSearchScope(view.kinds, id);
     replaceAddress();
     render();
   });

@@ -98,3 +98,12 @@ test('R1 resume invalidation fires before a coalesced in-flight read and never f
  handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
  release();await settle();handle.dispose();
 });
+test('a failed read retries on a short backoff and a good read restores the poll interval', async () => {
+  const document = new EventTarget(); document.visibilityState = 'visible';
+  const window = new EventTarget(); const delays = []; let job = null;
+  window.setTimeout = (fn, ms) => { if (ms === 5) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
+  let fail = 3, reads = 0;
+  const handle = mountAutoRefresh({ document, window, timeoutMs: 5, refresh: () => { reads++; if (fail-- > 0) throw Error('synthetic outage'); } });
+  for (let i = 0; i < 4; i++) { job(); await settle(); }
+  assert.equal(reads, 4); assert.deepEqual(delays, [30_000, 1_000, 2_000, 4_000, 30_000]); handle.dispose();
+});
