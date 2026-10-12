@@ -29,6 +29,10 @@ const applicationSource = tree => tree.split('\0').filter(row => {
     !['test/staging-control-visibility.test.mjs', 'contracts/e2e-staging-control-proofs.v1.json'].includes(path);
 }).map(row => row + '\0').join('');
 
+// Shared by proof admission and guarded catalog re-pinning. Keep the deliberate
+// whole-tree binding and its exact exclusions in one place.
+export const applicationSourceFingerprint = tree => sha(applicationSource(tree));
+
 // Record preparation runs this before installing any browser guard. No page
 // is accepted here and no grant is inferred from a discovered control.
 export async function prepareBrowserControlProofs(release, { signal } = {}) {
@@ -45,7 +49,7 @@ export async function prepareBrowserControlProofs(release, { signal } = {}) {
     ({ stdout: tree } = await execute('git', ['ls-tree', '-r', '-z', release.source_commit],
       { cwd: root, encoding: 'utf8', timeout: 5000, maxBuffer: 4 * 1024 * 1024, signal }));
   } catch { signal?.throwIfAborted(); return empty(); }
-  if (sha(applicationSource(tree)) !== catalog.application_source_sha256) return empty();
+  if (applicationSourceFingerprint(tree) !== catalog.application_source_sha256) return empty();
   const identities = new Set();
   for (const proof of catalog.controls) {
     if (typeof proof?.identity !== 'string' || !/^control-state\.v1:[a-f0-9]{64}$/.test(proof.identity) ||
