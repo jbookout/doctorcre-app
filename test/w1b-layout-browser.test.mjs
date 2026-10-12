@@ -248,8 +248,10 @@ test('PR129 #7 closing Lead detail after polling resolves the current card by id
 });
 test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
  const {page,goto,writes}=await open(t,{width:390,hasTouch:true});await goto('/leads');await page.locator('.lead-card').first().tap();await page.locator('#detailStage').selectOption('engaged');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);await page.locator('#saveStage').tap();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();assert.deepEqual(writes,['update-lead']);
- await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('legal');await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Legal');
- assert.equal(await page.locator('#detailPhase').inputValue(),'legal');
+ await goto('/deals?view=board');await page.locator('.kanban-card[data-id="d14"]').tap();await page.locator('#detailPhase').selectOption('site_selection');await page.locator('#completionDialog[open]').waitFor();
+ assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase),'Legal');
+ await page.locator('#completionConfirm').tap();await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Site selection');
+ assert.equal(await page.locator('#detailPhase').inputValue(),'site_selection');
 });
 for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain pointer actionable at ${width}x390`,async t=>{
  const {page,goto}=await open(t,{width,height:390});await goto('/leads');

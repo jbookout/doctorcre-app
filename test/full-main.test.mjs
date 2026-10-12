@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { continuityCases } from '../scripts/browser-proof-contract.mjs';
+import { continuityCases, requiredTargets } from '../scripts/browser-proof-contract.mjs';
 
 const runner = await import('../scripts/full-main.mjs').catch(() => null);
 async function fixture(t, body) {
@@ -175,7 +175,7 @@ async function browserFixture(t, change = () => {}) {
     workflowRunId:process.env.GITHUB_RUN_ID||'local',attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   const proof = {
     native:{run:{id:'synthetic-native-run',vcs:{commit:'SOURCE',dirty:false},status:'passed',exitCode:0,
-      results:entries.map(({file,title})=>({file,testId:`${file}::${encodeURIComponent(title)}`,selected:true,status:'passed',attempts:[{}]}))}},
+      results:requiredTargets.flatMap(targetId=>entries.map(({file,title})=>({file,targetId,testId:`${file}::${encodeURIComponent(title)}`,selected:true,status:'passed',attempts:[{}]})))}},
     coverage:{binding:{...binding},
       rows:[...entries.map(({title})=>title),...continuityCases.map(({id})=>id)].map(id=>({id,status:'passed',attempts:1})),
       qualification:{broken:'failed',repaired:'passed'}},

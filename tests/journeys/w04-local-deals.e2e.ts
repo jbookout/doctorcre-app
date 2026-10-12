@@ -13,7 +13,7 @@ seed.seed_events.push({
 });
 
 // W4: the Local Deals board moves a card by drag and undoes Doc's automatic move.
-test('W4 Local Deals board drags a phase change and undoes an automatic move', async ({ app, browser, screen }) => {
+test('W4 Local Deals board drags a phase change and undoes an automatic move', async ({ app, browser, screen, quality }) => {
   await browser.route('**/data/board-seed.json', route => route.fulfill({ json: seed }));
   await app.open('/deals');
 
@@ -22,15 +22,34 @@ test('W4 Local Deals board drags a phase change and undoes an automatic move', a
   const autoMove = browser.locator('[data-column="negotiation"] [data-id="d14"] .auto-move');
   await expect(autoMove).toContainText('Moved by Doc: LOI sent');
 
+  await quality.check('local-deals');
   await screen.getByRole('button', 'Undo phase change on Demo Surgical Practice').tap();
   await expect(screen.getByRole('status').filter({ hasText: 'Change undone' })).toBeVisible();
   await expect(browser.locator('[data-column="research"] [data-id="d14"]')).toBeVisible();
   await expect(browser.locator('[data-id="d14"] .auto-move')).toHaveCount(0);
 
-  await browser.locator('[data-column="negotiation"] [data-id="d23"]').dragTo(browser.locator('[data-column="legal"]'));
+  const phone = await browser.evaluate(() => navigator.maxTouchPoints > 0);
+  const move = async () => {
+    if (phone) {
+      // Phones use the existing deal phase picker; HTML drag remains desktop-only.
+      await browser.locator('[data-column="negotiation"] [data-id="d23"] .card-open').tap();
+      await expect(browser.locator('#detailPhase')).toBeVisible();
+      await browser.locator('#detailPhase').selectOption({ value: 'legal' });
+    } else {
+      await browser.locator('[data-column="negotiation"] [data-id="d23"]').dragTo(browser.locator('[data-column="legal"]'));
+    }
+  };
+  await move();
+  await expect(browser.locator('#completionDialog')).toBeVisible();
+  await quality.check('phase-confirmation');
+  await quality.dismiss('#completionDialog', '#completionCancel');
+  if (phone) await quality.dismiss('#recordPanel', '[aria-label="Close deal"]');
+  await expect(browser.locator('[data-column="negotiation"] [data-id="d23"]')).toBeVisible();
+  await move();
   await expect(browser.locator('#completionDialog')).toBeVisible();
   await browser.locator('#completionConfirm').tap();
   await expect(browser.locator('#completionDialog')).toBeHidden();
+  if (phone) await quality.dismiss('#recordPanel', '[aria-label="Close deal"]');
   await expect(browser.locator('[data-column="legal"] [data-id="d23"]')).toBeVisible();
   await expect(browser.locator('[data-column="negotiation"] [data-id="d23"]')).toHaveCount(0);
 });

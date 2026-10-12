@@ -47,6 +47,7 @@
     "@ai-sdk/openai": "4.0.83",
     "@e2e-dev/web": "0.13.0",
     "ai": "7.0.127",
+    "axe-core": "4.14.0",
     "e2e": "0.18.0",
     "es-module-lexer": "1.7.0",
     "esbuild": "0.28.1",

@@ -1,5 +1,6 @@
 import type { E2EConfig } from 'e2e';
-import { web } from '@e2e-dev/web';
+import { journeyEngine } from './tests/journeys/phone-engine.mjs';
+import { journeyProfiles } from './tests/journeys/phone-profiles.mjs';
 import { stagingTargets } from './scripts/e2e-staging/screens.mjs';
 import { EXPLORATION_MODEL_CALL_POLICY, modelRoomExplorationModel } from './scripts/e2e-staging/model-room.mjs';
 import { modelCallsAllowed, RUN_LIMITS } from './scripts/e2e-staging/run-limits.mjs';
@@ -18,15 +19,15 @@ export default {
   video: staging ? 'off' : 'retain-on-failure',
   ...(staging && process.env.E2E_V2_OUTPUT ? { output: process.env.E2E_V2_OUTPUT + '/sdk' } : {}),
   ...(staging ? { tests: ['tests/staging-live/**/*.e2e.ts'], cache: 'off' as const } : {}),
-  targets: staging ? stagingTargets() : [{
-    name: 'chromium',
-    engine: web({ browser: 'chromium', viewport: { width: 1440, height: 960 } }),
+  targets: staging ? stagingTargets() : journeyProfiles.map(profile => ({
+    name: profile.name,
+    engine: journeyEngine(profile),
     app: {
       url: 'http://127.0.0.1:0',
       // The synthetic fixture server; on localhost the app boots fixture mode.
       command: { executable: 'npm', args: ['run', 'serve'], env: { PORT: '{port}', DOCTORCRE_FIXTURE_ROOT: process.env.BROWSER_PROOF_ROOT ?? '' }, log: '.e2e/logs/app.log' },
     },
-  }],
+  })),
   ...(!modelCallsAllowed() || ci && !staging ? {} : { agents: { default: { model: modelRoomExplorationModel },
     'bug-hunter': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the entire assigned staging workspace. Exercise forms, menus, drawers, tabs, recovery and destructive controls. Report only observed defects with reproduction steps.' },
     'first-time-ux': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Explore the assigned staging workspace as a first-time partner. Check discovery, copy, keyboard navigation and recovery. Record evidence for every finding.' },

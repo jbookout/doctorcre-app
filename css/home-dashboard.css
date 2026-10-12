@@ -20,3 +20,4 @@
 :root[data-theme="light"] .home-shell{--text:#172d44;--muted:#425e7b;--quiet:#425e7b}
 /* Calendar tiles keep the dark fill otherwise; give them a light fill so the darker tokens stay readable. */
 :root[data-theme="light"] .home-day:not(.today){background:rgba(255,255,255,.72)}
+.home-introductions .relationship-card,.relationship-intro-list .relationship-card{font:inherit}

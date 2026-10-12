@@ -1,11 +1,11 @@
 // Deterministic product evidence. No model, personal session or production target.
-import { readFile, writeFile, mkdir, copyFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, copyFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from './artifact.mjs';
-import { journeyFiles, continuityCases, requiredNativeEntries, validateNativeCompletion, validateBrowserCompletion } from './browser-proof-contract.mjs';
+import { journeyFiles, continuityCases, requiredNativeEntries, validateNativeCompletion, validateBrowserCompletion, replaceOutputDirs } from './browser-proof-contract.mjs';
 import { runChild } from './run-child.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -23,10 +23,7 @@ const continuity=continuityCases.map(({id})=>id);
 
 try {
   if(git('status','--porcelain','--untracked-files=no')) throw Error('product proof requires committed source');
-  await rm(output,{recursive:true,force:true});
-  await rm(buildRoot,{recursive:true,force:true});
-  await mkdir(output,{recursive:true});
-  await mkdir(buildRoot,{recursive:true});
+  await replaceOutputDirs(output,buildRoot);
   const sourceCommit=git('rev-parse','HEAD');
   phase='build';
   const built=await buildArtifact({root,outDir:join(root,'dist'),commit:sourceCommit});
@@ -36,7 +33,7 @@ try {
   const servedBuild={sourceCommit,manifestDigest:sha(await readFile(join(root,'dist/doctorcre-app.manifest.json')))};
   const runtime={e2e:JSON.parse(await readFile(join(root,'node_modules/e2e/package.json'))).version,web:JSON.parse(await readFile(join(root,'node_modules/@e2e-dev/web/package.json'))).version,playwright:JSON.parse(await readFile(join(root,'node_modules/playwright/package.json'))).version,node:process.versions.node,browser:'chromium'};
   const requiredNativeTests=requiredNativeEntries.map(row=>`${row.file}::${encodeURIComponent(row.title)}`);
-  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','scripts/run-child.mjs','scripts/browser-proof-contract.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/test.mjs','tests/journeys/browser-continuity.mjs',...journeyFiles]);
+  const buildConfigDigest=await filesDigest(['tests/journeys/required-coverage.json','e2e.config.ts','package-lock.json','scripts/serve.mjs','scripts/browser-product-proof.mjs','scripts/run-child.mjs','scripts/browser-proof-contract.mjs','test/browser-harness.mjs','test/browser-product-proof.test.mjs','tests/journeys/test.mjs','tests/journeys/phone-engine.mjs','tests/journeys/phone-profiles.mjs','tests/journeys/screen-audit.mjs','tests/journeys/browser-continuity.mjs',...journeyFiles]);
   const fixtureDigest=await filesDigest(['data/board-seed.json','tests/journeys/browser-continuity.mjs']);
   // Run from this invocation's extracted archive. Old reports cannot satisfy it.
   phase='native-journeys';

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { chromium, settles } from './browser-harness.mjs';
 import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
+import axe from 'axe-core';
 
 const NOW = new Date('2026-10-01T15:00:00Z');
 const { routes } = JSON.parse(await readFile(new URL('../contracts/app-routes.v1.json', import.meta.url), 'utf8'));
@@ -208,6 +209,8 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     await page.locator('#homeLeads:not([hidden])').waitFor();
     await page.locator('#homeControl:not([hidden])').waitFor();
     assert.equal(await page.locator('.home-week .home-day').count(), 7);
+    // The week link names its destination before the day tiles it wraps.
+    assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
     assert.equal(await page.locator('.home-lead').count(), 3);
     assert.equal(await page.locator('.home-flags .home-flag').count(), 4);
     assert.match(await page.locator('#homeControl').textContent(), /Needs attention/);
@@ -234,6 +237,19 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.equal(await page.getByRole('button', { name: 'Team View', exact: true }).getAttribute('aria-pressed'), 'true');
     assert.deepEqual(errors, []);
   });
+});
+
+test('suggested introductions keep readable text on their dark cards in both themes', async t => {
+  const { page, errors } = await open(t);
+  await page.locator('#homeIntroductions .relationship-card').first().waitFor();
+  await page.addScriptTag({ content: axe.source });
+  for (const theme of ['dark', 'light']) {
+    if ((await page.locator('[data-pref="theme"]').getAttribute('aria-pressed') === 'true') !== (theme === 'dark')) await page.locator('[data-pref="theme"]').click();
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme || 'dark'), theme);
+    const audit = await page.evaluate(() => window.axe.run(document.querySelector('#homeIntroductions'), { runOnly: ['color-contrast'] }));
+    assert.deepEqual(audit.violations.flatMap(v => v.nodes.map(n => n.target.join(' '))), [], `${theme}: introduction text contrast`);
+  }
+  assert.deepEqual(errors, []);
 });
 
 test('reduced motion stops ambient and hover motion without hiding data', async t => {

@@ -4,6 +4,7 @@ import { readFile, mkdir } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
+import axe from "axe-core";
 const root = new URL("../", import.meta.url);
 async function open(t, width = 1440) {
   const browser = await chromium.launch();
@@ -37,6 +38,10 @@ async function open(t, width = 1440) {
       if (version) payload.nodes[0].summary = "Demo refreshed summary";
       if (mode === "malformed") payload.edges[0].from = "missing";
       if (mode === "territory") payload.nodes[0].territory = 123;
+      if (mode === "twins") {
+        payload.nodes[0].name = "Demo Healthcare Lending North Partners";
+        payload.nodes[3].name = "Demo Healthcare Lending South Partners";
+      }
       return r.fulfill({ json: payload });
     }
     if (url.pathname === "/api/system-work/session")
@@ -168,11 +173,10 @@ for (const width of [1440, 390])
     });
     await page.keyboard.press("Escape");
     assert.equal(await page.locator(".relationship-dialog").isVisible(), false);
-    assert.match(
-      await page.evaluate(() =>
-        document.activeElement.getAttribute("aria-label"),
-      ),
-      /Demo Healthcare Lending/,
+    assert.equal(
+      await page.evaluate(() => document.activeElement.getAttribute('data-node')),
+      'party:demo-lender',
+      'Dismissal restores the exact opening node',
     );
     await page.locator("#referralsTab").click();
     assert.equal(await page.locator(".relationship-referral").count(), 2);
@@ -204,6 +208,28 @@ for (const width of [1440, 390])
       ),
     );
   });
+for (const width of [1440, 320])
+  test(`W14 graph nodes keep full record identity in their accessible names at ${width}px`, async (t) => {
+    const h = await open(t, width),
+      { page } = h;
+    h.setMode("twins");
+    await page.goto("http://localhost/relationships?mode=live");
+    await page.waitForSelector(".relationship-node");
+    const shown = await page.locator(".relationship-node").evaluateAll((nodes) =>
+      nodes.map((node) => node.querySelector("text:not([aria-hidden])").textContent));
+    assert.equal(shown.filter((text) => text.includes("Demo Healthcare…")).length, 2, "both records share one shortened visible label");
+    for (const side of ["North", "South"])
+      assert.equal(await page.getByRole("button", { name: `Open vendor, Demo Coast, Demo Healthcare Lending ${side} Partners`, exact: true }).count(), 1);
+    await page.addScriptTag({ content: axe.source });
+    const audit = await page.evaluate(() => window.axe.run(document.querySelector("#networkCanvas"), { runOnly: ["label-content-name-mismatch"] }));
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.incomplete, []);
+    const passed = (audit.passes[0]?.nodes || []).map((node) => node.html);
+    for (const id of ["party:demo-lender", "party:demo-build"])
+      assert.ok(passed.some((html) => html.includes(`data-node="${id}"`)), `${id} shows a label contained in its name`);
+    assert.deepEqual(h.errors, []);
+  });
+
 test("W14 autonomous refresh retains filters and expanded evidence, recovers failure and clears auth", async (t) => {
   const h = await open(t),
     { page } = h;
