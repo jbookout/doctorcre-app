@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
 import { chromium } from "./browser-harness.mjs";
+import { TOUCH_LAYOUT } from "../js/touch-layout.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -41,10 +42,12 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
 
 test("QA-005 phone drawers leave room under the floating Doc control", async () => {
   const css = await read("css/doc-presence.css");
-  const phone = css.match(/@media\s*\(max-width:\s*760px\)\s*\{([^]*)\}\s*$/m);
-  assert.ok(phone, "doc-presence.css has a phone block");
-  assert.match(phone[1], /\.has-app-layout\s+\.app-layout-sidebar[^{]*\{[^}]*padding-bottom:\s*100px/);
-  assert.match(phone[1], /\.app-layout-today[^{]*\{[^}]*padding-bottom:\s*100px|\.app-layout-today[^{]*,[^{]*\{[^}]*padding-bottom:\s*100px/);
+  // Drawers open on phones and touch tablets, so the room follows the shared touch query.
+  const start = css.lastIndexOf(`@media${TOUCH_LAYOUT}{`);
+  assert.ok(start >= 0, "doc-presence.css has a touch-layout block");
+  const touch = css.slice(start);
+  assert.match(touch, /\.has-app-layout\s+\.app-layout-sidebar[^{]*\{[^}]*padding-bottom:\s*100px/);
+  assert.match(touch, /\.app-layout-today[^{]*\{[^}]*padding-bottom:\s*100px|\.app-layout-today[^{]*,[^{]*\{[^}]*padding-bottom:\s*100px/);
 });
 
 test("QA-009 thread controls are disabled until a conversation is selected", async () => {
