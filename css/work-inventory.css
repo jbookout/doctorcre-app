@@ -89,3 +89,6 @@
   }
   .stage-table td .btn { min-height: var(--touch); }
 }
+
+/* Full card read in Details wraps instead of widening the popup. */
+.record-data { white-space: pre-wrap; overflow-wrap: anywhere; }
