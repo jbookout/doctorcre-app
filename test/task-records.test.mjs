@@ -9,7 +9,7 @@ import {
   loopRefusalMessage, normalizeBoardRow, operationKeys, orderTaskRows, partnerName, quickAddPlan,
   quickAddRecords, scopeRows, stableKey, taskDetailRows, validBoardPayload,
 } from "../js/task-records-model.js";
-import { parseQuickAdd } from "../js/visual-system.js";
+import { formatDueStamp, parseQuickAdd } from "../js/visual-system.js";
 import { createFixtureClient } from "../js/fixture-client.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -183,7 +183,7 @@ test("a due date is the dated marker and a calendar day, and nothing else", () =
     loop_id: "loop-001", base_version: 4, marker: "dated", due_on: "2026-09-30",
   });
   assert.throws(() => dueDateArgs(freshLoop(), "next Friday"), TypeError);
-  assert.throws(() => dueDateArgs(freshLoop(), ""), TypeError);
+  assert.throws(() => dueDateArgs({ marker: "dated" }, ""), TypeError, "clearing still requires a fresh writable record");
 });
 
 /* ------------------------------------------------------------------ D5 refusals */
@@ -466,4 +466,96 @@ test("the matched record's id rides into add-loop as source_note prose, because 
 
 test("canonical loop identity survives the board projection for Doc selection", () => {
   assert.equal(normalizeBoardRow({...boardRow(),loop_id:"synthetic-loop-a"}).loop_id,"synthetic-loop-a");
+});
+
+/* ------------------------------------------------------------------ V1 audit batch B */
+
+const auditSource = await readFile(new URL("../js/task-records.js", import.meta.url), "utf8");
+const auditWiring = auditSource.slice(auditSource.indexOf("function wire() {"), auditSource.indexOf("function handOver("));
+const auditLoop = { loop_id: "synthetic-task", version: 7, marker: "dated", due_on: "2026-10-16" };
+
+test("clearing a dated task uses update-loop's marker transition without an unsupported empty date", () => {
+  assert.deepEqual(dueDateArgs(auditLoop, ""), {
+    loop_id: auditLoop.loop_id, base_version: 7, marker: "none",
+  });
+});
+
+test("clearing preserves a flag or decision on the freshly read task", () => {
+  for (const marker of ["bell", "decision", "none"]) {
+    assert.deepEqual(dueDateArgs({ ...auditLoop, marker, due_on: null }, ""), {
+      loop_id: auditLoop.loop_id, base_version: 7, marker,
+    });
+  }
+});
+
+// Exercise the page's actual listener with the same small DOM stubs used by
+// other browser-free control tests. No browser or dependency install is needed.
+function duePicker(auditRow, client = null) {
+  let change;
+  let closed = false;
+  const commands = [];
+  const sent = [];
+  const picker = { addEventListener: (type, handler) => { if (type === "change") change = handler; } };
+  const wire = new Function("$", "document", "currentRow", "closeDialog", "runCommand",
+    "operationKeys", "formatDueStamp", "dueDateArgs", "client", `${auditWiring}; return wire;`)(
+    (id) => id === "taskDue" ? picker : null,
+    { addEventListener() {} }, () => auditRow, () => { closed = true; },
+    (target, command) => commands.push({ target, ...command }),
+    operationKeys, formatDueStamp, dueDateArgs,
+    { updateLoop: async (request) => { sent.push(request); return client ? client.updateLoop(request) : { ok: true }; } },
+  );
+  wire();
+  return { change: (value) => change({ target: { value } }), commands, sent, closed: () => closed };
+}
+
+const auditRow = { kind: "open_loop", number: "201", title: "Demo task: review the proposal", version: 2, marker: "dated", due_on: "2026-10-16" };
+
+test("the empty calendar change dispatches a named removal built from the fresh read", async () => {
+  const picker = duePicker(auditRow);
+  picker.change("");
+  assert.equal(picker.commands.length, 1, "clearing must reach the shared command flow");
+  assert.equal(picker.closed(), true);
+  const command = picker.commands[0];
+  assert.equal(command.target, auditRow);
+  assert.equal(command.operationKey, operationKeys.due(auditRow));
+  assert.match(command.summary, /Remove due date.*Demo task: review the proposal/);
+  await command.send({ idempotency_key: "synthetic-clear", ...command.build(auditLoop) });
+  assert.deepEqual(picker.sent, [{ idempotency_key: "synthetic-clear", loop_id: auditLoop.loop_id, base_version: 7, marker: "none" }]);
+});
+
+test("clearing the picker through the synthetic client removes the saved day from the reloaded board", async () => {
+  const seedText = await readFile(`${ROOT}/data/board-seed.json`, "utf8");
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(seedText).toString("base64")}` });
+  const boardRow202 = async () => (await client.loopBoard({ kind: "open_loop", status: "open", limit: 300, summary: false }))
+    .loops.map(normalizeBoardRow).find((row) => row.number === "202");
+  const before = await boardRow202();
+  assert.equal(before.marker, "dated");
+  assert.ok(before.due_on, "the synthetic task starts dated");
+  const picker = duePicker(before, client);
+  picker.change("");
+  const command = picker.commands[0];
+  const { loop } = await client.readLoop({ number: "202", kind: "open_loop" });
+  const result = await command.send({ idempotency_key: "synthetic-clear-readback", ...command.build(loop) });
+  assert.equal(result.ok, true);
+  const after = await boardRow202();
+  assert.equal(after.marker, "none");
+  assert.equal(after.due_on, null, "the reloaded row no longer carries the removed day");
+  assert.equal((await client.readLoop({ loop_id: loop.loop_id })).loop.due_on, null);
+});
+
+test("a nonempty calendar change still sends the dated marker and selected day", async () => {
+  const picker = duePicker(auditRow);
+  picker.change("2026-10-20");
+  assert.equal(picker.commands.length, 1);
+  const command = picker.commands[0];
+  assert.match(command.summary, /Due date on/);
+  await command.send(command.build(auditLoop));
+  assert.deepEqual(picker.sent, [{ loop_id: auditLoop.loop_id, base_version: 7, marker: "dated", due_on: "2026-10-20" }]);
+});
+
+test("a calendar event without a current task sends nothing", () => {
+  const picker = duePicker(null);
+  picker.change("");
+  assert.equal(picker.commands.length, 0);
+  assert.equal(picker.closed(), false);
 });

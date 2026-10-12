@@ -1824,6 +1824,8 @@ export async function createFixtureClient(opts = {}) {
           throw error;
         }
         for (const field of allowed) if (fields[field] !== undefined) found[field] = fields[field];
+        // Like update-loop, leaving the dated marker clears the saved day.
+        if (found.marker !== 'dated') found.due_on = null;
         if (fields.blocker !== undefined) {
           found.blocker_class = fields.blocker;
           found.blocker_detail = fields.blocker_detail ?? found.blocker_detail;

@@ -146,9 +146,13 @@ export function closeArgs(loop, { resolution = "done", outcome = "" } = {}) {
   return { ...writeBase(loop), outcome: text, resolution };
 }
 
-/** A due date is the dated marker plus the day; the calendar supplies the day. */
+/** A day sets the dated marker; clearing it removes only the dated marker. */
 export function dueDateArgs(loop, isoDate) {
   const day = String(isoDate || "");
+  // update-loop clears due_on when the marker is no longer dated. Omit the
+  // date: its contract accepts a calendar day, never an empty date string.
+  // Preserve a flag or decision that the fresh read found in the meantime.
+  if (!day) return { ...writeBase(loop), marker: loop.marker === "dated" ? "none" : (loop.marker || "none") };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new TypeError("a due date is a calendar day the picker produced");
   return { ...writeBase(loop), marker: "dated", due_on: day };
 }

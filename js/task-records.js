@@ -553,11 +553,11 @@ function wire() {
   $("taskDue")?.addEventListener("change", (event) => {
     const row = currentRow();
     const day = event.target.value;
-    if (!row || !day) return;
+    if (!row) return;
     closeDialog();
     runCommand(row, {
       operationKey: operationKeys.due(row),
-      summary: `Due date on “${row.title}” → ${formatDueStamp(day)}`,
+      summary: day ? `Due date on “${row.title}” → ${formatDueStamp(day)}` : `Remove due date from “${row.title}”`,
       build: (loop) => dueDateArgs(loop, day),
       send: (request) => client.updateLoop(request),
     });
