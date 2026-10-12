@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { catalogFixture } from './catalog-fixture.mjs';
 import { families } from './catalog-families.mjs';
@@ -70,5 +71,21 @@ for (const { path } of (await screens()).filter(row => row.path !== '/share')) t
         assert.deepEqual(await inventory(f.page), baseline, family.id + ' must restore ' + path + (phone ? ' phone' : ' desktop'));
       }
     } finally { f.close(); }
+  }
+});
+
+// A family's `file:line` citation is what a reviewer reads; it must still be the
+// line that renders the control, and every compiled proof must carry it.
+test('each family cites the line that renders its control, as do its proofs', async () => {
+  for (const family of families) {
+    const [file, line] = family.source.split(':');
+    const text = (await readFile(new URL('../../' + file, import.meta.url), 'utf8')).split('\n')[Number(line) - 1] || '';
+    const markers = [family.name,
+      ...[...family.selector.matchAll(/#([\w-]+)/g)].map(m => `id="${m[1]}"`),
+      ...[...family.selector.matchAll(/\[([\w-]+)="([^"]*)"\]/g)].map(m => `${m[1]}="${m[2]}"`),
+      ...[...family.selector.matchAll(/\.([\w-]+)/g)].map(m => m[1])];
+    assert.ok(markers.some(marker => text.includes(marker)), `${family.id}: ${family.source} does not render ${family.selector}`);
+    const cited = new Set(catalog.controls.filter(row => row.review.family === family.id).map(row => row.review.source));
+    assert.deepEqual([...cited], [family.source], `${family.id}: proofs cite ${family.source}`);
   }
 });
