@@ -226,3 +226,28 @@ test('an older-history failure preserves the cursor and the control retries it',
   await settle();
   assert.deepEqual(cursors, ['2', '2']);
 });
+
+test('a successful older read after a failed refresh keeps the room unavailable until a refresh succeeds', async () => {
+  let failing = false;
+  const room = openRoom(async url => {
+    const before = new URL(url, 'https://app.example').searchParams.get('before_seq');
+    if (failing && !before) throw new Error('offline');
+    return { ok: true, json: async () => before ? page(1, true, 'WR-1: Older history') : page(2, true, 'WR-2: Latest history') };
+  }, '');
+  await settle();
+  failing = true;
+  room.poll();
+  await settle();
+  room.document.getElementById('loadOlder').click();
+  await settle();
+  const retry = room.document.getElementById('refreshButton');
+  assert.equal(retry.textContent, 'Retry');
+  assert.match(room.document.getElementById('presenceText').textContent, /unavailable/i);
+  assert.match(room.document.getElementById('runningList').textContent, /unavailable/i);
+  assert.match(room.document.getElementById('currentThread').textContent, /unavailable/i);
+  failing = false;
+  retry.click();
+  await settle();
+  assert.equal(retry.textContent, 'Refresh');
+  assert.match(room.document.getElementById('archiveList').textContent, /Older history/);
+});

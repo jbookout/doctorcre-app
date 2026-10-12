@@ -2,7 +2,7 @@ import { groupConversations, labelFor, modelFor, summarizeNow } from './observat
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false, searched: false };
+const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false, searched: false, unavailable: false };
 const DEEP_LINK_PAGE_LIMIT = 5;
 const seen = (rows) => new Map(rows.map((row) => [String(row.msg_id || row.seq), row]));
 const merge = (oldRows, incoming) => [...seen([...oldRows, ...incoming]).values()].sort((a, b) => Number(a.seq) - Number(b.seq));
@@ -178,6 +178,7 @@ function renderNow() {
 }
 
 function render() {
+  if (state.unavailable) return renderUnavailable();
   $('refreshButton').textContent = 'Refresh';
   renderNow();
   const threads = groupConversations(state.conversation);
@@ -228,10 +229,12 @@ async function refresh() {
       }
       state.searched = true;
     }
+    state.unavailable = false;
     render();
   } catch (error) {
     if (error.message !== 'sign_in_required') {
-      renderUnavailable();
+      state.unavailable = true;
+      render();
     }
   } finally {
     state.loading = false;
