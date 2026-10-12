@@ -2,7 +2,8 @@ import axe from 'axe-core';
 
 // Works on the rendered page, including the currently active dialog. Offscreen
 // content in a vertical scroller is reachable; hidden/ellipsis text is not.
-export async function auditScreen(page, { mobile = false } = {}) {
+// Under reduced motion, nothing on the screen may keep animating.
+export async function auditScreen(page, { mobile = false, reducedMotion = false } = {}) {
   await page.evaluate(async () => {
     await Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
   });
@@ -60,7 +61,15 @@ export async function auditScreen(page, { mobile = false } = {}) {
     }
     return findings;
   }) : [];
+  const motion = reducedMotion ? await page.evaluate(() => document.getAnimations()
+    .filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().iterations === Infinity)
+    .map(animation => {
+      const target = animation.effect.target;
+      return { name: animation.animationName || animation.transitionProperty || animation.id || 'animation',
+        selector: target?.id ? `#${target.id}` : `${target?.tagName?.toLowerCase()}.${[...(target?.classList || [])].join('.')}` };
+    })) : [];
   return {
+    motion,
     blocking: accessibility.violations.filter(v => ['serious', 'critical'].includes(v.impact)),
     moderate: accessibility.violations.filter(v => v.impact === 'moderate'),
     minor: accessibility.violations.filter(v => v.impact === 'minor'),

@@ -1,4 +1,5 @@
 import { mountSliceSections } from './slice-registration.js';
+import { TOUCH_LAYOUT } from './touch-layout.js';
 import { radarToday } from './lease-radar-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
@@ -52,7 +53,7 @@ export function mountAppLayout(root, host, pathname, slices = []) {
   }
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
-  const phone = win.matchMedia('(max-width: 760px)');
+  const phone = win.matchMedia(TOUCH_LAYOUT);
   let sidebar = !boardPage, today = true, drawer = null;
   let drawerOpener = null;
   const background = new Map();

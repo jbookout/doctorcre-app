@@ -1,4 +1,5 @@
 import { createLiveClient } from "./live-client.js";
+import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { createFixtureClient } from "./fixture-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import {
@@ -15,6 +16,17 @@ import {
   escapeHtml as E,
 } from "./relationship-network-model.js";
 import { mountRelationshipDialog } from "./relationship-dialog.js";
+
+// Shortens at a word boundary: the shown words stay words of the full name.
+function shortName(name) {
+  if (name.length <= 21) return name;
+  let shown = "";
+  for (const word of name.split(" ")) {
+    if (shown && shown.length + word.length + 1 > 20) break;
+    shown = shown ? `${shown} ${word}` : word;
+  }
+  return `${shown}…`;
+}
 
 export function mountRelationshipNetwork({
   document,
@@ -98,7 +110,7 @@ export function mountRelationshipNetwork({
     }
     const focusedNode = document.activeElement?.dataset.node;
     const view = filterNetwork(snapshot, currentFilters),
-      phone = window.matchMedia("(max-width:760px)").matches;
+      phone = window.matchMedia(TOUCH_LAYOUT).matches;
     const selected = view.nodes.some((n) => n.id === focus)
       ? focus
       : view.suggestions[0]?.to || view.nodes[0]?.id;
@@ -142,7 +154,10 @@ export function mountRelationshipNetwork({
       ? `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Connected relationships"><defs><marker id="relationshipArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="#9ab5d4"/></marker></defs><g id="networkScene" transform="translate(${(width * (1 - zoom)) / 2} ${(height * (1 - zoom)) / 2}) scale(${zoom})">${lines}<circle class="network-halo" cx="${width / 2}" cy="${height / 2}" r="${Math.min(width, height) / 2 - 24}"/>${graph.nodes
           .map((n) => {
             const p = visiblePositions.get(n.id);
-            return `<g class="relationship-node" data-node="${E(n.id)}" role="button" tabindex="0" transform="translate(${p.x} ${p.y})"><rect width="160" height="74" rx="12"/><text aria-hidden="true" class="node-icon" x="12" y="24">${{ vendor: "◇", client: "○", lead: "◎", deal: "▣", contact: "◉" }[n.kind]}</text><text class="node-kind" x="39" y="23">${E(n.kind)}</text><text x="12" y="48">${E(n.name.length > 21 ? n.name.slice(0, 20) + "…" : n.name)}</text><text class="node-kind" x="12" y="64">${E((n.territory || "").slice(0, 25))}</text></g>`;
+            // One text in reading order, so the visible words stay a contiguous
+            // part of the accessible name, which also carries the full name.
+            const territory = (n.territory || "").slice(0, 25);
+            return `<g class="relationship-node" data-node="${E(n.id)}" role="button" tabindex="0" aria-label="Open ${E([n.kind, territory, n.name].filter(Boolean).join(", "))}" transform="translate(${p.x} ${p.y})"><rect width="160" height="74" rx="12"/><text aria-hidden="true" class="node-icon" x="12" y="24">${{ vendor: "◇", client: "○", lead: "◎", deal: "▣", contact: "◉" }[n.kind]}</text><text><tspan class="node-kind" x="39" y="23">${E(n.kind)}</tspan> <tspan class="node-kind" x="12" y="64">${E(territory)}</tspan> <tspan x="12" y="48">${E(shortName(n.name))}</tspan></text></g>`;
           })
           .join("")}</g></svg>`
       : '<p class="relationship-empty">No matching relationships</p>';

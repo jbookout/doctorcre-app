@@ -30,3 +30,18 @@ test('screen audit rejects phone overflow, short targets, clipped text and unnam
   assert.deepEqual(repaired.layout, []);
   assert.ok(repaired.moderate.some(v => v.id === 'heading-order'));
 });
+
+test('screen audit rejects an endless animation only when motion is reduced', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 320, height: 568 }, reducedMotion: 'reduce' });
+  const screen = fallback => `<html lang="en"><title>Qualification</title><style>
+    @keyframes glow { 50% { opacity: .5 } } .glow { animation: glow 2s infinite }
+    ${fallback ? '@media (prefers-reduced-motion: reduce) { .glow { animation: none } }' : ''}
+  </style><main><p class="glow" id="pulse">Live status</p></main></html>`;
+  await page.setContent(screen(false));
+  assert.deepEqual((await auditScreen(page, { reducedMotion: true })).motion.map(v => v.selector), ['#pulse']);
+  assert.deepEqual((await auditScreen(page)).motion, [], 'full motion may animate');
+  await page.setContent(screen(true));
+  assert.deepEqual((await auditScreen(page, { reducedMotion: true })).motion, []);
+});

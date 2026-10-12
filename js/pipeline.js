@@ -857,12 +857,10 @@ async function refreshPanel() {
           const focusIdentity = focused?.dataset.detailFocus;
           const wasOpen = current.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
-          const chartScroll = current.querySelector('.timeline-viewport')?.scrollLeft;
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
           if (wasOpen) fresh.open = true;
-          if (chartScroll !== undefined) fresh.querySelector('.timeline-viewport').scrollLeft = chartScroll;
           fresh.querySelectorAll('[data-date-id]').forEach(n => { if (dateOpens.has(n.dataset.dateId)) n.querySelector('details').open = true; });
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
