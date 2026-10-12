@@ -139,6 +139,7 @@
     "test/staging-control-visibility.test.mjs",
     "test/synthetic-fixtures.test.mjs",
     "test/test-harness.test.mjs",
+    "test/v1-residual-browser.test.mjs",
     "test/visibility-poll.test.mjs",
     "test/visual-system.test.mjs",
     "test/w1-auto-refresh.test.mjs",

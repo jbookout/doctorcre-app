@@ -8,17 +8,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import vm from "node:vm";
 import { JSDOM } from "jsdom";
-import * as notificationModel from "../js/notifications-model.js";
-import { formatClock } from "../js/visual-system.js";
 
 import {
   APP_ROUTE_PATHS, BASE_VERSION_REFUSAL, DEVICE_OFF,
   FEED_STATES, NO_PAGE_SENTENCE, PREFERENCE_DEFAULTS_SENTENCE, PREFERENCE_OPERATION_KEY,
   PREFERENCE_REFUSALS, QUIET_NOW_BANNER, versionConflictLine,
   QUIET_SUPPRESSED_MARK, SEVERITIES, SEVERITY_LABELS, TIME_REFUSAL,
-  acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
+  acknowledgeArgs, acknowledgeOperationKey, activityRows, preferenceTimeLabel, classifyPreferenceFailure,
   classifyPreferenceReadFailure, classifyReadFailure, deepLinkView, deliveryPhrases, feedState,
   notificationCards, preferenceOriginSentence, preferenceState, preferenceSummary,
   preferenceView, quietNowBanner, setPreferenceArgs, toInputTime, unreadLine,
@@ -866,137 +863,6 @@ test("B12-11 a version conflict reports unsaved changes while retaining version 
   assert.match(pageJs, /const current = refusal\.currentVersion \?\? fresh\?\.version \?\? null;/);
 });
 
-
-// Run the shipped page against synthetic read adapters in JSDOM. No page
-// scripts, network resources, browser process or environment endpoints load.
-async function auditPage({ notifications = [], feedError = null, preferenceError = null, hash = "" } = {}) {
-  const dom = new JSDOM(html, { url: `https://example.test/updates${hash}` });
-  const doc = dom.window.document;
-  let reads = 0, scrolls = 0;
-  doc.getElementById("prefForm").scrollIntoView = () => { scrolls++; };
-  const client = {
-    async notificationFeed() {
-      reads++;
-      if (feedError) throw feedError;
-      return { ok: true, unread_count: notifications.length, notifications };
-    },
-    async notificationPreferences() {
-      if (preferenceError) throw preferenceError;
-      return { ok: true, exists: false, version: 1, device_opt_in: false,
-        quiet_hours_start: null, quiet_hours_end: null, timezone: "UTC" };
-    },
-    async getChanges() { return { ok: true, cursor: "synthetic-cursor", events: [] }; },
-  };
-  const context = vm.createContext({
-    ...notificationModel, formatClock, document: doc, window: dom.window,
-    location: dom.window.location, Element: dom.window.Element, URLSearchParams,
-    requestAnimationFrame: fn => fn(),
-    mountPrefs() {}, mountNotificationBadge() {}, mountAutoRefresh() {},
-    createCommandDock: () => ({ mount() {}, record() {} }),
-    resolveDealroomBoot: () => ({ mode: "fixture", options: {} }),
-    createFixtureClient: async () => client,
-  });
-  const executable = pageJs.replace(/^import[\s\S]*?;\n/gm, "")
-    .replace(/\nboot\(\);/, "\nglobalThis.ready = boot();")
-    .replace(/export \{ view \};/, "globalThis.view = view;");
-  vm.runInContext(executable, context);
-  await context.ready;
-  return { dom, doc, context, client, reads: () => reads, scrolls: () => scrolls };
-}
-
-const auditNotification = (fields = {}) => ({
-  id: QUIET, severity: "action_required", reason: "Synthetic action needed",
-  subject_type: "deal", subject_ref: "D-DEMO-123", deep_link: "/deals?id=synthetic-deal",
-  created_at: "2026-01-14T14:20:00Z", read_at: null, delivery: [], ...fields,
-});
-
-test("V1 audit 15: notification labels are human-readable; identifiers and routes live in Details", async () => {
-  const page = await auditPage({ notifications: [auditNotification(), auditNotification({
-    id: DEVICE_OPT_OUT, subject_type: "internal_kind", subject_ref: "raw-reference",
-    deep_link: "/signals/synthetic-signal",
-  })] });
-  try {
-    const cards = page.doc.querySelectorAll("#feedList > li");
-    assert.equal(cards[0].querySelector(".note-subject").textContent, "Deal");
-    const link = cards[0].querySelector(".note-link a");
-    assert.equal(link.textContent, "Open deal");
-    assert.equal(link.getAttribute("href"), "/deals?id=synthetic-deal");
-    assert.equal(link.target, "_blank");
-    const details = cards[0].querySelector("details");
-    assert.equal(details.open, false);
-    assert.equal(details.querySelector("summary").textContent, "Details");
-    assert.match(details.textContent, /D-DEMO-123/);
-    assert.match(details.textContent, /\/deals\?id=synthetic-deal/);
-    assert.equal(cards[1].querySelector(".note-subject").textContent, "Record");
-    assert.equal(cards[1].querySelector(".note-link a"), null);
-    assert.match(cards[1].querySelector(".note-link").textContent, /Record unavailable/);
-    for (const card of cards) {
-      const visible = card.cloneNode(true);
-      visible.querySelectorAll("details").forEach(node => node.remove());
-      assert.doesNotMatch(visible.textContent, /D-DEMO-123|raw-reference|internal_kind|synthetic-signal|\/deals/);
-      assert.match(visible.textContent, /AM|PM/);
-    }
-    page.context.activity = { state: "read", payload: { events: [{ actor: "synthetic-actor-id",
-      verb: "internal_operation", subject_type: "deal", subject_id: "synthetic-record-id",
-      recorded_at: "2026-01-14T14:20:00Z" }] } };
-    vm.runInContext("view.activity = activity; renderActivity()", page.context);
-    const activity = page.doc.querySelector("#activityList > li");
-    assert.match(activity.querySelector("details").textContent, /synthetic-actor-id/);
-    const activityVisible = activity.cloneNode(true);
-    activityVisible.querySelector("details").remove();
-    assert.doesNotMatch(activityVisible.textContent, /synthetic-actor-id|internal_operation|synthetic-record-id/);
-    const chat = notificationCards({ unread_count: 1, notifications: [auditNotification({
-      subject_type: "doc_conversation", deep_link: `/doc-conversations/${QUIET}`,
-    })] })[0];
-    assert.equal(chat.subject, "Doc conversation");
-    assert.equal(chat.link.label, "Open conversation");
-  } finally { page.dom.window.close(); }
-});
-
-test("V1 audit 21: the unused exposure card and its dead model/wiring are gone", async () => {
-  const page = await auditPage();
-  try {
-    assert.equal(page.doc.querySelector('[data-section="exposure"]'), null);
-    assert.equal(page.doc.getElementById("exposureStatement"), null);
-    assert.doesNotMatch(pageJs + modelJs, /EXPOSURE_STATEMENT|exposureStatement/);
-    assert.equal(page.doc.getElementById("feedStateTitle").textContent, "No notifications");
-  } finally { page.dom.window.close(); }
-});
-
-test("V1 audit 25b: notification/activity guidance is in contextual help, away from headings", async () => {
-  const page = await auditPage({ feedError: Object.assign(new Error("synthetic"), { status: 503 }) });
-  try {
-    assert.equal(page.doc.getElementById("vocabularyLine"), null);
-    assert.equal(page.doc.querySelector("#activityBlock > p.caption"), null);
-    const help = page.doc.querySelector("details.context-help");
-    assert.ok(help);
-    assert.equal(help.open, false);
-    assert.equal(help.querySelector("summary").textContent, "About updates");
-    assert.match(help.textContent, /addressed to you/);
-    assert.match(help.textContent, /Acknowledging clears the notification/);
-    assert.equal(page.doc.getElementById("feedStateTitle").textContent, "Notifications temporarily unavailable");
-    page.client.notificationFeed = async () => ({ ok: true, unread_count: 0, notifications: [] });
-    page.doc.getElementById("retryRead").click();
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(page.doc.getElementById("feedStateTitle").textContent, "No notifications");
-  } finally { page.dom.window.close(); }
-});
-
-
-test("PR184 preference anchoring: failed reads do not scroll; first success scrolls once", async () => {
-  const page = await auditPage({ hash: "#prefForm", preferenceError: new Error("synthetic failure") });
-  try {
-    assert.equal(page.scrolls(), 0);
-    assert.equal(page.doc.getElementById("prefForm").hidden, true);
-    page.client.notificationPreferences = async () => ({ ok: true, exists: false, version: 1,
-      device_opt_in: false, quiet_hours_start: null, quiet_hours_end: null, timezone: "UTC" });
-    await vm.runInContext("load()", page.context);
-    assert.equal(page.scrolls(), 1);
-    await vm.runInContext("load()", page.context);
-    assert.equal(page.scrolls(), 1);
-  } finally { page.dom.window.close(); }
-});
-
 test("Updates house grammar: preference summaries use AM/PM and keep versions in Details", () => {
   const model = preferenceView({ ok: true, exists: true, version: 7, device_opt_in: true,
     quiet_hours_start: "22:00:00", quiet_hours_end: "07:30:00", timezone: "UTC" });
@@ -1012,5 +878,26 @@ test("Updates house grammar: preference summaries use AM/PM and keep versions in
     assert.equal(toInputTime("12:00 AM"), "00:00");
     assert.equal(toInputTime("12:00 PM"), "12:00");
     assert.equal(toInputTime("13:00 PM"), null);
+    // Common spellings of one clock time are accepted; a bare hour is not.
+    for (const typed of ["10 PM", "10pm", "10:00pm", "10:00 p.m."]) assert.equal(toInputTime(typed), "22:00", typed);
+    assert.equal(toInputTime("7:30am"), "07:30");
+    assert.equal(toInputTime("10"), null);
+    assert.equal(toInputTime("0 AM"), null);
+    assert.equal(preferenceTimeLabel("00:05"), "12:05 AM");
+    assert.equal(preferenceTimeLabel("12:00:00"), "12:00 PM");
   } finally { dom.window.close(); }
+});
+
+test("Updates activity labels come from the app's single actor and change-action homes", () => {
+  const rows = activityRows([
+    { actor: "dell", verb: "patch-deal-field", field: "phase", subject_type: "deal", subject_id: "d14", recorded_at: "2026-01-14T14:20:00Z" },
+    { actor: "claude", verb: "add-deal-note", field: "note", subject_type: "deal", subject_id: "d15", recorded_at: "2026-01-14T14:21:00Z" },
+    { actor: "a1b2c3d4-0000-4000-8000-000000000000", verb: "set-next-step", subject_type: "lead", subject_id: "l1", recorded_at: "2026-01-14T14:22:00Z" },
+  ]);
+  assert.deepEqual(rows.map((row) => `${row.actor} · ${row.verb} · ${row.subject}`), [
+    "Recorded actor · Set next step · Lead", "Claude · Note added · Deal", "Dell · Phase · Deal",
+  ]);
+  assert.equal(rows[0].details.actor, "a1b2c3d4-0000-4000-8000-000000000000");
+  assert.equal(rows[0].details.verb, "set-next-step");
+  assert.doesNotMatch(modelJs, /"joe" \? "Joe"|ACTIVITY_LABELS/, "actor and action labels are not redefined here");
 });

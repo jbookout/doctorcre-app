@@ -14,8 +14,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import vm from "node:vm";
-import { JSDOM } from "jsdom";
 
 import {
   COMPOSER_ABSENT, CONVERSATION_ID, CONVERSATION_STATES, DOC_REPLY_PENDING, EXPOSURE_STATEMENT,
@@ -764,23 +762,4 @@ test("clause 3b: a shared create writes one header row and NO grant, so the part
   // The fixture must CARRY the column, never derive it from the grant list.
   assert.equal(/visibility: docLiveGrants\(row\)|const docVisibility =/.test(fixtureJs), false,
     "visibility is derived from the grants again; the shared-with-zero-grants state becomes unrepresentable");
-});
-
-
-test("PR184 conversation controls disable while idle and restore after selection", () => {
- const dom=new JSDOM(html),doc=dom.window.document;
- let payload=null;
- const context=vm.createContext({$:id=>doc.getElementById(id),payloadOf:()=>payload,
-  accessRows,shareCandidates,identityHeader,PARTNER_SLUGS,escapeHtml:value=>String(value??'')});
- vm.runInContext(pageJs.slice(pageJs.indexOf('function renderAccess()'),pageJs.indexOf('function renderList()')),context);
- const controls=['renameInput','renameSave','pinToggle','archiveToggle'];
- try{
-  vm.runInContext('renderAccess()',context);
-  for(const id of controls)assert.equal(doc.getElementById(id).disabled,true,id);
-  payload={identity:{id:'22222222-2222-4222-8222-222222222222',title:'Synthetic chat',version:1},turns:[],effective_grants:[],visible_conversation_count:1};
-  vm.runInContext('renderAccess()',context);
-  for(const id of controls)assert.equal(doc.getElementById(id).disabled,false,id);
-  payload=null;vm.runInContext('renderAccess()',context);
-  for(const id of controls)assert.equal(doc.getElementById(id).disabled,true,id);
- }finally{dom.window.close()}
 });

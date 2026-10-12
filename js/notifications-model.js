@@ -6,6 +6,8 @@ import { routeContract } from "./slices.generated.js";
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
 import { CONVERSATION_ID } from "./conversations-model.js";
+import { ACTOR_LABEL } from "./client.js";
+import { changeAction } from "./change-receipts.mjs";
 
 export { REFUSAL_SENTENCE };
 
@@ -228,17 +230,20 @@ export function feedState(read = {}, { after = null, limit = null } = {}) {
  * NOT merged into the feed: a notification is addressed to you, and an event is
  * something that happened.
  */
-const ACTIVITY_LABELS = Object.freeze({
-  "set-next-step": "Updated next step", "add-deal-note": "Added deal note",
-});
+// A partner reads by name; another simple account slug reads as a word. Any
+// other actor reference is an identifier and stays in Details.
+const activityActor = (actor) => !isText(actor) ? "Unattributed"
+  : Object.hasOwn(ACTOR_LABEL, actor) ? ACTOR_LABEL[actor]
+  : /^[a-z]+$/.test(actor) ? actor.charAt(0).toUpperCase() + actor.slice(1)
+  : "Recorded actor";
 export function activityRows(events) {
   return (Array.isArray(events) ? events : [])
     .filter((row) => row && typeof row === "object" && isText(row.verb))
     .slice(-12)
     .reverse()
     .map((row) => ({
-      actor: row.actor === "joe" ? "Joe" : row.actor === "dell" ? "Dell" : isText(row.actor) ? "Recorded actor" : "Unattributed",
-      verb: Object.hasOwn(ACTIVITY_LABELS, row.verb) ? ACTIVITY_LABELS[row.verb] : "Activity recorded",
+      actor: activityActor(row.actor),
+      verb: changeAction(row),
       subject: recordLabel(row.subject_type),
       details: { actor: row.actor || null, verb: row.verb, subjectType: row.subject_type || null, subjectRef: row.subject_id || null },
       clock: formatClock(row.recorded_at) || "unknown",
@@ -299,10 +304,11 @@ export function toInputTime(value) {
   const text = typeof value === "string" ? value.trim() : "";
   const match = CLOCK.exec(text);
   if (match) return `${match[1]}:${match[2]}`;
-  const twelveHour = /^(0?[1-9]|1[0-2]):([0-5][0-9])\s*(AM|PM)$/i.exec(text);
+  // "10:00 PM", "10:00pm", "10 PM" and "10pm" are the same clock time.
+  const twelveHour = /^(0?[1-9]|1[0-2])(?::([0-5][0-9]))?\s*([AP])\.?\s*M\.?$/i.exec(text);
   if (!twelveHour) return null;
-  const hour = Number(twelveHour[1]) % 12 + (twelveHour[3].toUpperCase() === "PM" ? 12 : 0);
-  return `${String(hour).padStart(2, "0")}:${twelveHour[2]}`;
+  const hour = Number(twelveHour[1]) % 12 + (twelveHour[3].toUpperCase() === "P" ? 12 : 0);
+  return `${String(hour).padStart(2, "0")}:${twelveHour[2] || "00"}`;
 }
 
 export function preferenceTimeLabel(value) {
