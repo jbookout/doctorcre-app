@@ -58,18 +58,20 @@ test("the deterministic suite covers every merged V1 journey without a model", a
   assert.equal((await list("tests/agent/")).length, 3, "three journeys keep a local agent variant");
 });
 
-test("CI runs only the deterministic suite, with no model and no telemetry", async () => {
+test("hosted CI preserves deterministic source proof without agent execution", async () => {
   const workflow = await read(".github/workflows/e2e.yml");
   assert.match(workflow, /^\s+- run: node scripts\/browser-product-proof\.mjs/m);
-  const producer=await read('scripts/browser-product-proof.mjs');
+  const producer = await read('scripts/browser-product-proof.mjs');
   assert.match(producer, /'run','tests\/journeys','--reporter'/);
   assert.match(producer, /--test','test\/browser-product-proof\.test\.mjs/);
   assert.match(producer, /'scripts\/run-child\.mjs'/);
   assert.match(workflow, /E2E_TELEMETRY_DISABLED: "1"/);
-  assert.match(workflow, /- run: npm run privacy:check\n        env:\n          DOCTORCRE_PRIVACY_CORPUS_JSON: \$\{\{ secrets\.DOCTORCRE_PRIVACY_CORPUS_JSON \}\}/);
+  assert.match(workflow, /DOCTORCRE_PRIVACY_CORPUS_JSON: \$\{\{ secrets\.DOCTORCRE_PRIVACY_CORPUS_JSON \}\}/);
   const withoutPrivacySecret = workflow.replace('${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}', '');
-  assert.doesNotMatch(withoutPrivacySecret, /tests\/agent|secrets\.|API_KEY|e2e login/);
-  assert.doesNotMatch(await read(".github/workflows/ci.yml"), /e2e run/, "e2e stays out of the required test job");
+  assert.doesNotMatch(withoutPrivacySecret, /agent-shards|agent-gate|tests\/agent|secrets\.|API_KEY|e2e login/);
+  assert.match(await read('e2e.agent.config.ts'), /chatgpt\(/);
+  assert.doesNotMatch(await read('e2e.agent.config.ts'), /@ai-sdk\/openai|openai\(/);
+  assert.doesNotMatch(await read(".github/workflows/ci.yml"), /e2e run/);
 });
 
 // A file-level pass cannot hide a skipped shell entry or invoice write path.
@@ -175,4 +177,14 @@ test('every native entry refuses the working-tree server when a build is bound',
     assert.equal(entry?.status, 'failed', `${file}: ${title} must reject the unbound server`);
     assert.match(JSON.stringify(entry.attempts), /served build manifest unavailable/);
   }
+});
+
+test('base journey collection excludes QA agents belonging to their separate configuration', () => {
+  const output = execFileSync(process.execPath, [fileURLToPath(new URL('node_modules/e2e/dist/cli/bin.js', root)),
+    'list', 'tests/journeys', '--config', 'e2e.config.ts', '--reporter', 'json'], {
+    cwd: fileURLToPath(root), env: { ...process.env, CI: '1', E2E_TELEMETRY_DISABLED: '1' },
+    encoding: 'utf8', timeout: WAIT_MS,
+  });
+  const plan = JSON.parse(output);
+  assert.deepEqual([...new Set(plan.pairs.map(row => row.file))].sort(), [...journeyFiles].sort());
 });

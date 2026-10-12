@@ -17,7 +17,8 @@ export default {
   trace: staging ? 'off' : 'retain-on-failure',
   video: staging ? 'off' : 'retain-on-failure',
   ...(staging && process.env.E2E_V2_OUTPUT ? { output: process.env.E2E_V2_OUTPUT + '/sdk' } : {}),
-  ...(staging ? { tests: ['tests/staging-live/**/*.e2e.ts'], cache: 'off' as const } : {}),
+  ...(staging ? { tests: ['tests/staging-live/**/*.e2e.ts'], cache: 'off' as const }
+    : { tests: ['tests/journeys/**/*.e2e.ts', 'tests/agent/**/*.e2e.ts'] }),
   targets: staging ? stagingTargets() : [{
     name: 'chromium',
     engine: web({ browser: 'chromium', viewport: { width: 1440, height: 960 } }),
