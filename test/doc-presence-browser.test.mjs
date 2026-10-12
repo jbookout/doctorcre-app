@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, webkit, pausedClock } from './browser-harness.mjs';
+import { chromium, webkit, pausedClock, settles } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { workspace, detail } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
@@ -524,9 +524,9 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await decisionAction.waitFor({state:'visible'});
  await decisionAction.click();
- for(let i=0;i<50&&writes.length<3;i++) await page.waitForTimeout(100);
+ await settles(()=>assert.equal(writes.length,3));
  await correctionAction.click();
- for(let i=0;i<50&&writes.length<4;i++) await page.waitForTimeout(100);
+ await settles(()=>assert.equal(writes.length,4));
  assert.equal(writes.length,4);
  const [firstDecision,firstCorrection,reconciled,retried]=writes;
  assert.equal(reconciled.name,'decide-doc-suggestion');
@@ -575,7 +575,7 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  await action.waitFor({state:'visible'});
  available=false;refuse=true;
  await action.click();
- for(let i=0;i<50&&writes.length<1;i++) await page.waitForTimeout(100);
+ await settles(()=>assert.equal(writes.length,1));
  assert.equal(writes.length,1);
  // The refusal itself prompts a fresh switch read, which hides the control.
  await page.waitForFunction(()=>document.querySelector('[data-doc-approve]')?.hidden===true);
