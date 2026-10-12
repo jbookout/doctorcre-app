@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, webkit } from './browser-harness.mjs';
+import { chromium, webkit, pausedClock } from './browser-harness.mjs';
 import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { workspace, detail } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
@@ -513,6 +513,9 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  await correctionAction.waitFor({state:'hidden'});
  // A tampered, re-revealed dock control still sends nothing while the switch is off.
  for(const action of [decisionAction,correctionAction]) await action.evaluate(node=>{node.hidden=false;node.click();});
+ // So does a re-revealed card control: the gate sits on the one dispatch path, not on each button.
+ await card.locator('.suggestion-decisions').evaluate(node=>{node.hidden=false;node.querySelector('[data-choice="dismiss"]').click();});
+ await card.locator('.suggestion-correction').evaluate(node=>{node.hidden=false;node.querySelector('[data-propose]').click();});
  await page.waitForTimeout(300);
  assert.equal(writes.length,2);
  assert.equal(await page.locator('#receiptDock .receipt').count(),2,'the held requests stay in the dock');
@@ -547,6 +550,8 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
   if(refuse){await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'feature_disabled',switch:'doc-suggestion-actions',hint:'doc-suggestion-actions is switched off for you.'})}]}})});return true;}
   await rpc(route,await fixture.decideDocSuggestion(args));return true;
  }});
+ // A paused clock stops every poll and backoff: each switch read below is one the test or the page prompts.
+ await pausedClock(page,Date.parse('2026-10-12T15:00:00Z'));
  await goto('/deals?mode=live');
  await page.locator('#docOpen').click();
  const action=page.locator('[data-doc-approve]').first();
@@ -600,6 +605,8 @@ test('Dr. CRE suggestion page: a feature_disabled refusal re-reads the switch an
   writes.push(args.idempotency_key);
   await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'feature_disabled',switch:'doc-suggestion-actions',hint:'doc-suggestion-actions is switched off for you.'})}]}})});return true;
  }});
+ // A paused clock stops every poll and backoff, so only the refusal can prompt the next read.
+ await pausedClock(page,Date.parse('2026-10-12T15:00:00Z'));
  await goto('/doc-chats?mode=live');
  const card=page.locator('[data-suggestion]').first();
  await card.locator('[data-choice="discuss"]').waitFor({state:'visible'});

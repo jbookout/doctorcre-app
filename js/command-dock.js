@@ -26,7 +26,8 @@ export const DOCK_ENTRY_CAP = 50;
 
 // `actionable(operationKey)` hides an entry's action while the page cannot send
 // it (a switched-off feature); the receipt itself stays visible. Call render()
-// when the answer changes.
+// when the answer changes. Hiding is presentation: the page's dispatch still
+// enforces its own gate.
 export function createCommandDock({ root, onDispatch = null, onReconcile = null, onUndo = null, actionable = () => true } = {}) {
   // Insertion order IS display order: a Map preserves it, and re-recording an
   // operation updates it in place rather than moving it to the front.
@@ -92,7 +93,6 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
       const button = event.target.closest('button[data-op][data-event]');
       if (!button || !root.contains(button)) return;
       const operationKey = button.dataset.op;
-      if (!actionable(operationKey)) return;
       const entry = entries.get(operationKey) || { operationKey };
       const handler = { dispatch: onDispatch, reconcile: onReconcile, undo: onUndo }[button.dataset.event];
       if (typeof handler === 'function') handler(operationKey, entry);
