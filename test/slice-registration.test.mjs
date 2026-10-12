@@ -55,6 +55,9 @@ test('two new slices add route, navigation and page sections without shared sour
   const artifact = await buildArtifact({ root, outDir: join(root, 'dist'), commit: '1'.repeat(40) });
   assert.ok(artifact.manifest.files.some(file => file.path === 'alpha.html'));
   assert.ok(artifact.manifest.files.some(file => file.path === 'beta.html'));
+  assert.equal(await readFile(join(root, 'dist/site/alpha.html'), 'utf8'),
+    '<script type="module" src="/js/error-tracking-entry.js"></script><main>Demo alpha</main>',
+    'a page without its own <head> still loads the error bootstrap first');
   assert.equal(await readFile(join(root, 'dist/site/contracts/alpha.v1.json'), 'utf8'), JSON.stringify({ schema: 'demo-alpha.v1' }));
   assert.ok(!artifact.manifest.files.some(file => file.path.startsWith('test/')));
   const a = definition('alpha'), b = definition('beta');

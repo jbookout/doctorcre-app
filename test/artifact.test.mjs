@@ -230,3 +230,20 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
   await rm(join(outDir,'doctorcre-app.manifest.json'));
   await assert.rejects(runCli(root,['prepare-deployment']), /ENOENT/);
 });
+
+test("the shipped error bootstrap is self-contained and first on every signed-in page", async (t) => {
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-error-bootstrap-"));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
+  const tracking = await readFile(join(outDir, "site", "js", "error-tracking.js"), "utf8");
+  assert.doesNotMatch(tracking, /\.json'|with \{ type/, "the browser never imports a contract the edge does not serve");
+  assert.ok(tracking.includes(`const contract = ${JSON.stringify(JSON.parse(await readFile(join(ROOT, "contracts", "runtime-errors.v1.json"), "utf8")))};`));
+  assert.match(await readFile(join(outDir, "site", "js", "error-tracking-entry.js"), "utf8"), new RegExp(`'${COMMIT}'`));
+  assert.deepEqual(built.manifest.runtime_errors.path, "contracts/runtime-errors.v1.json");
+  const bootstrap = '<script type="module" src="/js/error-tracking-entry.js"></script>';
+  for (const file of built.manifest.files.filter(file => file.path.endsWith(".html"))) {
+    const html = await readFile(join(outDir, "site", file.path), "utf8");
+    if (file.path.startsWith("reports/")) assert.equal(html.includes(bootstrap), false, `${file.path} stays outside signed-in ingress`);
+    else assert.equal(html.indexOf("<script"), html.indexOf(bootstrap), `${file.path} must load the bootstrap before any other script`);
+  }
+});

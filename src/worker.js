@@ -3,6 +3,8 @@ import routeContract from "../contracts/app-routes.v1.json" with { type: "json" 
 import e2eStagingContract from "../contracts/e2e-staging.v1.json" with { type: "json" };
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 import { readStagingAuthContract } from '../scripts/e2e-staging/auth-contract.mjs';
+import runtimeErrors from '../contracts/runtime-errors.v1.json' with { type: 'json' };
+import { EDGE_LIMIT, REPORT_BYTES, createErrorGate, scrubError } from '../js/error-tracking.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -104,10 +106,15 @@ async function assetResponse(request, env, path) {
   return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), path);
 }
 
+// CARR records its own 5xx; the edge captures only failures it produced.
+const CARR_RESPONSES = new WeakSet();
+
 async function carrResponse(request, env, documentRequest = false) {
   if (!env?.CARR?.fetch) return unavailable(documentRequest);
   try {
-    return await env.CARR.fetch(new Request(request, { redirect: "manual" }));
+    const response = await env.CARR.fetch(new Request(request, { redirect: "manual" }));
+    CARR_RESPONSES.add(response);
+    return response;
   } catch {
     return unavailable(documentRequest);
   }
@@ -196,10 +203,71 @@ async function handleRequest(request, env, e2eExchangePath, stagingOrigin) {
   return json({ error: "not_found" }, 404);
 }
 
-export function createDoctorcreRequestHandler(contract = e2eStagingContract) {
+async function reportBody(request) {
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > REPORT_BYTES) { await reader.cancel(); return undefined; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  try {
+    const input = JSON.parse(new TextDecoder().decode(bytes));
+    return input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+  } catch { return null; }
+}
+
+// Browser reports are re-scrubbed and gated here, so neither an untrusted
+// payload nor a repeating error reaches CARR's store on every event.
+async function browserReport(request, env, gate) {
+  if (request.headers.get('origin') !== new URL(request.url).origin) return json({ error: 'forbidden' }, 403);
+  if (!request.headers.get('content-type')?.startsWith('application/json')) return json({ error: 'json_required' }, 415);
+  const input = await reportBody(request).catch(() => null);
+  if (input === undefined) return json({ error: 'report_too_large' }, 413);
+  if (!input) return json({ error: 'invalid_report' }, 400);
+  const evidence = scrubError(input);
+  if (!gate(evidence)) return json({ ok: true, deduplicated: true }, 202);
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  return carrResponse(new Request(request.url, { method: 'POST', headers, body: JSON.stringify(evidence) }), env);
+}
+
+function captureEdgeFailure(request, env, gate, response, failure) {
+  if (response.status < 500 || CARR_RESPONSES.has(response) || !env?.CARR_ERRORS?.capture) return;
+  let evidence;
+  try {
+    const error = failure?.error;
+    evidence = scrubError({ type: failure ? error?.name : 'HTTP5xx', message: error?.message, stack: error?.stack,
+      route: new URL(request.url).pathname, release_sha: env.GIT_SHA });
+  } catch { evidence = scrubError({ route: new URL(request.url).pathname, release_sha: env.GIT_SHA }); }
+  if (!gate(evidence)) return;
+  // Delivery failure leaves only scrubbed evidence in Worker logs and never
+  // changes the primary response.
+  return Promise.resolve().then(() => env.CARR_ERRORS.capture(evidence))
+    .catch(() => console.error(JSON.stringify({ event: 'runtime_error_capture_failed', ...evidence })));
+}
+
+export function createDoctorcreRequestHandler(contract = e2eStagingContract, gate = createErrorGate({ limit: EDGE_LIMIT })) {
   const e2eExchangePath = readStagingAuthContract(contract).exchange.path;
   const stagingOrigin = new URL(contract.origin).origin;
-  return (request, env) => handleRequest(request, env, e2eExchangePath, stagingOrigin);
+  return async (request, env, ctx) => {
+    if (request.method === 'POST' && new URL(request.url).pathname === runtimeErrors.browser_endpoint)
+      return browserReport(request, env, gate);
+    let response, failure = null;
+    try { response = await handleRequest(request, env, e2eExchangePath, stagingOrigin); }
+    catch (error) { failure = { error }; response = json({ error: 'internal_error' }, 500); }
+    const pending = captureEdgeFailure(request, env, gate, response, failure);
+    if (pending && ctx?.waitUntil) ctx.waitUntil(pending);
+    else if (pending) await pending;
+    return response;
+  };
 }
 
 export const handleDoctorcreRequest = createDoctorcreRequestHandler();
