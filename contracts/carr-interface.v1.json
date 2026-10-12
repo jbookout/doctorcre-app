@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "b8e044ace2ef2270ab75d63a628448e04e392e81"
+    "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -526,7 +526,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "11c7503569551b9dc54a1bc2003a31f744108235",
+        "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
