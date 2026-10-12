@@ -895,11 +895,6 @@ function updateDetailTimestamp() {
   const time = $('detailUpdated');
   if (time) { time.dateTime = at; time.textContent = new Date(at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true}); }
 }
-function centerCurrentPhase() {
-  const rail = $('panelBody').querySelector('.phase-scroll');
-  const phase = rail?.querySelector('[aria-current="step"]');
-  if (phase) rail.scrollLeft = phase.offsetLeft - rail.offsetLeft - (rail.clientWidth-phase.clientWidth)/2;
-}
 function paintPanel(detail) {
   $('panelTitle').textContent = detail.deal.name;
   $('panelBody').innerHTML = detailHtml(detail);
@@ -907,7 +902,6 @@ function paintPanel(detail) {
   disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
   syncNextForm(detail.deal);
   updateDetailTimestamp();
-  centerCurrentPhase();
 }
 async function openPanel(dealId, trigger) {
   selectDocRecord('deal', dealId);

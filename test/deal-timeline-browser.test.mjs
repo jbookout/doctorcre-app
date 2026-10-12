@@ -67,13 +67,18 @@ for (const view of [{width:320},{width:390},{device:'iPad'},{width:1440}])
      smallest:Math.min(...labels.map(label=>label.size)),
      outside:labels.filter(({rect})=>rect.left<box.left-1||rect.right>box.right+1).map(label=>label.text),
      overlaps:ticks.slice(1).filter((label,i)=>label.rect.left<ticks[i].rect.right).map(label=>label.text),
-     scrolls:[section,section.closest('#recordPanel'),section.closest('#panelBody')?.querySelector('.phase-scroll')].filter(Boolean).filter(node=>node.scrollWidth>node.clientWidth+1).map(node=>node.className||node.id),
+     markers:[...svg.querySelectorAll('.timeline-point')].map(node=>node.getBoundingClientRect()).filter(rect=>rect.width),
+     scrolls:[section,section.closest('#recordPanel'),section.closest('#panelBody')?.querySelector('.phase-rail')].filter(Boolean).filter(node=>node.scrollWidth>node.clientWidth+1).map(node=>node.className||node.id),
+     phaseTabStops:[...(section.closest('#panelBody')?.querySelectorAll('.phase-rail, .phase-rail *')||[])].filter(node=>node.tabIndex>=0).length,
     };
    });
    assert.ok(layout.smallest>=11,`${range}: smallest chart label renders at ${layout.smallest}px`);
    assert.deepEqual(layout.outside,[],`${range}: labels stay inside the chart`);
    assert.deepEqual(layout.overlaps,[],`${range}: date ticks do not overlap`);
    assert.deepEqual(layout.scrolls,[],`${range}: nothing scrolls sideways`);
+   const crowded=layout.markers.flatMap((a,i)=>layout.markers.slice(i+1).filter(b=>Math.abs(a.top-b.top)<1&&a.left<b.right&&b.left<a.right).map(b=>[Math.round(a.left),Math.round(b.left)]));
+   assert.deepEqual(crowded,[],`${range}: date and activity markers do not overlap`);
+   assert.equal(layout.phaseTabStops,0,`${range}: the phase rail adds no empty tab stop`);
   }
   assert.deepEqual(errors,[]);
  });

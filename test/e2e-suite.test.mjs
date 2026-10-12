@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { WAIT_MS } from "./browser-harness.mjs";
 import { journeyProfiles } from '../tests/journeys/phone-profiles.mjs';
-import { journeyFiles } from "../scripts/browser-proof-contract.mjs";
+import { journeyFiles, replaceOutputDirs } from "../scripts/browser-proof-contract.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -176,4 +178,21 @@ test('every native entry refuses the working-tree server when a build is bound',
     assert.equal(entry?.status, 'failed', `${file}: ${title} must reject the unbound server`);
     assert.match(JSON.stringify(entry.attempts), /served build manifest unavailable/);
   }
+});
+
+test('each proof run replaces its own output instead of keeping a copy of the last one', async t => {
+  const parent = await mkdtemp(join(tmpdir(), 'proof-output-'));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const proof = join(parent, 'proof'), build = join(parent, 'proof-build');
+  for (const run of [1, 2, 3]) {
+    await replaceOutputDirs(proof, build);
+    assert.deepEqual((await readdir(parent)).sort(), ['proof', 'proof-build'], `run ${run} leaves only its own output`);
+    assert.deepEqual([await readdir(proof), await readdir(build)], [[], []], `run ${run} starts empty`);
+    await mkdir(join(proof, 'nested'));
+    await writeFile(join(proof, 'nested', 'packet.json'), String(run));
+    await writeFile(join(build, 'index.html'), String(run));
+  }
+  const producer = await read('scripts/browser-product-proof.mjs');
+  assert.match(producer, /await replaceOutputDirs\(output,buildRoot\)/);
+  assert.doesNotMatch(producer, /_to_delete|\brename\b/);
 });

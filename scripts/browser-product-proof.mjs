@@ -1,11 +1,11 @@
 // Deterministic product evidence. No model, personal session or production target.
-import { readFile, writeFile, mkdir, copyFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, copyFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from './artifact.mjs';
-import { journeyFiles, continuityCases, requiredNativeEntries, validateNativeCompletion, validateBrowserCompletion } from './browser-proof-contract.mjs';
+import { journeyFiles, continuityCases, requiredNativeEntries, validateNativeCompletion, validateBrowserCompletion, replaceOutputDirs } from './browser-proof-contract.mjs';
 import { runChild } from './run-child.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -23,14 +23,7 @@ const continuity=continuityCases.map(({id})=>id);
 
 try {
   if(git('status','--porcelain','--untracked-files=no')) throw Error('product proof requires committed source');
-  const retired=join(root,'_to_delete',`browser-proof-${Date.now()}`);
-  await mkdir(retired,{recursive:true});
-  for(const path of [output,buildRoot]) {
-    try { await rename(path,join(retired,path===output?'proof':'proof-build')); }
-    catch(error) { if(error.code!=='ENOENT') throw error; }
-  }
-  await mkdir(output,{recursive:true});
-  await mkdir(buildRoot,{recursive:true});
+  await replaceOutputDirs(output,buildRoot);
   const sourceCommit=git('rev-parse','HEAD');
   phase='build';
   const built=await buildArtifact({root,outDir:join(root,'dist'),commit:sourceCommit});

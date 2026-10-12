@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rm, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 // Product coverage is owned by the manifest; every consumer derives its file
@@ -59,4 +59,12 @@ export async function assertServedBuild(origin, expected) {
   const manifestDigest = createHash('sha256').update(bytes).digest('hex');
   if (manifestDigest !== expected.manifestDigest) throw Error('served build manifest digest mismatch');
   return { sourceCommit: manifest.source_commit, manifestDigest };
+}
+
+// Each run replaces its own output in place; nothing from an earlier run is kept.
+export async function replaceOutputDirs(...dirs) {
+  for (const dir of dirs) {
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+  }
 }

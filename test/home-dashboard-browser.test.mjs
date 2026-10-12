@@ -207,6 +207,8 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     await page.locator('#homeLeads:not([hidden])').waitFor();
     await page.locator('#homeControl:not([hidden])').waitFor();
     assert.equal(await page.locator('.home-week .home-day').count(), 7);
+    // The week link names its destination before the day tiles it wraps.
+    assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
     assert.equal(await page.locator('.home-lead').count(), 3);
     assert.equal(await page.locator('.home-flags .home-flag').count(), 4);
     assert.match(await page.locator('#homeControl').textContent(), /Needs attention/);
