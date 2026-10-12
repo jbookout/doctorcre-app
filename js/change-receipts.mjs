@@ -120,6 +120,12 @@ export function verbLabel(verb) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+/** What one recorded event did, in words. Receipts and Updates share it. */
+export function changeAction(event) {
+  const field = typeof event?.field === 'string' && event.field ? event.field : null;
+  return field === 'note' ? 'Note added' : field ? fieldLabel(field) : verbLabel(event?.verb);
+}
+
 /**
  * One side of a change, as a person can read it. Never a score, never a guess:
  * an absent value reads "(empty)" and an unknown shape falls back to its JSON.
@@ -172,7 +178,7 @@ export function normalizeChangeEvent(event, options = {}) {
     kind,
     // A note receipt says a note was added and links to the record. The note
     // text itself is not copied here; it belongs in the deal's thread.
-    action: kind === 'note' ? 'Note added' : field ? fieldLabel(field) : verbLabel(event.verb),
+    action: changeAction(event),
     before: null,
     after: null,
     revertible_field: Boolean(field) && REVERTIBLE_FIELDS.includes(field),

@@ -69,7 +69,7 @@
 
 /* The preference form. One column at 360px; the grid only widens where there
  * is room for two clock fields to sit side by side without either shrinking. */
-.pref-form { display: grid; gap: 12px; margin-top: 12px; }
+.pref-form { display: grid; gap: 12px; margin-top: 12px; scroll-margin-top: 80px; }
 .pref-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .pref-form .field { display: grid; gap: 6px; min-width: 0; }
 .pref-form label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
@@ -97,3 +97,16 @@
   .hero-meta { justify-content: flex-start; }
   .note-top { flex-direction: column; align-items: flex-start; }
 }
+
+/* Details and contextual help: collapsed by default, a 44px summary that
+ * brightens on hover and focus, and contents that ease in when opened. With
+ * motion reduced (system.css, either preference) the contents simply appear. */
+.record-details, .context-help { margin-top: 8px; color: var(--quiet); font-size: 12px; }
+.record-details summary, .context-help summary { min-height: var(--touch); display: list-item; align-content: center; cursor: pointer; border-radius: 8px; transition: color .2s ease; }
+.record-details summary:hover, .context-help summary:hover, .record-details summary:focus-visible, .context-help summary:focus-visible { color: var(--text); }
+.record-details summary:focus-visible, .context-help summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.record-details[open] > :not(summary), .context-help[open] > :not(summary) { animation: details-reveal .24s ease both; }
+.record-details dl { margin: 0; }
+.record-details dt { color: var(--muted); }
+.record-details dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+@keyframes details-reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
