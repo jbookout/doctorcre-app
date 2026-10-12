@@ -623,13 +623,15 @@ test('concurrent same-record attempts dispatch only once while intent is unresol
 test('benign reads, including failed reads followed by retries, need no fixture writes or provenance', async () => {
   const guard = stagingFixtureWriteGuard();
   let reads = 0;
+  // Every page mounts the Dr. CRE suggestion switch read; it must pass as a read.
   for (const request of [browserRequest('get-deal-room', { deal: 'read-only-external-record' }), browserRequest('lead-board'),
+    browserRequest('list-feature-switches'),
     browserRequest('unused', {}, { method: 'GET', path: '/auth/session' }), browserRequest('unused', {}, { method: 'HEAD', path: '/' })]) {
     await assert.rejects(guard.handle(request, async () => { reads++; throw new Error('Read failed'); }), /Read failed/);
     const readResponse = reply({ read: 'succeeded' });
     assert.equal(await guard.handle(request, async () => { reads++; return readResponse; }), readResponse);
   }
-  assert.equal(reads, 8);
+  assert.equal(reads, 10);
   assert.deepEqual(guard.refusals, []);
   await guard.assertCoverage();
   await assert.rejects(guard.handle(browserRequest('claim-lead', { lead: browserKey(1), expected_actor: 'joe', base_version: 1, idempotency_key: browserKey(2) }),
