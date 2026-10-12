@@ -1,12 +1,12 @@
 // Run explicitly after the family fixtures pass. This compiler uses app-owned
 // handlers and offline DOM; preparation consumes only the committed catalog.
 import { readFile, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
 import { catalogFixture } from './catalog-fixture.mjs';
 import { families } from './catalog-families.mjs';
 import { inventory } from '../../scripts/e2e-staging/controls.mjs';
 import { canonicalIdentity } from '../../scripts/e2e-staging/traversal.mjs';
 import { screens } from '../../scripts/e2e-staging/screens.mjs';
+import { reviewedSourceDigests } from '../../scripts/e2e-staging/control-proofs.mjs';
 const file = new URL('../../contracts/e2e-staging-control-proofs.v1.json', import.meta.url);
 const ceiling = setTimeout(() => { console.error('Offline catalog compilation exceeded twelve minutes'); process.exit(1); }, 720_000);
 ceiling.unref();
@@ -70,8 +70,10 @@ for (const family of selectedFamilies) {
   }
   console.log(family.id + ': compiled; ' + controls.length + ' identities total');
 }
-catalog.reviewed_source_commit = execFileSync('git', ['rev-parse', '8739b120'], { encoding: 'utf8' }).trim();
 catalog.controls = controls.map(row => ({ ...row, identity: canonicalIdentity(row.identity) }));
+// Compilation derived these proofs from the committed handlers, so it pins
+// their reviewed bytes; commit the working tree first.
+catalog.reviewed_sources = await reviewedSourceDigests('HEAD', catalog.controls);
 // One finite proof per line keeps the catalog reviewable; preparation uses the
 // exact same full-state SHA-256 identities as live inventory.
 const { controls: entries, ...metadata } = catalog;
