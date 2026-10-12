@@ -4,7 +4,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { citationMismatches, families } from './catalog-families.mjs';
 import { prepareBrowserControlProofs, reviewedSourceDigests, unreviewedSources } from '../../scripts/e2e-staging/control-proofs.mjs';
 import catalog from '../../contracts/e2e-staging-control-proofs.v1.json' with { type: 'json' };
 
@@ -17,6 +19,22 @@ test('the checkout carries the exact reviewed bytes of every control-proof sourc
   const current = await reviewedSourceDigests('HEAD', catalog.controls);
   assert.deepEqual(unreviewedSources(catalog.reviewed_sources, current), [],
     'reviewed source changed: re-review the proofs whose closure includes it, then npm run e2e:staging:repin-control-proofs -- HEAD --reviewed <path>');
+});
+
+// A digest rebind proves the bytes were re-pinned, not that each review still
+// cites the code that defines its control.
+test('every review citation names the line that defines its control', () => {
+  const read = path => readFileSync(join(checkout, path), 'utf8');
+  assert.deepEqual(citationMismatches(catalog.controls, read), [],
+    'move the family source in catalog-families.mjs, then node tests/staging-live/compile-control-catalog.mjs <family>');
+  const row = catalog.controls.find(entry => entry.review.family === 'account-menu');
+  const avatar = families.find(family => family.id === 'account-menu');
+  const [file, line] = avatar.source.split(':');
+  const elsewhere = file === 'js/app-shell.js' ? 'js/navigation.js' : 'js/app-shell.js';
+  const cite = source => citationMismatches([{ ...row, review: { ...row.review, source } }], read).filter(problem => problem.startsWith(row.identity));
+  assert.equal(cite(`${elsewhere}:${line}`).length, 1, 'a citation in another file is refused');
+  assert.equal(cite(`${file}:${Number(line) + 1}`).length, 1, 'a line that does not define the control is refused');
+  assert.equal(cite(`${file}:9999`).length, 1, 'a line past the end of the file is refused');
 });
 
 // A commit equal to HEAD except for one file, written to the object store only.
