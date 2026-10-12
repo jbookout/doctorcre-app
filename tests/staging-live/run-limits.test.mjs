@@ -241,17 +241,31 @@ test('unreadable and structurally invalid ledgers fail with named errors', async
 });
 
 
-test('environment limits are partial, lower-only, typed and canonical', async () => {
+test('environment limits are a whole, lower-only, typed and canonical policy', async () => {
   const { runLimitsFromEnvironment } = await import('../../scripts/e2e-staging/run-limits.mjs');
+  const env = limits => ({ E2E_RUN_LIMITS: typeof limits === 'string' ? limits : JSON.stringify(limits) });
+  const refused = detail => error => code('invalid-run-limits')(error) && detail.test(error.message);
+  // Unset keeps today's defaults.
   assert.deepEqual(runLimitsFromEnvironment({}), RUN_LIMITS);
-  assert.deepEqual(runLimitsFromEnvironment({ E2E_RUN_LIMITS: '{"httpRequests":120,"modelCalls":0}' }),
-    { ...RUN_LIMITS, httpRequests: 120, modelCalls: 0 });
-  for (const value of ['', 'null', '[]', 'false', '{broken}', '{"unknown":1}', '{"__proto__":{}}',
-    '{"httpRequests":"120"}', '{"httpRequests":0}', '{"httpRequests":1.5}', '{"modelCalls":-1}'])
-    assert.throws(() => runLimitsFromEnvironment({ E2E_RUN_LIMITS: value }), code('invalid-run-limits'));
+  // A full object is accepted and returned in canonical key order.
+  const lower = { ...RUN_LIMITS, httpRequests: 120, modelCalls: 0 };
+  const reversed = Object.fromEntries(Object.entries(lower).reverse());
+  assert.deepEqual(Object.entries(runLimitsFromEnvironment(env(reversed))), Object.entries(lower));
+  // Partial, empty and unknown-key objects fail closed and name the keys.
+  const rest = Object.keys(RUN_LIMITS).filter(key => key !== 'httpRequests');
+  assert.throws(() => runLimitsFromEnvironment(env({ httpRequests: 120 })), refused(new RegExp(`missing ${rest.join(', ')}\\)`)));
+  assert.throws(() => runLimitsFromEnvironment(env('{}')), refused(new RegExp(`missing ${Object.keys(RUN_LIMITS).join(', ')}\\)`)));
+  assert.throws(() => runLimitsFromEnvironment(env({ ...RUN_LIMITS, unknown: 1 })), refused(/\(unknown unknown\)/));
+  assert.throws(() => runLimitsFromEnvironment(env(JSON.stringify(RUN_LIMITS).replace('{', '{"__proto__":{},'))), refused(/unknown __proto__/));
+  const { modelCalls, ...withoutModel } = RUN_LIMITS;
+  assert.throws(() => runLimitsFromEnvironment(env({ ...withoutModel, extra: 1 })), refused(/missing modelCalls; unknown extra/));
+  for (const value of ['', 'null', '[]', 'false', '{broken}'])
+    assert.throws(() => runLimitsFromEnvironment(env(value)), code('invalid-run-limits'));
+  for (const bad of [{ httpRequests: '120' }, { httpRequests: 0 }, { httpRequests: 1.5 }, { modelCalls: -1 }])
+    assert.throws(() => runLimitsFromEnvironment(env({ ...RUN_LIMITS, ...bad })), refused(/no higher than its default/));
   for (const [key, maximum] of Object.entries(RUN_LIMITS))
-    assert.throws(() => runLimitsFromEnvironment({ E2E_RUN_LIMITS: JSON.stringify({ [key]: maximum + 1 }) }), code('invalid-run-limits'));
-  assert.throws(() => runLimitsFromEnvironment({ E2E_RUN_LIMITS: '{"httpRequests":3}' }, { ...RUN_LIMITS, httpRequests: 2 }), code('invalid-run-limits'));
+    assert.throws(() => runLimitsFromEnvironment(env({ ...RUN_LIMITS, [key]: maximum + 1 })), code('invalid-run-limits'));
+  assert.throws(() => runLimitsFromEnvironment(env({ ...RUN_LIMITS, httpRequests: 3 }), { ...RUN_LIMITS, httpRequests: 2 }), code('invalid-run-limits'));
 });
 
 test('zero model calls prevents the first reservation and survives reopen and resume', async t => {

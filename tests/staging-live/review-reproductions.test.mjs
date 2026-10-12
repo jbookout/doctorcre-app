@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
+import { RUN_LIMITS } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 // The exact reproductions from the blocking reviews of #201 and #203, kept as one regression each.
@@ -30,7 +31,7 @@ test('#201: one capped run honors every selected lower limit at once', async t =
   `], { cwd: project, timeout: 15_000, killSignal: 'SIGKILL', stdio: 'pipe', env: {
     ...process.env, E2E_V2_OUTPUT: root, E2E_RUN_ID: 'synthetic-review-repro',
     E2E_RUN_SUPERVISED: '1', E2E_TARGET: 'staging-live',
-    E2E_RUN_LIMITS: JSON.stringify({ preflightAttempts: 1, batchGoals: 1, explorationSteps: 1, testTimeoutMs: 10 }),
+    E2E_RUN_LIMITS: JSON.stringify({ ...RUN_LIMITS, preflightAttempts: 1, batchGoals: 1, explorationSteps: 1, testTimeoutMs: 10 }),
   } }).toString();
   assert.deepEqual(JSON.parse(output.trim().split('\n').at(-1)), [1, 1, 1, 10]);
 });
