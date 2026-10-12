@@ -18,7 +18,6 @@ const docDockJs = await read("js/doc-presence.js");
 const workInventoryHtml = await read("work-inventory.html");
 const tasksHtml = await read("tasks.html");
 const pipelineHtml = await read("pipeline.html");
-const businessWorkspaceHtml = await read("business-workspace.html");
 const controlRoomHtml = await read("control-room.html");
 const calendarHtml = await read("calendar.html");
 const ideasHtml = await read("ideas.html");
@@ -36,7 +35,6 @@ const SURFACES = {
   "work-inventory.html": workInventoryHtml,
   "tasks.html": tasksHtml,
   "pipeline.html": pipelineHtml,
-  "business-workspace.html": businessWorkspaceHtml,
   "control-room.html": controlRoomHtml,
   "calendar.html": calendarHtml,
   "ideas.html": ideasHtml,
