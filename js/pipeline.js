@@ -153,8 +153,11 @@ function parkedHtml(deal) {
 
 function renderBoard() {
   const board = $('kanban');
-  // Fresh snapshots still enter state; dragend paints them without detaching the drag origin.
-  if (!board || board.querySelector('[data-dragging="true"]')) return;
+  // Fresh snapshots still enter state; dragend or the press's release paints
+  // them, so a refresh never detaches a card under a press or drag.
+  if (!board) return;
+  if (board.dataset.pressed === 'true' || board.querySelector('[data-dragging="true"]')) { state.paintDeferred = true; return; }
+  state.paintDeferred = false;
   const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
     .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
   setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
@@ -1008,6 +1011,20 @@ function wireBoard() {
     const card = event.target.closest('.kanban-card');
     if (card && card.dataset.dragging !== 'true') openPanel(card.dataset.id, card);
   });
+
+  // A press may become a tap or a drag; either would be lost if a refresh
+  // replaced its card before it completed.
+  board.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.kanban-card')) board.dataset.pressed = 'true';
+  });
+  const release = () => {
+    if (board.dataset.pressed !== 'true') return;
+    delete board.dataset.pressed;
+    // After the press's own click has been dispatched.
+    if (state.paintDeferred) setTimeout(renderBoard);
+  };
+  addEventListener('pointerup', release, true);
+  addEventListener('pointercancel', release, true);
 
   board.addEventListener('dragstart', (event) => {
     const card = event.target.closest('.kanban-card');

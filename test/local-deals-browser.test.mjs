@@ -64,6 +64,40 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
   });
 });
 
+// A refresh that lands between a press and its drag start or click must not
+// replace the pressed card, or the gesture is lost.
+test('board refresh keeps a pressed card until its drag or tap completes', async t => {
+  const {page,errors}=await open(t);
+  const freshAction=()=>page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
+    state.client.getBoard=async (...args)=>{
+      const result=await get(...args);
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during press'}:d)};
+    };
+  });
+  await freshAction();
+  for (const gesture of ['drag','tap']) {
+    const card=page.locator('.kanban-column [data-id="d14"]');
+    await card.evaluate(node=>{window.pressedCard=node;});
+    const box=await card.boundingBox();
+    await page.mouse.move(box.x+10,box.y+10);await page.mouse.down();
+    await refresh(page);
+    assert.equal(await page.evaluate(()=>window.pressedCard.isConnected),true,`${gesture}: the pressed card stays`);
+    if (gesture==='drag') {
+      const target=await page.locator('[data-column="legal"] > h3').boundingBox();
+      await page.mouse.move(target.x+10,target.y+10,{steps:5});await page.mouse.up();
+      await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
+      await page.locator('#completionCancel').click();
+    } else {
+      await page.mouse.up();
+      await page.waitForFunction(()=>document.querySelector('#recordPanel').open);
+      await page.getByLabel('Close deal',{exact:true}).click();
+    }
+    await waitForAsync(page,()=>/Demo fresh action during press/.test(document.querySelector('.kanban-column [data-id="d14"]').textContent));
+  }
+  assert.deepEqual(errors,[]);
+});
+
 test('board refresh preserves a native drag until its drop is reviewed', async t => {
   const {page,errors}=await open(t);
   const card=page.locator('.kanban-column [data-id="d14"]');
