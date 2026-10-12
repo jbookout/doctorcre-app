@@ -97,3 +97,29 @@ test('Live retains its first-item content contract while Leads requires typed te
   assert.deepEqual(await createLiveClient({ fetchImpl, docContext: false }).addLoop({ idempotency_key: 'same-key' }), { ok: true });
   await assert.rejects(createLeadBoardClient({ fetchImpl, docContext: false }).claimLead({ id: 'synthetic-lead', base_version: 1 }, 'same-key'), { code: 'unknown_outcome' });
 });
+
+test('Live read methods carry the caller signal to transport and leave MCP arguments unchanged', async () => {
+  const calls = [
+    ['find', client => (signal => client.find({ query: 'synthetic' }, { signal })), { query: 'synthetic' }],
+    ['find-and-catch-up', client => (signal => client.findAndCatchUp({ query: 'synthetic', limit: 3 }, { signal })), { query: 'synthetic', limit: 3 }],
+    ['loop-board', client => (signal => client.loopBoard({ kind: 'task', status: 'open' }, { signal })), { kind: 'task', status: 'open' }],
+    ['deal-room-board', client => (signal => client.getBoard({ workspace: 'all', signal })), { workspace: 'all' }],
+  ];
+  for (const [verb, call, args] of calls) {
+    let sent;
+    const client = createLiveClient({ docContext: false, fetchImpl: async (_path, init) => {
+      sent = init;
+      return new Promise(() => {}); // a held read that only the caller can end
+    } });
+    const caller = new AbortController();
+    const pending = call(client)(caller.signal);
+    await new Promise(resolve => setImmediate(resolve));
+    const body = JSON.parse(sent.body);
+    assert.equal(body.params.name, verb);
+    assert.deepEqual(body.params.arguments, args, `${verb} sends only its MCP arguments`);
+    assert.equal(sent.signal.aborted, false);
+    caller.abort();
+    assert.equal(sent.signal.aborted, true, `${verb} aborts its transport with the caller`);
+    await assert.rejects(pending, error => error.code === 'read_timeout');
+  }
+});
