@@ -152,6 +152,9 @@ for (const reducedMotion of ['no-preference', 'reduce']) test(`Updates disclosur
   await help.locator('summary').click();
   const motion = await help.locator('p').first().evaluate(node => getComputedStyle(node).animationName);
   assert.equal(motion, reducedMotion === 'reduce' ? 'none' : 'details-reveal');
+  // The app's own motion setting reduces it too.
+  await page.evaluate(() => document.documentElement.setAttribute('data-motion', 'reduced'));
+  assert.equal(await help.locator('p').first().evaluate(node => getComputedStyle(node).animationName), 'none');
   assert.deepEqual(errors, []);
 });
 

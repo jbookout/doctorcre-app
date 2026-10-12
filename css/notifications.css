@@ -100,7 +100,7 @@
 
 /* Details and contextual help: collapsed by default, a 44px summary that
  * brightens on hover and focus, and contents that ease in when opened. With
- * motion reduced the contents simply appear. */
+ * motion reduced (system.css, either preference) the contents simply appear. */
 .record-details, .context-help { margin-top: 8px; color: var(--quiet); font-size: 12px; }
 .record-details summary, .context-help summary { min-height: var(--touch); display: list-item; align-content: center; cursor: pointer; border-radius: 8px; transition: color .2s ease; }
 .record-details summary:hover, .context-help summary:hover, .record-details summary:focus-visible, .context-help summary:focus-visible { color: var(--text); }
@@ -110,7 +110,3 @@
 .record-details dt { color: var(--muted); }
 .record-details dd { margin: 0 0 8px; overflow-wrap: anywhere; }
 @keyframes details-reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) {
-  .record-details summary, .context-help summary { transition: none; }
-  .record-details[open] > :not(summary), .context-help[open] > :not(summary) { animation: none; }
-}
