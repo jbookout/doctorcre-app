@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appShellMarkup } from "../js/app-shell.js";
+import { appShellMarkup } from "../js/navigation.js";
 
 // The second, smaller business nav set (Deals/Clients/Vendors, no Leads) was
 // missed by the earlier /leads-keyed Tours sweep (PR 68). These five pages

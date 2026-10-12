@@ -1,4 +1,4 @@
-import { navigationItems } from "../js/app-shell.js";
+import { navigationItems } from "../js/navigation.js";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -47,7 +47,7 @@ test("built report uses only report-adapter asset routes and includes the shared
 });
 
 test("the shared navigation has one stable set of destinations, including every secondary page", async () => {
-  const { appShellMarkup } = await import("../js/app-shell.js");
+  const { appShellMarkup } = await import("../js/navigation.js");
   for (const route of Object.keys(routes)) {
     const html = appShellMarkup(route);
     const labels = [...html.matchAll(/data-app-nav-item[^>]*aria-label="([^"]+)"/g)].map((match) => match[1]);
@@ -75,7 +75,7 @@ test("the task board belongs to Progress work detail", () => {
 });
 
 test("public report navigation uses its sibling app origin", async () => {
-  const { appOriginForReport, appShellMarkup } = await import("../js/app-shell.js");
+  const { appOriginForReport, appShellMarkup } = await import("../js/navigation.js");
   const domain = ["example", "test"].join(".");
   const origin = appOriginForReport(`https://reports.${domain}`);
   const appOrigin = `https://app.${domain}`;
@@ -122,4 +122,11 @@ test('a report mounted on any origin drops partner controls and the Call mode st
     assert.equal(dom.window.document.querySelector('.app-shell-call-availability'), null);
     assert.equal(host.querySelector('[aria-label="Leads"]').getAttribute('href'), '/leads', 'a same-origin report links within its origin');
   } finally { dom.window.close(); }
+});
+
+test('navigation has one public module; the app shell exports only app mounting', async () => {
+  const shell = await import('../js/app-shell.js');
+  assert.deepEqual(Object.keys(shell).sort(), ['mountAppShell', 'partnerIdentity']);
+  const navigation = await import('../js/navigation.js');
+  assert.deepEqual(Object.keys(navigation).sort(), ['activeDestination', 'appOriginForReport', 'appShellMarkup', 'mountNavigation', 'navigationItems']);
 });

@@ -5,7 +5,6 @@ import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { offlineTourSession } from "./offline-tour-session.js";
-export { navigationItems, activeDestination, appOriginForReport, appShellMarkup } from "./navigation.js";
 import { mountNavigation, appOriginForReport } from "./navigation.js";
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {

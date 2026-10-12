@@ -38,7 +38,7 @@ test("no page or script points Home or sign-in at /business", async () => {
     const src = await read(file);
     assert.doesNotMatch(src, /href="\/business|return_to=\/business|"\/business"\s*,\s*href/, `${file} must not target /business`);
   }
-  const shell = await import("../js/app-shell.js");
+  const shell = await import("../js/navigation.js");
   const markup = shell.appShellMarkup("/search");
   assert.match(markup, /aria-label="DoctorCRE Home"/);
   assert.match(markup, /class="app-shell-brand" href="\/"/);
