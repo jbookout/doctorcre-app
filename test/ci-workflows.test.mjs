@@ -230,6 +230,21 @@ test("the job budget covers the observed full suite plus setup and artifact veri
   }
 });
 
+test("the e2e journeys budget covers the observed slow-runner sequence", () => {
+  // The staging selftest grew from 113 s (a8ede61) to 342-385 s (#200, #205).
+  // Slow runners then spent 512 s before the regressions step (run 38199979738,
+  // 070e001) and were cancelled at ten minutes ~104 s into a regression suite
+  // that passes in 70 s on fast runners. No step hung: each step's wall time
+  // matches its reporter's own duration.
+  const beforeRegressionsMs = 512_000;
+  const regressionsMs = 104_000;
+  const uploadMs = 6_000;
+  const requiredMs = (beforeRegressionsMs + regressionsMs + uploadMs) * 1.25;
+  const minutes = Number(e2e.match(/^    timeout-minutes: (\d+)$/m)?.[1]);
+  assert.ok(Number.isFinite(minutes) && minutes > 0, "e2e needs a finite deadline");
+  assert.ok(minutes * 60_000 >= requiredMs, "e2e: the journeys sequence must fit with 25% runner headroom");
+});
+
 test("description check runs for PRs and stays out of main pushes", () => {
   const check = "node scripts/check-pr-description.mjs";
   assert.equal(commands(ci, "pull_request").filter(command => command === check).length, 1);
