@@ -128,4 +128,6 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])){--layout-bottom:108
   .app-layout-tabs>[data-layout-slot=tabs]{flex-wrap:wrap;min-width:0}
   .has-app-layout .card-open{min-height:44px}
   .has-app-layout .skip:focus,.has-app-layout .invoice-skip:focus{min-height:44px;display:flex;align-items:center}
+  /* A scripted scroll lands at once; animated, the page moves under the next tap. */
+  :root{scroll-behavior:auto}
 }

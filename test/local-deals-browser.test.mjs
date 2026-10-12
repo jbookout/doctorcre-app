@@ -64,6 +64,14 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
   });
 });
 
+test('touch layout scrolls into view at once, so a tap lands where it was aimed', async t => {
+  for (const [width, behavior] of [[390, 'auto'], [1440, 'smooth']]) {
+    const {page,errors}=await open(t,{width});
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).scrollBehavior),behavior,`${width}px`);
+    assert.deepEqual(errors,[]);
+  }
+});
+
 // A refresh that lands between a press and its drag start or click must not
 // replace the pressed card, or the gesture is lost.
 test('board refresh keeps a pressed card until its drag or tap completes', async t => {
