@@ -61,3 +61,15 @@ export function pastClientTouches(payload, { scope = 'team', today = radarToday(
   }
   return [...touches.values()].sort((a,b) => a.touch_due_on.localeCompare(b.touch_due_on) || a.touch_id.localeCompare(b.touch_id)).slice(0,limit);
 }
+
+export function leaseRadarAddress({view='timeline',scope='team',search='',quarter=null,lease=null}, current='/leases') {
+  const url = new URL(current, 'http://fixture.local');
+  for (const [key,value,defaultValue] of [['view',view,'timeline'],['scope',scope,'team'],['q',search,''],['quarter',quarter,null],['lease',lease,null]]) {
+    if (value && value !== defaultValue) url.searchParams.set(key,value); else url.searchParams.delete(key);
+  }
+  return url.pathname + url.search + url.hash;
+}
+export function parseLeaseRadarAddress(search='') {
+  const params=new URLSearchParams(search);
+  return {view:params.get('view')==='gaps'?'gaps':'timeline',scope:params.get('scope')==='mine'?'mine':'team',search:params.get('q')||'',quarter:/^\d{4}-Q[1-4]$/.test(params.get('quarter'))?params.get('quarter'):null,lease:params.get('lease')||null};
+}

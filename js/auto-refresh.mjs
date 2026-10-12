@@ -1,30 +1,44 @@
-// Read-only background updates. One refresh runs at a time; hidden pages sleep.
-// Current-read lifetimes own cancellation; page callbacks preserve drafts.
+// Read-only background updates. One refresh runs at a time; hidden and idle
+// pages sleep (see visibility-poll.mjs). Current-read lifetimes own
+// cancellation; page callbacks preserve their local drafts.
 import { createCurrentRead } from "./current-read.mjs";
 export { readWithDeadline, fetchRead } from "./current-read.mjs";
-import { mountReadOnResume } from "./read-on-resume.mjs";
+import { watchPresence } from "./visibility-poll.mjs";
 
-export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true }) {
-  if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, dispose: () => {} };
+// A failed read retries on a short backoff (1s, 2s, 4s... capped at the
+// interval), so "reconnecting" holds within seconds rather than a full poll.
+export function mountAutoRefresh({ document, window, refresh, onResume, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
+  if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, poll: () => {}, dispose: () => {} };
   let timer = null;
   let running = null;
   let queuedResume = null;
   let disposed = false;
   const reads = createCurrentRead({ timeoutMs, clock: window });
+  let failures = 0;
   const schedule = () => {
     window.clearTimeout?.(timer);
-    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, intervalMs); timer?.unref?.(); }
+    const delay = failures ? Math.min(intervalMs, retryMs * 2 ** (failures - 1)) : intervalMs;
+    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
   };
   const run = operation => {
-    if (disposed || document.visibilityState === "hidden" || !shouldRefresh()) { schedule(); return Promise.resolve(); }
+    // Idle stops the clock here; the first input re-reads through the resume.
+    if (disposed || !presence.active()) return Promise.resolve();
+    if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
-    running = reads.run(({ signal }) => operation({ signal })).catch(() => {
-      // Failure stays in the page's own state; the next scheduled read recovers.
+    // A read replaced by a resume settles neither way; the queued read decides.
+    running = reads.run(({ signal }) => operation({ signal }), {
+      success: () => { failures = 0; },
+      // Failure stays in the page's own state; the next read comes sooner.
+      failure: () => { failures += 1; },
     }).finally(() => { running = null; schedule(); });
     return running;
   };
   const read = () => run(refresh);
+  // A person pressing refresh is present by definition: refresh() reads even
+  // after the idle cutoff, exactly as before the idle pause. poll() is for a
+  // page's own clock and waits while hidden or idle, like the interval itself.
+  const manualRead = () => { presence.touch(); return read(); };
   const resumeRead = () => {
     onResume?.();
     if (!onResume || !running) return read();
@@ -35,10 +49,11 @@ export function mountAutoRefresh({ document, window, refresh, onResume, interval
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
   document.addEventListener("visibilitychange", visibility);
-  const resume = mountReadOnResume({ document, window, refresh: resumeRead });
-  window.addEventListener("online", resumeRead);
+  const presence = watchPresence({ document, window, onResume: resumeRead, onWake: read, idleMs, now });
+  const online = () => { if (presence.active()) resumeRead(); };
+  window.addEventListener("online", online);
   schedule();
-  return { refresh: read, dispose() { disposed = true; reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", resumeRead); resume?.dispose?.(); } };
+  return { refresh: manualRead, poll: read, dispose() { disposed = true; reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 export function updatedLabel(value) {

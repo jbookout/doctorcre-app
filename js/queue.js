@@ -1,5 +1,6 @@
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { authGeneration, authCurrent, establishAuth, invalidateAuth } from './progress-auth.js';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 import {
   QUEUE_COLUMNS, queueColumnFor, queueIsStale, queueProjection,
 } from "./queue-model.mjs";
@@ -95,11 +96,5 @@ if (typeof document !== "undefined") {
   render = model => { latest = model; originalRender(model); };
   ["queueTarget", "queueStatus"].forEach(id => $(id).addEventListener("change", () => originalRender(latest)));
   $("queueComposer").addEventListener("submit", enqueue);
-  poll();
-  let timer;
-  function schedule() {
-    clearTimeout(timer);
-    timer = setTimeout(async () => { await poll(); schedule(); }, document.hidden ? 30_000 : 5_000);
-  }
-  document.addEventListener('visibilitychange',schedule); schedule();
+  mountVisibilityPoll({ poll, intervalMs: 5_000 }).refresh();
 }
