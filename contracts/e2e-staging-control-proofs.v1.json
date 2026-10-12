@@ -1,7 +1,7 @@
 {
   "schema": "doctorcre-staging-control-proofs.v1",
   "reviewed_source_commit": "8739b120f7d41c2fc00f70e9d945eaba267d8269",
-  "application_source_sha256": "066f6dcae0dce4f973e8399cbec68f71eee4db498f3d59a39bc77c5a53c537f9",
+  "application_source_sha256": "2d580f15956cab5ebca158ddbce44e9bfe02c6dd1d8843511e9226a03ff1f85a",
   "carr_source_commit": "c06bdf2788fb69daefb59364ea4fd798fa94f9a4",
   "controls": [
     {"identity":"control-state.v1:45f819b94841c619ddcfdea51b640a528863cb9b5b40a94fedcc6c8367ebba86","effects":[],"review":{"policy":"dismiss-morning-brief.v1","path":"/","dialog_title":"Morning brief","source":"js/morning-brief.js","handler":"close; stop speech, close dialog and restore focus; no network or business mutation","family":"close-morning-brief"},"observations":[{"selector":"#docMorningBrief","attribute":"open","transitions":[{"from":"","to":null}]}]},
