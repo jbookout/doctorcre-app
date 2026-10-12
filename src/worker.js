@@ -232,7 +232,8 @@ async function browserReport(request, env, gate) {
   const input = await reportBody(request).catch(() => null);
   if (input === undefined) return json({ error: 'report_too_large' }, 413);
   if (!input) return json({ error: 'invalid_report' }, 400);
-  const evidence = scrubError(input);
+  // Only the edge observes HTTP 5xx; a browser cannot report one.
+  const evidence = scrubError({ ...input, type: input.type === 'HTTP5xx' ? null : input.type });
   if (!gate(evidence)) return json({ ok: true, deduplicated: true }, 202);
   const headers = new Headers(request.headers);
   headers.delete('content-length');
@@ -254,16 +255,18 @@ function captureEdgeFailure(request, env, gate, response, failure) {
     .catch(() => console.error(JSON.stringify({ event: 'runtime_error_capture_failed', ...evidence })));
 }
 
-export function createDoctorcreRequestHandler(contract = e2eStagingContract, gate = createErrorGate({ limit: EDGE_LIMIT })) {
+// Separate gates: a flood of browser reports never silences the edge's own capture.
+export function createDoctorcreRequestHandler(contract = e2eStagingContract, gates = {
+  browser: createErrorGate({ limit: EDGE_LIMIT }), edge: createErrorGate({ limit: EDGE_LIMIT }) }) {
   const e2eExchangePath = readStagingAuthContract(contract).exchange.path;
   const stagingOrigin = new URL(contract.origin).origin;
   return async (request, env, ctx) => {
     if (request.method === 'POST' && new URL(request.url).pathname === runtimeErrors.browser_endpoint)
-      return browserReport(request, env, gate);
+      return browserReport(request, env, gates.browser);
     let response, failure = null;
     try { response = await handleRequest(request, env, e2eExchangePath, stagingOrigin); }
     catch (error) { failure = { error }; response = json({ error: 'internal_error' }, 500); }
-    const pending = captureEdgeFailure(request, env, gate, response, failure);
+    const pending = captureEdgeFailure(request, env, gates.edge, response, failure);
     if (pending && ctx?.waitUntil) ctx.waitUntil(pending);
     else if (pending) await pending;
     return response;

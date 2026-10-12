@@ -118,7 +118,8 @@ function edgeHarness({ assets, carr } = {}) {
     ASSETS: { fetch: assets || (async () => new Response('ok')) },
     CARR: { fetch: async request => { forwarded.push({ headers: Object.fromEntries(request.headers), body: await request.text() }); return carr ? carr(request) : new Response('{"ok":true}', { status: 202 }); } },
   };
-  const handle = createDoctorcreRequestHandler(undefined, createErrorGate({ limit: EDGE_LIMIT }));
+  const handle = createDoctorcreRequestHandler(undefined,
+    { browser: createErrorGate({ limit: EDGE_LIMIT }), edge: createErrorGate({ limit: EDGE_LIMIT }) });
   const call = async (request, ctx = { waitUntil: promise => waits.push(promise) }) => {
     const response = await handle(request, env, ctx);
     await Promise.all(waits.splice(0));
@@ -205,4 +206,17 @@ test('the edge refuses cross-origin, non-JSON, malformed and oversized reports w
   for (const [request, status] of cases) assert.equal((await edge.call(request)).status, status);
   assert.equal(edge.forwarded.length, 0);
   assert.equal(edge.captures.length, 0);
+});
+
+test('a browser report flood cannot silence edge capture, and a browser cannot claim an HTTP 5xx', async () => {
+  const edge = edgeHarness({ assets: async () => { throw Object.assign(new TypeError('x'), { stack: piiError().stack }); } });
+  for (let index = 0; index < EDGE_LIMIT + 5; index++)
+    await edge.call(report({ type: 'Error', stack: `at f (/js/a.js:${index}:1)` }));
+  assert.equal(edge.forwarded.length, EDGE_LIMIT, 'browser reports keep their own per-minute limit');
+  assert.equal((await edge.call(new Request('https://app/js/a.js'))).status, 500);
+  assert.equal(edge.captures.length, 1, 'the edge still captures its own failure after the browser limit is spent');
+
+  const claim = edgeHarness();
+  await claim.call(report({ type: 'HTTP5xx', message: 'HTTP 5xx response', route: '/deals' }));
+  assert.deepEqual(JSON.parse(claim.forwarded[0].body), { type: 'Error', message: '[redacted]', stack: '', route: '/deals', release_sha: null });
 });
