@@ -1,3 +1,4 @@
+import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { formatDueStamp, formatClock } from "./visual-system.js";
 // V5-UX-B06 — Commercial charts and linked drilldown: DOM wiring only.
@@ -17,7 +18,7 @@ import { formatDueStamp, formatClock } from "./visual-system.js";
 import {
   CHARTS_STATE_COPY, NEVER_REVIEWED, NO_FORECAST_SENTENCE, NO_VALUE_KEY,
   ONE_READ_SENTENCE, OWNER_DISCLOSURE_SENTENCE, SNAPSHOT_SENTENCE,
-  accountRows, acceptsBoardResponse, barShare, bucketRows, chartsAddress, chartsPhase,
+  accountRows, barShare, bucketRows, chartsAddress, chartsPhase,
   classifyBoardFailure, dealsDestination, dimensionById, filterDeals, nextDateCoverage, ownerRows,
   parseChartsAddress, phaseRows, readChartsView, rowTotal, selectionLabel, touchCoverage,
   validBoardPayload, waitingSummary, writeChartsView,
@@ -31,11 +32,12 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** One place holds what the Charts tab believes; nothing else keeps a copy. */
 const view = {
   status: "loading", payload: null, readAt: null, group: null, pick: null,
-  sequence: 0, ownerOpen: false, openAccounts: new Set(),
+  ownerOpen: false, openAccounts: new Set(),
 };
 
 let client = null;
 let storage = null;
+const boardReads = createCurrentRead();
 
 /* -------------------------------------------------------------------- painting */
 
@@ -223,12 +225,9 @@ function render({ focusFallback = null } = {}) {
 
 /* --------------------------------------------------------------------- reading */
 
-/**
- * ONE `getBoard()`, carrying a sequence token. A late answer is dropped without
- * touching `view`, so the newer answer stands.
- */
-export async function read({ push = false } = {}) {
-  const sequence = ++view.sequence;
+// The poller's reads and a person's Retry share one lifetime: only the
+// current answer paints.
+export async function read({ push = false, signal } = {}) {
   // A refresh with a board in hand keeps that board, its time and any open
   // Details on screen until the answer arrives; only a page with nothing to
   // show waits on the skeleton.
@@ -238,33 +237,26 @@ export async function read({ push = false } = {}) {
     render();
   }
   if (push) pushAddress();
-  let payload = null;
-  const pending = client.getBoard({ workspace: "all" });
-  try {
-    payload = await pending;
-  } catch (error) {
-    if (!acceptsBoardResponse(view.sequence, sequence)) return;
-    view.status = classifyBoardFailure(error);
-    view.payload = null;
-    view.readAt = null;
-    render();
-    return;
-  }
-  if (!acceptsBoardResponse(view.sequence, sequence)) return;
-  if (!validBoardPayload(payload)) {
-    // §4's own wording: a NON-OBJECT payload is the unanswered path. An object
-    // that is merely the wrong shape is the one this page cannot read.
-    view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
-    view.payload = null;
-    view.readAt = null;
-    render();
-    return;
-  }
-  view.status = "ready";
-  view.payload = payload;
-  // The producer returns no timestamp; record when this read resolved.
-  view.readAt = new Date().toISOString();
-  render();
+  return boardReads.run(({ signal }) => client.getBoard({ workspace: "all", signal }), {
+    signal,
+    success(payload) {
+      if (!validBoardPayload(payload)) {
+        // §4's own wording: a NON-OBJECT payload is the unanswered path. An object
+        // that is merely the wrong shape is the one this page cannot read.
+        view.status = payload === null || typeof payload !== "object" ? "unavailable" : "unreadable";
+        view.payload = null; view.readAt = null;
+      } else {
+        // The producer returns no timestamp; record when this read resolved.
+        view.status = "ready"; view.payload = payload; view.readAt = new Date().toISOString();
+      }
+      render();
+    },
+    failure(error) {
+      view.status = classifyBoardFailure(error);
+      view.payload = null; view.readAt = null;
+      render();
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ the address */
@@ -334,8 +326,8 @@ export function mountCharts({ client: boardClient, storage: storageImpl } = {}) 
   // backoff and the page recovers on its own without waiting a full interval.
   // The poller takes the first read too; with no window to poll in, the page
   // still reads once.
-  const poller = mountAutoRefresh({ document, window: globalThis.window, refresh: async () => {
-    await read({ push: false });
+  const poller = mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => {
+    await read({ push: false, signal });
     if (view.status === "unavailable") throw new Error("Charts board unavailable");
   } });
   if (globalThis.window) poller.refresh();

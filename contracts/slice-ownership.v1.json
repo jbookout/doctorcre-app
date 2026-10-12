@@ -164,6 +164,10 @@
     "js/navigation.js",
     "test/performance-budget.test.mjs",
     "test/performance-comment.test.mjs",
-    "test/fixture-server.test.mjs"
+    "test/fixture-server.test.mjs",
+    "test/mcp-requests.test.mjs",
+    "js/mcp-requests.mjs",
+    "js/current-read.mjs",
+    "test/current-read.test.mjs"
   ]
 }
