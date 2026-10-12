@@ -17,7 +17,7 @@ async function rootFor(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
-const policy = { ...RUN_LIMITS, stopGraceMs: 250, monitorIntervalMs: 100 };
+const policy = { ...RUN_LIMITS, stopGraceMs: RUN_LIMITS.stopGraceMs, monitorIntervalMs: 100 };
 const runLimitsURL = new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href;
 const modelURL = new URL('../../scripts/e2e-staging/model-room.mjs', import.meta.url).href;
 const authorization = run => ({ E2E_RUN_ID: run.id, E2E_ALLOW_MODEL_CALLS: run.id });

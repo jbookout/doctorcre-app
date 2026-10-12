@@ -5,11 +5,7 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // Every decision this file paints is made in ./charts-model.js. Nothing here
 // sorts, ranks, counts, or invents a field:
 //
-//   1. ONE board read for the WHOLE page. The workspace takes it, and hands the
-//      promise here; this tab adds no call of its own on load, so /business
-//      issues exactly one `tools/call deal-room-board` per load whether or not
-//      the Charts tab is ever opened. Only a person pressing Retry takes a new
-//      one, and that is a new as-of they asked for.
+//   1. One board read supplies the page; refresh takes a new snapshot.
 //   2. The drilldown filters the rows already in hand. Choosing a slice issues
 //      no read at all, so a filtered total is a subset of the total it came
 //      out of, always.
@@ -40,14 +36,7 @@ const view = {
 
 let client = null;
 let storage = null;
-/**
- * The page's own board read, handed in by the workspace. The first paint
- * consumes it instead of taking a second read of the same board at a second
- * as-of. It is cleared once consumed, so a Retry is a real, deliberate re-read.
- */
-let sharedBoard = null;
 const boardReads = createCurrentRead();
-let selectTab = null;
 
 /** The clock of the moment the response resolved. The verb returns no time of
  * its own, so this page says "Read at" and never "as of". */
@@ -224,9 +213,7 @@ export async function read({ push = false, signal } = {}) {
   view.status = "loading";
   render();
   if (push) pushAddress();
-  const pending = sharedBoard;
-  sharedBoard = null;
-  return boardReads.run(({ signal }) => pending || client.getBoard({ workspace: "all", signal }), {
+  return boardReads.run(({ signal }) => client.getBoard({ workspace: "all", signal }), {
     signal,
     success(payload) {
       if (!validBoardPayload(payload)) {
@@ -273,7 +260,6 @@ function restoreFromAddress() {
   const address = parseChartsAddress(globalThis.location?.search || "");
   view.group = address.group;
   view.pick = address.pick;
-  if (address.present) selectTab?.();
   render();
   return address;
 }
@@ -294,10 +280,8 @@ function wire() {
  * key this surface writes and assert that neither the workspace preference key
  * nor the saved-views key is ever one of them.
  */
-export function mountCharts({ client: boardClient, storage: storageImpl, board = null, onRestore = null } = {}) {
+export function mountCharts({ client: boardClient, storage: storageImpl } = {}) {
   client = boardClient;
-  sharedBoard = board;
-  selectTab = typeof onRestore === "function" ? onRestore : null;
   storage = storageImpl === undefined ? (globalThis.localStorage || null) : storageImpl;
   view.ownerOpen = readChartsView(storage).ownerOpen;
   for (const [id, text] of [

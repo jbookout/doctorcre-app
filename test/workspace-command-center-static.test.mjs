@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { appShellMarkup, navigationItems } from "../js/app-shell.js";
+import { appShellMarkup, navigationItems } from "../js/navigation.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 

@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import * as model from "../js/workspace-command-center-model.js";
+import { createFixtureClient } from "../js/fixture-client.js";
 import {
   MY_FLAGGED_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION, acceptsResponse, aggregateCardState, displayedFreshness, freshnessSignature,
   homeCardCopy, homeReadPhase, humanSourceLabel, needsJoeWork, primaryHomeAction, safeDestination, scopeNote, summarizeWorkspaceScope, validWorkspacePayload,
@@ -275,4 +278,27 @@ test("Home uses human source labels", () => {
   assert.equal(humanSourceLabel("v_deal_room_board"), "Deal Room board");
   assert.equal(humanSourceLabel("ops.work_request"), "System work");
   assert.equal(humanSourceLabel("unknown_machine_name"), "Source unavailable");
+});
+
+test("the synthetic command-centre read is a payload the shared validator accepts, for each partner", async () => {
+  const fixtureText = await readFile(new URL("../data/board-seed.json", import.meta.url), "utf8");
+  const seedUrl = `data:application/json;base64,${Buffer.from(fixtureText).toString("base64")}`;
+  const payload = await (await createFixtureClient({ seedUrl })).commandCenter();
+  assert.equal(validWorkspacePayload(payload), true, "the fixture exercises the same rules the live read is held to");
+  assert.equal(payload.viewer, "joe");
+  assert.deepEqual(payload.this_week, [], "always empty by contract");
+  assert.deepEqual(payload.recent_calls, []);
+  const [team, mine] = payload.metrics;
+  assert.ok(mine.active_deals <= team.active_deals && mine.flagged_deals <= team.flagged_deals);
+  assert.equal(payload.needs_you_now.find((item) => item.kind === "team_flagged_deals").count, team.flagged_deals);
+
+  const dellPayload = await (await createFixtureClient({ seedUrl, selfActor: "dell" })).commandCenter();
+  assert.equal(validWorkspacePayload(dellPayload), true);
+  assert.equal(dellPayload.viewer, "dell");
+  assert.equal(dellPayload.needs_you_now.some((item) => item.kind === "needs_joe_work"), false, "work waiting on Joe is not shown to Dell as his");
+});
+
+test("the model exports only what live pages use", () => {
+  assert.equal("quickAddRecordNames" in model, false, "Quick add's live record cap is task-records-model's");
+  assert.equal("QUICK_ADD_RECORD_CAP" in model, false);
 });
