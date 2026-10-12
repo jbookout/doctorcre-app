@@ -107,9 +107,10 @@ test('a refusal hides at once and a read already in flight cannot reveal the fea
  await gate.refresh();assert.equal(values.at(-1),true);
  const stale=gate.refresh();                // reads "on", started before CARR refused
  answers.push(switches(false));             // the confirming read sees CARR's own answer
- const refused=gate.refused();
+ const refused=gate.refused(),mark=values.length;
  assert.equal(values.at(-1),false,'hidden as soon as CARR refuses');
  release();await stale;await refused;
- assert.equal(values.includes(true,values.lastIndexOf(false)),false,'the stale "on" never repaints');
+ assert.equal(values.slice(mark).includes(true),false,'the stale "on" never repaints');
+ assert.equal(answers.length,0,'a confirming read starts after the refusal');
  assert.equal(values.at(-1),false);
 });
