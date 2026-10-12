@@ -172,7 +172,7 @@ as the sum of per-file compressed sizes.
 commit, build digest, and headroom. A breach fails with screen, metric, before,
 after, and budget. PR authors reduce the failing metric and rerun the check;
 budget increases require visible review in the budget diff. To re-measure the
-baseline, take the `performance-report {...}` line from a hosted `test` job and run
+baseline, save a hosted `test` job log (it holds one `performance-report <base64url>` line) and run
 `node scripts/performance-budget.mjs --rebaseline contracts/performance-budget.v1.json <file>`;
 it applies the one headroom rule, which a test holds every committed limit to. This is a lab
 regression guard: interaction latency runs from the browser pointer timestamp

@@ -101,7 +101,7 @@ test('rebaselining from a hosted job-log line rewrites the baseline and keeps th
   const dir = mkdtempSync(join(tmpdir(), 'doctorcre-rebaseline-'));
   const budgetPath = join(dir, 'budget.json'), logPath = join(dir, 'job.log');
   writeFileSync(budgetPath, JSON.stringify(committed));
-  writeFileSync(logPath, `2026-10-12T00:00:00.0000000Z performance-report ${JSON.stringify(measured)}`);
+  writeFileSync(logPath, `2026-10-12T00:00:00.0000000Z home: LCP=1000ms\n2026-10-12T00:00:00.0000000Z performance-report ${Buffer.from(JSON.stringify(measured)).toString('base64url')}\n`);
   const run = spawnSync(process.execPath, ['scripts/performance-budget.mjs', '--rebaseline', budgetPath, logPath], { encoding: 'utf8' });
   assert.equal(run.status, 0, run.stderr);
   const next = JSON.parse(readFileSync(budgetPath, 'utf8'));

@@ -1,12 +1,12 @@
 {
   "schema": "doctorcre-performance-budget.v1",
   "baseline": {
-    "measuredAt": "2026-10-05T19:39:06.829Z",
-    "sourceCommit": "ed6a04a9ad7d0b8502e73a68631225113721f172",
-    "buildDigest": "0b523bc853aa48bc00b17487691612dec2de9d3e3367099a0bbfad53a68b4b22",
+    "measuredAt": "2026-10-12T12:00:48.153Z",
+    "sourceCommit": "7adf76628b5bb5d83c4e8a796cb8f23648b8d677",
+    "buildDigest": "39d1bda78e4970ded9eaf5aa0b7915bab4d7f7688c16a18bd4d091bcdc0f199d",
     "browserVersion": "153.0.8010.12",
-    "nodeVersion": "v26.5.1",
-    "platform": "darwin"
+    "nodeVersion": "v22.23.2",
+    "platform": "linux"
   },
   "profile": {
     "viewport": {
@@ -31,93 +31,93 @@
   "screens": {
     "home": {
       "lcpMs": {
-        "baseline": 1124,
-        "limit": 1874
+        "baseline": 928,
+        "limit": 1678
       },
       "jsBytes": {
-        "baseline": 591854,
-        "limit": 651040
-      },
-      "interactionMs": {
-        "baseline": 76,
-        "limit": 226
-      }
-    },
-    "deals": {
-      "lcpMs": {
-        "baseline": 1696,
-        "limit": 2544
-      },
-      "jsBytes": {
-        "baseline": 724889,
-        "limit": 797378
-      },
-      "interactionMs": {
-        "baseline": 186,
-        "limit": 372
-      }
-    },
-    "vendors": {
-      "lcpMs": {
-        "baseline": 1176,
-        "limit": 1926
-      },
-      "jsBytes": {
-        "baseline": 652957,
-        "limit": 718253
-      },
-      "interactionMs": {
-        "baseline": 205,
-        "limit": 410
-      }
-    },
-    "tours": {
-      "lcpMs": {
-        "baseline": 1300,
-        "limit": 2050
-      },
-      "jsBytes": {
-        "baseline": 536661,
-        "limit": 590328
-      },
-      "interactionMs": {
-        "baseline": 78,
-        "limit": 228
-      }
-    },
-    "relationships": {
-      "lcpMs": {
-        "baseline": 4176,
-        "limit": 6264
-      },
-      "jsBytes": {
-        "baseline": 567500,
-        "limit": 624250
+        "baseline": 644667,
+        "limit": 709134
       },
       "interactionMs": {
         "baseline": 113,
         "limit": 263
       }
     },
-    "invoices": {
+    "deals": {
       "lcpMs": {
-        "baseline": 5196,
-        "limit": 7794
+        "baseline": 1564,
+        "limit": 2346
       },
       "jsBytes": {
-        "baseline": 523592,
-        "limit": 575952
+        "baseline": 776804,
+        "limit": 854485
       },
       "interactionMs": {
-        "baseline": 76,
-        "limit": 226
+        "baseline": 201,
+        "limit": 402
+      }
+    },
+    "vendors": {
+      "lcpMs": {
+        "baseline": 1032,
+        "limit": 1782
+      },
+      "jsBytes": {
+        "baseline": 704591,
+        "limit": 775051
+      },
+      "interactionMs": {
+        "baseline": 292,
+        "limit": 584
+      }
+    },
+    "tours": {
+      "lcpMs": {
+        "baseline": 1036,
+        "limit": 1786
+      },
+      "jsBytes": {
+        "baseline": 588963,
+        "limit": 647860
+      },
+      "interactionMs": {
+        "baseline": 75,
+        "limit": 225
+      }
+    },
+    "relationships": {
+      "lcpMs": {
+        "baseline": 4096,
+        "limit": 6144
+      },
+      "jsBytes": {
+        "baseline": 619064,
+        "limit": 680971
+      },
+      "interactionMs": {
+        "baseline": 117,
+        "limit": 267
+      }
+    },
+    "invoices": {
+      "lcpMs": {
+        "baseline": 5452,
+        "limit": 8178
+      },
+      "jsBytes": {
+        "baseline": 575159,
+        "limit": 632675
+      },
+      "interactionMs": {
+        "baseline": 80,
+        "limit": 230
       }
     }
   },
   "bundle": {
     "jsBytes": {
-      "baseline": 4572315,
-      "limit": 5029547
+      "baseline": 4623471,
+      "limit": 5085819
     }
   }
 }

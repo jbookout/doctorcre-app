@@ -113,9 +113,10 @@ try {
   await writeFile(join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   // One complete line in the job log, so a hosted run can be rebaselined with
   // `performance-budget.mjs --rebaseline` after its artifact has expired.
-  console.log(`performance-report ${JSON.stringify({ ...report,
+  // Base64url: Actions masking rewrites braces when a multi-line secret is set.
+  console.log(`performance-report ${Buffer.from(JSON.stringify({ ...report,
     screens: Object.fromEntries(Object.entries(measured).map(([id, { samples, ...metrics }]) => [id, metrics])),
-    bundle: { jsBytes: bundle.jsBytes, gzipBytes: bundle.gzipBytes } })}`);
+    bundle: { jsBytes: bundle.jsBytes, gzipBytes: bundle.gzipBytes } })).toString('base64url')}`);
 } finally {
   await browser?.close();
   await server?.stop();

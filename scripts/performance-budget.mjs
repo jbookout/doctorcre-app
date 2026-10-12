@@ -57,9 +57,11 @@ export function renderReport(result) {
 if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === '--rebaseline') {
   const [budgetPath, reportPath] = process.argv.slice(3);
   const budget = JSON.parse(readFileSync(budgetPath));
-  // Accepts report.json or its `performance-report {...}` job-log line.
+  // Accepts report.json or a job log holding its `performance-report <base64url>` line.
   const text = readFileSync(reportPath, 'utf8');
-  writeFileSync(budgetPath, JSON.stringify(rebaseline(budget, JSON.parse(text.slice(text.indexOf('{')))), null, 2) + '\n');
+  const line = text.match(/performance-report ([A-Za-z0-9_-]+)/);
+  const report = JSON.parse(line ? Buffer.from(line[1], 'base64url').toString('utf8') : text);
+  writeFileSync(budgetPath, JSON.stringify(rebaseline(budget, report), null, 2) + '\n');
 } else if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [budgetPath, reportPath, outputPath] = process.argv.slice(2);
